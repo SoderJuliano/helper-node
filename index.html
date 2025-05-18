@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aplicação Electron</title>
+    <style>
+        body {
+            background-color: rgba(30, 30, 30, 0.8);
+            color: white;
+            font-family: 'Arial', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            border-radius: 10px;
+            text-align: center;
+            user-select: none;
+            cursor: pointer;
+        }
+        
+        h1 {
+            font-size: 3rem;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+            transition: opacity 0.5s ease;
+            animation: pulse 2s infinite;
+        }
+        
+        .commands {
+            position: absolute;
+            top: 35px;  /* Ajustado para ficar abaixo da área de arrasto */
+            left: 10px;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 8px;
+            border-radius: 5px;
+            font-size: 0.8rem;
+            max-width: 250px;
+            text-align: start;
+        }
+        
+        .command-item {
+            margin: 5px 0;
+        }
+        
+        .hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #animation-container {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 150px;
+            height: 150px;
+            display: none; /* Começa escondido */
+            z-index: 1000; /* Garante que fique sobre outros elementos */
+        }
+
+        .drag-area {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 30px;
+            -webkit-app-region: drag;
+            z-index: 1001;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+    </style>
+    <!-- Inclua a biblioteca Lottie -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js"></script>
+</head>
+<body>
+    <div class="drag-area"></div>
+    <div class="commands">
+        <div class="command-item">* CTRL+D - Iniciar/Parar gravação</div>
+        <div class="command-item">* CTRL+P - Capturar tela</div>
+        <div class="command-item">* Clique para ocultar/mostrar</div>
+    </div>
+
+    <div id="animation-container"></div>
+
+    <h1 id="greeting">Olá amigo</h1>
+
+    <script>
+        // Esconder o "Olá amigo" ao clicar
+        const greeting = document.getElementById('greeting');
+        document.body.addEventListener('click', () => {
+            greeting.classList.add('hidden');
+        });
+
+        // Configurar a animação Lottie
+        const animationContainer = document.getElementById('animation-container');
+        let animation = null;
+        let isPlaying = false;
+
+        // Carregar a animação
+        function loadAnimation() {
+            fetch('assets/loading.json')
+                .then(response => response.json())
+                .then(animationData => {
+                    animation = lottie.loadAnimation({
+                        container: animationContainer,
+                        renderer: 'svg',
+                        loop: true,
+                        autoplay: false, // Não inicia automaticamente
+                        animationData: animationData
+                    });
+                    
+                    // Esconde o container após carregar
+                    animationContainer.style.display = 'none';
+                })
+                .catch(error => console.error('Erro ao carregar animação:', error));
+        }
+
+        // Toggle da animação com CTRL+D
+        document.addEventListener('keydown', (event) => {
+            if (event.ctrlKey && event.key.toLowerCase() === 'd') {
+                event.preventDefault(); // Previne comportamento padrão
+                
+                if (!animation) {
+                    console.log('Animação ainda não carregada');
+                    return;
+                }
+                
+                if (isPlaying) {
+                    animation.stop();
+                    animationContainer.style.display = 'none';
+                } else {
+                    animationContainer.style.display = 'block';
+                    animation.play();
+                }
+                isPlaying = !isPlaying;
+            }
+        });
+
+        // Carregar a animação quando a página estiver pronta
+        window.addEventListener('DOMContentLoaded', () => {
+            loadAnimation();
+            
+            // Configurar atalhos IPC
+            const { ipcRenderer } = require('electron');
+            ipcRenderer.on('toggle-recording', () => {
+                // Simula pressionar CTRL+D
+                const event = new KeyboardEvent('keydown', {
+                    ctrlKey: true,
+                    key: 'd'
+                });
+                document.dispatchEvent(event);
+            });
+        });
+
+        const { ipcRenderer } = require('electron');
+
+        ipcRenderer.on('sharing-status', (event, data) => {
+            const warningElement = document.getElementById('sharing-warning') || 
+                                document.createElement('div');
+            
+            if (!document.getElementById('sharing-warning')) {
+                warningElement.id = 'sharing-warning';
+                warningElement.style.position = 'fixed';
+                warningElement.style.bottom = '10px';
+                warningElement.style.right = '10px';
+                warningElement.style.padding = '10px';
+                warningElement.style.background = 'red';
+                warningElement.style.color = 'white';
+                warningElement.style.zIndex = '9999';
+                warningElement.textContent = 'ATENÇÃO: TELA SENDO COMPARTILHADA';
+                document.body.appendChild(warningElement);
+            }
+
+            warningElement.style.display = data.isSharing ? 'block' : 'none';
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "name": "meu-electron-app",
+  "version": "1.0.0",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "devDependencies": {
+    "electron": "^36.2.1"
+  },
+  "dependencies": {
+    "lottie-web": "^5.12.2"
+  }
+}
