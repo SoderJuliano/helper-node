@@ -2,70 +2,99 @@ const { app, BrowserWindow, ipcMain, globalShortcut, screen } = require('electro
 const path = require('path');
 const { exec } = require('child_process');
 const util = require('util');
+const fs = require('fs').promises; // Use promises for file checks
 const execPromise = util.promisify(exec);
 
 let mainWindow;
 let sharingCheckInterval;
+let currentDisplayId = null;
+let sharingActive = false;
 
-function createWindow() {
-    mainWindow = new BrowserWindow({
-        width: 800,
-        height: 600,
-        backgroundColor: '#00000000',
-        transparent: true,
-        titleBarStyle: 'hidden',
-        titleBarOverlay: {
-            color: '#222222',
-            symbolColor: '#ffffff'
-        },
-        webPreferences: {
-            nodeIntegration: true,
-            contextIsolation: false,
-            preload: path.join(__dirname, 'preload.js')
-        },
-        focusable: true,
-        alwaysOnTop: false,
-        show: false
-    });
+async function createWindow() {
+    try {
+        mainWindow = new BrowserWindow({
+            width: 800,
+            height: 600,
+            backgroundColor: '#00000000',
+            transparent: true,
+            titleBarStyle: 'hidden',
+            titleBarOverlay: {
+                color: '#222222',
+                symbolColor: '#ffffff'
+            },
+            webPreferences: {
+                nodeIntegration: false,
+                contextIsolation: true,
+                preload: path.join(__dirname, 'preload.js')
+            },
+            focusable: true,
+            alwaysOnTop: false,
+            show: false,
+            skipTaskbar: true // Hide from taskbar (X11/Wayland)
+        });
 
-     mainWindow.on('ready-to-show', () => {
-        mainWindow.showInactive();
-        // Armazena o display inicial
-        currentDisplayId = screen.getDisplayNearestPoint(mainWindow.getBounds()).id;
-    });
-
-    mainWindow.loadFile('index.html');
-
-    setupScreenSharingDetection();
-
-    globalShortcut.register('CommandOrControl+D', () => {
-        mainWindow.webContents.send('toggle-recording');
-    });
-
-    globalShortcut.register('CommandOrControl+P', () => {
-        mainWindow.webContents.send('capture-screen');
-    });
-
-    globalShortcut.register('CommandOrControl+A', () => {
-        if (mainWindow.isMinimized()) {
-            mainWindow.restore();
+        // Wayland-specific settings (optional, as skipTaskbar is usually enough)
+        if (process.env.XDG_SESSION_TYPE === 'wayland') {
+            mainWindow.setSkipTaskbar(true);
+            console.log('Running on Wayland');
+        } else {
+            console.log('Running on X11');
         }
-        mainWindow.focus();  // Agora ok, pois foi ação do usuário
-    });
+
+        mainWindow.on('ready-to-show', () => {
+            console.log('Window ready to show');
+            mainWindow.show(); // Use show() for testing to ensure visibility
+            currentDisplayId = screen.getDisplayNearestPoint(mainWindow.getBounds()).id;
+            mainWindow.webContents.openDevTools(); // Keep DevTools for debugging
+        });
+
+        // Verify index.html exists
+        const indexPath = path.join(__dirname, 'index.html');
+        try {
+            await fs.access(indexPath);
+            await mainWindow.loadFile(indexPath);
+            console.log('Loaded index.html successfully');
+        } catch (error) {
+            console.error('Error: index.html not found at', indexPath, error);
+            app.quit();
+            return;
+        }
+
+        setupScreenSharingDetection();
+
+        // Register global shortcuts
+        globalShortcut.register('Control+Shift+D', () => {
+            console.log('Toggle recording triggered');
+            mainWindow.webContents.send('toggle-recording');
+        });
+
+        globalShortcut.register('Control+Shift+P', () => {
+            console.log('Capture screen triggered');
+            mainWindow.webContents.send('capture-screen');
+        });
+
+        globalShortcut.register('Control+Shift+A', () => {
+            console.log('Show window triggered');
+            if (mainWindow.isMinimized()) {
+                mainWindow.restore();
+            }
+            mainWindow.show(); // Use show() for testing
+        });
+    } catch (error) {
+        console.error('Error creating window:', error);
+        app.quit();
+    }
 }
 
 function setupScreenSharingDetection() {
-    // Verificação inicial
     checkScreenSharing();
+    sharingCheckInterval = setInterval(checkScreenSharing, 3000);
 
-    // Monitora eventos de display
     screen.on('display-metrics-changed', () => {
+        console.log('Display metrics changed');
         checkScreenSharing();
         updateWindowPosition();
     });
-
-    // Verificação periódica otimizada
-    setInterval(checkScreenSharing, 3000);
 }
 
 async function checkScreenSharing() {
@@ -73,96 +102,100 @@ async function checkScreenSharing() {
         const isSharing = await detectScreenSharing();
         if (isSharing !== sharingActive) {
             sharingActive = isSharing;
+            console.log('Screen sharing status changed:', sharingActive);
             handleScreenSharing();
         }
     } catch (error) {
-        console.error('Erro na verificação:', error);
+        console.error('Error in screen sharing detection:', error);
     }
 }
 
-// Adicione no início do arquivo
-let currentDisplayId = null;
-let sharingActive = false;
-
 async function detectScreenSharing() {
     try {
-        if (process.platform === 'darwin') {
-            // macOS - verifica processos de compartilhamento
-            const { stdout } = await execPromise('pgrep -fl "ScreenSharingAgent|Chrome"');
-            return stdout.toString().includes('ScreenSharingAgent') || 
-                   (stdout.toString().includes('Chrome') && stdout.toString().includes('--sharing-screen'));
-        } else if (process.platform === 'win32') {
-            // Windows - verifica Chrome em modo de compartilhamento
-            const { stdout } = await exec(
-                'tasklist /fi "IMAGENAME eq chrome.exe" /v | findstr /i "sharing"'
-            );
-            return stdout.toString().length > 0;
-        } else {
-            // Linux - verifica janelas de compartilhamento
-            const { stdout } = await execPromise('xwininfo -root -tree | grep -i "chromium"');
-            return stdout.toString().includes('sharing');
-        }
+        const sharingApps = ['chrome', 'teams', 'zoom', 'obs', 'discord'];
+        const { stdout } = await execPromise(`ps aux | grep -E '${sharingApps.join('|')}' | grep -v grep`);
+        const processes = stdout.toString().toLowerCase();
+        console.log('Running processes:', processes);
+
+        // Check for screen-sharing apps (simplified for reliability)
+        return sharingApps.some(app => processes.includes(app));
     } catch (error) {
-        console.error('Erro na detecção:', error);
+        console.error('Error detecting screen sharing:', error);
         return false;
     }
 }
 
-// Atualize a função updateWindowPosition
 function updateWindowPosition() {
-    const displays = screen.getAllDisplays();
-    const currentDisplay = screen.getDisplayNearestPoint(mainWindow.getBounds());
-    
-    if (displays.length < 2) {
-        mainWindow.hide();
-        return;
-    }
+    try {
+        const displays = screen.getAllDisplays();
+        const currentDisplay = screen.getDisplayNearestPoint(mainWindow.getBounds());
 
-    // Verifica se está no mesmo display que está sendo compartilhado
-    const sharingDisplay = getSharingDisplay();
-    if (sharingDisplay && sharingDisplay.id === currentDisplay.id) {
-        const otherDisplay = displays.find(d => d.id !== currentDisplay.id);
-        if (otherDisplay) {
-            const { x, y } = otherDisplay.bounds;
-            mainWindow.setPosition(x + 50, y + 50);
-            mainWindow.showInactive();
-            currentDisplayId = otherDisplay.id;
+        if (displays.length < 2) {
+            console.log('Single display detected, hiding window');
+            mainWindow.hide();
+            return;
         }
+
+        const sharingDisplay = getSharingDisplay();
+        if (sharingDisplay && sharingDisplay.id === currentDisplay.id) {
+            const otherDisplay = displays.find(d => d.id !== currentDisplay.id);
+            if (otherDisplay) {
+                const { x, y } = otherDisplay.bounds;
+                mainWindow.setPosition(x + 50, y + 50);
+                mainWindow.show(); // Use show() for testing
+                currentDisplayId = otherDisplay.id;
+                console.log('Moved window to display:', currentDisplayId);
+            }
+        } else {
+            mainWindow.show(); // Use show() for testing
+        }
+    } catch (error) {
+        console.error('Error updating window position:', error);
     }
 }
 
-// Adicione esta nova função auxiliar
 function getSharingDisplay() {
-    // Implementação específica por sistema operacional
-    // Retorna o display que está sendo compartilhado ou null
-    // Esta é uma implementação simplificada - pode precisar de ajustes
-    return screen.getPrimaryDisplay();
+    return screen.getPrimaryDisplay(); // Simplified for now
 }
 
 function handleScreenSharing() {
-    if (sharingActive) {
-        updateWindowPosition();
-    } else {
-        mainWindow.showInactive();
+    try {
+        if (sharingActive) {
+            console.log('Screen sharing active, updating position');
+            updateWindowPosition();
+        } else {
+            console.log('No screen sharing, showing window');
+            mainWindow.show(); // Use show() for testing
+        }
+    } catch (error) {
+        console.error('Error handling screen sharing:', error);
     }
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(async () => {
+    try {
+        await createWindow();
+    } catch (error) {
+        console.error('Error in app.whenReady:', error);
+        app.quit();
+    }
+});
 
 app.on('window-all-closed', () => {
+    console.log('All windows closed');
     clearInterval(sharingCheckInterval);
-    if (process.platform !== 'darwin') app.quit();
+    app.quit();
 });
 
 app.on('will-quit', () => {
+    console.log('Unregistering shortcuts');
     globalShortcut.unregisterAll();
 });
 
-// IPC Handlers
 ipcMain.on('toggle-recording', () => {
-    console.log('Gravação iniciada/parada');
+    console.log('Recording toggled');
 });
 
 ipcMain.on('capture-screen', () => {
-    console.log('Captura de tela solicitada');
+    console.log('Screen capture requested');
 });
