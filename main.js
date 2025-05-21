@@ -164,8 +164,8 @@ async function toggleRecording() {
 
 async function transcribeAudio(filePath) {
     try {
-        const whisperPath = path.join(__dirname, 'node_modules/whisper-node/dist/whisper/build/bin/whisper-cli');
-        const modelPath = path.join(__dirname, 'node_modules/whisper-node/dist/whisper/models/ggml-tiny.bin');
+        const whisperPath = path.join(__dirname, 'whisper/build/bin/whisper-cli');
+        const modelPath = path.join(__dirname, 'whisper/models/ggml-tiny.bin');
         const command = `${whisperPath} -m ${modelPath} -f ${filePath} -l pt`;
         console.log('Executing whisper:', command);
         return new Promise((resolve, reject) => {
