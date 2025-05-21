@@ -5,8 +5,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onCaptureScreen: (callback) => ipcRenderer.on('capture-screen', callback),
     onSharingStatus: (callback) => ipcRenderer.on('sharing-status', callback),
     onTranscriptionResult: (callback) => {
-        ipcRenderer.on('transcription-result', (event, { text }) => {
-            callback(text);
+        ipcRenderer.on('transcription-result', (event, { cleanText }) => {
+            callback(cleanText);
         });
     },
     onTranscriptionError: (callback) => {

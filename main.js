@@ -169,7 +169,7 @@ async function transcribeAudio(filePath) {
         const command = `${whisperPath} -m ${modelPath} -f ${filePath} -l pt`;
         console.log('Executing whisper:', command);
         return new Promise((resolve, reject) => {
-            exec(command, (error, stdout, stderr) => {
+            exec(command, async (error, stdout, stderr) => {
                 if (error) {
                     console.error('Whisper error:', stderr);
                     mainWindow.webContents.send('transcription-error', 'Failed to transcribe audio');
@@ -178,9 +178,9 @@ async function transcribeAudio(filePath) {
                 }
                 const text = stdout.trim();
                 console.log('Transcription:', text || 'No text recognized');
-                const limpo = limparTranscricao(text);
-                mainWindow.webContents.send('transcription-result', { limpo });
-                resolve(limpo);
+                const cleanText = await limparTranscricao(text);
+                mainWindow.webContents.send('transcription-result', { cleanText });
+                resolve(cleanText);
             });
         });
     } catch (error) {
@@ -189,8 +189,8 @@ async function transcribeAudio(filePath) {
     }
 }
 
-function limparTranscricao(texto) {
-    return texto.replace(/^\[\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3}\]\s*/, '');
+async function limparTranscricao(texto) {
+    return texto.replace(/\[\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3}\]\s*/g, '').trim();
 }
 
 function setupScreenSharingDetection() {
