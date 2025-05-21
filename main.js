@@ -2,13 +2,16 @@ const { app, BrowserWindow, ipcMain, globalShortcut, screen } = require('electro
 const path = require('path');
 const { exec } = require('child_process');
 const util = require('util');
-const fs = require('fs').promises; // Use promises for file checks
 const execPromise = util.promisify(exec);
+const fs = require('fs').promises;
 
 let mainWindow;
 let sharingCheckInterval;
 let currentDisplayId = null;
 let sharingActive = false;
+let recordingProcess = null;
+let isRecording = false;
+const audioFilePath = path.join(__dirname, 'output.wav');
 
 async function createWindow() {
     try {
@@ -30,10 +33,9 @@ async function createWindow() {
             focusable: true,
             alwaysOnTop: false,
             show: false,
-            skipTaskbar: true // Hide from taskbar (X11/Wayland)
+            skipTaskbar: true
         });
 
-        // Wayland-specific settings (optional, as skipTaskbar is usually enough)
         if (process.env.XDG_SESSION_TYPE === 'wayland') {
             mainWindow.setSkipTaskbar(true);
             console.log('Running on Wayland');
@@ -43,12 +45,19 @@ async function createWindow() {
 
         mainWindow.on('ready-to-show', () => {
             console.log('Window ready to show');
-            mainWindow.show(); // Use show() for testing to ensure visibility
+            mainWindow.show();
             currentDisplayId = screen.getDisplayNearestPoint(mainWindow.getBounds()).id;
-            mainWindow.webContents.openDevTools(); // Keep DevTools for debugging
+            mainWindow.webContents.openDevTools();
+            
+            // Mover o registro de atalhos para aqui
+            registerGlobalShortcuts();
         });
 
-        // Verify index.html exists
+        mainWindow.on('closed', () => {
+            console.log('Main window closed');
+            mainWindow = null;
+        });
+
         const indexPath = path.join(__dirname, 'index.html');
         try {
             await fs.access(indexPath);
@@ -62,27 +71,119 @@ async function createWindow() {
 
         setupScreenSharingDetection();
 
-        // Register global shortcuts
-        globalShortcut.register('Control+Shift+D', () => {
-            console.log('Toggle recording triggered');
-            mainWindow.webContents.send('toggle-recording');
-        });
-
-        globalShortcut.register('Control+Shift+P', () => {
-            console.log('Capture screen triggered');
-            mainWindow.webContents.send('capture-screen');
-        });
-
-        globalShortcut.register('Control+Shift+A', () => {
-            console.log('Show window triggered');
-            if (mainWindow.isMinimized()) {
-                mainWindow.restore();
+        // Configuração de permissões
+        mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+            if (permission === 'autofill') {
+                return callback(false);
             }
-            mainWindow.show(); // Use show() for testing
+            callback(true);
         });
     } catch (error) {
         console.error('Error creating window:', error);
         app.quit();
+    }
+}
+
+async function registerGlobalShortcuts() {
+    if (!mainWindow) return;
+
+    // Limpa atalhos existentes primeiro
+    globalShortcut.unregisterAll();
+
+    const shortcuts = [
+        { combo: 'CommandOrControl+D', action: 'toggle-recording' },
+        { combo: 'CommandOrControl+P', action: 'capture-screen' },
+        { combo: 'CommandOrControl+A', action: 'focus-window' }
+    ];
+
+    shortcuts.forEach(({ combo, action }) => {
+        const registered = globalShortcut.register(combo, async () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send(action);
+                
+                // Tratamento especial para o atalho de focus
+                if (action === 'focus-window' && mainWindow.isMinimized()) {
+                    mainWindow.restore();
+                }
+
+                if (action === 'toggle-recording'){
+                    await toggleRecording();
+                    mainWindow.webContents.send('toggle-recording', { isRecording, audioFilePath });
+                }
+            }
+        });
+
+        if (!registered) {
+            console.error(`Failed to register shortcut: ${combo}`);
+        } else {
+            console.log(`Shortcut registered: ${combo}`);
+        }
+    });
+}
+
+async function toggleRecording() {
+    try {
+        if (isRecording) {
+            if (recordingProcess) {
+                recordingProcess.kill('SIGTERM');
+                recordingProcess = null;
+            }
+            isRecording = false;
+            console.log('Recording stopped');
+            try {
+                await fs.access(audioFilePath);
+                console.log('Audio file created:', audioFilePath);
+                mainWindow.webContents.send('transcription-start', { audioFilePath });
+                // Iniciar transcrição com Whisper
+                await transcribeAudio(audioFilePath);
+            } catch (error) {
+                console.error('Audio file not found:', error);
+                mainWindow.webContents.send('transcription-error', 'No audio file created');
+            }
+        } else {
+            await fs.unlink(audioFilePath).catch(() => {});
+            const command = `pw-record --target=auto-null.monitor ${audioFilePath}`;
+            console.log('Executing:', command);
+            recordingProcess = exec(command, (error) => {
+                if (error && error.signal !== 'SIGTERM' && error.code !== 0) {
+                    console.error('Recording error:', error);
+                    mainWindow.webContents.send('transcription-error', 'Recording failed');
+                } else {
+                    console.log('Recording process ended normally');
+                }
+            });
+            isRecording = true;
+            console.log('Recording started');
+        }
+    } catch (error) {
+        console.error('Error toggling recording:', error);
+        mainWindow.webContents.send('transcription-error', 'Failed to toggle recording');
+    }
+}
+
+async function transcribeAudio(filePath) {
+    try {
+        const whisperPath = path.join(__dirname, 'node_modules/whisper-node/dist/whisper/build/bin/whisper-cli');
+        const modelPath = path.join(__dirname, 'node_modules/whisper-node/dist/whisper/models/ggml-tiny.bin');
+        const command = `${whisperPath} -m ${modelPath} -f ${filePath} -l pt`;
+        console.log('Executing whisper:', command);
+        return new Promise((resolve, reject) => {
+            exec(command, (error, stdout, stderr) => {
+                if (error) {
+                    console.error('Whisper error:', stderr);
+                    mainWindow.webContents.send('transcription-error', 'Failed to transcribe audio');
+                    reject(error);
+                    return;
+                }
+                const text = stdout.trim();
+                console.log('Transcription:', text || 'No text recognized');
+                mainWindow.webContents.send('transcription-result', { text });
+                resolve(text);
+            });
+        });
+    } catch (error) {
+        console.error('Transcription error:', error);
+        mainWindow.webContents.send('transcription-error', 'Failed to transcribe audio');
     }
 }
 
@@ -102,11 +203,10 @@ async function checkScreenSharing() {
         const isSharing = await detectScreenSharing();
         if (isSharing !== sharingActive) {
             sharingActive = isSharing;
-            console.log('Screen sharing status changed:', sharingActive);
             handleScreenSharing();
         }
     } catch (error) {
-        console.error('Error in screen sharing detection:', error);
+        console.error('Erro na verificação:', error);
     }
 }
 
@@ -115,10 +215,8 @@ async function detectScreenSharing() {
         const sharingApps = ['chrome', 'teams', 'zoom', 'obs', 'discord'];
         const { stdout } = await execPromise(`ps aux | grep -E '${sharingApps.join('|')}' | grep -v grep`);
         const processes = stdout.toString().toLowerCase();
-        console.log('Running processes:', processes);
-
-        // Check for screen-sharing apps (simplified for reliability)
-        return sharingApps.some(app => processes.includes(app));
+        const sharingIndicators = ['--type=renderer', '--enable-features=WebRTCPipeWireCapturer', 'screen-sharing'];
+        return sharingApps.some(app => processes.includes(app) && sharingIndicators.some(indicator => processes.includes(indicator)));
     } catch (error) {
         console.error('Error detecting screen sharing:', error);
         return false;
@@ -142,12 +240,12 @@ function updateWindowPosition() {
             if (otherDisplay) {
                 const { x, y } = otherDisplay.bounds;
                 mainWindow.setPosition(x + 50, y + 50);
-                mainWindow.show(); // Use show() for testing
+                mainWindow.show();
                 currentDisplayId = otherDisplay.id;
                 console.log('Moved window to display:', currentDisplayId);
             }
         } else {
-            mainWindow.show(); // Use show() for testing
+            mainWindow.show();
         }
     } catch (error) {
         console.error('Error updating window position:', error);
@@ -155,7 +253,7 @@ function updateWindowPosition() {
 }
 
 function getSharingDisplay() {
-    return screen.getPrimaryDisplay(); // Simplified for now
+    return screen.getPrimaryDisplay();
 }
 
 function handleScreenSharing() {
@@ -165,37 +263,26 @@ function handleScreenSharing() {
             updateWindowPosition();
         } else {
             console.log('No screen sharing, showing window');
-            mainWindow.show(); // Use show() for testing
+            mainWindow.show();
         }
     } catch (error) {
         console.error('Error handling screen sharing:', error);
     }
 }
 
-app.whenReady().then(async () => {
-    try {
-        await createWindow();
-    } catch (error) {
-        console.error('Error in app.whenReady:', error);
-        app.quit();
-    }
-});
+app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
     console.log('All windows closed');
     clearInterval(sharingCheckInterval);
-    app.quit();
+    if (recordingProcess) {
+        recordingProcess.kill('SIGTERM');
+    }
+    if (process.platform !== 'darwin' && !mainWindow) {
+        app.quit();
+    }
 });
 
 app.on('will-quit', () => {
-    console.log('Unregistering shortcuts');
     globalShortcut.unregisterAll();
-});
-
-ipcMain.on('toggle-recording', () => {
-    console.log('Recording toggled');
-});
-
-ipcMain.on('capture-screen', () => {
-    console.log('Screen capture requested');
 });
