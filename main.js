@@ -33,7 +33,8 @@ async function createWindow() {
             focusable: true,
             alwaysOnTop: false,
             show: false,
-            skipTaskbar: true
+            skipTaskbar: true,
+            nodeIntegration: false,
         });
 
         if (process.env.XDG_SESSION_TYPE === 'wayland') {
@@ -177,14 +178,19 @@ async function transcribeAudio(filePath) {
                 }
                 const text = stdout.trim();
                 console.log('Transcription:', text || 'No text recognized');
-                mainWindow.webContents.send('transcription-result', { text });
-                resolve(text);
+                const limpo = limparTranscricao(text);
+                mainWindow.webContents.send('transcription-result', { limpo });
+                resolve(limpo);
             });
         });
     } catch (error) {
         console.error('Transcription error:', error);
         mainWindow.webContents.send('transcription-error', 'Failed to transcribe audio');
     }
+}
+
+function limparTranscricao(texto) {
+    return texto.replace(/^\[\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3}\]\s*/, '');
 }
 
 function setupScreenSharingDetection() {

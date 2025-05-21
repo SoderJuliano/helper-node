@@ -74,6 +74,18 @@
             50% { transform: scale(1.05); }
             100% { transform: scale(1); }
         }
+
+        #transcription {
+            width: 100%;
+            max-width: 500px;
+            height: 200px;
+            padding: 50px;
+            color: white;
+        }
+
+        .content {
+            display: block;
+        }
     </style>
     <!-- Inclua a biblioteca Lottie -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js"></script>
@@ -88,8 +100,11 @@
 
     <div id="animation-container"></div>
 
-    <h1 id="greeting">Olá amigo</h1>
-    <div id="transcription"></div>
+    <div class="content">
+        <h1 id="greeting">Olá amigo</h1>
+        <div id="transcription"></div>
+    </div>
+    
 
     <script>
         // Esconder o "Olá amigo" ao clicar
@@ -140,47 +155,45 @@
 
         window.addEventListener('DOMContentLoaded', () => {
             loadAnimation();
+
+             // Transcrição
+            window.electronAPI.onTranscriptionStart((audioFilePath) => {
+                console.log('Transcrição iniciada para:', audioFilePath);
+            });
+
+            window.electronAPI.onTranscriptionResult((text) => {
+                console.log('Texto transcrito:', text);
+                document.getElementById('transcription').innerText = text;
+            });
+
+            window.electronAPI.onTranscriptionError((message) => {
+                console.error('Erro na transcrição:', message);
+                document.getElementById('transcription').innerText = `Erro: ${message}`;
+            });
         });
 
-        const { ipcRenderer } = require('electron');
+        // const { ipcRenderer } = require('electron');
 
-        ipcRenderer.on('sharing-status', (event, data) => {
-            const warningElement = document.getElementById('sharing-warning') || 
-                                document.createElement('div');
+        // ipcRenderer.on('sharing-status', (event, data) => {
+        //     const warningElement = document.getElementById('sharing-warning') || 
+        //                         document.createElement('div');
             
-            if (!document.getElementById('sharing-warning')) {
-                warningElement.id = 'sharing-warning';
-                warningElement.style.position = 'fixed';
-                warningElement.style.bottom = '10px';
-                warningElement.style.right = '10px';
-                warningElement.style.padding = '10px';
-                warningElement.style.background = 'red';
-                warningElement.style.color = 'white';
-                warningElement.style.zIndex = '9999';
-                warningElement.textContent = 'ATENÇÃO: TELA SENDO COMPARTILHADA';
-                document.body.appendChild(warningElement);
-            }
+        //     if (!document.getElementById('sharing-warning')) {
+        //         warningElement.id = 'sharing-warning';
+        //         warningElement.style.position = 'fixed';
+        //         warningElement.style.bottom = '10px';
+        //         warningElement.style.right = '10px';
+        //         warningElement.style.padding = '10px';
+        //         warningElement.style.background = 'red';
+        //         warningElement.style.color = 'white';
+        //         warningElement.style.zIndex = '9999';
+        //         warningElement.textContent = 'ATENÇÃO: TELA SENDO COMPARTILHADA';
+        //         document.body.appendChild(warningElement);
+        //     }
 
-            warningElement.style.display = data.isSharing ? 'block' : 'none';
-        });
+        //     warningElement.style.display = data.isSharing ? 'block' : 'none';
+        // });
 
-
-        // Transcrição
-        ipcRenderer.on('transcription-start', (event, { audioFilePath }) => {
-            console.log('Transcription started for:', audioFilePath);
-        });
-
-        ipcRenderer.on('transcription-result', (event, { text }) => {
-            console.log('Transcribed text:', text);
-            // Exibir na interface, se houver
-            document.getElementById('transcription').innerText = text;
-        });
-
-        ipcRenderer.on('transcription-error', (event, message) => {
-            console.error('Transcription error:', message);
-            // Exibir erro na interface, se necessário
-            document.getElementById('transcription').innerText = `Erro: ${message}`;
-        });
     </script>
 </body>
 </html>
