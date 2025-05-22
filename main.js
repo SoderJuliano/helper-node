@@ -47,6 +47,7 @@ async function createWindow() {
         mainWindow.on('ready-to-show', () => {
             console.log('Window ready to show');
             mainWindow.show();
+            ensureWindowVisible(mainWindow);
             currentDisplayId = screen.getDisplayNearestPoint(mainWindow.getBounds()).id;
             mainWindow.webContents.openDevTools();
             
@@ -120,6 +121,11 @@ async function registerGlobalShortcuts() {
             console.log(`Shortcut registered: ${combo}`);
         }
     });
+
+    globalShortcut.register('Control+shift+1', () => moveToDisplay(0));
+    globalShortcut.register('Control+shift+2', () => moveToDisplay(1));
+
+    console.log('Atalhos Ctrl+1 e Ctrl+2 registrados');
 }
 
 async function toggleRecording() {
@@ -273,6 +279,49 @@ function handleScreenSharing() {
         }
     } catch (error) {
         console.error('Error handling screen sharing:', error);
+    }
+}
+
+function ensureWindowVisible(win) {
+    const windowBounds = win.getBounds();
+    const displays = screen.getAllDisplays();
+    const visible = displays.some(display => {
+        const { x, y, width, height } = display.bounds;
+        return (
+            windowBounds.x >= x &&
+            windowBounds.x < x + width &&
+            windowBounds.y >= y &&
+            windowBounds.y < y + height
+        );
+    });
+
+    if (!visible) {
+        const primaryDisplay = screen.getPrimaryDisplay();
+        const { x, y, width, height } = primaryDisplay.workArea;
+        const newX = x + Math.round((width - windowBounds.width) / 2);
+        const newY = y + Math.round((height - windowBounds.height) / 2);
+        console.log('Janela fora da tela. Reposicionando para:', newX, newY);
+        win.setBounds({ x: newX, y: newY, width: windowBounds.width, height: windowBounds.height });
+    }
+}
+
+function moveToDisplay(index) {
+    console.log("cheguei"+index);
+    const displays = screen.getAllDisplays();
+    if (index < displays.length) {
+        const display = displays[index];
+        const bounds = display.bounds;
+
+        const winWidth = 800;
+        const winHeight = 600;
+        const x = bounds.x + Math.round((bounds.width - winWidth) / 2);
+        const y = bounds.y + Math.round((bounds.height - winHeight) / 2);
+
+        mainWindow.setBounds({ x, y, width: winWidth, height: winHeight });
+        mainWindow.show(); // Garante que ela fique visível
+        mainWindow.focus();
+    } else {
+        console.log(`Monitor ${index + 1} não encontrado`);
     }
 }
 
