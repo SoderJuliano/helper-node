@@ -4,6 +4,8 @@ const { exec } = require('child_process');
 const util = require('util');
 const execPromise = util.promisify(exec);
 const fs = require('fs').promises;
+const fs2 = require('fs');
+const LlamaService = require('./services/llamaService.js');
 
 let mainWindow;
 let sharingCheckInterval;
@@ -142,10 +144,12 @@ async function toggleRecording() {
                 console.log('Audio file created:', audioFilePath);
                 mainWindow.webContents.send('transcription-start', { audioFilePath });
                 // Iniciar transcrição com Whisper
-                await transcribeAudio(audioFilePath);
+                const audioText = await transcribeAudio(audioFilePath);
+                getIaResponse(audioText);
             } catch (error) {
+                isRecording = false;
                 console.error('Audio file not found:', error);
-                mainWindow.webContents.send('transcription-error', 'No audio file created');
+                // mainWindow.webContents.send('transcription-error', 'No audio file created');
             }
         } else {
             await fs.unlink(audioFilePath).catch(() => {});
@@ -154,7 +158,7 @@ async function toggleRecording() {
             recordingProcess = exec(command, (error) => {
                 if (error && error.signal !== 'SIGTERM' && error.code !== 0) {
                     console.error('Recording error:', error);
-                    mainWindow.webContents.send('transcription-error', 'Recording failed');
+                    // mainWindow.webContents.send('transcription-error', 'Recording failed');
                 } else {
                     console.log('Recording process ended normally');
                 }
@@ -168,11 +172,59 @@ async function toggleRecording() {
     }
 }
 
+async function getIaResponse(text) {
+    try {
+        const resposta = await LlamaService.responder(text);
+        mainWindow.webContents.send('llama-response', { resposta });
+    } catch (llamaError) {
+        console.error('LLaMA error:', llamaError);
+        mainWindow.webContents.send('transcription-error', 'Failed to process LLaMA response');
+    }
+}
+
+async function getAudioDuration(filePath) {
+    try {
+        const { stdout } = await execPromise(
+            `ffprobe -v error -show_entries format=duration -of json "${filePath}"`
+        );
+        const data = JSON.parse(stdout);
+        const duration = parseFloat(data.format.duration);
+        console.log(`Duração do áudio: ${duration} segundos`);
+        return duration;
+    } catch (error) {
+        console.error('Erro ao obter duração do áudio:', error.message);
+    }
+}
+
 async function transcribeAudio(filePath) {
     try {
+        // Obter a duração do áudio
+        const duration = await getAudioDuration(filePath);
+
         const whisperPath = path.join(__dirname, 'whisper/build/bin/whisper-cli');
-        const modelPath = path.join(__dirname, 'whisper/models/ggml-tiny.bin');
-        const command = `${whisperPath} -m ${modelPath} -f ${filePath} -l pt`;
+        const modelPathTiny = path.join(__dirname, 'whisper/models/ggml-tiny.bin');
+        const modelPathSmall = path.join(__dirname, 'whisper/models/ggml-small.bin');
+
+        // Verificar se os modelos existem
+        if (!fs2.existsSync(modelPathTiny)) {
+            throw new Error(`Modelo tiny não encontrado: ${modelPathTiny}`);
+        }
+        if (!fs2.existsSync(modelPathSmall)) {
+            throw new Error(`Modelo small não encontrado: ${modelPathSmall}`);
+        }
+
+        // Escolher modelo e parâmetros com base na duração
+        let modelPath, command;
+        if (duration < 20) {
+            modelPath = modelPathTiny;
+            command = `${whisperPath} -m ${modelPath} -f ${filePath} -l auto --best-of 1 --beam-size 1`;
+            console.log('Usando modelo tiny para áudio curto (< 20s)');
+        } else {
+            modelPath = modelPathSmall;
+            command = `${whisperPath} -m ${modelPath} -f ${filePath} -l auto --best-of 3 --beam-size 3`;
+            console.log('Usando modelo small para áudio longo (≥ 20s)');
+        }
+
         console.log('Executing whisper:', command);
         return new Promise((resolve, reject) => {
             exec(command, async (error, stdout, stderr) => {

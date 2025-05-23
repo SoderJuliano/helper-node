@@ -93,6 +93,20 @@
         .content {
             display: block;
         }
+
+        #transcription br {
+            margin-bottom: 10px;
+        }
+
+        #robot{
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 100px;
+            height: 70px;
+            display: none;
+            z-index: 1000;
+        }
     </style>
     <!-- Inclua a biblioteca Lottie -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js"></script>
@@ -106,6 +120,7 @@
     </div>
 
     <div id="animation-container"></div>
+    <img src="./assets/robotgif.gif" id="robot"/>
 
     <div class="content">
         <h1 id="greeting">Olá amigo</h1>
@@ -114,6 +129,10 @@
     
 
     <script>
+        setTimeout(() => {
+            greeting.classList.add('hidden');
+        }, 3000);
+
         // Esconder o "Olá amigo" ao clicar
         const greeting = document.getElementById('greeting');
         document.body.addEventListener('click', () => {
@@ -124,6 +143,7 @@
         const animationContainer = document.getElementById('animation-container');
         let animation = null;
         let isPlaying = false;
+        const robot = document.getElementById('robot');
 
         // Carregar a animação
         function loadAnimation() {
@@ -169,6 +189,8 @@
             });
 
             window.electronAPI.onTranscriptionResult((text) => {
+                animationContainer.style.display = "none";
+                robot.style.display = 'block';
                 console.log('Texto transcrito:', text);
                 document.getElementById('transcription').innerText = text;
             });
@@ -176,6 +198,21 @@
             window.electronAPI.onTranscriptionError((message) => {
                 console.error('Erro na transcrição:', message);
                 document.getElementById('transcription').innerText = `Erro: ${message}`;
+            });
+
+            window.electronAPI.onIaResponse((response) => {
+                console.log('IA respondeu:', response); // Log mais claro para depuração
+                if (!response) {
+                    console.error('Resposta é undefined ou vazia');
+                    return;
+                }
+                const transcriptionElement = document.getElementById('transcription');
+                const newResponse = document.createElement('p'); // Cria um novo parágrafo
+                newResponse.innerHTML = response; // Define o texto da resposta
+                transcriptionElement.appendChild(document.createElement('br')); // Adiciona uma quebra de linha
+                transcriptionElement.appendChild(document.createElement('br')); // Adiciona outra quebra de linha
+                transcriptionElement.appendChild(newResponse); // Adiciona o parágrafo
+                robot.style.display = 'none';
             });
         });
 
