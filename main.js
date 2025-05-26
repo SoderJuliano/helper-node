@@ -215,14 +215,14 @@ async function transcribeAudio(filePath) {
 
         // Escolher modelo e parâmetros com base na duração
         let modelPath, command;
-        if (duration < 20) {
+        if (duration > 20) {
             modelPath = modelPathTiny;
-            command = `${whisperPath} -m ${modelPath} -f ${filePath} -l auto --best-of 1 --beam-size 1`;
-            console.log('Usando modelo tiny para áudio curto (< 20s)');
+            command = `${whisperPath} -m ${modelPath} -f ${filePath} -l auto --best-of 2 --beam-size 2`;
+            console.log('Usando modelo tiny');
         } else {
             modelPath = modelPathSmall;
-            command = `${whisperPath} -m ${modelPath} -f ${filePath} -l auto --best-of 3 --beam-size 3`;
-            console.log('Usando modelo small para áudio longo (≥ 20s)');
+            command = `${whisperPath} -m ${modelPath} -f ${filePath} -l auto --threads 16 --no-timestamps --best-of 2 --beam-size 2`;
+            console.log('Usando modelo small');
         }
 
         console.log('Executing whisper:', command);

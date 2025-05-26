@@ -26,8 +26,9 @@
             transition: opacity 0.5s ease;
             animation: pulse 2s infinite;
             position: absolute;
-            justify-content: center;
-            align-items: center;
+            top: 10%;
+            left: 30%;
+            right: 30%;
         }
         
         .commands {
@@ -79,19 +80,52 @@
         }
 
         #transcription {
-            width: 100%;
-            max-width: 500px;
-            height: 200px;
+            max-width: 80%;
+            min-width: 500px;
+            max-height: 250px;
             top: 20%;
             left: 10%;
+            right: 10%;
             padding: 50px;
             position: fixed;
             color: white;
             margin-bottom: 40px;
+            overflow-y: hidden; /* Inicialmente escondido */
+            scrollbar-width: none; /* Firefox */
+            -ms-overflow-style: none; /* IE/Edge */
+        }
+
+        /* Esconde a scrollbar no Chrome/Safari */
+        #transcription::-webkit-scrollbar {
+            width: 0;
+            height: 0;
+            background: transparent;
+        }
+
+        #transcription:hover {
+            overflow-y: auto; /* Permite rolagem vertical */
+            overflow-x: hidden; /* Impede rolagem horizontal */
+            scrollbar-width: none; /* Firefox */
+        }
+
+        #transcription:hover::-webkit-scrollbar {
+            width: 0; /* Oculta barra em navegadores WebKit */
+            height: 0;
+        }
+
+        /* Remover estilos de thumb e track, já que a barra está oculta */
+        #transcription:hover::-webkit-scrollbar-thumb {
+            display: none;
+        }
+
+        #transcription:hover::-webkit-scrollbar-track {
+            display: none;
         }
 
         .content {
             display: block;
+            width: 100%;
+            overflow-wrap: break-word;
         }
 
         #transcription br {
@@ -100,13 +134,77 @@
 
         #robot{
             position: absolute;
-            top: 10px;
-            right: 10px;
-            width: 100px;
-            height: 70px;
+            top: 40px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
             display: none;
             z-index: 1000;
         }
+
+
+        .ia-response {
+            font-family: Arial, sans-serif; /* Garante que o texto normal não use fonte de código */
+            line-height: 1.5;
+            overflow-wrap: break-word;
+        }
+
+        .ia-response pre {
+            position: relative;
+            text-align: start;
+            color: black;
+            background: #505050;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: hidden;
+            max-width: 100%;
+            box-sizing: border-box;
+            margin: 8px 0;
+            font-family: 'Courier New', monospace; /* Fonte específica para código */
+        }
+
+        .ia-response code {
+            position: relative;
+            text-align: start;
+            color: black;
+            font-family: 'Courier New', monospace;
+            display: block;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere; /* Quebra linhas longas em qualquer ponto */
+            max-width: 100%;
+        }
+
+        .ia-response p {
+            margin: 8px 0;
+            line-height: 1.5;
+            overflow-wrap: break-word;
+        }
+
+        .ia-response ul {
+            margin: 8px 0;
+            padding-left: 20px;
+            max-width: 100%;
+            overflow-wrap: break-word;
+        }
+
+        .copy-button {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: #ddd;
+            border: 1px solid #999;
+            border-radius: 3px;
+            padding: 2px 6px;
+            cursor: pointer;
+            font-size: 12px;
+            color: #333;
+            font-family: Arial, sans-serif;
+        }
+
+        .copy-button:hover {
+            background: #ccc;
+        }
+
     </style>
     <!-- Inclua a biblioteca Lottie -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js"></script>
@@ -120,7 +218,7 @@
     </div>
 
     <div id="animation-container"></div>
-    <img src="./assets/robotgif.gif" id="robot"/>
+    <img src="./assets/robot.gif" id="robot"/>
 
     <div class="content">
         <h1 id="greeting">Olá amigo</h1>
@@ -129,6 +227,7 @@
     
 
     <script>
+
         setTimeout(() => {
             greeting.classList.add('hidden');
         }, 3000);
@@ -185,34 +284,73 @@
 
              // Transcrição
             window.electronAPI.onTranscriptionStart((audioFilePath) => {
+                animationContainer.style.display = "none";
+                robot.style.display = 'block';
                 console.log('Transcrição iniciada para:', audioFilePath);
             });
 
             window.electronAPI.onTranscriptionResult((text) => {
-                animationContainer.style.display = "none";
-                robot.style.display = 'block';
                 console.log('Texto transcrito:', text);
                 document.getElementById('transcription').innerText = text;
             });
 
             window.electronAPI.onTranscriptionError((message) => {
+                robot.style.display = 'none';
                 console.error('Erro na transcrição:', message);
                 document.getElementById('transcription').innerText = `Erro: ${message}`;
             });
 
             window.electronAPI.onIaResponse((response) => {
-                console.log('IA respondeu:', response); // Log mais claro para depuração
+                console.log('IA respondeu:', response);
                 if (!response) {
                     console.error('Resposta é undefined ou vazia');
                     return;
                 }
+
                 const transcriptionElement = document.getElementById('transcription');
-                const newResponse = document.createElement('p'); // Cria um novo parágrafo
-                newResponse.innerHTML = response; // Define o texto da resposta
-                transcriptionElement.appendChild(document.createElement('br')); // Adiciona uma quebra de linha
-                transcriptionElement.appendChild(document.createElement('br')); // Adiciona outra quebra de linha
-                transcriptionElement.appendChild(newResponse); // Adiciona o parágrafo
-                robot.style.display = 'none';
+                const newResponse = document.createElement('div');
+                newResponse.classList.add('ia-response');
+                newResponse.innerHTML = response;
+
+                // Add single <br> before new response
+                transcriptionElement.appendChild(document.createElement('br'));
+                transcriptionElement.appendChild(newResponse);
+
+                document.getElementById('robot').style.display = 'none';
+
+                // Add event listeners for copy buttons
+                const copyButtons = transcriptionElement.querySelectorAll('.copy-button');
+                copyButtons.forEach(button => {
+                    button.addEventListener('click', () => {
+                        const codeId = button.getAttribute('data-code-id');
+                        const codeElement = document.getElementById(codeId);
+                        if (codeElement) {
+                            const codeText = codeElement.innerText;
+                            navigator.clipboard.writeText(codeText)
+                                .then(() => {
+                                    button.textContent = '[Copied!]';
+                                    setTimeout(() => {
+                                        button.textContent = '[Copy]';
+                                    }, 2000);
+                                })
+                                .catch(err => {
+                                    console.error('Erro ao copiar:', err);
+                                    button.textContent = '[Error]';
+                                    setTimeout(() => {
+                                        button.textContent = '[Copy]';
+                                    }, 2000);
+                                });
+                        }
+                    });
+                });
+
+                // Smooth scroll to bottom
+                setTimeout(() => {
+                    transcriptionElement.scrollTo({
+                        top: transcriptionElement.scrollHeight,
+                        behavior: 'smooth'
+                    });
+                }, 100);
             });
         });
 
