@@ -6,6 +6,7 @@ const execPromise = util.promisify(exec);
 const fs = require('fs').promises;
 const fs2 = require('fs');
 const LlamaService = require('./services/llamaService.js');
+const TesseractService = require('./services/tesseractService.js');
 
 let mainWindow;
 let sharingCheckInterval;
@@ -38,6 +39,8 @@ async function createWindow() {
             skipTaskbar: true,
             nodeIntegration: false,
         });
+
+        mainWindow.setContentProtection(true);
 
         if (process.env.XDG_SESSION_TYPE === 'wayland') {
             mainWindow.setSkipTaskbar(true);
@@ -110,9 +113,18 @@ async function registerGlobalShortcuts() {
                     mainWindow.restore();
                 }
 
-                if (action === 'toggle-recording'){
+                if (action === 'toggle-recording') {
                     await toggleRecording();
                     mainWindow.webContents.send('toggle-recording', { isRecording, audioFilePath });
+                }
+
+                if (action === 'capture-screen') {
+                    try {
+                        const data = await TesseractService.captureAndProcessScreenshot(mainWindow);
+                        console.log('OCR Data:', data);
+                    } catch (error) {
+                        console.error('Error in capture-screen:', error);
+                    }
                 }
             }
         });
@@ -266,11 +278,26 @@ async function checkScreenSharing() {
     try {
         const isSharing = await detectScreenSharing();
         if (isSharing !== sharingActive) {
+            console.log("Chrome grando a tela");
             sharingActive = isSharing;
             handleScreenSharing();
         }
     } catch (error) {
         console.error('Erro na verificação:', error);
+    }
+}
+
+async function detectChromeScreenSharing() {
+    try {
+        const { stdout } = await execPromise(`ps aux | grep '[c]hrome' | grep -E '--type=renderer.*(pipewire|screen-capture|WebRTCPipeWireCapturer)'`);
+        const isSharing = stdout.toLowerCase().includes('chrome') && stdout.includes('pipewire');
+        if (isSharing) {
+            console.log('Chrome screen-sharing detected in process:', stdout.trim());
+        }
+        return isSharing;
+    } catch (error) {
+        console.log('No Chrome screen-sharing detected:', error.message);
+        return false;
     }
 }
 
@@ -280,7 +307,7 @@ async function detectScreenSharing() {
         const { stdout } = await execPromise(`ps aux | grep -E '${sharingApps.join('|')}' | grep -v grep`);
         const processes = stdout.toString().toLowerCase();
         const sharingIndicators = ['--type=renderer', '--enable-features=WebRTCPipeWireCapturer', 'screen-sharing'];
-        return sharingApps.some(app => processes.includes(app) && sharingIndicators.some(indicator => processes.includes(indicator)));
+        return sharingApps.some(app => processes.includes(app) && sharingIndicators.some(indicator => processes.includes(indicator))) || detectChromeScreenSharing();
     } catch (error) {
         console.error('Error detecting screen sharing:', error);
         return false;
@@ -302,14 +329,22 @@ function updateWindowPosition() {
         if (sharingDisplay && sharingDisplay.id === currentDisplay.id) {
             const otherDisplay = displays.find(d => d.id !== currentDisplay.id);
             if (otherDisplay) {
-                const { x, y } = otherDisplay.bounds;
-                mainWindow.setPosition(x + 50, y + 50);
-                mainWindow.show();
-                currentDisplayId = otherDisplay.id;
-                console.log('Moved window to display:', currentDisplayId);
+                const otherIndex = displays.findIndex(d => d.id === otherDisplay.id);
+                console.log('Attempting to move to display index:', otherIndex);
+                moveToDisplay(otherIndex);
+                // Verify movement
+                const newBounds = mainWindow.getBounds();
+                const newDisplay = screen.getDisplayNearestPoint(newBounds);
+                if (newDisplay.id === otherDisplay.id) {
+                    currentDisplayId = otherDisplay.id;
+                    console.log('Successfully moved to display index:', otherIndex, 'ID:', currentDisplayId);
+                } else {
+                    console.error('Failed to move to display index:', otherIndex);
+                }
             }
         } else {
             mainWindow.show();
+            console.log('Window already on non-shared display');
         }
     } catch (error) {
         console.error('Error updating window position:', error);
@@ -322,9 +357,10 @@ function getSharingDisplay() {
 
 function handleScreenSharing() {
     try {
-        if (sharingActive) {
+        if (sharingActive && mainWindow && !mainWindow.isDestroyed()) {
             console.log('Screen sharing active, updating position');
             updateWindowPosition();
+            mainWindow.setContentProtection(true);
         } else {
             console.log('No screen sharing, showing window');
             mainWindow.show();
