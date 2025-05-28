@@ -199,6 +199,11 @@
             font-size: 12px;
             color: #333;
             font-family: Arial, sans-serif;
+            z-index: 2;
+        }
+
+        code {
+            z-index: 1;
         }
 
         .copy-button:hover {
@@ -225,6 +230,19 @@
         <div id="transcription"></div>
     </div>
     
+    <img id="screenshot-preview" style="
+        position: absolute;
+        bottom: 20px;
+        right: 20px;
+        width: 120px;
+        height: auto;
+        border: 2px solid white;
+        border-radius: 8px;
+        box-shadow: 0 0 10px rgba(255,255,255,0.3);
+        display: none;
+        z-index: 2000;
+    "/>
+
 
     <script>
 
@@ -312,39 +330,50 @@
                 newResponse.classList.add('ia-response');
                 newResponse.innerHTML = response;
 
-                // Add single <br> before new response
+                // Adiciona <br> antes da nova resposta
                 transcriptionElement.appendChild(document.createElement('br'));
                 transcriptionElement.appendChild(newResponse);
 
                 document.getElementById('robot').style.display = 'none';
 
-                // Add event listeners for copy buttons
-                const copyButtons = transcriptionElement.querySelectorAll('.copy-button');
-                copyButtons.forEach(button => {
-                    button.addEventListener('click', () => {
-                        const codeId = button.getAttribute('data-code-id');
-                        const codeElement = document.getElementById(codeId);
-                        if (codeElement) {
-                            const codeText = codeElement.innerText;
-                            navigator.clipboard.writeText(codeText)
-                                .then(() => {
-                                    button.textContent = '[Copied!]';
-                                    setTimeout(() => {
-                                        button.textContent = '[Copy]';
-                                    }, 2000);
-                                })
-                                .catch(err => {
-                                    console.error('Erro ao copiar:', err);
-                                    button.textContent = '[Error]';
-                                    setTimeout(() => {
-                                        button.textContent = '[Copy]';
-                                    }, 2000);
-                                });
-                        }
-                    });
+                // Delegação de evento para copiar conteúdo do bloco <pre>
+                transcriptionElement.addEventListener('click', (event) => {
+                    const button = event.target.closest('.copy-button');
+                    if (!button) return; // clicou em outro lugar, ignora
+
+                    console.log("Botão copiar clicado!");
+
+                    // O botão está dentro do <pre>, vamos pegar o pai <pre>
+                    const preElement = button.closest('pre');
+                    if (!preElement) return;
+
+                    // Pega todo texto dentro do <pre> (excluindo o botão)
+                    // Uma forma prática é clonar o <pre>, remover o botão e pegar o texto
+                    const clonePre = preElement.cloneNode(true);
+                    const btnClone = clonePre.querySelector('.copy-button');
+                    if (btnClone) clonePre.removeChild(btnClone);
+
+                    const textToCopy = clonePre.innerText.trim();
+
+                    navigator.clipboard.writeText(textToCopy)
+                        .then(() => {
+                            const originalText = button.textContent;
+                            button.textContent = '[Copied!]';
+                            setTimeout(() => {
+                                button.textContent = originalText;
+                            }, 2000);
+                        })
+                        .catch(err => {
+                            console.error('Erro ao copiar:', err);
+                            const originalText = button.textContent;
+                            button.textContent = '[Error]';
+                            setTimeout(() => {
+                                button.textContent = originalText;
+                            }, 2000);
+                        });
                 });
 
-                // Smooth scroll to bottom
+                // Scroll suave para o fim
                 setTimeout(() => {
                     transcriptionElement.scrollTo({
                         top: transcriptionElement.scrollHeight,
@@ -352,8 +381,34 @@
                     });
                 }, 100);
             });
+
+
+            window.electronAPI.onOcrResult(({ text, screenshotPath }) => {
+                const preview = document.getElementById('screenshot-preview');
+                const robot = document.getElementById('robot');
+                const animationContainer = document.getElementById('animation-container');
+
+                // Esconde outros elementos de carregamento
+                robot.style.display = 'none';
+                animationContainer.style.display = 'none';
+
+                // Mostra a miniatura
+                preview.src = `file://${screenshotPath}`;
+                preview.style.display = 'block';
+
+                document.getElementById('transcription').innerText = text;
+
+                sentToAI(text);
+
+                setTimeout(() => {
+                    preview.style.display = 'none';
+                }, 8000); // esconde após 8 segundos
+            });
         });
 
+        function sentToAI(text) {
+            window.electronAPI.sendTextToLlama(text);
+        }
         // const { ipcRenderer } = require('electron');
 
         // ipcRenderer.on('sharing-status', (event, data) => {

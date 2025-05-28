@@ -4,7 +4,7 @@ class LlamaService {
     async responder(texto) {
         if (!texto) throw new Error('Não entendi');
         try {
-            const prompt = `Como responder essa questão em com até 60 palavras: ${texto}`;
+            const prompt = `Como responder essa questão em com até 65 palavras: ${texto}`;
             console.log(prompt);
             const response = await axios.post('http://localhost:11434/api/generate', {
                 model: 'llama3',

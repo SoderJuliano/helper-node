@@ -24,4 +24,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
             callback(resposta);
         });
     },
+    onOcrResult: (callback) => ipcRenderer.on('ocr-result', (event, data) => callback(data)),
+    sendTextToLlama: (text) => ipcRenderer.send('send-to-llama', text),
 });

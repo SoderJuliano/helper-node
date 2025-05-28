@@ -413,6 +413,16 @@ function moveToDisplay(index) {
     }
 }
 
+ipcMain.on('send-to-llama', async (event, text) => {
+    try {
+        const resposta = await LlamaService.responder(text);
+        event.sender.send('llama-response', { resposta });
+    } catch (llamaError) {
+        console.error('LLaMA error:', llamaError);
+        event.sender.send('transcription-error', 'Failed to process LLaMA response');
+    }
+});
+
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
