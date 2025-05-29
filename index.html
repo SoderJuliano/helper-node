@@ -108,6 +108,12 @@
             scrollbar-width: none; /* Firefox */
         }
 
+        .content:hover {
+            overflow-y: auto; /* Permite rolagem vertical */
+            overflow-x: hidden; /* Impede rolagem horizontal */
+            scrollbar-width: none; /* Firefox */
+        }
+
         #transcription:hover::-webkit-scrollbar {
             width: 0; /* Oculta barra em navegadores WebKit */
             height: 0;
@@ -132,7 +138,7 @@
             margin-bottom: 10px;
         }
 
-        #robot{
+        .icon {
             position: absolute;
             top: 40px;
             right: 30px;
@@ -217,13 +223,15 @@
 <body>
     <div class="drag-area"></div>
     <div class="commands">
-        <div class="command-item">* CTRL+D - Iniciar/Parar gravação</div>
-        <div class="command-item">* CTRL+P - Capturar tela</div>
-        <div class="command-item">* Clique para ocultar/mostrar</div>
+        <div class="command-item">⚡︎ CTRL+D - Iniciar/Parar gravação 🎙️</div>
+        <div class="command-item">⚡︎ CTRL+P - Capturar tela 📝</div>
+        <div class="command-item">⚡︎ CTRL+1 - Move to screen 1 🖵←🖵</div>
+        <div class="command-item">⚡︎ CTRL+2 - Move to screen 2 🖵→🖵</div>
     </div>
 
     <div id="animation-container"></div>
-    <img src="./assets/robot.gif" id="robot"/>
+    <img src="./assets/robot.gif" id="robot" class="icon" />
+    <img src="./assets/capture.png" alt="capturing..." id="capture" class="icon" />
 
     <div class="content">
         <h1 id="greeting">Olá amigo</h1>
@@ -321,6 +329,7 @@
             window.electronAPI.onIaResponse((response) => {
                 console.log('IA respondeu:', response);
                 if (!response) {
+                    document.getElementById('robot').style.display = 'none';
                     console.error('Resposta é undefined ou vazia');
                     return;
                 }
@@ -389,21 +398,32 @@
                 const animationContainer = document.getElementById('animation-container');
 
                 // Esconde outros elementos de carregamento
-                robot.style.display = 'none';
                 animationContainer.style.display = 'none';
 
                 // Mostra a miniatura
                 preview.src = `file://${screenshotPath}`;
                 preview.style.display = 'block';
-
+                robot.style.display = 'block';
+                
                 document.getElementById('transcription').innerText = text;
 
                 sentToAI(text);
 
                 setTimeout(() => {
                     preview.style.display = 'none';
-                }, 8000); // esconde após 8 segundos
+                }, 8000);
             });
+
+            window.electronAPI.onCapturingScreen((val) => {
+                const captureIcon = document.getElementById('capture');
+                captureIcon.style.display = 'block';
+                setTimeout(() => {
+                    captureIcon.style.display = 'none';
+                }, 3000);
+                
+            })
+
+
         });
 
         function sentToAI(text) {

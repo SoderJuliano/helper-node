@@ -1,4 +1,3 @@
-
 // TESTE LEETCODE PARA PLENO JAVASCRIPT MAP
 // Descrição:
 // Implemente uma classe LRUCache com os seguintes métodos:
@@ -9,6 +8,32 @@
 
 // put(key, value) – insere ou atualiza o valor da chave. Quando o cache atinge sua capacidade, remove o item menos recentemente usado.
 
+class LRUCache {
+  constructor(capacity) {
+    this.capacity = capacity;
+    this.cache = new Map();
+    this.timestamp = new Map();
+  }
+
+  get(key) {
+    return this.cache.has(key) ? this.cache.get(key) : -1;
+  }
+
+  put(key, value) {
+    if (this.cache.has(key)) {
+      this.cache.set(key, value);
+      this.timestamp.delete(key);
+    } else {
+      if (this.cache.size >= this.capacity) {
+        const oldest = Array.from(this.timestamp.keys())[0];
+        this.cache.delete(oldest);
+        this.timestamp.delete(oldest);
+      }
+      this.cache.set(key, value);
+      this.timestamp.set(key, new Date().getTime());
+    }
+  }
+}
 const cache = new LRUCache(2);
 
 cache.put(1, 1);
@@ -27,3 +52,4 @@ console.log(cache.get(4)); // retorna 4
 // Todos os get e put devem ter complexidade O(1).
 
 // Você pode usar Map, Set, ou outras estruturas.
+

@@ -62,7 +62,7 @@ class TesseractService {
             const metadata = await image.metadata();
     
             // Calcula as margens
-            const cutTop = 160;
+            const cutTop = 120;
             const cutBottom = 80;
             const cutLeft = Math.floor(metadata.width * 0.10);  // 10% da esquerda
             const cutRight = Math.floor(metadata.width * 0.10); // 10% da direita

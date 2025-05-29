@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
     onToggleRecording: (callback) => ipcRenderer.on('toggle-recording', callback),
+    onCapturingScreen: (callback) => ipcRenderer.on('screen-capturing', callback),
     onCaptureScreen: (callback) => ipcRenderer.on('capture-screen', callback),
     onSharingStatus: (callback) => ipcRenderer.on('sharing-status', callback),
     onTranscriptionResult: (callback) => {

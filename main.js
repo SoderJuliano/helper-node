@@ -37,10 +37,24 @@ async function createWindow() {
             alwaysOnTop: false,
             show: false,
             skipTaskbar: true,
+            icon: path.join(__dirname, 'assets', 'linux.png'),
+            titleBarStyle: 'hidden',
             nodeIntegration: false,
         });
 
         mainWindow.setContentProtection(true);
+
+         // macOS específico - oculta o ícone da Dock
+        if (process.platform === 'darwin') {
+            app.dock.hide()
+        }
+
+        // Tentativa adicional para KDE para ocultar app na dock
+        if (process.platform === 'linux') {
+            mainWindow.setSkipTaskbar(true)
+            mainWindow.setMenuBarVisibility(false)
+            mainWindow.setTitle('') // Janela sem título pode ajudar
+        }
 
         if (process.env.XDG_SESSION_TYPE === 'wayland') {
             mainWindow.setSkipTaskbar(true);
@@ -85,6 +99,10 @@ async function createWindow() {
             }
             callback(true);
         });
+
+        if (process.platform === 'linux') {
+            app.setAppUserModelId('com.seuapp.nome'); // ajuda o sistema a identificar melhor o app
+        }
     } catch (error) {
         console.error('Error creating window:', error);
         app.quit();
@@ -119,6 +137,7 @@ async function registerGlobalShortcuts() {
                 }
 
                 if (action === 'capture-screen') {
+                    mainWindow.webContents.send('screen-capturing', true);
                     try {
                         const data = await TesseractService.captureAndProcessScreenshot(mainWindow);
                         console.log('OCR Data:', data);
@@ -278,7 +297,7 @@ async function checkScreenSharing() {
     try {
         const isSharing = await detectScreenSharing();
         if (isSharing !== sharingActive) {
-            console.log("Chrome grando a tela");
+            console.log("Chrome gravando a tela");
             sharingActive = isSharing;
             handleScreenSharing();
         }
@@ -424,6 +443,7 @@ ipcMain.on('send-to-llama', async (event, text) => {
 });
 
 app.whenReady().then(createWindow);
+
 
 app.on('window-all-closed', () => {
     console.log('All windows closed');
