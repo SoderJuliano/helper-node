@@ -16,7 +16,6 @@
             margin: 0;
             border-radius: 10px;
             text-align: center;
-            user-select: none;
             cursor: pointer;
         }
         
@@ -208,6 +207,21 @@
             z-index: 2;
         }
 
+        .copy-all-button {
+            position: absolute;
+            top: 5px;
+            right: 50px;
+            background: #ddd;
+            border: 1px solid #999;
+            border-radius: 3px;
+            padding: 2px 6px;
+            cursor: pointer;
+            font-size: 12px;
+            color: #333;
+            font-family: Arial, sans-serif;
+            z-index: 2;
+        }
+
         code {
             z-index: 1;
         }
@@ -345,41 +359,68 @@
 
                 document.getElementById('robot').style.display = 'none';
 
+                // Adiciona o botão "Copiar Tudo"
+                const copyAllButton = document.createElement('button');
+                copyAllButton.textContent = 'Copy All';
+                copyAllButton.classList.add('copy-all-button');
+                newResponse.appendChild(copyAllButton);
+
                 // Delegação de evento para copiar conteúdo do bloco <pre>
                 transcriptionElement.addEventListener('click', (event) => {
                     const button = event.target.closest('.copy-button');
-                    if (!button) return; // clicou em outro lugar, ignora
+                    if (button) {
+                        console.log("Botão copiar clicado!");
 
-                    console.log("Botão copiar clicado!");
+                        // O botão está dentro do <pre>, vamos pegar o pai <pre>
+                        const preElement = button.closest('pre');
+                        if (!preElement) return;
 
-                    // O botão está dentro do <pre>, vamos pegar o pai <pre>
-                    const preElement = button.closest('pre');
-                    if (!preElement) return;
+                        // Pega todo texto dentro do <pre> (excluindo o botão)
+                        // Uma forma prática é clonar o <pre>, remover o botão e pegar o texto
+                        const clonePre = preElement.cloneNode(true);
+                        const btnClone = clonePre.querySelector('.copy-button');
+                        if (btnClone) clonePre.removeChild(btnClone);
 
-                    // Pega todo texto dentro do <pre> (excluindo o botão)
-                    // Uma forma prática é clonar o <pre>, remover o botão e pegar o texto
-                    const clonePre = preElement.cloneNode(true);
-                    const btnClone = clonePre.querySelector('.copy-button');
-                    if (btnClone) clonePre.removeChild(btnClone);
+                        const textToCopy = clonePre.innerText.trim();
 
-                    const textToCopy = clonePre.innerText.trim();
+                        navigator.clipboard.writeText(textToCopy)
+                            .then(() => {
+                                const originalText = button.textContent;
+                                button.textContent = '✔️';
+                                setTimeout(() => {
+                                    button.textContent = originalText;
+                                }, 2000);
+                            })
+                            .catch(err => {
+                                console.error('Erro ao copiar:', err);
+                                const originalText = button.textContent;
+                                button.textContent = '❌';
+                                setTimeout(() => {
+                                    button.textContent = originalText;
+                                }, 2000);
+                            });
+                    }
 
-                    navigator.clipboard.writeText(textToCopy)
-                        .then(() => {
-                            const originalText = button.textContent;
-                            button.textContent = '[Copied!]';
-                            setTimeout(() => {
-                                button.textContent = originalText;
-                            }, 2000);
-                        })
-                        .catch(err => {
-                            console.error('Erro ao copiar:', err);
-                            const originalText = button.textContent;
-                            button.textContent = '[Error]';
-                            setTimeout(() => {
-                                button.textContent = originalText;
-                            }, 2000);
-                        });
+                    const copyAllBtn = event.target.closest('.copy-all-button');
+                    if (copyAllBtn) {
+                        const responseText = copyAllBtn.parentElement.innerText;
+                        navigator.clipboard.writeText(responseText)
+                            .then(() => {
+                                const originalText = copyAllBtn.textContent;
+                                copyAllBtn.textContent = '✔️';
+                                setTimeout(() => {
+                                    copyAllBtn.textContent = originalText;
+                                }, 2000);
+                            })
+                            .catch(err => {
+                                console.error('Erro ao copiar tudo:', err);
+                                const originalText = copyAllBtn.textContent;
+                                copyAllBtn.textContent = '❌';
+                                setTimeout(() => {
+                                    copyAllBtn.textContent = originalText;
+                                }, 2000);
+                            });
+                    }
                 });
 
                 // Scroll suave para o fim
