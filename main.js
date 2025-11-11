@@ -5,7 +5,8 @@ const util = require('util');
 const execPromise = util.promisify(exec);
 const fs = require('fs').promises;
 const fs2 = require('fs');
-const LlamaService = require('./services/llamaService.js');
+// const LlamaService = require('./services/llamaService.js');
+const GeminiService = require('./services/geminiService.js');
 const TesseractService = require('./services/tesseractService.js');
 
 let mainWindow;
@@ -68,7 +69,7 @@ async function createWindow() {
             mainWindow.show();
             ensureWindowVisible(mainWindow);
             currentDisplayId = screen.getDisplayNearestPoint(mainWindow.getBounds()).id;
-            mainWindow.webContents.openDevTools();
+            // mainWindow.webContents.openDevTools();
             
             // Mover o registro de atalhos para aqui
             registerGlobalShortcuts();
@@ -161,6 +162,48 @@ async function registerGlobalShortcuts() {
     console.log('Atalhos Ctrl+1 e Ctrl+2 registrados');
 }
 
+// async function toggleRecording() {
+//     try {
+//         if (isRecording) {
+//             if (recordingProcess) {
+//                 recordingProcess.kill('SIGTERM');
+//                 recordingProcess = null;
+//             }
+//             isRecording = false;
+//             console.log('Recording stopped');
+//             try {
+//                 await fs.access(audioFilePath);
+//                 console.log('Audio file created:', audioFilePath);
+//                 mainWindow.webContents.send('transcription-start', { audioFilePath });
+//                 // Iniciar transcrição com Whisper
+//                 const audioText = await transcribeAudio(audioFilePath);
+//                 getIaResponse(audioText);
+//             } catch (error) {
+//                 isRecording = false;
+//                 console.error('Audio file not found:', error);
+//                 // mainWindow.webContents.send('transcription-error', 'No audio file created');
+//             }
+//         } else {
+//             await fs.unlink(audioFilePath).catch(() => {});
+//             const command = `pw-record --target=auto-null.monitor ${audioFilePath}`;
+//             console.log('Executing:', command);
+//             recordingProcess = exec(command, (error) => {
+//                 if (error && error.signal !== 'SIGTERM' && error.code !== 0) {
+//                     console.error('Recording error:', error);
+//                     // mainWindow.webContents.send('transcription-error', 'Recording failed');
+//                 } else {
+//                     console.log('Recording process ended normally');
+//                 }
+//             });
+//             isRecording = true;
+//             console.log('Recording started');
+//         }
+//     } catch (error) {
+//         console.error('Error toggling recording:', error);
+//         mainWindow.webContents.send('transcription-error', 'Failed to toggle recording');
+//     }
+// }
+
 async function toggleRecording() {
     try {
         if (isRecording) {
@@ -174,12 +217,21 @@ async function toggleRecording() {
                 await fs.access(audioFilePath);
                 console.log('Audio file created:', audioFilePath);
                 mainWindow.webContents.send('transcription-start', { audioFilePath });
-                // Iniciar transcrição com Whisper
-                const audioText = await transcribeAudio(audioFilePath);
+
+                // Acelerar o áudio em 2x com ffmpeg
+                const spedUpAudioPath = path.join(__dirname, 'output_2x.wav');
+                // const ffmpegCommand = `ffmpeg -i ${audioFilePath} -filter:a "atempo=2.0" -y ${spedUpAudioPath}`;
+                // const ffmpegCommand = `ffmpeg -i ${audioFilePath} -filter:a "atempo=3.0" -y ${spedUpAudioPath}`;
+                const ffmpegCommand = `ffmpeg -i ${audioFilePath} -filter:a "atempo=2.0" -y ${spedUpAudioPath}`;
+                await execPromise(ffmpegCommand);
+                console.log('Audio sped up by 2x:', spedUpAudioPath);
+
+                // Iniciar transcrição com Whisper usando o áudio acelerado
+                const audioText = await transcribeAudio(spedUpAudioPath);
                 getIaResponse(audioText);
             } catch (error) {
                 isRecording = false;
-                console.error('Audio file not found:', error);
+                console.error('Audio file not found or processing failed:', error);
                 // mainWindow.webContents.send('transcription-error', 'No audio file created');
             }
         } else {
@@ -203,13 +255,24 @@ async function toggleRecording() {
     }
 }
 
+// async function getIaResponse(text) {
+//     try {
+//         // const resposta = await LlamaService.responder(text);
+//         const resposta = await GeminiService.responder(text);
+//         mainWindow.webContents.send('gemini-response', { resposta });
+//     } catch (llamaError) {
+//         console.error('LLaMA error:', llamaError);
+//         mainWindow.webContents.send('transcription-error', 'Failed to process LLaMA response');
+//     }
+// }
+
 async function getIaResponse(text) {
     try {
-        const resposta = await LlamaService.responder(text);
-        mainWindow.webContents.send('llama-response', { resposta });
-    } catch (llamaError) {
-        console.error('LLaMA error:', llamaError);
-        mainWindow.webContents.send('transcription-error', 'Failed to process LLaMA response');
+        const resposta = await GeminiService.responder(text);
+        mainWindow.webContents.send('gemini-response', { resposta });
+    } catch (geminiError) {
+        console.error('Gemini error:', geminiError);
+        mainWindow.webContents.send('transcription-error', 'Failed to process Gemini response');
     }
 }
 
@@ -306,9 +369,23 @@ async function checkScreenSharing() {
     }
 }
 
+// async function detectChromeScreenSharing() {
+//     try {
+//         const { stdout } = await execPromise(`ps aux | grep '[c]hrome' | grep -E '--type=renderer.*(pipewire|screen-capture|WebRTCPipeWireCapturer)'`);
+//         const isSharing = stdout.toLowerCase().includes('chrome') && stdout.includes('pipewire');
+//         if (isSharing) {
+//             console.log('Chrome screen-sharing detected in process:', stdout.trim());
+//         }
+//         return isSharing;
+//     } catch (error) {
+//         console.log('No Chrome screen-sharing detected:', error.message);
+//         return false;
+//     }
+// }
+
 async function detectChromeScreenSharing() {
     try {
-        const { stdout } = await execPromise(`ps aux | grep '[c]hrome' | grep -E '--type=renderer.*(pipewire|screen-capture|WebRTCPipeWireCapturer)'`);
+        const { stdout } = await execPromise(`ps aux | grep '[c]hrome' | grep -E -- '--type=renderer.*(pipewire|screen-capture|WebRTCPipeWireCapturer)'`);
         const isSharing = stdout.toLowerCase().includes('chrome') && stdout.includes('pipewire');
         if (isSharing) {
             console.log('Chrome screen-sharing detected in process:', stdout.trim());
@@ -432,13 +509,23 @@ function moveToDisplay(index) {
     }
 }
 
-ipcMain.on('send-to-llama', async (event, text) => {
+// ipcMain.on('send-to-llama', async (event, text) => {
+//     try {
+//         const resposta = await LlamaService.responder(text);
+//         event.sender.send('llama-response', { resposta });
+//     } catch (llamaError) {
+//         console.error('LLaMA error:', llamaError);
+//         event.sender.send('transcription-error', 'Failed to process LLaMA response');
+//     }
+// });
+
+ipcMain.on('send-to-gemini', async (event, text) => {
     try {
-        const resposta = await LlamaService.responder(text);
-        event.sender.send('llama-response', { resposta });
-    } catch (llamaError) {
-        console.error('LLaMA error:', llamaError);
-        event.sender.send('transcription-error', 'Failed to process LLaMA response');
+        const resposta = await GeminiService.responder(text);
+        event.sender.send('gemini-response', { resposta });
+    } catch (geminiError) {
+        console.error('Gemini error:', geminiError);
+        event.sender.send('transcription-error', 'Failed to process Gemini response');
     }
 });
 

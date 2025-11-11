@@ -427,7 +427,8 @@
         });
 
         function sentToAI(text) {
-            window.electronAPI.sendTextToLlama(text);
+            // window.electronAPI.sendTextToLlama(text);
+            window.electronAPI.sendTextToGemini(text);
         }
         // const { ipcRenderer } = require('electron');
 

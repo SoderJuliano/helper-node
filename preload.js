@@ -21,10 +21,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
         });
     },
     onIaResponse: (callback) => {
-        ipcRenderer.on('llama-response', (event, { resposta }) => {
+        // ipcRenderer.on('llama-response', (event, { resposta }) => {
+        //     callback(resposta);
+        // });
+        ipcRenderer.on('gemini-response', (event, { resposta }) => {
             callback(resposta);
         });
     },
     onOcrResult: (callback) => ipcRenderer.on('ocr-result', (event, data) => callback(data)),
-    sendTextToLlama: (text) => ipcRenderer.send('send-to-llama', text),
+    // sendTextToLlama: (text) => ipcRenderer.send('send-to-llama', text),
+    sendTextToGemini: (text) => ipcRenderer.send('send-to-gemini', text),
 });
