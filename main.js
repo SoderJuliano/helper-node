@@ -21,6 +21,7 @@ let currentDisplayId = null;
 let sharingActive = false;
 let recordingProcess = null;
 let isRecording = false;
+let waitingNotificationInterval = null;
 const audioFilePath = path.join(__dirname, 'output.wav');
 
 async function createWindow() {
@@ -342,7 +343,7 @@ function chunkText(text, chunkSize = 250) {
 }
 
 async function getIaResponse(text) {
-    const waitingInterval = setInterval(() => {
+    waitingNotificationInterval = setInterval(() => {
         if (appConfig.notificationsEnabled && Notification.isSupported()) {
             new Notification({
                 title: 'Helper-Node',
@@ -354,7 +355,8 @@ async function getIaResponse(text) {
 
     try {
         const resposta = await GeminiService.responder(text);
-        clearInterval(waitingInterval); // Para o loop de notificações de espera
+        clearInterval(waitingNotificationInterval);
+        waitingNotificationInterval = null;
 
         // Envia a resposta original, com HTML, para a janela do aplicativo
         mainWindow.webContents.send('gemini-response', { resposta });
@@ -383,7 +385,15 @@ async function getIaResponse(text) {
             })();
         }
     } catch (geminiError) {
-        clearInterval(waitingInterval); // Para o loop também em caso de erro
+        clearInterval(waitingNotificationInterval);
+        waitingNotificationInterval = null;
+        
+        // Ignora erros de cancelamento (comportamento esperado)
+        if (geminiError.message === 'Request cancelled') {
+            console.log('Request cancelled by user - this is expected');
+            return; // NÃO envia erro para o frontend
+        }
+        
         console.error('Gemini error:', geminiError);
         mainWindow.webContents.send('transcription-error', 'Failed to process Gemini response');
         if (appConfig.notificationsEnabled && Notification.isSupported()) {
@@ -654,9 +664,36 @@ ipcMain.on('send-to-gemini', async (event, text) => {
         const resposta = await GeminiService.responder(text);
         event.sender.send('gemini-response', { resposta });
     } catch (geminiError) {
+        // Ignora erros de cancelamento (comportamento esperado)
+        if (geminiError.message === 'Request cancelled') {
+            console.log('Request cancelled by user - this is expected');
+            return;
+        }
+        
         console.error('Gemini error:', geminiError);
         event.sender.send('transcription-error', 'Failed to process Gemini response');
     }
+});
+
+ipcMain.on('stop-notifications', () => {
+    if (waitingNotificationInterval) {
+        clearInterval(waitingNotificationInterval);
+        waitingNotificationInterval = null;
+    }
+    console.log('Notifications stopped');
+});
+
+ipcMain.on('start-notifications', () => {
+    console.log('Notifications restarted');
+});
+
+ipcMain.on('cancel-ia-request', () => {
+    GeminiService.cancelCurrentRequest();
+    if (waitingNotificationInterval) {
+        clearInterval(waitingNotificationInterval);
+        waitingNotificationInterval = null;
+    }
+    console.log('IA request cancelled');
 });
 
 app.whenReady().then(() => {

@@ -31,4 +31,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onOcrResult: (callback) => ipcRenderer.on('ocr-result', (event, data) => callback(data)),
     // sendTextToLlama: (text) => ipcRenderer.send('send-to-llama', text),
     sendTextToGemini: (text) => ipcRenderer.send('send-to-gemini', text),
+    stopNotifications: () => ipcRenderer.send('stop-notifications'),
+    startNotifications: () => ipcRenderer.send('start-notifications'),
+    cancelIaRequest: () => ipcRenderer.send('cancel-ia-request'),
 });

@@ -1,68 +1,35 @@
 const { exec } = require('child_process');
 
 class GeminiService {
-    // async responder(texto) {
-    //     if (!texto) throw new Error('Não entendi');
-    //     try {
-    //         const prompt = `Como responder essa questão em com até 65 palavras: ${texto}`;
-    //         console.log(prompt);
-    //         const command = `gemini -d "${prompt}"`;
-
-    //         return new Promise((resolve, reject) => {
-    //             exec(command, (error, stdout, stderr) => {
-    //                 if (error) {
-    //                     console.error('Erro ao chamar Gemini:', stderr);
-    //                     reject(new Error('Falha ao processar a resposta do Gemini'));
-    //                 } else {
-    //                     console.log('Gemini response:', stdout);
-    //                     const formattedResposta = this.formatToHTML(stdout);
-    //                     resolve(formattedResposta);
-    //                 }
-    //             });
-    //         });
-    //     } catch (error) {
-    //         console.error('Erro ao chamar Gemini:', error.message);
-    //         throw new Error('Falha ao processar a resposta do Gemini');
-    //     }
-    // }
-
-    // async responder(texto) {
-    //     if (!texto) throw new Error('Não entendi');
-    //     try {
-    //         const prompt = `Como responder essa questão em com até 65 palavras: ${texto}`;
-    //         console.log(prompt);
-    //         const command = `gemini -d "${prompt}"`;
-
-    //         return new Promise((resolve, reject) => {
-    //             exec(command, (error, stdout, stderr) => {
-    //                 if (error) {
-    //                     console.error('Erro ao chamar Gemini:', stderr);
-    //                     reject(new Error('Falha ao processar a resposta do Gemini'));
-    //                 } else {
-    //                     console.log('Raw Gemini response:', stdout);
-    //                     const formattedResposta = this.formatToHTML(stdout);
-    //                     resolve(formattedResposta);
-    //                 }
-    //             });
-    //         });
-    //     } catch (error) {
-    //         console.error('Erro ao chamar Gemini:', error.message);
-    //         throw new Error('Falha ao processar a resposta do Gemini');
-    //     }
-    // }
+    constructor() {
+        this.currentProcess = null;
+    }
 
     async responder(texto) {
         if (!texto) throw new Error('Não entendi');
+        
+        // Cancela o processo anterior se houver
+        if (this.currentProcess) {
+            this.currentProcess.kill('SIGTERM');
+            this.currentProcess = null;
+        }
+        
         try {
             const prompt = `Como responder essa questão em com até 65 palavras. Use markdown para blocos de código: ${texto}`;
             console.log(prompt);
             const command = `gemini -d "${prompt}"`;
 
             return new Promise((resolve, reject) => {
-                exec(command, (error, stdout, stderr) => {
+                this.currentProcess = exec(command, (error, stdout, stderr) => {
+                    this.currentProcess = null;
+                    
                     if (error) {
-                        console.error('Erro ao chamar Gemini:', stderr);
-                        reject(new Error('Falha ao processar a resposta do Gemini'));
+                        if (error.signal === 'SIGTERM') {
+                            reject(new Error('Request cancelled'));
+                        } else {
+                            console.error('Erro ao chamar Gemini:', stderr);
+                            reject(new Error('Falha ao processar a resposta do Gemini'));
+                        }
                     } else {
                         console.log('Raw Gemini response:', stdout);
                         const formattedResposta = this.formatToHTML(stdout);
@@ -71,9 +38,19 @@ class GeminiService {
                 });
             });
         } catch (error) {
+            this.currentProcess = null;
             console.error('Erro ao chamar Gemini:', error.message);
             throw new Error('Falha ao processar a resposta do Gemini');
         }
+    }
+    
+    cancelCurrentRequest() {
+        if (this.currentProcess) {
+            this.currentProcess.kill('SIGTERM');
+            this.currentProcess = null;
+            return true;
+        }
+        return false;
     }
 
     // formatToHTML(text) {

@@ -236,6 +236,74 @@
             background: #ccc;
         }
 
+        .question-text {
+            position: relative;
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+            cursor: pointer;
+        }
+
+        .question-text:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .question-text:hover .edit-icon {
+            display: inline-block;
+        }
+
+        .edit-icon {
+            display: none;
+            margin-left: 8px;
+            font-size: 14px;
+            opacity: 0.7;
+        }
+
+        .edit-input, .edit-textarea {
+            width: 100%;
+            background-color: rgba(50, 50, 50, 0.9);
+            color: white;
+            border: 2px solid #4CAF50;
+            border-radius: 5px;
+            padding: 10px;
+            font-family: 'Arial', sans-serif;
+            font-size: 16px;
+            resize: none;
+            outline: none;
+        }
+
+        .edit-input {
+            height: 40px;
+        }
+
+        .edit-textarea {
+            min-height: 120px;
+        }
+
+        .edit-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            justify-content: flex-start;
+        }
+
+        .send-button {
+            background: #4CAF50;
+            border: none;
+            border-radius: 5px;
+            padding: 8px 16px;
+            cursor: pointer;
+            font-size: 14px;
+            color: white;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+
+        .send-button:hover {
+            background: #45a049;
+        }
+
     </style>
     <!-- Inclua a biblioteca Lottie -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js"></script>
@@ -289,6 +357,8 @@
         let animation = null;
         let isPlaying = false;
         const robot = document.getElementById('robot');
+        let currentQuestionElement = null;
+        let isEditingQuestion = false;
 
         // Carregar a animação
         function loadAnimation() {
@@ -337,13 +407,50 @@
 
             window.electronAPI.onTranscriptionResult((text) => {
                 console.log('Texto transcrito:', text);
-                document.getElementById('transcription').innerText = text;
+                const transcriptionElement = document.getElementById('transcription');
+                
+                // Cria um span editável para a pergunta
+                const questionSpan = document.createElement('span');
+                questionSpan.className = 'question-text';
+                questionSpan.textContent = text;
+                
+                const editIcon = document.createElement('span');
+                editIcon.className = 'edit-icon';
+                editIcon.textContent = '✏️';
+                questionSpan.appendChild(editIcon);
+                
+                // Limpa o conteúdo anterior e adiciona o novo span
+                transcriptionElement.innerHTML = '';
+                transcriptionElement.appendChild(questionSpan);
+                
+                // Adiciona evento de clique para editar
+                questionSpan.addEventListener('click', () => handleQuestionEdit(questionSpan));
+                
+                currentQuestionElement = questionSpan;
             });
 
             window.electronAPI.onTranscriptionError((message) => {
                 robot.style.display = 'none';
+                
+                // Ignora erros de cancelamento (não exibe na tela)
+                if (message === 'Request cancelled') {
+                    console.log('Request cancelled by user - this is expected');
+                    return;
+                }
+                
                 console.error('Erro na transcrição:', message);
-                document.getElementById('transcription').innerText = `Erro: ${message}`;
+                
+                // Só mostra erro na tela se não for um cancelamento
+                if (currentQuestionElement) {
+                    // Se já tem pergunta, adiciona erro após ela
+                    const errorMsg = document.createElement('p');
+                    errorMsg.style.color = '#ff6b6b';
+                    errorMsg.textContent = `Erro: ${message}`;
+                    document.getElementById('transcription').appendChild(errorMsg);
+                } else {
+                    // Se não tem pergunta, substitui o conteúdo
+                    document.getElementById('transcription').innerText = `Erro: ${message}`;
+                }
             });
 
             window.electronAPI.onIaResponse((response) => {
@@ -474,9 +581,113 @@
         });
 
         function sentToAI(text) {
-            // window.electronAPI.sendTextToLlama(text);
             window.electronAPI.sendTextToGemini(text);
         }
+        
+        function handleQuestionEdit(questionSpan) {
+            if (isEditingQuestion) return;
+            
+            isEditingQuestion = true;
+            
+            // Cancela a requisição da IA se estiver em andamento
+            window.electronAPI.cancelIaRequest();
+            
+            // Para as animações e notificações
+            stopProcessing();
+            
+            const currentText = questionSpan.textContent.replace('✏️', '').trim();
+            const wordCount = currentText.split(/\s+/).length;
+            
+            const container = document.createElement('div');
+            
+            // Usa textarea se tiver mais de 10 palavras, senão usa input
+            let editField;
+            if (wordCount > 10) {
+                editField = document.createElement('textarea');
+                editField.className = 'edit-textarea';
+                editField.rows = 5;
+            } else {
+                editField = document.createElement('input');
+                editField.className = 'edit-input';
+                editField.type = 'text';
+            }
+            
+            editField.value = currentText;
+            container.appendChild(editField);
+            
+            // Adiciona controles apenas para textarea ou se houver muito texto
+            if (wordCount > 10) {
+                const controls = document.createElement('div');
+                controls.className = 'edit-controls';
+                
+                const sendButton = document.createElement('button');
+                sendButton.className = 'send-button';
+                sendButton.textContent = 'Enviar';
+                sendButton.onclick = () => submitEditedQuestion(editField.value, questionSpan, container);
+                
+                controls.appendChild(sendButton);
+                container.appendChild(controls);
+            } else {
+                // Para input, envia ao pressionar Enter
+                editField.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        submitEditedQuestion(editField.value, questionSpan, container);
+                    }
+                });
+            }
+            
+            // Substitui o span pelo campo de edição
+            questionSpan.replaceWith(container);
+            editField.focus();
+        }
+        
+        function submitEditedQuestion(newText, originalSpan, container) {
+            if (!newText.trim()) return;
+            
+            isEditingQuestion = false;
+            
+            // Recria o span com o novo texto
+            const questionSpan = document.createElement('span');
+            questionSpan.className = 'question-text';
+            questionSpan.textContent = newText.trim();
+            
+            const editIcon = document.createElement('span');
+            editIcon.className = 'edit-icon';
+            editIcon.textContent = '✏️';
+            questionSpan.appendChild(editIcon);
+            
+            questionSpan.addEventListener('click', () => handleQuestionEdit(questionSpan));
+            
+            container.replaceWith(questionSpan);
+            currentQuestionElement = questionSpan;
+            
+            // Reinicia o processamento
+            startProcessing();
+            
+            // Envia para a IA
+            sentToAI(newText.trim());
+        }
+        
+        function stopProcessing() {
+            // Para animações
+            if (animation) {
+                animationContainer.style.display = 'none';
+                animation.stop();
+            }
+            robot.style.display = 'none';
+            
+            // Notifica o backend para parar notificações
+            window.electronAPI.stopNotifications();
+        }
+        
+        function startProcessing() {
+            // Inicia animação do robô
+            robot.style.display = 'block';
+            
+            // Reinicia notificações
+            window.electronAPI.startNotifications();
+        }
+
         // const { ipcRenderer } = require('electron');
 
         // ipcRenderer.on('sharing-status', (event, data) => {
