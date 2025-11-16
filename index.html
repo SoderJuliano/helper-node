@@ -151,6 +151,7 @@
             font-family: Arial, sans-serif; /* Garante que o texto normal não use fonte de código */
             line-height: 1.5;
             overflow-wrap: break-word;
+            margin-top: 20px;
         }
 
         .ia-response pre {
@@ -243,6 +244,9 @@
             border-radius: 5px;
             transition: background-color 0.3s;
             cursor: pointer;
+            font-weight: bold;
+            color: #ffffff;
+            margin-bottom: 20px;
         }
 
         .question-text:hover {
@@ -271,10 +275,16 @@
             font-size: 16px;
             resize: none;
             outline: none;
+            margin-bottom: 20px;
         }
 
         .edit-input {
             height: 40px;
+        }
+        
+        .edit-input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+            font-style: italic;
         }
 
         .edit-textarea {
@@ -312,6 +322,7 @@
     <div class="drag-area"></div>
     <div class="commands">
         <div class="command-item">⚡︎ CTRL+D - Iniciar/Parar gravação 🎙️</div>
+        <div class="command-item">⚡︎ CTRL+I - Inserir pergunta ✍️</div>
         <div class="command-item">⚡︎ CTRL+P - Capturar tela 📝</div>
         <div class="command-item">⚡︎ CTRL+1 - Move to screen 1 🖵←🖵</div>
         <div class="command-item">⚡︎ CTRL+2 - Move to screen 2 🖵→🖵</div>
@@ -359,6 +370,7 @@
         const robot = document.getElementById('robot');
         let currentQuestionElement = null;
         let isEditingQuestion = false;
+        let manualInputActive = false;
 
         // Carregar a animação
         function loadAnimation() {
@@ -397,6 +409,11 @@
 
         window.addEventListener('DOMContentLoaded', () => {
             loadAnimation();
+            
+            // Listener para CTRL+I
+            window.electronAPI.onManualInput(() => {
+                openManualInput();
+            });
 
              // Transcrição
             window.electronAPI.onTranscriptionStart((audioFilePath) => {
@@ -466,8 +483,7 @@
                 newResponse.classList.add('ia-response');
                 newResponse.innerHTML = response;
 
-                // Adiciona <br> antes da nova resposta
-                transcriptionElement.appendChild(document.createElement('br'));
+                // O espaçamento é feito via CSS (margin-top: 20px na .ia-response)
                 transcriptionElement.appendChild(newResponse);
 
                 document.getElementById('robot').style.display = 'none';
@@ -686,6 +702,72 @@
             
             // Reinicia notificações
             window.electronAPI.startNotifications();
+        }
+        
+        function openManualInput() {
+            if (manualInputActive || isEditingQuestion) return;
+            
+            manualInputActive = true;
+            
+            const transcriptionElement = document.getElementById('transcription');
+            
+            // Limpa conteúdo anterior se houver
+            transcriptionElement.innerHTML = '';
+            
+            const container = document.createElement('div');
+            const inputField = document.createElement('input');
+            inputField.className = 'edit-input';
+            inputField.type = 'text';
+            inputField.placeholder = 'Insira sua pergunta e digite Enter';
+            
+            container.appendChild(inputField);
+            transcriptionElement.appendChild(container);
+            
+            // Foca no input
+            inputField.focus();
+            
+            // Envia ao pressionar Enter
+            inputField.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    const question = inputField.value.trim();
+                    if (question) {
+                        submitManualQuestion(question, container);
+                    }
+                }
+            });
+            
+            // Permite cancelar com ESC
+            inputField.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    manualInputActive = false;
+                    transcriptionElement.innerHTML = '';
+                }
+            });
+        }
+        
+        function submitManualQuestion(text, container) {
+            manualInputActive = false;
+            
+            // Cria o span com a pergunta
+            const questionSpan = document.createElement('span');
+            questionSpan.className = 'question-text';
+            questionSpan.textContent = text;
+            
+            const editIcon = document.createElement('span');
+            editIcon.className = 'edit-icon';
+            editIcon.textContent = '✏️';
+            questionSpan.appendChild(editIcon);
+            
+            questionSpan.addEventListener('click', () => handleQuestionEdit(questionSpan));
+            
+            container.replaceWith(questionSpan);
+            currentQuestionElement = questionSpan;
+            
+            // Inicia processamento
+            startProcessing();
+            
+            // Envia para a IA
+            sentToAI(text);
         }
 
         // const { ipcRenderer } = require('electron');

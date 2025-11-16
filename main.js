@@ -125,6 +125,7 @@ async function registerGlobalShortcuts() {
 
     const shortcuts = [
         { combo: 'CommandOrControl+D', action: 'toggle-recording' },
+        { combo: 'CommandOrControl+I', action: 'manual-input' },
         { combo: 'CommandOrControl+P', action: 'capture-screen' },
         { combo: 'CommandOrControl+A', action: 'focus-window' }
     ];
