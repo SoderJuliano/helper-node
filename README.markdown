@@ -122,6 +122,10 @@ The app will launch a window displaying a transcription panel (`#transcription`)
 
 Contributions are welcome! Please open an issue or submit a pull request.
 
+## Development Roadmap
+
+For details on the current architecture, future plans, and feature implementation strategies (such as the global hotkey setup), please see the [ROADMAP.md](ROADMAP.md) file.
+
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, globalShortcut, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, screen, Notification } = require('electron');
 const path = require('path');
 const { exec } = require('child_process');
 const util = require('util');
@@ -8,6 +8,12 @@ const fs2 = require('fs');
 // const LlamaService = require('./services/llamaService.js');
 const GeminiService = require('./services/geminiService.js');
 const TesseractService = require('./services/tesseractService.js');
+const ipcService = require('./services/ipcService.js');
+
+// Configurações do aplicativo
+const appConfig = {
+    notificationsEnabled: true,
+};
 
 let mainWindow;
 let sharingCheckInterval;
@@ -134,7 +140,6 @@ async function registerGlobalShortcuts() {
 
                 if (action === 'toggle-recording') {
                     await toggleRecording();
-                    mainWindow.webContents.send('toggle-recording', { isRecording, audioFilePath });
                 }
 
                 if (action === 'capture-screen') {
@@ -213,6 +218,10 @@ async function toggleRecording() {
             }
             isRecording = false;
             console.log('Recording stopped');
+            if (appConfig.notificationsEnabled && Notification.isSupported()) {
+                new Notification({ title: 'Helper-Node', body: 'Ok, aguarde...', silent: true }).show();
+            }
+            mainWindow.webContents.send('toggle-recording', { isRecording, audioFilePath });
             try {
                 await fs.access(audioFilePath);
                 console.log('Audio file created:', audioFilePath);
@@ -228,6 +237,18 @@ async function toggleRecording() {
 
                 // Iniciar transcrição com Whisper usando o áudio acelerado
                 const audioText = await transcribeAudio(spedUpAudioPath);
+
+                if (audioText === '[BLANK_AUDIO]') {
+                    console.log('Áudio em branco detectado, não enviando para a IA.');
+                    if (appConfig.notificationsEnabled && Notification.isSupported()) {
+                        new Notification({
+                            title: 'Helper-Node',
+                            body: 'Nenhum áudio detectado. Tente novamente.',
+                            silent: true,
+                        }).show();
+                    }
+                    return; // Sai da função sem chamar getIaResponse
+                }
                 getIaResponse(audioText);
             } catch (error) {
                 isRecording = false;
@@ -248,6 +269,10 @@ async function toggleRecording() {
             });
             isRecording = true;
             console.log('Recording started');
+            if (appConfig.notificationsEnabled && Notification.isSupported()) {
+                new Notification({ title: 'Helper-Node', body: 'Gravando...', silent: true }).show();
+            }
+            mainWindow.webContents.send('toggle-recording', { isRecording, audioFilePath });
         }
     } catch (error) {
         console.error('Error toggling recording:', error);
@@ -266,13 +291,108 @@ async function toggleRecording() {
 //     }
 // }
 
+function formatForPlainTextNotification(html) {
+    let text = html;
+    // Substitui tags de bloco por quebras de linha para melhor legibilidade
+    text = text.replace(/<br\s*\/?>/gi, '\n');
+    text = text.replace(/<\/p>/gi, '\n');
+    text = text.replace(/<\/li>/gi, '\n');
+
+    // Converte tags de ênfase para uma sintaxe similar a markdown
+    text = text.replace(/<strong>(.*?)<\/strong>/gi, '*$1*');
+    text = text.replace(/<b>(.*?)<\/b>/gi, '*$1*');
+    text = text.replace(/<em>(.*?)<\/em>/gi, '_$1_');
+    text = text.replace(/<i>(.*?)<\/i>/gi, '_$1_');
+
+    // Remove quaisquer tags HTML restantes
+    text = text.replace(/<[^>]*>/g, '');
+
+    // Decodifica entidades HTML comuns
+    text = text.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+
+    return text.trim();
+}
+
+function chunkText(text, chunkSize = 250) {
+    const finalChunks = [];
+    const lines = text.split('\n');
+
+    for (const line of lines) {
+        if (line.trim() === '') continue;
+
+        if (line.length <= chunkSize) {
+            finalChunks.push(line.trim());
+        } else {
+            // This line is too long, so we chunk it.
+            let remaining = line;
+            while (remaining.length > 0) {
+                let chunk = remaining.substring(0, chunkSize);
+                const lastSpace = chunk.lastIndexOf(' ');
+
+                if (lastSpace > 0 && remaining.length > chunkSize) {
+                    chunk = chunk.substring(0, lastSpace);
+                }
+                
+                finalChunks.push(chunk.trim());
+                remaining = remaining.substring(chunk.length).trim();
+            }
+        }
+    }
+    return finalChunks;
+}
+
 async function getIaResponse(text) {
+    const waitingInterval = setInterval(() => {
+        if (appConfig.notificationsEnabled && Notification.isSupported()) {
+            new Notification({
+                title: 'Helper-Node',
+                body: 'Aguarde, gerando uma resposta...',
+                silent: true,
+            }).show();
+        }
+    }, 10000);
+
     try {
         const resposta = await GeminiService.responder(text);
+        clearInterval(waitingInterval); // Para o loop de notificações de espera
+
+        // Envia a resposta original, com HTML, para a janela do aplicativo
         mainWindow.webContents.send('gemini-response', { resposta });
+
+        // Lógica para enviar notificações sequenciais
+        if (appConfig.notificationsEnabled && Notification.isSupported()) {
+            const plainTextBody = formatForPlainTextNotification(resposta);
+            const chunks = chunkText(plainTextBody);
+
+            // Envia cada pedaço como uma notificação separada com um atraso
+            (async () => {
+                for (let i = 0; i < chunks.length; i++) {
+                    const chunk = chunks[i];
+                    if (chunk) {
+                        new Notification({
+                            title: `Resposta do Assistente (${i + 1}/${chunks.length})`,
+                            body: chunk,
+                            silent: true,
+                        }).show();
+                        
+                        if (i < chunks.length - 1) {
+                            await new Promise(res => setTimeout(res, 2000));
+                        }
+                    }
+                }
+            })();
+        }
     } catch (geminiError) {
+        clearInterval(waitingInterval); // Para o loop também em caso de erro
         console.error('Gemini error:', geminiError);
         mainWindow.webContents.send('transcription-error', 'Failed to process Gemini response');
+        if (appConfig.notificationsEnabled && Notification.isSupported()) {
+            new Notification({
+                title: 'Erro do Assistente',
+                body: 'Não foi possível gerar uma resposta.',
+                silent: true,
+            }).show();
+        }
     }
 }
 
@@ -332,6 +452,16 @@ async function transcribeAudio(filePath) {
                 console.log('Transcription:', text || 'No text recognized');
                 const cleanText = await limparTranscricao(text);
                 mainWindow.webContents.send('transcription-result', { cleanText });
+
+                if (appConfig.notificationsEnabled && Notification.isSupported() && cleanText) {
+                    const notification = new Notification({
+                        title: 'Helper-Node',
+                        body: 'Usuário perguntou: ' + cleanText,
+                        silent: true,
+                    });
+                    notification.show();
+                }
+
                 resolve(cleanText);
             });
         });
@@ -529,7 +659,10 @@ ipcMain.on('send-to-gemini', async (event, text) => {
     }
 });
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+    createWindow();
+    ipcService.start(toggleRecording);
+});
 
 
 app.on('window-all-closed', () => {

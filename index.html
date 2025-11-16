@@ -81,14 +81,13 @@
         #transcription {
             max-width: 80%;
             min-width: 500px;
-            max-height: 250px;
             top: 20%;
+            bottom: 5%; /* Define um limite inferior, permitindo que o contêiner cresça */
             left: 10%;
             right: 10%;
             padding: 50px;
             position: fixed;
             color: white;
-            margin-bottom: 40px;
             overflow-y: hidden; /* Inicialmente escondido */
             scrollbar-width: none; /* Firefox */
             -ms-overflow-style: none; /* IE/Edge */
@@ -157,11 +156,11 @@
         .ia-response pre {
             position: relative;
             text-align: start;
-            color: black;
-            background: #505050;
+            color: #e0e0e0; /* Corrigido para texto claro */
+            background: #2d2d2d; /* Fundo um pouco mais escuro para contraste */
             padding: 10px;
             border-radius: 5px;
-            overflow-x: hidden;
+            overflow-x: auto; /* Permite rolagem horizontal para código longo */
             max-width: 100%;
             box-sizing: border-box;
             margin: 8px 0;
@@ -171,7 +170,7 @@
         .ia-response code {
             position: relative;
             text-align: start;
-            color: black;
+            color: #e0e0e0; /* Corrigido para texto claro */
             font-family: 'Courier New', monospace;
             display: block;
             white-space: pre-wrap;
@@ -183,6 +182,7 @@
             margin: 8px 0;
             line-height: 1.5;
             overflow-wrap: break-word;
+            text-align: left; /* Alinha parágrafos à esquerda */
         }
 
         .ia-response ul {
@@ -190,6 +190,12 @@
             padding-left: 20px;
             max-width: 100%;
             overflow-wrap: break-word;
+            text-align: left; /* Alinha listas à esquerda */
+        }
+
+        .ia-response li {
+            color: #e0e0e0; /* Garante que os itens da lista sejam brancos */
+            margin-bottom: 4px;
         }
 
         .copy-button {
