@@ -174,11 +174,6 @@ async function registerGlobalShortcuts() {
             console.log(`Shortcut registered: ${combo}`);
         }
     });
-
-    globalShortcut.register('Control+shift+1', () => moveToDisplay(0));
-    globalShortcut.register('Control+shift+2', () => moveToDisplay(1));
-
-    console.log('Atalhos Ctrl+1 e Ctrl+2 registrados');
 }
 
 // async function toggleRecording() {
@@ -647,24 +642,103 @@ function ensureWindowVisible(win) {
     }
 }
 
+function isHyprland() {
+    return !!process.env.HYPRLAND_INSTANCE_SIGNATURE;
+}
+
 function moveToDisplay(index) {
-    console.log("cheguei"+index);
-    const displays = screen.getAllDisplays();
-    if (index < displays.length) {
-        const display = displays[index];
-        const bounds = display.bounds;
+    const hyprlandDetected = isHyprland();
+    console.log(`isHyprland() detectado: ${hyprlandDetected}`);
 
-        const winWidth = 800;
-        const winHeight = 600;
-        const x = bounds.x + Math.round((bounds.width - winWidth) / 2);
-        const y = bounds.y + Math.round((bounds.height - winHeight) / 2);
+    if (hyprlandDetected) {
+        const pid = process.pid;
+        const workspace = index + 1; // Mapeia o índice 0 para o workspace 1, 1 para 2, etc.
+        const command = `hyprctl dispatch movetoworkspace ${workspace},pid:${pid}`;
+        
+        console.log(`Executando comando Hyprland: ${command}`);
+        exec(command, (error, stdout, stderr) => {
+            if (error) {
+                console.error('--- Falha no Comando Hyprland ---');
+                console.error(`Erro ao mover para o workspace: ${JSON.stringify(error, null, 2)}`);
+                return;
+            }
+            if (stderr) {
+                console.error('--- Stderr do Comando Hyprland ---');
+                console.error(stderr);
+            }
+            console.log('--- Stdout do Comando Hyprland ---');
+            console.log(stdout);
+            mainWindow.focus(); // Tentar focar após mover
+        });
 
-        mainWindow.setBounds({ x, y, width: winWidth, height: winHeight });
-        mainWindow.show(); // Garante que ela fique visível
-        mainWindow.focus();
-    } else {
-        console.log(`Monitor ${index + 1} não encontrado`);
+    } else { // Lógica existente para KDE, GNOME, etc.
+        console.log(`Movendo para o monitor ${index}`);
+        const displays = screen.getAllDisplays();
+        if (index < displays.length) {
+            const display = displays[index];
+            const bounds = display.bounds;
+
+            const winWidth = 800;
+            const winHeight = 600;
+            const x = bounds.x + Math.round((bounds.width - winWidth) / 2);
+            const y = bounds.y + Math.round((bounds.height - winHeight) / 2);
+
+            mainWindow.setBounds({ x, y, width: winWidth, height: winHeight });
+            mainWindow.show(); // Garante que a janela esteja visível
+            mainWindow.focus();
+        } else {
+            console.log(`Monitor ${index + 1} não encontrado.`);
+        }
     }
+}
+
+async function bringWindowToFocus() {
+    console.log('bringWindowToFocus: Tentando trazer a janela para o foco e abrir o input.');
+    if (!mainWindow) return;
+
+    if (isHyprland()) {
+        try {
+            const pid = process.pid;
+            // Obter o workspace ativo atual
+            const { stdout: wsStdout } = await execPromise('hyprctl activeworkspace -j');
+            const activeWorkspace = JSON.parse(wsStdout);
+            const workspaceId = activeWorkspace.id;
+
+            console.log(`Hyprland: Movendo janela para o workspace ${workspaceId} e tornando flutuante.`);
+            
+            // Mover para o workspace atual
+            await execPromise(`hyprctl dispatch movetoworkspace ${workspaceId},pid:${pid}`);
+            // Tornar flutuante
+            await execPromise(`hyprctl dispatch setprop pid:${pid} floating 1`);
+            // Focar a janela
+            await execPromise(`hyprctl dispatch focuswindow pid:${pid}`);
+            
+            mainWindow.show();
+            console.log('Hyprland: Janela movida e focada com input manual.');
+
+        } catch (error) {
+            console.error('Erro ao mover/focar janela no Hyprland:', error);
+        }
+    } else {
+        // Lógica para ambientes que não são Hyprland
+        const cursorPoint = screen.getCursorScreenPoint();
+        const currentDisplay = screen.getDisplayNearestPoint(cursorPoint);
+
+        const { x, y } = currentDisplay.workArea;
+        const winWidth = mainWindow.getBounds().width;
+        const winHeight = mainWindow.getBounds().height;
+
+        const newX = x + Math.round((currentDisplay.workArea.width - winWidth) / 2);
+        const newY = y + Math.round((currentDisplay.workArea.height - winHeight) / 2);
+
+        mainWindow.setBounds({ x: newX, y: newY, width: winWidth, height: winHeight });
+        mainWindow.show();
+        mainWindow.focus();
+        console.log('Janela movida e focada com input manual (ambiente padrão).');
+    }
+    
+    // Abrir o input manual no renderizador
+    mainWindow.webContents.send('manual-input');
 }
 
 // ipcMain.on('send-to-llama', async (event, text) => {
@@ -676,6 +750,8 @@ function moveToDisplay(index) {
 //         event.sender.send('transcription-error', 'Failed to process LLaMA response');
 //     }
 // });
+
+
 
 
 ipcMain.on('send-to-gemini', async (event, text) => {
@@ -725,9 +801,13 @@ ipcMain.on('cancel-ia-request', () => {
     console.log('IA request cancelled');
 });
 
+ipcMain.handle('is-hyprland', () => {
+    return isHyprland();
+});
+
 app.whenReady().then(() => {
     createWindow();
-    ipcService.start(toggleRecording);
+    ipcService.start({ toggleRecording, moveToDisplay, bringWindowToFocus });
 
     // Verifica o status do backend ao iniciar e depois periodicamente
     checkBackendStatus();

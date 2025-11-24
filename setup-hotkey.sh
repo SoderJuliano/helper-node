@@ -39,61 +39,126 @@ if [[ "$XDG_CURRENT_DESKTOP" == *"GNOME"* ]]; then
     # --- GNOME Configuration ---
     echo "Attempting to configure for GNOME..."
 
-    # Check if a keybinding with the same command already exists
-    EXISTING_BINDINGS=$(gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings)
-    if [[ "$EXISTING_BINDINGS" == *"/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/helper-node/"* ]]; then
-        echo "GNOME hotkey for Helper-Node already seems to exist. No changes made."
-        exit 0
+    # Base path for custom keybindings
+    BASE_KEY_PATH="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/"
+    NEW_KEY_PATHS=()
+
+    # Function to create and register a new hotkey
+    configure_gnome_hotkey() {
+        local name_suffix=$1
+        local command=$2
+        local binding=$3
+        local path_suffix=$4 # e.g., 'helper-node-record'
+
+        local KEY_PATH="${BASE_KEY_PATH}${path_suffix}/"
+
+        echo "Configuring hotkey: $name_suffix with binding $binding"
+        gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$KEY_PATH" name "Helper-Node $name_suffix"
+        gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$KEY_PATH" command "$command"
+        gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$KEY_PATH" binding "$binding"
+        NEW_KEY_PATHS+=("'$KEY_PATH'")
+    }
+
+    # Hotkey for toggle-recording (Ctrl+D)
+    configure_gnome_hotkey "Record" "curl -X POST http://localhost:3000/toggle-recording" "<Control>d" "helper-node-record"
+
+    # Hotkey for move-to-display/0 (Ctrl+Shift+1)
+    configure_gnome_hotkey "Move to Display 1" "curl -X POST http://localhost:3000/move-to-display/0" "<Control><Shift>1" "helper-node-move-display-0"
+
+    # Hotkey for move-to-display/1 (Ctrl+Shift+2)
+    configure_gnome_hotkey "Move to Display 2" "curl -X POST http://localhost:3000/move-to-display/1" "<Control><Shift>2" "helper-node-move-display-1"
+
+    # Hotkey for bring-to-focus-and-input (Ctrl+I)
+    configure_gnome_hotkey "Focus App and Input (Ctrl+I)" "curl -X POST http://localhost:3000/bring-to-focus-and-input" "<Control>i" "helper-node-focus-input-ctrl"
+
+    # Hotkey for bring-to-focus-and-input (Ctrl+Shift+I)
+    configure_gnome_hotkey "Focus App and Input (Ctrl+Shift+I)" "curl -X POST http://localhost:3000/bring-to-focus-and-input" "<Control><Shift>i" "helper-node-focus-input-ctrl-shift"
+
+    # Get current custom keybindings
+    EXISTING_BINDINGS=$(gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings | sed "s/^@as //")
+
+    # Construct the final list of keybindings, avoiding duplicates
+    FINAL_KEY_LIST="["
+    FIRST=true
+
+    # Add existing bindings
+    if [[ "$EXISTING_BINDINGS" != "[]" ]]; then
+        # Remove trailing ']' and leading '['
+        EXISTING_BINDINGS_CLEANED=$(echo "$EXISTING_BINDINGS" | sed 's/^\[//;s/\]$//')
+        for item in $(echo "$EXISTING_BINDINGS_CLEANED" | tr ',' '\n'); do
+            # Remove quotes and trim whitespace
+            item=$(echo "$item" | sed "s/'//g" | xargs)
+            if [[ "$item" != *"${BASE_KEY_PATH}helper-node"* ]]; then # Avoid adding old helper-node binds if they're not explicitly helper-node-*
+                if [ "$FIRST" = false ]; then FINAL_KEY_LIST+=" , "; fi
+                FINAL_KEY_LIST+="'${item}'"
+                FIRST=false
+            fi
+        done
     fi
 
-    KEY_PATH="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/helper-node/"
-    
-    echo "Creating new custom keybinding..."
-    gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$KEY_PATH" name "Helper-Node Record"
-    gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$KEY_PATH" command "$HOTKEY_COMMAND"
-    gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$KEY_PATH" binding "<Control>d"
+    # Add new helper-node bindings
+    for item_path in "${NEW_KEY_PATHS[@]}"; do
+        if [ "$FIRST" = false ]; then FINAL_KEY_LIST+=" , "; fi
+        FINAL_KEY_LIST+="$item_path"
+        FIRST=false
+    done
+    FINAL_KEY_LIST+="]"
 
-    # Add the new keybinding path to the list of custom-keybindings
-    if [[ "$EXISTING_BINDINGS" == "@as []" ]] || [[ "$EXISTING_BINDINGS" == "[]" ]]; then
-        NEW_KEY_LIST="['$KEY_PATH']"
-    else
-        # Append the new path to the existing list
-        NEW_KEY_LIST=${EXISTING_BINDINGS/]/", '$KEY_PATH']"}
-    fi
-    
-    gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "$NEW_KEY_LIST"
+    gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "$FINAL_KEY_LIST"
 
     echo "------------------------------------------------------------------"
-    echo "SUCCESS: GNOME hotkey configured!"
-    echo "The global hotkey 'Ctrl+D' should now be active."
-    echo "If it doesn't work immediately, you may need to log out and log back in."
+    echo "SUCCESS: GNOME hotkeys configured!"
+    echo "Global hotkeys should now be active: Ctrl+D, Ctrl+Shift+1, Ctrl+Shift+2, Ctrl+I, Ctrl+Shift+I."
+    echo "If they don't work immediately, you may need to log out and log back in."
     echo "------------------------------------------------------------------"
 
 elif [[ "$XDG_CURRENT_DESKTOP" == "Hyprland" ]]; then
     # --- Hyprland Configuration ---
     echo "Attempting to configure for Hyprland..."
     HYPR_CONFIG="$HOME/.config/hypr/hyprland.conf"
-    BIND_LINE="bind = CTRL, D, exec, $HOTKEY_COMMAND"
 
     if [ ! -f "$HYPR_CONFIG" ]; then
         echo "ERROR: Hyprland config file not found at $HYPR_CONFIG"
         exit 1
     fi
 
-    # Check if a similar bind line already exists to avoid duplicates
-    if grep -qF -- "exec, $HOTKEY_COMMAND" "$HYPR_CONFIG"; then
-        echo "A hotkey for Helper-Node already seems to exist in $HYPR_CONFIG. No changes made."
-        exit 0
-    fi
+    configure_hyprland_hotkey() {
+        local keys=$1
+        local command=$2
+        local description=$3
+        local ipc_command_part=$(echo "$command" | sed 's/curl -X POST //') # Extract part for grep
 
-    echo "Adding hotkey to $HYPR_CONFIG..."
-    # Add a newline and a comment for clarity, then the bind line
-    echo -e "\n# Global hotkey for Helper-Node (added by setup script)\n$BIND_LINE" >> "$HYPR_CONFIG"
-    
+        if grep -qF "exec, $ipc_command_part" "$HYPR_CONFIG"; then
+            echo "Hotkey for $description already seems to exist in $HYPR_CONFIG. Skipping."
+        else
+            echo "Adding hotkey for $description to $HYPR_CONFIG..."
+            echo -e "\n# Helper-Node Hotkey: $description (added by setup script)" >> "$HYPR_CONFIG"
+            echo "bind = $keys, exec, $command" >> "$HYPR_CONFIG"
+        fi
+    }
+
+    # Hotkey for toggle-recording (Super+D)
+    configure_hyprland_hotkey "SUPER, D" "curl -X POST http://localhost:3000/toggle-recording" "Toggle Recording"
+
+    # Hotkey for move-to-display/0 (Super+Shift+1)
+    configure_hyprland_hotkey "SUPER_SHIFT, 1" "curl -X POST http://localhost:3000/move-to-display/0" "Move to Workspace 1"
+
+    # Hotkey for move-to-display/1 (Super+Shift+2)
+    configure_hyprland_hotkey "SUPER_SHIFT, 2" "curl -X POST http://localhost:3000/move-to-display/1" "Move to Workspace 2"
+
+    # Hotkey for bring-to-focus-and-input (Super+I)
+    configure_hyprland_hotkey "SUPER, I" "curl -X POST http://localhost:3000/bring-to-focus-and-input" "Focus App and Input (Super+I)"
+
+    # Hotkey for bring-to-focus-and-input (Super+Shift+I)
+    configure_hyprland_hotkey "SUPER_SHIFT, I" "curl -X POST http://localhost:3000/bring-to-focus-and-input" "Focus App and Input (Super+Shift+I)"
+
+    # Hotkey for bring-to-focus-and-input (Ctrl+I)
+    configure_hyprland_hotkey "CONTROL, I" "curl -X POST http://localhost:3000/bring-to-focus-and-input" "Focus App and Input (Ctrl+I)"
+
     echo "------------------------------------------------------------------"
-    echo "SUCCESS: Hyprland hotkey configured!"
+    echo "SUCCESS: Hyprland hotkeys configured!"
     echo "Please reload your Hyprland configuration for the change to take effect."
-    echo "(You can usually do this with Super+M or by restarting Hyprland)."
+    echo "(You can usually do this with 'hyprctl reload' or by restarting Hyprland)."
     echo "------------------------------------------------------------------"
 
 else

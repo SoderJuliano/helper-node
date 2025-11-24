@@ -35,4 +35,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
     stopNotifications: () => ipcRenderer.send('stop-notifications'),
     startNotifications: () => ipcRenderer.send('start-notifications'),
     cancelIaRequest: () => ipcRenderer.send('cancel-ia-request'),
+    isHyprland: () => ipcRenderer.invoke('is-hyprland'),
 });
