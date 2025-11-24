@@ -6,9 +6,21 @@ const execPromise = util.promisify(exec);
 const fs = require('fs').promises;
 const fs2 = require('fs');
 // const LlamaService = require('./services/llamaService.js');
-const GeminiService = require('./services/geminiService.js');
+const GeminiService = require('./services/geminiService.js'); // Mantido para a funcionalidade de cancelamento
+const BackendService = require('./services/backendService.js');
 const TesseractService = require('./services/tesseractService.js');
 const ipcService = require('./services/ipcService.js');
+
+let backendIsOnline = false;
+
+async function checkBackendStatus() {
+    backendIsOnline = await BackendService.ping();
+    if (backendIsOnline) {
+        console.log('Backend is online.');
+    } else {
+        console.log('Backend is offline.');
+    }
+}
 
 // Configurações do aplicativo
 const appConfig = {
@@ -354,20 +366,31 @@ async function getIaResponse(text) {
         }
     }, 10000);
 
+    let resposta;
     try {
-        const resposta = await GeminiService.responder(text);
+        if (backendIsOnline) {
+            console.log('Tentando usar o Backend Service...');
+            try {
+                resposta = await BackendService.responder(text);
+            } catch (backendError) {
+                console.error('Falha no Backend Service, usando Gemini como fallback...', backendError);
+                backendIsOnline = false; // Marca como offline para a próxima tentativa ser mais rápida
+                resposta = await GeminiService.responder(text);
+            }
+        } else {
+            console.log('Backend offline, usando Gemini Service...');
+            resposta = await GeminiService.responder(text);
+        }
+
         clearInterval(waitingNotificationInterval);
         waitingNotificationInterval = null;
 
-        // Envia a resposta original, com HTML, para a janela do aplicativo
         mainWindow.webContents.send('gemini-response', { resposta });
 
-        // Lógica para enviar notificações sequenciais
         if (appConfig.notificationsEnabled && Notification.isSupported()) {
             const plainTextBody = formatForPlainTextNotification(resposta);
             const chunks = chunkText(plainTextBody);
 
-            // Envia cada pedaço como uma notificação separada com um atraso
             (async () => {
                 for (let i = 0; i < chunks.length; i++) {
                     const chunk = chunks[i];
@@ -385,22 +408,16 @@ async function getIaResponse(text) {
                 }
             })();
         }
-    } catch (geminiError) {
+    } catch (error) {
         clearInterval(waitingNotificationInterval);
         waitingNotificationInterval = null;
         
-        // Ignora erros de cancelamento (comportamento esperado)
-        if (geminiError.message === 'Request cancelled') {
-            console.log('Request cancelled by user - this is expected');
-            return; // NÃO envia erro para o frontend
-        }
-        
-        console.error('Gemini error:', geminiError);
-        mainWindow.webContents.send('transcription-error', 'Failed to process Gemini response');
+        console.error('IA service error:', error);
+        mainWindow.webContents.send('transcription-error', 'Failed to process IA response');
         if (appConfig.notificationsEnabled && Notification.isSupported()) {
             new Notification({
                 title: 'Erro do Assistente',
-                body: 'Não foi possível gerar uma resposta.',
+                body: 'Não foi possível gerar uma resposta de nenhuma fonte.',
                 silent: true,
             }).show();
         }
@@ -660,19 +677,27 @@ function moveToDisplay(index) {
 //     }
 // });
 
+
 ipcMain.on('send-to-gemini', async (event, text) => {
     try {
-        const resposta = await GeminiService.responder(text);
-        event.sender.send('gemini-response', { resposta });
-    } catch (geminiError) {
-        // Ignora erros de cancelamento (comportamento esperado)
-        if (geminiError.message === 'Request cancelled') {
-            console.log('Request cancelled by user - this is expected');
-            return;
+        let resposta;
+        if (backendIsOnline) {
+            console.log('IPC: Tentando usar o Backend Service...');
+            try {
+                resposta = await BackendService.responder(text);
+            } catch (backendError) {
+                console.error('IPC: Falha no Backend Service, usando Gemini como fallback...', backendError);
+                backendIsOnline = false; // Marcar como offline
+                resposta = await GeminiService.responder(text);
+            }
+        } else {
+            console.log('IPC: Backend offline, usando Gemini Service...');
+            resposta = await GeminiService.responder(text);
         }
-        
-        console.error('Gemini error:', geminiError);
-        event.sender.send('transcription-error', 'Failed to process Gemini response');
+        event.sender.send('gemini-response', { resposta });
+    } catch (error) {
+        console.error('IPC: IA service error:', error);
+        event.sender.send('transcription-error', 'Failed to process IA response from any source');
     }
 });
 
@@ -689,7 +714,10 @@ ipcMain.on('start-notifications', () => {
 });
 
 ipcMain.on('cancel-ia-request', () => {
+    // Atualmente, o cancelamento só funciona para o GeminiService.
+    // O BackendService não tem um método de cancelamento implementado.
     GeminiService.cancelCurrentRequest();
+    
     if (waitingNotificationInterval) {
         clearInterval(waitingNotificationInterval);
         waitingNotificationInterval = null;
@@ -700,6 +728,10 @@ ipcMain.on('cancel-ia-request', () => {
 app.whenReady().then(() => {
     createWindow();
     ipcService.start(toggleRecording);
+
+    // Verifica o status do backend ao iniciar e depois periodicamente
+    checkBackendStatus();
+    setInterval(checkBackendStatus, 60000); // Verifica a cada 60 segundos
 });
 
 

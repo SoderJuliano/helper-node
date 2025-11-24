@@ -60,6 +60,27 @@ Para garantir usabilidade e a entrega completa das informações quando o aplica
     *   A exibição de notificações é controlada por uma flag no `main.js`: `appConfig.notificationsEnabled`.
     *   Atualmente, esta flag está fixada como `true`, mas foi estruturada para ser facilmente conectada a um arquivo de configurações ou a uma opção na interface do usuário no futuro.
 
+## Arquitetura Atual: Lógica de Serviço de IA com Fallback
+
+Para oferecer flexibilidade e robustez na geração de respostas de IA, o aplicativo agora implementa uma lógica de seleção de serviço com fallback automático. O objetivo é priorizar um backend customizado (remoto) quando disponível, e usar um modelo local como alternativa segura.
+
+1.  **Múltiplos Serviços de IA:**
+    *   O aplicativo mantém referências a múltiplos serviços de IA, incluindo `services/backendService.js` (para o backend customizado) e `services/geminiService.js` (para o modelo local).
+
+2.  **Verificação de Disponibilidade (Health Check):**
+    *   Ao iniciar, e depois periodicamente a cada 60 segundos, o aplicativo realiza uma verificação de status (`ping`) no endpoint `/ping` do backend customizado.
+    *   Uma variável de estado global (`backendIsOnline`) armazena o resultado dessa verificação.
+
+3.  **Lógica de Seleção e Fallback:**
+    *   Quando uma nova resposta de IA é solicitada, o aplicativo verifica a flag `backendIsOnline`.
+    *   **Se o backend estiver online:** O `BackendService` é acionado para processar a requisição. Se, mesmo assim, a chamada falhar (por exemplo, erro de rede ou resposta inválida), o erro é capturado, a flag `backendIsOnline` é temporariamente definida como `false`, e o sistema **automaticamente recorre ao `GeminiService` local** para garantir que o usuário receba uma resposta.
+    *   **Se o backend estiver offline:** O aplicativo utiliza diretamente o `GeminiService` local sem tentar contato com o backend.
+
+4.  **URL Dinâmica do Backend:**
+    *   O `backendService` obtém a URL do backend de forma dinâmica através de um serviço externo (`https://abra-api.top/notifications/retrieve?key=ngrockurl`), o que permite que o endereço do servidor mude sem necessidade de reconfigurar o aplicativo.
+
+Este sistema híbrido garante que o aplicativo continue funcional mesmo que o backend remoto esteja indisponível, combinando a preferência por um serviço remoto customizado com a confiabilidade de um modelo local.
+
 ## Próximos Passos: Configuração Automática Pós-Instalação
 
 Para que o aplicativo funcione "out-of-the-box" após a instalação, a configuração do atalho global deve ser automatizada.
