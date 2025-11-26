@@ -661,10 +661,24 @@
                     }
                 });
             }
-            
+           
+            editField.addEventListener('keydown', (e) => {
+              if (e.key === 'Escape') {
+                cancelEdit(questionSpan, container, currentText);
+              }
+            });
+
             // Substitui o span pelo campo de edição
             questionSpan.replaceWith(container);
             editField.focus();
+        }
+
+        function cancelEdit(questionSpan, container, originalText) {
+          isEditingQuestion = false;
+          // Restaura o texto original com o ícone, se houver
+          questionSpan.textContent = originalText + " ✏️";
+          // Substitui de volta o container pelo span original
+          container.replaceWith(questionSpan);
         }
         
         function submitEditedQuestion(newText, originalSpan, container) {
