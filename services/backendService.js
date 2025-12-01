@@ -1,4 +1,5 @@
 const axios = require('axios');
+const configService = require('./configService');
 
 // Variável para armazenar a URL da API
 let apiUrl = '';
@@ -76,8 +77,9 @@ class BackendService {
 
         try {
             const endpoint = `${apiUrl}/llama3`;
+            const promptInstruction = configService.getPromptInstruction();
             const body = {
-                newPrompt: `Como responder essa questão em com até 65 palavras: ${texto}`,
+                newPrompt: `${promptInstruction}${texto}`,
                 ip: '192.0.0.1', // Valor estático como exemplo
                 email: 'julianosoder1989@gmail.com', // Valor estático como exemplo
                 agent: false,

@@ -1,10 +1,12 @@
 const axios = require('axios');
+const configService = require('./configService');
 
 class LlamaService {
     async responder(texto) {
         if (!texto) throw new Error('Não entendi');
         try {
-            const prompt = `Como responder essa questão em com até 65 palavras: ${texto}`;
+            const promptInstruction = configService.getPromptInstruction();
+            const prompt = `${promptInstruction}${texto}`;
             console.log(prompt);
             const response = await axios.post('http://localhost:11434/api/generate', {
                 model: 'llama3',

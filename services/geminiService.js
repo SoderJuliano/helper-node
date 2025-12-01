@@ -1,4 +1,5 @@
 const { exec } = require('child_process');
+const configService = require('./configService');
 
 class GeminiService {
     constructor() {
@@ -15,7 +16,8 @@ class GeminiService {
         }
         
         try {
-            const prompt = `Como responder essa questão em com até 65 palavras. Use markdown para blocos de código: ${texto}`;
+            const promptInstruction = configService.getPromptInstruction();
+            const prompt = `${promptInstruction}${texto}`;
             console.log(prompt);
             const command = `gemini -d "${prompt}"`;
 

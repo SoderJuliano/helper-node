@@ -10,8 +10,10 @@ const GeminiService = require('./services/geminiService.js'); // Mantido para a 
 const BackendService = require('./services/backendService.js');
 const TesseractService = require('./services/tesseractService.js');
 const ipcService = require('./services/ipcService.js');
+const configService = require('./services/configService.js');
 
 let backendIsOnline = false;
+let configWindow = null;
 
 async function checkBackendStatus() {
     backendIsOnline = await BackendService.ping();
@@ -35,6 +37,34 @@ let recordingProcess = null;
 let isRecording = false;
 let waitingNotificationInterval = null;
 const audioFilePath = path.join(__dirname, 'output.wav');
+
+function createConfigWindow() {
+    if (configWindow) {
+        configWindow.focus();
+        return;
+    }
+
+    configWindow = new BrowserWindow({
+        width: 500,
+        height: 350,
+        title: 'Configurações',
+        backgroundColor: '#00000000',
+        transparent: true,
+        frame: false,
+        webPreferences: {
+            nodeIntegration: true,
+            contextIsolation: false,
+        },
+        skipTaskbar: false,
+        icon: path.join(__dirname, 'assets', 'linux.png'),
+    });
+
+    configWindow.loadFile('config.html');
+
+    configWindow.on('closed', () => {
+        configWindow = null;
+    });
+}
 
 async function createWindow() {
     try {
@@ -139,11 +169,17 @@ async function registerGlobalShortcuts() {
         { combo: 'CommandOrControl+D', action: 'toggle-recording' },
         { combo: 'CommandOrControl+I', action: 'manual-input' },
         { combo: 'CommandOrControl+P', action: 'capture-screen' },
-        { combo: 'CommandOrControl+A', action: 'focus-window' }
+        { combo: 'CommandOrControl+A', action: 'focus-window' },
+        { combo: 'CommandOrControl+Shift+C', action: 'open-config' }
     ];
 
     shortcuts.forEach(({ combo, action }) => {
         const registered = globalShortcut.register(combo, async () => {
+            if (action === 'open-config') {
+                createConfigWindow();
+                return;
+            }
+
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.webContents.send(action);
                 
@@ -308,10 +344,10 @@ function formatForPlainTextNotification(html) {
     text = text.replace(/<\/li>/gi, '\n');
 
     // Converte tags de ênfase para uma sintaxe similar a markdown
-    text = text.replace(/<strong>(.*?)<\/strong>/gi, '*$1*');
-    text = text.replace(/<b>(.*?)<\/b>/gi, '*$1*');
-    text = text.replace(/<em>(.*?)<\/em>/gi, '_$1_');
-    text = text.replace(/<i>(.*?)<\/i>/gi, '_$1_');
+    text = text.replace(/<strong>(.*?)<\/strong>/gi, '**');
+    text = text.replace(/<b>(.*?)<\/b>/gi, '**');
+    text = text.replace(/<em>(.*?)<\/em>/gi, '__');
+    text = text.replace(/<i>(.*?)<\/i>/gi, '__');
 
     // Remove quaisquer tags HTML restantes
     text = text.replace(/<[^>]*>/g, '');
@@ -805,7 +841,17 @@ ipcMain.handle('is-hyprland', () => {
     return isHyprland();
 });
 
+// IPC Handlers for Config
+ipcMain.handle('get-prompt-instruction', () => {
+    return configService.getPromptInstruction();
+});
+
+ipcMain.on('save-prompt-instruction', (event, instruction) => {
+    configService.setPromptInstruction(instruction);
+});
+
 app.whenReady().then(() => {
+    configService.initialize();
     createWindow();
     ipcService.start({ toggleRecording, moveToDisplay, bringWindowToFocus });
 
