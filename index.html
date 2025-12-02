@@ -443,25 +443,37 @@
                 console.log('Transcrição iniciada para:', audioFilePath);
             });
 
-            window.electronAPI.onTranscriptionResult((text) => {
+            window.electronAPI.onTranscriptionResult(async (text) => {
                 console.log('Texto transcrito:', text);
                 const transcriptionElement = document.getElementById('transcription');
+
+                const isDebug = await window.electronAPI.getDebugModeStatus();
+                let displayText = text;
+
+                if (isDebug) {
+                    const promptInstruction = await window.electronAPI.getPromptInstruction();
+                    const body = {
+                        newPrompt: `${promptInstruction}${text}`,
+                        ip: '192.0.0.1',
+                        email: 'julianosoder1989@gmail.com',
+                        agent: false,
+                        language: 'PORTUGUESE'
+                    };
+                    displayText = JSON.stringify(body, null, 2);
+                }
                 
-                // Cria um span editável para a pergunta
                 const questionSpan = document.createElement('span');
                 questionSpan.className = 'question-text';
-                questionSpan.textContent = text;
+                questionSpan.textContent = displayText;
                 
                 const editIcon = document.createElement('span');
                 editIcon.className = 'edit-icon';
                 editIcon.textContent = '✏️';
                 questionSpan.appendChild(editIcon);
                 
-                // Limpa o conteúdo anterior e adiciona o novo span
                 transcriptionElement.innerHTML = '';
                 transcriptionElement.appendChild(questionSpan);
                 
-                // Adiciona evento de clique para editar
                 questionSpan.addEventListener('click', () => handleQuestionEdit(questionSpan));
                 
                 currentQuestionElement = questionSpan;
@@ -780,13 +792,27 @@
             });
         }
         
-        function submitManualQuestion(text, container) {
+        async function submitManualQuestion(text, container) {
             manualInputActive = false;
+
+            const isDebug = await window.electronAPI.getDebugModeStatus();
+            let displayText = text;
+            if (isDebug) {
+                const promptInstruction = await window.electronAPI.getPromptInstruction();
+                const body = {
+                    newPrompt: `${promptInstruction}${text}`,
+                    ip: '192.0.0.1', // Valor estático como exemplo
+                    email: 'julianosoder1989@gmail.com', // Valor estático como exemplo
+                    agent: false,
+                    language: 'PORTUGUESE'
+                };
+                displayText = JSON.stringify(body, null, 2);
+            }
             
             // Cria o span com a pergunta
             const questionSpan = document.createElement('span');
             questionSpan.className = 'question-text';
-            questionSpan.textContent = text;
+            questionSpan.textContent = displayText;
             
             const editIcon = document.createElement('span');
             editIcon.className = 'edit-icon';
