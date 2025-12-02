@@ -327,6 +327,7 @@
         <div class="command-item">⚡︎ CTRL+SHIFT+C - Configurações ⚙️</div>
         <div id="move-to-screen-1" class="command-item">⚡︎ CTRL+SHIFT+1 - Move to screen 1 🖵←🖵</div>
         <div id="move-to-screen-2" class="command-item">⚡︎ CTRL+SHIFT+2 - Move to screen 2 🖵→🖵</div>
+        <div id="debug-indicator" class="command-item" style="display: none; color: #ffab40;">🐞 Modo Debug Ativo</div>
     </div>
 
     <div id="animation-container"></div>
@@ -420,6 +421,15 @@
 
         window.addEventListener('DOMContentLoaded', () => {
             loadAnimation();
+
+            window.electronAPI.onDebugStatusChanged((status) => {
+                const debugIndicator = document.getElementById('debug-indicator');
+                if (status) {
+                    debugIndicator.style.display = 'block';
+                } else {
+                    debugIndicator.style.display = 'none';
+                }
+            });
             
             // Listener para CTRL+I
             window.electronAPI.onManualInput(() => {

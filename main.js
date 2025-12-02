@@ -850,10 +850,31 @@ ipcMain.on('save-prompt-instruction', (event, instruction) => {
     configService.setPromptInstruction(instruction);
 });
 
-app.whenReady().then(() => {
+ipcMain.handle('get-debug-mode-status', () => {
+    return configService.getDebugModeStatus();
+});
+
+ipcMain.on('save-debug-mode-status', (event, status) => {
+    configService.setDebugModeStatus(status);
+    // Notifica a janela principal e a de configuração sobre a mudança
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('debug-status-changed', status);
+    }
+    if (configWindow && !configWindow.isDestroyed()) {
+        configWindow.webContents.send('debug-status-changed', status);
+    }
+});
+
+app.whenReady().then(async () => {
     configService.initialize();
-    createWindow();
+    await createWindow();
     ipcService.start({ toggleRecording, moveToDisplay, bringWindowToFocus });
+
+    // Envia o status inicial do modo debug para a janela principal
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        const initialDebugStatus = configService.getDebugModeStatus();
+        mainWindow.webContents.send('debug-status-changed', initialDebugStatus);
+    }
 
     // Verifica o status do backend ao iniciar e depois periodicamente
     checkBackendStatus();

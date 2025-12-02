@@ -3,7 +3,8 @@ const path = require('path');
 const fs = require('fs');
 
 const defaultConfig = {
-  promptInstruction: 'Como responder essa questão em com até 65 palavras: '
+  promptInstruction: 'Como responder essa questão em com até 65 palavras: ',
+  debugMode: false,
 };
 
 // O caminho para o diretório de dados do usuário do app
@@ -24,7 +25,9 @@ function loadConfig() {
     const configFilePath = getConfigPath();
     if (fs.existsSync(configFilePath)) {
       const fileContent = fs.readFileSync(configFilePath, 'utf-8');
-      return JSON.parse(fileContent);
+      const loadedConfig = JSON.parse(fileContent);
+      // Mescla com o padrão para garantir que todas as chaves existam
+      return { ...defaultConfig, ...loadedConfig };
     }
   } catch (error) {
     console.error('Erro ao carregar o arquivo de configuração:', error);
@@ -69,6 +72,23 @@ function setPromptInstruction(instruction) {
   currentConfig = null; 
 }
 
+function getDebugModeStatus() {
+  if (!currentConfig) {
+    currentConfig = loadConfig();
+  }
+  return currentConfig.debugMode;
+}
+
+function setDebugModeStatus(status) {
+  if (!currentConfig) {
+    currentConfig = loadConfig();
+  }
+  currentConfig.debugMode = status;
+  saveConfig(currentConfig);
+  // Força a recarga na proxima chamada
+  currentConfig = null;
+}
+
 // Carrega a configuração inicial
 function initialize() {
     currentConfig = loadConfig();
@@ -78,4 +98,6 @@ module.exports = {
   initialize,
   getPromptInstruction,
   setPromptInstruction,
+  getDebugModeStatus,
+  setDebugModeStatus,
 };
