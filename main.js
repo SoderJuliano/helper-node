@@ -841,6 +841,10 @@ ipcMain.handle('is-hyprland', () => {
     return isHyprland();
 });
 
+ipcMain.handle('get-backend-url', async () => {
+    return await BackendService.getApiUrl();
+});
+
 // IPC Handlers for Config
 ipcMain.handle('get-prompt-instruction', () => {
     return configService.getPromptInstruction();

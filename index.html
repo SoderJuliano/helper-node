@@ -464,22 +464,26 @@
 
                 if (isDebug) {
                     const promptInstruction = await window.electronAPI.getPromptInstruction();
-                    const body = {
-                        newPrompt: `${promptInstruction}${text}`,
-                        ip: '192.0.0.1',
-                        email: 'julianosoder1989@gmail.com',
-                        agent: false,
-                        language: 'PORTUGUESE'
+                    const backendUrl = await window.electronAPI.getBackendUrl();
+
+                    const debugInfo = {
+                        'HTTP Verb': 'POST',
+                        'Backend URL': backendUrl,
+                        'Request Body': {
+                            newPrompt: `${promptInstruction}${text}`,
+                            ip: '192.0.0.1',
+                            email: 'julianosoder1989@gmail.com',
+                            agent: false,
+                            language: 'PORTUGUESE'
+                        }
                     };
-                    // Use <pre> para manter a formatação do JSON
+
                     const pre = document.createElement('pre');
-                    pre.textContent = JSON.stringify(body, null, 2);
+                    pre.textContent = JSON.stringify(debugInfo, null, 2);
                     
                     transcriptionElement.innerHTML = '';
                     transcriptionElement.appendChild(pre);
                     
-                    // Envia para a IA sem esperar pela edição
-                    // sentToAI(text);
                     return; // Finaliza a execução aqui para o modo debug
                 }
                 
