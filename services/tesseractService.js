@@ -8,7 +8,7 @@ const sharp = require('sharp');
 const execPromise = util.promisify(exec);
 
 class TesseractService {
-    async captureAndProcessScreenshot(mainWindow) {
+    async captureAndProcessScreenshot(mainWindow, isHyprland) {
         let screenshotPath;
         try {
             const timestamp = Date.now();
@@ -17,10 +17,31 @@ class TesseractService {
             
             console.log('Target Screenshot Path:', screenshotPath);
 
-            // Use Spectacle to capture the active window silently
-            const command = `spectacle --background --activewindow --nonotify --output "${originalScreenshotPath}"`;
-            await execPromise(command);
-            console.log('Original screenshot saved:', originalScreenshotPath);
+            if (isHyprland) {
+                console.log('Hyprland detected, using grim for screenshot');
+                const { stdout } = await execPromise('hyprctl activewindow');
+                const atMatch = stdout.match(/at: (\d+),(\d+)/);
+                const sizeMatch = stdout.match(/size: (\d+),(\d+)/);
+
+                if (atMatch && sizeMatch) {
+                    const x = atMatch[1];
+                    const y = atMatch[2];
+                    const width = sizeMatch[1];
+                    const height = sizeMatch[2];
+                    const geometry = `${x},${y} ${width}x${height}`;
+                    const command = `grim -g "${geometry}" "${originalScreenshotPath}"`;
+                    await execPromise(command);
+                    console.log('Original screenshot saved with grim:', originalScreenshotPath);
+                } else {
+                    throw new Error('Could not get window geometry from hyprctl');
+                }
+            } else {
+                // Use Spectacle to capture the active window silently
+                console.log('Using spectacle for screenshot');
+                const command = `spectacle --background --activewindow --nonotify --output "${originalScreenshotPath}"`;
+                await execPromise(command);
+                console.log('Original screenshot saved:', originalScreenshotPath);
+            }
             
             // Verify original file exists first
             await fs.access(originalScreenshotPath);

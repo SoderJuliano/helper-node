@@ -11,9 +11,10 @@ let callbacks = {};
  * @param {Function} funcs.toggleRecording - A função para alternar a gravação.
  * @param {Function} funcs.moveToDisplay - A função para mover a janela para um display específico.
  * @param {Function} funcs.bringWindowToFocus - A função para trazer a janela para o foco e abrir o input.
+ * @param {Function} funcs.captureScreen - A função para capturar a tela.
  */
 function start(funcs) {
-  if (!funcs || typeof funcs.toggleRecording !== 'function' || typeof funcs.moveToDisplay !== 'function' || typeof funcs.bringWindowToFocus !== 'function') {
+  if (!funcs || typeof funcs.toggleRecording !== 'function' || typeof funcs.moveToDisplay !== 'function' || typeof funcs.bringWindowToFocus !== 'function' || typeof funcs.captureScreen !== 'function') {
     console.error('ipcService: As funções de callback necessárias não foram fornecidas.');
     return;
   }
@@ -31,6 +32,20 @@ function start(funcs) {
       }
     } else {
       res.status(500).send({ message: 'Callback de gravação não configurado.' });
+    }
+  });
+
+  app.post('/capture-screen', (req, res) => {
+    if (callbacks.captureScreen) {
+      try {
+        callbacks.captureScreen();
+        res.status(200).send({ message: 'Ação de captura de tela executada com sucesso.' });
+      } catch (error) {
+        console.error('Erro ao capturar a tela via IPC:', error);
+        res.status(500).send({ message: 'Erro interno ao processar a ação.' });
+      }
+    } else {
+      res.status(500).send({ message: 'Callback de captura de tela não configurado.' });
     }
   });
 

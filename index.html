@@ -335,7 +335,7 @@
     <div class="commands">
         <div class="command-item">⚡︎ CTRL+D - Iniciar/Parar gravação 🎙️</div>
         <div class="command-item">⚡︎ CTRL+I - Inserir pergunta ✍️</div>
-        <div class="command-item">⚡︎ CTRL+P - Capturar tela 📝</div>
+        <div id="capture-screen-shortcut" class="command-item">⚡︎ CTRL+SHIFT+F - Capturar tela 📝</div>
         <div class="command-item">⚡︎ CTRL+SHIFT+C - Configurações ⚙️</div>
         <div id="move-to-screen-1" class="command-item">⚡︎ CTRL+SHIFT+1 - Move to screen 1 🖵←🖵</div>
         <div id="move-to-screen-2" class="command-item">⚡︎ CTRL+SHIFT+2 - Move to screen 2 🖵→🖵</div>
@@ -370,10 +370,12 @@
             const isHyprland = await window.electronAPI.isHyprland();
             const moveToScreen1 = document.getElementById('move-to-screen-1');
             const moveToScreen2 = document.getElementById('move-to-screen-2');
+            const captureScreenShortcut = document.getElementById('capture-screen-shortcut');
 
             if (isHyprland) {
                 moveToScreen1.textContent = '⚡︎ COMMAND+SHIFT+1 - Move to workspace 1 🖵←🖵';
                 moveToScreen2.textContent = '⚡︎ COMMAND+SHIFT+2 - Move to workspace 2 🖵→🖵';
+                captureScreenShortcut.textContent = '⚡︎ ALT+P - Capturar tela 📝';
             }
         });
 

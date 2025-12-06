@@ -74,6 +74,9 @@ if [[ "$XDG_CURRENT_DESKTOP" == *"GNOME"* ]]; then
     # Hotkey for bring-to-focus-and-input (Ctrl+Shift+I)
     configure_gnome_hotkey "Focus App and Input (Ctrl+Shift+I)" "curl -X POST http://localhost:3000/bring-to-focus-and-input" "<Control><Shift>i" "helper-node-focus-input-ctrl-shift"
 
+    # Hotkey for capture-screen (Ctrl+Shift+F)
+    configure_gnome_hotkey "Capture Screen" "curl -X POST http://localhost:3000/capture-screen" "<Control><Shift>f" "helper-node-capture-screen"
+
     # Get current custom keybindings
     EXISTING_BINDINGS=$(gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings | sed "s/^@as //")
 
@@ -108,7 +111,7 @@ if [[ "$XDG_CURRENT_DESKTOP" == *"GNOME"* ]]; then
 
     echo "------------------------------------------------------------------"
     echo "SUCCESS: GNOME hotkeys configured!"
-    echo "Global hotkeys should now be active: Ctrl+D, Ctrl+Shift+1, Ctrl+Shift+2, Ctrl+I, Ctrl+Shift+I."
+    echo "Global hotkeys should now be active: Ctrl+D, Ctrl+Shift+1, Ctrl+Shift+2, Ctrl+I, Ctrl+Shift+I, Ctrl+Shift+F."
     echo "If they don't work immediately, you may need to log out and log back in."
     echo "------------------------------------------------------------------"
 
@@ -154,6 +157,9 @@ elif [[ "$XDG_CURRENT_DESKTOP" == "Hyprland" ]]; then
 
     # Hotkey for bring-to-focus-and-input (Ctrl+I)
     configure_hyprland_hotkey "CONTROL, I" "curl -X POST http://localhost:3000/bring-to-focus-and-input" "Focus App and Input (Ctrl+I)"
+
+    # Hotkey for capture-screen (Ctrl+Shift+F)
+    configure_hyprland_hotkey "CONTROL_SHIFT, F" "curl -X POST http://localhost:3000/capture-screen" "Capture Screen"
 
     echo "------------------------------------------------------------------"
     echo "SUCCESS: Hyprland hotkeys configured!"

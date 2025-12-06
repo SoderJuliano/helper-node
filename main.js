@@ -140,7 +140,8 @@ async function createWindow() {
             return;
         }
 
-        setupScreenSharingDetection();
+        // Desabilitar detecção de compartilhamento de tela
+        //setupScreenSharingDetection();
 
         // Configuração de permissões
         mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
@@ -159,6 +160,19 @@ async function createWindow() {
     }
 }
 
+
+async function captureScreen() {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('screen-capturing', true);
+        try {
+            const data = await TesseractService.captureAndProcessScreenshot(mainWindow, isHyprland());
+            console.log('OCR Data:', data);
+        } catch (error) {
+            console.error('Error in capture-screen:', error);
+        }
+    }
+}
+
 async function registerGlobalShortcuts() {
     if (!mainWindow) return;
 
@@ -168,7 +182,6 @@ async function registerGlobalShortcuts() {
     const shortcuts = [
         { combo: 'CommandOrControl+D', action: 'toggle-recording' },
         { combo: 'CommandOrControl+I', action: 'manual-input' },
-        { combo: 'CommandOrControl+P', action: 'capture-screen' },
         { combo: 'CommandOrControl+A', action: 'focus-window' },
         { combo: 'CommandOrControl+Shift+C', action: 'open-config' }
     ];
@@ -191,16 +204,6 @@ async function registerGlobalShortcuts() {
                 if (action === 'toggle-recording') {
                     await toggleRecording();
                 }
-
-                if (action === 'capture-screen') {
-                    mainWindow.webContents.send('screen-capturing', true);
-                    try {
-                        const data = await TesseractService.captureAndProcessScreenshot(mainWindow);
-                        console.log('OCR Data:', data);
-                    } catch (error) {
-                        console.error('Error in capture-screen:', error);
-                    }
-                }
             }
         });
 
@@ -211,6 +214,7 @@ async function registerGlobalShortcuts() {
         }
     });
 }
+
 
 // async function toggleRecording() {
 //     try {
@@ -872,7 +876,7 @@ ipcMain.on('save-debug-mode-status', (event, status) => {
 app.whenReady().then(async () => {
     configService.initialize();
     await createWindow();
-    ipcService.start({ toggleRecording, moveToDisplay, bringWindowToFocus });
+    ipcService.start({ toggleRecording, moveToDisplay, bringWindowToFocus, captureScreen });
 
     // Envia o status inicial do modo debug para a janela principal
     if (mainWindow && !mainWindow.isDestroyed()) {
