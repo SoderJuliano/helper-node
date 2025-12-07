@@ -184,6 +184,23 @@ ipcMain.on('process-pasted-image', (event, base64Image) => {
     }
 });
 
+ipcMain.on('process-manual-input-with-image', async (event, { text, image }) => {
+    try {
+        const imageTranscription = await TesseractService.getTextFromImage(image);
+        const promptInstruction = await configService.getPromptInstruction();
+        
+        const finalPrompt = `${promptInstruction}<br>${text}<br>${imageTranscription}`;
+        
+        console.log('Final prompt with image transcription:', finalPrompt);
+        
+        await getIaResponse(finalPrompt);
+        
+    } catch (error) {
+        console.error('Error processing manual input with image:', error);
+        mainWindow.webContents.send('transcription-error', 'Failed to process image with manual input.');
+    }
+});
+
 async function registerGlobalShortcuts() {
     if (!mainWindow) return;
 

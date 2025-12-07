@@ -414,6 +414,7 @@
         let currentQuestionElement = null;
         let isEditingQuestion = false;
         let manualInputActive = false;
+        let pastedImageForManualInput = null;
 
         // Carregar a animação
         function loadAnimation() {
@@ -464,21 +465,30 @@
                         const reader = new FileReader();
                         reader.onload = (e) => {
                             const base64Image = e.target.result;
-                            
-                            // Fornece feedback visual de "captura"
-                            const captureIcon = document.getElementById('capture');
-                            captureIcon.style.display = 'block';
-                            setTimeout(() => {
-                                captureIcon.style.display = 'none';
-                            }, 3000);
 
-                            // Envia a imagem em base64 para o processo principal
-                            window.electronAPI.processPastedImage(base64Image);
+                            if (manualInputActive) {
+                                // NOVO FLUXO: Input manual está aberto
+                                console.log('Input manual ativo, apenas mostrando preview da imagem.');
+                                pastedImageForManualInput = base64Image;
+                                
+                                const preview = document.getElementById('screenshot-preview');
+                                preview.src = base64Image;
+                                preview.style.display = 'block';
+
+                            } else {
+                                // FLUXO ANTIGO: Input manual fechado, processa imediatamente
+                                const captureIcon = document.getElementById('capture');
+                                captureIcon.style.display = 'block';
+                                setTimeout(() => {
+                                    captureIcon.style.display = 'none';
+                                }, 3000);
+                                window.electronAPI.processPastedImage(base64Image);
+                            }
                         };
                         reader.readAsDataURL(imageFile);
                         
-                        event.preventDefault(); // Impede que a imagem seja colada como um elemento <img>
-                        break; // Processa apenas a primeira imagem encontrada
+                        event.preventDefault(); 
+                        break; 
                     }
                 }
             });
@@ -829,6 +839,8 @@
             if (manualInputActive || isEditingQuestion) return;
             
             manualInputActive = true;
+            pastedImageForManualInput = null; // Reseta a imagem colada
+            document.getElementById('screenshot-preview').style.display = 'none'; // Esconde o preview
             
             const transcriptionElement = document.getElementById('transcription');
             
@@ -842,7 +854,7 @@
             inputField.placeholder = 'Insira sua pergunta e digite Enter';
             
             container.appendChild(inputField);
-            transcriptionElement.appendChild(container);
+transcriptionElement.appendChild(container);
             
             // Foca no input
             inputField.focus();
@@ -851,7 +863,7 @@
             inputField.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') {
                     const question = inputField.value.trim();
-                    if (question) {
+                    if (question || pastedImageForManualInput) { // Envia se tiver texto OU imagem
                         submitManualQuestion(question, container);
                     }
                 }
@@ -862,6 +874,8 @@
                 if (e.key === 'Escape') {
                     manualInputActive = false;
                     transcriptionElement.innerHTML = '';
+                    pastedImageForManualInput = null; // Limpa a imagem
+                    document.getElementById('screenshot-preview').style.display = 'none'; // Esconde o preview
                 }
             });
         }
@@ -869,6 +883,26 @@
         async function submitManualQuestion(text, container) {
             manualInputActive = false;
 
+            // Se uma imagem foi colada, usa o novo fluxo
+            if (pastedImageForManualInput) {
+                window.electronAPI.processManualInputWithImage({ text: text, image: pastedImageForManualInput });
+                
+                // Limpa a imagem e esconde o preview
+                pastedImageForManualInput = null;
+                document.getElementById('screenshot-preview').style.display = 'none';
+
+                // Exibe a pergunta digitada na UI
+                const questionSpan = document.createElement('span');
+                questionSpan.className = 'question-text';
+                questionSpan.textContent = text;
+                container.replaceWith(questionSpan);
+                currentQuestionElement = questionSpan;
+
+                startProcessing();
+                return; // Finaliza aqui para o novo fluxo
+            }
+
+            // Fluxo antigo (apenas texto)
             const isDebug = await window.electronAPI.getDebugModeStatus();
             
             if (isDebug) {

@@ -41,4 +41,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getPromptInstruction: () => ipcRenderer.invoke('get-prompt-instruction'), // Added for prompt instruction access
     getBackendUrl: () => ipcRenderer.invoke('get-backend-url'),
     processPastedImage: (base64Image) => ipcRenderer.send('process-pasted-image', base64Image),
+    processManualInputWithImage: (data) => ipcRenderer.send('process-manual-input-with-image', data),
 });

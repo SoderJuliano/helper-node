@@ -57,6 +57,34 @@ class TesseractService {
         }
     }
 
+    async getTextFromImage(base64Image) {
+        const timestamp = Date.now();
+        const imagePath = path.join(__dirname, '..', `screenshot-manual-${timestamp}.png`);
+    
+        try {
+            const buffer = Buffer.from(base64Image.split(';base64,').pop(), 'base64');
+            await fs.writeFile(imagePath, buffer);
+            console.log('Manual input image saved to temporary file:', imagePath);
+    
+            // Since this is a pasted image for manual input, we treat it as `isPasted = true` to skip cropping.
+            const { data: { text } } = await Tesseract.recognize(imagePath, 'por', {
+                logger: m => console.log(m)
+            });
+            console.log('OCR Result for manual input:', text);
+    
+            // Cleanup the temporary file
+            fs.unlink(imagePath).catch(console.error);
+    
+            return text;
+    
+        } catch (error) {
+            console.error('Error getting text from image:', error);
+            // Cleanup on error
+            fs.unlink(imagePath).catch(console.error);
+            throw error; // Re-throw the error to be caught in main.js
+        }
+    }
+
     /**
      * Private helper method to process an image file from a given path.
      * Conditionally crops the image based on the isPasted flag.
