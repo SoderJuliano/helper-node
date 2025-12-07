@@ -40,4 +40,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getDebugModeStatus: () => ipcRenderer.invoke('get-debug-mode-status'), // Added for debug mode access
     getPromptInstruction: () => ipcRenderer.invoke('get-prompt-instruction'), // Added for prompt instruction access
     getBackendUrl: () => ipcRenderer.invoke('get-backend-url'),
+    processPastedImage: (base64Image) => ipcRenderer.send('process-pasted-image', base64Image),
 });

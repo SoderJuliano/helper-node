@@ -366,6 +366,18 @@
 
 
     <script>
+        // Pegar o ip do user
+        fetch("https://api.ipify.org?format=json")
+        .then(r => r.json())
+        .then(d => {
+            console.log("IP:", d.ip)
+            sessionStorage.setItem("user_ip", d.ip);
+            document.getElementById("debug-indicator")
+            .insertAdjacentHTML("beforeend", `<p>Seu IP: ${d.ip}</p>`);
+        });
+
+
+
         document.addEventListener('DOMContentLoaded', async () => {
             const isHyprland = await window.electronAPI.isHyprland();
             const moveToScreen1 = document.getElementById('move-to-screen-1');
@@ -373,9 +385,14 @@
             const captureScreenShortcut = document.getElementById('capture-screen-shortcut');
 
             if (isHyprland) {
-                moveToScreen1.textContent = '⚡︎ COMMAND+SHIFT+1 - Move to workspace 1 🖵←🖵';
-                moveToScreen2.textContent = '⚡︎ COMMAND+SHIFT+2 - Move to workspace 2 🖵→🖵';
-                captureScreenShortcut.textContent = '⚡︎ ALT+P - Capturar tela 📝';
+                // Correto: Reflete os atalhos do setup-hotkey.sh para Hyprland
+                document.getElementById('move-to-screen-1').textContent = '⚡︎ SUPER+SHIFT+1 - Move to workspace 1 🖵←🖵';
+                document.getElementById('move-to-screen-2').textContent = '⚡︎ SUPER+SHIFT+2 - Move to workspace 2 🖵→🖵';
+                // Oculta o atalho de captura de tela, pois não é mais usado no Hyprland
+                document.getElementById('capture-screen-shortcut').style.display = 'none';
+                // Os atalhos principais também mudam no script para Hyprland
+                document.querySelector('.commands').children[0].textContent = '⚡︎ SUPER+D - Iniciar/Parar gravação 🎙️';
+                document.querySelector('.commands').children[1].textContent = '⚡︎ SUPER+I / CTRL+I - Inserir pergunta ✍️';
             }
         });
 
@@ -436,6 +453,36 @@
         window.addEventListener('DOMContentLoaded', () => {
             loadAnimation();
 
+            // Listener para colar imagem da área de transferência
+            document.addEventListener('paste', (event) => {
+                const items = (event.clipboardData || window.clipboardData).items;
+                for (let i = 0; i < items.length; i++) {
+                    if (items[i].type.indexOf('image') !== -1) {
+                        const imageFile = items[i].getAsFile();
+                        console.log('Imagem colada detectada!');
+                        
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            const base64Image = e.target.result;
+                            
+                            // Fornece feedback visual de "captura"
+                            const captureIcon = document.getElementById('capture');
+                            captureIcon.style.display = 'block';
+                            setTimeout(() => {
+                                captureIcon.style.display = 'none';
+                            }, 3000);
+
+                            // Envia a imagem em base64 para o processo principal
+                            window.electronAPI.processPastedImage(base64Image);
+                        };
+                        reader.readAsDataURL(imageFile);
+                        
+                        event.preventDefault(); // Impede que a imagem seja colada como um elemento <img>
+                        break; // Processa apenas a primeira imagem encontrada
+                    }
+                }
+            });
+
             window.electronAPI.onDebugStatusChanged((status) => {
                 const debugIndicator = document.getElementById('debug-indicator');
                 if (status) {
@@ -473,7 +520,7 @@
                         'Backend URL': backendUrl,
                         'Request Body': {
                             newPrompt: `${promptInstruction}${text}`,
-                            ip: '192.0.0.1',
+                            ip: sessionStorage.getItem("user_ip"),
                             email: 'julianosoder1989@gmail.com',
                             agent: false,
                             language: 'PORTUGUESE'
@@ -828,7 +875,7 @@
                 const promptInstruction = await window.electronAPI.getPromptInstruction();
                 const body = {
                     newPrompt: `${promptInstruction}${text}`,
-                    ip: '192.0.0.1',
+                    ip: sessionStorage.getItem("user_ip"),
                     email: 'julianosoder1989@gmail.com',
                     agent: false,
                     language: 'PORTUGUESE'

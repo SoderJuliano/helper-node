@@ -158,9 +158,6 @@ elif [[ "$XDG_CURRENT_DESKTOP" == "Hyprland" ]]; then
     # Hotkey for bring-to-focus-and-input (Ctrl+I)
     configure_hyprland_hotkey "CONTROL, I" "curl -X POST http://localhost:3000/bring-to-focus-and-input" "Focus App and Input (Ctrl+I)"
 
-    # Hotkey for capture-screen (Ctrl+Shift+F)
-    configure_hyprland_hotkey "CONTROL_SHIFT, F" "curl -X POST http://localhost:3000/capture-screen" "Capture Screen"
-
     echo "------------------------------------------------------------------"
     echo "SUCCESS: Hyprland hotkeys configured!"
     echo "Please reload your Hyprland configuration for the change to take effect."

@@ -165,13 +165,24 @@ async function captureScreen() {
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('screen-capturing', true);
         try {
-            const data = await TesseractService.captureAndProcessScreenshot(mainWindow, isHyprland());
+            // A chamada foi simplificada após a refatoração do TesseractService
+            const data = await TesseractService.captureAndProcessScreenshot(mainWindow);
             console.log('OCR Data:', data);
         } catch (error) {
             console.error('Error in capture-screen:', error);
         }
     }
 }
+
+ipcMain.on('process-pasted-image', (event, base64Image) => {
+    console.log('Main process received pasted image.');
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        TesseractService.processPastedImage(base64Image, mainWindow)
+            .catch(error => {
+                console.error('Error processing pasted image in main process:', error);
+            });
+    }
+});
 
 async function registerGlobalShortcuts() {
     if (!mainWindow) return;

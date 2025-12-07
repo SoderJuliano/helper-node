@@ -94,10 +94,24 @@ function initialize() {
     currentConfig = loadConfig();
 }
 
+function getIp() {
+    return fetch('https://api.ipify.org?format=json')
+        .then(response => response.json())
+        .then(data => {
+            console.log('O IP do usuário é:', data.ip);
+            return data.ip;
+        })
+        .catch(error => {
+            console.error('Erro ao obter o IP:', error);
+            return null;
+        });
+}
+
 module.exports = {
   initialize,
   getPromptInstruction,
   setPromptInstruction,
   getDebugModeStatus,
   setDebugModeStatus,
+    getIp,
 };

@@ -1,5 +1,6 @@
 const axios = require('axios');
 const configService = require('./configService');
+const {getIp} = require("./configService");
 
 // Variável para armazenar a URL da API
 let apiUrl = '';
@@ -69,18 +70,20 @@ class BackendService {
             console.log('API URL not found, fetching again...');
             await getLastEnvUrl();
         }
-        
+
         // Se ainda não tiver a URL, lança um erro
         if (!apiUrl) {
             throw new Error('Could not retrieve backend URL.');
         }
+
+        const ip = await configService.getIp();
 
         try {
             const endpoint = `${apiUrl}/llama3`;
             const promptInstruction = configService.getPromptInstruction();
             const body = {
                 newPrompt: `${promptInstruction}${texto}`,
-                ip: '192.0.0.1', // Valor estático como exemplo
+                ip: ip,
                 email: 'julianosoder1989@gmail.com', // Valor estático como exemplo
                 agent: false,
                 language: 'PORTUGUESE'
@@ -101,17 +104,26 @@ class BackendService {
 
             // Assumindo que a resposta do seu backend tem o mesmo formato do Ollama ou retorna o texto diretamente
             const resposta = response.data.response || response.data;
-            
+
             const formattedResposta = this.formatToHTML(resposta);
             return formattedResposta;
         } catch (error) {
             console.error('Erro ao chamar o backend:', error.message);
+
+            // Se for um erro de HTTP (como 422, 404, etc.), a resposta do servidor está em error.response
+            if (error.response) {
+                console.error('--- DETALHES DO ERRO DO BACKEND ---');
+                console.error('Status:', error.response.status);
+                console.error('Data:', JSON.stringify(error.response.data, null, 2));
+                console.error('------------------------------------');
+            }
+
             // Se der erro de rede, pode ser que a URL mudou. Limpamos para buscar de novo na próxima vez.
             if (error.code === 'ECONNREFUSED' || error.response?.status === 404) {
                 console.log('Backend URL might be outdated. Clearing it.');
                 apiUrl = '';
             }
-            throw new Error('Falha ao processar a resposta do backend');
+            throw new Error(`Falha ao processar a resposta do backend. Status: ${error.response?.status || 'N/A'}`);
         }
     }
 
