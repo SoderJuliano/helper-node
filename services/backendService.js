@@ -85,15 +85,14 @@ class BackendService {
 
     const ip = await configService.getIp();
     // PEGAR LINGUAGEM SALVA
-    const lang = await window.electronAPI.getLanguage();
+    const lang = configService.getLanguage();
 
     // MAPEAR PARA O BACKEND
-    const mappedLang =
-      lang === "pt-br"
-        ? "PORTUGUESE"
-        : lang === "en"
-        ? "ENGLISH"
-        : "PORTUGUESE";
+    const langMap = {
+      'pt-br': 'PORTUGUESE',
+      'us-en': 'ENGLISH'
+    };
+    const mappedLang = langMap[lang] || 'PORTUGUESE';
 
     try {
       const endpoint = `${apiUrl}/llama3`;
@@ -101,7 +100,7 @@ class BackendService {
       const body = {
         newPrompt: `${promptInstruction}${texto}`,
         ip: ip,
-        //email: "julianosoder1989@gmail.com",
+        email: "julianosoder1989@gmail.com",
         agent: false,
         language: mappedLang,
       };
