@@ -5,6 +5,7 @@ const fs = require('fs');
 const defaultConfig = {
   promptInstruction: 'Como responder essa questão em com até 65 palavras: ',
   debugMode: false,
+  language: 'pt-br', // Add default language
 };
 
 // O caminho para o diretório de dados do usuário do app
@@ -89,6 +90,22 @@ function setDebugModeStatus(status) {
   currentConfig = null;
 }
 
+function getLanguage() {
+  if (!currentConfig) {
+    currentConfig = loadConfig();
+  }
+  return currentConfig.language;
+}
+
+function setLanguage(language) {
+  if (!currentConfig) {
+    currentConfig = loadConfig();
+  }
+  currentConfig.language = language;
+  saveConfig(currentConfig);
+  currentConfig = null;
+}
+
 // Carrega a configuração inicial
 function initialize() {
     currentConfig = loadConfig();
@@ -113,5 +130,7 @@ module.exports = {
   setPromptInstruction,
   getDebugModeStatus,
   setDebugModeStatus,
-    getIp,
+  getLanguage,
+  setLanguage,
+  getIp,
 };

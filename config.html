@@ -241,6 +241,27 @@
                 transform: translateX(calc(-1 * var(--fPos)));
             }
         }
+        
+        .custom-select {
+            background-color: #252525;
+            color: white;
+            border: 1px solid #555;
+            border-radius: 5px;
+            padding: 8px 12px;
+            font-size: 14px;
+            cursor: pointer;
+            -webkit-app-region: no-drag;
+        }
+
+        .custom-select:hover {
+            border-color: #777;
+        }
+
+        .custom-select:focus {
+            outline: none;
+            border-color: #00aaff;
+        }
+
     </style>
 </head>
 <body>
@@ -261,6 +282,15 @@
                 </div>
             </label>
         </div>
+
+        <div class="setting-item">
+            <label for="language-select">Idioma</label>
+            <select id="language-select" class="custom-select">
+                <option value="pt-br" selected>Português (BR)</option>
+                <option value="us-en">English (US)</option>
+            </select>
+        </div>
+
     </div>
     <button id="save-btn">Salvar e Fechar</button>
     <script src="config.js"></script>

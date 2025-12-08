@@ -523,8 +523,13 @@
 
                 if (isDebug) {
                     const promptInstruction = await window.electronAPI.getPromptInstruction();
-                    const backendUrl = await window.electronAPI.getBackendUrl();
-
+                    const backendUrl = (await window.electronAPI.getBackendUrl()) || "URL_INDEFINIDA";
+                    //console.log("DEBUG backend URL:", backendUrl);
+                    const lang = await window.electronAPI.getLanguage();
+                    const map = {
+                        'pt-br': 'PORTUGUESE',
+                        'en-us': 'ENGLISH'
+                    };
                     const debugInfo = {
                         'HTTP Verb': 'POST',
                         'Backend URL': backendUrl,
@@ -533,7 +538,7 @@
                             ip: sessionStorage.getItem("user_ip"),
                             email: 'julianosoder1989@gmail.com',
                             agent: false,
-                            language: 'PORTUGUESE'
+                            language: map[lang] || 'ENGLISH'
                         }
                     };
 
@@ -854,7 +859,7 @@
             inputField.placeholder = 'Insira sua pergunta e digite Enter';
             
             container.appendChild(inputField);
-transcriptionElement.appendChild(container);
+            transcriptionElement.appendChild(container);
             
             // Foca no input
             inputField.focus();
@@ -882,7 +887,7 @@ transcriptionElement.appendChild(container);
         
         async function submitManualQuestion(text, container) {
             manualInputActive = false;
-
+            
             // Se uma imagem foi colada, usa o novo fluxo
             if (pastedImageForManualInput) {
                 window.electronAPI.processManualInputWithImage({ text: text, image: pastedImageForManualInput });
@@ -890,33 +895,44 @@ transcriptionElement.appendChild(container);
                 // Limpa a imagem e esconde o preview
                 pastedImageForManualInput = null;
                 document.getElementById('screenshot-preview').style.display = 'none';
-
+                
                 // Exibe a pergunta digitada na UI
                 const questionSpan = document.createElement('span');
                 questionSpan.className = 'question-text';
                 questionSpan.textContent = text;
                 container.replaceWith(questionSpan);
                 currentQuestionElement = questionSpan;
-
+                
                 startProcessing();
                 return; // Finaliza aqui para o novo fluxo
             }
-
+            
             // Fluxo antigo (apenas texto)
             const isDebug = await window.electronAPI.getDebugModeStatus();
             
             if (isDebug) {
                 const promptInstruction = await window.electronAPI.getPromptInstruction();
-                const body = {
-                    newPrompt: `${promptInstruction}${text}`,
-                    ip: sessionStorage.getItem("user_ip"),
-                    email: 'julianosoder1989@gmail.com',
-                    agent: false,
-                    language: 'PORTUGUESE'
+                const backendUrl = (await window.electronAPI.getBackendUrl()) || "URL_INDEFINIDA";
+                //console.log("DEBUG backend URL:", backendUrl);
+                const lang = await window.electronAPI.getLanguage();
+                const map = {
+                    'pt-br': 'PORTUGUESE',
+                    'en-us': 'ENGLISH'
+                };
+                const debugInfo = {
+                    'HTTP Verb': 'POST',
+                    'Backend URL': backendUrl,
+                    'Request Body': {
+                        newPrompt: `${promptInstruction}${text}`,
+                        ip: sessionStorage.getItem("user_ip"),
+                        email: 'julianosoder1989@gmail.com',
+                        agent: false,
+                        language: map[lang] || 'ENGLISH'
+                    }
                 };
                 
                 const pre = document.createElement('pre');
-                pre.textContent = JSON.stringify(body, null, 2);
+                pre.textContent = JSON.stringify(debugInfo, null, 2);
                 container.replaceWith(pre);
 
             } else {
