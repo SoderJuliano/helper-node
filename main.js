@@ -19,15 +19,29 @@ const TesseractService = require("./services/tesseractService.js");
 const ipcService = require("./services/ipcService.js");
 const configService = require("./services/configService.js");
 
+// --- SINGLE INSTANCE LOCK ---
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (event, argv, workingDirectory) => {
+    // Focus existing window if a second instance is started
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
+
 let backendIsOnline = false;
 let configWindow = null;
+let shortcutsRegistered = false;
 
 async function checkBackendStatus() {
   backendIsOnline = await BackendService.ping();
   if (backendIsOnline) {
     console.log("Backend is online.");
   } else {
-    console.log("Backend is offline.");
   }
 }
 
@@ -127,9 +141,7 @@ async function createWindow() {
       currentDisplayId = screen.getDisplayNearestPoint(
         mainWindow.getBounds()
       ).id;
-      // mainWindow.webContents.openDevTools();
-
-      // Mover o registro de atalhos para aqui
+      // Re-registra atalhos quando a janela ganha foco
       registerGlobalShortcuts();
     });
 
@@ -175,7 +187,6 @@ async function captureScreen() {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send("screen-capturing", true);
 
-    // Primeiro, escolhe a melhor ferramenta disponível para o ambiente
     const tmpPng = path.join(app.getPath("temp"), `helpernode-shot-${Date.now()}.png`);
     const isWayland = process.env.XDG_SESSION_TYPE === "wayland";
     try {
@@ -207,21 +218,26 @@ async function captureScreen() {
         }
       }
 
-      if (!screenshotSuccess) {
-        mainWindow.webContents.send("transcription-error", "A captura de tela foi cancelada ou falhou. Certifique-se de selecionar uma área e que a ferramenta de captura está instalada.");
-        console.error("Screenshot tool did not produce a file: ", tmpPng);
-        return;
+      // After successful capture and before sending result, read file as base64
+      if (screenshotSuccess) {
+        const imgBuffer = await fs.readFile(tmpPng);
+        const base64Image = `data:image/png;base64,${imgBuffer.toString('base64')}`;
+        // Proceed with OCR only if file exists
+        try {
+          await fs.access(tmpPng);
+          const ocrText = await TesseractService.getTextFromImage(tmpPng);
+          mainWindow.webContents.send("ocr-result", { text: ocrText, screenshotPath: tmpPng, base64Image });
+        } catch (e) {
+          console.error("Screenshot file not accessible for OCR:", e);
+          mainWindow.webContents.send("ocr-result", { text: "", screenshotPath: tmpPng, base64Image });
+        }
+      } else {
+        mainWindow.webContents.send("screen-capturing", false);
       }
-
-      // Se chegou aqui, temos um PNG capturado: envia para OCR
-      const base64Image = await fs.readFile(tmpPng, { encoding: "base64" });
-      await TesseractService.processPastedImage(`data:image/png;base64,${base64Image}`, mainWindow);
-      console.log("Screenshot OCR completed");
     } catch (err) {
-      console.error("Screen capture error:", err);
-      mainWindow.webContents.send("transcription-error", "Falha ao capturar a tela");
+      console.error("Capture failed:", err);
     } finally {
-      try { await fs.unlink(tmpPng); } catch (_) {}
+      mainWindow.webContents.send("screen-capturing", false);
     }
   }
 }
@@ -268,48 +284,86 @@ ipcMain.on(
 async function registerGlobalShortcuts() {
   if (!mainWindow) return;
 
-  // Limpa atalhos existentes primeiro
   globalShortcut.unregisterAll();
 
-  const shortcuts = [
-    { combo: "CommandOrControl+D", action: "toggle-recording" },
-    { combo: "CommandOrControl+I", action: "manual-input" },
-    { combo: "CommandOrControl+A", action: "focus-window" },
-    { combo: "CommandOrControl+Shift+C", action: "open-config" },
-    { combo: "CommandOrControl+Shift+F", action: "capture-screen" },
-  ];
+  const isLinux = process.platform === "linux";
+  const baseShortcuts = isLinux
+    ? [
+        { combo: "Ctrl+D", action: "toggle-recording" },
+        { combo: "Ctrl+I", action: "manual-input" },
+        { combo: "Ctrl+A", action: "focus-window" },
+        { combo: "Ctrl+Shift+C", action: "open-config" },
+        { combo: "Ctrl+Shift+F", action: "capture-screen" },
+        { combo: "Ctrl+Shift+1", action: "move-to-display-0" },
+        { combo: "Ctrl+Shift+2", action: "move-to-display-1" },
+      ]
+    : [
+        { combo: "CommandOrControl+D", action: "toggle-recording" },
+        { combo: "CommandOrControl+I", action: "manual-input" },
+        { combo: "CommandOrControl+A", action: "focus-window" },
+        { combo: "CommandOrControl+Shift+C", action: "open-config" },
+        { combo: "CommandOrControl+Shift+F", action: "capture-screen" },
+        { combo: "CommandOrControl+Shift+1", action: "move-to-display-0" },
+        { combo: "CommandOrControl+Shift+2", action: "move-to-display-1" },
+      ];
 
-  shortcuts.forEach(({ combo, action }) => {
+  // Fallback variants for Linux to improve reliability across environments
+  const fallbackShortcuts = isLinux
+    ? [
+        { combo: "CommandOrControl+I", action: "manual-input" },
+        { combo: "CommandOrControl+Shift+F", action: "capture-screen" },
+        { combo: "CommandOrControl+Shift+1", action: "move-to-display-0" },
+        { combo: "CommandOrControl+Shift+2", action: "move-to-display-1" },
+      ]
+    : [];
+
+  const allShortcuts = [...baseShortcuts, ...fallbackShortcuts];
+
+  allShortcuts.forEach(({ combo, action }) => {
     const registered = globalShortcut.register(combo, async () => {
       if (action === "open-config") {
         createConfigWindow();
         return;
       }
-
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(action);
-
-        // Tratamento especial para o atalho de focus
         if (action === "focus-window" && mainWindow.isMinimized()) {
           mainWindow.restore();
         }
-
         if (action === "toggle-recording") {
           await toggleRecording();
         }
-
         if (action === "capture-screen") {
           await captureScreen();
         }
+        if (action === "move-to-display-0") {
+          moveToDisplay(0);
+          return;
+        }
+        if (action === "move-to-display-1") {
+          moveToDisplay(1);
+          return;
+        }
       }
     });
-
-    if (!registered) {
-      console.error(`Failed to register shortcut: ${combo}`);
-    } else {
-      console.log(`Shortcut registered: ${combo}`);
-    }
+    console.log(
+      registered
+        ? `Shortcut registered: ${combo}`
+        : `Failed to register shortcut: ${combo}`
+    );
   });
+
+  // Log final registration state for key shortcuts
+  ["Ctrl+I", "CommandOrControl+I", "Ctrl+Shift+F", "CommandOrControl+Shift+F", "Ctrl+Shift+1", "CommandOrControl+Shift+1", "Ctrl+Shift+2", "CommandOrControl+Shift+2"].forEach(
+    (accel) => {
+      try {
+        const ok = globalShortcut.isRegistered(accel);
+        console.log(`isRegistered(${accel}): ${ok}`);
+      } catch (e) {
+        // noop
+      }
+    }
+  );
 }
 
 async function toggleRecording() {
@@ -786,52 +840,25 @@ function isHyprland() {
   return !!process.env.HYPRLAND_INSTANCE_SIGNATURE;
 }
 
-function moveToDisplay(index) {
-  const hyprlandDetected = isHyprland();
-  console.log(`isHyprland() detectado: ${hyprlandDetected}`);
+function moveToDisplay(targetIndex) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const displays = screen.getAllDisplays();
+  if (displays.length === 0) return;
 
-  if (hyprlandDetected) {
-    const pid = process.pid;
-    const workspace = index + 1; // Mapeia o índice 0 para o workspace 1, 1 para 2, etc.
-    const command = `hyprctl dispatch movetoworkspace ${workspace},pid:${pid}`;
+  // Clamp index
+  const idx = Math.max(0, Math.min(targetIndex, displays.length - 1));
+  const targetDisplay = displays[idx];
+  const bounds = targetDisplay.workArea || targetDisplay.bounds;
 
-    console.log(`Executando comando Hyprland: ${command}`);
-    exec(command, (error, stdout, stderr) => {
-      if (error) {
-        console.error("--- Falha no Comando Hyprland ---");
-        console.error(
-          `Erro ao mover para o workspace: ${JSON.stringify(error, null, 2)}`
-        );
-        return;
-      }
-      if (stderr) {
-        console.error("--- Stderr do Comando Hyprland ---");
-        console.error(stderr);
-      }
-      console.log("--- Stdout do Comando Hyprland ---");
-      console.log(stdout);
-      mainWindow.focus(); // Tentar focar após mover
-    });
-  } else {
-    // Lógica existente para KDE, GNOME, etc.
-    console.log(`Movendo para o monitor ${index}`);
-    const displays = screen.getAllDisplays();
-    if (index < displays.length) {
-      const display = displays[index];
-      const bounds = display.bounds;
+  // Position window centered on target display
+  const [winW, winH] = mainWindow.getSize();
+  const x = Math.floor(bounds.x + (bounds.width - winW) / 2);
+  const y = Math.floor(bounds.y + (bounds.height - winH) / 2);
 
-      const winWidth = 800;
-      const winHeight = 600;
-      const x = bounds.x + Math.round((bounds.width - winWidth) / 2);
-      const y = bounds.y + Math.round((bounds.height - winHeight) / 2);
-
-      mainWindow.setBounds({ x, y, width: winWidth, height: winHeight });
-      mainWindow.show(); // Garante que a janela esteja visível
-      mainWindow.focus();
-    } else {
-      console.log(`Monitor ${index + 1} não encontrado.`);
-    }
-  }
+  mainWindow.setBounds({ x, y, width: winW, height: winH });
+  mainWindow.focus();
+  currentDisplayId = targetDisplay.id;
+  console.log(`Moved window to display index ${idx} (id=${targetDisplay.id})`);
 }
 
 async function bringWindowToFocus() {
@@ -1009,6 +1036,11 @@ app.whenReady().then(async () => {
   // Verifica o status do backend ao iniciar e depois periodicamente
   checkBackendStatus();
   setInterval(checkBackendStatus, 60000); // Verifica a cada 60 segundos
+});
+
+// Ensure shortcuts are active after app is ready
+app.on("browser-window-focus", () => {
+  registerGlobalShortcuts();
 });
 
 app.on("window-all-closed", () => {

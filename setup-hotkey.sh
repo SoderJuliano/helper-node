@@ -2,7 +2,7 @@
 
 # setup-hotkey.sh
 # This script automatically configures the global hotkey (Ctrl+D) for the Helper-Node application.
-# It detects the desktop environment (GNOME or Hyprland) and applies the necessary settings.
+# It detects the desktop environment (GNOME, KDE Plasma, or Hyprland) and applies the necessary settings.
 
 echo "Starting Auto-Configuration for Helper-Node Global Hotkey..."
 
@@ -164,13 +164,103 @@ elif [[ "$XDG_CURRENT_DESKTOP" == "Hyprland" ]]; then
     echo "(You can usually do this with 'hyprctl reload' or by restarting Hyprland)."
     echo "------------------------------------------------------------------"
 
+elif [[ "$XDG_CURRENT_DESKTOP" == *"KDE"* || "$XDG_CURRENT_DESKTOP" == *"PLASMA"* || "$XDG_CURRENT_DESKTOP" == *"KDE Plasma"* ]]; then
+    # --- KDE Plasma Configuration via KHotKeys ---
+    echo "Attempting to configure for KDE Plasma..."
+
+    KHOTKEYS_DIR="$HOME/.config/khotkeys"
+    KHOTKEYS_FILE="$KHOTKEYS_DIR/helper-node.khotkeys"
+
+    mkdir -p "$KHOTKEYS_DIR"
+
+    cat > "$KHOTKEYS_FILE" << 'EOF'
+[Data]
+Name=Helper-Node
+Enabled=true
+
+[Data_1]
+Comment=Toggle Recording
+Enabled=true
+Name=Helper-Node: Toggle Recording
+Type=SHORTCUT
+Shortcut=Ctrl+D
+TriggerOnRelease=false
+CommandURL=curl -X POST http://localhost:3000/toggle-recording
+
+[Data_2]
+Comment=Move to Display 1
+Enabled=true
+Name=Helper-Node: Move to Display 1
+Type=SHORTCUT
+Shortcut=Ctrl+Shift+1
+TriggerOnRelease=false
+CommandURL=curl -X POST http://localhost:3000/move-to-display/0
+
+[Data_3]
+Comment=Move to Display 2
+Enabled=true
+Name=Helper-Node: Move to Display 2
+Type=SHORTCUT
+Shortcut=Ctrl+Shift+2
+TriggerOnRelease=false
+CommandURL=curl -X POST http://localhost:3000/move-to-display/1
+
+[Data_4]
+Comment=Focus App and Input (Ctrl+I)
+Enabled=true
+Name=Helper-Node: Focus App and Input (Ctrl+I)
+Type=SHORTCUT
+Shortcut=Ctrl+I
+TriggerOnRelease=false
+CommandURL=curl -X POST http://localhost:3000/bring-to-focus-and-input
+
+[Data_5]
+Comment=Focus App and Input (Ctrl+Shift+I)
+Enabled=true
+Name=Helper-Node: Focus App and Input (Ctrl+Shift+I)
+Type=SHORTCUT
+Shortcut=Ctrl+Shift+I
+TriggerOnRelease=false
+CommandURL=curl -X POST http://localhost:3000/bring-to-focus-and-input
+
+[Data_6]
+Comment=Capture Screen
+Enabled=true
+Name=Helper-Node: Capture Screen
+Type=SHORTCUT
+Shortcut=Ctrl+Shift+F
+TriggerOnRelease=false
+CommandURL=curl -X POST http://localhost:3000/capture-screen
+EOF
+
+    echo "Helper-Node KHotKeys configuration written to $KHOTKEYS_FILE"
+
+    # Reload khotkeys if available
+    if command -v qdbus &> /dev/null; then
+        qdbus org.kde.khotkeys /khotkeys org.kde.KHotKeys.read_config || true
+        qdbus org.kde.kglobalaccel /component/khotkeys org.kde.kglobalaccel.Component.reload || true
+    else
+        echo "qdbus not found; if shortcuts are not active, log out/in or run: kquitapp5 khotkeys && kstart5 khotkeys"
+    fi
+
+    echo "------------------------------------------------------------------"
+    echo "SUCCESS: KDE Plasma hotkeys configured!"
+    echo "Global hotkeys should now be active: Ctrl+D, Ctrl+Shift+1, Ctrl+Shift+2, Ctrl+I, Ctrl+Shift+I, Ctrl+Shift+F."
+    echo "If they don't work immediately, try restarting KHotKeys: kquitapp5 khotkeys && kstart5 khotkeys"
+    echo "------------------------------------------------------------------"
+
 else
     echo "------------------------------------------------------------------"
     echo "WARNING: Unsupported Desktop Environment: $XDG_CURRENT_DESKTOP"
-    echo "This script only supports GNOME and Hyprland automatically."
-    echo "Please configure the global hotkey manually as described in ROADMAP.md"
-    echo "Command: $HOTKEY_COMMAND"
-    echo "Shortcut: Ctrl+D"
+    echo "This script supports GNOME, KDE Plasma, and Hyprland automatically."
+    echo "Please configure the global hotkeys manually as described in ROADMAP.md"
+    echo "Commands and suggested shortcuts:"
+    echo "  Ctrl+D         -> curl -X POST http://localhost:3000/toggle-recording"
+    echo "  Ctrl+I         -> curl -X POST http://localhost:3000/bring-to-focus-and-input"
+    echo "  Ctrl+Shift+I   -> curl -X POST http://localhost:3000/bring-to-focus-and-input"
+    echo "  Ctrl+Shift+F   -> curl -X POST http://localhost:3000/capture-screen"
+    echo "  Ctrl+Shift+1   -> curl -X POST http://localhost:3000/move-to-display/0"
+    echo "  Ctrl+Shift+2   -> curl -X POST http://localhost:3000/move-to-display/1"
     echo "------------------------------------------------------------------"
     exit 1
 fi

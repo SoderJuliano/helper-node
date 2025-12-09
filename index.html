@@ -88,12 +88,13 @@
             padding: 50px;
             position: fixed;
             color: white;
-            overflow-y: hidden; /* Inicialmente escondido */
+            overflow-y: auto; /* Was hidden; enable scrolling by default */
+            overflow-x: hidden;
             scrollbar-width: none; /* Firefox */
             -ms-overflow-style: none; /* IE/Edge */
         }
 
-        /* Esconde a scrollbar no Chrome/Safari */
+        /* Hide scrollbar visuals while allowing scroll */
         #transcription::-webkit-scrollbar {
             width: 0;
             height: 0;
@@ -101,8 +102,8 @@
         }
 
         #transcription:hover {
-            overflow-y: auto; /* Permite rolagem vertical */
-            overflow-x: hidden; /* Impede rolagem horizontal */
+            overflow-y: auto; /* keep consistent on hover */
+            overflow-x: hidden;
             scrollbar-width: none; /* Firefox */
         }
 
@@ -326,6 +327,10 @@
             background: #45a049;
         }
 
+        .ocr-left {
+            text-align: left !important;
+        }
+
     </style>
     <!-- Inclua a biblioteca Lottie -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js"></script>
@@ -468,13 +473,13 @@
 
                             if (manualInputActive) {
                                 // NOVO FLUXO: Input manual está aberto
-                                console.log('Input manual ativo, apenas mostrando preview da imagem.');
+                                console.log('Input manual ativo, mostrando preview e iniciando OCR da imagem.');
                                 pastedImageForManualInput = base64Image;
-                                
                                 const preview = document.getElementById('screenshot-preview');
                                 preview.src = base64Image;
                                 preview.style.display = 'block';
-
+                                // Processa OCR agora para ter o texto pronto no envio
+                                window.electronAPI.processPastedImage(base64Image);
                             } else {
                                 // FLUXO ANTIGO: Input manual fechado, processa imediatamente
                                 const captureIcon = document.getElementById('capture');
@@ -683,21 +688,66 @@
                 }, 100);
             });
 
-
-            window.electronAPI.onOcrResult(({ text, screenshotPath }) => {
+            window.electronAPI.onOcrResult(({ text, screenshotPath, base64Image }) => {
                 const preview = document.getElementById('screenshot-preview');
                 const robot = document.getElementById('robot');
                 const animationContainer = document.getElementById('animation-container');
+                const transcriptionElement = document.getElementById('transcription');
 
                 // Esconde outros elementos de carregamento
                 animationContainer.style.display = 'none';
 
-                // Mostra a miniatura
-                preview.src = `file://${screenshotPath}`;
+                // Mostra a miniatura (use base64 if provided)
+                if (base64Image) {
+                    preview.src = base64Image;
+                } else {
+                    preview.src = `file://${screenshotPath}`;
+                }
                 preview.style.display = 'block';
+
+                // Se input manual está ativo, não envia nada ainda; apenas guarda e mostra
+                if (manualInputActive) {
+                    pastedImageForManualInput = base64Image || (`file://${screenshotPath}`);
+                    robot.style.display = 'none';
+                    // Não altera o transcriptionElement aqui para manter o input
+                    return;
+                }
+
                 robot.style.display = 'block';
-                
-                document.getElementById('transcription').innerText = text;
+                // Alinhar à esquerda para transcrições de imagem
+                transcriptionElement.classList.add('ocr-left');
+
+                // Detectar conteúdo HTML/CSS e renderizar como bloco de código
+                const hasHtmlTags = /<\/?[a-zA-Z][^>]*>/m.test(text);
+                const hasCssBraces = /\{[\s\S]*\}/m.test(text);
+                transcriptionElement.innerHTML = '';
+                if (hasHtmlTags || hasCssBraces) {
+                    const pre = document.createElement('pre');
+                    const code = document.createElement('code');
+                    const copyBtn = document.createElement('button');
+                    copyBtn.className = 'copy-button';
+                    copyBtn.textContent = 'Copy';
+                    copyBtn.addEventListener('click', async () => {
+                        try {
+                            await navigator.clipboard.writeText(text);
+                            const originalText = copyBtn.textContent;
+                            copyBtn.textContent = '✔️';
+                            setTimeout(() => { copyBtn.textContent = originalText; }, 2000);
+                        } catch (err) {
+                            console.error('Erro ao copiar:', err);
+                            const originalText = copyBtn.textContent;
+                            copyBtn.textContent = '❌';
+                            setTimeout(() => { copyBtn.textContent = originalText; }, 2000);
+                        }
+                    });
+                    code.textContent = text;
+                    pre.appendChild(copyBtn);
+                    pre.appendChild(code);
+                    transcriptionElement.appendChild(pre);
+                } else {
+                    // Texto simples
+                    transcriptionElement.textContent = text;
+                }
 
                 sentToAI(text);
 
@@ -715,6 +765,17 @@
                 
             })
 
+            window.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && manualInputActive) {
+                    manualInputActive = false;
+                    const transcriptionElement = document.getElementById('transcription');
+                    transcriptionElement.innerHTML = '';
+                    pastedImageForManualInput = null;
+                    document.getElementById('screenshot-preview').style.display = 'none';
+                    e.stopPropagation();
+                    e.preventDefault();
+                }
+            });
 
         });
 
@@ -887,29 +948,35 @@
         
         async function submitManualQuestion(text, container) {
             manualInputActive = false;
-            
-            // Se uma imagem foi colada, usa o novo fluxo
+
+            const isDebug = await window.electronAPI.getDebugModeStatus();
+
             if (pastedImageForManualInput) {
-                window.electronAPI.processManualInputWithImage({ text: text, image: pastedImageForManualInput });
-                
-                // Limpa a imagem e esconde o preview
-                pastedImageForManualInput = null;
-                document.getElementById('screenshot-preview').style.display = 'none';
-                
-                // Exibe a pergunta digitada na UI
+                // We already processed image OCR in main and will send combined prompt here
+                // Show the question in UI
                 const questionSpan = document.createElement('span');
                 questionSpan.className = 'question-text';
                 questionSpan.textContent = text;
                 container.replaceWith(questionSpan);
                 currentQuestionElement = questionSpan;
-                
+
                 startProcessing();
-                return; // Finaliza aqui para o novo fluxo
+
+                // Fetch promptInstruction and send combined
+                const promptInstruction = await window.electronAPI.getPromptInstruction();
+                const combined = `${promptInstruction}${text}`; // OCR text will be appended by backend flow or renderer when received
+                // If we kept OCR text locally, append it
+                if (typeof window.lastOcrText === 'string' && window.lastOcrText.length > 0) {
+                    sentToAI(`${promptInstruction}${text}\n${window.lastOcrText}`);
+                } else {
+                    sentToAI(combined);
+                }
+                pastedImageForManualInput = null;
+                document.getElementById('screenshot-preview').style.display = 'none';
+                return;
             }
-            
-            // Fluxo antigo (apenas texto)
-            const isDebug = await window.electronAPI.getDebugModeStatus();
-            
+
+            // Existing debug/plain flows remain unchanged
             if (isDebug) {
                 const promptInstruction = await window.electronAPI.getPromptInstruction();
                 const backendUrl = (await window.electronAPI.getBackendUrl()) || "URL_INDEFINIDA";
@@ -959,6 +1026,8 @@
             sentToAI(text);
         }
 
+        window.electronAPI.onOcrResult(({ text }) => { window.lastOcrText = text || ''; });
+
         // const { ipcRenderer } = require('electron');
 
         // ipcRenderer.on('sharing-status', (event, data) => {
@@ -984,3 +1053,4 @@
     </script>
 </body>
 </html>
+``` 
