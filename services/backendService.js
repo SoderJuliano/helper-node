@@ -1,6 +1,25 @@
 const axios = require("axios");
 const configService = require("./configService");
 const { getIp } = require("./configService");
+const https = require('https');
+const http = require('http');
+
+// Configurar agentes HTTP/HTTPS com keepAlive para evitar socket hang up
+const httpAgent = new http.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 60000,
+  maxSockets: 50,
+  maxFreeSockets: 10,
+  timeout: 180000
+});
+
+const httpsAgent = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 60000,
+  maxSockets: 50,
+  maxFreeSockets: 10,
+  timeout: 180000
+});
 
 // Variável para armazenar a URL da API
 let apiUrl = "";
@@ -61,6 +80,8 @@ class BackendService {
       const response = await axios.get(`${url}/ping`, {
         headers,
         timeout: 5000,
+        httpAgent,
+        httpsAgent
       });
       return response.status === 200;
     } catch (error) {
@@ -100,7 +121,7 @@ class BackendService {
       const body = {
         newPrompt: `${promptInstruction}${texto}`,
         ip: ip,
-        email: "julianosoder1989@gmail.com",
+        email: "julianosoder.js@gmail.com",
         agent: false,
         language: mappedLang,
       };
@@ -110,7 +131,12 @@ class BackendService {
         "ngrok-skip-browser-warning": "true",
       };
 
-      const response = await axios.post(endpoint, body, { headers });
+      const response = await axios.post(endpoint, body, { 
+        headers,
+        timeout: 180000, // 180 segundos para dar tempo do LLM processar
+        httpAgent,
+        httpsAgent
+      });
 
       console.log(
         "Backend response data:",
@@ -135,6 +161,14 @@ class BackendService {
         console.error("Status:", error.response.status);
         console.error("Data:", JSON.stringify(error.response.data, null, 2));
         console.error("------------------------------------");
+      }
+
+      // Se for timeout ou socket hang up, não limpa a URL (o backend está funcionando, só demorou)
+      if (error.code === "ECONNABORTED" || error.message.includes("socket hang up")) {
+        console.log("Request timeout or connection closed - backend is processing but took too long");
+        throw new Error(
+          `Backend está processando mas a resposta demorou. Tente aumentar o timeout.`
+        );
       }
 
       // Se der erro de rede, pode ser que a URL mudou. Limpamos para buscar de novo na próxima vez.
