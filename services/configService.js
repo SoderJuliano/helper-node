@@ -6,6 +6,7 @@ const defaultConfig = {
   promptInstruction: "Como responder essa questão em com até 65 palavras: ",
   debugMode: false,
   language: "pt-br", // Add default language
+  voiceModel: "llama", // Add default voice model
 };
 
 // O caminho para o diretório de dados do usuário do app
@@ -152,6 +153,22 @@ function getIp() {
     });
 }
 
+function getVoiceModel() {
+  if (!currentConfig) {
+    currentConfig = loadConfig();
+  }
+  return currentConfig.voiceModel || defaultConfig.voiceModel;
+}
+
+function setVoiceModel(voiceModel) {
+  if (!currentConfig) {
+    currentConfig = loadConfig();
+  }
+  currentConfig.voiceModel = voiceModel;
+  saveConfig(currentConfig);
+  currentConfig = null;
+}
+
 module.exports = {
   initialize,
   getPromptInstruction,
@@ -160,5 +177,7 @@ module.exports = {
   setDebugModeStatus,
   getLanguage,
   setLanguage,
+  getVoiceModel,
+  setVoiceModel,
   getIp,
 };

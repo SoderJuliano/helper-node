@@ -331,6 +331,82 @@
             text-align: left !important;
         }
 
+        /* Streaming cursor animation */
+        .typing-cursor {
+            display: inline-block;
+            width: 2px;
+            height: 1em;
+            background-color: #00ff00;
+            margin-left: 2px;
+            animation: blink 1s infinite;
+            vertical-align: text-bottom;
+        }
+
+        @keyframes blink {
+            0%, 49% {
+                opacity: 1;
+            }
+            50%, 100% {
+                opacity: 0;
+            }
+        }
+
+        .streaming-response {
+            font-family: Arial, sans-serif;
+            line-height: 1.5;
+            overflow-wrap: break-word;
+            margin-top: 20px;
+            text-align: left;
+        }
+
+        /* Toast notification */
+        .copy-toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background-color: rgba(76, 175, 80, 0.95);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            z-index: 10000;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            pointer-events: none;
+        }
+
+        .copy-toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Cursor pointer em blocos de código */
+        .ia-response pre code,
+        .streaming-response pre code {
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .ia-response pre code:hover,
+        .streaming-response pre code:hover {
+            background-color: rgba(100, 100, 100, 0.3);
+        }
+
+        /* Cursor pointer em código inline */
+        .ia-response code:not(pre code),
+        .streaming-response code:not(pre code) {
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .ia-response code:not(pre code):hover,
+        .streaming-response code:not(pre code):hover {
+            background-color: rgba(100, 100, 100, 0.5);
+        }
+
     </style>
     <!-- Inclua a biblioteca Lottie -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js"></script>
@@ -355,6 +431,9 @@
         <h1 id="greeting">Olá amigo</h1>
         <div id="transcription"></div>
     </div>
+    
+    <!-- Toast para copiar código -->
+    <div id="copy-toast" class="copy-toast"></div>
     
     <img id="screenshot-preview" style="
         position: absolute;
@@ -420,6 +499,62 @@
         let isEditingQuestion = false;
         let manualInputActive = false;
         let pastedImageForManualInput = null;
+
+        // Função para mostrar toast de "copiado"
+        async function showCopyToast() {
+            const lang = await window.electronAPI.getLanguage();
+            const messages = {
+                'pt-br': 'Copiado para a área de transferência',
+                'en-us': 'Copied to clipboard'
+            };
+            
+            const toast = document.getElementById('copy-toast');
+            toast.textContent = messages[lang] || messages['pt-br'];
+            toast.classList.add('show');
+            
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2000);
+        }
+
+        // Delegação de evento para copiar código ao clicar
+        document.addEventListener('click', async (e) => {
+            // Verifica se clicou em um bloco de código (pre > code)
+            const codeElement = e.target.closest('pre code');
+            if (codeElement && e.target.tagName !== 'BUTTON') {
+                // Pega apenas o texto do código, sem o botão
+                const codeText = codeElement.textContent.replace(/^(Copy|Copied!|✓|✗)/, '').trim();
+                
+                try {
+                    await navigator.clipboard.writeText(codeText);
+                    showCopyToast();
+                    console.log('Código copiado:', codeText.substring(0, 50) + '...');
+                } catch (err) {
+                    console.error('Erro ao copiar código:', err);
+                }
+                
+                e.stopPropagation();
+                e.preventDefault();
+                return;
+            }
+            
+            // Verifica se clicou em código inline (apenas <code>, sem <pre>)
+            const inlineCode = e.target.closest('code:not(pre code)');
+            if (inlineCode) {
+                const codeText = inlineCode.textContent.trim();
+                
+                try {
+                    await navigator.clipboard.writeText(codeText);
+                    showCopyToast();
+                    console.log('Código inline copiado:', codeText);
+                } catch (err) {
+                    console.error('Erro ao copiar código inline:', err);
+                }
+                
+                e.stopPropagation();
+                e.preventDefault();
+            }
+        });
 
         // Carregar a animação
         function loadAnimation() {
@@ -765,6 +900,97 @@
                 
             })
 
+            // ===== STREAMING LISTENERS =====
+            let streamingElement = null;
+            let streamingText = '';
+            let typingCursor = null;
+
+            window.electronAPI.onStreamChunk((chunk) => {
+                const transcriptionElement = document.getElementById('transcription');
+                
+                console.log('Chunk recebido:', JSON.stringify(chunk), 'Length:', chunk.length);
+                
+                // Cria o elemento de streaming na primeira chunk
+                if (!streamingElement) {
+                    streamingElement = document.createElement('div');
+                    streamingElement.className = 'streaming-response';
+                    
+                    typingCursor = document.createElement('span');
+                    typingCursor.className = 'typing-cursor';
+                    
+                    transcriptionElement.appendChild(streamingElement);
+                    streamingElement.appendChild(typingCursor);
+                    streamingText = '';
+                }
+                
+                // SIMPLE RULE: Just concatenate tokens as-is, backend should send spaces
+                // If backend doesn't send spaces between words, they will be joined
+                streamingText += chunk;
+                
+                // Remove o cursor, atualiza o texto, adiciona o cursor de volta
+                if (typingCursor && typingCursor.parentNode) {
+                    typingCursor.remove();
+                }
+                
+                streamingElement.textContent = streamingText;
+                streamingElement.appendChild(typingCursor);
+                
+                // Scroll automático
+                transcriptionElement.scrollTo({
+                    top: transcriptionElement.scrollHeight,
+                    behavior: 'smooth'
+                });
+            });
+
+            window.electronAPI.onStreamComplete(() => {
+                const robot = document.getElementById('robot');
+                robot.style.display = 'none';
+                
+                // Remove o cursor piscando
+                if (typingCursor && typingCursor.parentNode) {
+                    typingCursor.remove();
+                }
+                
+                // Formata o texto final
+                if (streamingElement && streamingText) {
+                    // Aplica formatação HTML básica
+                    const formatted = formatStreamedText(streamingText);
+                    streamingElement.innerHTML = formatted;
+                    
+                    // Adiciona event listeners para os botões de copiar
+                    const copyButtons = streamingElement.querySelectorAll('.copy-button');
+                    copyButtons.forEach(btn => {
+                        btn.addEventListener('click', async (e) => {
+                            const codeId = btn.getAttribute('data-code-id');
+                            const codeElement = document.getElementById(codeId);
+                            if (codeElement) {
+                                try {
+                                    await navigator.clipboard.writeText(codeElement.textContent);
+                                    const originalText = btn.textContent;
+                                    btn.textContent = '✓ Copied!';
+                                    setTimeout(() => {
+                                        btn.textContent = originalText;
+                                    }, 2000);
+                                } catch (err) {
+                                    console.error('Erro ao copiar:', err);
+                                    btn.textContent = '✗ Error';
+                                    setTimeout(() => {
+                                        btn.textContent = 'Copy';
+                                    }, 2000);
+                                }
+                            }
+                        });
+                    });
+                }
+                
+                // Reseta as variáveis
+                streamingElement = null;
+                streamingText = '';
+                typingCursor = null;
+                
+                console.log('Stream completo!');
+            });
+
             window.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape' && manualInputActive) {
                     manualInputActive = false;
@@ -779,8 +1005,70 @@
 
         });
 
-        function sentToAI(text) {
-            window.electronAPI.sendTextToGemini(text);
+        async function sentToAI(text) {
+            const voiceModel = await window.electronAPI.getVoiceModel();
+            
+            if (voiceModel === 'llama-stream') {
+                // Usa streaming
+                window.electronAPI.sendTextToGeminiStream(text);
+            } else {
+                // Usa o método normal
+                window.electronAPI.sendTextToGemini(text);
+            }
+        }
+
+        function formatStreamedText(text) {
+            if (!text) return '';
+            
+            // Escape HTML
+            const escapeHTML = (str) => {
+                return str
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;");
+            };
+
+            let formatted = text;
+            const codeBlocks = [];
+            
+            // Primeiro, captura e protege blocos de código multiline (```)
+            formatted = formatted.replace(/```(\w+)?\n?([\s\S]*?)```/g, (match, lang, code) => {
+                const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
+                const codeId = `stream-code-${Date.now()}-${codeBlocks.length}`;
+                codeBlocks.push(
+                    `<pre><button class="copy-button" data-code-id="${codeId}">Copy</button><code id="${codeId}" class="language-${lang || 'text'}">${escapeHTML(code.trim())}</code></pre>`
+                );
+                return placeholder;
+            });
+            
+            // Captura código inline (`codigo`)
+            formatted = formatted.replace(/`([^`]+)`/g, (match, code) => {
+                return `<code style="background-color: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 3px; font-family: 'Courier New', monospace;">${escapeHTML(code)}</code>`;
+            });
+            
+            // Negrito
+            formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            
+            // Itálico (evita conflito com **)
+            formatted = formatted.replace(/(?<!\*)\*([^\*]+)\*(?!\*)/g, '<em>$1</em>');
+            
+            // Quebras de linha duplas = parágrafo
+            formatted = formatted.replace(/\n\n/g, '</p><p>');
+            
+            // Quebras de linha simples = <br>
+            formatted = formatted.replace(/\n/g, '<br>');
+            
+            // Envolve em parágrafo se não tiver
+            if (!formatted.startsWith('<p>')) {
+                formatted = '<p>' + formatted + '</p>';
+            }
+            
+            // Restaura blocos de código
+            codeBlocks.forEach((block, index) => {
+                formatted = formatted.replace(`__CODE_BLOCK_${index}__`, block);
+            });
+            
+            return formatted;
         }
         
         function handleQuestionEdit(questionSpan) {
@@ -1053,4 +1341,3 @@
     </script>
 </body>
 </html>
-``` 

@@ -290,9 +290,21 @@
                 <option value="us-en">English (US)</option>
             </select>
         </div>
+        <div class="setting-item">
+            <label for="voice-model">Modelo de Voz</label>
+            <select id="voice-model" class="custom-select">
+                <option value="llama" selected>llama</option>
+                <option value="llama-stream">llama-stream</option>
+            </select>
+        </div>
 
     </div>
     <button id="save-btn">Salvar e Fechar</button>
+    <div style="margin-top: 20px; padding: 15px; background-color: rgba(0, 0, 0, 0.3); border-radius: 5px; -webkit-app-region: no-drag;">
+        <p id="backend-url" style="margin: 0; font-size: 13px; color: #aaa;">
+            Backend URL: <span id="backend-url-value" style="font-weight: bold; color: #00aaff; word-break: break-all;">Carregando...</span>
+        </p>
+    </div>
     <script src="config.js"></script>
 </body>
 </html>

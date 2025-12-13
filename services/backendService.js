@@ -184,6 +184,111 @@ class BackendService {
     }
   }
 
+  async responderStream(texto, onChunk, onComplete, onError) {
+    if (!texto) throw new Error("Não entendi");
+
+    // Se a URL não foi pega ainda, tenta novamente
+    if (!apiUrl) {
+      console.log("API URL not found, fetching again...");
+      await getLastEnvUrl();
+    }
+
+    // Se ainda não tiver a URL, lança um erro
+    if (!apiUrl) {
+      throw new Error("Could not retrieve backend URL.");
+    }
+
+    const ip = await configService.getIp();
+    const lang = configService.getLanguage();
+
+    const langMap = {
+      'pt-br': 'PORTUGUESE',
+      'us-en': 'ENGLISH'
+    };
+    const mappedLang = langMap[lang] || 'PORTUGUESE';
+
+    try {
+      const endpoint = `${apiUrl}/llama3-stream`;
+      const promptInstruction = configService.getPromptInstruction();
+      const body = {
+        newPrompt: `${promptInstruction}${texto}`,
+        ip: ip,
+        email: "julianosoder.js@gmail.com",
+        agent: false,
+        language: mappedLang,
+      };
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer Y3VzdG9tY3ZvbmxpbmU=',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) {
+          if (onComplete) onComplete();
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        
+        // Guarda a última linha incompleta
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim();
+            
+            // Ignora marcadores de fim
+            if (data === '[DONE]' || data.toLowerCase() === 'done') {
+              if (onComplete) onComplete();
+              return;
+            }
+
+            try {
+              const parsed = JSON.parse(data);
+              let token = parsed.response || parsed.message || data;
+              
+              if (typeof token === 'string' && token) {
+                console.log('Token recebido do backend:', JSON.stringify(token));
+                
+                // Backend já adiciona espaços, só passa direto
+                if (onChunk) onChunk(token);
+              }
+            } catch (e) {
+              // Se não for JSON, trata como texto direto
+              let token = data;
+              
+              if (typeof token === 'string' && token.toLowerCase() !== 'done' && token) {
+                console.log('Token recebido (raw):', JSON.stringify(token));
+                if (onChunk) onChunk(token);
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Erro ao chamar o backend stream:", error.message);
+      if (onError) onError(error);
+      throw error;
+    }
+  }
+
   formatToHTML(text) {
     if (!text) return "";
 

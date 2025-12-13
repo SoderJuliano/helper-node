@@ -31,10 +31,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
       callback(resposta);
     });
   },
+  onStreamChunk: (callback) => 
+    ipcRenderer.on("gemini-stream-chunk", (event, chunk) => callback(chunk)),
+  onStreamComplete: (callback) => 
+    ipcRenderer.on("gemini-stream-complete", () => callback()),
   onOcrResult: (callback) =>
     ipcRenderer.on("ocr-result", (event, data) => callback(data)),
   // sendTextToLlama: (text) => ipcRenderer.send('send-to-llama', text),
   sendTextToGemini: (text) => ipcRenderer.send("send-to-gemini", text),
+  sendTextToGeminiStream: (text) => ipcRenderer.send("send-to-gemini-stream", text),
+  getVoiceModel: () => ipcRenderer.invoke("get-voice-model"),
   stopNotifications: () => ipcRenderer.send("stop-notifications"),
   startNotifications: () => ipcRenderer.send("start-notifications"),
   cancelIaRequest: () => ipcRenderer.send("cancel-ia-request"),

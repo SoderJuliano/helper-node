@@ -952,6 +952,32 @@ ipcMain.on("send-to-gemini", async (event, text) => {
   }
 });
 
+ipcMain.on("send-to-gemini-stream", async (event, text) => {
+  try {
+    console.log("IPC: Usando Backend Stream Service...");
+    
+    await BackendService.responderStream(
+      text,
+      // onChunk
+      (chunk) => {
+        event.sender.send("gemini-stream-chunk", chunk);
+      },
+      // onComplete
+      () => {
+        event.sender.send("gemini-stream-complete");
+      },
+      // onError
+      (error) => {
+        console.error("Stream error:", error);
+        event.sender.send("transcription-error", error.message);
+      }
+    );
+  } catch (error) {
+    console.error("IPC: Stream service error:", error);
+    event.sender.send("transcription-error", "Failed to process stream response");
+  }
+});
+
 ipcMain.on("stop-notifications", () => {
   if (waitingNotificationInterval) {
     clearInterval(waitingNotificationInterval);
@@ -1015,6 +1041,15 @@ ipcMain.handle("get-language", () => {
 
 ipcMain.on("set-language", (event, language) => {
   configService.setLanguage(language);
+});
+
+// IPC Handlers for Voice Model
+ipcMain.handle("get-voice-model", () => {
+  return configService.getVoiceModel();
+});
+
+ipcMain.on("set-voice-model", (event, voiceModel) => {
+  configService.setVoiceModel(voiceModel);
 });
 
 app.whenReady().then(async () => {
