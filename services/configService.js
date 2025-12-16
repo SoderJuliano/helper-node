@@ -5,13 +5,11 @@ const fs = require("fs");
 const defaultConfig = {
   promptInstruction: "Como responder essa questão em com até 65 palavras: ",
   debugMode: false,
-  language: "pt-br", // Add default language
-  voiceModel: "llama", // Add default voice model
+  language: "pt-br",
+  aiModel: "llama",
+  openIaToken: "",
 };
 
-// O caminho para o diretório de dados do usuário do app
-// app.getPath('userData') só está disponível após o app estar 'ready'
-// Por isso, inicializamos a variável de caminho mais tarde.
 let configPath;
 
 function getConfigPath() {
@@ -35,15 +33,12 @@ function loadConfig() {
       const fileContent = fs.readFileSync(configFilePath, 'utf-8');
       const loadedConfig = JSON.parse(fileContent);
 
-      // Garante que existe language
       const lang = loadedConfig.language || defaultConfig.language;
 
-      // Garante promptInstruction padrão baseado no lang
       if (!loadedConfig.promptInstruction || loadedConfig.promptInstruction.trim() === '') {
         loadedConfig.promptInstruction = getDefaultPromptInstruction(lang);
       }
 
-      // Mescla com o padrão para garantir que todas as chaves existam
       return { ...defaultConfig, ...loadedConfig };
     }
   } catch (error) {
@@ -79,7 +74,6 @@ function getPromptInstruction() {
   ) {
     return instruction;
   }
-  // Fallback para o valor padrão
   return defaultConfig.promptInstruction;
 }
 
@@ -89,7 +83,6 @@ function setPromptInstruction(instruction) {
   }
   currentConfig.promptInstruction = instruction;
   saveConfig(currentConfig);
-  // Força a recarga na proxima chamada
   currentConfig = null;
 }
 
@@ -106,7 +99,6 @@ function setDebugModeStatus(status) {
   }
   currentConfig.debugMode = status;
   saveConfig(currentConfig);
-  // Força a recarga na proxima chamada
   currentConfig = null;
 }
 
@@ -125,7 +117,6 @@ function setLanguage(language) {
   const oldLang = currentConfig.language;
   currentConfig.language = language;
 
-  // Só troca o prompt se for o prompt padrão antigo
   const oldDefault = getDefaultPromptInstruction(oldLang);
   if (currentConfig.promptInstruction === oldDefault) {
     currentConfig.promptInstruction = getDefaultPromptInstruction(language);
@@ -135,7 +126,6 @@ function setLanguage(language) {
   currentConfig = null;
 }
 
-// Carrega a configuração inicial
 function initialize() {
   currentConfig = loadConfig();
 }
@@ -153,20 +143,36 @@ function getIp() {
     });
 }
 
-function getVoiceModel() {
+function getAiModel() {
   if (!currentConfig) {
     currentConfig = loadConfig();
   }
-  return currentConfig.voiceModel || defaultConfig.voiceModel;
+  return currentConfig.aiModel || defaultConfig.aiModel;
 }
 
-function setVoiceModel(voiceModel) {
+function setAiModel(aiModel) {
   if (!currentConfig) {
     currentConfig = loadConfig();
   }
-  currentConfig.voiceModel = voiceModel;
+  currentConfig.aiModel = aiModel;
   saveConfig(currentConfig);
   currentConfig = null;
+}
+
+function getOpenIaToken() {
+    if (!currentConfig) {
+        currentConfig = loadConfig();
+    }
+    return currentConfig.openIaToken || "";
+}
+
+function setOpenIaToken(token) {
+    if (!currentConfig) {
+        currentConfig = loadConfig();
+    }
+    currentConfig.openIaToken = token;
+    saveConfig(currentConfig);
+    currentConfig = null;
 }
 
 module.exports = {
@@ -177,7 +183,9 @@ module.exports = {
   setDebugModeStatus,
   getLanguage,
   setLanguage,
-  getVoiceModel,
-  setVoiceModel,
+  getAiModel,
+  setAiModel,
+  getOpenIaToken,
+  setOpenIaToken,
   getIp,
 };

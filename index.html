@@ -1006,9 +1006,9 @@
         });
 
         async function sentToAI(text) {
-            const voiceModel = await window.electronAPI.getVoiceModel();
+            const aiModel = await window.electronAPI.getAiModel();
             
-            if (voiceModel === 'llama-stream') {
+            if (aiModel === 'llama-stream') {
                 // Usa streaming
                 window.electronAPI.sendTextToGeminiStream(text);
             } else {

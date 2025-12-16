@@ -6,7 +6,9 @@ const debugModeToggle = document.getElementById("debug-mode-toggle");
 const debugModeStatus = document.getElementById("debug-mode-status");
 const langSelect = document.getElementById("language-select");
 const backendUrlValue = document.getElementById("backend-url-value");
-const voiceModelSelect = document.getElementById("voice-model");
+const aiModelSelect = document.getElementById("ai-model");
+const openIaTokenContainer = document.getElementById("openai-token-container");
+const openIaTokenInput = document.getElementById("openai-token");
 
 // Helper function to update the debug mode status text
 function updateDebugModeStatus(isDebugging) {
@@ -34,10 +36,21 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (savedLang) langSelect.value = savedLang;
 
   // -------------------------
-  // Load saved voice model
+  // Load saved AI model
   // -------------------------
-  const savedVoiceModel = await ipcRenderer.invoke("get-voice-model");
-  if (savedVoiceModel) voiceModelSelect.value = savedVoiceModel;
+  const savedAiModel = await ipcRenderer.invoke("get-ai-model");
+  if (savedAiModel) {
+    aiModelSelect.value = savedAiModel;
+  }
+  
+  // Show/hide OpenAI token input based on saved model
+  if (aiModelSelect.value === 'openIa') {
+    openIaTokenContainer.style.display = 'flex';
+    const savedToken = await ipcRenderer.invoke("get-open-ia-token");
+    if (savedToken) {
+        openIaTokenInput.value = savedToken;
+    }
+  }
 
   // -------------------------
   // Load backend URL from abra-api
@@ -73,6 +86,15 @@ debugModeToggle.addEventListener("change", () => {
   updateDebugModeStatus(debugModeToggle.checked);
 });
 
+// Show/hide OpenAI token input based on AI model selection
+aiModelSelect.addEventListener('change', () => {
+    if (aiModelSelect.value === 'openIa') {
+        openIaTokenContainer.style.display = 'flex';
+    } else {
+        openIaTokenContainer.style.display = 'none';
+    }
+});
+
 // Save everything
 saveButton.addEventListener("click", async () => {
   // Save prompt instruction
@@ -84,8 +106,11 @@ saveButton.addEventListener("click", async () => {
   // Save language
   ipcRenderer.send("set-language", langSelect.value);
 
-  // Save voice model
-  ipcRenderer.send("set-voice-model", voiceModelSelect.value);
+  // Save AI model
+  ipcRenderer.send("set-ai-model", aiModelSelect.value);
+  if (aiModelSelect.value === 'openIa') {
+    ipcRenderer.send("set-open-ia-token", openIaTokenInput.value);
+  }
 
   // Close window
   window.close();

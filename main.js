@@ -16,6 +16,7 @@ const fs2 = require("fs");
 const GeminiService = require("./services/geminiService.js"); // Mantido para a funcionalidade de cancelamento
 const BackendService = require("./services/backendService.js");
 const TesseractService = require("./services/tesseractService.js");
+const OpenAIService = require("./services/openAIService.js");
 const ipcService = require("./services/ipcService.js");
 const configService = require("./services/configService.js");
 
@@ -508,6 +509,7 @@ function chunkText(text, chunkSize = 250) {
 }
 
 async function getIaResponse(text) {
+  console.log("getIaResponse called with text:", text);
   waitingNotificationInterval = setInterval(() => {
     if (appConfig.notificationsEnabled && Notification.isSupported()) {
       new Notification({
@@ -520,21 +522,41 @@ async function getIaResponse(text) {
 
   let resposta;
   try {
-    if (backendIsOnline) {
-      console.log("Tentando usar o Backend Service...");
-      try {
-        resposta = await BackendService.responder(text);
-      } catch (backendError) {
-        console.error(
-          "Falha no Backend Service, usando Gemini como fallback...",
-          backendError
-        );
-        backendIsOnline = false; // Marca como offline para a próxima tentativa ser mais rápida
-        resposta = await GeminiService.responder(text);
-      }
+    const aiModel = configService.getAiModel();
+    console.log("Current AI Model:", aiModel);
+
+    if (aiModel === 'openIa') {
+        const token = configService.getOpenIaToken();
+        if (!token) {
+            if (appConfig.notificationsEnabled && Notification.isSupported()) {
+                new Notification({
+                    title: "Erro de Configuração",
+                    body: "O token da OpenAI não está configurado. Por favor, adicione o token nas configurações.",
+                    silent: true,
+                }).show();
+            }
+            clearInterval(waitingNotificationInterval);
+            waitingNotificationInterval = null;
+            return;
+        }
+        resposta = await OpenAIService.makeOpenAIRequest(text, token);
     } else {
-      console.log("Backend offline, usando Gemini Service...");
-      resposta = await GeminiService.responder(text);
+        if (backendIsOnline) {
+          console.log("Tentando usar o Backend Service...");
+          try {
+            resposta = await BackendService.responder(text);
+          } catch (backendError) {
+            console.error(
+              "Falha no Backend Service, usando Gemini como fallback...",
+              backendError
+            );
+            backendIsOnline = false; // Marca como offline para a próxima tentativa ser mais rápida
+            resposta = await GeminiService.responder(text);
+          }
+        } else {
+          console.log("Backend offline, usando Gemini Service...");
+          resposta = await GeminiService.responder(text);
+        }
     }
 
     clearInterval(waitingNotificationInterval);
@@ -925,22 +947,39 @@ async function bringWindowToFocus() {
 
 ipcMain.on("send-to-gemini", async (event, text) => {
   try {
+    const aiModel = configService.getAiModel();
     let resposta;
-    if (backendIsOnline) {
-      console.log("IPC: Tentando usar o Backend Service...");
-      try {
-        resposta = await BackendService.responder(text);
-      } catch (backendError) {
-        console.error(
-          "IPC: Falha no Backend Service, usando Gemini como fallback...",
-          backendError
-        );
-        backendIsOnline = false; // Marcar como offline
-        resposta = await GeminiService.responder(text);
-      }
+
+    if (aiModel === 'openIa') {
+        const token = configService.getOpenIaToken();
+        if (!token) {
+            if (appConfig.notificationsEnabled && Notification.isSupported()) {
+                new Notification({
+                    title: "Erro de Configuração",
+                    body: "O token da OpenAI não está configurado. Por favor, adicione o token nas configurações.",
+                    silent: true,
+                }).show();
+            }
+            return;
+        }
+        resposta = await OpenAIService.makeOpenAIRequest(text, token);
     } else {
-      console.log("IPC: Backend offline, usando Gemini Service...");
-      resposta = await GeminiService.responder(text);
+        if (backendIsOnline) {
+          console.log("IPC: Tentando usar o Backend Service...");
+          try {
+            resposta = await BackendService.responder(text);
+          } catch (backendError) {
+            console.error(
+              "IPC: Falha no Backend Service, usando Gemini como fallback...",
+              backendError
+            );
+            backendIsOnline = false; // Marcar como offline
+            resposta = await GeminiService.responder(text);
+          }
+        } else {
+          console.log("IPC: Backend offline, usando Gemini Service...");
+          resposta = await GeminiService.responder(text);
+        }
     }
     event.sender.send("gemini-response", { resposta });
   } catch (error) {
@@ -1043,17 +1082,27 @@ ipcMain.on("set-language", (event, language) => {
   configService.setLanguage(language);
 });
 
-// IPC Handlers for Voice Model
-ipcMain.handle("get-voice-model", () => {
-  return configService.getVoiceModel();
+// IPC Handlers for AI Model
+ipcMain.handle("get-ai-model", () => {
+  return configService.getAiModel();
 });
 
-ipcMain.on("set-voice-model", (event, voiceModel) => {
-  configService.setVoiceModel(voiceModel);
+ipcMain.on("set-ai-model", (event, aiModel) => {
+  configService.setAiModel(aiModel);
+});
+
+// IPC Handlers for OpenAI Token
+ipcMain.handle("get-open-ia-token", () => {
+    return configService.getOpenIaToken();
+});
+
+ipcMain.on("set-open-ia-token", (event, token) => {
+    configService.setOpenIaToken(token);
 });
 
 app.whenReady().then(async () => {
   configService.initialize();
+  OpenAIService.initialize();
   await createWindow();
   ipcService.start({
     toggleRecording,

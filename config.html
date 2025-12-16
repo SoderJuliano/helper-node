@@ -262,6 +262,18 @@
             border-color: #00aaff;
         }
 
+        .custom-input {
+            width: 100%;
+            padding: 8px 12px;
+            border-radius: 5px;
+            border: 1px solid #555;
+            background-color: #252525;
+            color: white;
+            font-size: 14px;
+            box-sizing: border-box;
+            -webkit-app-region: no-drag;
+        }
+
     </style>
 </head>
 <body>
@@ -290,12 +302,19 @@
                 <option value="us-en">English (US)</option>
             </select>
         </div>
+
         <div class="setting-item">
-            <label for="voice-model">Modelo de Voz</label>
-            <select id="voice-model" class="custom-select">
-                <option value="llama" selected>llama</option>
-                <option value="llama-stream">llama-stream</option>
+            <label for="ai-model">Modelo de IA</label>
+            <select id="ai-model" class="custom-select">
+                <option value="llama" selected>Llama</option>
+                <option value="llama-stream">Llama Stream</option>
+                <option value="openIa">ChatGPT</option>
             </select>
+        </div>
+
+        <div class="setting-item" id="openai-token-container" style="display: none;">
+            <label for="openai-token">OpenAI Token</label>
+            <input type="password" id="openai-token" class="custom-input" placeholder="Cole seu token da OpenAI aqui">
         </div>
 
     </div>
