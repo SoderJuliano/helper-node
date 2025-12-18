@@ -291,14 +291,7 @@
             margin-bottom: 20px;
         }
 
-        .edit-input {
-            height: 40px;
-        }
-        
-        .edit-input::placeholder {
-            color: rgba(255, 255, 255, 0.5);
-            font-style: italic;
-        }
+
 
         .edit-textarea {
             min-height: 120px;
@@ -1310,26 +1303,33 @@
             transcriptionElement.innerHTML = '';
             
             const container = document.createElement('div');
-            const inputField = document.createElement('input');
-            inputField.className = 'edit-input';
-            inputField.type = 'text';
+            const inputField = document.createElement('textarea'); // Changed to textarea
+            inputField.className = 'edit-textarea'; // Use edit-textarea class
+            inputField.rows = 5; // Set default rows for textarea
             inputField.placeholder = 'Insira sua pergunta e digite Enter';
             
             container.appendChild(inputField);
+            
+            const controls = document.createElement('div');
+            controls.className = 'edit-controls';
+            
+            const sendButton = document.createElement('button');
+            sendButton.className = 'send-button';
+            sendButton.textContent = 'Enviar';
+            sendButton.onclick = () => {
+                const question = inputField.value.trim();
+                if (question || pastedImageForManualInput) {
+                    submitManualQuestion(question, container);
+                }
+            };
+            
+            controls.appendChild(sendButton);
+            container.appendChild(controls); // Append controls to container
+            
             transcriptionElement.appendChild(container);
             
             // Foca no input
             inputField.focus();
-            
-            // Envia ao pressionar Enter
-            inputField.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    const question = inputField.value.trim();
-                    if (question || pastedImageForManualInput) { // Envia se tiver texto OU imagem
-                        submitManualQuestion(question, container);
-                    }
-                }
-            });
             
             // Permite cancelar com ESC
             inputField.addEventListener('keydown', (e) => {
