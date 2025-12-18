@@ -4,11 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Aplicação Electron</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,200..900;1,200..900&display=swap" rel="stylesheet">
     <style>
         body {
             background-color: rgba(30, 30, 30, 0.8);
             color: white;
-            font-family: 'Arial', sans-serif;
+            font-family: "Source Code Pro", monospace;
+            font-optical-sizing: auto;
+            font-weight: regular;
+            font-style: normal;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -161,7 +167,9 @@
 
 
         .ia-response {
-            font-family: Arial, sans-serif; /* Garante que o texto normal não use fonte de código */
+            font-family: "Source Code Pro", monospace;
+            font-optical-sizing: auto;
+            font-weight: normal;
             line-height: 1.5;
             overflow-wrap: break-word;
             margin-top: 20px;
@@ -223,11 +231,13 @@
             cursor: pointer;
             font-size: 12px;
             color: #333;
-            font-family: Arial, sans-serif;
+            font-family: "Source Code Pro", monospace;
+            font-optical-sizing: auto;
+            font-weight: normal;
             z-index: 2;
         }
 
-        .copy-all-button {
+        .copy-all-button, .copy-all-stream-button {
             position: absolute;
             top: 5px;
             right: 50px;
@@ -238,7 +248,9 @@
             cursor: pointer;
             font-size: 12px;
             color: #333;
-            font-family: Arial, sans-serif;
+            font-family: "Source Code Pro", monospace;
+            font-optical-sizing: auto;
+            font-weight: normal;
             z-index: 2;
         }
 
@@ -284,7 +296,10 @@
             border: 2px solid #4CAF50;
             border-radius: 5px;
             padding: 10px;
-            font-family: 'Arial', sans-serif;
+            font-family: "Source Code Pro", monospace;
+            font-optical-sizing: auto;
+            font-weight: normal;
+            font-style: italic;
             font-size: 16px;
             resize: none;
             outline: none;
@@ -345,7 +360,9 @@
         }
 
         .streaming-response {
-            font-family: Arial, sans-serif;
+            font-family: "Source Code Pro", monospace;
+            font-optical-sizing: auto;
+            font-weight: bold;
             line-height: 1.5;
             overflow-wrap: break-word;
             margin-top: 20px;
@@ -456,6 +473,59 @@
 
 
         document.addEventListener('DOMContentLoaded', async () => {
+            const transcriptionElement = document.getElementById('transcription');
+
+            // Centralized event listener for all copy actions
+            transcriptionElement.addEventListener('click', (event) => {
+                const button = event.target.closest('.copy-button');
+                if (button) {
+                    const preElement = button.closest('pre');
+                    if (!preElement) return;
+
+                    const clonePre = preElement.cloneNode(true);
+                    const btnClone = clonePre.querySelector('.copy-button');
+                    if (btnClone) clonePre.removeChild(btnClone);
+
+                    const textToCopy = clonePre.innerText.trim();
+                    navigator.clipboard.writeText(textToCopy)
+                        .then(() => {
+                            const originalText = button.textContent;
+                            button.textContent = '✔️';
+                            setTimeout(() => { button.textContent = originalText; }, 2000);
+                        })
+                        .catch(err => {
+                            console.error('Erro ao copiar:', err);
+                            const originalText = button.textContent;
+                            button.textContent = '❌';
+                            setTimeout(() => { button.textContent = originalText; }, 2000);
+                        });
+                    return; // Stop further processing
+                }
+
+                const copyAllBtn = event.target.closest('.copy-all-button, .copy-all-stream-button');
+                if (copyAllBtn) {
+                    const responseElement = copyAllBtn.parentElement;
+                    const clone = responseElement.cloneNode(true);
+                    
+                    // Remove all buttons from the clone
+                    clone.querySelectorAll('.copy-button, .copy-all-button, .copy-all-stream-button').forEach(btn => btn.remove());
+                    
+                    const responseText = clone.innerText.trim();
+                    navigator.clipboard.writeText(responseText)
+                        .then(() => {
+                            const originalText = copyAllBtn.textContent;
+                            copyAllBtn.textContent = '✔️';
+                            setTimeout(() => { copyAllBtn.textContent = originalText; }, 2000);
+                        })
+                        .catch(err => {
+                            console.error('Erro ao copiar tudo:', err);
+                            const originalText = copyAllBtn.textContent;
+                            copyAllBtn.textContent = '❌';
+                            setTimeout(() => { copyAllBtn.textContent = originalText; }, 2000);
+                        });
+                }
+            });
+
             const isHyprland = await window.electronAPI.isHyprland();
             const moveToScreen1 = document.getElementById('move-to-screen-1');
             const moveToScreen2 = document.getElementById('move-to-screen-2');
@@ -749,64 +819,6 @@
                 copyAllButton.classList.add('copy-all-button');
                 newResponse.appendChild(copyAllButton);
 
-                // Delegação de evento para copiar conteúdo do bloco <pre>
-                transcriptionElement.addEventListener('click', (event) => {
-                    const button = event.target.closest('.copy-button');
-                    if (button) {
-                        console.log("Botão copiar clicado!");
-
-                        // O botão está dentro do <pre>, vamos pegar o pai <pre>
-                        const preElement = button.closest('pre');
-                        if (!preElement) return;
-
-                        // Pega todo texto dentro do <pre> (excluindo o botão)
-                        // Uma forma prática é clonar o <pre>, remover o botão e pegar o texto
-                        const clonePre = preElement.cloneNode(true);
-                        const btnClone = clonePre.querySelector('.copy-button');
-                        if (btnClone) clonePre.removeChild(btnClone);
-
-                        const textToCopy = clonePre.innerText.trim();
-
-                        navigator.clipboard.writeText(textToCopy)
-                            .then(() => {
-                                const originalText = button.textContent;
-                                button.textContent = '✔️';
-                                setTimeout(() => {
-                                    button.textContent = originalText;
-                                }, 2000);
-                            })
-                            .catch(err => {
-                                console.error('Erro ao copiar:', err);
-                                const originalText = button.textContent;
-                                button.textContent = '❌';
-                                setTimeout(() => {
-                                    button.textContent = originalText;
-                                }, 2000);
-                            });
-                    }
-
-                    const copyAllBtn = event.target.closest('.copy-all-button');
-                    if (copyAllBtn) {
-                        const responseText = copyAllBtn.parentElement.innerText;
-                        navigator.clipboard.writeText(responseText)
-                            .then(() => {
-                                const originalText = copyAllBtn.textContent;
-                                copyAllBtn.textContent = '✔️';
-                                setTimeout(() => {
-                                    copyAllBtn.textContent = originalText;
-                                }, 2000);
-                            })
-                            .catch(err => {
-                                console.error('Erro ao copiar tudo:', err);
-                                const originalText = copyAllBtn.textContent;
-                                copyAllBtn.textContent = '❌';
-                                setTimeout(() => {
-                                    copyAllBtn.textContent = originalText;
-                                }, 2000);
-                            });
-                    }
-                });
-
                 // Scroll suave para o fim
                 setTimeout(() => {
                     transcriptionElement.scrollTo({
@@ -1004,30 +1016,11 @@
                     const formatted = formatStreamedText(streamingText);
                     streamingElement.innerHTML = formatted;
                     
-                    // Adiciona event listeners para os botões de copiar
-                    const copyButtons = streamingElement.querySelectorAll('.copy-button');
-                    copyButtons.forEach(btn => {
-                        btn.addEventListener('click', async (e) => {
-                            const codeId = btn.getAttribute('data-code-id');
-                            const codeElement = document.getElementById(codeId);
-                            if (codeElement) {
-                                try {
-                                    await navigator.clipboard.writeText(codeElement.textContent);
-                                    const originalText = btn.textContent;
-                                    btn.textContent = '✓ Copied!';
-                                    setTimeout(() => {
-                                        btn.textContent = originalText;
-                                    }, 2000);
-                                } catch (err) {
-                                    console.error('Erro ao copiar:', err);
-                                    btn.textContent = '✗ Error';
-                                    setTimeout(() => {
-                                        btn.textContent = 'Copy';
-                                    }, 2000);
-                                }
-                            }
-                        });
-                    });
+                    // Adiciona o botão "Copiar Tudo", que será gerenciado pelo listener centralizado
+                    const copyAllButton = document.createElement('button');
+                    copyAllButton.textContent = 'Copy All';
+                    copyAllButton.classList.add('copy-all-button');
+                    streamingElement.appendChild(copyAllButton);
                 }
                 
                 // Reseta as variáveis
@@ -1079,7 +1072,7 @@
             const codeBlocks = [];
             
             // Primeiro, captura e protege blocos de código multiline (```)
-            formatted = formatted.replace(/```(\w+)?\n?([\s\S]*?)```/g, (match, lang, code) => {
+            formatted = formatted.replace(/```\s*(\w+)?\n?([\s\S]*?)```/g, (match, lang, code) => {
                 const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
                 const codeId = `stream-code-${Date.now()}-${codeBlocks.length}`;
                 codeBlocks.push(
@@ -1133,7 +1126,7 @@
             const codeBlocks = [];
             
             // Primeiro, captura e protege blocos de código multiline (```)
-            formatted = formatted.replace(/```(\w+)?\n?([\s\S]*?)```/g, (match, lang, code) => {
+            formatted = formatted.replace(/```\s*(\w+)?\n?([\s\S]*?)```/g, (match, lang, code) => {
                 const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
                 const codeId = `openai-code-${Date.now()}-${codeBlocks.length}`; // Unique ID for OpenAI code blocks
                 codeBlocks.push(
@@ -1331,13 +1324,21 @@
             // Foca no input
             inputField.focus();
             
-            // Permite cancelar com ESC
+            // Permite cancelar com ESC ou enviar com Shift+Enter
             inputField.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape') {
                     manualInputActive = false;
                     transcriptionElement.innerHTML = '';
                     pastedImageForManualInput = null; // Limpa a imagem
                     document.getElementById('screenshot-preview').style.display = 'none'; // Esconde o preview
+                    e.stopPropagation(); // Evita que o evento se propague
+                    e.preventDefault(); // Evita o comportamento padrão (ex: nova linha no textarea)
+                } else if (e.shiftKey && e.key === 'Enter') {
+                    e.preventDefault(); // Evita a nova linha no textarea
+                    const question = inputField.value.trim();
+                    if (question || pastedImageForManualInput) {
+                        submitManualQuestion(question, container);
+                    }
                 }
             });
         }
