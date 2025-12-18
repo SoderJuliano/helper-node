@@ -11,7 +11,7 @@ class OpenAIService {
         // not via ipc events to the service itself. This initialize method is kept for consistency.
     }
 
-    async makeOpenAIRequest(prompt, token) {
+    async makeOpenAIRequest(prompt, token, instruction) {
         const sessionId = 'default'; // Using a single session for now
         const now = Date.now();
         const twoHours = 2 * 60 * 60 * 1000;
@@ -26,7 +26,7 @@ class OpenAIService {
         if (!this.sessions[sessionId]) {
             console.log('Creating new OpenAI session.');
             this.sessions[sessionId] = {
-                messages: [{ role: 'system', content: 'You are a helpful assistant.' }],
+                messages: [{ role: 'system', content: instruction || 'You are a helpful assistant.' }],
                 lastActivity: now
             };
         }

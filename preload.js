@@ -31,6 +31,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
       callback(resposta);
     });
   },
+  onOpenAIResponse: (callback) => {
+    ipcRenderer.on("openai-final-response", (event, { resposta }) => {
+      callback(resposta);
+    });
+  },
   onStreamChunk: (callback) => 
     ipcRenderer.on("gemini-stream-chunk", (event, chunk) => callback(chunk)),
   onStreamComplete: (callback) => 

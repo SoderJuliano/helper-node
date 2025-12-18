@@ -3,7 +3,7 @@ const path = require("path");
 const fs = require("fs");
 
 const defaultConfig = {
-  promptInstruction: "Como responder essa questão em com até 65 palavras: ",
+  promptInstruction: "Você é uma assistente que responde com até 65 palavras.",
   debugMode: false,
   language: "pt-br",
   aiModel: "llama",
@@ -22,8 +22,8 @@ function getConfigPath() {
 
 function getDefaultPromptInstruction(lang) {
   return lang === "pt-br"
-    ? "Como responder essa questão em com até 65 palavras: "
-    : "How to answer this question in up to 65 words: ";
+    ? "Você é uma assistente que responde com até 65 palavras."
+    : "You are a helpful assistant who responds in up to 65 words.";
 }
 
 function loadConfig() {

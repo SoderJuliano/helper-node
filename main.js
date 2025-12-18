@@ -508,6 +508,71 @@ function chunkText(text, chunkSize = 250) {
   return finalChunks;
 }
 
+function formatToHTML(text) {
+  if (!text) return "";
+
+  const escapeHTML = (str) => {
+    return str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  };
+
+  let formatted = text;
+  const codeBlocks = [];
+
+  // Capturar blocos de código
+  formatted = formatted.replace(
+    /```(\w+)?\n([\s\S]*?)\n```/g,
+    (match, lang, code) => {
+      const codeId = `code-block-${codeBlocks.length}`;
+      const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
+      codeBlocks.push(
+        `<pre><button class="copy-button" data-code-id="${codeId}">[Copy]</button><code id="${codeId}" class="language-${
+          lang || "text"
+        }">${escapeHTML(code)}</code></pre>`
+      );
+      return placeholder;
+    }
+  );
+
+  const lines = formatted.split("\n");
+  const formattedLines = [];
+
+  for (let line of lines) {
+    if (line.match(/__CODE_BLOCK_\d+__/)) {
+      formattedLines.push(line);
+      continue;
+    }
+
+    line = line.replace(/\*\*(.*?)\*\*|__(.*?)__/g, "<strong>$1$2</strong>");
+    line = line.replace(/(?<!\*)\*(.*?)\*(?!\*)|_(.*?)_/g, "<em>$1$2</em>");
+    if (line.match(/^\s*[-*]\s+(.+)/)) {
+      line = line.replace(/^\s*[-*]\s+(.+)/, "<li>$1</li>");
+    } else if (line.trim()) {
+      line = `<p>${line}</p>`;
+    }
+
+    formattedLines.push(line);
+  }
+
+  formatted = formattedLines.filter((line) => line.trim()).join("<br>");
+
+  if (formatted.includes("<li>")) {
+    formatted = formatted
+      .replace(/(<li>.*?(?:<br>|$))/g, "$1")
+      .replace(/(<li>.*?(?:<br>|$)(?:<li>.*?(?:<br>|$))*)/g, "<ul>$1</ul>");
+    formatted = formatted.replace(/<ul><br>|<br><\/ul>/g, "");
+  }
+
+  codeBlocks.forEach((block, index) => {
+    formatted = formatted.replace(`__CODE_BLOCK_${index}__`, block);
+  });
+
+  formatted = formatted.replace(/(<br>)+$/, "").replace(/^(<br>)+/, "");
+  return formatted;
+}
+
 async function getIaResponse(text) {
   console.log("getIaResponse called with text:", text);
   waitingNotificationInterval = setInterval(() => {
@@ -527,6 +592,7 @@ async function getIaResponse(text) {
 
     if (aiModel === 'openIa') {
         const token = configService.getOpenIaToken();
+        const instruction = configService.getPromptInstruction();
         if (!token) {
             if (appConfig.notificationsEnabled && Notification.isSupported()) {
                 new Notification({
@@ -539,7 +605,7 @@ async function getIaResponse(text) {
             waitingNotificationInterval = null;
             return;
         }
-        resposta = await OpenAIService.makeOpenAIRequest(text, token);
+        resposta = await OpenAIService.makeOpenAIRequest(text, token, instruction);
     } else {
         if (backendIsOnline) {
           console.log("Tentando usar o Backend Service...");
@@ -562,8 +628,11 @@ async function getIaResponse(text) {
     clearInterval(waitingNotificationInterval);
     waitingNotificationInterval = null;
 
-    mainWindow.webContents.send("gemini-response", { resposta });
+    // Formata a resposta para exibição na UI
+    const formattedResposta = formatToHTML(resposta);
+    mainWindow.webContents.send("gemini-response", { resposta: formattedResposta });
 
+    // Usa a resposta crua para a notificação de texto simples
     if (appConfig.notificationsEnabled && Notification.isSupported()) {
       const plainTextBody = formatForPlainTextNotification(resposta);
       const chunks = chunkText(plainTextBody);
@@ -952,6 +1021,7 @@ ipcMain.on("send-to-gemini", async (event, text) => {
 
     if (aiModel === 'openIa') {
         const token = configService.getOpenIaToken();
+        const instruction = configService.getPromptInstruction();
         if (!token) {
             if (appConfig.notificationsEnabled && Notification.isSupported()) {
                 new Notification({
@@ -962,7 +1032,9 @@ ipcMain.on("send-to-gemini", async (event, text) => {
             }
             return;
         }
-        resposta = await OpenAIService.makeOpenAIRequest(text, token);
+        resposta = await OpenAIService.makeOpenAIRequest(text, token, instruction);
+        event.sender.send("openai-final-response", { resposta });
+        return; // Exit here to prevent further processing by the generic response handler
     } else {
         if (backendIsOnline) {
           console.log("IPC: Tentando usar o Backend Service...");
