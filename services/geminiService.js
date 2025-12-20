@@ -253,8 +253,10 @@ class GeminiService {
             return placeholder;
         });
 
-        // Capturar código inline
-        formatted = formatted.replace(/`([^`]+)`/g, '<code>$1</code>');
+        // Capturar código inline (`codigo`)
+        formatted = formatted.replace(/`([^`]+)`/g, (match, code) => {
+            return `<code style="background-color: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 3px; font-family: 'Courier New', monospace;">${escapeHTML(code)}</code>`;
+        });
 
         const lines = formatted.split('\n');
         const formattedLines = [];

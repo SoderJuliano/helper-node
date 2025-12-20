@@ -39,7 +39,7 @@ class LlamaService {
         let formatted = text;
         const codeBlocks = [];
 
-        // Capturar blocos de código
+        // Capturar blocos de código multiline (```)
         formatted = formatted.replace(/```(\w+)?\n([\s\S]*?)\n```/g, (match, lang, code) => {
             const codeId = `code-block-${codeBlocks.length}`; // Define unique codeId
             const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
@@ -48,6 +48,11 @@ class LlamaService {
                 `<pre><button class="copy-button" data-code-id="${codeId}">[Copy]</button><code id="${codeId}" class="language-${lang || 'text'}">${escapeHTML(code)}</code></pre>`
             );
             return placeholder;
+        });
+
+        // Capturar código inline (`codigo`)
+        formatted = formatted.replace(/`([^`]+)`/g, (match, code) => {
+            return `<code style="background-color: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 3px; font-family: 'Courier New', monospace;">${escapeHTML(code)}</code>`;
         });
 
         const lines = formatted.split('\n');

@@ -43,13 +43,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     aiModelSelect.value = savedAiModel;
   }
   
+  // Always load OpenAI token, regardless of current model
+  const savedToken = await ipcRenderer.invoke("get-open-ia-token");
+  if (savedToken) {
+      openIaTokenInput.value = savedToken;
+  }
+  
   // Show/hide OpenAI token input based on saved model
   if (aiModelSelect.value === 'openIa') {
     openIaTokenContainer.style.display = 'flex';
-    const savedToken = await ipcRenderer.invoke("get-open-ia-token");
-    if (savedToken) {
-        openIaTokenInput.value = savedToken;
-    }
   }
 
   // -------------------------
@@ -108,9 +110,10 @@ saveButton.addEventListener("click", async () => {
 
   // Save AI model
   ipcRenderer.send("set-ai-model", aiModelSelect.value);
-  if (aiModelSelect.value === 'openIa') {
-    ipcRenderer.send("set-open-ia-token", openIaTokenInput.value);
-  }
+  
+  // Always save OpenAI token, regardless of current model
+  // This ensures the token persists even when switching to other models
+  ipcRenderer.send("set-open-ia-token", openIaTokenInput.value);
 
   // Close window
   window.close();
