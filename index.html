@@ -1099,6 +1099,12 @@
                 console.log('Stream completo!');
             });
 
+            // Listener para auto-stream após transcrição de áudio
+            window.electronAPI.onAutoStream((text) => {
+                console.log('Auto-streaming after transcription:', text);
+                window.electronAPI.sendTextToGeminiStream(text);
+            });
+
             window.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape' && manualInputActive) {
                     manualInputActive = false;
@@ -1140,7 +1146,7 @@
             const codeBlocks = [];
             
             // Primeiro, captura e protege blocos de código multiline (```)
-            formatted = formatted.replace(/```\s*(\w+)?\n?([\s\S]*?)```/g, (match, lang, code) => {
+            formatted = formatted.replace(/```\s*(\w+)?\s*\n?([\s\S]*?)\n?\s*```/g, (match, lang, code) => {
                 const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
                 const codeId = `stream-code-${Date.now()}-${codeBlocks.length}`;
                 codeBlocks.push(
@@ -1149,8 +1155,19 @@
                 return placeholder;
             });
             
+            // Captura blocos de código com crase simples e quebras de linha (multilinha sem linguagem)
+            // Procura por: ` (quebra de linha) código (quebra de linha) `
+            formatted = formatted.replace(/`\s*\n([\s\S]*?)\n\s*`/g, (match, code) => {
+                const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
+                const codeId = `stream-code-${Date.now()}-${codeBlocks.length}`;
+                codeBlocks.push(
+                    `<pre><button class="copy-button" data-code-id="${codeId}">Copy</button><code id="${codeId}" class="language-text">${escapeHTML(code.trim())}</code></pre>`
+                );
+                return placeholder;
+            });
+            
             // Captura código inline (`codigo`)
-            formatted = formatted.replace(/`([^`]+)`/g, (match, code) => {
+            formatted = formatted.replace(/`([^`\n]+)`/g, (match, code) => {
                 return `<code style="background-color: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 3px; font-family: 'Courier New', monospace;">${escapeHTML(code)}</code>`;
             });
             

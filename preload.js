@@ -45,6 +45,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // sendTextToLlama: (text) => ipcRenderer.send('send-to-llama', text),
   sendTextToGemini: (text) => ipcRenderer.send("send-to-gemini", text),
   sendTextToGeminiStream: (text) => ipcRenderer.send("send-to-gemini-stream", text),
+  onAutoStream: (callback) =>
+    ipcRenderer.on("send-to-gemini-stream-auto", (event, text) => callback(text)),
   getAiModel: () => ipcRenderer.invoke("get-ai-model"),
   stopNotifications: () => ipcRenderer.send("stop-notifications"),
   startNotifications: () => ipcRenderer.send("start-notifications"),

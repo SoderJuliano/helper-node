@@ -414,7 +414,18 @@ async function toggleRecording() {
           }
           return; // Sai da função sem chamar getIaResponse
         }
-        getIaResponse(audioText);
+        
+        // Check AI model configuration and use appropriate method
+        const aiModel = configService.getAiModel();
+        console.log("Audio transcription - using AI model:", aiModel);
+        
+        if (aiModel === 'llama-stream') {
+          // Use stream method for llama-stream
+          mainWindow.webContents.send("send-to-gemini-stream-auto", audioText);
+        } else {
+          // Use regular method for other models
+          getIaResponse(audioText);
+        }
       } catch (error) {
         isRecording = false;
         console.error("Audio file not found or processing failed:", error);
