@@ -690,6 +690,26 @@
                                 setTimeout(() => {
                                     captureIcon.style.display = 'none';
                                 }, 3000);
+
+                                const message = "Image in context";
+
+                                const transcriptionElement = document.getElementById('transcription');
+                                transcriptionElement.innerHTML = ''; // Clear previous content
+                                
+                                const questionSpan = document.createElement('span');
+                                questionSpan.className = 'question-text';
+                                questionSpan.textContent = message;
+                                
+                                const editIcon = document.createElement('span');
+                                editIcon.className = 'edit-icon';
+                                editIcon.textContent = '✏️';
+                                questionSpan.appendChild(editIcon);
+                                
+                                questionSpan.addEventListener('click', () => handleQuestionEdit(questionSpan));
+                                
+                                transcriptionElement.appendChild(questionSpan);
+                                currentQuestionElement = questionSpan;
+
                                 window.electronAPI.processPastedImage(base64Image);
                             }
                         };
@@ -952,6 +972,28 @@
                 robot.style.display = 'block';
                 // Alinhar à esquerda para transcrições de imagem
                 transcriptionElement.classList.add('ocr-left');
+
+                // --- START MODIFICATION ---
+                // If there's an existing question (from paste event "Image in context"), append to it
+                if (currentQuestionElement && currentQuestionElement.textContent.includes("Image in context")) {
+                    let combinedText = currentQuestionElement.textContent.replace('✏️', '').trim(); // Get current text from the question span
+                    // Add the OCR text, potentially on a new line for clarity
+                    combinedText += `\n${text}`; 
+                    
+                    currentQuestionElement.textContent = combinedText; // Update the question span
+                    const editIcon = document.createElement('span'); // Re-add edit icon
+                    editIcon.className = 'edit-icon';
+                    editIcon.textContent = '✏️';
+                    currentQuestionElement.appendChild(editIcon);
+                    
+                    sentToAI(text);
+                    
+                    setTimeout(() => {
+                        preview.style.display = 'none';
+                    }, 8000);
+                    
+                    return;
+                }
 
                 // Detectar conteúdo HTML/CSS e renderizar como bloco de código
                 const hasHtmlTags = /<\/?[a-zA-Z][^>]*>/m.test(text);
@@ -1315,6 +1357,7 @@
             if (isEditingQuestion) return;
             
             isEditingQuestion = true;
+            console.log('Iniciando edição da pergunta');
             
             // Cancela a requisição da IA se estiver em andamento
             window.electronAPI.cancelIaRequest();
@@ -1323,77 +1366,80 @@
             stopProcessing();
             
             const currentText = questionSpan.textContent.replace('✏️', '').trim();
-            const wordCount = currentText.split(/\s+/).length;
+            console.log('Texto atual:', currentText);
             
             const container = document.createElement('div');
+            container.className = 'edit-container';
             
-            // Usa textarea se tiver mais de 10 palavras, senão usa input
-            let editField;
-            if (wordCount > 10) {
-                editField = document.createElement('textarea');
-                editField.className = 'edit-textarea';
-                editField.rows = 5;
-            } else {
-                editField = document.createElement('input');
-                editField.className = 'edit-input';
-                editField.type = 'text';
-            }
-            
+            // Sempre usa textarea para edição
+            const editField = document.createElement('textarea');
+            editField.className = 'edit-textarea';
+            editField.rows = 5;
             editField.value = currentText;
-            container.appendChild(editField);
+            editField.style.width = '100%';
+            editField.style.marginBottom = '10px';
             
-            // Adiciona controles apenas para textarea ou se houver muito texto
-            if (wordCount > 10) {
-                const controls = document.createElement('div');
-                controls.className = 'edit-controls';
-                
-                const sendButton = document.createElement('button');
-                sendButton.className = 'send-button';
-                sendButton.textContent = 'Enviar';
-                sendButton.onclick = () => submitEditedQuestion(editField.value, questionSpan, container);
-                
-                controls.appendChild(sendButton);
-                container.appendChild(controls);
-                
-                // Para textarea: Enter quebra linha, Shift+Enter envia
-                editField.addEventListener('keydown', (e) => {
-                    if (e.key === 'Escape') {
-                        e.preventDefault();
-                        cancelEdit(questionSpan, container, currentText);
-                    } else if (e.key === 'Enter' && e.shiftKey) {
-                        e.preventDefault(); // Previne nova linha
-                        submitEditedQuestion(editField.value, questionSpan, container);
+            const sendButton = document.createElement('button');
+            sendButton.className = 'send-button';
+            sendButton.textContent = 'Enviar';
+            sendButton.style.marginRight = '10px';
+            
+            container.appendChild(editField);
+            container.appendChild(sendButton);
+            
+            // Event listener para o botão
+            sendButton.addEventListener('click', function() {
+                console.log('Botão enviar clicado');
+                const newText = editField.value.trim();
+                if (newText) {
+                    finishEdit(newText, container);
+                }
+            });
+            
+            // Event listener para as teclas
+            editField.addEventListener('keydown', function(e) {
+                console.log('Tecla pressionada:', e.key, 'Shift:', e.shiftKey);
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    console.log('Cancelando edição');
+                    cancelEditSimple(questionSpan, container, currentText);
+                } else if (e.key === 'Enter' && e.shiftKey) {
+                    e.preventDefault();
+                    console.log('Shift+Enter pressionado');
+                    const newText = editField.value.trim();
+                    if (newText) {
+                        finishEdit(newText, container);
                     }
-                    // Enter sozinho não precisa de handler, deixa o comportamento padrão (quebra linha)
-                });
-            } else {
-                // Para input: Enter envia, Shift+Enter também envia
-                editField.addEventListener('keydown', (e) => {
-                    if (e.key === 'Escape') {
-                        e.preventDefault();
-                        cancelEdit(questionSpan, container, currentText);
-                    } else if (e.key === 'Enter') {
-                        e.preventDefault();
-                        submitEditedQuestion(editField.value, questionSpan, container);
-                    }
-                });
-            }
+                }
+            });
 
             // Substitui o span pelo campo de edição
             questionSpan.replaceWith(container);
             editField.focus();
+            console.log('Campo de edição criado e focado');
         }
 
-        function cancelEdit(questionSpan, container, originalText) {
-          isEditingQuestion = false;
-          // Restaura o texto original com o ícone, se houver
-          questionSpan.textContent = originalText + " ✏️";
-          // Substitui de volta o container pelo span original
-          container.replaceWith(questionSpan);
+        function cancelEditSimple(originalSpan, container, originalText) {
+            console.log('Cancelando edição, texto original:', originalText);
+            isEditingQuestion = false;
+            
+            // Recria o span original
+            originalSpan.textContent = originalText;
+            const editIcon = document.createElement('span');
+            editIcon.className = 'edit-icon';
+            editIcon.textContent = '✏️';
+            originalSpan.appendChild(editIcon);
+            
+            // Reativa o evento de clique
+            originalSpan.addEventListener('click', () => handleQuestionEdit(originalSpan));
+            
+            // Substitui de volta
+            container.replaceWith(originalSpan);
+            console.log('Edição cancelada, span restaurado');
         }
-        
-        function submitEditedQuestion(newText, originalSpan, container) {
-            if (!newText.trim()) return;
+
+        function finishEdit(newText, container) {
+            console.log('Finalizando edição com texto:', newText);
             
             isEditingQuestion = false;
             
@@ -1402,18 +1448,16 @@
             const existingStreamingElements = transcriptionElement.querySelectorAll('.streaming-response, .response-text');
             existingStreamingElements.forEach(el => el.remove());
             
-            // Força reset das variáveis de streaming
-            if (streamingElement) {
-                console.log('Limpando elemento de streaming anterior na edição');
-                streamingElement = null;
-                streamingText = '';
-                typingCursor = null;
-            }
+            // Força reset COMPLETO das variáveis de streaming
+            streamingElement = null;
+            streamingText = '';
+            typingCursor = null;
+            console.log('Variáveis de streaming resetadas globalmente');
             
             // Recria o span com o novo texto
             const questionSpan = document.createElement('span');
             questionSpan.className = 'question-text';
-            questionSpan.textContent = newText.trim();
+            questionSpan.textContent = newText;
             
             const editIcon = document.createElement('span');
             editIcon.className = 'edit-icon';
@@ -1422,17 +1466,20 @@
             
             questionSpan.addEventListener('click', () => handleQuestionEdit(questionSpan));
             
+            console.log('Substituindo container por questionSpan');
             container.replaceWith(questionSpan);
             currentQuestionElement = questionSpan;
             
-            console.log('Enviando pergunta editada:', newText.trim());
+            console.log('Enviando pergunta editada:', newText);
             
-            // Reinicia o processamento
+            // IMPORTANTE: Inicia o processamento ANTES de enviar
             startProcessing();
+            console.log('Loading iniciado - robô deve estar visível');
             
             // Envia para a IA
-            sentToAI(newText.trim());
+            sentToAI(newText);
         }
+
         
         function stopProcessing() {
             // Para animações
@@ -1447,11 +1494,16 @@
         }
         
         function startProcessing() {
+            console.log('startProcessing chamado');
+            const robot = document.getElementById('robot');
+            
             // Inicia animação do robô
             robot.style.display = 'block';
+            console.log('Robô definido como visível');
             
             // Reinicia notificações
             window.electronAPI.startNotifications();
+            console.log('Notificações iniciadas');
         }
         
         function openManualInput() {
@@ -1525,7 +1577,7 @@
                 // Show the question in UI
                 const questionSpan = document.createElement('span');
                 questionSpan.className = 'question-text';
-                questionSpan.textContent = text;
+                questionSpan.textContent = `${text} (Image in context)`;
                 container.replaceWith(questionSpan);
                 currentQuestionElement = questionSpan;
 
