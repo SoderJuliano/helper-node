@@ -5,6 +5,7 @@ const fs = require("fs");
 const defaultConfig = {
   promptInstruction: "Você é uma assistente que responde com até 65 palavras.",
   debugMode: false,
+  printMode: false,
   language: "pt-br",
   aiModel: "llama",
   openIaToken: "",
@@ -102,6 +103,22 @@ function setDebugModeStatus(status) {
   currentConfig = null;
 }
 
+function getPrintModeStatus() {
+  if (!currentConfig) {
+    currentConfig = loadConfig();
+  }
+  return currentConfig.printMode;
+}
+
+function setPrintModeStatus(status) {
+  if (!currentConfig) {
+    currentConfig = loadConfig();
+  }
+  currentConfig.printMode = status;
+  saveConfig(currentConfig);
+  currentConfig = null;
+}
+
 function getLanguage() {
   if (!currentConfig) {
     currentConfig = loadConfig();
@@ -181,6 +198,8 @@ module.exports = {
   setPromptInstruction,
   getDebugModeStatus,
   setDebugModeStatus,
+  getPrintModeStatus,
+  setPrintModeStatus,
   getLanguage,
   setLanguage,
   getAiModel,

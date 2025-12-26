@@ -74,8 +74,8 @@ if [[ "$XDG_CURRENT_DESKTOP" == *"GNOME"* ]]; then
     # Hotkey for bring-to-focus-and-input (Ctrl+Shift+I)
     configure_gnome_hotkey "Focus App and Input (Ctrl+Shift+I)" "curl -X POST http://localhost:3000/bring-to-focus-and-input" "<Control><Shift>i" "helper-node-focus-input-ctrl-shift"
 
-    # Hotkey for capture-screen (Ctrl+Shift+F)
-    configure_gnome_hotkey "Capture Screen" "curl -X POST http://localhost:3000/capture-screen" "<Control><Shift>f" "helper-node-capture-screen"
+    # Hotkey for capture-screen (Ctrl+Shift+X)
+    configure_gnome_hotkey "Capture Screen" "curl -X POST http://localhost:3000/capture-screen" "<Control><Shift>x" "helper-node-capture-screen"
 
     # Get current custom keybindings
     EXISTING_BINDINGS=$(gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings | sed "s/^@as //")
@@ -111,7 +111,7 @@ if [[ "$XDG_CURRENT_DESKTOP" == *"GNOME"* ]]; then
 
     echo "------------------------------------------------------------------"
     echo "SUCCESS: GNOME hotkeys configured!"
-    echo "Global hotkeys should now be active: Ctrl+D, Ctrl+Shift+1, Ctrl+Shift+2, Ctrl+I, Ctrl+Shift+I, Ctrl+Shift+F."
+    echo "Global hotkeys should now be active: Ctrl+D, Ctrl+Shift+1, Ctrl+Shift+2, Ctrl+I, Ctrl+Shift+I, Ctrl+Shift+X."
     echo "If they don't work immediately, you may need to log out and log back in."
     echo "------------------------------------------------------------------"
 
@@ -228,7 +228,7 @@ Comment=Capture Screen
 Enabled=true
 Name=Helper-Node: Capture Screen
 Type=SHORTCUT
-Shortcut=Ctrl+Shift+F
+Shortcut=Ctrl+Shift+X
 TriggerOnRelease=false
 CommandURL=curl -X POST http://localhost:3000/capture-screen
 EOF
@@ -245,7 +245,7 @@ EOF
 
     echo "------------------------------------------------------------------"
     echo "SUCCESS: KDE Plasma hotkeys configured!"
-    echo "Global hotkeys should now be active: Ctrl+D, Ctrl+Shift+1, Ctrl+Shift+2, Ctrl+I, Ctrl+Shift+I, Ctrl+Shift+F."
+    echo "Global hotkeys should now be active: Ctrl+D, Ctrl+Shift+1, Ctrl+Shift+2, Ctrl+I, Ctrl+Shift+I, Ctrl+Shift+X."
     echo "If they don't work immediately, try restarting KHotKeys: kquitapp5 khotkeys && kstart5 khotkeys"
     echo "------------------------------------------------------------------"
 
@@ -258,7 +258,7 @@ else
     echo "  Ctrl+D         -> curl -X POST http://localhost:3000/toggle-recording"
     echo "  Ctrl+I         -> curl -X POST http://localhost:3000/bring-to-focus-and-input"
     echo "  Ctrl+Shift+I   -> curl -X POST http://localhost:3000/bring-to-focus-and-input"
-    echo "  Ctrl+Shift+F   -> curl -X POST http://localhost:3000/capture-screen"
+    echo "  Ctrl+Shift+X   -> curl -X POST http://localhost:3000/capture-screen"
     echo "  Ctrl+Shift+1   -> curl -X POST http://localhost:3000/move-to-display/0"
     echo "  Ctrl+Shift+2   -> curl -X POST http://localhost:3000/move-to-display/1"
     echo "------------------------------------------------------------------"

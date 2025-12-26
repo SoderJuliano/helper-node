@@ -4,6 +4,8 @@ const instructionTextarea = document.getElementById("prompt-instruction");
 const saveButton = document.getElementById("save-btn");
 const debugModeToggle = document.getElementById("debug-mode-toggle");
 const debugModeStatus = document.getElementById("debug-mode-status");
+const printModeToggle = document.getElementById("print-mode-toggle");
+const printModeStatus = document.getElementById("print-mode-status");
 const langSelect = document.getElementById("language-select");
 const backendUrlValue = document.getElementById("backend-url-value");
 const aiModelSelect = document.getElementById("ai-model");
@@ -13,6 +15,11 @@ const openIaTokenInput = document.getElementById("openai-token");
 // Helper function to update the debug mode status text
 function updateDebugModeStatus(isDebugging) {
   debugModeStatus.textContent = isDebugging ? "ON" : "OFF";
+}
+
+// Helper function to update the print mode status text
+function updatePrintModeStatus(isPrintMode) {
+  printModeStatus.textContent = isPrintMode ? "ON" : "OFF";
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -28,6 +35,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   const isDebugging = await ipcRenderer.invoke("get-debug-mode-status");
   debugModeToggle.checked = isDebugging;
   updateDebugModeStatus(isDebugging);
+
+  // -------------------------
+  // Load print mode
+  // -------------------------
+  const isPrintMode = await ipcRenderer.invoke("get-print-mode-status");
+  printModeToggle.checked = isPrintMode;
+  updatePrintModeStatus(isPrintMode);
 
   // -------------------------
   // Load saved language
@@ -88,6 +102,11 @@ debugModeToggle.addEventListener("change", () => {
   updateDebugModeStatus(debugModeToggle.checked);
 });
 
+// Handle print mode toggle live update
+printModeToggle.addEventListener("change", () => {
+  updatePrintModeStatus(printModeToggle.checked);
+});
+
 // Show/hide OpenAI token input based on AI model selection
 aiModelSelect.addEventListener('change', () => {
     if (aiModelSelect.value === 'openIa') {
@@ -104,6 +123,9 @@ saveButton.addEventListener("click", async () => {
 
   // Save debug mode
   ipcRenderer.send("save-debug-mode-status", debugModeToggle.checked);
+
+  // Save print mode
+  ipcRenderer.send("save-print-mode-status", printModeToggle.checked);
 
   // Save language
   ipcRenderer.send("set-language", langSelect.value);

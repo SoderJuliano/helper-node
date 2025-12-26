@@ -6,7 +6,9 @@ const {
   screen,
   Notification,
 } = require("electron");
+const clipboardy = require('clipboardy');
 const path = require("path");
+const crypto = require("crypto");
 const { exec } = require("child_process");
 const util = require("util");
 const execPromise = util.promisify(exec);
@@ -58,6 +60,8 @@ let sharingActive = false;
 let recordingProcess = null;
 let isRecording = false;
 let waitingNotificationInterval = null;
+let clipboardMonitoringInterval = null;
+let lastClipboardImageHash = null;
 const audioFilePath = path.join(__dirname, "output.wav");
 
 function createConfigWindow() {
@@ -282,6 +286,147 @@ ipcMain.on(
   }
 );
 
+// Função para calcular hash da imagem do clipboard
+function calculateImageHash(imageBuffer) {
+  return crypto.createHash('md5').update(imageBuffer).digest('hex');
+}
+
+// Função para iniciar monitoramento do clipboard usando ferramentas nativas
+function startClipboardMonitoring() {
+  if (clipboardMonitoringInterval) {
+    clearInterval(clipboardMonitoringInterval);
+  }
+  
+  console.log('🎯 Iniciando monitoramento NATIVO de clipboard para novas imagens...');
+  
+  clipboardMonitoringInterval = setInterval(async () => {
+    try {
+      const isPrintModeEnabled = configService.getPrintModeStatus();
+      if (!isPrintModeEnabled) return;
+      
+      // Tentar detectar imagem no clipboard usando ferramentas nativas
+      let hasImage = false;
+      let imageData = null;
+      
+      try {
+        // Para X11 (GNOME, KDE, etc)
+        const xclipResult = await execPromise('xclip -selection clipboard -t TARGETS -o 2>/dev/null').catch(() => null);
+        if (xclipResult && xclipResult.stdout.includes('image/png')) {
+          console.log('🖼️ PNG image detected in X11 clipboard');
+          const imageResult = await execPromise('xclip -selection clipboard -t image/png -o | base64 -w 0').catch(() => null);
+          if (imageResult && imageResult.stdout) {
+            hasImage = true;
+            imageData = 'data:image/png;base64,' + imageResult.stdout.trim();
+          }
+        }
+      } catch (e) {
+        // Ignorar erro do X11
+      }
+      
+      // Se não encontrou no X11, tentar Wayland
+      if (!hasImage) {
+        try {
+          const wlResult = await execPromise('wl-paste --list-types 2>/dev/null').catch(() => null);
+          if (wlResult && wlResult.stdout.includes('image/png')) {
+            console.log('🖼️ PNG image detected in Wayland clipboard');
+            const imageResult = await execPromise('wl-paste --type image/png | base64 -w 0').catch(() => null);
+            if (imageResult && imageResult.stdout) {
+              hasImage = true;
+              imageData = 'data:image/png;base64,' + imageResult.stdout.trim();
+            }
+          }
+        } catch (e) {
+          // Ignorar erro do Wayland
+        }
+      }
+      
+      if (hasImage && imageData) {
+        const currentHash = calculateImageHash(Buffer.from(imageData));
+        console.log('🔑 Current hash:', currentHash.substring(0, 8), 'Last hash:', lastClipboardImageHash ? lastClipboardImageHash.substring(0, 8) : 'none');
+        
+        if (currentHash !== lastClipboardImageHash && lastClipboardImageHash !== null) {
+          console.log('📸 NOVA IMAGEM DETECTADA no clipboard! Processando automaticamente...');
+          
+          if (appConfig.notificationsEnabled && Notification.isSupported()) {
+            new Notification({
+              title: 'Helper-Node',
+              body: 'Nova imagem detectada! Processando...',
+              silent: true,
+            }).show();
+          }
+          
+          await processNewClipboardImage(imageData);
+        }
+        
+        lastClipboardImageHash = currentHash;
+      } else {
+        console.log('🔄 Verificando clipboard... (nenhuma imagem encontrada)');
+      }
+    } catch (error) {
+      console.error('❌ Erro no monitoramento de clipboard:', error);
+    }
+  }, 2000); // Verificar a cada 2 segundos
+}
+
+// Função para parar monitoramento do clipboard
+function stopClipboardMonitoring() {
+  if (clipboardMonitoringInterval) {
+    clearInterval(clipboardMonitoringInterval);
+    clipboardMonitoringInterval = null;
+    lastClipboardImageHash = null;
+    console.log('🛑 Monitoramento de clipboard parado');
+  }
+}
+
+// Função para processar nova imagem do clipboard
+async function processNewClipboardImage(base64Image) {
+  try {
+    console.log('🎯 Processando nova imagem do clipboard...');
+    
+    // Notificação de OCR
+    if (appConfig.notificationsEnabled && Notification.isSupported()) {
+      new Notification({
+        title: 'Helper-Node',
+        body: 'Extraindo texto da imagem...',
+        silent: true,
+      }).show();
+    }
+    
+    // Usar o TesseractService existente
+    const text = await TesseractService.getTextFromImage(base64Image);
+    
+    if (!text || text.trim().length === 0) {
+      throw new Error('Nenhum texto encontrado na imagem');
+    }
+    
+    console.log('📝 Texto extraído:', text);
+    
+    // Notificação de envio para IA
+    if (appConfig.notificationsEnabled && Notification.isSupported()) {
+      new Notification({
+        title: 'Helper-Node',
+        body: 'Enviando para IA...',
+        silent: true,
+      }).show();
+    }
+    
+    // Usar o método existente getIaResponse
+    await getIaResponse(text);
+    
+  } catch (error) {
+    console.error('❌ Erro ao processar imagem do clipboard:', error);
+    
+    // Notificação de erro
+    if (appConfig.notificationsEnabled && Notification.isSupported()) {
+      new Notification({
+        title: 'Helper-Node',
+        body: 'Erro ao processar imagem: ' + error.message,
+        silent: true,
+      }).show();
+    }
+  }
+}
+
 async function registerGlobalShortcuts() {
   if (!mainWindow) return;
 
@@ -303,7 +448,7 @@ async function registerGlobalShortcuts() {
         { combo: "CommandOrControl+I", action: "manual-input" },
         { combo: "CommandOrControl+A", action: "focus-window" },
         { combo: "CommandOrControl+Shift+C", action: "open-config" },
-        { combo: "CommandOrControl+Shift+F", action: "capture-screen" },
+        { combo: "CommandOrControl+Shift+X", action: "capture-screen" },
         { combo: "CommandOrControl+Shift+1", action: "move-to-display-0" },
         { combo: "CommandOrControl+Shift+2", action: "move-to-display-1" },
       ];
@@ -312,7 +457,7 @@ async function registerGlobalShortcuts() {
   const fallbackShortcuts = isLinux
     ? [
         { combo: "CommandOrControl+I", action: "manual-input" },
-        { combo: "CommandOrControl+Shift+F", action: "capture-screen" },
+        { combo: "CommandOrControl+Shift+X", action: "capture-screen" },
         { combo: "CommandOrControl+Shift+1", action: "move-to-display-0" },
         { combo: "CommandOrControl+Shift+2", action: "move-to-display-1" },
       ]
@@ -355,7 +500,7 @@ async function registerGlobalShortcuts() {
   });
 
   // Log final registration state for key shortcuts
-  ["Ctrl+I", "CommandOrControl+I", "Ctrl+Shift+F", "CommandOrControl+Shift+F", "Ctrl+Shift+1", "CommandOrControl+Shift+1", "Ctrl+Shift+2", "CommandOrControl+Shift+2"].forEach(
+  ["Ctrl+I", "CommandOrControl+I", "Ctrl+Shift+X", "CommandOrControl+Shift+X", "Ctrl+Shift+1", "CommandOrControl+Shift+1", "Ctrl+Shift+2", "CommandOrControl+Shift+2"].forEach(
     (accel) => {
       try {
         const ok = globalShortcut.isRegistered(accel);
@@ -1156,6 +1301,40 @@ ipcMain.on("save-debug-mode-status", (event, status) => {
   }
 });
 
+// IPC Handlers for Print Mode
+ipcMain.handle("get-print-mode-status", () => {
+  return configService.getPrintModeStatus();
+});
+
+ipcMain.on("save-print-mode-status", (event, status) => {
+  configService.setPrintModeStatus(status);
+  console.log('Print mode status changed to:', status);
+  
+  if (status) {
+    // Notificação de ativação
+    if (appConfig.notificationsEnabled && Notification.isSupported()) {
+      new Notification({
+        title: 'Helper-Node',
+        body: 'Modo automático ativado! Tire prints e aguarde as respostas...',
+        silent: true,
+      }).show();
+    }
+    
+    startClipboardMonitoring();
+  } else {
+    // Notificação de desativação
+    if (appConfig.notificationsEnabled && Notification.isSupported()) {
+      new Notification({
+        title: 'Helper-Node',
+        body: 'Modo automático desativado',
+        silent: true,
+      }).show();
+    }
+    
+    stopClipboardMonitoring();
+  }
+});
+
 // IPC Handlers for Language
 ipcMain.handle("get-language", () => {
   return configService.getLanguage();
@@ -1199,6 +1378,13 @@ app.whenReady().then(async () => {
     const initialDebugStatus = configService.getDebugModeStatus();
     mainWindow.webContents.send("debug-status-changed", initialDebugStatus);
   }
+  
+  // Inicializar monitoramento de clipboard se print mode estiver ativo
+  const initialPrintMode = configService.getPrintModeStatus();
+  if (initialPrintMode) {
+    console.log('🎯 Print mode estava ativo, iniciando monitoramento de clipboard...');
+    startClipboardMonitoring();
+  }
 
   // Verifica o status do backend ao iniciar e depois periodicamente
   checkBackendStatus();
@@ -1223,4 +1409,5 @@ app.on("window-all-closed", () => {
 
 app.on("will-quit", () => {
   globalShortcut.unregisterAll();
+  stopClipboardMonitoring();
 });
