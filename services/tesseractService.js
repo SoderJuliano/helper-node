@@ -62,14 +62,44 @@ class TesseractService {
         const imagePath = path.join(__dirname, '..', `screenshot-manual-${timestamp}.png`);
     
         try {
+            // Validar entrada
+            if (!base64Image || typeof base64Image !== 'string') {
+                throw new Error('Invalid base64Image provided');
+            }
+
             const buffer = Buffer.from(base64Image.split(';base64,').pop(), 'base64');
+            
+            // Verificar se o buffer tem um tamanho mínimo válido
+            if (buffer.length < 100) {
+                throw new Error('Image buffer too small, probably corrupted');
+            }
+
             await fs.writeFile(imagePath, buffer);
             console.log('Manual input image saved to temporary file:', imagePath);
+
+            // Verificar se o arquivo foi criado com sucesso
+            const stats = await fs.stat(imagePath);
+            if (stats.size === 0) {
+                throw new Error('Written image file is empty');
+            }
     
-            // Since this is a pasted image for manual input, we treat it as `isPasted = true` to skip cropping.
-            const { data: { text } } = await Tesseract.recognize(imagePath, 'por', {
+            // Tentar processar a imagem com timeout
+            const ocrPromise = Tesseract.recognize(imagePath, 'por', {
                 logger: m => console.log(m)
             });
+
+            // Adicionar timeout de 30 segundos para evitar travamento
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('OCR processing timeout')), 30000);
+            });
+
+            const result = await Promise.race([ocrPromise, timeoutPromise]);
+            
+            if (!result || !result.data || typeof result.data.text !== 'string') {
+                throw new Error('OCR returned invalid result');
+            }
+
+            const text = result.data.text.trim();
             console.log('OCR Result for manual input:', text);
     
             // Cleanup the temporary file
@@ -81,7 +111,9 @@ class TesseractService {
             console.error('Error getting text from image:', error);
             // Cleanup on error
             fs.unlink(imagePath).catch(console.error);
-            throw error; // Re-throw the error to be caught in main.js
+            
+            // Return empty string instead of throwing to prevent app crash
+            return '';
         }
     }
 
@@ -96,6 +128,12 @@ class TesseractService {
         try {
             await fs.access(originalPath);
 
+            // Verificar se o arquivo tem um tamanho mínimo válido
+            const stats = await fs.stat(originalPath);
+            if (stats.size < 100) {
+                throw new Error('Image file too small, probably corrupted');
+            }
+
             if (!isPasted) {
                 console.log('Image is from capture, applying crop.');
                 const timestamp = Date.now();
@@ -107,9 +145,25 @@ class TesseractService {
                 console.log('Image is from paste, skipping crop.');
             }
 
-            const { data: { text } } = await Tesseract.recognize(imageToProcessPath, 'por', {
+            console.log('Starting OCR processing for:', imageToProcessPath);
+
+            // Processar OCR com timeout
+            const ocrPromise = Tesseract.recognize(imageToProcessPath, 'por', {
                 logger: m => console.log(m)
             });
+
+            // Timeout de 30 segundos
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('OCR processing timeout')), 30000);
+            });
+
+            const result = await Promise.race([ocrPromise, timeoutPromise]);
+
+            if (!result || !result.data || typeof result.data.text !== 'string') {
+                throw new Error('OCR returned invalid result');
+            }
+
+            const text = result.data.text.trim();
             console.log('OCR Result:', text);
 
             if (mainWindow && !mainWindow.isDestroyed()) {
@@ -134,15 +188,29 @@ class TesseractService {
 
         } catch (error) {
             console.error('Error processing image file:', error);
+            
+            // Sempre enviar um resultado, mesmo que seja erro
+            const errorText = error.message.includes('timeout') ? 
+                'OCR processing timeout - image may be too complex' : 
+                'Could not process image';
+            
             if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('ocr-error', error.message);
+                // Em vez de enviar erro, enviar resultado vazio
+                mainWindow.webContents.send('ocr-result', { 
+                    text: '', 
+                    screenshotPath: imageToProcessPath || originalPath,
+                    error: errorText
+                });
             }
+            
             // Ensure temp files are deleted on error too
             fs.unlink(originalPath).catch(console.error);
             if (croppedPath) {
                 fs.unlink(croppedPath).catch(console.error);
             }
-            throw error;
+            
+            // Return empty result instead of throwing
+            return { text: '', screenshotPath: imageToProcessPath || originalPath };
         }
     }
 

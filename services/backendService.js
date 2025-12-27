@@ -265,7 +265,12 @@ class BackendService {
   }
 
   async responderStream(texto, onChunk, onComplete, onError) {
-    if (!texto) throw new Error("Não entendi");
+    // Validação mais robusta
+    if (!texto || typeof texto !== 'string' || texto.trim().length === 0) {
+      console.error('Texto inválido para streaming:', texto);
+      onError(new Error("Texto inválido ou vazio"));
+      return;
+    }
 
     // Se a URL não foi pega ainda, tenta novamente
     if (!apiUrl) {
@@ -275,7 +280,8 @@ class BackendService {
 
     // Se ainda não tiver a URL, lança um erro
     if (!apiUrl) {
-      throw new Error("Could not retrieve backend URL.");
+      onError(new Error("Could not retrieve backend URL."));
+      return;
     }
 
     const sessionId = 'default'; // Using a single session for now

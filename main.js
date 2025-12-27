@@ -230,11 +230,29 @@ async function captureScreen() {
         // Proceed with OCR only if file exists
         try {
           await fs.access(tmpPng);
-          const ocrText = await TesseractService.getTextFromImage(tmpPng);
-          mainWindow.webContents.send("ocr-result", { text: ocrText, screenshotPath: tmpPng, base64Image });
+          
+          // Validar se o arquivo tem um tamanho mínimo
+          const stats = await fs.stat(tmpPng);
+          if (stats.size < 100) {
+            throw new Error('Screenshot file too small, probably corrupted');
+          }
+          
+          const ocrText = await TesseractService.getTextFromImage(base64Image);
+          mainWindow.webContents.send("ocr-result", { 
+            text: ocrText || '', 
+            screenshotPath: tmpPng, 
+            base64Image 
+          });
         } catch (e) {
           console.error("Screenshot file not accessible for OCR:", e);
-          mainWindow.webContents.send("ocr-result", { text: "", screenshotPath: tmpPng, base64Image });
+          
+          // Enviar resultado com erro em vez de texto vazio
+          mainWindow.webContents.send("ocr-result", { 
+            text: "", 
+            screenshotPath: tmpPng, 
+            base64Image,
+            error: "Não foi possível processar a imagem" 
+          });
         }
       } else {
         mainWindow.webContents.send("screen-capturing", false);
@@ -259,6 +277,16 @@ ipcMain.on("process-pasted-image", (event, base64Image) => {
     TesseractService.processPastedImage(base64Image, mainWindow).catch(
       (error) => {
         console.error("Error processing pasted image in main process:", error);
+        
+        // Enviar resultado com erro em vez de falhar silenciosamente
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('ocr-result', {
+            text: '',
+            screenshotPath: '',
+            base64Image: base64Image,
+            error: 'Erro ao processar imagem colada'
+          });
+        }
       }
     );
   }
@@ -274,6 +302,16 @@ ipcMain.on(
       const finalPrompt = `${promptInstruction}<br>${text}<br>${imageTranscription}`;
 
       console.log("Final prompt with image transcription:", finalPrompt);
+
+      // Validar se há texto suficiente para enviar
+      if (!text?.trim() && !imageTranscription?.trim()) {
+        console.warn("No text or image transcription found, not sending to AI");
+        mainWindow.webContents.send(
+          "transcription-error",
+          "Nenhum texto encontrado na imagem ou entrada manual"
+        );
+        return;
+      }
 
       await getIaResponse(finalPrompt);
     } catch (error) {
@@ -396,7 +434,16 @@ async function processNewClipboardImage(base64Image) {
     const text = await TesseractService.getTextFromImage(base64Image);
     
     if (!text || text.trim().length === 0) {
-      throw new Error('Nenhum texto encontrado na imagem');
+      console.warn('⚠️ Nenhum texto encontrado na imagem');
+      
+      if (appConfig.notificationsEnabled && Notification.isSupported()) {
+        new Notification({
+          title: 'Helper-Node',
+          body: 'Nenhum texto encontrado na imagem',
+          silent: true,
+        }).show();
+      }
+      return;
     }
     
     console.log('📝 Texto extraído:', text);
@@ -420,9 +467,14 @@ async function processNewClipboardImage(base64Image) {
     if (appConfig.notificationsEnabled && Notification.isSupported()) {
       new Notification({
         title: 'Helper-Node',
-        body: 'Erro ao processar imagem: ' + error.message,
+        body: 'Erro ao processar imagem',
         silent: true,
       }).show();
+    }
+    
+    // Enviar erro para o frontend se a janela estiver disponível
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('transcription-error', 'Erro ao processar imagem do clipboard');
     }
   }
 }
@@ -439,7 +491,7 @@ async function registerGlobalShortcuts() {
         { combo: "Ctrl+I", action: "manual-input" },
         { combo: "Ctrl+A", action: "focus-window" },
         { combo: "Ctrl+Shift+C", action: "open-config" },
-        { combo: "Ctrl+Shift+F", action: "capture-screen" },
+        { combo: "Ctrl+Shift+X", action: "capture-screen" },
         { combo: "Ctrl+Shift+1", action: "move-to-display-0" },
         { combo: "Ctrl+Shift+2", action: "move-to-display-1" },
       ]

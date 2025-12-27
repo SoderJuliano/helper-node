@@ -292,21 +292,36 @@
         .edit-input, .edit-textarea {
             width: 100%;
             background-color: rgba(50, 50, 50, 0.9);
-            color: white;
-            border: 2px solid #4CAF50;
+            color: #fff; /* Ajuste para uma cor visível */
+            border: 2px solid #4CAF50; /* Cor mais agradável */
             border-radius: 5px;
             padding: 10px;
             font-family: "Source Code Pro", monospace;
-            font-optical-sizing: auto;
             font-weight: normal;
             font-style: italic;
             font-size: 16px;
             resize: none;
             outline: none;
             margin-bottom: 20px;
+            transition: box-shadow 0.3s, border-color 0.3s;
         }
 
+        .edit-input:focus, .edit-textarea:focus {
+            box-shadow: 0 0 10px #4CAF50;
+            border-color: #81c784;
+        }
 
+        /* Animação de digitação */
+        @keyframes typing {
+            from { width: 0 }
+            to { width: 100% }
+        }
+
+        .edit-textarea {
+            min-height: 150px;
+            animation: typing 500ms steps(40, end) forwards;
+            white-space: pre-wrap;
+        }
 
         .edit-textarea {
             min-height: 120px;
@@ -426,7 +441,7 @@
     <div class="commands">
         <div class="command-item">⚡︎ CTRL+D - Iniciar/Parar gravação 🎙️</div>
         <div class="command-item">⚡︎ CTRL+I - Inserir pergunta ✍️</div>
-        <div id="capture-screen-shortcut" class="command-item">⚡︎ CTRL+SHIFT+F - Capturar tela 📝</div>
+        <div id="capture-screen-shortcut" class="command-item">⚡︎ CTRL+SHIFT+X - Capturar tela 📝</div>
         <div class="command-item">⚡︎ CTRL+SHIFT+C - Configurações ⚙️</div>
         <div id="move-to-screen-1" class="command-item">⚡︎ CTRL+SHIFT+1 - Move to screen 1 🖵←🖵</div>
         <div id="move-to-screen-2" class="command-item">⚡︎ CTRL+SHIFT+2 - Move to screen 2 🖵→🖵</div>
@@ -944,7 +959,7 @@
                 }, 100);
             });
 
-            window.electronAPI.onOcrResult(({ text, screenshotPath, base64Image }) => {
+            window.electronAPI.onOcrResult(({ text, screenshotPath, base64Image, error }) => {
                 const preview = document.getElementById('screenshot-preview');
                 const robot = document.getElementById('robot');
                 const animationContainer = document.getElementById('animation-container');
@@ -952,11 +967,31 @@
 
                 // Esconde outros elementos de carregamento
                 animationContainer.style.display = 'none';
+                
+                // Se houve erro no OCR, exibir mensagem de erro
+                if (error) {
+                    console.warn('OCR Error:', error);
+                    robot.style.display = 'none';
+                    
+                    if (manualInputActive) {
+                        // Se estamos em input manual, apenas logar o erro
+                        console.log('OCR error in manual input mode, continuing...');
+                        return;
+                    }
+                    
+                    // Mostrar mensagem de erro apenas se não estivermos em input manual
+                    const errorMsg = document.createElement('p');
+                    errorMsg.style.color = '#ff6b6b';
+                    errorMsg.textContent = `Erro no OCR: ${error}`;
+                    transcriptionElement.innerHTML = '';
+                    transcriptionElement.appendChild(errorMsg);
+                    return;
+                }
 
                 // Mostra a miniatura (use base64 if provided)
                 if (base64Image) {
                     preview.src = base64Image;
-                } else {
+                } else if (screenshotPath) {
                     preview.src = `file://${screenshotPath}`;
                 }
                 preview.style.display = 'block';
@@ -986,7 +1021,7 @@
                     editIcon.textContent = '✏️';
                     currentQuestionElement.appendChild(editIcon);
                     
-                    sentToAI(text);
+                    sentToAI(text || 'Processo texto da imagem');
                     
                     setTimeout(() => {
                         preview.style.display = 'none';
@@ -996,10 +1031,11 @@
                 }
 
                 // Detectar conteúdo HTML/CSS e renderizar como bloco de código
-                const hasHtmlTags = /<\/?[a-zA-Z][^>]*>/m.test(text);
-                const hasCssBraces = /\{[\s\S]*\}/m.test(text);
+                const hasHtmlTags = /<\/?[a-zA-Z][^>]*>/m.test(text || '');
+                const hasCssBraces = /\{[\s\S]*\}/m.test(text || '');
                 transcriptionElement.innerHTML = '';
-                if (hasHtmlTags || hasCssBraces) {
+                
+                if (text && (hasHtmlTags || hasCssBraces)) {
                     const pre = document.createElement('pre');
                     const code = document.createElement('code');
                     const copyBtn = document.createElement('button');
@@ -1023,11 +1059,17 @@
                     pre.appendChild(code);
                     transcriptionElement.appendChild(pre);
                 } else {
-                    // Texto simples
-                    transcriptionElement.textContent = text;
+                    // Texto simples ou vazio
+                    transcriptionElement.textContent = text || 'Nenhum texto encontrado na imagem';
                 }
 
-                sentToAI(text);
+                // Só envia para IA se encontrou texto
+                if (text && text.trim().length > 0) {
+                    sentToAI(text);
+                } else {
+                    robot.style.display = 'none';
+                    console.log('Nenhum texto encontrado, não enviando para IA');
+                }
 
                 setTimeout(() => {
                     preview.style.display = 'none';
