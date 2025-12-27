@@ -61,4 +61,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.send("process-pasted-image", base64Image),
   processManualInputWithImage: (data) =>
     ipcRenderer.send("process-manual-input-with-image", data),
+  
+  // OS Integration methods
+  closeOsInput: () => ipcRenderer.send("close-os-input"),
+  sendOsQuestion: (text) => ipcRenderer.send("send-os-question", text),
+  cancelRecording: () => ipcRenderer.send("cancel-recording"),
 });

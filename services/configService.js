@@ -6,6 +6,7 @@ const defaultConfig = {
   promptInstruction: "Você é uma assistente que responde com até 65 palavras.",
   debugMode: false,
   printMode: false,
+  osIntegration: false,
   language: "pt-br",
   aiModel: "llama",
   openIaToken: "",
@@ -192,6 +193,22 @@ function setOpenIaToken(token) {
     currentConfig = null;
 }
 
+function getOsIntegrationStatus() {
+  if (!currentConfig) {
+    currentConfig = loadConfig();
+  }
+  return currentConfig.osIntegration || false;
+}
+
+function setOsIntegrationStatus(status) {
+  if (!currentConfig) {
+    currentConfig = loadConfig();
+  }
+  currentConfig.osIntegration = status;
+  saveConfig(currentConfig);
+  currentConfig = null;
+}
+
 module.exports = {
   initialize,
   getPromptInstruction,
@@ -200,6 +217,8 @@ module.exports = {
   setDebugModeStatus,
   getPrintModeStatus,
   setPrintModeStatus,
+  getOsIntegrationStatus,
+  setOsIntegrationStatus,
   getLanguage,
   setLanguage,
   getAiModel,

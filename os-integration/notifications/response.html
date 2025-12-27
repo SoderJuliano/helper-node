@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resposta</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,200..900;1,200..900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: rgba(30, 30, 30, 0.95);
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+            min-width: 360px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            color: white;
+            font-family: "Source Code Pro", monospace;
+            line-height: 1.6;
+            box-sizing: border-box;
+            font-size: 14px;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+        
+        /* Esconder barra de rolagem mas manter funcionalidade */
+        body::-webkit-scrollbar {
+            display: none;
+        }
+        
+        body {
+            -ms-overflow-style: none;  /* IE e Edge */
+            scrollbar-width: none;     /* Firefox */
+        }
+        
+        .close-btn {
+            position: absolute;
+            top: 5px;
+            right: 8px;
+            background: none;
+            border: none;
+            color: #fff;
+            font-size: 18px;
+            cursor: pointer;
+            opacity: 1;
+            padding: 0;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        
+        /* Estilos para códigos */
+        pre {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 5px;
+            padding: 10px;
+            margin: 10px 0;
+            overflow-x: hidden;
+            position: relative;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            max-width: 100%;
+            box-sizing: border-box;
+        }
+        
+        code {
+            font-family: "Source Code Pro", monospace;
+            font-size: 13px;
+        }
+        
+        pre code {
+            background: none;
+            padding: 0;
+            cursor: pointer;
+        }
+        
+        /* Código inline */
+        p code, li code {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2px 4px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        
+        /* HTML content styling */
+        strong { font-weight: bold; }
+        em { font-style: italic; }
+        p { 
+            margin: 5px 0; 
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            max-width: 100%;
+        }
+        ul { 
+            margin: 5px 0; 
+            padding-left: 20px;
+            max-width: 100%;
+        }
+        li { 
+            margin: 2px 0; 
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+    </style>
+</head>
+<body>
+    <button class="close-btn" onclick="closeWindow()">×</button>
+    
+    <script>
+        function closeWindow() {
+            window.close();
+        }
+        
+        // Function to set response content from main process
+        window.setResponseContent = function(content) {
+            // Create content container if it doesn't exist
+            let contentContainer = document.getElementById('response-content');
+            if (!contentContainer) {
+                contentContainer = document.createElement('div');
+                contentContainer.id = 'response-content';
+                contentContainer.style.marginTop = '30px'; // Space for close button
+                document.body.appendChild(contentContainer);
+            }
+            
+            // Insert the response content
+            contentContainer.innerHTML = content;
+            
+            // Re-attach event listeners after content is set
+            attachCodeCopyListeners();
+        };
+        
+        // Function to attach code copy listeners
+        function attachCodeCopyListeners() {
+            // Remove existing listeners
+            document.removeEventListener('click', handleCodeClick);
+            
+            // Add new listeners
+            document.addEventListener('click', handleCodeClick);
+        }
+        
+        // Function to handle code clicks
+        async function handleCodeClick(e) {
+            // Verifica se clicou em um bloco de código (pre > code)
+            const codeElement = e.target.closest('pre code');
+            if (codeElement && e.target.tagName !== 'BUTTON') {
+                await copyCode(codeElement);
+                e.stopPropagation();
+                e.preventDefault();
+                return;
+            }
+            
+            // Verifica se clicou em código inline
+            const clickedCode = e.target.closest('code');
+            if (clickedCode) {
+                const isInsidePre = clickedCode.closest('pre') !== null;
+                if (!isInsidePre) {
+                    await copyCode(clickedCode);
+                    e.stopPropagation();
+                    e.preventDefault();
+                }
+            }
+        }
+        
+        // Função para copiar código
+        async function copyCode(element) {
+            const codeText = element.textContent.trim();
+            try {
+                await navigator.clipboard.writeText(codeText);
+                // Feedback visual
+                const originalBg = element.style.backgroundColor;
+                element.style.backgroundColor = 'rgba(0, 255, 0, 0.3)';
+                setTimeout(() => {
+                    element.style.backgroundColor = originalBg;
+                }, 500);
+                console.log('Código copiado:', codeText.substring(0, 50) + '...');
+            } catch (err) {
+                console.error('Erro ao copiar código:', err);
+                // Fallback para quando clipboard não está disponível
+                try {
+                    const textArea = document.createElement('textarea');
+                    textArea.value = codeText;
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    
+                    // Feedback visual
+                    const originalBg = element.style.backgroundColor;
+                    element.style.backgroundColor = 'rgba(0, 255, 0, 0.3)';
+                    setTimeout(() => {
+                        element.style.backgroundColor = originalBg;
+                    }, 500);
+                    console.log('Código copiado (fallback):', codeText.substring(0, 50) + '...');
+                } catch (fallbackErr) {
+                    console.error('Erro no fallback de cópia:', fallbackErr);
+                }
+            }
+        }
+        
+        // Initialize event listeners when DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            attachCodeCopyListeners();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gravando...</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: transparent;
+            width: 160px;
+            height: 96px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+        
+        #animation-container {
+            width: 150px;
+            height: 150px;
+            position: absolute;
+            right: 10px;
+        }
+        
+        .close-btn:hover {
+            opacity: 1;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js"></script>
+</head>
+<body>
+    <div id="animation-container"></div>
+    <!-- <button class="close-btn" onclick="closeWindow()">×</button> -->
+    
+    <script>
+        let animation = null;
+        
+        // Carregar a animação Lottie
+        function loadAnimation() {
+            fetch('../../assets/loading.json')
+                .then(response => response.json())
+                .then(animationData => {
+                    animation = lottie.loadAnimation({
+                        container: document.getElementById('animation-container'),
+                        renderer: 'svg',
+                        loop: true,
+                        autoplay: true,
+                        animationData: animationData
+                    });
+                })
+                .catch(error => console.error('Erro ao carregar animação:', error));
+        }
+        
+        function closeWindow() {
+            window.close();
+        }
+        
+        window.addEventListener('DOMContentLoaded', () => {
+            loadAnimation();
+        });
+    </script>
+</body>
+</html>

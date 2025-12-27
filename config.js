@@ -6,6 +6,8 @@ const debugModeToggle = document.getElementById("debug-mode-toggle");
 const debugModeStatus = document.getElementById("debug-mode-status");
 const printModeToggle = document.getElementById("print-mode-toggle");
 const printModeStatus = document.getElementById("print-mode-status");
+const osIntegrationToggle = document.getElementById("os-integration-toggle");
+const osIntegrationStatus = document.getElementById("os-integration-status");
 const langSelect = document.getElementById("language-select");
 const backendUrlValue = document.getElementById("backend-url-value");
 const aiModelSelect = document.getElementById("ai-model");
@@ -20,6 +22,18 @@ function updateDebugModeStatus(isDebugging) {
 // Helper function to update the print mode status text
 function updatePrintModeStatus(isPrintMode) {
   printModeStatus.textContent = isPrintMode ? "ON" : "OFF";
+}
+
+// Helper function to update the OS integration status text
+function updateOsIntegrationStatus(isOsIntegration) {
+  osIntegrationStatus.textContent = isOsIntegration ? "ON" : "OFF";
+  
+  // When OS integration is enabled, automatically enable print mode
+  if (isOsIntegration && !printModeToggle.checked) {
+    printModeToggle.checked = true;
+    updatePrintModeStatus(true);
+    ipcRenderer.send("save-print-mode-status", true);
+  }
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -42,6 +56,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   const isPrintMode = await ipcRenderer.invoke("get-print-mode-status");
   printModeToggle.checked = isPrintMode;
   updatePrintModeStatus(isPrintMode);
+
+  // -------------------------
+  // Load OS integration mode
+  // -------------------------
+  const isOsIntegration = await ipcRenderer.invoke("get-os-integration-status");
+  osIntegrationToggle.checked = isOsIntegration;
+  updateOsIntegrationStatus(isOsIntegration);
 
   // -------------------------
   // Load saved language
@@ -107,6 +128,11 @@ printModeToggle.addEventListener("change", () => {
   updatePrintModeStatus(printModeToggle.checked);
 });
 
+// Handle OS integration toggle live update
+osIntegrationToggle.addEventListener("change", () => {
+  updateOsIntegrationStatus(osIntegrationToggle.checked);
+});
+
 // Show/hide OpenAI token input based on AI model selection
 aiModelSelect.addEventListener('change', () => {
     if (aiModelSelect.value === 'openIa') {
@@ -126,6 +152,9 @@ saveButton.addEventListener("click", async () => {
 
   // Save print mode
   ipcRenderer.send("save-print-mode-status", printModeToggle.checked);
+
+  // Save OS integration mode
+  ipcRenderer.send("save-os-integration-status", osIntegrationToggle.checked);
 
   // Save language
   ipcRenderer.send("set-language", langSelect.value);

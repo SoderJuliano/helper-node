@@ -206,14 +206,23 @@ function destroyNotificationWindow() {
 }
 
 function createOsNotificationWindow(type, content) {
-  console.log(`🔔 Creating OS notification - Type: ${type}, Content: ${content.substring(0, 50)}...`);
+  console.log(`🔔 Creating OS notification - Type: ${type}, Content: ${content ? content.substring(0, 50) + '...' : 'no content'}`);
   
   // FORCE CLOSE existing notification using new helper function
   destroyNotificationWindow();
 
+  // Set dynamic dimensions based on type - matching the original HTML file dimensions
+  let windowWidth = 160;
+  let windowHeight = 96;
+  
+  if (type === 'response') {
+    windowWidth = 400;
+    windowHeight = 260;
+  }
+
   osNotificationWindow = new BrowserWindow({
-    width: 400,
-    height: type === 'response' ? 200 : (type === 'recording' ? 100 : 80),
+    width: windowWidth,
+    height: windowHeight,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -228,276 +237,36 @@ function createOsNotificationWindow(type, content) {
 
   // Position in top right corner
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-  osNotificationWindow.setPosition(width - 420, 60);
+  osNotificationWindow.setPosition(width - windowWidth - 20, 60);
 
-  let notificationHtml;
+  // Simply load the appropriate HTML file - let the files handle their own content
+  let filePath;
   
   if (type === 'loading') {
-    notificationHtml = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <style>
-          body {
-            margin: 0;
-            padding: 15px;
-            background: rgba(30, 30, 30, 0.95);
-            border-radius: 8px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-            color: white;
-            font-family: "Source Code Pro", monospace;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-          }
-          .spinner {
-            width: 20px;
-            height: 20px;
-            border: 2px solid #333;
-            border-top: 2px solid #00aaff;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-          }
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="spinner"></div>
-        <span>${content}</span>
-      </body>
-      </html>
-    `;
+    filePath = path.join(__dirname, 'os-integration', 'notifications', 'loading.html');
   } else if (type === 'recording') {
-    notificationHtml = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <style>
-          body {
-            margin: 0;
-            padding: 15px;
-            background: rgba(30, 30, 30, 0.95);
-            border-radius: 8px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-            color: white;
-            font-family: "Source Code Pro", monospace;
-            cursor: default;
-          }
-          .content-wrapper {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-          }
-          .recording-row {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-          }
-          .recording-icon {
-            width: 20px;
-            height: 20px;
-            background: #ff4444;
-            border-radius: 50%;
-            animation: pulse 1.5s infinite;
-          }
-          @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
-          }
-          .hint {
-            font-size: 11px;
-            color: #aaa;
-            text-align: center;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="content-wrapper">
-          <div class="recording-row">
-            <div class="recording-icon"></div>
-            <span>${content}</span>
-          </div>
-          <div class="hint">Pressione ESC para cancelar</div>
-        </div>
-        <script>
-          document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-              window.electronAPI.cancelRecording();
-            }
-          });
-          
-          // Focus the window so it can receive keyboard events
-          window.focus();
-        </script>
-      </body>
-      </html>
-    `;
+    filePath = path.join(__dirname, 'os-integration', 'notifications', 'recording.html');
   } else if (type === 'response') {
-    notificationHtml = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <style>
-          body {
-            margin: 0;
-            padding: 15px;
-            background: rgba(30, 30, 30, 0.95);
-            border-radius: 8px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-            color: white;
-            font-family: "Source Code Pro", monospace;
-            font-size: 14px;
-            line-height: 1.4;
-            max-height: 170px;
-            overflow-y: auto;
-          }
-          .response-content {
-            word-wrap: break-word;
-          }
-          .close-button {
-            margin-top: 10px;
-            padding: 5px 10px;
-            background: #00aaff;
-            border: none;
-            border-radius: 4px;
-            color: white;
-            cursor: pointer;
-            font-size: 12px;
-          }
-          .close-button:hover {
-            background: #0088cc;
-          }
-          /* Styling for code blocks */
-          pre {
-            background: rgba(0,0,0,0.5);
-            padding: 10px;
-            border-radius: 4px;
-            margin: 5px 0;
-            font-size: 12px;
-            overflow-x: auto;
-            position: relative;
-          }
-          code {
-            font-family: 'Courier New', monospace;
-            color: #f8f8f2;
-          }
-          .copy-button {
-            position: absolute;
-            top: 5px;
-            right: 5px;
-            background: rgba(255,255,255,0.1);
-            border: 1px solid rgba(255,255,255,0.2);
-            color: white;
-            padding: 2px 6px;
-            border-radius: 3px;
-            cursor: pointer;
-            font-size: 10px;
-          }
-          .copy-button:hover {
-            background: rgba(255,255,255,0.2);
-          }
-          /* Inline code styling */
-          code:not(pre code) {
-            background-color: rgba(255,255,255,0.1);
-            padding: 2px 4px;
-            border-radius: 3px;
-            font-size: 13px;
-          }
-          /* HTML content styling */
-          strong { font-weight: bold; }
-          em { font-style: italic; }
-          p { margin: 5px 0; }
-          ul { margin: 5px 0; padding-left: 20px; }
-          li { margin: 2px 0; }
-        </style>
-      </head>
-      <body>
-        <div class="response-content">${content}</div>
-        <button class="close-button" onclick="console.log('🔔 Close button clicked'); window.close();">Fechar</button>
-        <script>
-          // Add event listeners for copy buttons
-          document.querySelectorAll('.copy-button').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-              e.stopPropagation();
-              const codeId = btn.getAttribute('data-code-id');
-              const codeElement = document.getElementById(codeId);
-              if (codeElement) {
-                try {
-                  await navigator.clipboard.writeText(codeElement.textContent);
-                  const originalText = btn.textContent;
-                  btn.textContent = '✓';
-                  setTimeout(() => {
-                    btn.textContent = originalText;
-                  }, 1500);
-                } catch (err) {
-                  console.error('Erro ao copiar:', err);
-                  btn.textContent = '✗';
-                  setTimeout(() => {
-                    btn.textContent = '[Copy]';
-                  }, 1500);
-                }
-              }
-            });
-          });
-          
-          // Add click-to-copy for code blocks
-          document.querySelectorAll('pre code').forEach(codeElement => {
-            codeElement.style.cursor = 'pointer';
-            codeElement.addEventListener('click', async (e) => {
-              if (e.target.tagName === 'BUTTON') return;
-              const codeText = codeElement.textContent.trim();
-              try {
-                await navigator.clipboard.writeText(codeText);
-                // Visual feedback
-                const originalBg = codeElement.style.backgroundColor;
-                codeElement.style.backgroundColor = 'rgba(76, 175, 80, 0.3)';
-                setTimeout(() => {
-                  codeElement.style.backgroundColor = originalBg;
-                }, 500);
-              } catch (err) {
-                console.error('Erro ao copiar código:', err);
-              }
-            });
-          });
-          
-          // Add click-to-copy for inline code
-          document.querySelectorAll('code:not(pre code)').forEach(codeElement => {
-            codeElement.style.cursor = 'pointer';
-            codeElement.addEventListener('click', async (e) => {
-              const codeText = codeElement.textContent.trim();
-              try {
-                await navigator.clipboard.writeText(codeText);
-                // Visual feedback
-                const originalBg = codeElement.style.backgroundColor;
-                codeElement.style.backgroundColor = 'rgba(76, 175, 80, 0.3)';
-                setTimeout(() => {
-                  codeElement.style.backgroundColor = originalBg;
-                }, 500);
-              } catch (err) {
-                console.error('Erro ao copiar código inline:', err);
-              }
-            });
-          });
-        </script>
-      </body>
-      </html>
-    `;
+    filePath = path.join(__dirname, 'os-integration', 'notifications', 'response.html');
   }
 
-  osNotificationWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(notificationHtml)}`);
+  // Load the HTML file
+  osNotificationWindow.loadFile(filePath).catch(error => {
+    console.error(`Error loading ${type} notification file:`, error);
+  });
 
-  // Auto-close after 10 seconds for responses
-  if (type === 'response') {
-    setTimeout(() => {
-      if (osNotificationWindow && !osNotificationWindow.isDestroyed()) {
-        console.log(`🔔 Auto-closing response notification after 10 seconds`);
-        osNotificationWindow.destroy(); // Use destroy for immediate close
-      }
-    }, 10000);
+  // Store content for response notifications - the HTML file will handle displaying it
+  if (type === 'response' && content) {
+    // The response.html file will handle the content display
+    osNotificationWindow.webContents.once('dom-ready', () => {
+      osNotificationWindow.webContents.executeJavaScript(`
+        if (typeof window.setResponseContent === 'function') {
+          window.setResponseContent(${JSON.stringify(content)});
+        } else {
+          document.body.innerHTML = ${JSON.stringify(content)} + '<button class="close-btn" onclick="window.close()" style="position:absolute;top:5px;right:8px;background:none;border:none;color:#fff;font-size:18px;cursor:pointer;padding:0;width:20px;height:20px;z-index:1000;">×</button>';
+        }
+      `);
+    });
   }
 
   osNotificationWindow.on('closed', () => {
@@ -1435,11 +1204,11 @@ async function transcribeAudio(filePath) {
     let modelPath, command;
     if (duration > 20) {
       modelPath = modelPathTiny;
-      command = `${whisperPath} -m ${modelPath} -f ${filePath} -l auto --best-of 2 --beam-size 2`;
+      command = `${whisperPath} -m ${modelPath} -f ${filePath} -l auto --threads 16 --no-timestamps --best-of 3 --beam-size 2`;
       console.log("Usando modelo tiny");
     } else {
       modelPath = modelPathSmall;
-      command = `${whisperPath} -m ${modelPath} -f ${filePath} -l auto --threads 16 --no-timestamps --best-of 2 --beam-size 2`;
+      command = `${whisperPath} -m ${modelPath} -f ${filePath} -l auto --threads 18 --no-timestamps --best-of 3 --beam-size 2`;
       console.log("Usando modelo small");
     }
 
