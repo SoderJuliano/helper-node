@@ -6,7 +6,6 @@ const {
   screen,
   Notification,
 } = require("electron");
-const clipboardy = require('clipboardy');
 const path = require("path");
 const crypto = require("crypto");
 const { exec } = require("child_process");
@@ -21,6 +20,11 @@ const TesseractService = require("./services/tesseractService.js");
 const OpenAIService = require("./services/openAIService.js");
 const ipcService = require("./services/ipcService.js");
 const configService = require("./services/configService.js");
+
+// Function to calculate image hash for duplicate detection
+function calculateImageHash(imageBuffer) {
+  return crypto.createHash('md5').update(imageBuffer).digest('hex');
+}
 
 // --- SINGLE INSTANCE LOCK ---
 const gotTheLock = app.requestSingleInstanceLock();
@@ -62,12 +66,18 @@ let isRecording = false;
 let waitingNotificationInterval = null;
 let clipboardMonitoringInterval = null;
 let lastClipboardImageHash = null;
+let lastProcessedImageHash = null;
+let lastProcessedTimestamp = null;
+const IMAGE_COOLDOWN_MS = 30000; // 30 seconds cooldown
+let isProcessingImage = false; // Simple lock for image processing
 const audioFilePath = path.join(__dirname, "output.wav");
 
 // OS Integration windows
 let osInputWindow = null;
 let osNotificationWindow = null;
+let osCaptureWindow = null;
 let isOsIntegrationMode = false;
+let captureToolInterval = null;
 
 function createConfigWindow() {
   if (configWindow) {
@@ -211,6 +221,11 @@ function createOsNotificationWindow(type, content) {
   // FORCE CLOSE existing notification using new helper function
   destroyNotificationWindow();
 
+  // Close capture window when loading or response appears
+  if (type === 'loading' || type === 'response') {
+    destroyCaptureWindow();
+  }
+
   // Set dynamic dimensions based on type - matching the original HTML file dimensions
   let windowWidth = 160;
   let windowHeight = 96;
@@ -278,6 +293,9 @@ function createOsNotificationWindow(type, content) {
 function switchToOsIntegrationMode() {
   isOsIntegrationMode = true;
   
+  // Start capture tool monitoring when entering OS integration mode
+  startCaptureToolMonitoring();
+  
   // Hide main window
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.hide();
@@ -287,16 +305,173 @@ function switchToOsIntegrationMode() {
 function switchToNormalMode() {
   isOsIntegrationMode = false;
   
+  // Stop capture tool monitoring when leaving OS integration mode
+  stopCaptureToolMonitoring();
+  
   // Close OS integration windows
   if (osInputWindow && !osInputWindow.isDestroyed()) {
     osInputWindow.close();
   }
   destroyNotificationWindow(); // Use helper function instead
+  destroyCaptureWindow(); // Close capture window
+  
+  // Stop capture tool monitoring when leaving OS integration mode
+  stopCaptureToolMonitoring();
   
   // Show main window
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.show();
   }
+}
+
+// Capture tool detection and window functions
+function createCaptureWindow() {
+  if (osCaptureWindow && !osCaptureWindow.isDestroyed()) {
+    return; // Already exists
+  }
+
+  // Only show capture window if OS integration mode is active
+  if (!isOsIntegrationMode) {
+    return;
+  }
+
+  // Don't create capture window if notification is already active
+  if (osNotificationWindow && !osNotificationWindow.isDestroyed()) {
+    console.log('🎯 Notification ativa, não criando janela de captura');
+    return;
+  }
+
+  console.log('🎯 Criando janela de captura');
+  
+  osCaptureWindow = new BrowserWindow({
+    width: 120,
+    height: 120,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    focusable: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+
+  // Position in top right corner (same as loading/response notifications)
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  const windowWidth = 120;
+  osCaptureWindow.setPosition(width - windowWidth - 20, 60);
+
+  // Load capture animation
+  const capturePath = path.join(__dirname, 'os-integration', 'notifications', 'capture.html');
+  osCaptureWindow.loadFile(capturePath).catch(error => {
+    console.error('Erro ao carregar janela de captura:', error);
+  });
+
+  osCaptureWindow.on('closed', () => {
+    console.log('🎯 Janela de captura fechada');
+    osCaptureWindow = null;
+  });
+}
+
+function destroyCaptureWindow() {
+  if (osCaptureWindow && !osCaptureWindow.isDestroyed()) {
+    console.log('🎯 Destruindo janela de captura');
+    osCaptureWindow.close();
+    osCaptureWindow = null;
+  }
+}
+
+// Simple and reliable detection for when user is actively selecting screenshot area
+async function detectActiveSelectionInterface() {
+  try {
+    // Check for active screenshot selection processes - don't fail if no matches
+    const { stdout } = await execPromise('ps aux | grep -E "(gnome-screenshot|flameshot|spectacle|maim|scrot|grim|slurp|grimshot|ksnip|deepin-screenshot|xfce4-screenshooter)" | grep -v grep || true');
+    
+    if (!stdout.trim()) {
+      return false;
+    }
+
+    const processes = stdout.split('\n').filter(line => line.trim());
+    
+    for (const process of processes) {
+      // GNOME Screenshot in area selection mode
+      if (process.includes('gnome-screenshot') && (process.includes('-a') || process.includes('--area'))) {
+        return true;
+      }
+      
+      // Flameshot in GUI mode (interactive selection)
+      if (process.includes('flameshot') && process.includes('gui')) {
+        return true;
+      }
+      
+      // Spectacle in region mode
+      if (process.includes('spectacle') && (process.includes('-r') || process.includes('--region'))) {
+        return true;
+      }
+      
+      // Maim with selection flag
+      if (process.includes('maim') && (process.includes('-s') || process.includes('--select'))) {
+        return true;
+      }
+      
+      // Scrot with selection flag
+      if (process.includes('scrot') && process.includes('-s')) {
+        return true;
+      }
+      
+      // Wayland tools
+      if (process.includes('grim') || process.includes('slurp') || process.includes('grimshot')) {
+        return true;
+      }
+      
+      // Other tools
+      if (process.includes('ksnip') || process.includes('deepin-screenshot') || process.includes('xfce4-screenshooter')) {
+        return true;
+      }
+    }
+
+    return false;
+  } catch (error) {
+    return false;
+  }
+}
+
+function startCaptureToolMonitoring() {
+  if (captureToolInterval) {
+    clearInterval(captureToolInterval);
+  }
+
+  console.log('🎯 Iniciando monitoramento de interface de seleção');
+  
+  let captureActive = false;
+  
+  captureToolInterval = setInterval(async () => {
+    const isCapturing = await detectActiveSelectionInterface();
+    
+    if (isCapturing && !captureActive) {
+      // Selection interface just opened
+      captureActive = true;
+      createCaptureWindow();
+      console.log('📸 Interface de seleção aberta');
+    } else if (!isCapturing && captureActive) {
+      // Selection interface just closed
+      captureActive = false;
+      destroyCaptureWindow();
+      console.log('📸 Interface de seleção fechada');
+    }
+  }, 500); // Check every 500ms for better responsiveness
+}
+
+function stopCaptureToolMonitoring() {
+  if (captureToolInterval) {
+    clearInterval(captureToolInterval);
+    captureToolInterval = null;
+    console.log('🎯 Monitoramento de captura parado');
+  }
+  
+  destroyCaptureWindow();
 }
 
 async function createWindow() {
@@ -531,9 +706,108 @@ ipcMain.on(
   }
 );
 
-// Função para calcular hash da imagem do clipboard
-function calculateImageHash(imageBuffer) {
-  return crypto.createHash('md5').update(imageBuffer).digest('hex');
+// Função para detectar ferramentas de captura ativas
+async function detectCaptureTools() {
+  try {
+    // Lista de ferramentas de captura comuns no Linux
+    const captureTools = [
+      'gnome-screenshot',
+      'spectacle', 
+      'flameshot',
+      'shutter',
+      'deepin-screenshot',
+      'grim',
+      'slurp',
+      'ksnip',
+      'xfce4-screenshooter',
+      'kcreenshot'
+    ];
+    
+    // Verificar se alguma ferramenta está rodando
+    for (const tool of captureTools) {
+      try {
+        const { stdout } = await execPromise(`pgrep -f ${tool} 2>/dev/null || echo ''`);
+        if (stdout.trim()) {
+          console.log(`📸 Ferramenta de captura detectada: ${tool}`);
+          return tool;
+        }
+      } catch (e) {
+        // Continua para próxima ferramenta
+      }
+    }
+    return false;
+  } catch (error) {
+    console.error('Erro ao detectar ferramentas de captura:', error);
+    return false;
+  }
+}
+
+// Função para criar notificação intermediária simples
+function createIntermediateNotification() {
+  console.log('📸 Mostrando notificação de captura detectada...');
+  
+  const isOsIntegration = configService.getOsIntegrationStatus();
+  if (isOsIntegration) {
+    createOsNotificationWindow('loading', 'Ferramenta de captura detectada - aguardando imagem...');
+  } else if (appConfig.notificationsEnabled && Notification.isSupported()) {
+    new Notification({
+      title: 'Helper-Node',
+      body: 'Ferramenta de captura detectada - aguardando imagem...',
+      silent: true,
+    }).show();
+  }
+}
+
+// Inicializar baseline do clipboard para evitar processar imagens existentes
+async function initializeClipboardBaseline() {
+  try {
+    console.log('📋 Tentando inicializar baseline do clipboard...');
+    const isWayland = process.env.XDG_SESSION_TYPE === "wayland";
+    let hasImage = false;
+    let imageData = null;
+    
+    if (isWayland) {
+      try {
+        const wlResult = await execPromise('timeout 2 wl-paste --list-types 2>/dev/null || echo ""');
+        if (wlResult && wlResult.stdout.includes('image/png')) {
+          const imageResult = await execPromise('timeout 3 wl-paste --type image/png | base64 -w 0 2>/dev/null || echo ""');
+          if (imageResult && imageResult.stdout.trim()) {
+            hasImage = true;
+            imageData = 'data:image/png;base64,' + imageResult.stdout.trim();
+          }
+        }
+      } catch (e) {
+        console.log('📋 Wayland clipboard não disponível, tentando X11...');
+      }
+    }
+    
+    if (!hasImage) {
+      try {
+        const xclipResult = await execPromise('timeout 2 xclip -selection clipboard -t TARGETS -o 2>/dev/null || echo ""');
+        if (xclipResult && xclipResult.stdout.includes('image/png')) {
+          const imageResult = await execPromise('timeout 3 xclip -selection clipboard -t image/png -o | base64 -w 0 2>/dev/null || echo ""');
+          if (imageResult && imageResult.stdout.trim()) {
+            hasImage = true;
+            imageData = 'data:image/png;base64,' + imageResult.stdout.trim();
+          }
+        }
+      } catch (e) {
+        console.log('📋 X11 clipboard não disponível');
+      }
+    }
+    
+    if (hasImage && imageData) {
+      const base64Data = imageData.replace(/^data:image\/png;base64,/, '');
+      const currentHash = calculateImageHash(Buffer.from(base64Data, 'base64'));
+      lastClipboardImageHash = currentHash;
+      console.log('📋 Clipboard baseline inicializado:', currentHash.substring(0, 8));
+    } else {
+      console.log('📋 Nenhuma imagem no clipboard para baseline');
+    }
+  } catch (error) {
+    console.log('📋 Baseline falhou, mas não é crítico:', error.message);
+    // Não é crítico, sistema funciona sem baseline
+  }
 }
 
 // Função para iniciar monitoramento do clipboard usando ferramentas nativas
@@ -544,53 +818,95 @@ function startClipboardMonitoring() {
   
   console.log('🎯 Iniciando monitoramento NATIVO de clipboard para novas imagens...');
   
+  // Initialize with current clipboard content to avoid processing existing images
+  initializeClipboardBaseline();
+  
   clipboardMonitoringInterval = setInterval(async () => {
     try {
       const isPrintModeEnabled = configService.getPrintModeStatus();
       if (!isPrintModeEnabled) return;
       
-      // Tentar detectar imagem no clipboard usando ferramentas nativas
+      // Detect which environment we're in first to avoid running both commands
+      const isWayland = process.env.XDG_SESSION_TYPE === "wayland";
       let hasImage = false;
       let imageData = null;
+      let currentHash = null;
       
-      try {
-        // Para X11 (GNOME, KDE, etc)
-        const xclipResult = await execPromise('xclip -selection clipboard -t TARGETS -o 2>/dev/null').catch(() => null);
-        if (xclipResult && xclipResult.stdout.includes('image/png')) {
-          console.log('🖼️ PNG image detected in X11 clipboard');
-          const imageResult = await execPromise('xclip -selection clipboard -t image/png -o | base64 -w 0').catch(() => null);
-          if (imageResult && imageResult.stdout) {
-            hasImage = true;
-            imageData = 'data:image/png;base64,' + imageResult.stdout.trim();
-          }
-        }
-      } catch (e) {
-        // Ignorar erro do X11
-      }
-      
-      // Se não encontrou no X11, tentar Wayland
-      if (!hasImage) {
+      if (isWayland) {
+        // Try Wayland first
         try {
           const wlResult = await execPromise('wl-paste --list-types 2>/dev/null').catch(() => null);
           if (wlResult && wlResult.stdout.includes('image/png')) {
-            console.log('🖼️ PNG image detected in Wayland clipboard');
-            const imageResult = await execPromise('wl-paste --type image/png | base64 -w 0').catch(() => null);
-            if (imageResult && imageResult.stdout) {
-              hasImage = true;
-              imageData = 'data:image/png;base64,' + imageResult.stdout.trim();
+            try {
+              const imageResult = await execPromise('wl-paste --type image/png | base64 -w 0');
+              if (imageResult && imageResult.stdout && imageResult.stdout.trim()) {
+                hasImage = true;
+                imageData = 'data:image/png;base64,' + imageResult.stdout.trim();
+                const base64Data = imageResult.stdout.trim();
+                currentHash = calculateImageHash(Buffer.from(base64Data, 'base64'));
+              }
+            } catch (extractError) {
+              // Silent error handling for Wayland
             }
           }
         } catch (e) {
-          // Ignorar erro do Wayland
+          // Silent error handling
+          // Fallback to X11 if Wayland fails
         }
       }
       
-      if (hasImage && imageData) {
-        const currentHash = calculateImageHash(Buffer.from(imageData));
-        console.log('🔑 Current hash:', currentHash.substring(0, 8), 'Last hash:', lastClipboardImageHash ? lastClipboardImageHash.substring(0, 8) : 'none');
+      // Try X11 if not Wayland or if Wayland failed
+      if (!hasImage) {
+        try {
+          const xclipResult = await execPromise('xclip -selection clipboard -t TARGETS -o 2>/dev/null').catch(() => null);
+          if (xclipResult && xclipResult.stdout.includes('image/png')) {
+            const imageResult = await execPromise('xclip -selection clipboard -t image/png -o | base64 -w 0').catch(() => null);
+            if (imageResult && imageResult.stdout) {
+              hasImage = true;
+              imageData = 'data:image/png;base64,' + imageResult.stdout.trim();
+              const base64Data = imageResult.stdout.trim();
+              currentHash = calculateImageHash(Buffer.from(base64Data, 'base64'));
+            }
+          }
+        } catch (e) {
+          // Silent error handling
+          // No image found in either clipboard
+          console.log('🖥️ X11 also failed');
+        }
+      }
+      
+      if (hasImage && imageData && currentHash) {
+        // Check if this is the same image as before
+        if (currentHash === lastClipboardImageHash) {
+          // Same image still in clipboard, no need to log repeatedly
+          return;
+        }
         
-        if (currentHash !== lastClipboardImageHash && lastClipboardImageHash !== null) {
+        // Check if this image was recently processed (cooldown check)
+        const now = Date.now();
+        const isRecentlyProcessed = lastProcessedImageHash === currentHash && 
+                                   lastProcessedTimestamp && 
+                                   (now - lastProcessedTimestamp) < IMAGE_COOLDOWN_MS;
+        
+        if (isRecentlyProcessed) {
+          console.log('🚫 Image recently processed, waiting for cooldown period...');
+          lastClipboardImageHash = currentHash; // Update clipboard hash but don't process
+          return;
+        }
+        
+        // This is a new image or cooldown period has passed
+        if (currentHash !== lastClipboardImageHash) {
+          // Check if already processing an image
+          if (isProcessingImage) {
+            console.log('🔒 Já processando uma imagem, aguardando...');
+            lastClipboardImageHash = currentHash; // Update hash but don't process
+            return;
+          }
+          
           console.log('📸 NOVA IMAGEM DETECTADA no clipboard! Processando automaticamente...');
+          
+          // Set processing lock
+          isProcessingImage = true;
           
           // Check if OS integration mode is enabled
           const isOsIntegration = configService.getOsIntegrationStatus();
@@ -605,17 +921,25 @@ function startClipboardMonitoring() {
             }).show();
           }
           
+          // Mark as processed with timestamp
+          lastProcessedImageHash = currentHash;
+          lastProcessedTimestamp = now;
+          
           await processNewClipboardImage(imageData);
         }
         
         lastClipboardImageHash = currentHash;
       } else {
-        console.log('🔄 Verificando clipboard... (nenhuma imagem encontrada)');
+        // No image found, reset clipboard hash
+        if (lastClipboardImageHash !== null) {
+          console.log('🔄 No image in clipboard anymore');
+          lastClipboardImageHash = null;
+        }
       }
     } catch (error) {
       console.error('❌ Erro no monitoramento de clipboard:', error);
     }
-  }, 2000); // Verificar a cada 2 segundos
+  }, 3000); // Verificar a cada 3 segundos para debug
 }
 
 // Função para parar monitoramento do clipboard
@@ -626,6 +950,9 @@ function stopClipboardMonitoring() {
     lastClipboardImageHash = null;
     console.log('🛑 Monitoramento de clipboard parado');
   }
+  
+  // Parar também o monitoramento de captura
+  stopCaptureToolMonitoring();
 }
 
 // Função para processar nova imagem do clipboard
@@ -636,16 +963,8 @@ async function processNewClipboardImage(base64Image) {
     // Check if OS integration mode is enabled
     const isOsIntegration = configService.getOsIntegrationStatus();
     
-    // Notificação de OCR
-    if (isOsIntegration) {
-      createOsNotificationWindow('loading', 'Extraindo texto da imagem...');
-    } else if (appConfig.notificationsEnabled && Notification.isSupported()) {
-      new Notification({
-        title: 'Helper-Node',
-        body: 'Extraindo texto da imagem...',
-        silent: true,
-      }).show();
-    }
+    // A primeira notificação já foi exibida no clipboard monitoring
+    // Não precisamos de segunda notificação de loading
     
     // Usar o TesseractService existente
     const text = await TesseractService.getTextFromImage(base64Image);
@@ -716,6 +1035,10 @@ async function processNewClipboardImage(base64Image) {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('transcription-error', 'Erro ao processar imagem do clipboard');
     }
+  } finally {
+    // Always release the processing lock
+    isProcessingImage = false;
+    console.log('🔓 Lock de processamento liberado');
   }
 }
 
@@ -1667,6 +1990,7 @@ ipcMain.on("save-print-mode-status", (event, status) => {
     }
     
     startClipboardMonitoring();
+    // Capture tool monitoring só funciona no OS integration mode
   } else {
     // Notificação de desativação
     if (appConfig.notificationsEnabled && Notification.isSupported()) {
@@ -1704,6 +2028,7 @@ ipcMain.on("save-os-integration-status", (event, status) => {
     }
     
     startClipboardMonitoring();
+    startCaptureToolMonitoring(); // Monitoramento de ferramentas de captura apenas no OS integration
     // Switch to OS integration mode
     switchToOsIntegrationMode();
   } else {
@@ -1884,13 +2209,18 @@ app.whenReady().then(async () => {
   if (initialPrintMode) {
     console.log('🎯 Print mode estava ativo, iniciando monitoramento de clipboard...');
     startClipboardMonitoring();
+    // Capture tool monitoring só no OS integration mode, não no print mode básico
   }
   
   // Inicializar OS integration mode se estiver ativo
   const initialOsIntegration = configService.getOsIntegrationStatus();
+  console.log('🔗 Checking OS integration status:', initialOsIntegration);
   if (initialOsIntegration) {
     console.log('🔗 OS integration estava ativo, iniciando modo de integração...');
-    switchToOsIntegrationMode();
+    // Delay to ensure everything is loaded
+    setTimeout(() => {
+      switchToOsIntegrationMode();
+    }, 1000);
     
     // Ensure clipboard monitoring is started for OS integration mode
     if (!initialPrintMode) {
@@ -1899,6 +2229,8 @@ app.whenReady().then(async () => {
       configService.setPrintModeStatus(true);
       startClipboardMonitoring();
     }
+    // Start capture tool monitoring for OS integration
+    startCaptureToolMonitoring();
   }
 
   // Verifica o status do backend ao iniciar e depois periodicamente

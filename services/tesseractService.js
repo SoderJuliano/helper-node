@@ -83,29 +83,54 @@ class TesseractService {
                 throw new Error('Written image file is empty');
             }
     
-            // Tentar processar a imagem com timeout
-            const ocrPromise = Tesseract.recognize(imagePath, 'por', {
-                logger: m => console.log(m)
-            });
-
-            // Adicionar timeout de 30 segundos para evitar travamento
-            const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('OCR processing timeout')), 30000);
-            });
-
-            const result = await Promise.race([ocrPromise, timeoutPromise]);
+            // Tentar processar a imagem com múltiplas configurações
+            console.log('🔍 Tentando OCR com configuração otimizada...');
             
-            if (!result || !result.data || typeof result.data.text !== 'string') {
-                throw new Error('OCR returned invalid result');
+            // Primeira tentativa: configuração simplificada para texto matemático
+            let ocrPromise = Tesseract.recognize(imagePath, 'eng', {
+                logger: m => console.log(m),
+                tessedit_pageseg_mode: Tesseract.PSM.SINGLE_WORD,
+                tessedit_char_whitelist: '0123456789+-=x÷×',
+            });
+            
+            try {
+                let result = await Promise.race([ocrPromise, new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('OCR timeout')), 15000);
+                })]);
+                
+                if (result && result.data && result.data.text && result.data.text.trim()) {
+                    console.log('✅ OCR sucesso com configuração matemática:', result.data.text.trim());
+                    const text = result.data.text.trim();
+                    fs.unlink(imagePath).catch(console.error);
+                    return text;
+                }
+                
+                // Segunda tentativa: configuração mais ampla
+                console.log('🔄 Tentando OCR com configuração ampla...');
+                ocrPromise = Tesseract.recognize(imagePath, 'eng+por', {
+                    logger: m => console.log(m),
+                    tessedit_pageseg_mode: Tesseract.PSM.AUTO,
+                });
+                
+                result = await Promise.race([ocrPromise, new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('OCR timeout')), 15000);
+                })]);
+                
+                if (result && result.data && result.data.text && result.data.text.trim()) {
+                    console.log('✅ OCR sucesso com configuração ampla:', result.data.text.trim());
+                    const text = result.data.text.trim();
+                    fs.unlink(imagePath).catch(console.error);
+                    return text;
+                }
+                
+            } catch (error) {
+                console.error('❌ Erro em ambas tentativas de OCR:', error.message);
             }
-
-            const text = result.data.text.trim();
-            console.log('OCR Result for manual input:', text);
-    
-            // Cleanup the temporary file
+            
+            // Se chegou até aqui, nenhuma das tentativas funcionou
+            console.log('⚠️ Nenhuma configuração de OCR conseguiu detectar texto');
             fs.unlink(imagePath).catch(console.error);
-    
-            return text;
+            return '';
     
         } catch (error) {
             console.error('Error getting text from image:', error);
@@ -147,23 +172,53 @@ class TesseractService {
 
             console.log('Starting OCR processing for:', imageToProcessPath);
 
-            // Processar OCR com timeout
-            const ocrPromise = Tesseract.recognize(imageToProcessPath, 'por', {
-                logger: m => console.log(m)
+            // Processar OCR com múltiplas tentativas para melhor detecção
+            console.log('🔍 Processando OCR com tentativas otimizadas...');
+            
+            // Primeira tentativa: otimizada para matemática/números
+            let ocrPromise = Tesseract.recognize(imageToProcessPath, 'eng', {
+                logger: m => console.log(m),
+                tessedit_pageseg_mode: Tesseract.PSM.SINGLE_WORD,
+                tessedit_char_whitelist: '0123456789+-=x÷×().,',
             });
-
-            // Timeout de 30 segundos
-            const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('OCR processing timeout')), 30000);
-            });
-
-            const result = await Promise.race([ocrPromise, timeoutPromise]);
-
-            if (!result || !result.data || typeof result.data.text !== 'string') {
-                throw new Error('OCR returned invalid result');
+            
+            let result = null;
+            let text = '';
+            
+            try {
+                result = await Promise.race([ocrPromise, new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('OCR timeout')), 15000);
+                })]);
+                
+                if (result && result.data && result.data.text && result.data.text.trim()) {
+                    text = result.data.text.trim();
+                    console.log('✅ OCR matemático detectou:', text);
+                }
+            } catch (mathOcrError) {
+                console.log('🔄 OCR matemático falhou, tentando configuração completa...');
+            }
+            
+            // Segunda tentativa se a primeira falhou
+            if (!text) {
+                try {
+                    ocrPromise = Tesseract.recognize(imageToProcessPath, 'eng+por', {
+                        logger: m => console.log(m),
+                        tessedit_pageseg_mode: Tesseract.PSM.AUTO
+                    });
+                    
+                    result = await Promise.race([ocrPromise, new Promise((_, reject) => {
+                        setTimeout(() => reject(new Error('OCR timeout')), 15000);
+                    })]);
+                    
+                    if (result && result.data && result.data.text && result.data.text.trim()) {
+                        text = result.data.text.trim();
+                        console.log('✅ OCR completo detectou:', text);
+                    }
+                } catch (fullOcrError) {
+                    console.log('❌ Ambas tentativas de OCR falharam');
+                }
             }
 
-            const text = result.data.text.trim();
             console.log('OCR Result:', text);
 
             if (mainWindow && !mainWindow.isDestroyed()) {

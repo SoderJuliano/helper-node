@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Capturando...</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: transparent;
+            width: 120px;
+            height: 120px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+        
+        #animation-container {
+            width: 100px;
+            height: 100px;
+            position: absolute;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js"></script>
+</head>
+<body>
+    <div id="animation-container"></div>
+    
+    <script>
+        let animation = null;
+        
+        // Carregar a animação Lottie
+        function loadAnimation() {
+            fetch('../../assets/copyImg.json')
+                .then(response => response.json())
+                .then(animationData => {
+                    animation = lottie.loadAnimation({
+                        container: document.getElementById('animation-container'),
+                        renderer: 'svg',
+                        loop: true,
+                        autoplay: true,
+                        animationData: animationData
+                    });
+                })
+                .catch(error => console.error('Erro ao carregar animação de captura:', error));
+        }
+        
+        window.addEventListener('DOMContentLoaded', () => {
+            loadAnimation();
+        });
+    </script>
+</body>
+</html>
