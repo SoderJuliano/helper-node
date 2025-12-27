@@ -64,6 +64,11 @@ let clipboardMonitoringInterval = null;
 let lastClipboardImageHash = null;
 const audioFilePath = path.join(__dirname, "output.wav");
 
+// OS Integration windows
+let osInputWindow = null;
+let osNotificationWindow = null;
+let isOsIntegrationMode = false;
+
 function createConfigWindow() {
   if (configWindow) {
     configWindow.focus();
@@ -90,6 +95,439 @@ function createConfigWindow() {
   configWindow.on("closed", () => {
     configWindow = null;
   });
+}
+
+// OS Integration Mode Functions
+function createOsInputWindow() {
+  if (osInputWindow && !osInputWindow.isDestroyed()) {
+    osInputWindow.focus();
+    return;
+  }
+
+  osInputWindow = new BrowserWindow({
+    width: 600,
+    height: 50,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, "preload.js"),
+    },
+  });
+
+  // Center on screen
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  osInputWindow.setPosition(
+    Math.floor((width - 600) / 2), 
+    Math.floor(height / 3)
+  );
+
+  const inputHtml = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body {
+          margin: 0;
+          padding: 10px;
+          background: rgba(30, 30, 30, 0.95);
+          border-radius: 8px;
+          box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+          font-family: "Source Code Pro", monospace;
+        }
+        textarea {
+          width: 100%;
+          height: 30px;
+          border: none;
+          background: transparent;
+          color: white;
+          font-size: 16px;
+          resize: none;
+          outline: none;
+          font-family: inherit;
+        }
+        textarea::placeholder {
+          color: #888;
+        }
+      </style>
+    </head>
+    <body>
+      <textarea id="input" placeholder="Digite sua pergunta e pressione Shift+Enter..."></textarea>
+      <script>
+        const input = document.getElementById('input');
+        input.focus();
+        
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape') {
+            window.electronAPI.closeOsInput();
+          } else if (e.key === 'Enter' && e.shiftKey) {
+            e.preventDefault();
+            const text = input.value.trim();
+            if (text) {
+              window.electronAPI.sendOsQuestion(text);
+            }
+          }
+        });
+      </script>
+    </body>
+    </html>
+  `;
+
+  osInputWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(inputHtml)}`);
+
+  osInputWindow.on('blur', () => {
+    if (osInputWindow && !osInputWindow.isDestroyed()) {
+      osInputWindow.close();
+    }
+  });
+
+  osInputWindow.on('closed', () => {
+    osInputWindow = null;
+  });
+}
+
+// Helper function to completely destroy the notification window
+function destroyNotificationWindow() {
+  if (osNotificationWindow && !osNotificationWindow.isDestroyed()) {
+    console.log(`🔔 DESTROYING notification window completely`);
+    try {
+      osNotificationWindow.removeAllListeners(); // Remove all event listeners
+      osNotificationWindow.destroy(); // Use destroy instead of close for immediate effect
+      console.log(`🔔 Notification window destroyed successfully`);
+    } catch (e) {
+      console.log(`🔔 Error destroying notification:`, e);
+    }
+    osNotificationWindow = null;
+  }
+}
+
+function createOsNotificationWindow(type, content) {
+  console.log(`🔔 Creating OS notification - Type: ${type}, Content: ${content.substring(0, 50)}...`);
+  
+  // FORCE CLOSE existing notification using new helper function
+  destroyNotificationWindow();
+
+  osNotificationWindow = new BrowserWindow({
+    width: 400,
+    height: type === 'response' ? 200 : (type === 'recording' ? 100 : 80),
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, "preload.js"),
+    },
+  });
+
+  // Position in top right corner
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  osNotificationWindow.setPosition(width - 420, 60);
+
+  let notificationHtml;
+  
+  if (type === 'loading') {
+    notificationHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body {
+            margin: 0;
+            padding: 15px;
+            background: rgba(30, 30, 30, 0.95);
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            color: white;
+            font-family: "Source Code Pro", monospace;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+          }
+          .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #333;
+            border-top: 2px solid #00aaff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+          }
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="spinner"></div>
+        <span>${content}</span>
+      </body>
+      </html>
+    `;
+  } else if (type === 'recording') {
+    notificationHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body {
+            margin: 0;
+            padding: 15px;
+            background: rgba(30, 30, 30, 0.95);
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            color: white;
+            font-family: "Source Code Pro", monospace;
+            cursor: default;
+          }
+          .content-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+          }
+          .recording-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+          }
+          .recording-icon {
+            width: 20px;
+            height: 20px;
+            background: #ff4444;
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+          }
+          @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+          }
+          .hint {
+            font-size: 11px;
+            color: #aaa;
+            text-align: center;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="content-wrapper">
+          <div class="recording-row">
+            <div class="recording-icon"></div>
+            <span>${content}</span>
+          </div>
+          <div class="hint">Pressione ESC para cancelar</div>
+        </div>
+        <script>
+          document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+              window.electronAPI.cancelRecording();
+            }
+          });
+          
+          // Focus the window so it can receive keyboard events
+          window.focus();
+        </script>
+      </body>
+      </html>
+    `;
+  } else if (type === 'response') {
+    notificationHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body {
+            margin: 0;
+            padding: 15px;
+            background: rgba(30, 30, 30, 0.95);
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            color: white;
+            font-family: "Source Code Pro", monospace;
+            font-size: 14px;
+            line-height: 1.4;
+            max-height: 170px;
+            overflow-y: auto;
+          }
+          .response-content {
+            word-wrap: break-word;
+          }
+          .close-button {
+            margin-top: 10px;
+            padding: 5px 10px;
+            background: #00aaff;
+            border: none;
+            border-radius: 4px;
+            color: white;
+            cursor: pointer;
+            font-size: 12px;
+          }
+          .close-button:hover {
+            background: #0088cc;
+          }
+          /* Styling for code blocks */
+          pre {
+            background: rgba(0,0,0,0.5);
+            padding: 10px;
+            border-radius: 4px;
+            margin: 5px 0;
+            font-size: 12px;
+            overflow-x: auto;
+            position: relative;
+          }
+          code {
+            font-family: 'Courier New', monospace;
+            color: #f8f8f2;
+          }
+          .copy-button {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 10px;
+          }
+          .copy-button:hover {
+            background: rgba(255,255,255,0.2);
+          }
+          /* Inline code styling */
+          code:not(pre code) {
+            background-color: rgba(255,255,255,0.1);
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-size: 13px;
+          }
+          /* HTML content styling */
+          strong { font-weight: bold; }
+          em { font-style: italic; }
+          p { margin: 5px 0; }
+          ul { margin: 5px 0; padding-left: 20px; }
+          li { margin: 2px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="response-content">${content}</div>
+        <button class="close-button" onclick="console.log('🔔 Close button clicked'); window.close();">Fechar</button>
+        <script>
+          // Add event listeners for copy buttons
+          document.querySelectorAll('.copy-button').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+              e.stopPropagation();
+              const codeId = btn.getAttribute('data-code-id');
+              const codeElement = document.getElementById(codeId);
+              if (codeElement) {
+                try {
+                  await navigator.clipboard.writeText(codeElement.textContent);
+                  const originalText = btn.textContent;
+                  btn.textContent = '✓';
+                  setTimeout(() => {
+                    btn.textContent = originalText;
+                  }, 1500);
+                } catch (err) {
+                  console.error('Erro ao copiar:', err);
+                  btn.textContent = '✗';
+                  setTimeout(() => {
+                    btn.textContent = '[Copy]';
+                  }, 1500);
+                }
+              }
+            });
+          });
+          
+          // Add click-to-copy for code blocks
+          document.querySelectorAll('pre code').forEach(codeElement => {
+            codeElement.style.cursor = 'pointer';
+            codeElement.addEventListener('click', async (e) => {
+              if (e.target.tagName === 'BUTTON') return;
+              const codeText = codeElement.textContent.trim();
+              try {
+                await navigator.clipboard.writeText(codeText);
+                // Visual feedback
+                const originalBg = codeElement.style.backgroundColor;
+                codeElement.style.backgroundColor = 'rgba(76, 175, 80, 0.3)';
+                setTimeout(() => {
+                  codeElement.style.backgroundColor = originalBg;
+                }, 500);
+              } catch (err) {
+                console.error('Erro ao copiar código:', err);
+              }
+            });
+          });
+          
+          // Add click-to-copy for inline code
+          document.querySelectorAll('code:not(pre code)').forEach(codeElement => {
+            codeElement.style.cursor = 'pointer';
+            codeElement.addEventListener('click', async (e) => {
+              const codeText = codeElement.textContent.trim();
+              try {
+                await navigator.clipboard.writeText(codeText);
+                // Visual feedback
+                const originalBg = codeElement.style.backgroundColor;
+                codeElement.style.backgroundColor = 'rgba(76, 175, 80, 0.3)';
+                setTimeout(() => {
+                  codeElement.style.backgroundColor = originalBg;
+                }, 500);
+              } catch (err) {
+                console.error('Erro ao copiar código inline:', err);
+              }
+            });
+          });
+        </script>
+      </body>
+      </html>
+    `;
+  }
+
+  osNotificationWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(notificationHtml)}`);
+
+  // Auto-close after 10 seconds for responses
+  if (type === 'response') {
+    setTimeout(() => {
+      if (osNotificationWindow && !osNotificationWindow.isDestroyed()) {
+        console.log(`🔔 Auto-closing response notification after 10 seconds`);
+        osNotificationWindow.destroy(); // Use destroy for immediate close
+      }
+    }, 10000);
+  }
+
+  osNotificationWindow.on('closed', () => {
+    console.log(`🔔 OS notification window closed - Type: ${type}`);
+    osNotificationWindow = null;
+  });
+}
+
+function switchToOsIntegrationMode() {
+  isOsIntegrationMode = true;
+  
+  // Hide main window
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.hide();
+  }
+}
+
+function switchToNormalMode() {
+  isOsIntegrationMode = false;
+  
+  // Close OS integration windows
+  if (osInputWindow && !osInputWindow.isDestroyed()) {
+    osInputWindow.close();
+  }
+  destroyNotificationWindow(); // Use helper function instead
+  
+  // Show main window
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+  }
 }
 
 async function createWindow() {
@@ -385,7 +823,12 @@ function startClipboardMonitoring() {
         if (currentHash !== lastClipboardImageHash && lastClipboardImageHash !== null) {
           console.log('📸 NOVA IMAGEM DETECTADA no clipboard! Processando automaticamente...');
           
-          if (appConfig.notificationsEnabled && Notification.isSupported()) {
+          // Check if OS integration mode is enabled
+          const isOsIntegration = configService.getOsIntegrationStatus();
+          if (isOsIntegration) {
+            // Use OS notification
+            createOsNotificationWindow('loading', 'Nova imagem detectada! Processando...');
+          } else if (appConfig.notificationsEnabled && Notification.isSupported()) {
             new Notification({
               title: 'Helper-Node',
               body: 'Nova imagem detectada! Processando...',
@@ -421,8 +864,13 @@ async function processNewClipboardImage(base64Image) {
   try {
     console.log('🎯 Processando nova imagem do clipboard...');
     
+    // Check if OS integration mode is enabled
+    const isOsIntegration = configService.getOsIntegrationStatus();
+    
     // Notificação de OCR
-    if (appConfig.notificationsEnabled && Notification.isSupported()) {
+    if (isOsIntegration) {
+      createOsNotificationWindow('loading', 'Extraindo texto da imagem...');
+    } else if (appConfig.notificationsEnabled && Notification.isSupported()) {
       new Notification({
         title: 'Helper-Node',
         body: 'Extraindo texto da imagem...',
@@ -436,7 +884,9 @@ async function processNewClipboardImage(base64Image) {
     if (!text || text.trim().length === 0) {
       console.warn('⚠️ Nenhum texto encontrado na imagem');
       
-      if (appConfig.notificationsEnabled && Notification.isSupported()) {
+      if (isOsIntegration) {
+        createOsNotificationWindow('response', 'Nenhum texto encontrado na imagem');
+      } else if (appConfig.notificationsEnabled && Notification.isSupported()) {
         new Notification({
           title: 'Helper-Node',
           body: 'Nenhum texto encontrado na imagem',
@@ -449,22 +899,43 @@ async function processNewClipboardImage(base64Image) {
     console.log('📝 Texto extraído:', text);
     
     // Notificação de envio para IA
-    if (appConfig.notificationsEnabled && Notification.isSupported()) {
-      new Notification({
-        title: 'Helper-Node',
-        body: 'Enviando para IA...',
-        silent: true,
-      }).show();
+    if (isOsIntegration) {
+      createOsNotificationWindow('loading', 'Enviando para IA...');
+      // Process using OS integration mode
+      try {
+        await processOsQuestion(text);
+      } catch (error) {
+        console.error('Error in processOsQuestion for clipboard image:', error);
+        // Explicitly close any existing notification before showing error
+        if (osNotificationWindow && !osNotificationWindow.isDestroyed()) {
+          osNotificationWindow.close();
+          osNotificationWindow = null;
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+        createOsNotificationWindow('response', 'Erro ao processar imagem.');
+      }
+    } else {
+      if (appConfig.notificationsEnabled && Notification.isSupported()) {
+        new Notification({
+          title: 'Helper-Node',
+          body: 'Enviando para IA...',
+          silent: true,
+        }).show();
+      }
+      // Usar o método existente getIaResponse
+      await getIaResponse(text);
     }
-    
-    // Usar o método existente getIaResponse
-    await getIaResponse(text);
     
   } catch (error) {
     console.error('❌ Erro ao processar imagem do clipboard:', error);
     
+    // Check if OS integration mode is enabled for error notification
+    const isOsIntegration = configService.getOsIntegrationStatus();
+    
     // Notificação de erro
-    if (appConfig.notificationsEnabled && Notification.isSupported()) {
+    if (isOsIntegration) {
+      createOsNotificationWindow('response', 'Erro ao processar imagem');
+    } else if (appConfig.notificationsEnabled && Notification.isSupported()) {
       new Notification({
         title: 'Helper-Node',
         body: 'Erro ao processar imagem',
@@ -523,24 +994,40 @@ async function registerGlobalShortcuts() {
         createConfigWindow();
         return;
       }
+      
+      // Handle manual-input action for OS integration mode
+      if (action === "manual-input") {
+        await bringWindowToFocus(); // This function already handles OS integration mode
+        return;
+      }
+      
+      // Handle recording action (works in both modes)
+      if (action === "toggle-recording") {
+        await toggleRecording();
+        return;
+      }
+      
+      // Handle capture screen action (works in both modes)
+      if (action === "capture-screen") {
+        await captureScreen();
+        return;
+      }
+      
+      // Handle display movement (only works in normal mode)
+      if (action === "move-to-display-0") {
+        moveToDisplay(0);
+        return;
+      }
+      if (action === "move-to-display-1") {
+        moveToDisplay(1);
+        return;
+      }
+      
+      // Other actions that require main window
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(action);
         if (action === "focus-window" && mainWindow.isMinimized()) {
           mainWindow.restore();
-        }
-        if (action === "toggle-recording") {
-          await toggleRecording();
-        }
-        if (action === "capture-screen") {
-          await captureScreen();
-        }
-        if (action === "move-to-display-0") {
-          moveToDisplay(0);
-          return;
-        }
-        if (action === "move-to-display-1") {
-          moveToDisplay(1);
-          return;
         }
       }
     });
@@ -573,21 +1060,36 @@ async function toggleRecording() {
       }
       isRecording = false;
       console.log("Recording stopped");
-      if (appConfig.notificationsEnabled && Notification.isSupported()) {
-        new Notification({
-          title: "Helper-Node",
-          body: "Ok, aguarde...",
-          silent: true,
-        }).show();
+      
+      // Check if OS integration mode is enabled
+      const isOsIntegration = configService.getOsIntegrationStatus();
+      if (isOsIntegration) {
+        // FORCE CLOSE any existing notification first using helper function
+        destroyNotificationWindow();
+        // Use OS notification for recording stopped
+        createOsNotificationWindow('loading', 'Processando áudio...');
+      } else {
+        // Use system notification
+        if (appConfig.notificationsEnabled && Notification.isSupported()) {
+          new Notification({
+            title: "Helper-Node",
+            body: "Ok, aguarde...",
+            silent: true,
+          }).show();
+        }
+        mainWindow.webContents.send("toggle-recording", {
+          isRecording,
+          audioFilePath,
+        });
       }
-      mainWindow.webContents.send("toggle-recording", {
-        isRecording,
-        audioFilePath,
-      });
       try {
         await fs.access(audioFilePath);
         console.log("Audio file created:", audioFilePath);
-        mainWindow.webContents.send("transcription-start", { audioFilePath });
+        
+        const isOsIntegration = configService.getOsIntegrationStatus();
+        if (!isOsIntegration) {
+          mainWindow.webContents.send("transcription-start", { audioFilePath });
+        }
 
         // Acelerar o áudio em 2x com ffmpeg
         const spedUpAudioPath = path.join(__dirname, "output_2x.wav");
@@ -602,7 +1104,9 @@ async function toggleRecording() {
 
         if (audioText === "[BLANK_AUDIO]") {
           console.log("Áudio em branco detectado, não enviando para a IA.");
-          if (appConfig.notificationsEnabled && Notification.isSupported()) {
+          if (isOsIntegration) {
+            createOsNotificationWindow('response', 'Nenhum áudio detectado. Tente novamente.');
+          } else if (appConfig.notificationsEnabled && Notification.isSupported()) {
             new Notification({
               title: "Helper-Node",
               body: "Nenhum áudio detectado. Tente novamente.",
@@ -616,7 +1120,10 @@ async function toggleRecording() {
         const aiModel = configService.getAiModel();
         console.log("Audio transcription - using AI model:", aiModel);
         
-        if (aiModel === 'llama-stream') {
+        if (isOsIntegration) {
+          // Process using OS integration mode
+          await processOsQuestion(audioText);
+        } else if (aiModel === 'llama-stream') {
           // Use stream method for llama-stream
           mainWindow.webContents.send("send-to-gemini-stream-auto", audioText);
         } else {
@@ -642,17 +1149,26 @@ async function toggleRecording() {
       });
       isRecording = true;
       console.log("Recording started");
-      if (appConfig.notificationsEnabled && Notification.isSupported()) {
-        new Notification({
-          title: "Helper-Node",
-          body: "Gravando...",
-          silent: true,
-        }).show();
+      
+      // Check if OS integration mode is enabled
+      const isOsIntegration = configService.getOsIntegrationStatus();
+      if (isOsIntegration) {
+        // Use OS notification for recording started
+        createOsNotificationWindow('recording', 'Gravando áudio...');
+      } else {
+        // Use system notification and send to main window
+        if (appConfig.notificationsEnabled && Notification.isSupported()) {
+          new Notification({
+            title: "Helper-Node",
+            body: "Gravando...",
+            silent: true,
+          }).show();
+        }
+        mainWindow.webContents.send("toggle-recording", {
+          isRecording,
+          audioFilePath,
+        });
       }
-      mainWindow.webContents.send("toggle-recording", {
-        isRecording,
-        audioFilePath,
-      });
     }
   } catch (error) {
     console.error("Error toggling recording:", error);
@@ -1164,6 +1680,15 @@ async function bringWindowToFocus() {
   console.log(
     "bringWindowToFocus: Tentando trazer a janela para o foco e abrir o input."
   );
+  
+  // Check if OS integration mode is enabled
+  const isOsIntegration = configService.getOsIntegrationStatus();
+  if (isOsIntegration) {
+    // Use OS integration input instead
+    createOsInputWindow();
+    return;
+  }
+  
   if (!mainWindow) return;
 
   if (isHyprland()) {
@@ -1387,6 +1912,46 @@ ipcMain.on("save-print-mode-status", (event, status) => {
   }
 });
 
+// IPC Handlers for OS Integration
+ipcMain.handle("get-os-integration-status", () => {
+  return configService.getOsIntegrationStatus();
+});
+
+ipcMain.on("save-os-integration-status", (event, status) => {
+  configService.setOsIntegrationStatus(status);
+  console.log('OS Integration status changed to:', status);
+  
+  if (status) {
+    // Automatically enable print mode when OS integration is enabled
+    configService.setPrintModeStatus(true);
+    
+    // Notificação de ativação
+    if (appConfig.notificationsEnabled && Notification.isSupported()) {
+      new Notification({
+        title: 'Helper-Node',
+        body: 'Integração com SO ativada! Interface minimalista habilitada.',
+        silent: true,
+      }).show();
+    }
+    
+    startClipboardMonitoring();
+    // Switch to OS integration mode
+    switchToOsIntegrationMode();
+  } else {
+    // Notificação de desativação
+    if (appConfig.notificationsEnabled && Notification.isSupported()) {
+      new Notification({
+        title: 'Helper-Node',
+        body: 'Integração com SO desativada',
+        silent: true,
+      }).show();
+    }
+    
+    // Switch back to normal mode
+    switchToNormalMode();
+  }
+});
+
 // IPC Handlers for Language
 ipcMain.handle("get-language", () => {
   return configService.getLanguage();
@@ -1414,6 +1979,120 @@ ipcMain.on("set-open-ia-token", (event, token) => {
     configService.setOpenIaToken(token);
 });
 
+// OS Integration IPC handlers
+ipcMain.on("close-os-input", () => {
+  if (osInputWindow && !osInputWindow.isDestroyed()) {
+    osInputWindow.close();
+  }
+});
+
+ipcMain.on("send-os-question", async (event, text) => {
+  // Close input window
+  if (osInputWindow && !osInputWindow.isDestroyed()) {
+    osInputWindow.close();
+  }
+  
+  // Show loading notification
+  createOsNotificationWindow('loading', 'Processando pergunta...');
+  
+  try {
+    // Process the question using existing getIaResponse logic but with OS notifications
+    await processOsQuestion(text);
+  } catch (error) {
+    console.error('Error processing OS question:', error);
+    createOsNotificationWindow('response', 'Erro ao processar pergunta.');
+  }
+});
+
+// Handler to cancel recording from OS notification
+ipcMain.on("cancel-recording", () => {
+  console.log('Cancel recording requested from OS notification');
+  
+  if (isRecording && recordingProcess) {
+    recordingProcess.kill("SIGTERM");
+    recordingProcess = null;
+    isRecording = false;
+    
+    console.log("Recording cancelled by user");
+    
+    // Close the recording notification
+    if (osNotificationWindow && !osNotificationWindow.isDestroyed()) {
+      osNotificationWindow.close();
+    }
+    
+    // Show cancelled notification
+    const isOsIntegration = configService.getOsIntegrationStatus();
+    if (isOsIntegration) {
+      createOsNotificationWindow('response', 'Gravação cancelada.');
+    } else if (appConfig.notificationsEnabled && Notification.isSupported()) {
+      new Notification({
+        title: "Helper-Node",
+        body: "Gravação cancelada.",
+        silent: true,
+      }).show();
+    }
+  }
+});
+
+async function processOsQuestion(text) {
+  console.log(`🤖 processOsQuestion called - FORCEFULLY closing any notifications`);
+  
+  try {
+    const aiModel = configService.getAiModel();
+    let resposta;
+
+    if (aiModel === 'openIa') {
+      const token = configService.getOpenIaToken();
+      const instruction = configService.getPromptInstruction();
+      if (!token) {
+        console.log(`🔔 No OpenAI token, closing notification and showing error`);
+        // Immediately close any loading notification and wait
+        destroyNotificationWindow();
+        await new Promise(resolve => setTimeout(resolve, 200));
+        createOsNotificationWindow('response', 'Token da OpenAI não configurado.');
+        return;
+      }
+      console.log(`🤖 Making OpenAI request...`);
+      resposta = await OpenAIService.makeOpenAIRequest(text, token, instruction);
+      console.log(`🤖 Got OpenAI response: ${resposta.substring(0, 50)}...`);
+    } else {
+      if (backendIsOnline) {
+        try {
+          resposta = await BackendService.responder(text);
+        } catch (backendError) {
+          console.error("Backend failed, using Gemini fallback:", backendError);
+          resposta = await GeminiService.responder(text);
+        }
+      } else {
+        resposta = await GeminiService.responder(text);
+      }
+    }
+
+    console.log(`🔔 Destroying loading notification and showing response`);
+    
+    // CRITICAL: Ensure the loading notification is completely destroyed before creating response
+    destroyNotificationWindow();
+    
+    // Wait a bit longer to ensure the window is fully destroyed
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    // Show response in OS notification with HTML formatting  
+    const formattedResponse = formatToHTML(resposta);
+    createOsNotificationWindow('response', formattedResponse);
+    
+  } catch (error) {
+    console.error('Error in processOsQuestion:', error);
+    
+    // Destroy any existing notification before showing error
+    destroyNotificationWindow();
+    
+    // Wait to ensure previous notification is completely destroyed
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    createOsNotificationWindow('response', 'Erro ao gerar resposta.');
+  }
+}
+
 app.whenReady().then(async () => {
   configService.initialize();
   OpenAIService.initialize();
@@ -1436,6 +2115,21 @@ app.whenReady().then(async () => {
   if (initialPrintMode) {
     console.log('🎯 Print mode estava ativo, iniciando monitoramento de clipboard...');
     startClipboardMonitoring();
+  }
+  
+  // Inicializar OS integration mode se estiver ativo
+  const initialOsIntegration = configService.getOsIntegrationStatus();
+  if (initialOsIntegration) {
+    console.log('🔗 OS integration estava ativo, iniciando modo de integração...');
+    switchToOsIntegrationMode();
+    
+    // Ensure clipboard monitoring is started for OS integration mode
+    if (!initialPrintMode) {
+      // If print mode wasn't already active, we need to start clipboard monitoring
+      // since OS integration automatically enables print mode
+      configService.setPrintModeStatus(true);
+      startClipboardMonitoring();
+    }
   }
 
   // Verifica o status do backend ao iniciar e depois periodicamente
