@@ -24,7 +24,12 @@
             font-size: 14px;
             word-wrap: break-word;
             overflow-wrap: break-word;
-        }
+               scrollbar-width: none;
+            }
+
+            ::-webkit-scrollbar {
+                display: none;
+            }
         
         /* Esconder barra de rolagem mas manter funcionalidade */
         body::-webkit-scrollbar {
@@ -106,6 +111,32 @@
             word-wrap: break-word;
             overflow-wrap: break-word;
         }
+        
+        /* Estilos para botões de copiar */
+        .copy-button {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            cursor: pointer;
+            font-family: "Source Code Pro", monospace;
+            transition: all 0.2s;
+            z-index: 10;
+        }
+        
+        .copy-button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+        
+        .copy-button:active {
+            background: rgba(0, 255, 0, 0.3);
+        }
     </style>
 </head>
 <body>
@@ -141,10 +172,71 @@
             
             // Add new listeners
             document.addEventListener('click', handleCodeClick);
+            
+            // Attach listeners to copy buttons
+            const copyButtons = document.querySelectorAll('.copy-button');
+            copyButtons.forEach(button => {
+                button.addEventListener('click', handleCopyButtonClick);
+            });
+        }
+        
+        // Function to handle copy button clicks
+        async function handleCopyButtonClick(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            
+            const button = e.currentTarget;
+            const codeId = button.getAttribute('data-code-id');
+            const codeElement = document.getElementById(codeId);
+            
+            if (codeElement) {
+                const codeText = codeElement.textContent.trim();
+                try {
+                    await navigator.clipboard.writeText(codeText);
+                    // Feedback visual no botão
+                    const originalText = button.textContent;
+                    button.textContent = '✓ Copied!';
+                    button.style.background = 'rgba(0, 255, 0, 0.3)';
+                    setTimeout(() => {
+                        button.textContent = originalText;
+                        button.style.background = '';
+                    }, 1500);
+                    console.log('Código copiado via botão:', codeText.substring(0, 50) + '...');
+                } catch (err) {
+                    console.error('Erro ao copiar código:', err);
+                    // Fallback
+                    try {
+                        const textArea = document.createElement('textarea');
+                        textArea.value = codeText;
+                        document.body.appendChild(textArea);
+                        textArea.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(textArea);
+                        
+                        const originalText = button.textContent;
+                        button.textContent = '✓ Copied!';
+                        button.style.background = 'rgba(0, 255, 0, 0.3)';
+                        setTimeout(() => {
+                            button.textContent = originalText;
+                            button.style.background = '';
+                        }, 1500);
+                    } catch (fallbackErr) {
+                        button.textContent = '✗ Error';
+                        setTimeout(() => {
+                            button.textContent = '[Copy]';
+                        }, 1500);
+                    }
+                }
+            }
         }
         
         // Function to handle code clicks
         async function handleCodeClick(e) {
+            // Ignora cliques em botões de copiar
+            if (e.target.classList.contains('copy-button')) {
+                return;
+            }
+            
             // Verifica se clicou em um bloco de código (pre > code)
             const codeElement = e.target.closest('pre code');
             if (codeElement && e.target.tagName !== 'BUTTON') {

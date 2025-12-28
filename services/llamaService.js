@@ -108,7 +108,7 @@ class LlamaService {
             const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
             // Push single <pre> with copy button and code
             codeBlocks.push(
-                `<pre><button class="copy-button" data-code-id="${codeId}">[Copy]</button><code id="${codeId}" class="language-${lang || 'text'}">${escapeHTML(code)}</code></pre>`
+                `<pre><code id="${codeId}" class="language-${lang || 'text'}">${escapeHTML(code)}</code><button class="copy-button" data-code-id="${codeId}">[Copy]</button></pre>`
             );
             return placeholder;
         });

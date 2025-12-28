@@ -136,58 +136,9 @@ function createOsInputWindow() {
     Math.floor(height / 3)
   );
 
-  const inputHtml = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <style>
-        body {
-          margin: 0;
-          padding: 10px;
-          background: rgba(30, 30, 30, 0.95);
-          border-radius: 8px;
-          box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-          font-family: "Source Code Pro", monospace;
-        }
-        textarea {
-          width: 100%;
-          height: 30px;
-          border: none;
-          background: transparent;
-          color: white;
-          font-size: 16px;
-          resize: none;
-          outline: none;
-          font-family: inherit;
-        }
-        textarea::placeholder {
-          color: #888;
-        }
-      </style>
-    </head>
-    <body>
-      <textarea id="input" placeholder="Digite sua pergunta e pressione Shift+Enter..."></textarea>
-      <script>
-        const input = document.getElementById('input');
-        input.focus();
-        
-        input.addEventListener('keydown', (e) => {
-          if (e.key === 'Escape') {
-            window.electronAPI.closeOsInput();
-          } else if (e.key === 'Enter' && e.shiftKey) {
-            e.preventDefault();
-            const text = input.value.trim();
-            if (text) {
-              window.electronAPI.sendOsQuestion(text);
-            }
-          }
-        });
-      </script>
-    </body>
-    </html>
-  `;
+  const inputHtml = path.join(__dirname, 'os-integration', 'notifications', 'integratedInput.html');
 
-  osInputWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(inputHtml)}`);
+  osInputWindow.loadFile(inputHtml);
 
   osInputWindow.on('blur', () => {
     if (osInputWindow && !osInputWindow.isDestroyed()) {
@@ -571,13 +522,22 @@ async function createWindow() {
 }
 
 async function captureScreen() {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send("screen-capturing", true);
-
+  // Check if OS integration mode is active
+  const isOsIntegration = configService.getOsIntegrationStatus();
+  
+  if (isOsIntegration) {
+    // OS Integration Mode - show notification and process through AI
+    console.log('📸 Captura iniciada no modo de integração com SO');
+    
+    // Show capture window while screenshot tool is running
+    createCaptureWindow();
+    
     const tmpPng = path.join(app.getPath("temp"), `helpernode-shot-${Date.now()}.png`);
     const isWayland = process.env.XDG_SESSION_TYPE === "wayland";
+    
     try {
       let screenshotSuccess = false;
+      
       if (await commandExists("gnome-screenshot")) {
         await execPromise(`gnome-screenshot -a -f '${tmpPng}'`);
         screenshotSuccess = await fs2.existsSync(tmpPng);
@@ -593,23 +553,16 @@ async function captureScreen() {
         await execPromise(`import -window root '${tmpPng}'`);
         screenshotSuccess = await fs2.existsSync(tmpPng);
       } else {
-        // Sem ferramenta de sistema: tenta método interno
-        try {
-          const data = await TesseractService.captureAndProcessScreenshot(mainWindow);
-          console.log("OCR Data (internal):", data);
-          if (data) return;
-          throw new Error("Internal capture returned empty data");
-        } catch (error) {
-          console.error("Internal capture failed:", error);
-          throw new Error("No screenshot tools available");
-        }
+        destroyCaptureWindow();
+        createOsNotificationWindow('response', 'Nenhuma ferramenta de captura encontrada.');
+        return;
       }
-
-      // After successful capture and before sending result, read file as base64
+      
       if (screenshotSuccess) {
-        const imgBuffer = await fs.readFile(tmpPng);
-        const base64Image = `data:image/png;base64,${imgBuffer.toString('base64')}`;
-        // Proceed with OCR only if file exists
+        // Destroy capture window and show loading
+        destroyCaptureWindow();
+        createOsNotificationWindow('loading', 'Processando imagem...');
+        
         try {
           await fs.access(tmpPng);
           
@@ -619,30 +572,126 @@ async function captureScreen() {
             throw new Error('Screenshot file too small, probably corrupted');
           }
           
-          const ocrText = await TesseractService.getTextFromImage(base64Image);
-          mainWindow.webContents.send("ocr-result", { 
-            text: ocrText || '', 
-            screenshotPath: tmpPng, 
-            base64Image 
-          });
-        } catch (e) {
-          console.error("Screenshot file not accessible for OCR:", e);
+          // Read and convert to base64
+          const imgBuffer = await fs.readFile(tmpPng);
+          const base64Image = `data:image/png;base64,${imgBuffer.toString('base64')}`;
           
-          // Enviar resultado com erro em vez de texto vazio
-          mainWindow.webContents.send("ocr-result", { 
-            text: "", 
-            screenshotPath: tmpPng, 
-            base64Image,
-            error: "Não foi possível processar a imagem" 
-          });
+          // Extract text with OCR
+          console.log('🔍 Extraindo texto da captura...');
+          const ocrText = await TesseractService.getTextFromImage(base64Image);
+          
+          if (!ocrText || ocrText.trim().length === 0) {
+            console.warn('⚠️ Nenhum texto encontrado na captura');
+            destroyNotificationWindow();
+            await new Promise(resolve => setTimeout(resolve, 200));
+            createOsNotificationWindow('response', 'Nenhum texto encontrado na imagem.');
+            return;
+          }
+          
+          console.log('📝 Texto extraído da captura:', ocrText);
+          
+          // Send to AI
+          createOsNotificationWindow('loading', 'Enviando para IA...');
+          await processOsQuestion(ocrText);
+          
+        } catch (e) {
+          console.error("Erro ao processar captura:", e);
+          destroyNotificationWindow();
+          await new Promise(resolve => setTimeout(resolve, 200));
+          createOsNotificationWindow('response', 'Erro ao processar a captura.');
+        } finally {
+          // Clean up temp file
+          try {
+            await fs.unlink(tmpPng);
+          } catch (unlinkError) {
+            console.error('Erro ao deletar arquivo temporário:', unlinkError);
+          }
         }
       } else {
-        mainWindow.webContents.send("screen-capturing", false);
+        destroyCaptureWindow();
+        createOsNotificationWindow('response', 'Falha ao capturar a tela.');
       }
     } catch (err) {
       console.error("Capture failed:", err);
-    } finally {
-      mainWindow.webContents.send("screen-capturing", false);
+      destroyCaptureWindow();
+      createOsNotificationWindow('response', 'Erro na captura da tela.');
+    }
+    
+  } else {
+    // Normal Mode - send to main window
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("screen-capturing", true);
+
+      const tmpPng = path.join(app.getPath("temp"), `helpernode-shot-${Date.now()}.png`);
+      const isWayland = process.env.XDG_SESSION_TYPE === "wayland";
+      try {
+        let screenshotSuccess = false;
+        if (await commandExists("gnome-screenshot")) {
+          await execPromise(`gnome-screenshot -a -f '${tmpPng}'`);
+          screenshotSuccess = await fs2.existsSync(tmpPng);
+        } else if (isHyprland() && await commandExists("grim") && await commandExists("slurp")) {
+          const { stdout: region } = await execPromise("slurp -f '%x %y %w %h'");
+          const [x, y, w, h] = region.trim().split(/\s+/);
+          await execPromise(`grim -g '${x},${y} ${w}x${h}' '${tmpPng}'`);
+          screenshotSuccess = await fs2.existsSync(tmpPng);
+        } else if (isWayland && await commandExists("grim")) {
+          await execPromise(`grim '${tmpPng}'`);
+          screenshotSuccess = await fs2.existsSync(tmpPng);
+        } else if (await commandExists("import")) {
+          await execPromise(`import -window root '${tmpPng}'`);
+          screenshotSuccess = await fs2.existsSync(tmpPng);
+        } else {
+          // Sem ferramenta de sistema: tenta método interno
+          try {
+            const data = await TesseractService.captureAndProcessScreenshot(mainWindow);
+            console.log("OCR Data (internal):", data);
+            if (data) return;
+            throw new Error("Internal capture returned empty data");
+          } catch (error) {
+            console.error("Internal capture failed:", error);
+            throw new Error("No screenshot tools available");
+          }
+        }
+
+        // After successful capture and before sending result, read file as base64
+        if (screenshotSuccess) {
+          const imgBuffer = await fs.readFile(tmpPng);
+          const base64Image = `data:image/png;base64,${imgBuffer.toString('base64')}`;
+          // Proceed with OCR only if file exists
+          try {
+            await fs.access(tmpPng);
+            
+            // Validar se o arquivo tem um tamanho mínimo
+            const stats = await fs.stat(tmpPng);
+            if (stats.size < 100) {
+              throw new Error('Screenshot file too small, probably corrupted');
+            }
+            
+            const ocrText = await TesseractService.getTextFromImage(base64Image);
+            mainWindow.webContents.send("ocr-result", { 
+              text: ocrText || '', 
+              screenshotPath: tmpPng, 
+              base64Image 
+            });
+          } catch (e) {
+            console.error("Screenshot file not accessible for OCR:", e);
+            
+            // Enviar resultado com erro em vez de texto vazio
+            mainWindow.webContents.send("ocr-result", { 
+              text: "", 
+              screenshotPath: tmpPng, 
+              base64Image,
+              error: "Não foi possível processar a imagem" 
+            });
+          }
+        } else {
+          mainWindow.webContents.send("screen-capturing", false);
+        }
+      } catch (err) {
+        console.error("Capture failed:", err);
+      } finally {
+        mainWindow.webContents.send("screen-capturing", false);
+      }
     }
   }
 }
@@ -1143,6 +1192,20 @@ async function registerGlobalShortcuts() {
   );
 }
 
+// Função para detectar o sink de áudio padrão do sistema
+async function getDefaultAudioSink() {
+  try {
+    const { stdout } = await execPromise('pactl get-default-sink');
+    const defaultSink = stdout.trim();
+    console.log(`🔊 Default audio sink detected: ${defaultSink}`);
+    return `${defaultSink}.monitor`;
+  } catch (error) {
+    console.error('❌ Error detecting default sink, using fallback:', error.message);
+    // Fallback para @DEFAULT_MONITOR@ que é um alias do PipeWire
+    return '@DEFAULT_MONITOR@';
+  }
+}
+
 async function toggleRecording() {
   try {
     if (isRecording) {
@@ -1194,6 +1257,21 @@ async function toggleRecording() {
         // Iniciar transcrição com Whisper usando o áudio acelerado
         const audioText = await transcribeAudio(spedUpAudioPath);
 
+        // Limpar arquivos de áudio após transcrição bem-sucedida
+        try {
+          await fs.unlink(audioFilePath);
+          console.log("Arquivo de áudio original deletado:", audioFilePath);
+        } catch (unlinkError) {
+          console.error("Erro ao deletar arquivo de áudio original:", unlinkError);
+        }
+        
+        try {
+          await fs.unlink(spedUpAudioPath);
+          console.log("Arquivo de áudio acelerado deletado:", spedUpAudioPath);
+        } catch (unlinkError) {
+          console.error("Erro ao deletar arquivo de áudio acelerado:", unlinkError);
+        }
+
         if (audioText === "[BLANK_AUDIO]") {
           console.log("Áudio em branco detectado, não enviando para a IA.");
           if (isOsIntegration) {
@@ -1225,11 +1303,23 @@ async function toggleRecording() {
       } catch (error) {
         isRecording = false;
         console.error("Audio file not found or processing failed:", error);
+        
+        // Limpar arquivos de áudio mesmo em caso de erro
+        try {
+          await fs.unlink(audioFilePath).catch(() => {});
+          await fs.unlink(path.join(__dirname, "output_2x.wav")).catch(() => {});
+          console.log("Arquivos de áudio limpos após erro");
+        } catch (cleanupError) {
+          console.error("Erro ao limpar arquivos de áudio:", cleanupError);
+        }
         // mainWindow.webContents.send('transcription-error', 'No audio file created');
       }
     } else {
       await fs.unlink(audioFilePath).catch(() => {});
-      const command = `pw-record --target=auto-null.monitor ${audioFilePath}`;
+      
+      // Detectar automaticamente o sink de áudio correto
+      const audioTarget = await getDefaultAudioSink();
+      const command = `pw-record --target=${audioTarget} ${audioFilePath}`;
       console.log("Executing:", command);
       recordingProcess = exec(command, (error) => {
         if (error && error.signal !== "SIGTERM" && error.code !== 0) {
