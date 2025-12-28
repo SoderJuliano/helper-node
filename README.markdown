@@ -16,8 +16,8 @@ Helper Node is an Electron-based application that transcribes audio queries usin
 Download and install the `.deb` package:
 
 ```bash
-# Download the latest release
-wget https://github.com/your-username/helper-node/releases/latest/download/helper-node_0.0.1_amd64.deb
+# Download the v0.0.1 pre-release
+wget https://github.com/SoderJuliano/helper-node/releases/download/v0.0.1/helper-node_0.0.1_amd64.deb
 
 # Install
 sudo dpkg -i helper-node_0.0.1_amd64.deb
@@ -25,8 +25,8 @@ sudo dpkg -i helper-node_0.0.1_amd64.deb
 # Fix dependencies if needed
 sudo apt-get install -f
 
-# Launch
-helper-node
+# Launch (application menu or run directly)
+/opt/helper-node/helper-node.sh
 ```
 
 ### Garuda Linux / Arch Linux
@@ -34,14 +34,14 @@ helper-node
 Download and install the Arch package:
 
 ```bash
-# Download the latest release
-wget https://github.com/your-username/helper-node/releases/latest/download/helper-node-0.0.1-1-x86_64.pkg.tar.zst
+# Download the v0.0.1 pre-release
+wget https://github.com/SoderJuliano/helper-node/releases/download/v0.0.1/helper-node-0.0.1-1-x86_64.pkg.tar.zst
 
 # Install
 sudo pacman -U helper-node-0.0.1-1-x86_64.pkg.tar.zst
 
-# Launch
-helper-node
+# Launch (application menu or run directly)
+/opt/helper-node/helper-node.sh
 ```
 
 **Note:** Global hotkeys will be configured automatically on first run!
@@ -81,7 +81,7 @@ sudo apt-get install nodejs npm ffmpeg curl
 
 ```bash
 # Clone repository
-git clone https://github.com/your-username/helper-node.git
+git clone https://github.com/SoderJuliano/helper-node.git
 cd helper-node
 
 # Install dependencies

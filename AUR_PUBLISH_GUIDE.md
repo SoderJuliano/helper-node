@@ -10,12 +10,13 @@
 ```bash
 # Fazer release no GitHub primeiro (v0.0.1)
 # Upload do arquivo: helper-node_0.0.1_amd64.deb
+# URL: https://github.com/SoderJuliano/helper-node/releases/tag/v0.0.1
 ```
 
 ### 2. Calcular SHA256
 ```bash
 # Baixar o tarball do GitHub
-wget https://github.com/SEU-USUARIO/helper-node/archive/refs/tags/v0.0.1.tar.gz
+wget https://github.com/SoderJuliano/helper-node/archive/refs/tags/v0.0.1.tar.gz
 
 # Calcular hash
 sha256sum v0.0.1.tar.gz

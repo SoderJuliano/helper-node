@@ -4,7 +4,7 @@ pkgver=0.0.1
 pkgrel=1
 pkgdesc="AI-powered voice assistant with Whisper transcription"
 arch=('x86_64')
-url="https://github.com/SEU-USUARIO/helper-node"
+url="https://github.com/SoderJuliano/helper-node"
 license=('MIT')
 depends=('curl' 'ffmpeg' 'nodejs>=18' 'electron' 'gtk3' 'libnotify' 'nss' 'libxss' 'libxtst' 'xdg-utils' 'at-spi2-core' 'alsa-lib')
 optdepends=(
@@ -12,7 +12,7 @@ optdepends=(
     'plasma-workspace: For KDE Plasma integration'
     'hyprland: For Hyprland window manager integration'
 )
-source=("${pkgname}-${pkgver}.tar.gz::https://github.com/SEU-USUARIO/helper-node/archive/refs/tags/v${pkgver}.tar.gz")
+source=("${pkgname}-${pkgver}.tar.gz::https://github.com/SoderJuliano/helper-node/archive/refs/tags/v${pkgver}.tar.gz")
 sha256sums=('SKIP')  # Você vai calcular isso depois do primeiro release
 
 build() {
