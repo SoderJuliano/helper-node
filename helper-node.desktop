@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Helper Node
+Comment=AI-powered voice assistant with Whisper transcription
+Exec=/usr/local/bin/helper-node
+Icon=/opt/helper-node/assets/linux.png
+Terminal=false
+Categories=Utility;AudioVideo;Office;
+Keywords=ai;assistant;voice;transcription;whisper;
+StartupNotify=true
+StartupWMClass=helper-node

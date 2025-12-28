@@ -1,2 +1,9 @@
 node_modules/
 *.wav
+
+# Build outputs
+dist/
+
+# Whisper compiled binaries (too large for git)
+whisper/build/
+whisper/models/*.bin

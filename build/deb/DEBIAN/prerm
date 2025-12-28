@@ -1,0 +1,21 @@
+#!/bin/bash
+set -e
+
+# Pre-removal script for Helper Node
+
+echo "Removing Helper Node..."
+
+# Remove symlink
+rm -f /usr/local/bin/helper-node
+
+# Unregister desktop entry
+if [ -f /opt/helper-node/helper-node.desktop ]; then
+    xdg-desktop-menu uninstall /opt/helper-node/helper-node.desktop 2>/dev/null || true
+fi
+
+# Update desktop database
+if command -v update-desktop-database &> /dev/null; then
+    update-desktop-database /usr/share/applications 2>/dev/null || true
+fi
+
+exit 0

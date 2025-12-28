@@ -1,122 +1,142 @@
 # Helper Node
 
-Helper Node is an Electron-based application that transcribes audio queries using Whisper and displays AI-generated responses (powered by LLaMA) in a user-friendly interface. Features include syntax-highlighted code blocks with copy buttons, a responsive transcription panel, and smooth scrolling without visible scrollbars.
+Helper Node is an Electron-based application that transcribes audio queries using Whisper and displays AI-generated responses in a user-friendly interface. Features include:
 
-## Prerequisites
+- 🎙️ **Voice Transcription** with Whisper (pre-compiled)
+- 🤖 **AI Responses** powered by OpenAI/LLaMA
+- 📸 **OCR from Screenshots** with Tesseract
+- ⌨️ **Global Hotkeys** for seamless OS integration
+- 🪟 **OS Integration Mode** with floating notifications
+- 💻 **Syntax-highlighted code blocks** with copy buttons
 
-- **Git**: To clone repositories.
-- **Node.js** (v24 or later): For running the Electron app.
-- **make** and **g++**: For building Whisper.
-- **curl**: For downloading models.
-- **FFmpeg**: For audio processing (required by Whisper).
-- **CMake**: For building Whisper dependencies (optional, if using CMake).
+## Quick Install (Recommended)
 
-Install prerequisites on **Garuda Linux/Arch Linux**:
+### Pop OS / Ubuntu / Debian
+
+Download and install the `.deb` package:
+
 ```bash
-sudo pacman -S git nodejs npm make gcc curl ffmpeg cmake
+# Download the latest release
+wget https://github.com/your-username/helper-node/releases/latest/download/helper-node_0.0.1_amd64.deb
+
+# Install
+sudo dpkg -i helper-node_0.0.1_amd64.deb
+
+# Fix dependencies if needed
+sudo apt-get install -f
+
+# Launch
+helper-node
 ```
 
-On **Ubuntu/Debian**:
+### Garuda Linux / Arch Linux
+
+Download and install the Arch package:
+
+```bash
+# Download the latest release
+wget https://github.com/your-username/helper-node/releases/latest/download/helper-node-0.0.1-1-x86_64.pkg.tar.zst
+
+# Install
+sudo pacman -U helper-node-0.0.1-1-x86_64.pkg.tar.zst
+
+# Launch
+helper-node
+```
+
+**Note:** Global hotkeys will be configured automatically on first run!
+
+## Global Hotkeys
+
+After installation, the following hotkeys are available system-wide:
+
+- **Ctrl+D** - Start/Stop audio recording
+- **Ctrl+I** - Open manual input window
+- **Ctrl+A** - Focus Helper Node window
+- **Ctrl+Shift+C** - Open settings
+- **Ctrl+Shift+X** - Capture screenshot and analyze
+- **Ctrl+Shift+1** - Move to display 1
+- **Ctrl+Shift+2** - Move to display 2
+
+## Manual Installation (Development)
+
+### Prerequisites
+
+- **Node.js** (v18 or later)
+- **FFmpeg** for audio processing
+- **curl** for API requests
+
+Install on **Arch/Garuda**:
+```bash
+sudo pacman -S nodejs npm ffmpeg curl
+```
+
+On **Pop OS/Ubuntu/Debian**:
 ```bash
 sudo apt-get update
-sudo apt-get install git nodejs make g++ curl ffmpeg cmake
+sudo apt-get install nodejs npm ffmpeg curl
 ```
 
-On **macOS** (using Homebrew):
+### Setup from Source
+
 ```bash
-brew install git node make gcc curl ffmpeg cmake
-```
-
-For Windows, see [Windows Notes](#windows-notes) below.
-
-## Setup Instructions
-
-### 1. Clone the Helper Node Repository
-
-Clone this repository to your local machine:
-```bash
+# Clone repository
 git clone https://github.com/your-username/helper-node.git
 cd helper-node
-```
 
-### 2. Install Node Dependencies
-
-Install project dependencies:
-```bash
+# Install dependencies
 npm install
-```
 
-### 3. Download and Build Whisper
-
-Clone the `whisper.cpp` repository to the project root:
-```bash
-git clone https://github.com/ggerganov/whisper.cpp.git whisper
-cd whisper
-```
-
-Build Whisper using `make`:
-```bash
-make
-```
-
-This creates the `main` binary in `whisper/bin/` for transcription.
-
-### 4. Download Whisper Models
-
-Download the `ggml-tiny.bin` and `ggml-small.bin` models to `whisper/models/`:
-```bash
-mkdir -p models
-curl -L -o models/ggml-tiny.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin
-curl -L -o models/ggml-small.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin
-```
-
-These models are optimized for `whisper.cpp` and used for audio transcription.
-
-### 5. Run the Application
-
-Return to the project root:
-```bash
-cd ..
-```
-
-Start the Electron app:
-```bash
+# Run
 npm start
 ```
 
-The app will launch a window displaying a transcription panel (`#transcription`). Record or upload audio (e.g., saying "Dá um exemplo de código main em Java"), and the app will transcribe it using `whisper/bin/main` and display AI responses from LLaMA, with code blocks featuring "[Copy]" buttons.
+**Note:** Whisper binaries and models are included in the repository!
 
-## Usage
+## Configuration
 
-- **Transcription**: Audio is processed by `whisper.cpp` using `ggml-tiny.bin` (faster, less accurate) or `ggml-small.bin` (more accurate, slower). Update `index.js` to specify the model path (e.g., `whisper/models/ggml-small.bin`).
-- **AI Responses**: LLaMA generates responses via `http://localhost:11434/api/generate`. Ensure the LLaMA server is running (see [LLaMA Setup](#llama-setup)).
-- **UI Features**:
-  - Code blocks (e.g., Java code) are syntax-highlighted with a "[Copy]" button to copy content.
-  - The transcription panel has no horizontal scroll and an invisible vertical scroll on hover.
-  - Responses are formatted with bold, italic, lists, and paragraphs for clarity.
+Open settings with **Ctrl+Shift+C** to configure:
 
-## LLaMA Setup
+- **AI Model**: Choose between OpenAI, LLaMA, or custom backend
+- **OpenAI Token**: Add your API key for OpenAI models
+- **Prompt Instruction**: Customize the AI's behavior
+- **Language**: Set response language (pt-br, en-us)
+- **Print Mode**: Enable automatic OCR from screenshots
+- **OS Integration**: Enable floating notifications mode
 
-1. Install and run the LLaMA server (e.g., `llama.cpp` or Ollama):
-   ```bash
-   # Example with Ollama
-   curl https://ollama.ai/install.sh | sh
-   ollama run llama3
-   ```
-2. Update `services/llamaService.js` if the LLaMA endpoint differs from `http://localhost:11434`.
+## Features
 
-## Windows Notes
+### Voice Transcription
+- Press **Ctrl+D** to start/stop recording
+- Automatically transcribes with Whisper
+- Sends to AI for intelligent responses
 
-- **Building Whisper**: Windows users need MinGW or MSYS2 for `make`. Alternatively, use CMake:
-  ```bash
-  cd whisper
-  mkdir build
-  cd build
-  cmake ..
-  cmake --build .
-  ```
-- **Model Downloads**: The `curl` commands work in PowerShell or WSL.
-- **FFmpeg**: Install via `choco install ffmpeg` (Chocolatey) or download from [FFmpeg.org](https://ffmpeg.org).
+### Screenshot OCR
+- Press **Ctrl+Shift+X** to capture and analyze screen
+- Automatic text extraction with Tesseract
+- AI explains code or answers questions about the image
+
+### OS Integration Mode
+- Floating notifications for responses
+- Works without focusing the app window
+- Perfect for Hyprland/GNOME/KDE workflows
+
+## Building Packages
+
+To build your own packages from source:
+
+```bash
+# Build both DEB and Arch packages
+./package.sh
+
+# Build only DEB
+./package.sh deb
+
+# Build only Arch
+./package.sh arch
+```
+
+Packages will be created in `dist/` directory.
 
 ## Contributing
 

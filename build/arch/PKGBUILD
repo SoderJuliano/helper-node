@@ -1,0 +1,78 @@
+# Maintainer: Helper Node Team <support@helper-node.app>
+pkgname=helper-node
+pkgver=0.0.1
+pkgrel=1
+pkgdesc="AI-powered voice assistant with Whisper transcription"
+arch=('x86_64')
+url="https://github.com/SEU-USUARIO/helper-node"
+license=('MIT')
+depends=('curl' 'ffmpeg' 'nodejs>=18' 'electron' 'gtk3' 'libnotify' 'nss' 'libxss' 'libxtst' 'xdg-utils' 'at-spi2-core' 'alsa-lib')
+optdepends=(
+    'gnome-shell: For GNOME desktop integration'
+    'plasma-workspace: For KDE Plasma integration'
+    'hyprland: For Hyprland window manager integration'
+)
+source=("${pkgname}-${pkgver}.tar.gz::https://github.com/SEU-USUARIO/helper-node/archive/refs/tags/v${pkgver}.tar.gz")
+sha256sums=('SKIP')  # Você vai calcular isso depois do primeiro release
+
+build() {
+    cd "${srcdir}/${pkgname}-${pkgver}"
+    
+    # Install node dependencies
+    npm install --production
+    
+    # Whisper já vem compilado no repositório
+    # Modelos já estão incluídos
+}
+
+package() {
+    cd "${srcdir}/${pkgname}-${pkgver}"
+    
+    # Create installation directory
+    install -dm755 "${pkgdir}/opt/helper-node"
+    
+    # Copy application files
+    cp -r main.js index.html config.html config.js preload.js "${pkgdir}/opt/helper-node/"
+    cp -r assets os-integration services "${pkgdir}/opt/helper-node/"
+    cp -r node_modules "${pkgdir}/opt/helper-node/"
+    cp -r whisper "${pkgdir}/opt/helper-node/"
+    cp package.json "${pkgdir}/opt/helper-node/"
+    cp *.traineddata "${pkgdir}/opt/helper-node/" 2>/dev/null || true
+    
+    # Install launcher script
+    install -Dm755 helper-node.sh "${pkgdir}/opt/helper-node/helper-node.sh"
+    install -Dm755 setup-hotkey.sh "${pkgdir}/opt/helper-node/setup-hotkey.sh"
+    
+    # Install desktop entry
+    install -Dm644 helper-node.desktop "${pkgdir}/usr/share/applications/helper-node.desktop"
+    
+    # Install icon
+    install -Dm644 assets/linux.png "${pkgdir}/usr/share/pixmaps/helper-node.png"
+    
+    # Create symlink
+    install -dm755 "${pkgdir}/usr/local/bin"
+    ln -s /opt/helper-node/helper-node.sh "${pkgdir}/usr/local/bin/helper-node"
+    
+    # Set permissions for whisper
+    chmod +x "${pkgdir}/opt/helper-node/whisper/build/bin/whisper-cli" 2>/dev/null || true
+}
+
+post_install() {
+    echo ""
+    echo "==> Helper Node installed successfully!"
+    echo "==> To start Helper Node, run: helper-node"
+    echo "==> Or find it in your applications menu."
+    echo ""
+    echo "==> Global hotkeys will be configured on first run."
+    echo "==> Supported environments: GNOME, KDE Plasma, Hyprland"
+    echo ""
+}
+
+post_upgrade() {
+    post_install
+}
+
+pre_remove() {
+    # Cleanup if needed
+    rm -f /usr/local/bin/helper-node 2>/dev/null || true
+}

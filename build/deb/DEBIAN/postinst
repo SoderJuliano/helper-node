@@ -1,0 +1,37 @@
+#!/bin/bash
+set -e
+
+# Post-installation script for Helper Node
+
+echo "Configuring Helper Node..."
+
+# Create symlink for easy access
+ln -sf /opt/helper-node/helper-node.sh /usr/local/bin/helper-node
+
+# Set executable permissions
+chmod +x /opt/helper-node/helper-node.sh
+chmod +x /opt/helper-node/setup-hotkey.sh
+chmod +x /opt/helper-node/whisper/build/bin/whisper-cli
+
+# Create config directory for users
+mkdir -p /etc/helper-node
+
+# Register desktop entry
+if [ -f /opt/helper-node/helper-node.desktop ]; then
+    xdg-desktop-menu install --novendor /opt/helper-node/helper-node.desktop
+fi
+
+# Update desktop database
+if command -v update-desktop-database &> /dev/null; then
+    update-desktop-database /usr/share/applications 2>/dev/null || true
+fi
+
+echo "✓ Helper Node installed successfully!"
+echo ""
+echo "To start Helper Node, run: helper-node"
+echo "Or find it in your applications menu."
+echo ""
+echo "Global hotkeys will be configured on first run."
+echo ""
+
+exit 0
