@@ -6,55 +6,55 @@ pkgdesc="AI-powered voice assistant with Whisper transcription"
 arch=('x86_64')
 url="https://github.com/SoderJuliano/helper-node"
 license=('MIT')
-depends=('curl' 'ffmpeg' 'nodejs>=18' 'electron' 'gtk3' 'libnotify' 'nss' 'libxss' 'libxtst' 'xdg-utils' 'at-spi2-core' 'alsa-lib')
+depends=('curl' 'ffmpeg' 'nodejs' 'gtk3' 'libnotify' 'nss' 'libxss' 'libxtst' 'xdg-utils' 'at-spi2-core' 'alsa-lib')
 optdepends=(
     'gnome-shell: For GNOME desktop integration'
-    'plasma-workspace: For KDE Plasma integration'
+    'plasma-workspace: For KDE Plasma integration'  
     'hyprland: For Hyprland window manager integration'
 )
-source=("${pkgname}-${pkgver}.tar.gz::https://github.com/SoderJuliano/helper-node/archive/refs/tags/v${pkgver}.tar.gz")
-sha256sums=('SKIP')  # Você vai calcular isso depois do primeiro release
+source=("${pkgname}-${pkgver}.tar.gz")
+sha256sums=('SKIP')
 
 build() {
-    cd "${srcdir}/${pkgname}-${pkgver}"
+    cd "${srcdir}/helper-node"
     
-    # Install node dependencies
+    # Install all dependencies including electron
     npm install --production
+    npm install electron --save-dev
     
-    # Whisper já vem compilado no repositório
-    # Modelos já estão incluídos
+    echo "Project is ready to use"
 }
 
 package() {
-    cd "${srcdir}/${pkgname}-${pkgver}"
+    cd "${srcdir}/helper-node"
     
     # Create installation directory
     install -dm755 "${pkgdir}/opt/helper-node"
     
-    # Copy application files
-    cp -r main.js index.html config.html config.js preload.js "${pkgdir}/opt/helper-node/"
-    cp -r assets os-integration services "${pkgdir}/opt/helper-node/"
-    cp -r node_modules "${pkgdir}/opt/helper-node/"
-    cp -r whisper "${pkgdir}/opt/helper-node/"
-    cp package.json "${pkgdir}/opt/helper-node/"
-    cp *.traineddata "${pkgdir}/opt/helper-node/" 2>/dev/null || true
+    # Copy all project files
+    cp -r * "${pkgdir}/opt/helper-node/"
     
-    # Install launcher script
-    install -Dm755 helper-node.sh "${pkgdir}/opt/helper-node/helper-node.sh"
-    install -Dm755 setup-hotkey.sh "${pkgdir}/opt/helper-node/setup-hotkey.sh"
+    # Remove unnecessary files
+    rm -rf "${pkgdir}/opt/helper-node/build"
+    rm -rf "${pkgdir}/opt/helper-node/dist" 
+    rm -rf "${pkgdir}/opt/helper-node/.git" 2>/dev/null || true
+    
+    # Set executable permissions
+    chmod +x "${pkgdir}/opt/helper-node/helper-node.sh"
+    chmod +x "${pkgdir}/opt/helper-node/setup-hotkey.sh"
+    chmod +x "${pkgdir}/opt/helper-node/whisper/build/bin"/* 2>/dev/null || true
     
     # Install desktop entry
     install -Dm644 helper-node.desktop "${pkgdir}/usr/share/applications/helper-node.desktop"
     
-    # Install icon
-    install -Dm644 assets/linux.png "${pkgdir}/usr/share/pixmaps/helper-node.png"
+    # Install icon (if exists)
+    if [ -f "assets/linux.png" ]; then
+        install -Dm644 assets/linux.png "${pkgdir}/usr/share/pixmaps/helper-node.png"
+    fi
     
     # Create symlink
     install -dm755 "${pkgdir}/usr/local/bin"
     ln -s /opt/helper-node/helper-node.sh "${pkgdir}/usr/local/bin/helper-node"
-    
-    # Set permissions for whisper
-    chmod +x "${pkgdir}/opt/helper-node/whisper/build/bin/whisper-cli" 2>/dev/null || true
 }
 
 post_install() {
@@ -64,7 +64,10 @@ post_install() {
     echo "==> Or find it in your applications menu."
     echo ""
     echo "==> Global hotkeys will be configured on first run."
+    echo "==> The setup-hotkey.sh script will run automatically when you first start the application."
     echo "==> Supported environments: GNOME, KDE Plasma, Hyprland"
+    echo ""
+    echo "==> For manual hotkey setup, run: /opt/helper-node/setup-hotkey.sh"
     echo ""
 }
 

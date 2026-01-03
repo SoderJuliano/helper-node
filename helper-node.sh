@@ -31,5 +31,5 @@ if [ ! -f "$CONFIG_FLAG" ]; then
     sleep 2
 fi
 
-# Start the application
-exec /usr/bin/electron "$APP_DIR/main.js" "$@"
+# Start the application with local electron
+exec "./node_modules/.bin/electron" "$APP_DIR/main.js" "$@"

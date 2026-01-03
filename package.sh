@@ -130,7 +130,7 @@ build_arch() {
     if command -v makepkg &> /dev/null; then
         echo -e "${YELLOW}→${NC} Building Arch package..."
         cd "${ARCH_BUILD}"
-        makepkg -f
+        makepkg -f --nodeps
         cd "${PROJECT_ROOT}"
         
         # Move package to dist
