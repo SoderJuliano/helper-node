@@ -12,6 +12,7 @@ let callbacks = {};
  * @param {Function} funcs.moveToDisplay - A função para mover a janela para um display específico.
  * @param {Function} funcs.bringWindowToFocus - A função para trazer a janela para o foco e abrir o input.
  * @param {Function} funcs.captureScreen - A função para capturar a tela.
+ * @param {Function} funcs.openConfig - A função para abrir a janela de configuração.
  */
 function start(funcs) {
   if (!funcs || typeof funcs.toggleRecording !== 'function' || typeof funcs.moveToDisplay !== 'function' || typeof funcs.bringWindowToFocus !== 'function' || typeof funcs.captureScreen !== 'function') {
@@ -67,10 +68,23 @@ function start(funcs) {
     }
   });
 
+  // Debounce para evitar chamadas múltiplas rápidas
+  let bringToFocusTimeout = null;
+  
   app.post('/bring-to-focus-and-input', (req, res) => {
     if (callbacks.bringWindowToFocus) {
       try {
-        callbacks.bringWindowToFocus();
+        // Cancela timeout anterior se existir
+        if (bringToFocusTimeout) {
+          clearTimeout(bringToFocusTimeout);
+        }
+        
+        // Cria um novo timeout de 200ms para evitar múltiplas chamadas
+        bringToFocusTimeout = setTimeout(() => {
+          callbacks.bringWindowToFocus();
+          bringToFocusTimeout = null;
+        }, 200);
+        
         res.status(200).send({ message: 'Janela trazida para o foco e input aberto.' });
       } catch (error) {
         console.error('Erro ao trazer janela para o foco e abrir input via IPC:', error);
@@ -78,6 +92,20 @@ function start(funcs) {
       }
     } else {
       res.status(500).send({ message: 'Callback de trazer janela para o foco e abrir input não configurado.' });
+    }
+  });
+
+  app.post('/open-config', (req, res) => {
+    if (callbacks.openConfig) {
+      try {
+        callbacks.openConfig();
+        res.status(200).send({ message: 'Janela de configuração aberta.' });
+      } catch (error) {
+        console.error('Erro ao abrir janela de configuração via IPC:', error);
+        res.status(500).send({ message: 'Erro interno ao processar a ação.' });
+      }
+    } else {
+      res.status(500).send({ message: 'Callback de abrir configuração não configurado.' });
     }
   });
 

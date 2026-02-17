@@ -249,6 +249,172 @@ EOF
     echo "If they don't work immediately, try restarting KHotKeys: kquitapp5 khotkeys && kstart5 khotkeys"
     echo "------------------------------------------------------------------"
 
+elif [[ "$XDG_CURRENT_DESKTOP" == *"COSMIC"* ]]; then
+    # --- COSMIC Desktop Environment Configuration ---
+    echo "Attempting to configure for COSMIC Desktop..."
+    echo "COSMIC detected - using xbindkeys as reliable alternative..."
+
+    # Install xbindkeys if not present
+    if ! command -v xbindkeys &> /dev/null; then
+        echo "Installing xbindkeys..."
+        
+        # Check if we're in a flatpak/sandboxed environment
+        if [ -f /.flatpak-info ] || command -v flatpak-spawn &> /dev/null 2>&1; then
+            echo ""
+            echo "⚠️  DETECTADO: Executando dentro de Flatpak/sandbox"
+            echo ""
+            echo "Por favor, abra um TERMINAL NORMAL (fora do VS Code) e execute:"
+            echo ""
+            echo "  sudo apt-get update && sudo apt-get install -y xbindkeys"
+            echo ""
+            echo "Depois execute este script novamente."
+            echo ""
+            exit 1
+        fi
+        
+        if command -v apt-get &> /dev/null; then
+            sudo apt-get update && sudo apt-get install -y xbindkeys
+        elif command -v pacman &> /dev/null; then
+            sudo pacman -S --noconfirm xbindkeys
+        else
+            echo "ERROR: Cannot install xbindkeys automatically. Please install it manually."
+            exit 1
+        fi
+    fi
+
+    # Create xbindkeys configuration
+    XBINDKEYS_CONFIG="$HOME/.xbindkeysrc"
+    
+    cat > "$XBINDKEYS_CONFIG" << 'EOF'
+# Helper-Node Hotkeys
+
+# Toggle Recording (Ctrl+D)
+"curl -X POST http://localhost:3000/toggle-recording"
+  Control + d
+
+# Focus App and Input (Ctrl+I)
+"curl -X POST http://localhost:3000/bring-to-focus-and-input"
+  Control + i
+
+# Focus App and Input Alternative (Ctrl+Shift+I)
+"curl -X POST http://localhost:3000/bring-to-focus-and-input"
+  Control+Shift + i
+
+# Capture Screen (Ctrl+Shift+X)
+"curl -X POST http://localhost:3000/capture-screen"
+  Control+Shift + x
+
+# Move to Display 1 (Ctrl+Shift+1)
+"curl -X POST http://localhost:3000/move-to-display/0"
+  Control+Shift + 1
+
+# Move to Display 2 (Ctrl+Shift+2)
+"curl -X POST http://localhost:3000/move-to-display/1"
+  Control+Shift + 2
+EOF
+
+    # Kill existing xbindkeys and start new one
+    pkill xbindkeys 2>/dev/null
+    xbindkeys &
+    
+    # Make xbindkeys start on login
+    AUTOSTART_DIR="$HOME/.config/autostart"
+    mkdir -p "$AUTOSTART_DIR"
+    
+    cat > "$AUTOSTART_DIR/xbindkeys.desktop" << 'EOF'
+[Desktop Entry]
+Type=Application
+Name=XBindKeys
+Exec=xbindkeys
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
+Comment=Keyboard shortcuts for Helper-Node
+EOF
+
+    # Also try COSMIC native format as backup
+    COSMIC_CONFIG_DIR="$HOME/.config/cosmic/com.system76.CosmicSettings.Shortcuts/v1"
+    mkdir -p "$COSMIC_CONFIG_DIR"
+    COSMIC_SHORTCUTS_FILE="$COSMIC_CONFIG_DIR/custom"
+
+    cat > "$COSMIC_SHORTCUTS_FILE" << 'EOF'
+{
+    "helper-node-record": (
+        description: "Helper-Node: Toggle Recording",
+        binding: (
+            modifiers: ["Ctrl"],
+            key: "d",
+        ),
+        action: System(Exec("sh -c 'curl -X POST http://localhost:3000/toggle-recording'")),
+    ),
+    "helper-node-move-display-0": (
+        description: "Helper-Node: Move to Display 1",
+        binding: (
+            modifiers: ["Ctrl", "Shift"],
+            key: "1",
+        ),
+        action: System(Exec("sh -c 'curl -X POST http://localhost:3000/move-to-display/0'")),
+    ),
+    "helper-node-move-display-1": (
+        description: "Helper-Node: Move to Display 2",
+        binding: (
+            modifiers: ["Ctrl", "Shift"],
+            key: "2",
+        ),
+        action: System(Exec("sh -c 'curl -X POST http://localhost:3000/move-to-display/1'")),
+    ),
+    "helper-node-focus-input-ctrl": (
+        description: "Helper-Node: Focus App and Input (Ctrl+I)",
+        binding: (
+            modifiers: ["Ctrl"],
+            key: "i",
+        ),
+        action: System(Exec("sh -c 'curl -X POST http://localhost:3000/bring-to-focus-and-input'")),
+    ),
+    "helper-node-focus-input-ctrl-shift": (
+        description: "Helper-Node: Focus App and Input (Ctrl+Shift+I)",
+        binding: (
+            modifiers: ["Ctrl", "Shift"],
+            key: "i",
+        ),
+        action: System(Exec("sh -c 'curl -X POST http://localhost:3000/bring-to-focus-and-input'")),
+    ),
+    "helper-node-capture-screen": (
+        description: "Helper-Node: Capture Screen",
+        binding: (
+            modifiers: ["Ctrl", "Shift"],
+            key: "x",
+        ),
+        action: System(Exec("sh -c 'curl -X POST http://localhost:3000/capture-screen'")),
+    ),
+}
+EOF
+
+    echo "Helper-Node COSMIC shortcuts (native) written to $COSMIC_SHORTCUTS_FILE"
+    touch "$COSMIC_SHORTCUTS_FILE"
+    
+    echo "------------------------------------------------------------------"
+    echo "✅ SUCCESS: Hotkeys configured via xbindkeys!"
+    echo ""
+    echo "Atalhos globais ATIVOS AGORA:"
+    echo "  Ctrl+D         -> Toggle Recording"
+    echo "  Ctrl+I         -> Focus App and Input"
+    echo "  Ctrl+Shift+I   -> Focus App and Input (alternativo)"
+    echo "  Ctrl+Shift+X   -> Capture Screen"
+    echo "  Ctrl+Shift+1   -> Move to Display 1"
+    echo "  Ctrl+Shift+2   -> Move to Display 2"
+    echo ""
+    echo "✅ xbindkeys está rodando em background"
+    echo "✅ xbindkeys será iniciado automaticamente no próximo login"
+    echo ""
+    echo "📝 Arquivos criados:"
+    echo "   - $XBINDKEYS_CONFIG"
+    echo "   - $AUTOSTART_DIR/xbindkeys.desktop"
+    echo "   - $COSMIC_SHORTCUTS_FILE (backup)"
+    echo ""
+    echo "🎯 OS ATALHOS JÁ DEVEM FUNCIONAR! Tente pressionar Ctrl+D agora."
+    echo "------------------------------------------------------------------"
+
 else
     echo "------------------------------------------------------------------"
     echo "WARNING: Unsupported Desktop Environment: $XDG_CURRENT_DESKTOP"

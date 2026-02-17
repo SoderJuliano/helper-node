@@ -8,7 +8,7 @@ const {
 } = require("electron");
 const path = require("path");
 const crypto = require("crypto");
-const { exec } = require("child_process");
+const { exec, spawn } = require("child_process");
 const util = require("util");
 const execPromise = util.promisify(exec);
 const fs = require("fs").promises;
@@ -526,6 +526,15 @@ async function captureScreen() {
   const isOsIntegration = configService.getOsIntegrationStatus();
   
   if (isOsIntegration) {
+    // COSMIC Desktop has issues with interactive screenshot tools in Electron
+    const isCosmic = process.env.XDG_CURRENT_DESKTOP === "COSMIC";
+    
+    if (isCosmic) {
+      console.log('📸 Captura de tela não suportada no modo integrado do COSMIC');
+      createOsNotificationWindow('response', 'Captura de tela não disponível no modo integrado. Use o modo janela (Ctrl+Shift+C para abrir configurações).');
+      return;
+    }
+    
     // OS Integration Mode - show notification and process through AI
     console.log('📸 Captura iniciada no modo de integração com SO');
     
@@ -538,21 +547,46 @@ async function captureScreen() {
     try {
       let screenshotSuccess = false;
       
-      if (await commandExists("gnome-screenshot")) {
-        await execPromise(`gnome-screenshot -a -f '${tmpPng}'`);
-        screenshotSuccess = await fs2.existsSync(tmpPng);
-      } else if (isHyprland() && await commandExists("grim") && await commandExists("slurp")) {
+      // Priority 1: Wayland - use external script for better compatibility
+      if (isWayland && await commandExists("grim") && await commandExists("slurp")) {
+        destroyCaptureWindow();
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        try {
+          const scriptPath = path.join(__dirname, 'capture-screenshot.sh');
+          await execPromise(`bash "${scriptPath}" "${tmpPng}"`);
+          screenshotSuccess = await fs2.existsSync(tmpPng);
+        } catch (err) {
+          console.error('Erro ao capturar:', err.message);
+          destroyCaptureWindow();
+          createOsNotificationWindow('response', 'Captura cancelada ou falhou.');
+          return;
+        }
+      } 
+      // Priority 2: Hyprland specific (if not caught above)
+      else if (isHyprland() && await commandExists("grim") && await commandExists("slurp")) {
         const { stdout: region } = await execPromise("slurp -f '%x %y %w %h'");
         const [x, y, w, h] = region.trim().split(/\s+/);
         await execPromise(`grim -g '${x},${y} ${w}x${h}' '${tmpPng}'`);
         screenshotSuccess = await fs2.existsSync(tmpPng);
-      } else if (isWayland && await commandExists("grim")) {
+      }
+      // Priority 3: gnome-screenshot (works better on X11)
+      else if (await commandExists("gnome-screenshot")) {
+        await execPromise(`gnome-screenshot -a -f '${tmpPng}'`);
+        screenshotSuccess = await fs2.existsSync(tmpPng);
+      } 
+      // Priority 4: Wayland with just grim (full screen)
+      else if (isWayland && await commandExists("grim")) {
         await execPromise(`grim '${tmpPng}'`);
         screenshotSuccess = await fs2.existsSync(tmpPng);
-      } else if (await commandExists("import")) {
+      } 
+      // Priority 5: ImageMagick import (X11 fallback)
+      else if (await commandExists("import")) {
         await execPromise(`import -window root '${tmpPng}'`);
         screenshotSuccess = await fs2.existsSync(tmpPng);
-      } else {
+      } 
+      // No tool found
+      else {
         destroyCaptureWindow();
         createOsNotificationWindow('response', 'Nenhuma ferramenta de captura encontrada.');
         return;
@@ -2170,7 +2204,10 @@ ipcMain.on("close-os-input", () => {
   }
 });
 
-ipcMain.on("send-os-question", async (event, text) => {
+ipcMain.on("send-os-question", async (event, data) => {
+  const text = typeof data === 'string' ? data : data.text;
+  const image = typeof data === 'object' ? data.image : null;
+  
   // Close input window
   if (osInputWindow && !osInputWindow.isDestroyed()) {
     osInputWindow.close();
@@ -2181,7 +2218,7 @@ ipcMain.on("send-os-question", async (event, text) => {
   
   try {
     // Process the question using existing getIaResponse logic but with OS notifications
-    await processOsQuestion(text);
+    await processOsQuestion(text, image);
   } catch (error) {
     console.error('Error processing OS question:', error);
     createOsNotificationWindow('response', 'Erro ao processar pergunta.');
@@ -2218,12 +2255,27 @@ ipcMain.on("cancel-recording", () => {
   }
 });
 
-async function processOsQuestion(text) {
+async function processOsQuestion(text, image = null) {
   console.log(`🤖 processOsQuestion called - FORCEFULLY closing any notifications`);
   
   try {
     const aiModel = configService.getAiModel();
     let resposta;
+    
+    // If image is provided, extract text from it first
+    let extractedText = '';
+    if (image) {
+      console.log(`🖼️ Processing pasted image with Tesseract OCR...`);
+      try {
+        extractedText = await TesseractService.getTextFromImage(image);
+        console.log(`✅ Extracted text: ${extractedText.substring(0, 100)}...`);
+        // Combine the text input with extracted text
+        text = text ? `${text}\n\nTexto extraído da imagem:\n${extractedText}` : extractedText;
+      } catch (ocrError) {
+        console.error('Error extracting text from image:', ocrError);
+        text = text ? text : 'Erro ao extrair texto da imagem.';
+      }
+    }
 
     if (aiModel === 'openIa') {
       const token = configService.getOpenIaToken();
@@ -2286,6 +2338,7 @@ app.whenReady().then(async () => {
     moveToDisplay,
     bringWindowToFocus,
     captureScreen,
+    openConfig: createConfigWindow,
   });
 
   // Envia o status inicial do modo debug para a janela principal

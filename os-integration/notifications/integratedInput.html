@@ -34,19 +34,71 @@
     </head>
     <body>
         <textarea id="input" placeholder="Digite sua pergunta e pressione Shift+Enter..."></textarea>
+        <div id="image-preview" style="display:none; margin-top: 10px;">
+            <img id="preview-img" style="max-width: 100%; max-height: 150px; border-radius: 4px;">
+            <button id="remove-img" style="margin-top: 5px; padding: 4px 8px; background: #ff4444; color: white; border: none; border-radius: 4px; cursor: pointer;">Remover imagem</button>
+        </div>
         <script>
         const input = document.getElementById('input');
+        const imagePreview = document.getElementById('image-preview');
+        const previewImg = document.getElementById('preview-img');
+        const removeImgBtn = document.getElementById('remove-img');
+        let pastedImage = null;
+        
         input.focus();
+        
+        // Handle paste events
+        document.addEventListener('paste', (e) => {
+            const items = e.clipboardData?.items;
+            if (!items) return;
+            
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.indexOf('image') !== -1) {
+                    e.preventDefault();
+                    const blob = items[i].getAsFile();
+                    const reader = new FileReader();
+                    
+                    reader.onload = (event) => {
+                        pastedImage = event.target.result;
+                        previewImg.src = pastedImage;
+                        imagePreview.style.display = 'block';
+                        
+                        // Add [img] indicator in textarea
+                        const currentText = input.value;
+                        input.value = currentText + '[img] ';
+                        // Position cursor after [img]
+                        input.setSelectionRange(input.value.length, input.value.length);
+                        input.focus();
+                    };
+                    
+                    reader.readAsDataURL(blob);
+                    break;
+                }
+            }
+        });
+        
+        // Remove image button
+        removeImgBtn.addEventListener('click', () => {
+            pastedImage = null;
+            imagePreview.style.display = 'none';
+            previewImg.src = '';
+            
+            // Remove [img] indicator from textarea
+            input.value = input.value.replace('[img] ', '');
+            input.focus();
+        });
         
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
-            window.electronAPI.closeOsInput();
+                window.electronAPI.closeOsInput();
             } else if (e.key === 'Enter' && e.shiftKey) {
-            e.preventDefault();
-            const text = input.value.trim();
-            if (text) {
-                window.electronAPI.sendOsQuestion(text);
-            }
+                e.preventDefault();
+                const text = input.value.trim();
+                if (text || pastedImage) {
+                    window.electronAPI.sendOsQuestion(text, pastedImage);
+                    pastedImage = null;
+                    imagePreview.style.display = 'none';
+                }
             }
         });
         </script>

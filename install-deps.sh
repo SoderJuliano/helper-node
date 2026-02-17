@@ -48,6 +48,8 @@ detect_distro() {
 
 install_packages_arch() {
   warn "Installing packages via pacman (sudo required)"
+  
+  # Base packages including Wayland screenshot tools (work on both X11 and Wayland)
   sudo pacman -S --needed git nodejs npm make gcc curl ffmpeg cmake gnome-screenshot grim slurp imagemagick || {
     err "pacman install failed"; exit 1;
   }
@@ -56,20 +58,25 @@ install_packages_arch() {
 install_packages_debian() {
   warn "Installing packages via apt (sudo required)"
   sudo apt-get update
-  sudo apt-get install -y git nodejs make g++ curl ffmpeg cmake gnome-screenshot imagemagick || {
+  
+  # Detect if Wayland
+  local is_wayland=false
+  if [[ "${XDG_SESSION_TYPE:-}" == "wayland" ]]; then
+    is_wayland=true
+    warn "Detected Wayland session - installing grim and slurp for screenshot support"
+  fi
+  
+  # Base packages
+  local packages="git nodejs make g++ curl ffmpeg cmake gnome-screenshot imagemagick"
+  
+  # Add Wayland screenshot tools
+  if [[ "$is_wayland" == "true" ]]; then
+    packages="$packages grim slurp"
+  fi
+  
+  sudo apt-get install -y $packages || {
     err "apt install failed"; exit 1;
   }
-}
-
-# Ensure Pop!_OS has gnome-screenshot
-ensure_popos_tools() {
-  if [[ -f /etc/os-release ]]; then
-    . /etc/os-release
-    if [[ "$ID" == "pop" ]]; then
-      warn "Detected Pop!_OS: ensuring gnome-screenshot is installed"
-      sudo apt-get install -y gnome-screenshot || warn "Failed to install gnome-screenshot"
-    fi
-  fi
 }
 
 install_system_packages() {
@@ -81,7 +88,6 @@ install_system_packages() {
     debian) install_packages_debian ;;
     *) warn "Unknown distro; trying Debian-style"; install_packages_debian ;;
   esac
-  ensure_popos_tools
   info "System packages installed"
 }
 

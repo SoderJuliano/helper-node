@@ -1558,7 +1558,14 @@
         }
         
         function openManualInput() {
-            if (manualInputActive || isEditingQuestion) return;
+            if (manualInputActive || isEditingQuestion) {
+                // Se já está ativo, apenas garante o foco no input
+                const existingInput = document.querySelector('.edit-textarea');
+                if (existingInput) {
+                    existingInput.focus();
+                }
+                return;
+            }
             
             manualInputActive = true;
             pastedImageForManualInput = null; // Reseta a imagem colada
@@ -1595,8 +1602,10 @@
             
             transcriptionElement.appendChild(container);
             
-            // Foca no input
-            inputField.focus();
+            // Foca no input com um pequeno delay para garantir que o DOM foi atualizado
+            setTimeout(() => {
+                inputField.focus();
+            }, 100);
             
             // Enter quebra linha, Shift+Enter envia
             inputField.addEventListener('keydown', (e) => {

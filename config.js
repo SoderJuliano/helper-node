@@ -169,3 +169,9 @@ saveButton.addEventListener("click", async () => {
   // Close window
   window.close();
 });
+
+// Handle clear OpenAI token
+document.getElementById("clear-openai-token").addEventListener("click", () => {
+    openIaTokenInput.value = "";
+    ipcRenderer.send("set-open-ia-token", ""); // Clear token in main process as well
+});
