@@ -1009,7 +1009,16 @@
                 if (manualInputActive) {
                     pastedImageForManualInput = base64Image || (`file://${screenshotPath}`);
                     robot.style.display = 'none';
-                    // Não altera o transcriptionElement aqui para manter o input
+                    // Insere o texto OCR no início do textarea
+                    const textarea = document.querySelector('.edit-textarea');
+                    if (textarea && text) {
+                        const existingText = textarea.value;
+                        textarea.value = text + '\n' + existingText;
+                        textarea.focus();
+                        // Posiciona o cursor no final do texto existente (após a quebra de linha)
+                        const cursorPos = text.length + 1 + existingText.length;
+                        textarea.setSelectionRange(cursorPos, cursorPos);
+                    }
                     return;
                 }
 
