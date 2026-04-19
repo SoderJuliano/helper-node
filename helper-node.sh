@@ -23,12 +23,19 @@ USER_APP_CONFIG_DIR="$HOME/.config/meu-electron-app"
 USER_APP_CONFIG_PATH="$USER_APP_CONFIG_DIR/config.json"
 DEFAULT_CONFIG_PATH="$APP_DIR/config-default.json"
 ELECTRON_BIN="$APP_DIR/node_modules/.bin/electron"
+RUN_HOTKEY_SETUP=false
 
 # Change to app directory
 cd "$APP_DIR"
 
+# Determine whether to (re)configure desktop shortcuts
+if [ "$LOCAL_MODE" = true ]; then
+    RUN_HOTKEY_SETUP=true
+fi
+
 # Check if first run
-if [ ! -f "$CONFIG_FLAG" ] && [ "$LOCAL_MODE" = false ]; then
+if [ ! -f "$CONFIG_FLAG" ]; then
+    RUN_HOTKEY_SETUP=true
     echo "🚀 First run detected! Configuring global hotkeys..."
     
     # Create config directory
@@ -41,20 +48,24 @@ if [ ! -f "$CONFIG_FLAG" ] && [ "$LOCAL_MODE" = false ]; then
         echo "✓ Default AI/Tesseract settings imported"
     fi
     
-    # Run setup script
+fi
+
+# Run setup script when needed (best-effort for local dev)
+if [ "$RUN_HOTKEY_SETUP" = true ]; then
     if [ -f "$APP_DIR/setup-hotkey.sh" ]; then
-        bash "$APP_DIR/setup-hotkey.sh"
-        
-        # Mark as configured
-        touch "$CONFIG_FLAG"
-        echo "✓ Configuration complete!"
+        if bash "$APP_DIR/setup-hotkey.sh"; then
+            touch "$CONFIG_FLAG"
+            echo "✓ Hotkey configuration complete!"
+        else
+            echo "⚠️ Hotkey setup returned an error. App will continue running."
+        fi
     else
         echo "⚠️ Warning: setup-hotkey.sh not found"
     fi
-    
+
     echo ""
     echo "Starting Helper Node..."
-    sleep 2
+    sleep 1
 fi
 
 if [ ! -x "$ELECTRON_BIN" ]; then

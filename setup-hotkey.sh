@@ -254,31 +254,32 @@ elif [[ "$XDG_CURRENT_DESKTOP" == *"COSMIC"* ]]; then
     echo "Attempting to configure for COSMIC Desktop..."
     echo "COSMIC detected - using xbindkeys as reliable alternative..."
 
+    XBINDKEYS_AVAILABLE=false
+
     # Install xbindkeys if not present
-    if ! command -v xbindkeys &> /dev/null; then
+    if command -v xbindkeys &> /dev/null; then
+        XBINDKEYS_AVAILABLE=true
+    else
         echo "Installing xbindkeys..."
         
         # Check if we're in a flatpak/sandboxed environment
         if [ -f /.flatpak-info ] || command -v flatpak-spawn &> /dev/null 2>&1; then
             echo ""
             echo "⚠️  DETECTADO: Executando dentro de Flatpak/sandbox"
-            echo ""
-            echo "Por favor, abra um TERMINAL NORMAL (fora do VS Code) e execute:"
-            echo ""
-            echo "  sudo apt-get update && sudo apt-get install -y xbindkeys"
-            echo ""
-            echo "Depois execute este script novamente."
-            echo ""
-            exit 1
-        fi
-        
-        if command -v apt-get &> /dev/null; then
-            sudo apt-get update && sudo apt-get install -y xbindkeys
-        elif command -v pacman &> /dev/null; then
-            sudo pacman -S --noconfirm xbindkeys
+            echo "⚠️  Não é possível instalar xbindkeys automaticamente daqui."
+            echo "⚠️  Continuando com fallback de atalhos nativos do COSMIC."
         else
-            echo "ERROR: Cannot install xbindkeys automatically. Please install it manually."
-            exit 1
+            if command -v apt-get &> /dev/null; then
+                sudo apt-get update && sudo apt-get install -y xbindkeys || true
+            elif command -v pacman &> /dev/null; then
+                sudo pacman -S --noconfirm xbindkeys || true
+            else
+                echo "WARNING: Cannot install xbindkeys automatically. Please install it manually."
+            fi
+        fi
+
+        if command -v xbindkeys &> /dev/null; then
+            XBINDKEYS_AVAILABLE=true
         fi
     fi
 
@@ -313,15 +314,17 @@ elif [[ "$XDG_CURRENT_DESKTOP" == *"COSMIC"* ]]; then
   Control+Shift + 2
 EOF
 
-    # Kill existing xbindkeys and start new one
-    pkill xbindkeys 2>/dev/null
-    xbindkeys &
-    
-    # Make xbindkeys start on login
     AUTOSTART_DIR="$HOME/.config/autostart"
-    mkdir -p "$AUTOSTART_DIR"
-    
-    cat > "$AUTOSTART_DIR/xbindkeys.desktop" << 'EOF'
+
+    # Kill existing xbindkeys and start new one (if installed)
+    if [ "$XBINDKEYS_AVAILABLE" = true ]; then
+        pkill xbindkeys 2>/dev/null
+        xbindkeys &
+
+        # Make xbindkeys start on login
+        mkdir -p "$AUTOSTART_DIR"
+
+        cat > "$AUTOSTART_DIR/xbindkeys.desktop" << 'EOF'
 [Desktop Entry]
 Type=Application
 Name=XBindKeys
@@ -331,6 +334,7 @@ NoDisplay=false
 X-GNOME-Autostart-enabled=true
 Comment=Keyboard shortcuts for Helper-Node
 EOF
+    fi
 
     # Also try COSMIC native format as backup
     COSMIC_CONFIG_DIR="$HOME/.config/cosmic/com.system76.CosmicSettings.Shortcuts/v1"
@@ -394,7 +398,11 @@ EOF
     touch "$COSMIC_SHORTCUTS_FILE"
     
     echo "------------------------------------------------------------------"
-    echo "✅ SUCCESS: Hotkeys configured via xbindkeys!"
+    if [ "$XBINDKEYS_AVAILABLE" = true ]; then
+        echo "✅ SUCCESS: Hotkeys configured via xbindkeys!"
+    else
+        echo "⚠️  xbindkeys não está disponível; aplicado apenas fallback de atalhos nativos COSMIC."
+    fi
     echo ""
     echo "Atalhos globais ATIVOS AGORA:"
     echo "  Ctrl+D         -> Toggle Recording"
@@ -404,12 +412,19 @@ EOF
     echo "  Ctrl+Shift+1   -> Move to Display 1"
     echo "  Ctrl+Shift+2   -> Move to Display 2"
     echo ""
-    echo "✅ xbindkeys está rodando em background"
-    echo "✅ xbindkeys será iniciado automaticamente no próximo login"
+    if [ "$XBINDKEYS_AVAILABLE" = true ]; then
+        echo "✅ xbindkeys está rodando em background"
+        echo "✅ xbindkeys será iniciado automaticamente no próximo login"
+    else
+        echo "⚠️  Para atalhos globais garantidos no COSMIC, instale xbindkeys em terminal normal:"
+        echo "   sudo apt-get update && sudo apt-get install -y xbindkeys"
+    fi
     echo ""
     echo "📝 Arquivos criados:"
     echo "   - $XBINDKEYS_CONFIG"
-    echo "   - $AUTOSTART_DIR/xbindkeys.desktop"
+    if [ "$XBINDKEYS_AVAILABLE" = true ]; then
+        echo "   - $AUTOSTART_DIR/xbindkeys.desktop"
+    fi
     echo "   - $COSMIC_SHORTCUTS_FILE (backup)"
     echo ""
     echo "🎯 OS ATALHOS JÁ DEVEM FUNCIONAR! Tente pressionar Ctrl+D agora."
