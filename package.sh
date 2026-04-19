@@ -17,6 +17,10 @@ VERSION="0.0.1"
 BUILD_DIR="$(pwd)/build"
 DIST_DIR="$(pwd)/dist"
 PROJECT_ROOT="$(pwd)"
+APP_CONFIG_CANDIDATES=(
+    "$HOME/.config/meu-electron-app/config.json"
+    "$HOME/.config/helper-node/config.json"
+)
 
 echo -e "${GREEN}╔════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║  Helper Node Package Builder v0.0.1    ║${NC}"
@@ -48,25 +52,49 @@ build_deb() {
     echo -e "${GREEN}  Building DEB Package${NC}"
     echo -e "${GREEN}═══════════════════════════════════${NC}"
     
-    DEB_ROOT="${DIST_DIR}/${APP_NAME}_${VERSION}_amd64"
+        DEB_ROOT="${BUILD_DIR}/deb-root/${APP_NAME}_${VERSION}_amd64"
+        APP_ROOT="${DEB_ROOT}/opt/helper-node"
+        DEB_OUTPUT="${DIST_DIR}/${APP_NAME}_${VERSION}_amd64.deb"
     
     # Create directory structure
     echo -e "${YELLOW}→${NC} Creating DEB directory structure..."
-    mkdir -p "${DEB_ROOT}/opt/helper-node"
+        rm -rf "${BUILD_DIR}/deb-root"
+        mkdir -p "${APP_ROOT}"
     mkdir -p "${DEB_ROOT}/DEBIAN"
     
     # Copy application files
     echo -e "${YELLOW}→${NC} Copying application files..."
-    cp -r main.js index.html config.html config.js preload.js "${DEB_ROOT}/opt/helper-node/"
-    cp -r assets os-integration services "${DEB_ROOT}/opt/helper-node/"
-    cp -r node_modules "${DEB_ROOT}/opt/helper-node/"
-    cp -r whisper "${DEB_ROOT}/opt/helper-node/"
-    cp package.json "${DEB_ROOT}/opt/helper-node/"
-    cp *.traineddata "${DEB_ROOT}/opt/helper-node/" 2>/dev/null || true
-    cp helper-node.sh "${DEB_ROOT}/opt/helper-node/"
-    cp helper-node.desktop "${DEB_ROOT}/opt/helper-node/"
-    cp setup-hotkey.sh "${DEB_ROOT}/opt/helper-node/"
-    cp README.markdown ROADMAP.md "${DEB_ROOT}/opt/helper-node/" 2>/dev/null || true
+        cp -r main.js main_new_notification.js createOsNotificationWindow_fixed.js index.html config.html config.js preload.js "${APP_ROOT}/" 2>/dev/null || true
+        cp -r assets os-integration services whisper "${APP_ROOT}/"
+        cp package.json package-lock.json "${APP_ROOT}/" 2>/dev/null || true
+        cp *.traineddata "${APP_ROOT}/" 2>/dev/null || true
+        cp helper-node.sh helper-node.desktop setup-hotkey.sh capture-screenshot.sh install-deps.sh "${APP_ROOT}/" 2>/dev/null || true
+        cp README.markdown ROADMAP.md "${APP_ROOT}/" 2>/dev/null || true
+
+        # Bundle user's local app config (optional) as default config for first run
+        for cfg in "${APP_CONFIG_CANDIDATES[@]}"; do
+            if [ -f "$cfg" ]; then
+                echo -e "${YELLOW}→${NC} Packing local config from: $cfg"
+                cp "$cfg" "${APP_ROOT}/config-default.json"
+                break
+            fi
+        done
+
+        # Install Node dependencies directly in package root (includes Electron runtime)
+        echo -e "${YELLOW}→${NC} Installing packaged Node dependencies..."
+        (
+            cd "${APP_ROOT}"
+            if [ -f package-lock.json ]; then
+                npm ci --include=dev --omit=optional
+            else
+                npm install --include=dev --omit=optional
+            fi
+        )
+
+        if [ ! -x "${APP_ROOT}/node_modules/.bin/electron" ]; then
+            echo -e "${RED}Error: electron binary not found inside package tree.${NC}"
+            exit 1
+        fi
     
     # Copy DEBIAN control files
     echo -e "${YELLOW}→${NC} Adding control files..."
@@ -76,19 +104,21 @@ build_deb() {
     
     # Set permissions
     echo -e "${YELLOW}→${NC} Setting permissions..."
-    chmod +x "${DEB_ROOT}/opt/helper-node/helper-node.sh"
-    chmod +x "${DEB_ROOT}/opt/helper-node/setup-hotkey.sh"
-    chmod +x "${DEB_ROOT}/opt/helper-node/whisper/build/bin/whisper-cli" 2>/dev/null || true
+    chmod +x "${APP_ROOT}/helper-node.sh"
+    chmod +x "${APP_ROOT}/setup-hotkey.sh" 2>/dev/null || true
+    chmod +x "${APP_ROOT}/capture-screenshot.sh" 2>/dev/null || true
+    chmod +x "${APP_ROOT}/whisper/build/bin/whisper-cli" 2>/dev/null || true
     
     # Build package
     echo -e "${YELLOW}→${NC} Building DEB package..."
-    dpkg-deb --build "${DEB_ROOT}"
-    
-    # Move to dist
-    mv "${DEB_ROOT}.deb" "${DIST_DIR}/"
+        if command -v fakeroot &> /dev/null; then
+            fakeroot dpkg-deb --build "${DEB_ROOT}" "${DEB_OUTPUT}"
+        else
+            dpkg-deb --build "${DEB_ROOT}" "${DEB_OUTPUT}"
+        fi
     
     # Cleanup
-    rm -rf "${DEB_ROOT}"
+    rm -rf "${BUILD_DIR}/deb-root"
     
     echo -e "${GREEN}✓${NC} DEB package created: ${DIST_DIR}/${APP_NAME}_${VERSION}_amd64.deb"
 }
@@ -144,8 +174,7 @@ build_arch() {
 }
 
 # Main build process
-echo -e "${YELLOW}→${NC} Installing npm dependencies..."
-npm install --production
+echo -e "${YELLOW}→${NC} Using isolated dependency install for packaging (local dev node_modules will not be modified)..."
 
 # Build packages based on arguments
 if [ "$1" == "deb" ]; then

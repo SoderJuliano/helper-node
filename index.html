@@ -47,6 +47,47 @@
             max-width: 250px;
             text-align: start;
             font-size: 10px;
+            overflow: hidden;
+            max-height: 220px;
+            transform-origin: top;
+            transition: max-height 0.2s ease, padding-top 0.2s ease, padding-bottom 0.2s ease;
+        }
+
+        .commands.collapsed {
+            max-height: 18px;
+            padding-top: 8px;
+            padding-bottom: 4px;
+        }
+
+        .commands-content {
+            max-height: 190px;
+            opacity: 1;
+            transform: translateY(0);
+            transition: max-height 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
+        }
+
+        .commands.collapsed .commands-content {
+            max-height: 0;
+            opacity: 0;
+            transform: translateY(-8px);
+            pointer-events: none;
+        }
+
+        .commands-toggle {
+            position: absolute;
+            top: 1px;
+            right: 1px;
+            width: 14px;
+            height: 14px;
+            padding: 0;
+            border: none;
+            background: transparent;
+            color: #ffffff;
+            font-size: 10px;
+            line-height: 1;
+            cursor: pointer;
+            z-index: 2;
+            -webkit-app-region: no-drag;
         }
         
         .command-item {
@@ -447,14 +488,17 @@
 </head>
 <body>
     <div class="drag-area"></div>
-    <div class="commands">
-        <div class="command-item">⚡︎ CTRL+D - Iniciar/Parar gravação 🎙️</div>
-        <div class="command-item">⚡︎ CTRL+I - Inserir pergunta ✍️</div>
-        <div id="capture-screen-shortcut" class="command-item">⚡︎ CTRL+SHIFT+X - Capturar tela 📝</div>
-        <div class="command-item">⚡︎ CTRL+SHIFT+C - Configurações ⚙️</div>
-        <div id="move-to-screen-1" class="command-item">⚡︎ CTRL+SHIFT+1 - Move to screen 1 🖵←🖵</div>
-        <div id="move-to-screen-2" class="command-item">⚡︎ CTRL+SHIFT+2 - Move to screen 2 🖵→🖵</div>
-        <div id="debug-indicator" class="command-item" style="display: none; color: #ffab40;">🐞 Modo Debug Ativo</div>
+    <div class="commands" id="shortcut-panel">
+        <button id="shortcut-toggle" class="commands-toggle" aria-label="Recolher/expandir atalhos">^</button>
+        <div class="commands-content" id="shortcut-content">
+            <div id="recording-shortcut" class="command-item">⚡︎ CTRL+D - Iniciar/Parar gravação 🎙️</div>
+            <div id="manual-input-shortcut" class="command-item">⚡︎ CTRL+I - Inserir pergunta ✍️</div>
+            <div id="capture-screen-shortcut" class="command-item">⚡︎ CTRL+SHIFT+X - Capturar tela 📝</div>
+            <div class="command-item">⚡︎ CTRL+SHIFT+C - Configurações ⚙️</div>
+            <div id="move-to-screen-1" class="command-item">⚡︎ CTRL+SHIFT+1 - Move to screen 1 🖵←🖵</div>
+            <div id="move-to-screen-2" class="command-item">⚡︎ CTRL+SHIFT+2 - Move to screen 2 🖵→🖵</div>
+            <div id="debug-indicator" class="command-item" style="display: none; color: #ffab40;">🐞 Modo Debug Ativo</div>
+        </div>
     </div>
 
     <div id="animation-container"></div>
@@ -498,6 +542,25 @@
 
         document.addEventListener('DOMContentLoaded', async () => {
             const transcriptionElement = document.getElementById('transcription');
+            const shortcutPanel = document.getElementById('shortcut-panel');
+            const shortcutToggle = document.getElementById('shortcut-toggle');
+
+            const setShortcutPanelCollapsed = (collapsed) => {
+                if (collapsed) {
+                    shortcutPanel.classList.add('collapsed');
+                    shortcutToggle.textContent = 'V';
+                } else {
+                    shortcutPanel.classList.remove('collapsed');
+                    shortcutToggle.textContent = '^';
+                }
+            };
+
+            shortcutToggle.addEventListener('click', (event) => {
+                event.stopPropagation();
+                setShortcutPanelCollapsed(!shortcutPanel.classList.contains('collapsed'));
+            });
+
+            setShortcutPanelCollapsed(true);
 
             // Centralized event listener for all copy actions
             transcriptionElement.addEventListener('click', (event) => {
@@ -562,8 +625,8 @@
                 // Oculta o atalho de captura de tela, pois não é mais usado no Hyprland
                 document.getElementById('capture-screen-shortcut').style.display = 'none';
                 // Os atalhos principais também mudam no script para Hyprland
-                document.querySelector('.commands').children[0].textContent = '⚡︎ SUPER+D - Iniciar/Parar gravação 🎙️';
-                document.querySelector('.commands').children[1].textContent = '⚡︎ SUPER+I / CTRL+I - Inserir pergunta ✍️';
+                document.getElementById('recording-shortcut').textContent = '⚡︎ SUPER+D - Iniciar/Parar gravação 🎙️';
+                document.getElementById('manual-input-shortcut').textContent = '⚡︎ SUPER+I / CTRL+I - Inserir pergunta ✍️';
             }
         });
 
