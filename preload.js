@@ -66,4 +66,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   closeOsInput: () => ipcRenderer.send("close-os-input"),
   sendOsQuestion: (text, image) => ipcRenderer.send("send-os-question", { text, image }),
   cancelRecording: () => ipcRenderer.send("cancel-recording"),
+
+  // History Service methods
+  addMessage: (sessionId, role, content) => ipcRenderer.invoke("add-message", sessionId, role, content),
+  createNewSession: (title) => ipcRenderer.invoke("create-new-session", title),
+  getLastThreeSessions: () => ipcRenderer.invoke("get-last-three-sessions"),
+  getSessionById: (id) => ipcRenderer.invoke("get-session-by-id", id),
+  newChat: () => ipcRenderer.invoke("new-chat"),
 });

@@ -20,6 +20,7 @@ const TesseractService = require("./services/tesseractService.js");
 const OpenAIService = require("./services/openAIService.js");
 const ipcService = require("./services/ipcService.js");
 const configService = require("./services/configService.js");
+const historyService = require("./services/historyService.js");
 
 // Improve global shortcut reliability on Linux Wayland compositors
 if (process.platform === "linux") {
@@ -2334,9 +2335,61 @@ async function processOsQuestion(text, image = null) {
   }
 }
 
+// ========== History IPC Handlers ==========
+ipcMain.handle('get-last-three-sessions', async () => {
+  try {
+    return historyService.getLastThreeSessions();
+  } catch (error) {
+    console.error('Erro ao obter últimas 3 sessões:', error);
+    return [];
+  }
+});
+
+ipcMain.handle('get-session-by-id', async (event, sessionId) => {
+  try {
+    return historyService.getSessionById(sessionId);
+  } catch (error) {
+    console.error('Erro ao obter sessão:', error);
+    return null;
+  }
+});
+
+ipcMain.handle('add-message', async (event, sessionId, role, content) => {
+  try {
+    await historyService.addMessage(sessionId, role, content);
+    return { success: true };
+  } catch (error) {
+    console.error('Erro ao adicionar mensagem ao histórico:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('create-new-session', async (event, title) => {
+  try {
+    const session = await historyService.createNewSession(title);
+    return session;
+  } catch (error) {
+    console.error('Erro ao criar sessão:', error);
+    return null;
+  }
+});
+
+ipcMain.handle('new-chat', async () => {
+  try {
+    const session = await historyService.createNewSession('Nova conversa');
+    return session;
+  } catch (error) {
+    console.error('Erro ao criar novo chat:', error);
+    return null;
+  }
+});
+
+// ========== End History Handlers ==========
+
 app.whenReady().then(async () => {
   configService.initialize();
   OpenAIService.initialize();
+  await historyService.initialize();
   await createWindow();
   ipcService.start({
     toggleRecording,
