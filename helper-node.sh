@@ -18,6 +18,20 @@ else
     APP_DIR="$SCRIPT_DIR"
 fi
 
+# If running local dev inside Flatpak (VS Code sandbox), re-exec on host.
+# Global hotkeys (xbindkeys) run on host and call localhost:3000 there.
+if [ "$LOCAL_MODE" = true ] \
+   && [ -f /.flatpak-info ] \
+   && command -v flatpak-spawn >/dev/null 2>&1 \
+   && [ "${HELPER_NODE_HOST_REEXEC:-0}" != "1" ]; then
+    echo "🔁 Flatpak detectado: iniciando instância local no host para habilitar atalhos globais..."
+    HOST_CMD="cd \"$APP_DIR\" && HELPER_NODE_HOST_REEXEC=1 bash ./helper-node.sh --local"
+    for arg in "$@"; do
+        HOST_CMD+=" $(printf '%q' "$arg")"
+    done
+    exec flatpak-spawn --host bash -lc "$HOST_CMD"
+fi
+
 CONFIG_FLAG="$HOME/.config/helper-node/.setup-done"
 USER_APP_CONFIG_DIR="$HOME/.config/meu-electron-app"
 USER_APP_CONFIG_PATH="$USER_APP_CONFIG_DIR/config.json"
