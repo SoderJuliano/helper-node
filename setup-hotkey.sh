@@ -255,10 +255,14 @@ elif [[ "$XDG_CURRENT_DESKTOP" == *"COSMIC"* ]]; then
     echo "COSMIC detected - using xbindkeys as reliable alternative..."
 
     XBINDKEYS_AVAILABLE=false
+    USE_HOST_XBINDKEYS=false
 
     # Install xbindkeys if not present
     if command -v xbindkeys &> /dev/null; then
         XBINDKEYS_AVAILABLE=true
+    elif command -v flatpak-spawn &> /dev/null 2>&1 && flatpak-spawn --host sh -lc 'command -v xbindkeys >/dev/null'; then
+        XBINDKEYS_AVAILABLE=true
+        USE_HOST_XBINDKEYS=true
     else
         echo "Installing xbindkeys..."
         
@@ -280,6 +284,9 @@ elif [[ "$XDG_CURRENT_DESKTOP" == *"COSMIC"* ]]; then
 
         if command -v xbindkeys &> /dev/null; then
             XBINDKEYS_AVAILABLE=true
+        elif command -v flatpak-spawn &> /dev/null 2>&1 && flatpak-spawn --host sh -lc 'command -v xbindkeys >/dev/null'; then
+            XBINDKEYS_AVAILABLE=true
+            USE_HOST_XBINDKEYS=true
         fi
     fi
 
@@ -318,8 +325,12 @@ EOF
 
     # Kill existing xbindkeys and start new one (if installed)
     if [ "$XBINDKEYS_AVAILABLE" = true ]; then
-        pkill xbindkeys 2>/dev/null
-        xbindkeys &
+        if [ "$USE_HOST_XBINDKEYS" = true ]; then
+            flatpak-spawn --host sh -lc 'pkill xbindkeys 2>/dev/null || true; xbindkeys -f "$HOME/.xbindkeysrc"'
+        else
+            pkill xbindkeys 2>/dev/null
+            xbindkeys &
+        fi
 
         # Make xbindkeys start on login
         mkdir -p "$AUTOSTART_DIR"
