@@ -21,6 +21,11 @@ const OpenAIService = require("./services/openAIService.js");
 const ipcService = require("./services/ipcService.js");
 const configService = require("./services/configService.js");
 
+// Improve global shortcut reliability on Linux Wayland compositors
+if (process.platform === "linux") {
+  app.commandLine.appendSwitch("enable-features", "GlobalShortcutsPortal");
+}
+
 // Function to calculate image hash for duplicate detection
 function calculateImageHash(imageBuffer) {
   return crypto.createHash('md5').update(imageBuffer).digest('hex');

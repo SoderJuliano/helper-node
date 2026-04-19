@@ -28,11 +28,6 @@ RUN_HOTKEY_SETUP=false
 # Change to app directory
 cd "$APP_DIR"
 
-# Determine whether to (re)configure desktop shortcuts
-if [ "$LOCAL_MODE" = true ]; then
-    RUN_HOTKEY_SETUP=true
-fi
-
 # Check if first run
 if [ ! -f "$CONFIG_FLAG" ]; then
     RUN_HOTKEY_SETUP=true
