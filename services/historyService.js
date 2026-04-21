@@ -184,6 +184,26 @@ function getCurrentSession() {
   return currentSessions[currentSessions.length - 1];
 }
 
+/**
+ * Deleta uma sessão pelo ID
+ */
+async function deleteSession(sessionId) {
+  try {
+    const initialLength = currentSessions.length;
+    currentSessions = currentSessions.filter(s => s.id !== sessionId);
+    
+    // Se algo foi deletado, salva o arquivo
+    if (currentSessions.length < initialLength) {
+      await saveCurrentFile();
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error('Erro ao deletar sessão:', error);
+    return false;
+  }
+}
+
 module.exports = {
   initialize,
   createNewSession,
@@ -192,4 +212,5 @@ module.exports = {
   getSessionById,
   getCurrentSession,
   clearCurrentSessionFromMemory,
+  deleteSession,
 };

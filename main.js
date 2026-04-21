@@ -2384,6 +2384,19 @@ ipcMain.handle('new-chat', async () => {
   }
 });
 
+ipcMain.handle('delete-session', async (event, sessionId) => {
+  try {
+    const success = await historyService.deleteSession(sessionId);
+    if (success) {
+      console.log(`✓ Sessão ${sessionId} deletada com sucesso`);
+    }
+    return { success };
+  } catch (error) {
+    console.error('Erro ao deletar sessão:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 // ========== End History Handlers ==========
 
 app.whenReady().then(async () => {

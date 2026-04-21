@@ -73,4 +73,5 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getLastThreeSessions: () => ipcRenderer.invoke("get-last-three-sessions"),
   getSessionById: (id) => ipcRenderer.invoke("get-session-by-id", id),
   newChat: () => ipcRenderer.invoke("new-chat"),
+  deleteSession: (sessionId) => ipcRenderer.invoke("delete-session", sessionId),
 });

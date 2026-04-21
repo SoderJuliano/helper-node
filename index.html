@@ -97,11 +97,48 @@
             overflow: hidden;
             text-overflow: ellipsis;
             max-width: 240px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
 
         .panel-item:hover {
             color: #ffffff;
             text-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
+        }
+
+        .panel-item-title {
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            cursor: pointer;
+        }
+
+        .panel-item-delete {
+            flex-shrink: 0;
+            background: transparent;
+            border: none;
+            color: rgba(255, 255, 255, 0.5);
+            cursor: pointer;
+            font-size: 10px;
+            padding: 0;
+            width: 12px;
+            height: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0.6;
+            transition: opacity 0.2s, color 0.2s;
+        }
+
+        .panel-item:hover .panel-item-delete {
+            opacity: 1;
+            color: #ff6b6b;
+        }
+
+        .panel-item-delete:hover {
+            color: #ff6b6b;
         }
 
         .new-chat-btn {
@@ -769,8 +806,33 @@
                 sessions.forEach(session => {
                     const item = document.createElement('div');
                     item.className = 'panel-item';
-                    item.textContent = session.title;
-                    item.addEventListener('click', () => viewConversation(session.id));
+                    
+                    const titleSpan = document.createElement('span');
+                    titleSpan.className = 'panel-item-title';
+                    titleSpan.textContent = session.title;
+                    titleSpan.addEventListener('click', () => viewConversation(session.id));
+                    
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'panel-item-delete';
+                    deleteBtn.textContent = '✕';
+                    deleteBtn.title = 'Deletar conversa';
+                    deleteBtn.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        try {
+                            const result = await window.electronAPI.deleteSession(session.id);
+                            if (result.success) {
+                                console.log(`✓ Conversa deletada: ${session.id}`);
+                                // Remove from UI
+                                historyState.loadedSessions = historyState.loadedSessions.filter(s => s.id !== session.id);
+                                renderHistoryList(historyState.loadedSessions);
+                            }
+                        } catch (error) {
+                            console.error('Erro ao deletar conversa:', error);
+                        }
+                    });
+                    
+                    item.appendChild(titleSpan);
+                    item.appendChild(deleteBtn);
                     historyContent.appendChild(item);
                 });
             }
