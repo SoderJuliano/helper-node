@@ -132,19 +132,33 @@ async function createNewSession(title) {
 }
 
 /**
- * Adiciona uma mensagem à sessão atual
+ * Adiciona uma mensagem à sessão atual.
+ * Se a sessão não existir mais (foi deletada), cria uma nova automaticamente.
+ * Retorna o sessionId final usado.
  */
 async function addMessage(sessionId, role, content) {
-  const session = currentSessions.find(s => s.id === sessionId);
-  if (!session) return;
+  let session = currentSessions.find(s => s.id === sessionId);
+
+  if (!session) {
+    // Sessão foi deletada — recria automaticamente a partir desta mensagem
+    const now = new Date();
+    session = {
+      id: Date.now(),
+      title: `Conversa — ${now.toLocaleDateString('pt-BR')} ${now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`,
+      created: now.toISOString(),
+      conversations: []
+    };
+    currentSessions.push(session);
+  }
 
   session.conversations.push({
-    role, // 'user' ou 'assistant'
+    role,
     content,
     timestamp: new Date().toISOString()
   });
 
   await saveCurrentFile();
+  return session.id;
 }
 
 /**

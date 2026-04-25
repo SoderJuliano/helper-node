@@ -42,6 +42,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("gemini-stream-complete", () => callback()),
   onOcrResult: (callback) =>
     ipcRenderer.on("ocr-result", (event, data) => callback(data)),
+  onRealtimeAssistantUpdate: (callback) =>
+    ipcRenderer.on("realtime-assistant-update", (event, data) => callback(data)),
   // sendTextToLlama: (text) => ipcRenderer.send('send-to-llama', text),
   sendTextToGemini: (text) => ipcRenderer.send("send-to-gemini", text),
   sendTextToGeminiStream: (text) => ipcRenderer.send("send-to-gemini-stream", text),

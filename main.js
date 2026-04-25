@@ -18,6 +18,7 @@ const GeminiService = require("./services/geminiService.js"); // Mantido para a 
 const BackendService = require("./services/backendService.js");
 const TesseractService = require("./services/tesseractService.js");
 const OpenAIService = require("./services/openAIService.js");
+const RealtimeAssistantService = require("./services/realtimeAssistantService.js");
 const ipcService = require("./services/ipcService.js");
 const configService = require("./services/configService.js");
 const historyService = require("./services/historyService.js");
@@ -85,6 +86,22 @@ let osCaptureWindow = null;
 let isOsIntegrationMode = false;
 let captureToolInterval = null;
 
+const realtimeAssistantService = new RealtimeAssistantService({
+  app,
+  configService,
+  transcribeAudio,
+  execPromise,
+  getMainWindow: () => mainWindow,
+  historyService,
+  onFatalStop: () => {
+    // Called when the service stops itself due to a fatal error (e.g. quota exceeded)
+    isRecording = false;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("toggle-recording", { isRecording, audioFilePath });
+    }
+  },
+});
+
 function createConfigWindow() {
   if (configWindow) {
     configWindow.focus();
@@ -93,7 +110,7 @@ function createConfigWindow() {
 
   configWindow = new BrowserWindow({
     width: 500,
-    height: 350,
+    height: 420,
     title: "Configurações",
     backgroundColor: "#00000000",
     transparent: true,
@@ -1246,8 +1263,72 @@ async function getDefaultAudioSink() {
   }
 }
 
+async function toggleRealtimeAssistantRecording() {
+  const isRealtimeActive = realtimeAssistantService.isActive();
+
+  if (isRealtimeActive) {
+    await realtimeAssistantService.stop();
+    isRecording = false;
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("toggle-recording", {
+        isRecording,
+        audioFilePath,
+      });
+    }
+
+    if (appConfig.notificationsEnabled && Notification.isSupported()) {
+      new Notification({
+        title: "Helper-Node",
+        body: "Assistente em tempo real desativado.",
+        silent: true,
+      }).show();
+    }
+    return;
+  }
+
+  const token = configService.getOpenIaToken();
+  if (!token) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("transcription-error", "Token da OpenAI não configurado.");
+    }
+    if (appConfig.notificationsEnabled && Notification.isSupported()) {
+      new Notification({
+        title: "Erro de Configuração",
+        body: "Configure o token da OpenAI para usar o assistente em tempo real.",
+        silent: true,
+      }).show();
+    }
+    return;
+  }
+
+  await realtimeAssistantService.start();
+  isRecording = true;
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("toggle-recording", {
+      isRecording,
+      audioFilePath,
+    });
+  }
+
+  if (appConfig.notificationsEnabled && Notification.isSupported()) {
+    new Notification({
+      title: "Helper-Node",
+      body: "Assistente em tempo real ativado. Capturando blocos de áudio de 15s.",
+      silent: true,
+    }).show();
+  }
+}
+
 async function toggleRecording() {
   try {
+    const isRealtimeAssistantEnabled = configService.getRealtimeAssistantStatus();
+    if (isRealtimeAssistantEnabled) {
+      await toggleRealtimeAssistantRecording();
+      return;
+    }
+
     if (isRecording) {
       if (recordingProcess) {
         recordingProcess.kill("SIGTERM");
@@ -1633,7 +1714,9 @@ async function getAudioDuration(filePath) {
   }
 }
 
-async function transcribeAudio(filePath) {
+async function transcribeAudio(filePath, options = {}) {
+  const { emitRenderer = true, emitNotifications = true } = options;
+
   try {
     // Obter a duração do áudio
     const duration = await getAudioDuration(filePath);
@@ -1654,14 +1737,16 @@ async function transcribeAudio(filePath) {
     }
 
     // Escolher modelo e parâmetros com base na duração
+    // small = melhor compreensão de gírias, nomes e linguagem informal
+    // tiny = fallback apenas para áudios muito longos (> 60s) onde a velocidade importa mais
     let modelPath, command;
-    if (duration > 20) {
+    if (duration > 60) {
       modelPath = modelPathTiny;
       command = `${whisperPath} -m ${modelPath} -f ${filePath} -l auto --threads 16 --no-timestamps --best-of 3 --beam-size 2`;
       console.log("Usando modelo tiny");
     } else {
       modelPath = modelPathSmall;
-      command = `${whisperPath} -m ${modelPath} -f ${filePath} -l auto --threads 18 --no-timestamps --best-of 3 --beam-size 2`;
+      command = `${whisperPath} -m ${modelPath} -f ${filePath} -l auto --threads 18 --no-timestamps --best-of 5 --beam-size 5`;
       console.log("Usando modelo small");
     }
 
@@ -1680,9 +1765,12 @@ async function transcribeAudio(filePath) {
         const text = stdout.trim();
         console.log("Transcription:", text || "No text recognized");
         const cleanText = await limparTranscricao(text);
-        mainWindow.webContents.send("transcription-result", { cleanText });
+        if (emitRenderer && mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("transcription-result", { cleanText });
+        }
 
         if (
+          emitNotifications &&
           appConfig.notificationsEnabled &&
           Notification.isSupported() &&
           cleanText
@@ -1700,10 +1788,12 @@ async function transcribeAudio(filePath) {
     });
   } catch (error) {
     console.error("Transcription error:", error);
-    mainWindow.webContents.send(
-      "transcription-error",
-      "Failed to transcribe audio"
-    );
+    if (emitRenderer && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(
+        "transcription-error",
+        "Failed to transcribe audio"
+      );
+    }
   }
 }
 
@@ -2090,6 +2180,11 @@ ipcMain.handle("get-debug-mode-status", () => {
 });
 
 ipcMain.on("save-debug-mode-status", (event, status) => {
+  if (status && configService.getRealtimeAssistantStatus()) {
+    configService.setRealtimeAssistantStatus(false);
+    realtimeAssistantService.stop().catch(() => {});
+  }
+
   configService.setDebugModeStatus(status);
   // Notifica a janela principal e a de configuração sobre a mudança
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -2106,6 +2201,11 @@ ipcMain.handle("get-print-mode-status", () => {
 });
 
 ipcMain.on("save-print-mode-status", (event, status) => {
+  if (status && configService.getRealtimeAssistantStatus()) {
+    configService.setRealtimeAssistantStatus(false);
+    realtimeAssistantService.stop().catch(() => {});
+  }
+
   configService.setPrintModeStatus(status);
   console.log('Print mode status changed to:', status);
   
@@ -2141,6 +2241,11 @@ ipcMain.handle("get-os-integration-status", () => {
 });
 
 ipcMain.on("save-os-integration-status", (event, status) => {
+  if (status && configService.getRealtimeAssistantStatus()) {
+    configService.setRealtimeAssistantStatus(false);
+    realtimeAssistantService.stop().catch(() => {});
+  }
+
   configService.setOsIntegrationStatus(status);
   console.log('OS Integration status changed to:', status);
   
@@ -2173,6 +2278,44 @@ ipcMain.on("save-os-integration-status", (event, status) => {
     
     // Switch back to normal mode
     switchToNormalMode();
+  }
+});
+
+ipcMain.handle("get-realtime-assistant-status", () => {
+  return configService.getRealtimeAssistantStatus();
+});
+
+ipcMain.on("save-realtime-assistant-status", async (event, status) => {
+  configService.setRealtimeAssistantStatus(status);
+  console.log('Realtime assistant status changed to:', status);
+
+  if (status) {
+    // Exclusividade: desliga os modos que podem conflitar
+    configService.setDebugModeStatus(false);
+    configService.setPrintModeStatus(false);
+    configService.setOsIntegrationStatus(false);
+
+    stopClipboardMonitoring();
+    stopCaptureToolMonitoring();
+    switchToNormalMode();
+
+    if (appConfig.notificationsEnabled && Notification.isSupported()) {
+      new Notification({
+        title: 'Helper-Node',
+        body: 'Assistente em tempo real habilitado. Inicie/parar com Ctrl+D.',
+        silent: true,
+      }).show();
+    }
+  } else {
+    await realtimeAssistantService.stop().catch(() => {});
+    isRecording = false;
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("toggle-recording", {
+        isRecording,
+        audioFilePath,
+      });
+    }
   }
 });
 
@@ -2234,6 +2377,12 @@ ipcMain.on("send-os-question", async (event, data) => {
 // Handler to cancel recording from OS notification
 ipcMain.on("cancel-recording", () => {
   console.log('Cancel recording requested from OS notification');
+
+  if (realtimeAssistantService.isActive()) {
+    realtimeAssistantService.stop().catch(() => {});
+    isRecording = false;
+    return;
+  }
   
   if (isRecording && recordingProcess) {
     recordingProcess.kill("SIGTERM");
@@ -2356,8 +2505,8 @@ ipcMain.handle('get-session-by-id', async (event, sessionId) => {
 
 ipcMain.handle('add-message', async (event, sessionId, role, content) => {
   try {
-    await historyService.addMessage(sessionId, role, content);
-    return { success: true };
+    const finalSessionId = await historyService.addMessage(sessionId, role, content);
+    return { success: true, sessionId: finalSessionId };
   } catch (error) {
     console.error('Erro ao adicionar mensagem ao histórico:', error);
     return { success: false, error: error.message };
@@ -2463,6 +2612,7 @@ app.on("window-all-closed", () => {
   if (recordingProcess) {
     recordingProcess.kill("SIGTERM");
   }
+  realtimeAssistantService.stop().catch(() => {});
   if (process.platform !== "darwin" && !mainWindow) {
     app.quit();
   }
@@ -2471,4 +2621,5 @@ app.on("window-all-closed", () => {
 app.on("will-quit", () => {
   globalShortcut.unregisterAll();
   stopClipboardMonitoring();
+  realtimeAssistantService.stop().catch(() => {});
 });

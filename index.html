@@ -6,7 +6,7 @@
     <title>Aplicação Electron</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,200..900;1,200..900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,200..900;1,200..900&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
         body {
             background-color: rgba(30, 30, 30, 0.8);
@@ -375,6 +375,106 @@
             display: block;
             width: 100%;
             overflow-wrap: break-word;
+        }
+
+        .rt-assistant-feed {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            width: 100%;
+            margin-top: 10px;
+            text-align: left;
+        }
+
+        .rt-bubble {
+            max-width: 88%;
+            border-radius: 14px;
+            line-height: 1.55;
+            font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+            font-size: 13px;
+            word-break: break-word;
+        }
+
+        /* Bolha de transcrição (azul) — collapsible */
+        .rt-bubble.user {
+            align-self: flex-end;
+            background: rgba(33, 150, 243, 0.18);
+            border: 1px solid rgba(33, 150, 243, 0.40);
+            overflow: hidden;
+        }
+
+        .rt-bubble.user .rt-bubble-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            cursor: pointer;
+            user-select: none;
+            font-size: 12px;
+            font-weight: 500;
+            color: rgba(144, 202, 249, 0.95);
+            gap: 8px;
+        }
+
+        .rt-bubble.user .rt-bubble-header:hover {
+            background: rgba(33, 150, 243, 0.12);
+        }
+
+        .rt-bubble.user .rt-bubble-toggle {
+            font-size: 10px;
+            opacity: 0.7;
+            flex-shrink: 0;
+            transition: transform 0.2s ease;
+        }
+
+        .rt-bubble.user .rt-bubble-toggle.open {
+            transform: rotate(180deg);
+        }
+
+        .rt-bubble.user .rt-bubble-body {
+            display: none;
+            padding: 0 12px 10px 12px;
+            font-size: 12.5px;
+            color: rgba(220, 235, 255, 0.88);
+            white-space: pre-wrap;
+            border-top: 1px solid rgba(33, 150, 243, 0.20);
+        }
+
+        .rt-bubble.user .rt-bubble-body.open {
+            display: block;
+        }
+
+        /* Bolha de resposta da IA (verde) */
+        .rt-bubble.assistant {
+            align-self: flex-start;
+            background: rgba(76, 175, 80, 0.16);
+            border: 1px solid rgba(76, 175, 80, 0.38);
+            padding: 10px 14px;
+            font-size: 13px;
+            color: rgba(220, 255, 220, 0.92);
+            white-space: pre-wrap;
+        }
+
+        .rt-bubble.system {
+            align-self: center;
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #aaa;
+            font-size: 11px;
+            padding: 5px 10px;
+            border-radius: 8px;
+        }
+
+        .rt-bubble.fatal-error {
+            align-self: center;
+            background: rgba(244, 67, 54, 0.20);
+            border: 1px solid rgba(244, 67, 54, 0.60);
+            color: #ff8a80;
+            font-size: 13px;
+            font-weight: 600;
+            text-align: center;
+            max-width: 95%;
+            padding: 10px 14px;
         }
 
         #transcription br {
@@ -863,7 +963,11 @@
             async function addMessageToCurrentSession(role, content) {
                 if (!historyState.currentSessionId || !content) return;
                 try {
-                    await window.electronAPI.addMessage(historyState.currentSessionId, role, content);
+                    const result = await window.electronAPI.addMessage(historyState.currentSessionId, role, content);
+                    // Se a sessão foi deletada e recriada automaticamente, atualiza o ID local
+                    if (result && result.sessionId && result.sessionId !== historyState.currentSessionId) {
+                        historyState.currentSessionId = result.sessionId;
+                    }
                 } catch (error) {
                     console.error('Erro ao salvar mensagem no histórico:', error);
                 }
@@ -932,6 +1036,87 @@
 
             // Carregar histórico na inicialização
             await loadHistory();
+
+            function getOrCreateRealtimeFeed() {
+                let feed = document.getElementById('rt-assistant-feed');
+                if (!feed) {
+                    feed = document.createElement('div');
+                    feed.id = 'rt-assistant-feed';
+                    feed.className = 'rt-assistant-feed';
+                    transcriptionElement.appendChild(feed);
+                }
+                return feed;
+            }
+
+            function appendRealtimeBubble(type, text) {
+                if (!text) return;
+                const feed = getOrCreateRealtimeFeed();
+                const bubble = document.createElement('div');
+                bubble.className = `rt-bubble ${type}`;
+
+                if (type === 'user') {
+                    // Collapsible: header always visible, body hidden by default
+                    const lines = text.split('\n');
+                    const title = lines[0] || '';
+                    const body = lines.slice(1).join('\n').trim();
+
+                    const header = document.createElement('div');
+                    header.className = 'rt-bubble-header';
+                    header.innerHTML = `<span>${title}</span><span class="rt-bubble-toggle">▼</span>`;
+
+                    const bodyEl = document.createElement('div');
+                    bodyEl.className = 'rt-bubble-body';
+                    bodyEl.textContent = body;
+
+                    header.addEventListener('click', () => {
+                        const isOpen = bodyEl.classList.toggle('open');
+                        header.querySelector('.rt-bubble-toggle').classList.toggle('open', isOpen);
+                    });
+
+                    bubble.appendChild(header);
+                    if (body) bubble.appendChild(bodyEl);
+                } else {
+                    bubble.textContent = text;
+                }
+
+                feed.appendChild(bubble);
+                transcriptionElement.scrollTo({
+                    top: transcriptionElement.scrollHeight,
+                    behavior: 'smooth'
+                });
+            }
+
+            window.electronAPI.onRealtimeAssistantUpdate((payload) => {
+                if (!payload || !payload.type) return;
+
+                if (payload.type === 'state') {
+                    appendRealtimeBubble('system', payload.message || 'Atualização do modo em tempo real');
+                    return;
+                }
+
+                if (payload.type === 'skip') {
+                    appendRealtimeBubble('system', `Trecho ${payload.iteration || '-'} ignorado (sem fala detectada).`);
+                    return;
+                }
+
+                if (payload.type === 'error') {
+                    appendRealtimeBubble('system', payload.message || 'Erro no assistente em tempo real.');
+                    return;
+                }
+
+                if (payload.type === 'fatal_error') {
+                    appendRealtimeBubble('fatal-error', payload.message || 'Erro fatal: assistente desligado.');
+                    return;
+                }
+
+                if (payload.type === 'interaction') {
+                    const modeLabel = payload.mode === 'audio-native' ? '🎧 Áudio nativo' : '🎧 Transcrição local';
+                    const headerLine = `${modeLabel} #${payload.iteration}`;
+                    const transcriptBody = (payload.transcript || '').trim();
+                    appendRealtimeBubble('user', `${headerLine}\n${transcriptBody}`);
+                    appendRealtimeBubble('assistant', `🤖 ${payload.response || ''}`);
+                }
+            });
 
             // ========== End History Management ==========
 

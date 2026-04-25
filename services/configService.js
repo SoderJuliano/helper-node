@@ -7,6 +7,7 @@ const defaultConfig = {
   debugMode: false,
   printMode: false,
   osIntegration: false,
+  realtimeAssistant: false,
   language: "pt-br",
   aiModel: "llama",
   openIaToken: "",
@@ -209,6 +210,22 @@ function setOsIntegrationStatus(status) {
   currentConfig = null;
 }
 
+function getRealtimeAssistantStatus() {
+  if (!currentConfig) {
+    currentConfig = loadConfig();
+  }
+  return currentConfig.realtimeAssistant || false;
+}
+
+function setRealtimeAssistantStatus(status) {
+  if (!currentConfig) {
+    currentConfig = loadConfig();
+  }
+  currentConfig.realtimeAssistant = status;
+  saveConfig(currentConfig);
+  currentConfig = null;
+}
+
 module.exports = {
   initialize,
   getPromptInstruction,
@@ -219,6 +236,8 @@ module.exports = {
   setPrintModeStatus,
   getOsIntegrationStatus,
   setOsIntegrationStatus,
+  getRealtimeAssistantStatus,
+  setRealtimeAssistantStatus,
   getLanguage,
   setLanguage,
   getAiModel,

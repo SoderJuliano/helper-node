@@ -8,6 +8,8 @@ const printModeToggle = document.getElementById("print-mode-toggle");
 const printModeStatus = document.getElementById("print-mode-status");
 const osIntegrationToggle = document.getElementById("os-integration-toggle");
 const osIntegrationStatus = document.getElementById("os-integration-status");
+const realtimeAssistantToggle = document.getElementById("realtime-assistant-toggle");
+const realtimeAssistantStatus = document.getElementById("realtime-assistant-status");
 const langSelect = document.getElementById("language-select");
 const backendUrlValue = document.getElementById("backend-url-value");
 const aiModelSelect = document.getElementById("ai-model");
@@ -33,6 +35,29 @@ function updateOsIntegrationStatus(isOsIntegration) {
     printModeToggle.checked = true;
     updatePrintModeStatus(true);
     ipcRenderer.send("save-print-mode-status", true);
+  }
+}
+
+function updateRealtimeAssistantStatus(isRealtimeAssistant) {
+  realtimeAssistantStatus.textContent = isRealtimeAssistant ? "ON" : "OFF";
+}
+
+function applyRealtimeAssistantExclusivity() {
+  if (!realtimeAssistantToggle.checked) return;
+
+  debugModeToggle.checked = false;
+  printModeToggle.checked = false;
+  osIntegrationToggle.checked = false;
+
+  updateDebugModeStatus(false);
+  updatePrintModeStatus(false);
+  updateOsIntegrationStatus(false);
+}
+
+function disableRealtimeIfOtherEnabled(toggle) {
+  if (toggle.checked && realtimeAssistantToggle.checked) {
+    realtimeAssistantToggle.checked = false;
+    updateRealtimeAssistantStatus(false);
   }
 }
 
@@ -63,6 +88,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   const isOsIntegration = await ipcRenderer.invoke("get-os-integration-status");
   osIntegrationToggle.checked = isOsIntegration;
   updateOsIntegrationStatus(isOsIntegration);
+
+  // -------------------------
+  // Load realtime assistant mode
+  // -------------------------
+  const isRealtimeAssistant = await ipcRenderer.invoke("get-realtime-assistant-status");
+  realtimeAssistantToggle.checked = isRealtimeAssistant;
+  updateRealtimeAssistantStatus(isRealtimeAssistant);
+
+  if (isRealtimeAssistant) {
+    applyRealtimeAssistantExclusivity();
+  }
 
   // -------------------------
   // Load saved language
@@ -120,17 +156,27 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 // Handle debug toggle live update
 debugModeToggle.addEventListener("change", () => {
+  disableRealtimeIfOtherEnabled(debugModeToggle);
   updateDebugModeStatus(debugModeToggle.checked);
 });
 
 // Handle print mode toggle live update
 printModeToggle.addEventListener("change", () => {
+  disableRealtimeIfOtherEnabled(printModeToggle);
   updatePrintModeStatus(printModeToggle.checked);
 });
 
 // Handle OS integration toggle live update
 osIntegrationToggle.addEventListener("change", () => {
+  disableRealtimeIfOtherEnabled(osIntegrationToggle);
   updateOsIntegrationStatus(osIntegrationToggle.checked);
+});
+
+realtimeAssistantToggle.addEventListener("change", () => {
+  updateRealtimeAssistantStatus(realtimeAssistantToggle.checked);
+  if (realtimeAssistantToggle.checked) {
+    applyRealtimeAssistantExclusivity();
+  }
 });
 
 // Show/hide OpenAI token input based on AI model selection
@@ -155,6 +201,9 @@ saveButton.addEventListener("click", async () => {
 
   // Save OS integration mode
   ipcRenderer.send("save-os-integration-status", osIntegrationToggle.checked);
+
+  // Save realtime assistant mode
+  ipcRenderer.send("save-realtime-assistant-status", realtimeAssistantToggle.checked);
 
   // Save language
   ipcRenderer.send("set-language", langSelect.value);
