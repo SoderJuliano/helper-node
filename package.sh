@@ -85,9 +85,9 @@ build_deb() {
         (
             cd "${APP_ROOT}"
             if [ -f package-lock.json ]; then
-                npm ci --include=dev --omit=optional
+                npm ci --include=dev --include=optional
             else
-                npm install --include=dev --omit=optional
+                npm install --include=dev --include=optional
             fi
         )
 
