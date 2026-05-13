@@ -33,7 +33,7 @@
         </style>
     </head>
     <body>
-        <textarea id="input" placeholder="Digite sua pergunta e pressione Shift+Enter..."></textarea>
+        <textarea id="input" placeholder="Pergunte algo (Enter envia, Shift+Enter quebra linha, Esc fecha) — pode colar imagem..."></textarea>
         <div id="image-preview" style="display:none; margin-top: 10px;">
             <img id="preview-img" style="max-width: 100%; max-height: 150px; border-radius: 4px;">
             <button id="remove-img" style="margin-top: 5px; padding: 4px 8px; background: #ff4444; color: white; border: none; border-radius: 4px; cursor: pointer;">Remover imagem</button>
@@ -91,7 +91,7 @@
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 window.electronAPI.closeOsInput();
-            } else if (e.key === 'Enter' && e.shiftKey) {
+            } else if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
                 e.preventDefault();
                 const text = input.value.trim();
                 if (text || pastedImage) {
@@ -100,6 +100,7 @@
                     imagePreview.style.display = 'none';
                 }
             }
+            // Shift+Enter cai no comportamento default do textarea (nova linha)
         });
         </script>
     </body>

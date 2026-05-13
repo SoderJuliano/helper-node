@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Selecionar Área</title>
+<style>
+  html, body { margin:0; padding:0; width:100vw; height:100vh; overflow:hidden;
+               background: rgba(0,0,0,0.25); cursor: crosshair; user-select:none;
+               font-family: monospace; }
+  #hint {
+    position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.75); color: #fff; padding: 6px 12px; border-radius: 6px;
+    font-size: 12px; pointer-events: none; z-index: 10;
+  }
+  #sel {
+    position: fixed; border: 1.5px dashed #00d0ff;
+    background: rgba(0, 208, 255, 0.12);
+    box-shadow: 0 0 0 9999px rgba(0,0,0,0.0);
+    pointer-events: none; display: none;
+  }
+  #dim {
+    position: fixed; left:0; top:0; right:0; bottom:0; pointer-events:none;
+  }
+</style>
+</head>
+<body>
+  <div id="hint">Arraste para selecionar a área &middot; Esc para cancelar</div>
+  <div id="sel"></div>
+<script>
+  const sel = document.getElementById('sel');
+  let startX = 0, startY = 0, dragging = false;
+
+  function setRect(x1, y1, x2, y2) {
+    const x = Math.min(x1, x2), y = Math.min(y1, y2);
+    const w = Math.abs(x2 - x1), h = Math.abs(y2 - y1);
+    sel.style.left = x + 'px';
+    sel.style.top = y + 'px';
+    sel.style.width = w + 'px';
+    sel.style.height = h + 'px';
+    sel.style.display = 'block';
+    return { x, y, width: w, height: h };
+  }
+
+  window.addEventListener('mousedown', (e) => {
+    dragging = true;
+    startX = e.clientX; startY = e.clientY;
+    setRect(startX, startY, startX, startY);
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    setRect(startX, startY, e.clientX, e.clientY);
+  });
+  window.addEventListener('mouseup', (e) => {
+    if (!dragging) return;
+    dragging = false;
+    const r = setRect(startX, startY, e.clientX, e.clientY);
+    if (window.electronAPI && window.electronAPI.regionSelected) {
+      window.electronAPI.regionSelected(r);
+    }
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      if (window.electronAPI && window.electronAPI.regionCancelled) {
+        window.electronAPI.regionCancelled();
+      }
+    }
+  });
+</script>
+</body>
+</html>

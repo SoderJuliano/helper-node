@@ -4,6 +4,8 @@ const {
   ipcMain,
   globalShortcut,
   screen,
+  desktopCapturer,
+  nativeImage,
 } = require("electron");
 
 // === STDIO SAFETY ===
@@ -202,11 +204,9 @@ function createOsInputWindow() {
 
   osInputWindow.loadFile(inputHtml);
 
-  osInputWindow.on('blur', () => {
-    if (osInputWindow && !osInputWindow.isDestroyed()) {
-      osInputWindow.close();
-    }
-  });
+  // NOTE: deliberadamente NÃO fechamos no blur. Em Wayland/COSMIC operações de
+  // paste de imagem do clipboard podem disparar um blur transitório, que
+  // fechava a janela antes do usuário enviar. Use Esc para fechar.
 
   osInputWindow.on('closed', () => {
     osInputWindow = null;
@@ -247,15 +247,18 @@ function createOsNotificationWindow(type, content) {
     windowWidth = 400;
     windowHeight = 260;
   } else if (type === 'recording-live') {
-    // Pequeno e discreto: só um indicador no canto, não invade leitura
-    windowWidth = 220;
-    windowHeight = 70;
+    // Tamanho inicial confortável: cabe header + 1 linha de fala
+    // sem precisar de scrollbar. Cresce dinamicamente via resize-overlay.
+    windowWidth = 320;
+    windowHeight = 110;
   }
 
-  // Position in top right corner
+  // Position in top right corner (5px a mais pra dentro: 25 em vez de 20)
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-  const posX = Math.max(0, width - windowWidth - 20);
+  const posX = Math.max(0, width - windowWidth - 25);
   const posY = 60;
+
+  const isMovableOverlay = (type === 'recording-live' || type === 'response');
 
   osNotificationWindow = new BrowserWindow({
     width: windowWidth,
@@ -268,7 +271,7 @@ function createOsNotificationWindow(type, content) {
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: false,
-    movable: false,
+    movable: isMovableOverlay,
     minimizable: false,
     maximizable: false,
     fullscreenable: false,
@@ -616,13 +619,16 @@ async function captureScreen() {
   const isOsIntegration = configService.getOsIntegrationStatus();
   
   if (isOsIntegration) {
-    // COSMIC Desktop has issues with interactive screenshot tools in Electron
+    // Em COSMIC/Wayland o portal pode ser inconsistente com tools externas.
+    // Tentamos primeiro a captura nativa via Electron desktopCapturer; se
+    // o usuário pediu Ctrl+Shift+X explicitamente, ainda deixamos o fluxo
+    // legacy abaixo rodar como fallback.
     const isCosmic = process.env.XDG_CURRENT_DESKTOP === "COSMIC";
-    
     if (isCosmic) {
-      console.log('📸 Captura de tela não suportada no modo integrado do COSMIC');
-      createOsNotificationWindow('response', 'Captura de tela não disponível no modo integrado. Use o modo janela (Ctrl+Shift+C para abrir configurações).');
-      return;
+      console.log('📸 COSMIC detectado: usando captura nativa por seleção');
+      try { await captureRegionNative(); return; } catch (e) {
+        console.error('Captura nativa falhou, caindo no fluxo legacy:', e);
+      }
     }
     
     // OS Integration Mode - show notification and process through AI
@@ -1228,6 +1234,7 @@ async function registerGlobalShortcuts() {
         { combo: "Ctrl+A", action: "focus-window" },
         { combo: "Ctrl+Shift+C", action: "open-config" },
         { combo: "Ctrl+Shift+X", action: "capture-screen" },
+        { combo: "Ctrl+Shift+S", action: "capture-region-native" },
         { combo: "Ctrl+Shift+1", action: "move-to-display-0" },
         { combo: "Ctrl+Shift+2", action: "move-to-display-1" },
       ]
@@ -1237,6 +1244,7 @@ async function registerGlobalShortcuts() {
         { combo: "CommandOrControl+A", action: "focus-window" },
         { combo: "CommandOrControl+Shift+C", action: "open-config" },
         { combo: "CommandOrControl+Shift+X", action: "capture-screen" },
+        { combo: "CommandOrControl+Shift+S", action: "capture-region-native" },
         { combo: "CommandOrControl+Shift+1", action: "move-to-display-0" },
         { combo: "CommandOrControl+Shift+2", action: "move-to-display-1" },
       ];
@@ -1275,6 +1283,12 @@ async function registerGlobalShortcuts() {
       // Handle capture screen action (works in both modes)
       if (action === "capture-screen") {
         await captureScreen();
+        return;
+      }
+
+      // Captura nativa por seleção de região (overlay transparente)
+      if (action === "capture-region-native") {
+        try { await captureRegionNative(); } catch (e) { console.error('captureRegionNative failed:', e); }
         return;
       }
       
@@ -1399,28 +1413,14 @@ async function toggleRecording() {
       const isOsIntegration = configService.getOsIntegrationStatus();
 
       if (isOsIntegration && VoskStreamService.isRunning()) {
-        // OS Integration + Vosk: stop streaming and send accumulated text
+        // OS Integration + Vosk (modo conversa contínua):
+        // Ctrl+D segundo toque = encerra a sessão (não envia nada extra,
+        // pois as perguntas já foram respondidas inline).
+        clearOsVoskSilenceTimer();
         VoskStreamService.stop();
         isRecording = false;
-        console.log("OS Integration: Vosk recording stopped, sending to AI");
-
-        // Get transcribed text from the live window
-        if (osNotificationWindow && !osNotificationWindow.isDestroyed()) {
-          try {
-            const transcribedText = await osNotificationWindow.webContents.executeJavaScript('window.getTranscribedText()');
-            if (transcribedText && transcribedText.trim()) {
-              // Show loading in the live window
-              osNotificationWindow.webContents.executeJavaScript('window.showLoading()');
-              // Send to AI
-              await processOsQuestionWithWindow(transcribedText);
-            } else {
-              createOsNotificationWindow('response', 'Nenhum áudio detectado. Tente novamente.');
-            }
-          } catch (e) {
-            console.error('Error getting transcribed text:', e);
-            createOsNotificationWindow('response', 'Erro ao processar áudio.');
-          }
-        }
+        console.log("OS Integration: conversa contínua encerrada");
+        destroyNotificationWindow();
         return;
       }
 
@@ -1512,14 +1512,8 @@ async function toggleRecording() {
               osNotificationWindow.webContents.executeJavaScript(
                 `window.appendSentence(${JSON.stringify(event.text)})`
               ).catch(() => {});
-              // Auto-send on silence: reset timer
-              clearOsVoskSilenceTimer();
-              osVoskSilenceTimer = setTimeout(async () => {
-                if (isRecording && VoskStreamService.isRunning()) {
-                  // Simulate stop + send
-                  await toggleRecording();
-                }
-              }, 4000);
+              // Conversa contínua: detectar perguntas e responder inline
+              maybeAnswerInline(event.text).catch(err => console.error('inline answer error:', err));
             }
           },
         });
@@ -2449,6 +2443,137 @@ ipcMain.on("send-os-question", async (event, data) => {
   }
 });
 
+// Resize do overlay recording-live conforme o conteúdo cresce.
+ipcMain.on("resize-overlay", (event, height) => {
+  if (!osNotificationWindow || osNotificationWindow.isDestroyed()) return;
+  try {
+    const [w] = osNotificationWindow.getSize();
+    const newH = Math.max(110, Math.min(700, parseInt(height, 10) || 110));
+    osNotificationWindow.setSize(w, newH);
+  } catch (_) {}
+});
+
+// === Captura nativa por seleção de região (sem dependências externas) ===
+let regionSelectWindow = null;
+let regionCaptureBuffer = null; // PNG buffer da tela inteira durante a seleção
+
+async function captureRegionNative() {
+  // Evita reentrância
+  if (regionSelectWindow && !regionSelectWindow.isDestroyed()) {
+    regionSelectWindow.focus();
+    return;
+  }
+
+  const display = screen.getPrimaryDisplay();
+  const { width: dw, height: dh } = display.size;
+  const sf = display.scaleFactor || 1;
+
+  // 1) Captura a tela inteira via desktopCapturer (funciona em X11/Wayland via portal)
+  let sources;
+  try {
+    sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: Math.round(dw * sf), height: Math.round(dh * sf) },
+    });
+  } catch (e) {
+    console.error('desktopCapturer falhou:', e);
+    createOsNotificationWindow('response', 'Não foi possível acessar a captura de tela.');
+    return;
+  }
+  if (!sources || sources.length === 0) {
+    createOsNotificationWindow('response', 'Nenhuma fonte de tela disponível.');
+    return;
+  }
+  // Pega a primária (Linux geralmente devolve a principal primeiro)
+  const screenSource = sources[0];
+  const fullImage = screenSource.thumbnail;
+  regionCaptureBuffer = fullImage.toPNG();
+
+  // 2) Abre overlay transparente fullscreen para seleção
+  regionSelectWindow = new BrowserWindow({
+    x: display.bounds.x,
+    y: display.bounds.y,
+    width: dw,
+    height: dh,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    hasShadow: false,
+    resizable: false,
+    movable: false,
+    fullscreen: true,
+    focusable: true, // precisa receber clique/drag
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
+    },
+  });
+  // Stealth no screen-share
+  try { regionSelectWindow.setContentProtection(true); } catch (_) {}
+  regionSelectWindow.setAlwaysOnTop(true, 'screen-saver');
+
+  await regionSelectWindow.loadFile(path.join(__dirname, 'os-integration', 'notifications', 'regionSelect.html'));
+
+  regionSelectWindow.on('closed', () => {
+    regionSelectWindow = null;
+  });
+}
+
+ipcMain.on('region-cancelled', () => {
+  if (regionSelectWindow && !regionSelectWindow.isDestroyed()) regionSelectWindow.close();
+  regionCaptureBuffer = null;
+});
+
+ipcMain.on('region-selected', async (event, rect) => {
+  // rect: { x, y, width, height } em px CSS do overlay
+  try {
+    if (regionSelectWindow && !regionSelectWindow.isDestroyed()) regionSelectWindow.close();
+    if (!regionCaptureBuffer) return;
+    if (!rect || rect.width < 5 || rect.height < 5) {
+      regionCaptureBuffer = null;
+      return;
+    }
+
+    const display = screen.getPrimaryDisplay();
+    const sf = display.scaleFactor || 1;
+
+    // Reconstrói NativeImage a partir do PNG já capturado
+    const fullImg = nativeImage.createFromBuffer(regionCaptureBuffer);
+    regionCaptureBuffer = null;
+
+    const cropRect = {
+      x: Math.max(0, Math.round(rect.x * sf)),
+      y: Math.max(0, Math.round(rect.y * sf)),
+      width: Math.max(1, Math.round(rect.width * sf)),
+      height: Math.max(1, Math.round(rect.height * sf)),
+    };
+    const cropped = fullImg.crop(cropRect);
+    const pngBuf = cropped.toPNG();
+    const base64 = pngBuf.toString('base64');
+
+    // Mostra loading discreto
+    createOsNotificationWindow('loading', 'Analisando captura...');
+
+    // OCR + envio à IA (usa pipeline existente)
+    try {
+      const ocrText = await TesseractService.getTextFromImage(base64);
+      const isOsIntegration = configService.getOsIntegrationStatus();
+      if (isOsIntegration) {
+        await processOsQuestion(ocrText && ocrText.trim() ? ocrText : 'Descreva e responda o conteúdo da imagem capturada.', base64);
+      } else if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('ocr-result', { text: ocrText, image: `data:image/png;base64,${base64}` });
+      }
+    } catch (e) {
+      console.error('Erro OCR/IA na captura nativa:', e);
+      createOsNotificationWindow('response', 'Erro ao processar a captura.');
+    }
+  } catch (e) {
+    console.error('region-selected handler error:', e);
+  }
+});
+
 // Handler to cancel recording from OS notification
 ipcMain.on("cancel-recording", () => {
   console.log('Cancel recording requested from OS notification');
@@ -2485,8 +2610,36 @@ ipcMain.on("cancel-recording", () => {
   }
 });
 
+// === Conversa contínua: detecta perguntas em sentenças finalizadas ===
+// Pequenos heurísticos para evitar disparos espúrios. Roda em background,
+// não bloqueia o Vosk e não fecha o overlay.
+let inlineAnswerInFlight = false;
+async function maybeAnswerInline(sentence) {
+  if (!sentence || inlineAnswerInFlight) return;
+  if (!osNotificationWindow || osNotificationWindow.isDestroyed()) return;
+
+  const lower = sentence.toLowerCase().trim();
+  if (lower.length < 6) return;
+
+  const looksLikeQuestion =
+    lower.includes('?') ||
+    /^(o que|qual|quais|quanto|quantos|quantas|quem|onde|quando|por que|porque|porqu[eê]|como|sera|ser[áa])\b/.test(lower) ||
+    /\b(voc[eê] sabe|me explica|pode explicar|me ajuda|qual a|qual o|tem como)\b/.test(lower);
+
+  if (!looksLikeQuestion) return;
+
+  inlineAnswerInFlight = true;
+  try {
+    osNotificationWindow.webContents.executeJavaScript(`window.showLoading()`).catch(() => {});
+    await processOsQuestionWithWindow(sentence);
+  } catch (e) {
+    console.error('maybeAnswerInline failed:', e);
+  } finally {
+    inlineAnswerInFlight = false;
+  }
+}
+
 async function processOsQuestionWithWindow(text) {
-  // Show response directly in the existing recording-live window
   try {
     const aiModel = configService.getAiModel();
     let resposta;

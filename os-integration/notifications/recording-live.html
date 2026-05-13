@@ -10,28 +10,38 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
+        html, body {
+            margin: 0;
+            padding: 0;
+            background: transparent;
+            overflow: hidden;
+        }
         body {
-            background: rgba(30, 30, 30, 0.95);
-            border-radius: 10px;
-            backdrop-filter: blur(10px);
             color: white;
             font-family: "Source Code Pro", monospace;
             font-size: 13px;
             line-height: 1.5;
-            padding: 12px 16px;
-            overflow-y: auto;
-            overflow-x: hidden;
-            scrollbar-width: none;
-            min-height: 100vh;
+            user-select: none;
         }
-        body::-webkit-scrollbar { display: none; }
+        #wrap {
+            background: rgba(30, 30, 30, 0.95);
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+            padding: 10px 14px 12px 14px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+            min-height: 80px;
+        }
 
         .header {
             display: flex;
             align-items: center;
             gap: 8px;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
+            -webkit-app-region: drag;
+            cursor: move;
+            padding-right: 22px; /* espaço para o X */
         }
+        .header > * { -webkit-app-region: no-drag; }
 
         .rec-dot {
             width: 10px;
@@ -63,8 +73,15 @@
             font-size: 16px;
             cursor: pointer;
             z-index: 100;
+            -webkit-app-region: no-drag;
+            width: 22px;
+            height: 22px;
+            line-height: 18px;
+            padding: 0;
         }
         .close-btn:hover { color: #fff; }
+
+        #live-text, #ai-response { user-select: text; }
 
         #live-text {
             color: #e0e0e0;
@@ -110,18 +127,20 @@
     </style>
 </head>
 <body>
-    <button class="close-btn" onclick="window.close()">×</button>
+    <div id="wrap">
+        <button class="close-btn" onclick="window.close()">×</button>
 
-    <div class="header">
-        <div class="rec-dot" id="rec-indicator"></div>
-        <span class="header-text" id="header-label">Ouvindo...</span>
+        <div class="header">
+            <div class="rec-dot" id="rec-indicator"></div>
+            <span class="header-text" id="header-label">Ouvindo...</span>
+        </div>
+
+        <div id="live-text"></div>
+
+        <hr class="separator" id="separator" style="display:none;">
+
+        <div id="ai-response"></div>
     </div>
-
-    <div id="live-text"></div>
-
-    <hr class="separator" id="separator" style="display:none;">
-
-    <div id="ai-response"></div>
 
     <script>
         const liveText = document.getElementById('live-text');
@@ -174,7 +193,13 @@
         }
 
         function scrollToBottom() {
-            window.scrollTo(0, document.body.scrollHeight);
+            // Pede ao main para redimensionar a janela conforme o conteúdo cresce
+            try {
+                const h = Math.min(600, document.getElementById('wrap').scrollHeight + 8);
+                if (window.electronAPI && window.electronAPI.resizeOverlay) {
+                    window.electronAPI.resizeOverlay(h);
+                }
+            } catch (_) {}
         }
     </script>
 </body>
