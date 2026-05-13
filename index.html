@@ -285,13 +285,15 @@
         }
 
         #animation-container {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            width: 150px;
-            height: 150px;
+            position: fixed;
+            top: 8px;
+            right: 8px;
+            width: 36px;
+            height: 36px;
             display: none; /* Começa escondido */
-            z-index: 1000; /* Garante que fique sobre outros elementos */
+            z-index: 9999; /* Sobre todos os outros elementos */
+            pointer-events: none; /* Não bloqueia clique no que está atrás */
+            opacity: 0.85;
         }
 
         .drag-area {
