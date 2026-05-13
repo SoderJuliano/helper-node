@@ -2460,23 +2460,36 @@ ipcMain.on("resize-overlay", (event, height) => {
 async function captureFullScreenAuto() {
   const tmpPng = path.join(app.getPath('temp'), `helpernode-auto-${Date.now()}.png`);
   const isWayland = process.env.XDG_SESSION_TYPE === 'wayland';
+  const isCosmic = (process.env.XDG_CURRENT_DESKTOP || '').toUpperCase().includes('COSMIC');
   let success = false;
+
+  // Helper que tenta um comando e devolve true se gerou o arquivo
+  async function tryCmd(label, cmd) {
+    try {
+      await execPromise(cmd);
+      const ok = fs2.existsSync(tmpPng);
+      if (ok) console.log(`📸 captura via ${label} OK`);
+      return ok;
+    } catch (e) {
+      console.warn(`📸 ${label} falhou: ${(e && e.stderr ? e.stderr : e.message || e).toString().trim()}`);
+      try { if (fs2.existsSync(tmpPng)) fs2.unlinkSync(tmpPng); } catch (_) {}
+      return false;
+    }
+  }
+
   try {
-    if (isWayland && await commandExists('grim')) {
-      // Wayland: grim captura sem prompt
-      await execPromise(`grim '${tmpPng}'`);
-      success = fs2.existsSync(tmpPng);
-    } else if (await commandExists('gnome-screenshot')) {
-      await execPromise(`gnome-screenshot -f '${tmpPng}'`);
-      success = fs2.existsSync(tmpPng);
-    } else if (await commandExists('scrot')) {
-      await execPromise(`scrot -o '${tmpPng}'`);
-      success = fs2.existsSync(tmpPng);
-    } else if (await commandExists('import')) {
-      await execPromise(`import -window root '${tmpPng}'`);
-      success = fs2.existsSync(tmpPng);
-    } else {
-      // Último recurso: desktopCapturer do Electron (pode pedir permissão na 1ª vez no Wayland)
+    // ORDEM DE PRIORIDADE (cada compositor tem seu jeito):
+    // 1) COSMIC: tem ferramenta nativa cosmic-screenshot (não usa wlr-screencopy)
+    if (isCosmic && await commandExists('cosmic-screenshot')) {
+      // cosmic-screenshot grava em ~/Pictures por padrão; usa --interactive=false
+      // Tenta a flag direta de saída; se versão não suportar, usa via stdout
+      success = await tryCmd('cosmic-screenshot', `cosmic-screenshot --interactive=false --output '${tmpPng}'`)
+             || await tryCmd('cosmic-screenshot(stdout)', `cosmic-screenshot --interactive=false --raw > '${tmpPng}'`);
+    }
+
+    // 2) Electron desktopCapturer (usa XDG Portal — funciona em COSMIC, KDE, GNOME modernos)
+    //    Pode pedir permissão na 1ª vez, depois lembra.
+    if (!success) {
       try {
         const display = screen.getPrimaryDisplay();
         const sf = display.scaleFactor || 1;
@@ -2487,18 +2500,48 @@ async function captureFullScreenAuto() {
             height: Math.round(display.size.height * sf),
           },
         });
-        if (sources && sources[0]) {
+        if (sources && sources[0] && !sources[0].thumbnail.isEmpty()) {
           await fs.writeFile(tmpPng, sources[0].thumbnail.toPNG());
-          success = true;
+          success = fs2.existsSync(tmpPng);
+          if (success) console.log('📸 captura via desktopCapturer (Portal) OK');
         }
       } catch (e) {
-        console.error('desktopCapturer fallback falhou:', e);
+        console.warn('📸 desktopCapturer falhou:', e.message || e);
       }
     }
 
+    // 3) grim (Wayland wlroots: Sway, Hyprland, Wayfire — NÃO funciona em COSMIC)
+    if (!success && isWayland && !isCosmic && await commandExists('grim')) {
+      success = await tryCmd('grim', `grim '${tmpPng}'`);
+    }
+
+    // 4) gnome-screenshot (GNOME / X11 fallback)
+    if (!success && await commandExists('gnome-screenshot')) {
+      success = await tryCmd('gnome-screenshot', `gnome-screenshot -f '${tmpPng}'`);
+    }
+
+    // 5) spectacle (KDE Plasma)
+    if (!success && await commandExists('spectacle')) {
+      success = await tryCmd('spectacle', `spectacle -b -n -o '${tmpPng}'`);
+    }
+
+    // 6) scrot (X11)
+    if (!success && await commandExists('scrot')) {
+      success = await tryCmd('scrot', `scrot -o '${tmpPng}'`);
+    }
+
+    // 7) ImageMagick import (X11 fallback final)
+    if (!success && await commandExists('import')) {
+      success = await tryCmd('import', `import -window root '${tmpPng}'`);
+    }
+
     if (!success) {
-      createOsNotificationWindow('response',
-        'Não foi possível capturar a tela. Instale: <b>grim</b> (Wayland) ou <b>gnome-screenshot</b>.');
+      const hint = isCosmic
+        ? 'Instale <b>cosmic-screenshot</b> (sudo apt install cosmic-screenshot) ou autorize o Portal de captura.'
+        : isWayland
+          ? 'Instale <b>grim</b> (Wayland) ou <b>gnome-screenshot</b>.'
+          : 'Instale <b>gnome-screenshot</b>, <b>spectacle</b> ou <b>scrot</b>.';
+      createOsNotificationWindow('response', `Não foi possível capturar a tela. ${hint}`);
       return;
     }
 
