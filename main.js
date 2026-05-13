@@ -2458,17 +2458,20 @@ ipcMain.on("resize-overlay", (event, height) => {
 // É o que mais se aproxima da experiência "PrintScreen → vai direto pra IA"
 // que o usuário tinha no Garuda. Sem clique extra, sem janela de seleção.
 async function captureFullScreenAuto() {
-  const tmpPng = path.join(app.getPath('temp'), `helpernode-auto-${Date.now()}.png`);
+  const tmpDir = path.join(app.getPath('temp'), `helpernode-shot-${Date.now()}`);
+  const tmpPng = path.join(app.getPath('temp'), `helpernode-shot-${Date.now()}.png`);
   const isWayland = process.env.XDG_SESSION_TYPE === 'wayland';
   const isCosmic = (process.env.XDG_CURRENT_DESKTOP || '').toUpperCase().includes('COSMIC');
   let success = false;
+  let capturedPath = null;
 
-  // Helper que tenta um comando e devolve true se gerou o arquivo
+  // Helper: tenta um comando que escreve direto em tmpPng
   async function tryCmd(label, cmd) {
     try {
       await execPromise(cmd);
       const ok = fs2.existsSync(tmpPng);
       if (ok) console.log(`📸 captura via ${label} OK`);
+      capturedPath = ok ? tmpPng : null;
       return ok;
     } catch (e) {
       console.warn(`📸 ${label} falhou: ${(e && e.stderr ? e.stderr : e.message || e).toString().trim()}`);
@@ -2478,79 +2481,92 @@ async function captureFullScreenAuto() {
   }
 
   try {
-    // ORDEM DE PRIORIDADE (cada compositor tem seu jeito):
-    // 1) COSMIC: tem ferramenta nativa cosmic-screenshot (não usa wlr-screencopy)
-    if (isCosmic && await commandExists('cosmic-screenshot')) {
-      // cosmic-screenshot grava em ~/Pictures por padrão; usa --interactive=false
-      // Tenta a flag direta de saída; se versão não suportar, usa via stdout
-      success = await tryCmd('cosmic-screenshot', `cosmic-screenshot --interactive=false --output '${tmpPng}'`)
-             || await tryCmd('cosmic-screenshot(stdout)', `cosmic-screenshot --interactive=false --raw > '${tmpPng}'`);
-    }
+    // === ORDEM DE PRIORIDADE — TODAS STEALTH (sem prompt do portal) ===
 
-    // 2) Electron desktopCapturer (usa XDG Portal — funciona em COSMIC, KDE, GNOME modernos)
-    //    Pode pedir permissão na 1ª vez, depois lembra.
-    if (!success) {
-      try {
-        const display = screen.getPrimaryDisplay();
-        const sf = display.scaleFactor || 1;
-        const sources = await desktopCapturer.getSources({
-          types: ['screen'],
-          thumbnailSize: {
-            width: Math.round(display.size.width * sf),
-            height: Math.round(display.size.height * sf),
-          },
-        });
-        if (sources && sources[0] && !sources[0].thumbnail.isEmpty()) {
-          await fs.writeFile(tmpPng, sources[0].thumbnail.toPNG());
-          success = fs2.existsSync(tmpPng);
-          if (success) console.log('📸 captura via desktopCapturer (Portal) OK');
+    // 1) COSMIC: cosmic-screenshot
+    //    Sintaxe correta: --interactive=false --notify=false --save-dir <dir>
+    //    A ferramenta gera um arquivo dentro de save-dir; pegamos o mais recente.
+    if (isCosmic) {
+      if (await commandExists('cosmic-screenshot')) {
+        try {
+          await fs.mkdir(tmpDir, { recursive: true });
+          await execPromise(
+            `cosmic-screenshot --interactive=false --notify=false --save-dir '${tmpDir}'`
+          );
+          // Encontra o arquivo gerado (PNG mais recente no diretório)
+          const files = (await fs.readdir(tmpDir))
+            .filter(f => f.toLowerCase().endsWith('.png'))
+            .map(f => path.join(tmpDir, f));
+          if (files.length > 0) {
+            capturedPath = files[0];
+            success = true;
+            console.log('📸 captura via cosmic-screenshot OK:', capturedPath);
+          }
+        } catch (e) {
+          console.warn('📸 cosmic-screenshot falhou:',
+            (e && e.stderr ? e.stderr : e.message || e).toString().trim());
         }
-      } catch (e) {
-        console.warn('📸 desktopCapturer falhou:', e.message || e);
+      } else {
+        // STEALTH NÃO É POSSÍVEL EM COSMIC SEM ESTA FERRAMENTA.
+        // O Electron desktopCapturer abriria o diálogo "Compartilhar tela",
+        // que é justamente o que queremos evitar. Falhamos com instrução clara.
+        createOsNotificationWindow('response',
+          '<b>cosmic-screenshot</b> não está instalado.<br>' +
+          'É necessário para captura silenciosa no COSMIC.<br><br>' +
+          'Instale com:<br><code>sudo apt install cosmic-screenshot</code>');
+        return;
       }
     }
 
-    // 3) grim (Wayland wlroots: Sway, Hyprland, Wayfire — NÃO funciona em COSMIC)
+    // 2) Wayland NÃO-COSMIC (Sway/Hyprland/Wayfire): grim
     if (!success && isWayland && !isCosmic && await commandExists('grim')) {
       success = await tryCmd('grim', `grim '${tmpPng}'`);
     }
 
-    // 4) gnome-screenshot (GNOME / X11 fallback)
-    if (!success && await commandExists('gnome-screenshot')) {
+    // 3) X11: gnome-screenshot (sem prompt, captura full-screen)
+    if (!success && !isWayland && await commandExists('gnome-screenshot')) {
       success = await tryCmd('gnome-screenshot', `gnome-screenshot -f '${tmpPng}'`);
     }
 
-    // 5) spectacle (KDE Plasma)
-    if (!success && await commandExists('spectacle')) {
+    // 4) X11: spectacle (KDE)
+    if (!success && !isWayland && await commandExists('spectacle')) {
       success = await tryCmd('spectacle', `spectacle -b -n -o '${tmpPng}'`);
     }
 
-    // 6) scrot (X11)
-    if (!success && await commandExists('scrot')) {
+    // 5) X11: scrot
+    if (!success && !isWayland && await commandExists('scrot')) {
       success = await tryCmd('scrot', `scrot -o '${tmpPng}'`);
     }
 
-    // 7) ImageMagick import (X11 fallback final)
-    if (!success && await commandExists('import')) {
+    // 6) X11: ImageMagick import
+    if (!success && !isWayland && await commandExists('import')) {
       success = await tryCmd('import', `import -window root '${tmpPng}'`);
     }
 
+    // ⚠️ NÃO usamos desktopCapturer do Electron como fallback:
+    //    em Wayland ele SEMPRE dispara o diálogo "Compartilhar a tela"
+    //    do XDG Portal — quebra o stealth e exige clique do usuário.
+    //    Melhor falhar com mensagem clara do que vazar a presença do app.
+
     if (!success) {
       const hint = isCosmic
-        ? 'Instale <b>cosmic-screenshot</b> (sudo apt install cosmic-screenshot) ou autorize o Portal de captura.'
+        ? 'Instale: <code>sudo apt install cosmic-screenshot</code>'
         : isWayland
-          ? 'Instale <b>grim</b> (Wayland) ou <b>gnome-screenshot</b>.'
-          : 'Instale <b>gnome-screenshot</b>, <b>spectacle</b> ou <b>scrot</b>.';
-      createOsNotificationWindow('response', `Não foi possível capturar a tela. ${hint}`);
+          ? 'Instale: <code>sudo apt install grim</code>'
+          : 'Instale: <code>sudo apt install gnome-screenshot</code>';
+      createOsNotificationWindow('response',
+        `Não foi possível capturar a tela silenciosamente.<br>${hint}`);
       return;
     }
 
-    // Mostra loading
+    // Mostra loading discreto
     createOsNotificationWindow('loading', 'Analisando captura...');
 
-    const imgBuffer = await fs.readFile(tmpPng);
+    const imgBuffer = await fs.readFile(capturedPath);
     const base64 = imgBuffer.toString('base64');
-    try { await fs.unlink(tmpPng); } catch (_) {}
+    // limpeza
+    try { await fs.unlink(capturedPath); } catch (_) {}
+    try { await fs.rm(tmpDir, { recursive: true, force: true }); } catch (_) {}
 
     // OCR + IA via pipeline existente
     let ocrText = '';
