@@ -54,6 +54,13 @@ install_packages_arch() {
   sudo pacman -S --needed git nodejs npm make gcc curl ffmpeg cmake gnome-screenshot grim slurp imagemagick python python-pip pipewire pipewire-pulse libpulse || {
     err "pacman install failed"; exit 1;
   }
+
+  # COSMIC native screenshot tool (in AUR or extra repo on some distros)
+  if [[ "${XDG_CURRENT_DESKTOP:-}" == *"COSMIC"* ]]; then
+    warn "Detected COSMIC desktop — trying to install cosmic-screenshot"
+    sudo pacman -S --needed cosmic-screenshot 2>/dev/null \
+      || warn "cosmic-screenshot not in official repos. Try AUR (yay -S cosmic-screenshot) or rely on Electron Portal."
+  fi
 }
 
 install_packages_debian() {
@@ -66,17 +73,36 @@ install_packages_debian() {
     is_wayland=true
     warn "Detected Wayland session - installing grim and slurp for screenshot support"
   fi
+
+  # Detect COSMIC desktop (Pop!_OS 24.04+)
+  local is_cosmic=false
+  if [[ "${XDG_CURRENT_DESKTOP:-}" == *"COSMIC"* ]]; then
+    is_cosmic=true
+    warn "Detected COSMIC desktop — will install cosmic-screenshot (grim does NOT work in COSMIC)"
+  fi
   
   # Base packages
   local packages="git nodejs make g++ curl ffmpeg cmake gnome-screenshot imagemagick python3 python3-venv python3-pip pipewire pulseaudio-utils"
   
-  # Add Wayland screenshot tools
-  if [[ "$is_wayland" == "true" ]]; then
+  # Add Wayland screenshot tools (Sway/Hyprland/Wayfire — not COSMIC)
+  if [[ "$is_wayland" == "true" && "$is_cosmic" == "false" ]]; then
     packages="$packages grim slurp"
+  fi
+
+  # Add COSMIC native screenshot tool
+  if [[ "$is_cosmic" == "true" ]]; then
+    packages="$packages cosmic-screenshot"
   fi
   
   sudo apt-get install -y $packages || {
-    err "apt install failed"; exit 1;
+    # cosmic-screenshot may not be in repos on older Pop!_OS; retry without it
+    if [[ "$is_cosmic" == "true" ]]; then
+      warn "Initial install failed; retrying without cosmic-screenshot (Electron Portal will be used as fallback)"
+      packages="${packages//cosmic-screenshot/}"
+      sudo apt-get install -y $packages || { err "apt install failed"; exit 1; }
+    else
+      err "apt install failed"; exit 1;
+    fi
   }
 }
 
