@@ -42,11 +42,14 @@ RUN_HOTKEY_SETUP=false
 # Change to app directory
 cd "$APP_DIR"
 
-# Check if first run
-if [ ! -f "$CONFIG_FLAG" ]; then
+# Check if first run OR if user explicitly requested re-setup
+if [ "${HELPER_NODE_FORCE_HOTKEY_SETUP:-0}" = "1" ]; then
+    RUN_HOTKEY_SETUP=true
+    echo "🔧 HELPER_NODE_FORCE_HOTKEY_SETUP=1 — re-running hotkey setup..."
+elif [ ! -f "$CONFIG_FLAG" ]; then
     RUN_HOTKEY_SETUP=true
     echo "🚀 First run detected! Configuring global hotkeys..."
-    
+
     # Create config directory
     mkdir -p "$HOME/.config/helper-node"
 
@@ -56,7 +59,23 @@ if [ ! -f "$CONFIG_FLAG" ]; then
         cp "$DEFAULT_CONFIG_PATH" "$USER_APP_CONFIG_PATH"
         echo "✓ Default AI/Tesseract settings imported"
     fi
-    
+else
+    # Self-healing: detect if previous setup is invalid (legacy COSMIC format,
+    # missing key shortcut, etc.) and re-run automatically.
+    case "${XDG_CURRENT_DESKTOP:-}" in
+        *COSMIC*)
+            CSF="$HOME/.config/cosmic/com.system76.CosmicSettings.Shortcuts/v1/custom"
+            # Old broken format had `"helper-node-record":` keys; new format uses `Spawn(`
+            # If file missing, malformed, or lacks Ctrl+Shift+C escape hatch → re-run.
+            if [ ! -f "$CSF" ] \
+               || grep -q '"helper-node-' "$CSF" 2>/dev/null \
+               || ! grep -q 'Spawn(' "$CSF" 2>/dev/null \
+               || ! grep -q 'open-config' "$CSF" 2>/dev/null; then
+                echo "🔧 COSMIC shortcuts ausentes/desatualizados — re-aplicando..."
+                RUN_HOTKEY_SETUP=true
+            fi
+            ;;
+    esac
 fi
 
 # Run setup script when needed (best-effort for local dev)

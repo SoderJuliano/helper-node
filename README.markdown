@@ -62,22 +62,45 @@ helper-node
 
 ---
 
-## 🎧 Modo Realtime Assistant
+## 🎧 Modo Realtime Assistant (Copiloto Stealth)
 
-Escuta o áudio do sistema (YouTube, Discord, reunião) e gera análise por trecho automaticamente.
+Escuta **microfone + áudio do sistema simultaneamente** (você + interlocutores em
+Teams/Meet/Zoom/WhatsApp/YouTube) e age como **copiloto discreto** durante
+conversas, reuniões e estudos.
 
-**Como funciona:**
-1. Captura áudio do *monitor* do sink padrão via `parec` (PipeWire/PulseAudio)
-2. Stream PCM 16kHz mono → helper Python `vosk-stream.py`
-3. Vosk emite eventos `partial` (palavra-por-palavra) e `result` (frase finalizada)
-4. Quando há **≥10 palavras + 2.5s de silêncio** OU **60s de acúmulo**, manda pra IA
-5. Enquanto a IA responde, novas falas vão para uma bolha nova (não polui a anterior)
+**Pipeline híbrido Vosk-rápido + Whisper-lento:**
 
-A janela mostra:
-- 🎙️ Bolha cinza itálica = transcrição parcial ao vivo
-- 🎙️ Bolha branca = frase finalizada
-- ⏳ Processando = enviado para IA
-- 🤖 Bolha verde = resposta da IA
+1. Captura `parec` em duas fontes (mic `@DEFAULT_SOURCE@` + `<sink>.monitor`)
+2. Mixer PCM s16le 16kHz → stream para `vosk-stream.py` (transcrição instantânea)
+3. **Bolha única por segmento** com atualização in-place
+4. Segmento fecha em **5 s de silêncio** OU **25 s contínuos**
+5. IA responde com base no Vosk → `🤖 resposta inicial`
+6. Em background, `whisper-cli` (modelo `medium`) re-transcreve o WAV;
+   se diferir, **reescreve a mesma bolha** + re-pergunta à IA → `🤖 resposta revisada`
+7. Histórico é **editado in-place** (não duplica) via `historyService.replaceMessage`
+
+**Comportamento da IA — modos automáticos:**
+
+| Tipo de fala detectada | Resposta |
+|------------------------|----------|
+| Pergunta técnica (`como resolvo X?`, `qual a diferença...`) | Resposta direta com cálculo/código |
+| Pergunta feita ao usuário (entrevista, reunião) | `💬 Sugestão:` resposta pronta para falar |
+| Discussão técnica / decisão | Insight, trade-off, alternativa |
+| Termo obscuro mencionado | Definição em 1 linha + relevância |
+| Números/valores | Conversão/contexto |
+| Conversa casual / ruído | `(trecho sem conteúdo relevante)` |
+
+### 🥷 Modo Stealth (sem notificações do SO)
+
+**Nenhuma notificação nativa do sistema é exibida** em momento algum — nem
+"Gravando…", nem "Processando…", nem erros. Toda comunicação acontece somente
+nas janelas próprias do app (que você posiciona/oculta como quiser).
+
+Motivo: durante uma reunião ou ligação, ninguém olhando para sua tela deve
+perceber que há uma IA ajudando.
+
+> Implementação: a classe `Notification` do Electron é substituída por um stub
+> no-op no topo de `main.js`. Veja o comentário "STEALTH MODE".
 
 ---
 
@@ -135,7 +158,7 @@ Acesse com `Ctrl+Shift+C`:
 - **Token OpenAI**: chave da API
 - **Idioma**: pt-br / en-us
 - **Modo Print**: OCR automático
-- **Integração OS**: notificações flutuantes
+- **Integração OS**: ativa atalhos globais e janelas flutuantes (sem notificações nativas — modo stealth sempre)
 
 Config salvo em `~/.config/meu-electron-app/config.json`.
 

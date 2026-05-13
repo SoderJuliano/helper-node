@@ -20,35 +20,51 @@ Para permitir que o atalho de gravação (`Ctrl+D`) funcione globalmente (fora d
 
 Esta abordagem funciona de forma robusta em Wayland e X11, mas exige configuração manual.
 
-## Arquitetura Atual: Notificações de Desktop Robustas
+## Arquitetura Atual: Modo Stealth (sem notificações nativas)
 
-Para garantir usabilidade e a entrega completa das informações quando o aplicativo não está em foco, uma nova estratégia de notificações foi implementada, priorizando a clareza e a robustez em detrimento da formatação rica.
+Em versões anteriores o app usava notificações nativas do SO (`Notification` do
+Electron) para informar "Gravando…", "Ok, aguarde…", "Resposta (1/3)" etc.
+Isso foi **removido completamente** porque o caso de uso central do app é ser
+um **copiloto discreto durante reuniões, ligações e entrevistas** — qualquer
+notificação visível na tela quebra a discrição.
 
-1.  **Tecnologia:**
-    *   A funcionalidade continua usando a API `Notification` nativa do Electron.
+1.  **Implementação:**
+    *   No topo de `main.js`, a classe `Notification` importada do Electron é
+        substituída por um stub no-op (métodos `show()`, `close()`, `on()` etc.
+        existem mas não fazem nada).
+    *   Não foi necessário editar as ~21 chamadas espalhadas pelo código —
+        todas viraram NOOP automaticamente.
 
-2.  **Estratégia de Entrega Sequencial:**
-    *   Para evitar problemas de truncamento de texto e incompatibilidade com diferentes daemons de notificação (como `mako` em Hyprland ou o do GNOME), todas as respostas da IA são processadas da mesma maneira.
-    *   A resposta, que pode conter HTML, é primeiramente convertida para um formato de texto puro. Tags como `<p>`, `<li>` e `<br>` são transformadas em quebras de linha (`\n`).
-    *   O texto puro resultante é então dividido em um array de linhas (parágrafos ou itens de lista).
-    *   O aplicativo itera sobre esse array e envia **cada linha como uma notificação separada**, com um pequeno atraso de 2 segundos entre elas.
-    *   Cada notificação é titulada com um contador (ex: "Resposta (1/3)"), para que o usuário saiba o contexto.
+2.  **Comunicação com o usuário acontece exclusivamente via:**
+    *   `mainWindow` (janela principal do chat).
+    *   Janelas próprias `BrowserWindow` criadas por `createOsNotificationWindow()`
+        (`loading.html`, `response.html`, `recording.html`, `recording-live.html`,
+        `capture.html`, `integratedInput.html`) — posicionadas e ocultáveis.
 
 3.  **Benefícios:**
-    *   **Entrega Completa:** Garante que respostas longas, especialmente listas, sejam exibidas por completo.
-    *   **Compatibilidade Universal:** Funciona de forma idêntica e previsível em todos os ambientes de desktop, eliminando a necessidade de detectar o DE.
-    *   **Legibilidade:** A entrega sequencial permite que o usuário leia cada ponto da resposta com calma.
+    *   **Discrição total** em chamadas Teams/Meet/Zoom/WhatsApp.
+    *   **Zero dependência** de daemon de notificação (`mako`, `dunst`, GNOME Shell, KDE).
+    *   **Comportamento idêntico** em qualquer DE/WM/Wayland/X11.
 
-4.  **Eventos de Notificação:**
-    *   **Início da Gravação:** Uma notificação "Gravando..." é enviada.
-    *   **Fim da Gravação/Início do Processamento:** Uma notificação "Ok, aguarde..." é enviada.
-    *   **Pós-Transcrição:** Uma notificação é enviada no formato "Usuário perguntou: [texto transcrito]".
-    *   **Espera pela Resposta da IA:** Enquanto aguarda a resposta, uma notificação "Aguarde, gerando uma resposta..." é enviada a cada 10 segundos.
-    *   **Pós-Resposta da IA:** A resposta é dividida por linhas e enviada em múltiplas notificações sequenciais, conforme descrito acima.
+## Arquitetura Atual: Realtime Copilot (Vosk-fast + Whisper-slow)
 
-4.  **Controle da Funcionalidade:**
-    *   A exibição de notificações é controlada por uma flag no `main.js`: `appConfig.notificationsEnabled`.
-    *   Atualmente, esta flag está fixada como `true`, mas foi estruturada para ser facilmente conectada a um arquivo de configurações ou a uma opção na interface do usuário no futuro.
+Pipeline híbrido implementado no `services/realtimeAssistantService.js`:
+
+1.  **Captura simultânea** de microfone (`@DEFAULT_SOURCE@`) + áudio do sistema
+    (`<sink>.monitor`) via `parec`, mixado em PCM s16le 16kHz mono.
+2.  **Vosk** transcreve em tempo real → atualiza **uma única bolha por segmento**.
+3.  Segmento fecha em **5 s de silêncio** (RMS) OU **25 s contínuos** (corte forçado).
+4.  Ao fechar:
+    *   IA responde com base no Vosk → `segment_response` (rápido).
+    *   `whisper-cli` (`ggml-medium`) re-transcreve o WAV em background.
+    *   Se diferir, emite `segment_whisper_correction` → reescreve a bolha do
+        usuário in-place + re-pergunta à IA → `segment_response_corrected`
+        substitui a bolha do assistente.
+5.  Histórico é **editado in-place** via `historyService.replaceMessage(...)`.
+
+A IA opera em modo **copiloto**, não resumidor: responde perguntas técnicas,
+sugere respostas (`💬 Sugestão:`), aponta trade-offs, define termos obscuros e
+ignora ruído/conversa casual com `(trecho sem conteúdo relevante)`.
 
 ## Arquitetura Atual: Lógica de Serviço de IA com Fallback
 

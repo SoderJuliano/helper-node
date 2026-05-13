@@ -1086,74 +1086,144 @@
                 });
             }
 
-            // Live transcription element for realtime mode
-            let liveTranscriptEl = null;
+            // ===== Realtime segment-based bubble manager =====
+            // Cada segmento tem 1 bolha de usuário + 1 bolha de assistente.
+            // Vosk preenche/atualiza em tempo real; Whisper depois pode reescrever in-place.
+            const rtSegments = new Map(); // id -> { userBubble, userText, userBadge, assistantBubble, assistantText, assistantBadge }
 
-            function getOrCreateLiveTranscript() {
-                if (!liveTranscriptEl || !document.body.contains(liveTranscriptEl)) {
-                    const feed = getOrCreateRealtimeFeed();
-                    liveTranscriptEl = document.createElement('div');
-                    liveTranscriptEl.className = 'rt-bubble user rt-live-transcript';
-                    liveTranscriptEl.style.cssText = 'color: #ccc; font-style: italic; border-left: 2px solid #00aaff; padding-left: 8px;';
-                    feed.appendChild(liveTranscriptEl);
-                }
-                return liveTranscriptEl;
+            function scrollFeed() {
+                transcriptionElement.scrollTo({ top: transcriptionElement.scrollHeight, behavior: 'smooth' });
+            }
+
+            function ensureSegmentBubbles(segmentId, iteration) {
+                if (rtSegments.has(segmentId)) return rtSegments.get(segmentId);
+
+                const feed = getOrCreateRealtimeFeed();
+
+                // Bolha do usuário (transcrição)
+                const userBubble = document.createElement('div');
+                userBubble.className = 'rt-bubble user';
+                userBubble.dataset.segmentId = segmentId;
+                userBubble.style.padding = '8px 12px';
+                userBubble.style.overflow = 'visible';
+
+                const userHeader = document.createElement('div');
+                userHeader.style.cssText = 'display:flex;justify-content:space-between;align-items:center;font-size:11px;color:rgba(144,202,249,0.85);margin-bottom:4px;font-weight:500;';
+                const userLabel = document.createElement('span');
+                userLabel.textContent = `🎧 Trecho #${iteration || '?'}`;
+                const userBadge = document.createElement('span');
+                userBadge.className = 'rt-badge';
+                userBadge.style.cssText = 'font-size:10px;opacity:0.75;font-style:italic;';
+                userBadge.textContent = '🎙️ ouvindo…';
+                userHeader.appendChild(userLabel);
+                userHeader.appendChild(userBadge);
+
+                const userText = document.createElement('div');
+                userText.style.cssText = 'font-size:12.5px;color:rgba(220,235,255,0.92);white-space:pre-wrap;line-height:1.5;';
+                userText.textContent = '';
+
+                userBubble.appendChild(userHeader);
+                userBubble.appendChild(userText);
+                feed.appendChild(userBubble);
+
+                // Bolha do assistente (resposta)
+                const assistantBubble = document.createElement('div');
+                assistantBubble.className = 'rt-bubble assistant';
+                assistantBubble.dataset.segmentId = segmentId;
+
+                const assistantBadge = document.createElement('div');
+                assistantBadge.className = 'rt-badge';
+                assistantBadge.style.cssText = 'font-size:10px;opacity:0.7;font-style:italic;margin-bottom:4px;color:rgba(180,255,180,0.85);';
+                assistantBadge.textContent = '🤖 pensando…';
+
+                const assistantText = document.createElement('div');
+                assistantText.style.cssText = 'font-size:13px;white-space:pre-wrap;line-height:1.55;';
+                assistantText.textContent = '';
+
+                assistantBubble.appendChild(assistantBadge);
+                assistantBubble.appendChild(assistantText);
+                feed.appendChild(assistantBubble);
+
+                const entry = { userBubble, userText, userBadge, assistantBubble, assistantText, assistantBadge };
+                rtSegments.set(segmentId, entry);
+                scrollFeed();
+                return entry;
             }
 
             window.electronAPI.onRealtimeAssistantUpdate((payload) => {
                 if (!payload || !payload.type) return;
 
-                if (payload.type === 'state') {
-                    liveTranscriptEl = null; // reset live transcript
-                    appendRealtimeBubble('system', payload.message || 'Atualização do modo em tempo real');
-                    return;
-                }
+                switch (payload.type) {
+                    case 'state':
+                        appendRealtimeBubble('system', payload.message || 'Atualização do modo em tempo real');
+                        return;
 
-                if (payload.type === 'partial') {
-                    // Update live transcript with partial text (word by word)
-                    const el = getOrCreateLiveTranscript();
-                    el.textContent = '🎙️ ' + (payload.text || '');
-                    transcriptionElement.scrollTo({ top: transcriptionElement.scrollHeight, behavior: 'smooth' });
-                    return;
-                }
+                    case 'error':
+                        appendRealtimeBubble('system', payload.message || 'Erro no assistente em tempo real.');
+                        return;
 
-                if (payload.type === 'sentence') {
-                    // Finalize current live transcript and start fresh
-                    if (liveTranscriptEl && document.body.contains(liveTranscriptEl)) {
-                        liveTranscriptEl.textContent = '🎙️ ' + (payload.text || '');
-                        liveTranscriptEl.style.fontStyle = 'normal';
-                        liveTranscriptEl.style.color = '#e0e0e0';
+                    case 'fatal_error':
+                        appendRealtimeBubble('fatal-error', payload.message || 'Erro fatal: assistente desligado.');
+                        return;
+
+                    case 'segment_start': {
+                        ensureSegmentBubbles(payload.id, payload.iteration);
+                        return;
                     }
-                    liveTranscriptEl = null; // next partial creates a new element
-                    return;
-                }
 
-                if (payload.type === 'processing') {
-                    // Trava a bolha atual definitivamente — novos partials criarão outra
-                    if (liveTranscriptEl && document.body.contains(liveTranscriptEl)) {
-                        liveTranscriptEl.classList.add('rt-locked');
-                        liveTranscriptEl.style.opacity = '0.85';
+                    case 'segment_partial': {
+                        const seg = ensureSegmentBubbles(payload.id, payload.iteration);
+                        seg.userText.textContent = payload.text || '';
+                        seg.userBadge.textContent = '🎙️ ouvindo…';
+                        scrollFeed();
+                        return;
                     }
-                    liveTranscriptEl = null;
-                    appendRealtimeBubble('system', `⏳ Processando trecho #${payload.iteration}...`);
-                    return;
-                }
 
-                if (payload.type === 'error') {
-                    appendRealtimeBubble('system', payload.message || 'Erro no assistente em tempo real.');
-                    return;
-                }
+                    case 'segment_vosk_final': {
+                        const seg = ensureSegmentBubbles(payload.id, payload.iteration);
+                        seg.userText.textContent = payload.text || '';
+                        seg.userBadge.textContent = '⏳ refinando com Whisper…';
+                        scrollFeed();
+                        return;
+                    }
 
-                if (payload.type === 'fatal_error') {
-                    appendRealtimeBubble('fatal-error', payload.message || 'Erro fatal: assistente desligado.');
-                    return;
-                }
+                    case 'segment_response': {
+                        const seg = ensureSegmentBubbles(payload.id, payload.iteration);
+                        seg.assistantText.textContent = payload.response || '';
+                        seg.assistantBadge.textContent = '🤖 resposta inicial';
+                        scrollFeed();
+                        return;
+                    }
 
-                if (payload.type === 'interaction') {
-                    liveTranscriptEl = null; // garante nova bolha após resposta
-                    const transcriptBody = (payload.transcript || '').trim();
-                    appendRealtimeBubble('user', `🎧 Trecho #${payload.iteration}\n${transcriptBody}`);
-                    appendRealtimeBubble('assistant', `🤖 ${payload.response || ''}`);
+                    case 'segment_whisper_correction': {
+                        const seg = rtSegments.get(payload.id);
+                        if (!seg) return;
+                        seg.userText.textContent = payload.text || '';
+                        seg.userBadge.textContent = '✏️ corrigido (Whisper)';
+                        seg.userBadge.style.color = 'rgba(255,200,100,0.95)';
+                        return;
+                    }
+
+                    case 'segment_response_corrected': {
+                        const seg = rtSegments.get(payload.id);
+                        if (!seg) return;
+                        seg.assistantText.textContent = payload.response || '';
+                        seg.assistantBadge.textContent = '🤖 resposta revisada';
+                        seg.assistantBadge.style.color = 'rgba(255,200,100,0.95)';
+                        return;
+                    }
+
+                    case 'segment_error': {
+                        const seg = rtSegments.get(payload.id);
+                        if (seg) {
+                            seg.assistantText.textContent = '⚠️ ' + (payload.message || 'erro processando segmento');
+                            seg.assistantBadge.textContent = 'erro';
+                            seg.assistantBadge.style.color = '#ff8a80';
+                        } else {
+                            appendRealtimeBubble('system', '⚠️ ' + (payload.message || 'erro de segmento'));
+                        }
+                        return;
+                    }
                 }
             });
 

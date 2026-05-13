@@ -4,6 +4,8 @@
   "main": "main.js",
   "scripts": {
     "start": "bash ./helper-node.sh --local",
+    "setup-hotkeys": "bash ./setup-hotkey.sh",
+    "fix-hotkeys": "rm -f $HOME/.config/helper-node/.setup-done && HELPER_NODE_FORCE_HOTKEY_SETUP=1 bash ./setup-hotkey.sh",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "devDependencies": {

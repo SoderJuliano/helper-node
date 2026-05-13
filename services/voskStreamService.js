@@ -137,8 +137,13 @@ class VoskStreamService {
     let totalBytesReceived = 0;
     let firstChunkLogged = false;
 
+    // Helper: emit raw mixed PCM to the consumer (for silence detection + Whisper buffering)
+    const emitAudio = (chunk) => {
+      this.onEvent({ type: "audio", data: chunk });
+    };
+
     if (sources.length === 1) {
-      // Single source — pipe directly, no mixer overhead
+      // Single source — pipe directly + tap for audio events
       console.log("[vosk-stream] single source:", sources[0]);
       const proc = this._spawnParec(sources[0]);
       this.recorderProcs.push(proc);
@@ -146,13 +151,25 @@ class VoskStreamService {
       proc.stdout.on("data", (chunk) => {
         totalBytesReceived += chunk.length;
         if (!firstChunkLogged) { firstChunkLogged = true; console.log("[vosk-stream] first audio chunk:", chunk.length, "bytes"); }
+        emitAudio(chunk);
       });
       proc.stdout.pipe(this.voskProc.stdin);
     } else {
       // Multiple sources — mix PCM before piping to Vosk
       console.log("[vosk-stream] mixing", sources.length, "audio sources:", sources);
       const mixer = createPCMMixer(sources.length);
-      mixer.pipe(this.voskProc.stdin);
+      // Tap mixer output: send to vosk AND emit as audio events
+      mixer.on("data", (chunk) => {
+        emitAudio(chunk);
+        if (this.voskProc && this.voskProc.stdin && !this.voskProc.stdin.destroyed) {
+          this.voskProc.stdin.write(chunk);
+        }
+      });
+      mixer.on("end", () => {
+        if (this.voskProc && this.voskProc.stdin && !this.voskProc.stdin.destroyed) {
+          this.voskProc.stdin.end();
+        }
+      });
 
       sources.forEach((src, idx) => {
         const proc = this._spawnParec(src);
@@ -161,13 +178,11 @@ class VoskStreamService {
         proc.stdout.on("data", (chunk) => {
           totalBytesReceived += chunk.length;
           if (!firstChunkLogged) { firstChunkLogged = true; console.log("[vosk-stream] first audio chunk:", chunk.length, "bytes from source", idx); }
-          // Tag chunk with source index for the mixer
           chunk._sourceIndex = idx;
           mixer.write(chunk);
         });
 
         proc.on("close", () => {
-          // If all recorders closed, end the mixer
           if (this.recorderProcs.every(p => p.killed || p.exitCode !== null)) {
             mixer.end();
           }

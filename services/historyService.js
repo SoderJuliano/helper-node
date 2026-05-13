@@ -162,6 +162,19 @@ async function addMessage(sessionId, role, content) {
 }
 
 /**
+ * Substitui o conteúdo de uma mensagem por seu índice (0-based) na sessão.
+ * Usado pelo realtime assistant quando o Whisper corrige a transcrição.
+ */
+async function replaceMessage(sessionId, index, newContent) {
+  const session = currentSessions.find(s => s.id === sessionId);
+  if (!session || !session.conversations[index]) return false;
+  session.conversations[index].content = newContent;
+  session.conversations[index].edited = new Date().toISOString();
+  await saveCurrentFile();
+  return true;
+}
+
+/**
  * Retorna as últimas 3 sessões
  */
 function getLastThreeSessions() {
@@ -222,6 +235,7 @@ module.exports = {
   initialize,
   createNewSession,
   addMessage,
+  replaceMessage,
   getLastThreeSessions,
   getSessionById,
   getCurrentSession,

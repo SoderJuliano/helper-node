@@ -172,20 +172,21 @@ install_vosk() {
     return 0
   fi
 
-  # Choose model size: VOSK_MODEL_SIZE=small (40MB) | large (1.6GB, much better)
-  local VOSK_SIZE="${VOSK_MODEL_SIZE:-large}"
+  # Choose model size: VOSK_MODEL_SIZE=small (40MB, default) | large (1.6GB, FalaBrasil)
+  # NOTE: Em testes reais, o small se saiu MELHOR para áudio comprimido (WhatsApp, calls).
+  # O large só é superior para narração limpa (locução, livros).
+  local VOSK_SIZE="${VOSK_MODEL_SIZE:-small}"
   local VOSK_URL VOSK_DIRNAME
   case "$VOSK_SIZE" in
-    small)
-      VOSK_URL="https://alphacephei.com/vosk/models/vosk-model-small-pt-0.3.zip"
-      VOSK_DIRNAME="vosk-model-small-pt-0.3"
-      warn "Downloading Vosk PT-BR SMALL model (~40MB) — qualidade limitada"
-      ;;
-    large|*)
+    large)
       VOSK_URL="https://alphacephei.com/vosk/models/vosk-model-pt-fb-v0.1.1-20220516_2113.zip"
       VOSK_DIRNAME="vosk-model-pt-fb-v0.1.1-20220516_2113"
-      warn "Downloading Vosk PT-BR LARGE model (FalaBrasil, ~1.6GB) — alta qualidade"
-      warn "Para baixar o modelo pequeno (40MB) use: VOSK_MODEL_SIZE=small ./install-deps.sh"
+      warn "Downloading Vosk PT-BR LARGE model (FalaBrasil, ~1.6GB)"
+      ;;
+    small|*)
+      VOSK_URL="https://alphacephei.com/vosk/models/vosk-model-small-pt-0.3.zip"
+      VOSK_DIRNAME="vosk-model-small-pt-0.3"
+      warn "Downloading Vosk PT-BR SMALL model (~40MB)"
       ;;
   esac
 

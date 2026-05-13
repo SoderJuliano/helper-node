@@ -4,8 +4,43 @@ const {
   ipcMain,
   globalShortcut,
   screen,
-  Notification,
 } = require("electron");
+
+// === STDIO SAFETY ===
+// Quando o app é lançado de forma desanexada (.desktop, systemd, autostart),
+// stdout/stderr pode estar conectado a um pipe que fecha durante a vida do
+// processo. Qualquer console.log subsequente lança EIO/EPIPE, que como
+// "uncaughtException" causa o diálogo "A JavaScript error occurred in the
+// main process" e trava os atalhos globais. Aqui silenciamos esses erros.
+for (const stream of [process.stdout, process.stderr]) {
+  stream.on("error", (err) => {
+    if (err && (err.code === "EPIPE" || err.code === "EIO")) return;
+  });
+}
+process.on("uncaughtException", (err) => {
+  if (err && (err.code === "EPIPE" || err.code === "EIO")) return;
+  try { console.error("[uncaughtException]", err); } catch (_) {}
+});
+process.on("unhandledRejection", (reason) => {
+  try { console.error("[unhandledRejection]", reason); } catch (_) {}
+});
+
+// === STEALTH MODE ===
+// Substituímos `Notification` (notificação nativa do SO) por um stub vazio.
+// Motivo: o app deve passar despercebido em reuniões/chamadas — ninguém
+// olhando para a tela do usuário deve ver "Helper-Node: Gravando..." ou
+// qualquer popup do sistema indicando que uma IA está escutando.
+// Toda comunicação com o usuário acontece exclusivamente nas nossas
+// próprias janelas (BrowserWindow) controladas via createOsNotificationWindow().
+class Notification {
+  constructor() {}
+  show() {}
+  close() {}
+  on() { return this; }
+  once() { return this; }
+  removeAllListeners() { return this; }
+  static isSupported() { return false; }
+}
 const path = require("path");
 const crypto = require("crypto");
 const { exec, spawn } = require("child_process");

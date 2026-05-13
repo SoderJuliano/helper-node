@@ -195,6 +195,20 @@ function setOpenAiModel(model) {
   currentConfig = null;
 }
 
+function getAudioCaptureMode() {
+  if (!currentConfig) currentConfig = loadConfig();
+  // 'monitor' (default, sistema) | 'mic' (microfone) | 'both' (mix experimental)
+  return currentConfig.audioCaptureMode || 'monitor';
+}
+
+function setAudioCaptureMode(mode) {
+  if (!currentConfig) currentConfig = loadConfig();
+  if (!['monitor', 'mic', 'both'].includes(mode)) mode = 'monitor';
+  currentConfig.audioCaptureMode = mode;
+  saveConfig(currentConfig);
+  currentConfig = null;
+}
+
 function getOpenIaToken() {
     if (!currentConfig) {
         currentConfig = loadConfig();
@@ -263,5 +277,7 @@ module.exports = {
   setOpenIaToken,
   getOpenAiModel,
   setOpenAiModel,
+  getAudioCaptureMode,
+  setAudioCaptureMode,
   getIp,
 };
