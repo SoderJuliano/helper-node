@@ -242,23 +242,42 @@ function createOsNotificationWindow(type, content) {
   // Set dynamic dimensions based on type - matching the original HTML file dimensions
   let windowWidth = 160;
   let windowHeight = 96;
-  
+
   if (type === 'response') {
     windowWidth = 400;
     windowHeight = 260;
   } else if (type === 'recording-live') {
-    windowWidth = 380;
-    windowHeight = 200;
+    // Pequeno e discreto: só um indicador no canto, não invade leitura
+    windowWidth = 220;
+    windowHeight = 70;
   }
+
+  // Position in top right corner
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  const posX = Math.max(0, width - windowWidth - 20);
+  const posY = 60;
 
   osNotificationWindow = new BrowserWindow({
     width: windowWidth,
     height: windowHeight,
+    // x/y nas options é mais respeitado pelo COSMIC/Wayland do que setPosition()
+    x: posX,
+    y: posY,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    // STEALTH OVERLAY: não rouba foco da janela ativa (reunião, vídeo, IDE)
+    focusable: false,
+    // Some no compartilhamento de tela (Teams/Meet/Zoom screen-share)
+    // — funciona em X11; em Wayland depende do compositor
+    type: 'toolbar',
+    hasShadow: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -266,9 +285,13 @@ function createOsNotificationWindow(type, content) {
     },
   });
 
-  // Position in top right corner
-  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-  osNotificationWindow.setPosition(width - windowWidth - 20, 60);
+  // Bloqueia captura de tela do app pelos compositores que respeitam a flag
+  try { osNotificationWindow.setContentProtection(true); } catch (_) {}
+  // Mantém SEMPRE acima de tudo (inclusive janelas em fullscreen de browser)
+  osNotificationWindow.setAlwaysOnTop(true, 'screen-saver');
+  osNotificationWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  // Reforça posição para compositores que ignoram x/y das options
+  try { osNotificationWindow.setPosition(posX, posY); } catch (_) {}
 
   // Simply load the appropriate HTML file - let the files handle their own content
   let filePath;
