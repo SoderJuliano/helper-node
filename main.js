@@ -1258,18 +1258,16 @@ async function registerGlobalShortcuts() {
   );
 }
 
-// Função para detectar o sink de áudio padrão do sistema
-async function getDefaultAudioSink() {
+// Retorna as fontes de áudio: microfone + monitor do sistema
+async function getAudioSources() {
+  const sources = ['@DEFAULT_SOURCE@'];
   try {
     const { stdout } = await execPromise('pactl get-default-sink');
-    const defaultSink = stdout.trim();
-    console.log(`🔊 Default audio sink detected: ${defaultSink}`);
-    return `${defaultSink}.monitor`;
-  } catch (error) {
-    console.error('❌ Error detecting default sink, using fallback:', error.message);
-    // Fallback para @DEFAULT_MONITOR@ que é um alias do PipeWire
-    return '@DEFAULT_MONITOR@';
+    sources.push(stdout.trim() + '.monitor');
+  } catch (e) {
+    sources.push('@DEFAULT_MONITOR@');
   }
+  return sources;
 }
 
 async function toggleRealtimeAssistantRecording() {
@@ -1438,13 +1436,13 @@ async function toggleRecording() {
         destroyNotificationWindow();
         createOsNotificationWindow('recording-live', '');
 
-        // Detect audio target
-        const audioTarget = await getDefaultAudioSink();
+        // Detect audio sources (mic + system monitor)
+        const audioSources = await getAudioSources();
 
         // Start Vosk streaming
         const modelPath = path.join(__dirname, "vosk-model");
         await VoskStreamService.start({
-          audioTarget,
+          audioSources,
           modelPath,
           onEvent: (event) => {
             if (!osNotificationWindow || osNotificationWindow.isDestroyed()) return;
@@ -1470,10 +1468,9 @@ async function toggleRecording() {
 
         mainWindow.webContents.send("toggle-recording", { isRecording, audioFilePath });
       } else {
-        // Normal mode: use pw-record + Whisper (unchanged)
+        // Normal mode: record from mic + whisper
         await fs.unlink(audioFilePath).catch(() => {});
-        const audioTarget = await getDefaultAudioSink();
-        const command = `pw-record --target=${audioTarget} ${audioFilePath}`;
+        const command = `parec --device=@DEFAULT_SOURCE@ --rate=16000 --channels=1 --format=s16le --raw > "${audioFilePath}"`;
         console.log("Executing:", command);
         recordingProcess = exec(command, (error) => {
           if (error && error.signal !== "SIGTERM" && error.code !== 0) {

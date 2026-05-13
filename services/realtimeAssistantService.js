@@ -58,21 +58,23 @@ class RealtimeAssistantService {
       timestamp: new Date().toISOString(),
     });
 
-    let audioTarget;
+    // Captura microfone + áudio do sistema (monitor do sink padrão)
+    let audioSources = ['@DEFAULT_SOURCE@'];
     try {
       const { exec } = require("child_process");
       const util = require("util");
       const execPromise = util.promisify(exec);
       const { stdout } = await execPromise('pactl get-default-sink');
-      audioTarget = stdout.trim() + '.monitor';
+      const monitor = stdout.trim() + '.monitor';
+      audioSources.push(monitor);
     } catch (e) {
-      audioTarget = '@DEFAULT_MONITOR@';
+      audioSources.push('@DEFAULT_MONITOR@');
     }
 
     const modelPath = path.join(__dirname, "..", "vosk-model");
 
     await voskStreamService.start({
-      audioTarget,
+      audioSources,
       modelPath,
       onEvent: (event) => this.handleVoskEvent(event),
     });
