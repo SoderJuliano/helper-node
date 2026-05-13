@@ -15,6 +15,8 @@ const backendUrlValue = document.getElementById("backend-url-value");
 const aiModelSelect = document.getElementById("ai-model");
 const openIaTokenContainer = document.getElementById("openai-token-container");
 const openIaTokenInput = document.getElementById("openai-token");
+const openAiModelContainer = document.getElementById("openai-model-container");
+const openAiModelSelect = document.getElementById("openai-model-select");
 
 // Helper function to update the debug mode status text
 function updateDebugModeStatus(isDebugging) {
@@ -120,9 +122,16 @@ document.addEventListener("DOMContentLoaded", async () => {
       openIaTokenInput.value = savedToken;
   }
   
-  // Show/hide OpenAI token input based on saved model
+  // Load saved OpenAI model
+  const savedOpenAiModel = await ipcRenderer.invoke("get-openai-model");
+  if (savedOpenAiModel) {
+    openAiModelSelect.value = savedOpenAiModel;
+  }
+
+  // Show/hide OpenAI fields based on saved model
   if (aiModelSelect.value === 'openIa') {
     openIaTokenContainer.style.display = 'flex';
+    openAiModelContainer.style.display = 'flex';
   }
 
   // -------------------------
@@ -183,8 +192,10 @@ realtimeAssistantToggle.addEventListener("change", () => {
 aiModelSelect.addEventListener('change', () => {
     if (aiModelSelect.value === 'openIa') {
         openIaTokenContainer.style.display = 'flex';
+        openAiModelContainer.style.display = 'flex';
     } else {
         openIaTokenContainer.style.display = 'none';
+        openAiModelContainer.style.display = 'none';
     }
 });
 
@@ -211,6 +222,9 @@ saveButton.addEventListener("click", async () => {
   // Save AI model
   ipcRenderer.send("set-ai-model", aiModelSelect.value);
   
+  // Save OpenAI model
+  ipcRenderer.send("set-openai-model", openAiModelSelect.value);
+
   // Always save OpenAI token, regardless of current model
   // This ensures the token persists even when switching to other models
   ipcRenderer.send("set-open-ia-token", openIaTokenInput.value);

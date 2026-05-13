@@ -11,7 +11,7 @@ class OpenAIService {
         // not via ipc events to the service itself. This initialize method is kept for consistency.
     }
 
-    async makeOpenAIRequest(prompt, token, instruction) {
+    async makeOpenAIRequest(prompt, token, instruction, model) {
         const sessionId = 'default'; // Using a single session for now
         const now = Date.now();
         const twoHours = 2 * 60 * 60 * 1000;
@@ -37,7 +37,7 @@ class OpenAIService {
 
         console.log('Sending request to OpenAI API...');
         const requestPayload = {
-            model: 'gpt-4.1-nano',
+            model: model || 'gpt-4.1-nano',
             messages: this.sessions[sessionId].messages
         };
         console.log('OpenAI Request Payload:', JSON.stringify(requestPayload, null, 2));

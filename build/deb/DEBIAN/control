@@ -1,10 +1,10 @@
 Package: helper-node
-Version: 0.0.1
+Version: 0.1.0
 Section: utils
 Priority: optional
 Architecture: amd64
 Maintainer: Helper Node Team <support@helper-node.app>
-Depends: curl, ffmpeg, nodejs (>= 18.0.0), libgtk-3-0, libnotify4, libnss3, libxss1, libxtst6, xdg-utils, libatspi2.0-0, libasound2
+Depends: curl, ffmpeg, nodejs (>= 18.0.0), python3, python3-venv, python3-pip, pipewire-bin, pulseaudio-utils, libgtk-3-0, libnotify4, libnss3, libxss1, libxtst6, xdg-utils, libatspi2.0-0, libasound2
 Description: AI-powered voice assistant with Whisper transcription
  Helper Node is an Electron-based application that transcribes audio queries 
  using Whisper and displays AI-generated responses in a user-friendly interface.

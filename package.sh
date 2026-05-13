@@ -13,7 +13,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 APP_NAME="helper-node"
-VERSION="0.0.1"
+VERSION="0.1.0"
 BUILD_DIR="$(pwd)/build"
 DIST_DIR="$(pwd)/dist"
 PROJECT_ROOT="$(pwd)"
@@ -23,7 +23,7 @@ APP_CONFIG_CANDIDATES=(
 )
 
 echo -e "${GREEN}╔════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║  Helper Node Package Builder v0.0.1    ║${NC}"
+echo -e "${GREEN}║  Helper Node Package Builder v0.1.0    ║${NC}"
 echo -e "${GREEN}╚════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -65,7 +65,8 @@ build_deb() {
     # Copy application files
     echo -e "${YELLOW}→${NC} Copying application files..."
         cp -r main.js main_new_notification.js createOsNotificationWindow_fixed.js index.html config.html config.js preload.js "${APP_ROOT}/" 2>/dev/null || true
-        cp -r assets os-integration services whisper "${APP_ROOT}/"
+        cp -r assets os-integration services whisper vosk-model "${APP_ROOT}/"
+        cp vosk-stream.py "${APP_ROOT}/"
         cp package.json package-lock.json "${APP_ROOT}/" 2>/dev/null || true
         cp *.traineddata "${APP_ROOT}/" 2>/dev/null || true
         cp helper-node.sh helper-node.desktop setup-hotkey.sh capture-screenshot.sh install-deps.sh "${APP_ROOT}/" 2>/dev/null || true
@@ -100,6 +101,7 @@ build_deb() {
     echo -e "${YELLOW}→${NC} Adding control files..."
     cp build/deb/DEBIAN/* "${DEB_ROOT}/DEBIAN/"
     chmod 755 "${DEB_ROOT}/DEBIAN/postinst"
+    chmod 755 "${DEB_ROOT}/DEBIAN/preinst"
     chmod 755 "${DEB_ROOT}/DEBIAN/prerm"
     
     # Set permissions
@@ -149,7 +151,7 @@ build_arch() {
         --transform "s,^,helper-node/," \
         main.js index.html config.html config.js preload.js \
         assets/ os-integration/ services/ \
-        whisper/ package.json *.traineddata \
+        whisper/ vosk-model/ vosk-stream.py package.json *.traineddata \
         helper-node.sh helper-node.desktop setup-hotkey.sh \
         README.markdown ROADMAP.md 2>/dev/null || true
     

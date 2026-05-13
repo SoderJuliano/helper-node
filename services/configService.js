@@ -10,6 +10,7 @@ const defaultConfig = {
   realtimeAssistant: false,
   language: "pt-br",
   aiModel: "llama",
+  openAiModel: "gpt-4.1-nano",
   openIaToken: "",
 };
 
@@ -178,6 +179,22 @@ function setAiModel(aiModel) {
   currentConfig = null;
 }
 
+function getOpenAiModel() {
+  if (!currentConfig) {
+    currentConfig = loadConfig();
+  }
+  return currentConfig.openAiModel || defaultConfig.openAiModel;
+}
+
+function setOpenAiModel(model) {
+  if (!currentConfig) {
+    currentConfig = loadConfig();
+  }
+  currentConfig.openAiModel = model;
+  saveConfig(currentConfig);
+  currentConfig = null;
+}
+
 function getOpenIaToken() {
     if (!currentConfig) {
         currentConfig = loadConfig();
@@ -244,5 +261,7 @@ module.exports = {
   setAiModel,
   getOpenIaToken,
   setOpenIaToken,
+  getOpenAiModel,
+  setOpenAiModel,
   getIp,
 };

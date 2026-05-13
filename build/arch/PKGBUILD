@@ -1,12 +1,12 @@
 # Maintainer: Helper Node Team <support@helper-node.app>
 pkgname=helper-node
-pkgver=0.0.1
+pkgver=0.1.0
 pkgrel=1
-pkgdesc="AI-powered voice assistant with Whisper transcription"
+pkgdesc="AI-powered voice assistant with Whisper medium model transcription"
 arch=('x86_64')
 url="https://github.com/SoderJuliano/helper-node"
 license=('MIT')
-depends=('curl' 'ffmpeg' 'nodejs' 'gtk3' 'libnotify' 'nss' 'libxss' 'libxtst' 'xdg-utils' 'at-spi2-core' 'alsa-lib')
+depends=('curl' 'ffmpeg' 'nodejs' 'python' 'python-vosk' 'pipewire' 'pipewire-pulse' 'libpulse' 'gtk3' 'libnotify' 'nss' 'libxss' 'libxtst' 'xdg-utils' 'at-spi2-core' 'alsa-lib')
 optdepends=(
     'gnome-shell: For GNOME desktop integration'
     'plasma-workspace: For KDE Plasma integration'  

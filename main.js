@@ -85,12 +85,16 @@ let osNotificationWindow = null;
 let osCaptureWindow = null;
 let isOsIntegrationMode = false;
 let captureToolInterval = null;
+let osVoskSilenceTimer = null;
+
+function clearOsVoskSilenceTimer() {
+  if (osVoskSilenceTimer) { clearTimeout(osVoskSilenceTimer); osVoskSilenceTimer = null; }
+}
+
+const VoskStreamService = require("./services/voskStreamService.js");
 
 const realtimeAssistantService = new RealtimeAssistantService({
-  app,
   configService,
-  transcribeAudio,
-  execPromise,
   getMainWindow: () => mainWindow,
   historyService,
   onFatalStop: () => {
@@ -207,6 +211,9 @@ function createOsNotificationWindow(type, content) {
   if (type === 'response') {
     windowWidth = 400;
     windowHeight = 260;
+  } else if (type === 'recording-live') {
+    windowWidth = 380;
+    windowHeight = 200;
   }
 
   osNotificationWindow = new BrowserWindow({
@@ -235,6 +242,8 @@ function createOsNotificationWindow(type, content) {
     filePath = path.join(__dirname, 'os-integration', 'notifications', 'loading.html');
   } else if (type === 'recording') {
     filePath = path.join(__dirname, 'os-integration', 'notifications', 'recording.html');
+  } else if (type === 'recording-live') {
+    filePath = path.join(__dirname, 'os-integration', 'notifications', 'recording-live.html');
   } else if (type === 'response') {
     filePath = path.join(__dirname, 'os-integration', 'notifications', 'response.html');
   }
@@ -1315,7 +1324,7 @@ async function toggleRealtimeAssistantRecording() {
   if (appConfig.notificationsEnabled && Notification.isSupported()) {
     new Notification({
       title: "Helper-Node",
-      body: "Assistente em tempo real ativado. Capturando blocos de áudio de 15s.",
+      body: "Assistente em tempo real ativado. Transcrição ao vivo.",
       silent: true,
     }).show();
   }
@@ -1330,147 +1339,154 @@ async function toggleRecording() {
     }
 
     if (isRecording) {
+      // === STOP RECORDING ===
+      const isOsIntegration = configService.getOsIntegrationStatus();
+
+      if (isOsIntegration && VoskStreamService.isRunning()) {
+        // OS Integration + Vosk: stop streaming and send accumulated text
+        VoskStreamService.stop();
+        isRecording = false;
+        console.log("OS Integration: Vosk recording stopped, sending to AI");
+
+        // Get transcribed text from the live window
+        if (osNotificationWindow && !osNotificationWindow.isDestroyed()) {
+          try {
+            const transcribedText = await osNotificationWindow.webContents.executeJavaScript('window.getTranscribedText()');
+            if (transcribedText && transcribedText.trim()) {
+              // Show loading in the live window
+              osNotificationWindow.webContents.executeJavaScript('window.showLoading()');
+              // Send to AI
+              await processOsQuestionWithWindow(transcribedText);
+            } else {
+              createOsNotificationWindow('response', 'Nenhum áudio detectado. Tente novamente.');
+            }
+          } catch (e) {
+            console.error('Error getting transcribed text:', e);
+            createOsNotificationWindow('response', 'Erro ao processar áudio.');
+          }
+        }
+        return;
+      }
+
       if (recordingProcess) {
         recordingProcess.kill("SIGTERM");
         recordingProcess = null;
       }
       isRecording = false;
       console.log("Recording stopped");
-      
-      // Check if OS integration mode is enabled
-      const isOsIntegration = configService.getOsIntegrationStatus();
-      if (isOsIntegration) {
-        // FORCE CLOSE any existing notification first using helper function
-        destroyNotificationWindow();
-        // Use OS notification for recording stopped
-        createOsNotificationWindow('loading', 'Processando áudio...');
-      } else {
-        // Use system notification
+
+      if (!isOsIntegration) {
         if (appConfig.notificationsEnabled && Notification.isSupported()) {
-          new Notification({
-            title: "Helper-Node",
-            body: "Ok, aguarde...",
-            silent: true,
-          }).show();
+          new Notification({ title: "Helper-Node", body: "Ok, aguarde...", silent: true }).show();
         }
-        mainWindow.webContents.send("toggle-recording", {
-          isRecording,
-          audioFilePath,
-        });
+        mainWindow.webContents.send("toggle-recording", { isRecording, audioFilePath });
+      } else {
+        destroyNotificationWindow();
+        createOsNotificationWindow('loading', 'Processando áudio...');
       }
+
       try {
         await fs.access(audioFilePath);
         console.log("Audio file created:", audioFilePath);
-        
-        const isOsIntegration = configService.getOsIntegrationStatus();
+
         if (!isOsIntegration) {
           mainWindow.webContents.send("transcription-start", { audioFilePath });
         }
 
-        // Acelerar o áudio em 2x com ffmpeg
-        const spedUpAudioPath = path.join(__dirname, "output_2x.wav");
-        // const ffmpegCommand = `ffmpeg -i ${audioFilePath} -filter:a "atempo=2.0" -y ${spedUpAudioPath}`;
-        // const ffmpegCommand = `ffmpeg -i ${audioFilePath} -filter:a "atempo=3.0" -y ${spedUpAudioPath}`;
-        const ffmpegCommand = `ffmpeg -i ${audioFilePath} -filter:a "atempo=2.0" -y ${spedUpAudioPath}`;
-        await execPromise(ffmpegCommand);
-        console.log("Audio sped up by 2x:", spedUpAudioPath);
+        // Converter áudio para formato compatível com Whisper
+        const convertedAudioPath = path.join(__dirname, "output_converted.wav");
+        await execPromise(`ffmpeg -i ${audioFilePath} -ar 16000 -ac 1 -sample_fmt s16 -y ${convertedAudioPath}`);
 
-        // Iniciar transcrição com Whisper usando o áudio acelerado
-        const audioText = await transcribeAudio(spedUpAudioPath);
+        const audioText = await transcribeAudio(convertedAudioPath);
 
-        // Limpar arquivos de áudio após transcrição bem-sucedida
-        try {
-          await fs.unlink(audioFilePath);
-          console.log("Arquivo de áudio original deletado:", audioFilePath);
-        } catch (unlinkError) {
-          console.error("Erro ao deletar arquivo de áudio original:", unlinkError);
-        }
-        
-        try {
-          await fs.unlink(spedUpAudioPath);
-          console.log("Arquivo de áudio acelerado deletado:", spedUpAudioPath);
-        } catch (unlinkError) {
-          console.error("Erro ao deletar arquivo de áudio acelerado:", unlinkError);
-        }
+        try { await fs.unlink(audioFilePath); } catch (_) {}
+        try { await fs.unlink(convertedAudioPath); } catch (_) {}
 
-        if (audioText === "[BLANK_AUDIO]") {
-          console.log("Áudio em branco detectado, não enviando para a IA.");
+        if (!audioText || !audioText.trim() || audioText === "[BLANK_AUDIO]") {
           if (isOsIntegration) {
             createOsNotificationWindow('response', 'Nenhum áudio detectado. Tente novamente.');
           } else if (appConfig.notificationsEnabled && Notification.isSupported()) {
-            new Notification({
-              title: "Helper-Node",
-              body: "Nenhum áudio detectado. Tente novamente.",
-              silent: true,
-            }).show();
+            new Notification({ title: "Helper-Node", body: "Nenhum áudio detectado.", silent: true }).show();
           }
-          return; // Sai da função sem chamar getIaResponse
+          return;
         }
-        
-        // Check AI model configuration and use appropriate method
+
         const aiModel = configService.getAiModel();
-        console.log("Audio transcription - using AI model:", aiModel);
-        
         if (isOsIntegration) {
-          // Process using OS integration mode
           await processOsQuestion(audioText);
         } else if (aiModel === 'llama-stream') {
-          // Use stream method for llama-stream
           mainWindow.webContents.send("send-to-gemini-stream-auto", audioText);
         } else {
-          // Use regular method for other models
           getIaResponse(audioText);
         }
       } catch (error) {
         isRecording = false;
-        console.error("Audio file not found or processing failed:", error);
-        
-        // Limpar arquivos de áudio mesmo em caso de erro
-        try {
-          await fs.unlink(audioFilePath).catch(() => {});
-          await fs.unlink(path.join(__dirname, "output_2x.wav")).catch(() => {});
-          console.log("Arquivos de áudio limpos após erro");
-        } catch (cleanupError) {
-          console.error("Erro ao limpar arquivos de áudio:", cleanupError);
-        }
-        // mainWindow.webContents.send('transcription-error', 'No audio file created');
+        console.error("Audio processing failed:", error);
+        try { await fs.unlink(audioFilePath).catch(() => {}); } catch (_) {}
+        try { await fs.unlink(path.join(__dirname, "output_converted.wav")).catch(() => {}); } catch (_) {}
       }
     } else {
-      await fs.unlink(audioFilePath).catch(() => {});
-      
-      // Detectar automaticamente o sink de áudio correto
-      const audioTarget = await getDefaultAudioSink();
-      const command = `pw-record --target=${audioTarget} ${audioFilePath}`;
-      console.log("Executing:", command);
-      recordingProcess = exec(command, (error) => {
-        if (error && error.signal !== "SIGTERM" && error.code !== 0) {
-          console.error("Recording error:", error);
-          // mainWindow.webContents.send('transcription-error', 'Recording failed');
-        } else {
-          console.log("Recording process ended normally");
-        }
-      });
-      isRecording = true;
-      console.log("Recording started");
-      
-      // Check if OS integration mode is enabled
+      // === START RECORDING ===
       const isOsIntegration = configService.getOsIntegrationStatus();
+
       if (isOsIntegration) {
-        // Use OS notification for recording started
-        createOsNotificationWindow('recording', 'Gravando áudio...');
-      } else {
-        // Use system notification and send to main window
-        if (appConfig.notificationsEnabled && Notification.isSupported()) {
-          new Notification({
-            title: "Helper-Node",
-            body: "Gravando...",
-            silent: true,
-          }).show();
-        }
-        mainWindow.webContents.send("toggle-recording", {
-          isRecording,
-          audioFilePath,
+        // OS Integration: use Vosk streaming with live text window
+        isRecording = true;
+        console.log("OS Integration: Starting Vosk live recording");
+
+        // Create live recording window
+        destroyNotificationWindow();
+        createOsNotificationWindow('recording-live', '');
+
+        // Detect audio target
+        const audioTarget = await getDefaultAudioSink();
+
+        // Start Vosk streaming
+        const modelPath = path.join(__dirname, "vosk-model");
+        await VoskStreamService.start({
+          audioTarget,
+          modelPath,
+          onEvent: (event) => {
+            if (!osNotificationWindow || osNotificationWindow.isDestroyed()) return;
+            if (event.type === 'partial') {
+              osNotificationWindow.webContents.executeJavaScript(
+                `window.appendPartial(${JSON.stringify(event.text)})`
+              ).catch(() => {});
+            } else if (event.type === 'result') {
+              osNotificationWindow.webContents.executeJavaScript(
+                `window.appendSentence(${JSON.stringify(event.text)})`
+              ).catch(() => {});
+              // Auto-send on silence: reset timer
+              clearOsVoskSilenceTimer();
+              osVoskSilenceTimer = setTimeout(async () => {
+                if (isRecording && VoskStreamService.isRunning()) {
+                  // Simulate stop + send
+                  await toggleRecording();
+                }
+              }, 4000);
+            }
+          },
         });
+
+        mainWindow.webContents.send("toggle-recording", { isRecording, audioFilePath });
+      } else {
+        // Normal mode: use pw-record + Whisper (unchanged)
+        await fs.unlink(audioFilePath).catch(() => {});
+        const audioTarget = await getDefaultAudioSink();
+        const command = `pw-record --target=${audioTarget} ${audioFilePath}`;
+        console.log("Executing:", command);
+        recordingProcess = exec(command, (error) => {
+          if (error && error.signal !== "SIGTERM" && error.code !== 0) {
+            console.error("Recording error:", error);
+          }
+        });
+        isRecording = true;
+        console.log("Recording started");
+
+        if (appConfig.notificationsEnabled && Notification.isSupported()) {
+          new Notification({ title: "Helper-Node", body: "Gravando...", silent: true }).show();
+        }
+        mainWindow.webContents.send("toggle-recording", { isRecording, audioFilePath });
       }
     }
   } catch (error) {
@@ -1632,7 +1648,8 @@ async function getIaResponse(text) {
             waitingNotificationInterval = null;
             return;
         }
-        resposta = await OpenAIService.makeOpenAIRequest(text, token, instruction);
+        const openAiModel = configService.getOpenAiModel();
+        resposta = await OpenAIService.makeOpenAIRequest(text, token, instruction, openAiModel);
     } else {
         if (backendIsOnline) {
           console.log("Tentando usar o Backend Service...");
@@ -1722,32 +1739,25 @@ async function transcribeAudio(filePath, options = {}) {
     const duration = await getAudioDuration(filePath);
 
     const whisperPath = path.join(__dirname, "whisper/build/bin/whisper-cli");
-    const modelPathTiny = path.join(__dirname, "whisper/models/ggml-tiny.bin");
-    const modelPathSmall = path.join(
-      __dirname,
-      "whisper/models/ggml-small.bin"
-    );
+    const modelPathSmall = path.join(__dirname, "whisper/models/ggml-small.bin");
+    const modelPathMedium = path.join(__dirname, "whisper/models/ggml-medium.bin");
 
-    // Verificar se os modelos existem
-    if (!fs2.existsSync(modelPathTiny)) {
-      throw new Error(`Modelo tiny não encontrado: ${modelPathTiny}`);
-    }
-    if (!fs2.existsSync(modelPathSmall)) {
-      throw new Error(`Modelo small não encontrado: ${modelPathSmall}`);
-    }
+    // Determinar idioma do whisper com base na configuração do app
+    const savedLang = configService.getLanguage();
+    const whisperLang = savedLang === 'us-en' ? 'en' : 'pt';
 
     // Escolher modelo e parâmetros com base na duração
-    // small = melhor compreensão de gírias, nomes e linguagem informal
-    // tiny = fallback apenas para áudios muito longos (> 60s) onde a velocidade importa mais
+    // medium = melhor qualidade, entende nomes próprios e termos em inglês misturados com pt-br
+    // small = fallback para áudios longos (> 60s) onde velocidade importa mais
     let modelPath, command;
     if (duration > 60) {
-      modelPath = modelPathTiny;
-      command = `${whisperPath} -m ${modelPath} -f ${filePath} -l auto --threads 16 --no-timestamps --best-of 3 --beam-size 2`;
-      console.log("Usando modelo tiny");
-    } else {
       modelPath = modelPathSmall;
-      command = `${whisperPath} -m ${modelPath} -f ${filePath} -l auto --threads 18 --no-timestamps --best-of 5 --beam-size 5`;
-      console.log("Usando modelo small");
+      command = `${whisperPath} -m ${modelPath} -f ${filePath} -l ${whisperLang} --threads 16 --no-timestamps --best-of 3 --beam-size 3`;
+      console.log("Usando modelo small (áudio longo)");
+    } else {
+      modelPath = fs2.existsSync(modelPathMedium) ? modelPathMedium : modelPathSmall;
+      command = `${whisperPath} -m ${modelPath} -f ${filePath} -l ${whisperLang} --threads 18 --no-timestamps --best-of 5 --beam-size 5`;
+      console.log(`Usando modelo ${modelPath.includes('medium') ? 'medium' : 'small'}`);
     }
 
     console.log("Executing whisper:", command);
@@ -2077,7 +2087,8 @@ ipcMain.on("send-to-gemini", async (event, text) => {
             }
             return;
         }
-        resposta = await OpenAIService.makeOpenAIRequest(text, token, instruction);
+        const openAiModel = configService.getOpenAiModel();
+        resposta = await OpenAIService.makeOpenAIRequest(text, token, instruction, openAiModel);
         event.sender.send("openai-final-response", { resposta });
         return; // Exit here to prevent further processing by the generic response handler
     } else {
@@ -2337,6 +2348,15 @@ ipcMain.on("set-ai-model", (event, aiModel) => {
   configService.setAiModel(aiModel);
 });
 
+// IPC Handlers for OpenAI Model
+ipcMain.handle("get-openai-model", () => {
+  return configService.getOpenAiModel();
+});
+
+ipcMain.on("set-openai-model", (event, model) => {
+  configService.setOpenAiModel(model);
+});
+
 // IPC Handlers for OpenAI Token
 ipcMain.handle("get-open-ia-token", () => {
     return configService.getOpenIaToken();
@@ -2410,6 +2430,47 @@ ipcMain.on("cancel-recording", () => {
   }
 });
 
+async function processOsQuestionWithWindow(text) {
+  // Show response directly in the existing recording-live window
+  try {
+    const aiModel = configService.getAiModel();
+    let resposta;
+
+    if (aiModel === 'openIa') {
+      const token = configService.getOpenIaToken();
+      const instruction = configService.getPromptInstruction();
+      if (!token) {
+        if (osNotificationWindow && !osNotificationWindow.isDestroyed()) {
+          osNotificationWindow.webContents.executeJavaScript(`window.showResponse('Token da OpenAI não configurado.')`);
+        }
+        return;
+      }
+      const openAiModel = configService.getOpenAiModel();
+      resposta = await OpenAIService.makeOpenAIRequest(text, token, instruction, openAiModel);
+    } else {
+      if (backendIsOnline) {
+        try { resposta = await BackendService.responder(text); }
+        catch (_) { resposta = await GeminiService.responder(text); }
+      } else {
+        resposta = await GeminiService.responder(text);
+      }
+    }
+
+    // Show response in the live window (increase height to fit)
+    if (osNotificationWindow && !osNotificationWindow.isDestroyed()) {
+      osNotificationWindow.setSize(380, 400);
+      osNotificationWindow.webContents.executeJavaScript(
+        `window.showResponse(${JSON.stringify(resposta || 'Sem resposta.')})`
+      ).catch(() => {});
+    }
+  } catch (error) {
+    console.error('Error in processOsQuestionWithWindow:', error);
+    if (osNotificationWindow && !osNotificationWindow.isDestroyed()) {
+      osNotificationWindow.webContents.executeJavaScript(`window.showResponse('Erro ao gerar resposta.')`);
+    }
+  }
+}
+
 async function processOsQuestion(text, image = null) {
   console.log(`🤖 processOsQuestion called - FORCEFULLY closing any notifications`);
   
@@ -2443,8 +2504,9 @@ async function processOsQuestion(text, image = null) {
         createOsNotificationWindow('response', 'Token da OpenAI não configurado.');
         return;
       }
-      console.log(`🤖 Making OpenAI request...`);
-      resposta = await OpenAIService.makeOpenAIRequest(text, token, instruction);
+      const openAiModel = configService.getOpenAiModel();
+      console.log(`🤖 Making OpenAI request with model: ${openAiModel}...`);
+      resposta = await OpenAIService.makeOpenAIRequest(text, token, instruction, openAiModel);
       console.log(`🤖 Got OpenAI response: ${resposta.substring(0, 50)}...`);
     } else {
       if (backendIsOnline) {

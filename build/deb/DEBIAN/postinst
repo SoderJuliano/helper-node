@@ -16,6 +16,18 @@ chmod +x /opt/helper-node/whisper/build/bin/whisper-cli
 # Create config directory for users
 mkdir -p /etc/helper-node
 
+# Set up local Python venv with Vosk (self-contained — no user pip required)
+VENV_DIR="/opt/helper-node/venv"
+if [ ! -x "$VENV_DIR/bin/python3" ]; then
+    echo "Creating Python venv for Vosk speech recognition..."
+    python3 -m venv "$VENV_DIR" || echo "WARNING: venv creation failed; realtime mode will not work"
+fi
+if [ -x "$VENV_DIR/bin/pip" ]; then
+    echo "Installing Vosk into venv (downloading ~50MB)..."
+    "$VENV_DIR/bin/pip" install --quiet --upgrade pip || true
+    "$VENV_DIR/bin/pip" install --quiet vosk || echo "WARNING: vosk install failed; realtime mode will not work"
+fi
+
 # Register desktop entry
 if [ -f /opt/helper-node/helper-node.desktop ]; then
     xdg-desktop-menu install --novendor /opt/helper-node/helper-node.desktop

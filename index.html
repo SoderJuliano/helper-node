@@ -1086,16 +1086,56 @@
                 });
             }
 
+            // Live transcription element for realtime mode
+            let liveTranscriptEl = null;
+
+            function getOrCreateLiveTranscript() {
+                if (!liveTranscriptEl || !document.body.contains(liveTranscriptEl)) {
+                    const feed = getOrCreateRealtimeFeed();
+                    liveTranscriptEl = document.createElement('div');
+                    liveTranscriptEl.className = 'rt-bubble user rt-live-transcript';
+                    liveTranscriptEl.style.cssText = 'color: #ccc; font-style: italic; border-left: 2px solid #00aaff; padding-left: 8px;';
+                    feed.appendChild(liveTranscriptEl);
+                }
+                return liveTranscriptEl;
+            }
+
             window.electronAPI.onRealtimeAssistantUpdate((payload) => {
                 if (!payload || !payload.type) return;
 
                 if (payload.type === 'state') {
+                    liveTranscriptEl = null; // reset live transcript
                     appendRealtimeBubble('system', payload.message || 'Atualização do modo em tempo real');
                     return;
                 }
 
-                if (payload.type === 'skip') {
-                    appendRealtimeBubble('system', `Trecho ${payload.iteration || '-'} ignorado (sem fala detectada).`);
+                if (payload.type === 'partial') {
+                    // Update live transcript with partial text (word by word)
+                    const el = getOrCreateLiveTranscript();
+                    el.textContent = '🎙️ ' + (payload.text || '');
+                    transcriptionElement.scrollTo({ top: transcriptionElement.scrollHeight, behavior: 'smooth' });
+                    return;
+                }
+
+                if (payload.type === 'sentence') {
+                    // Finalize current live transcript and start fresh
+                    if (liveTranscriptEl && document.body.contains(liveTranscriptEl)) {
+                        liveTranscriptEl.textContent = '🎙️ ' + (payload.text || '');
+                        liveTranscriptEl.style.fontStyle = 'normal';
+                        liveTranscriptEl.style.color = '#e0e0e0';
+                    }
+                    liveTranscriptEl = null; // next partial creates a new element
+                    return;
+                }
+
+                if (payload.type === 'processing') {
+                    // Trava a bolha atual definitivamente — novos partials criarão outra
+                    if (liveTranscriptEl && document.body.contains(liveTranscriptEl)) {
+                        liveTranscriptEl.classList.add('rt-locked');
+                        liveTranscriptEl.style.opacity = '0.85';
+                    }
+                    liveTranscriptEl = null;
+                    appendRealtimeBubble('system', `⏳ Processando trecho #${payload.iteration}...`);
                     return;
                 }
 
@@ -1110,10 +1150,9 @@
                 }
 
                 if (payload.type === 'interaction') {
-                    const modeLabel = payload.mode === 'audio-native' ? '🎧 Áudio nativo' : '🎧 Transcrição local';
-                    const headerLine = `${modeLabel} #${payload.iteration}`;
+                    liveTranscriptEl = null; // garante nova bolha após resposta
                     const transcriptBody = (payload.transcript || '').trim();
-                    appendRealtimeBubble('user', `${headerLine}\n${transcriptBody}`);
+                    appendRealtimeBubble('user', `🎧 Trecho #${payload.iteration}\n${transcriptBody}`);
                     appendRealtimeBubble('assistant', `🤖 ${payload.response || ''}`);
                 }
             });

@@ -1,169 +1,178 @@
 # Helper Node
 
-Helper Node is an Electron-based application that transcribes audio queries using Whisper and displays AI-generated responses in a user-friendly interface. Features include:
+Assistente de voz com IA, transcrição offline e integração nativa com o sistema operacional. Aplicativo Electron para Linux.
 
-- 🎙️ **Voice Transcription** with Whisper (pre-compiled)
-- 🤖 **AI Responses** powered by OpenAI/LLaMA
-- 📸 **OCR from Screenshots** with Tesseract
-- ⌨️ **Global Hotkeys** for seamless OS integration
-- 🪟 **OS Integration Mode** with floating notifications
-- 💻 **Syntax-highlighted code blocks** with copy buttons
+## ✨ Funcionalidades
 
-## 📥 Download e Instalação
+- 🎙️ **Transcrição de voz** com dois engines:
+  - **Whisper.cpp** (modo Ctrl+D, batch) — modelo `medium` PT-BR/EN, alta qualidade
+  - **Vosk** (modo realtime) — modelo grande FalaBrasil PT-BR (1.6GB), streaming ao vivo word-by-word
+- 🤖 **Respostas de IA** — OpenAI (GPT-4.1-nano / GPT-4.1 / GPT-5.1), LLaMA local ou backend customizado
+- 📸 **OCR de screenshots** com Tesseract (PT/EN)
+- ⌨️ **Atalhos globais** integrados
+- 🪟 **Modo OS Integration** com janelas flutuantes
+- 🎧 **Modo Realtime Assistant** — escuta áudio do sistema (vídeos, lives, reuniões), transcreve ao vivo e gera comentários da IA por trecho
+- 💻 **Code blocks** com syntax highlight e botão copiar
+- 📚 **Histórico de sessões** persistente
 
-### 🐧 Ubuntu / Pop OS / Debian (.deb)
+---
 
-**Pacote DEB** - Para sistemas baseados em Debian:
+## 📥 Instalação
+
+### Ubuntu / Pop!_OS / Debian (.deb)
 
 ```bash
-# 1. Baixar o pacote
-wget https://github.com/SoderJuliano/helper-node/releases/download/v0.0.1/helper-node_0.0.1_amd64.deb
-
-# 2. Instalar
-sudo dpkg -i helper-node_0.0.1_amd64.deb
-
-# 3. Resolver dependências (se necessário)
-sudo apt-get install -f
-
-# 4. Executar
+wget https://github.com/SoderJuliano/helper-node/releases/download/v0.1.0/helper-node_0.1.0_amd64.deb
+sudo apt install ./helper-node_0.1.0_amd64.deb
 helper-node
-# ou via menu de aplicações
 ```
 
-### 🏔️ Arch Linux / Garuda / Manjaro (.pkg.tar.zst)
+O `postinst` cria automaticamente um Python venv em `/opt/helper-node/venv` com Vosk instalado — **zero configuração manual**.
 
-**Pacote Arch** - Totalmente independente (656MB com todas as dependências):
+### Arch Linux / Manjaro / EndeavourOS
 
 ```bash
-# 1. Baixar o pacote
-wget https://github.com/SoderJuliano/helper-node/releases/download/v0.0.1/helper-node-0.0.1-1-x86_64.pkg.tar.zst
-
-# 2. Instalar
-sudo pacman -U helper-node-0.0.1-1-x86_64.pkg.tar.zst
-
-# 3. Executar
+wget https://github.com/SoderJuliano/helper-node/releases/download/v0.1.0/helper-node-0.1.0-1-x86_64.pkg.tar.zst
+sudo pacman -U helper-node-0.1.0-1-x86_64.pkg.tar.zst
 helper-node
-# ou via menu de aplicações
 ```
 
-#### Via AUR (em breve)
-```bash
-# Quando publicado no AUR
-yay -S helper-node
-# ou
-paru -S helper-node
-```
+### O que está incluído nos pacotes
 
-### ✅ O que está incluído nos pacotes:
-- 🎯 **Aplicação completa** com Electron
-- 🤖 **Whisper.cpp** pré-compilado para transcrição
-- 📄 **Tesseract** para OCR de imagens  
-- ⚡ **Node.js modules** e todas as dependências
-- 🔧 **Scripts de configuração** automática
-- 🚀 **Hotkeys globais** configurados automaticamente
+| Componente | Tamanho | Função |
+|---|---|---|
+| Electron + app | ~250MB | Runtime |
+| Whisper.cpp + modelo `medium` | ~1.5GB | Transcrição batch (Ctrl+D) |
+| Modelo Vosk PT-BR FalaBrasil | ~1.6GB | Transcrição streaming (realtime) |
+| Tesseract data PT/EN | ~30MB | OCR |
+| **Total .deb** | **~2GB** | Tudo offline |
 
-**✨ Primeira execução:** Os hotkeys globais serão configurados automaticamente!
+---
 
-## ⌨️ Atalhos Globais
+## ⌨️ Atalhos globais
 
-Após a instalação, os seguintes atalhos estão disponíveis em todo o sistema:
+| Atalho | Ação |
+|---|---|
+| `Ctrl+D` | Iniciar/parar gravação (Whisper batch) |
+| `Ctrl+I` | Janela de entrada manual |
+| `Ctrl+A` | Focar janela do Helper Node |
+| `Ctrl+Shift+C` | Configurações |
+| `Ctrl+Shift+X` | Capturar screenshot e analisar (OCR) |
+| `Ctrl+Shift+1/2` | Mover para display 1 / 2 |
 
-- **Ctrl+D** - Iniciar/Parar gravação de áudio
-- **Ctrl+I** - Abrir janela de entrada manual
-- **Ctrl+A** - Focar janela do Helper Node
-- **Ctrl+Shift+C** - Abrir configurações
-- **Ctrl+Shift+X** - Capturar screenshot e analisar
-- **Ctrl+Shift+1** - Mover para display 1
-- **Ctrl+Shift+2** - Mover para display 2
+---
 
-## 🛠️ Instalação Manual (Desenvolvimento)
+## 🎧 Modo Realtime Assistant
+
+Escuta o áudio do sistema (YouTube, Discord, reunião) e gera análise por trecho automaticamente.
+
+**Como funciona:**
+1. Captura áudio do *monitor* do sink padrão via `parec` (PipeWire/PulseAudio)
+2. Stream PCM 16kHz mono → helper Python `vosk-stream.py`
+3. Vosk emite eventos `partial` (palavra-por-palavra) e `result` (frase finalizada)
+4. Quando há **≥10 palavras + 2.5s de silêncio** OU **60s de acúmulo**, manda pra IA
+5. Enquanto a IA responde, novas falas vão para uma bolha nova (não polui a anterior)
+
+A janela mostra:
+- 🎙️ Bolha cinza itálica = transcrição parcial ao vivo
+- 🎙️ Bolha branca = frase finalizada
+- ⏳ Processando = enviado para IA
+- 🤖 Bolha verde = resposta da IA
+
+---
+
+## 🛠️ Desenvolvimento
 
 ### Pré-requisitos
 
-- **Node.js** (v18 ou superior)
-- **FFmpeg** para processamento de áudio
-- **curl** para requisições API
-
-Instalação no **Arch/Garuda**:
 ```bash
-sudo pacman -S nodejs npm ffmpeg curl
+# Pop!_OS / Ubuntu / Debian
+sudo apt install git nodejs npm make g++ curl ffmpeg cmake \
+                 python3 python3-venv python3-pip \
+                 pipewire pulseaudio-utils \
+                 gnome-screenshot imagemagick
+
+# Arch
+sudo pacman -S git nodejs npm make gcc curl ffmpeg cmake \
+               python python-pip pipewire pipewire-pulse libpulse \
+               gnome-screenshot grim slurp imagemagick
 ```
 
-No **Pop OS/Ubuntu/Debian**:
-```bash
-sudo apt-get update
-sudo apt-get install nodejs npm ffmpeg curl
-```
-
-### Configuração do Código Fonte
+### Setup
 
 ```bash
-# Clonar repositório
 git clone https://github.com/SoderJuliano/helper-node.git
 cd helper-node
 
-# Instalar dependências
-npm install
+# Instala TUDO (whisper.cpp, modelos, venv Python, Vosk, modelo PT-BR grande)
+./install-deps.sh
 
-# Executar
+# Para usar modelo Vosk pequeno (40MB, qualidade limitada):
+VOSK_MODEL_SIZE=small ./install-deps.sh
+
+# Roda
 npm start
 ```
 
-**Nota:** Os binários do Whisper e modelos já estão incluídos no repositório!
+### Build dos pacotes
+
+```bash
+./package.sh         # gera .deb e .pkg.tar.zst
+./package.sh deb     # só Debian
+./package.sh arch    # só Arch
+```
+
+Output em `dist/`.
+
+---
 
 ## ⚙️ Configuração
 
-Abra as configurações com **Ctrl+Shift+C** para configurar:
+Acesse com `Ctrl+Shift+C`:
 
-- **Modelo de IA**: Escolha entre OpenAI, LLaMA ou backend customizado
-- **Token OpenAI**: Adicione sua chave API para modelos OpenAI
-- **Instrução de Prompt**: Personalize o comportamento da IA
-- **Idioma**: Defina idioma de resposta (pt-br, en-us)
-- **Modo Print**: Ative OCR automático de screenshots
-- **Integração OS**: Ative modo de notificações flutuantes
+- **Modelo IA**: OpenAI / LLaMA / backend customizado
+- **Modelo ChatGPT**: `gpt-4.1-nano` (padrão), `gpt-4.1`, `gpt-5.1`
+- **Token OpenAI**: chave da API
+- **Idioma**: pt-br / en-us
+- **Modo Print**: OCR automático
+- **Integração OS**: notificações flutuantes
 
-## 🚀 Funcionalidades
+Config salvo em `~/.config/meu-electron-app/config.json`.
 
-### Transcrição de Voz
-- Pressione **Ctrl+D** para iniciar/parar gravação
-- Transcreve automaticamente com Whisper
-- Envia para IA para respostas inteligentes
+---
 
-### OCR de Screenshots
-- Pressione **Ctrl+Shift+X** para capturar e analisar tela
-- Extração automática de texto com Tesseract
-- IA explica código ou responde perguntas sobre a imagem
+## 🏗️ Arquitetura
 
-### Modo de Integração OS
-- Notificações flutuantes para respostas
-- Funciona sem focar a janela do app
-- Perfeito para workflows Hyprland/GNOME/KDE
-
-## 📦 Compilando Pacotes
-
-Para compilar seus próprios pacotes do código fonte:
-
-```bash
-# Compilar pacotes DEB e Arch
-./package.sh
-
-# Compilar apenas DEB
-./package.sh deb
-
-# Compilar apenas Arch
-./package.sh arch
+```
+Electron (main.js)
+├── Whisper batch (Ctrl+D)
+│   └── ffmpeg → whisper-cli → texto
+└── Realtime Assistant
+    └── realtimeAssistantService
+        └── voskStreamService
+            ├── parec (PipeWire monitor)
+            └── python3 vosk-stream.py
+                └── Vosk + modelo PT-BR FB
 ```
 
-Os pacotes serão criados no diretório `dist/`.
+---
 
-## 🤝 Contribuindo
+## 🐛 Troubleshooting
 
-Contribuições são bem-vindas! Por favor abra uma issue ou submeta um pull request.
+**`ModuleNotFoundError: No module named 'vosk'`**
+→ Venv não criado. Rode: `python3 -m venv venv && ./venv/bin/pip install vosk`
 
-## 🗺️ Roadmap de Desenvolvimento
+**`pw-record: failed to open /dev/stdout`**
+→ Build antigo. Atualize para v0.1.0+ (agora usa `parec`).
 
-Para detalhes sobre a arquitetura atual, planos futuros e estratégias de implementação de funcionalidades (como a configuração de hotkeys globais), consulte o arquivo [ROADMAP.md](ROADMAP.md).
+**Sem transcrição quando toca áudio**
+→ Verifique o monitor do sink: `pactl get-default-sink` e teste `parec --device=<sink>.monitor`.
+
+**Atalhos não registram (Wayland/GNOME)**
+→ Rode `./setup-hotkey.sh` ou configure manual em Settings → Keyboard.
+
+---
 
 ## 📄 Licença
 
-MIT License. See [LICENSE](LICENSE) for details.
+MIT — ver [LICENSE](LICENSE).

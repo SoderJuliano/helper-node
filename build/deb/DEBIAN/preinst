@@ -1,0 +1,16 @@
+#!/bin/bash
+# Pre-installation script for Helper Node
+# Limpa qualquer venv antigo para garantir reinstalação limpa
+set -e
+
+if [ -d /opt/helper-node/venv ]; then
+    echo "Removing previous Python venv..."
+    rm -rf /opt/helper-node/venv
+fi
+
+# Limpa node_modules antigos (serão reinstalados pelo .deb)
+if [ -d /opt/helper-node/node_modules ]; then
+    rm -rf /opt/helper-node/node_modules
+fi
+
+exit 0
