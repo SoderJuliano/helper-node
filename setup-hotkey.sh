@@ -77,6 +77,9 @@ if [[ "$XDG_CURRENT_DESKTOP" == *"GNOME"* ]]; then
     # Hotkey for capture-screen (Ctrl+Shift+X)
     configure_gnome_hotkey "Capture Screen" "curl -X POST http://localhost:3000/capture-screen" "<Control><Shift>x" "helper-node-capture-screen"
 
+    # Hotkey for capture-screen-auto (Ctrl+Shift+S) — print direto + IA, sem seleção
+    configure_gnome_hotkey "Capture Screen Auto" "curl -X POST http://localhost:3000/capture-screen-auto" "<Control><Shift>s" "helper-node-capture-screen-auto"
+
     # Hotkey for open-config (Ctrl+Shift+C) — escape hatch to reopen window if app gets stuck/hidden
     configure_gnome_hotkey "Open Config" "curl -X POST http://localhost:3000/open-config" "<Control><Shift>c" "helper-node-open-config"
 
@@ -246,6 +249,15 @@ Type=SHORTCUT
 Shortcut=Ctrl+Shift+C
 TriggerOnRelease=false
 CommandURL=curl -X POST http://localhost:3000/open-config
+
+[Data_8]
+Comment=Capture Screen Auto (Ctrl+Shift+S)
+Enabled=true
+Name=Helper-Node: Capture Screen Auto
+Type=SHORTCUT
+Shortcut=Ctrl+Shift+S
+TriggerOnRelease=false
+CommandURL=curl -X POST http://localhost:3000/capture-screen-auto
 EOF
 
     echo "Helper-Node KHotKeys configuration written to $KHOTKEYS_FILE"
@@ -283,6 +295,7 @@ elif [[ "$XDG_CURRENT_DESKTOP" == *"COSMIC"* ]]; then
     (modifiers: [Ctrl], key: "i"): Spawn("curl -X POST http://localhost:3000/bring-to-focus-and-input"),
     (modifiers: [Ctrl, Shift], key: "i"): Spawn("curl -X POST http://localhost:3000/bring-to-focus-and-input"),
     (modifiers: [Ctrl, Shift], key: "x"): Spawn("curl -X POST http://localhost:3000/capture-screen"),
+    (modifiers: [Ctrl, Shift], key: "s"): Spawn("curl -X POST http://localhost:3000/capture-screen-auto"),
     (modifiers: [Ctrl, Shift], key: "c"): Spawn("curl -X POST http://localhost:3000/open-config"),
     (modifiers: [Ctrl, Shift], key: "1"): Spawn("curl -X POST http://localhost:3000/move-to-display/0"),
     (modifiers: [Ctrl, Shift], key: "2"): Spawn("curl -X POST http://localhost:3000/move-to-display/1"),
@@ -301,6 +314,7 @@ EOF
     echo "  Ctrl+I         -> Focus App and Input"
     echo "  Ctrl+Shift+I   -> Focus App and Input (alternativo)"
     echo "  Ctrl+Shift+X   -> Capture Screen"
+    echo "  Ctrl+Shift+S   -> Capture Screen AUTO (print direto + IA)"
     echo "  Ctrl+Shift+C   -> Open Config / re-show window (escape hatch)"
     echo "  Ctrl+Shift+1   -> Move to Display 1"
     echo "  Ctrl+Shift+2   -> Move to Display 2"

@@ -50,6 +50,21 @@ function start(funcs) {
     }
   });
 
+  // Captura full-screen automática (sem seleção, sem portal prompt)
+  app.post('/capture-screen-auto', (req, res) => {
+    if (callbacks.captureScreenAuto) {
+      try {
+        callbacks.captureScreenAuto();
+        res.status(200).send({ message: 'Captura automática iniciada.' });
+      } catch (error) {
+        console.error('Erro ao executar captura automática via IPC:', error);
+        res.status(500).send({ message: 'Erro interno ao processar a ação.' });
+      }
+    } else {
+      res.status(500).send({ message: 'Callback de captura automática não configurado.' });
+    }
+  });
+
   app.post('/move-to-display/:displayId', (req, res) => {
     if (callbacks.moveToDisplay) {
       try {

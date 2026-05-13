@@ -1286,9 +1286,9 @@ async function registerGlobalShortcuts() {
         return;
       }
 
-      // Captura nativa por seleção de região (overlay transparente)
+      // Captura full-screen automática (sem seleção, sem prompt) → OCR → IA
       if (action === "capture-region-native") {
-        try { await captureRegionNative(); } catch (e) { console.error('captureRegionNative failed:', e); }
+        try { await captureFullScreenAuto(); } catch (e) { console.error('captureFullScreenAuto failed:', e); }
         return;
       }
       
@@ -2453,6 +2453,85 @@ ipcMain.on("resize-overlay", (event, height) => {
   } catch (_) {}
 });
 
+// === Captura full-screen automática (sem seleção, sem prompt do portal) ===
+// Usa ferramentas nativas do compositor (grim/gnome-screenshot/scrot/import).
+// É o que mais se aproxima da experiência "PrintScreen → vai direto pra IA"
+// que o usuário tinha no Garuda. Sem clique extra, sem janela de seleção.
+async function captureFullScreenAuto() {
+  const tmpPng = path.join(app.getPath('temp'), `helpernode-auto-${Date.now()}.png`);
+  const isWayland = process.env.XDG_SESSION_TYPE === 'wayland';
+  let success = false;
+  try {
+    if (isWayland && await commandExists('grim')) {
+      // Wayland: grim captura sem prompt
+      await execPromise(`grim '${tmpPng}'`);
+      success = fs2.existsSync(tmpPng);
+    } else if (await commandExists('gnome-screenshot')) {
+      await execPromise(`gnome-screenshot -f '${tmpPng}'`);
+      success = fs2.existsSync(tmpPng);
+    } else if (await commandExists('scrot')) {
+      await execPromise(`scrot -o '${tmpPng}'`);
+      success = fs2.existsSync(tmpPng);
+    } else if (await commandExists('import')) {
+      await execPromise(`import -window root '${tmpPng}'`);
+      success = fs2.existsSync(tmpPng);
+    } else {
+      // Último recurso: desktopCapturer do Electron (pode pedir permissão na 1ª vez no Wayland)
+      try {
+        const display = screen.getPrimaryDisplay();
+        const sf = display.scaleFactor || 1;
+        const sources = await desktopCapturer.getSources({
+          types: ['screen'],
+          thumbnailSize: {
+            width: Math.round(display.size.width * sf),
+            height: Math.round(display.size.height * sf),
+          },
+        });
+        if (sources && sources[0]) {
+          await fs.writeFile(tmpPng, sources[0].thumbnail.toPNG());
+          success = true;
+        }
+      } catch (e) {
+        console.error('desktopCapturer fallback falhou:', e);
+      }
+    }
+
+    if (!success) {
+      createOsNotificationWindow('response',
+        'Não foi possível capturar a tela. Instale: <b>grim</b> (Wayland) ou <b>gnome-screenshot</b>.');
+      return;
+    }
+
+    // Mostra loading
+    createOsNotificationWindow('loading', 'Analisando captura...');
+
+    const imgBuffer = await fs.readFile(tmpPng);
+    const base64 = imgBuffer.toString('base64');
+    try { await fs.unlink(tmpPng); } catch (_) {}
+
+    // OCR + IA via pipeline existente
+    let ocrText = '';
+    try { ocrText = await TesseractService.getTextFromImage(base64); } catch (_) {}
+
+    const userPrompt = (ocrText && ocrText.trim().length > 8)
+      ? `Conteúdo extraído da tela (pode ter ruído de OCR):\n\n${ocrText}\n\nResponda/explique o conteúdo acima de forma direta.`
+      : 'Descreva e explique o conteúdo da imagem capturada da tela. Se houver pergunta, responda.';
+
+    const isOsIntegration = configService.getOsIntegrationStatus();
+    if (isOsIntegration) {
+      await processOsQuestion(userPrompt, base64);
+    } else if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('ocr-result', {
+        text: ocrText,
+        image: `data:image/png;base64,${base64}`,
+      });
+    }
+  } catch (e) {
+    console.error('captureFullScreenAuto failed:', e);
+    createOsNotificationWindow('response', 'Erro ao capturar a tela.');
+  }
+}
+
 // === Captura nativa por seleção de região (sem dependências externas) ===
 let regionSelectWindow = null;
 let regionCaptureBuffer = null; // PNG buffer da tela inteira durante a seleção
@@ -2640,6 +2719,50 @@ async function maybeAnswerInline(sentence) {
 }
 
 async function processOsQuestionWithWindow(text) {
+  // === Correção fonética ===
+  // O Vosk PT-BR transcreve termos técnicos em inglês foneticamente:
+  //   "paiton" / "peito" / "paitão" → Python
+  //   "javascripi" / "djavascript" → JavaScript
+  //   "ricte" / "ricti" → React
+  //   "naide" → Node
+  //   "tipescript" / "taipscripti" → TypeScript
+  //   "deno" pode aparecer como "deno" mesmo, ok
+  //   "doca" / "doquer" → Docker
+  //   "linucs" → Linux
+  //   "cosmiqui" → COSMIC
+  // Aplicamos um pré-processamento leve, e ainda avisamos a IA para
+  // interpretar o pedido considerando o ruído fonético.
+  const correctionMap = [
+    [/\b(paitão|paitao|paiton|peito|paitons?|paitan)\b/gi, 'Python'],
+    [/\b(djavascripti?|javascripi|djavascripi|javascripti)\b/gi, 'JavaScript'],
+    [/\b(taipescript|tipescript|taipiscripti|taipscripti|tipiscripti)\b/gi, 'TypeScript'],
+    [/\b(naide(\s+(jés|geis|jeis))?|nodgeis|nodjs|naid)\b/gi, 'Node.js'],
+    [/\b(ricti|ricte|reactji|réacti)\b/gi, 'React'],
+    [/\b(vyou|viu (jés|geis))\b/gi, 'Vue.js'],
+    [/\b(éngular|enguelar|angul[áa]r)\b/gi, 'Angular'],
+    [/\b(doquer|doca|dóquer)\b/gi, 'Docker'],
+    [/\b(cubernetis|cubernet|kubernetiz)\b/gi, 'Kubernetes'],
+    [/\b(linucs|linukis|linaks)\b/gi, 'Linux'],
+    [/\b(cosmiqui|c[oó]smiki)\b/gi, 'COSMIC'],
+    [/\b(guit hub|guitirrabi|guirabi)\b/gi, 'GitHub'],
+    [/\b(vis(o|u) cód|vis cod|vês code|vê[sz] c[oó]di)\b/gi, 'VS Code'],
+    [/\b(ai pi ai|ei pi ai|api eis)\b/gi, 'API'],
+    [/\b(djés on|jeison|gesson)\b/gi, 'JSON'],
+    [/\b(s qu[ée]l|esse qu[ée]l|escu[ée]l)\b/gi, 'SQL'],
+    [/\b(po(s|z)gris|postgrês)\b/gi, 'PostgreSQL'],
+    [/\b(redís|réd[ie]s)\b/gi, 'Redis'],
+    [/\b(open ei ai|openei|opena[ií])\b/gi, 'OpenAI'],
+    [/\b(djemini|geminai)\b/gi, 'Gemini'],
+    [/\b(cl[oó]di|cl[oó]de)\b/gi, 'Claude'],
+    [/\b(estack ovurfláu|stack ovurfláu)\b/gi, 'Stack Overflow'],
+  ];
+  let normalized = text;
+  for (const [re, repl] of correctionMap) normalized = normalized.replace(re, repl);
+
+  const promptForAI = normalized === text
+    ? text
+    : `Pergunta (transcrição PT-BR de fala, pode ter erros fonéticos em termos técnicos em inglês — interprete com bom senso):\n\n${normalized}\n\n(Original com possíveis erros: "${text}")`;
+
   try {
     const aiModel = configService.getAiModel();
     let resposta;
@@ -2654,13 +2777,13 @@ async function processOsQuestionWithWindow(text) {
         return;
       }
       const openAiModel = configService.getOpenAiModel();
-      resposta = await OpenAIService.makeOpenAIRequest(text, token, instruction, openAiModel);
+      resposta = await OpenAIService.makeOpenAIRequest(promptForAI, token, instruction, openAiModel);
     } else {
       if (backendIsOnline) {
-        try { resposta = await BackendService.responder(text); }
-        catch (_) { resposta = await GeminiService.responder(text); }
+        try { resposta = await BackendService.responder(promptForAI); }
+        catch (_) { resposta = await GeminiService.responder(promptForAI); }
       } else {
-        resposta = await GeminiService.responder(text);
+        resposta = await GeminiService.responder(promptForAI);
       }
     }
 
@@ -2828,6 +2951,7 @@ app.whenReady().then(async () => {
     moveToDisplay,
     bringWindowToFocus,
     captureScreen,
+    captureScreenAuto: captureFullScreenAuto,
     openConfig: createConfigWindow,
   });
 
