@@ -52,26 +52,23 @@ class OpenAIService {
         this.sessions[sessionId].messages.push(userMessage);
         this.sessions[sessionId].lastActivity = now;
 
-        console.log('Sending request to OpenAI API...');
         const requestPayload = {
             model: model || 'gpt-4.1-nano',
             messages: this.sessions[sessionId].messages,
         };
-        // Log enxuto quando há imagem (não printar base64 inteiro nos logs)
-        if (imageBase64) {
-            console.log('OpenAI Request Payload (with image, base64 omitted):', JSON.stringify({
-                ...requestPayload,
-                messages: requestPayload.messages.map(m =>
-                    Array.isArray(m.content)
-                        ? { ...m, content: m.content.map(c => c.type === 'image_url'
-                            ? { type: 'image_url', image_url: { url: '[base64 omitted]', detail: 'high' } }
-                            : c) }
-                        : m
-                ),
-            }, null, 2));
-        } else {
-            console.log('OpenAI Request Payload:', JSON.stringify(requestPayload, null, 2));
+        // Log enxuto: só metadata útil. Sem despejar system prompt nem base64.
+        const msgCount = requestPayload.messages.length;
+        const lastUser = requestPayload.messages[requestPayload.messages.length - 1];
+        let userPreview = '';
+        if (lastUser && Array.isArray(lastUser.content)) {
+            const txt = lastUser.content.find(c => c.type === 'text');
+            const img = lastUser.content.find(c => c.type === 'image_url');
+            const imgKB = img ? Math.round((img.image_url.url.length * 3) / 4 / 1024) : 0;
+            userPreview = `[text: ${(txt && txt.text || '').slice(0, 60)}…] [image: ${imgKB} KB]`;
+        } else if (lastUser) {
+            userPreview = `[text: ${(lastUser.content || '').toString().slice(0, 60)}…]`;
         }
+        console.log(`📤 OpenAI → model=${requestPayload.model} msgs=${msgCount} ${userPreview}`);
 
         try {
             const response = await axios.post('https://api.openai.com/v1/chat/completions', requestPayload, {

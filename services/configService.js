@@ -17,6 +17,10 @@ const PROMPT_PT = [
   "- Código, fórmulas e contas resolvidas: SEM limite de palavras.",
   "- Em PT-BR. Direto. Sem floreio. Sem 'Claro!', 'Posso ajudar', 'Espero ter ajudado'.",
   "- Use **negrito** para o resultado final.",
+  "- NUNCA use LaTeX nem barras invertidas. Sem \\(, \\), \\[, \\], \\frac, \\times, \\cdot, \\sqrt etc.",
+  "- Use símbolos UNICODE direto: × ÷ ² ³ √ π ≈ ≤ ≥ → ∞.",
+  "- Para multiplicação escreva '×' ou '*'. Para potência use ² ³ ou ^.",
+  "- Para frações escreva 'a/b' em texto puro.",
 ].join("\n");
 
 const PROMPT_EN = [
@@ -34,6 +38,10 @@ const PROMPT_EN = [
   "- Code, formulas, solved calculations: NO word limit.",
   "- Direct. No fluff. No 'Sure!', 'Hope this helps'.",
   "- Use **bold** for the final result.",
+  "- NEVER use LaTeX or backslashes. No \\(, \\), \\[, \\], \\frac, \\times, \\cdot, \\sqrt etc.",
+  "- Use UNICODE symbols directly: × ÷ ² ³ √ π ≈ ≤ ≥ → ∞.",
+  "- For multiplication use '×' or '*'. For powers use ² ³ or ^.",
+  "- For fractions write 'a/b' in plain text.",
 ].join("\n");
 
 const defaultConfig = {
@@ -80,9 +88,14 @@ function loadConfig() {
         "Você é uma assistente que responde com até 65 palavras.",
         "You are a helpful assistant who responds in up to 65 words.",
       ];
-      if (!loadedConfig.promptInstruction
-          || loadedConfig.promptInstruction.trim() === ''
-          || LEGACY_DEFAULTS.includes(loadedConfig.promptInstruction.trim())) {
+      const isLegacy =
+        !loadedConfig.promptInstruction ||
+        loadedConfig.promptInstruction.trim() === '' ||
+        LEGACY_DEFAULTS.includes(loadedConfig.promptInstruction.trim()) ||
+        // Prompt antigo (sem a regra anti-LaTeX adicionada nesta versão).
+        // Detecta pela ausência da palavra-chave única.
+        !loadedConfig.promptInstruction.includes('LaTeX');
+      if (isLegacy) {
         loadedConfig.promptInstruction = getDefaultPromptInstruction(lang);
       }
 

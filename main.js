@@ -1648,13 +1648,20 @@ function formatToHTML(text) {
     formattedLines.push(line);
   }
 
-  formatted = formattedLines.filter((line) => line.trim()).join("<br>");
+  // Não usar <br> entre <p>/<li> — eles já têm margem própria.
+  // <br> só faz sentido entre linhas "soltas" (placeholders de bloco de código).
+  formatted = formattedLines
+    .filter((line) => line.trim())
+    .map((line) => {
+      // Linha já é tag de bloco? mantém sem <br> extra.
+      if (/^\s*(<p>|<li>|__CODE_BLOCK_)/.test(line)) return line;
+      return line + "<br>";
+    })
+    .join("");
 
   if (formatted.includes("<li>")) {
-    formatted = formatted
-      .replace(/(<li>.*?(?:<br>|$))/g, "$1")
-      .replace(/(<li>.*?(?:<br>|$)(?:<li>.*?(?:<br>|$))*)/g, "<ul>$1</ul>");
-    formatted = formatted.replace(/<ul><br>|<br><\/ul>/g, "");
+    // Agrupa <li> consecutivos em <ul>
+    formatted = formatted.replace(/(<li>.*?<\/li>)+/g, (m) => `<ul>${m}</ul>`);
   }
 
   codeBlocks.forEach((block, index) => {
@@ -2453,6 +2460,40 @@ ipcMain.on("resize-overlay", (event, height) => {
   } catch (_) {}
 });
 
+// === Compressão de imagem para envio à OpenAI ===
+// PNG full-screen 1080p ≈ 5-7 MB → 6.7-9 MB em base64. Caro e lento.
+// OpenAI recomenda max 1568px por lado pra "high detail" (vision).
+// JPEG q75 mantém OCR/visão perfeitos com ~40x menos bytes.
+// Retorna { dataUrl, kb } pra log.
+async function compressImageForVision(inputBase64OrBuffer, label = '') {
+  try {
+    const sharp = require('sharp');
+    const inputBuffer = Buffer.isBuffer(inputBase64OrBuffer)
+      ? inputBase64OrBuffer
+      : Buffer.from(inputBase64OrBuffer, 'base64');
+    const beforeKB = Math.round(inputBuffer.length / 1024);
+
+    const output = await sharp(inputBuffer)
+      .resize({ width: 1568, height: 1568, fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 75, mozjpeg: true })
+      .toBuffer();
+
+    const afterKB = Math.round(output.length / 1024);
+    console.log(`📦 imagem comprimida${label ? ' [' + label + ']' : ''}: ${beforeKB} KB → ${afterKB} KB`);
+    return {
+      dataUrl: `data:image/jpeg;base64,${output.toString('base64')}`,
+      base64: output.toString('base64'),
+      kb: afterKB,
+    };
+  } catch (e) {
+    console.warn('⚠️ falha ao comprimir imagem (mandando original):', e.message);
+    const base64 = Buffer.isBuffer(inputBase64OrBuffer)
+      ? inputBase64OrBuffer.toString('base64')
+      : inputBase64OrBuffer;
+    return { dataUrl: `data:image/png;base64,${base64}`, base64, kb: Math.round(base64.length * 0.75 / 1024) };
+  }
+}
+
 // === Captura full-screen automática (sem seleção, sem prompt do portal) ===
 // Usa ferramentas nativas do compositor (grim/gnome-screenshot/scrot/import).
 // É o que mais se aproxima da experiência "PrintScreen → vai direto pra IA"
@@ -2563,10 +2604,14 @@ async function captureFullScreenAuto() {
     createOsNotificationWindow('loading', 'Analisando captura...');
 
     const imgBuffer = await fs.readFile(capturedPath);
-    const base64 = imgBuffer.toString('base64');
     // limpeza
     try { await fs.unlink(capturedPath); } catch (_) {}
     try { await fs.rm(tmpDir, { recursive: true, force: true }); } catch (_) {}
+
+    // Comprime ANTES de qualquer processamento. Reduz tráfego pra OpenAI
+    // em ~40x sem perda perceptivél de qualidade visual / OCR.
+    const compressed = await compressImageForVision(imgBuffer, 'fullscreen');
+    const base64 = compressed.dataUrl;
 
     // Delega TODO o trabalho (OCR + roteamento texto/visão + IA) para
     // processOsQuestion. NÃO montamos prompt aqui — evita duplicação de OCR.
@@ -2686,7 +2731,8 @@ ipcMain.on('region-selected', async (event, rect) => {
     };
     const cropped = fullImg.crop(cropRect);
     const pngBuf = cropped.toPNG();
-    const base64 = pngBuf.toString('base64');
+    const compressed = await compressImageForVision(pngBuf, 'region');
+    const base64 = compressed.dataUrl;
 
     // Mostra loading discreto
     createOsNotificationWindow('loading', 'Analisando captura...');

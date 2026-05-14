@@ -88,7 +88,7 @@ class TesseractService {
             
             // Primeira tentativa: configuração simplificada para texto matemático
             let ocrPromise = Tesseract.recognize(imagePath, 'eng', {
-                logger: m => console.log(m),
+                logger: () => {}, // silencioso (era spam de progress a cada tick)
                 tessedit_pageseg_mode: Tesseract.PSM.SINGLE_WORD,
                 tessedit_char_whitelist: '0123456789+-=x÷×',
             });
@@ -108,7 +108,7 @@ class TesseractService {
                 // Segunda tentativa: configuração mais ampla
                 console.log('🔄 Tentando OCR com configuração ampla...');
                 ocrPromise = Tesseract.recognize(imagePath, 'eng+por', {
-                    logger: m => console.log(m),
+                    logger: () => {}, // silencioso
                     tessedit_pageseg_mode: Tesseract.PSM.AUTO,
                 });
                 
