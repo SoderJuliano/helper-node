@@ -2861,6 +2861,76 @@ async function processOsQuestionWithWindow(text) {
   }
 }
 
+// === Heurística de roteamento OCR vs VISÃO ===
+// Decide se vale a pena pagar pelo modo "image_url" (caro, ~150-1000 tokens
+// extras) ou se o OCR já foi suficiente (TEXTO puro, barato).
+//
+// Manda pra VISÃO quando:
+//  - OCR vazio ou muito curto (provavelmente print de gráfico/equação imagem-only)
+//  - Texto tem ruído alto (muitos chars não-alfanuméricos: símbolos quebrados de OCR)
+//  - Detecta operadores matemáticos (×, ÷, =, ², √, ∫, Σ, π, ≈, ≤, ≥, frações)
+//  - Detecta padrão de múltipla escolha (linhas com A) B) C) ou A. B. C.)
+//  - Detecta tabelas/grids (muitas linhas curtas alinhadas, separadores |)
+//  - Razão "ruído/total" > 30%
+function shouldUseVisionFor(ocrText) {
+  if (!ocrText || !ocrText.trim()) {
+    return { useVision: true, reason: 'OCR vazio (provável imagem sem texto)' };
+  }
+  const t = ocrText.trim();
+  if (t.length < 25) {
+    return { useVision: true, reason: `OCR curto demais (${t.length} chars)` };
+  }
+
+  // 1) Símbolos matemáticos / equações
+  const mathSymbols = /[×÷±≠≈≤≥∞√∫∑∏πθλμωΩ²³⁴⁵⁶⁷⁸⁹⁰₀₁₂₃₄₅]/;
+  if (mathSymbols.test(t)) {
+    return { useVision: true, reason: 'símbolos matemáticos detectados' };
+  }
+  // Operadores ASCII: x= ou =? em contexto numérico (sinal de "conta")
+  if (/\d\s*[x*+\-/=]\s*\d/.test(t) && /=\s*\?/.test(t)) {
+    return { useVision: true, reason: 'expressão matemática com "=?" (problema a resolver)' };
+  }
+  // Frações tipo "1/2", "3/4" misturadas com palavras curtas
+  if (/\d+\/\d+/.test(t) && t.split(/\s+/).filter(w => w.length < 3).length > 5) {
+    return { useVision: true, reason: 'fração + texto picotado' };
+  }
+
+  // 2) Padrão de múltipla escolha (A) B) C)) ou (A. B. C.)
+  const choicePattern = /(^|\n)\s*[A-Fa-f][).]\s+\S/g;
+  const choices = (t.match(choicePattern) || []).length;
+  if (choices >= 3) {
+    // Tem 3+ alternativas mas OCR pode ter perdido as opções
+    // Se as linhas das alternativas forem curtas/quebradas, manda visão
+    return { useVision: true, reason: `múltipla escolha (${choices} alternativas)` };
+  }
+
+  // 3) Razão de ruído (caracteres não-imprimíveis-comuns)
+  const totalChars = t.length;
+  // Conta caracteres "esquisitos" típicos de OCR ruim:
+  // chars Unicode raros, sequências de pontuação, símbolos isolados
+  const noiseChars = (t.match(/[^\w\s.,!?;:()'"\-–—\/áéíóúâêôãõçÁÉÍÓÚÂÊÔÃÕÇ\u00A0]/g) || []).length;
+  const noiseRatio = noiseChars / totalChars;
+  if (noiseRatio > 0.20) {
+    return { useVision: true, reason: `OCR ruidoso (${(noiseRatio * 100).toFixed(0)}% chars estranhos)` };
+  }
+
+  // 4) Muitas "palavras" de 1-2 caracteres seguidas → texto picotado
+  const words = t.split(/\s+/).filter(Boolean);
+  const tinyWords = words.filter(w => w.length <= 2 && /[a-zA-Z]/.test(w)).length;
+  if (words.length > 10 && tinyWords / words.length > 0.40) {
+    return { useVision: true, reason: `texto picotado (${tinyWords}/${words.length} palavras de 1-2 chars)` };
+  }
+
+  // 5) Tabelas/grids: muitos | em linhas curtas
+  const pipeLines = t.split('\n').filter(l => (l.match(/\|/g) || []).length >= 2).length;
+  if (pipeLines >= 3) {
+    return { useVision: true, reason: 'aparenta tabela/grid' };
+  }
+
+  // OCR limpo o suficiente — TEXTO basta
+  return { useVision: false, reason: `OCR limpo (${words.length} palavras, ruído ${(noiseRatio * 100).toFixed(0)}%)` };
+}
+
 async function processOsQuestion(text, image = null) {
   console.log(`🤖 processOsQuestion called - FORCEFULLY closing any notifications`);
 
@@ -2868,25 +2938,43 @@ async function processOsQuestion(text, image = null) {
     const aiModel = configService.getAiModel();
     let resposta;
 
-    // OCR opcional como CONTEXTO ADICIONAL (não substitui a imagem).
-    // Se houver imagem, mandamos a IMAGEM direto pra IA com visão (gpt-4.1-nano
-    // suporta multimodal). O OCR ainda é feito como fallback caso o texto
-    // ajude com símbolos/equações que a visão pode confundir.
+    // === ROTEAMENTO INTELIGENTE: TEXTO vs VISÃO ===
+    // Política: imagem é ~150 tokens (low) ou ~1000+ tokens (high). Caro pra
+    // mandar sempre. Estratégia:
+    //   1) Roda OCR
+    //   2) Decide se o OCR "basta" (texto limpo, sem matemática complexa,
+    //      sem ruído fonético) → manda só TEXTO (barato)
+    //   3) Se o OCR estiver bagunçado, tiver matemática/equação, tabela,
+    //      gráfico, símbolos, ou for muito curto → manda IMAGEM em high detail
     let extractedText = '';
+    let useVision = false;
+    let visionReason = '';
+
     if (image) {
-      console.log(`🖼️ Imagem detectada — usando modo VISÃO + OCR como contexto extra`);
       try {
         extractedText = await TesseractService.getTextFromImage(image);
-        console.log(`✅ OCR extra: ${extractedText.substring(0, 100)}...`);
+        console.log(`✅ OCR: ${extractedText.substring(0, 100).replace(/\n/g, ' ')}...`);
       } catch (ocrError) {
-        console.warn('OCR falhou (segue só com visão):', ocrError.message || ocrError);
+        console.warn('OCR falhou:', ocrError.message || ocrError);
+        extractedText = '';
       }
-      // Compõe o texto do usuário, deixando claro que a verdade está na IMAGEM
-      const ocrBlock = extractedText && extractedText.trim()
-        ? `\n\nOCR auxiliar (pode estar incompleto, use a IMAGEM como verdade):\n${extractedText}`
-        : '';
-      text = (text && text.trim() ? `${text}\n\n` : '')
-        + `Analise a IMAGEM em anexo e responda objetivamente conforme as regras do sistema.${ocrBlock}`;
+
+      const decision = shouldUseVisionFor(extractedText);
+      useVision = decision.useVision;
+      visionReason = decision.reason;
+      console.log(`🧭 Roteamento: ${useVision ? 'VISÃO' : 'TEXTO'} — ${visionReason}`);
+
+      if (useVision) {
+        const ocrBlock = extractedText && extractedText.trim()
+          ? `\n\nOCR auxiliar (incompleto/ruidoso — use a IMAGEM como fonte da verdade):\n${extractedText}`
+          : '';
+        text = (text && text.trim() ? `${text}\n\n` : '')
+          + `Analise a IMAGEM em anexo. Resolva o que pedir conforme as regras do sistema.${ocrBlock}`;
+      } else {
+        // OCR limpo: monta um prompt de texto puro com o conteúdo extraído
+        text = (text && text.trim() ? `${text}\n\n` : '')
+          + `Conteúdo extraído de uma captura de tela:\n\n${extractedText}\n\nResponda conforme as regras do sistema.`;
+      }
     }
 
     if (aiModel === 'openIa') {
@@ -2901,23 +2989,27 @@ async function processOsQuestion(text, image = null) {
         return;
       }
       const openAiModel = configService.getOpenAiModel();
-      console.log(`🤖 Making OpenAI request with model: ${openAiModel}${image ? ' (multimodal)' : ''}...`);
-      resposta = await OpenAIService.makeOpenAIRequest(text, token, instruction, openAiModel, image || null);
+      const sendImage = image && useVision;
+      console.log(`🤖 OpenAI ${openAiModel}${sendImage ? ' [VISÃO high]' : ' [TEXTO]'}...`);
+      resposta = await OpenAIService.makeOpenAIRequest(
+        text,
+        token,
+        instruction,
+        openAiModel,
+        sendImage ? image : null
+      );
       console.log(`🤖 Got OpenAI response: ${resposta.substring(0, 50)}...`);
     } else {
-      // Backends que não suportam visão: cai pro pipeline texto-only com OCR
-      const textOnlyPrompt = image && extractedText
-        ? `Texto extraído da imagem (OCR):\n${extractedText}\n\n${text}`
-        : text;
+      // Backends sem visão (Gemini local, llama): só TEXTO
       if (backendIsOnline) {
         try {
-          resposta = await BackendService.responder(textOnlyPrompt);
+          resposta = await BackendService.responder(text);
         } catch (backendError) {
           console.error("Backend failed, using Gemini fallback:", backendError);
-          resposta = await GeminiService.responder(textOnlyPrompt);
+          resposta = await GeminiService.responder(text);
         }
       } else {
-        resposta = await GeminiService.responder(textOnlyPrompt);
+        resposta = await GeminiService.responder(text);
       }
     }
 
