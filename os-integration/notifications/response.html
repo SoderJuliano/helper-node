@@ -137,15 +137,79 @@
         .copy-button:active {
             background: rgba(0, 255, 0, 0.3);
         }
+
+        /* Barra de auto-close (loading reverso). Comeca cheia, encolhe ate 0. */
+        #autoclose-bar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            height: 2px;
+            width: 100%;
+            background: linear-gradient(90deg, #00d0ff, #00aaff);
+            transform-origin: left center;
+            transform: scaleX(1);
+            transition: transform linear;
+            opacity: 0.85;
+            pointer-events: none;
+            z-index: 9999;
+        }
+        #autoclose-bar.paused {
+            opacity: 0;
+        }
     </style>
 </head>
 <body>
+    <div id="autoclose-bar"></div>
     <button class="close-btn" onclick="closeWindow()">×</button>
     
     <script>
         function closeWindow() {
             window.close();
         }
+
+        // === AUTO-CLOSE com barra de progresso reversa ===
+        // Comportamento:
+        //  - 10s após a janela aparecer, fecha automaticamente.
+        //  - Mouse sobre a janela: pausa o timer e esconde a barra.
+        //  - Mouse sai: reinicia o timer do zero (10s de novo).
+        const AUTO_CLOSE_MS = 10000;
+        const bar = document.getElementById('autoclose-bar');
+        let closeTimer = null;
+
+        function startAutoClose() {
+            cancelAutoClose();
+            // Reset visual: barra cheia, sem transicao
+            bar.classList.remove('paused');
+            bar.style.transition = 'none';
+            bar.style.transform = 'scaleX(1)';
+            // Força reflow para a transição pegar o novo valor
+            // (senão navegador agrupa as duas mudanças)
+            void bar.offsetWidth;
+            bar.style.transition = `transform ${AUTO_CLOSE_MS}ms linear`;
+            bar.style.transform = 'scaleX(0)';
+            closeTimer = setTimeout(() => {
+                try { window.close(); } catch (_) {}
+            }, AUTO_CLOSE_MS);
+        }
+
+        function cancelAutoClose() {
+            if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
+            bar.classList.add('paused');
+            // Para a animação no estado atual sem reset
+            const computed = getComputedStyle(bar).transform;
+            bar.style.transition = 'none';
+            bar.style.transform = computed;
+        }
+
+        // Mouse dentro: pausa
+        document.addEventListener('mouseenter', cancelAutoClose, true);
+        // Mouse fora: recomeça do zero
+        document.addEventListener('mouseleave', startAutoClose, true);
+        // Inicia ao carregar
+        window.addEventListener('load', () => {
+            // Pequeno atraso para o usuário ver a barra cheia antes de começar a encolher
+            setTimeout(startAutoClose, 150);
+        });
         // Function to set response content from main process
         window.setResponseContent = function(content) {
             // Create content container if it doesn't exist
