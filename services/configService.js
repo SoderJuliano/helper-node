@@ -45,6 +45,10 @@ const defaultConfig = {
   language: "pt-br",
   aiModel: "llama",
   openAiModel: "gpt-4.1-nano",
+  // Modelo dedicado pra modo VISÃO. nano é fraco demais em visão (confunde
+  // 11x2 com 11x²). gpt-4o-mini ainda é barato e MUITO mais preciso em
+  // imagens (~US$ 0.15 / 1M tokens input + ~150 tokens por imagem high).
+  openAiVisionModel: "gpt-4o-mini",
   openIaToken: "",
 };
 
@@ -234,6 +238,22 @@ function setOpenAiModel(model) {
   currentConfig = null;
 }
 
+function getOpenAiVisionModel() {
+  if (!currentConfig) {
+    currentConfig = loadConfig();
+  }
+  return currentConfig.openAiVisionModel || defaultConfig.openAiVisionModel;
+}
+
+function setOpenAiVisionModel(model) {
+  if (!currentConfig) {
+    currentConfig = loadConfig();
+  }
+  currentConfig.openAiVisionModel = model;
+  saveConfig(currentConfig);
+  currentConfig = null;
+}
+
 function getAudioCaptureMode() {
   if (!currentConfig) currentConfig = loadConfig();
   // 'monitor' (default, sistema) | 'mic' (microfone) | 'both' (mix experimental)
@@ -316,6 +336,8 @@ module.exports = {
   setOpenIaToken,
   getOpenAiModel,
   setOpenAiModel,
+  getOpenAiVisionModel,
+  setOpenAiVisionModel,
   getAudioCaptureMode,
   setAudioCaptureMode,
   getIp,

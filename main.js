@@ -2568,18 +2568,15 @@ async function captureFullScreenAuto() {
     try { await fs.unlink(capturedPath); } catch (_) {}
     try { await fs.rm(tmpDir, { recursive: true, force: true }); } catch (_) {}
 
-    // OCR + IA via pipeline existente
-    let ocrText = '';
-    try { ocrText = await TesseractService.getTextFromImage(base64); } catch (_) {}
-
-    const userPrompt = (ocrText && ocrText.trim().length > 8)
-      ? `Conteúdo extraído da tela (pode ter ruído de OCR):\n\n${ocrText}\n\nResponda/explique o conteúdo acima de forma direta.`
-      : 'Descreva e explique o conteúdo da imagem capturada da tela. Se houver pergunta, responda.';
-
+    // Delega TODO o trabalho (OCR + roteamento texto/visão + IA) para
+    // processOsQuestion. NÃO montamos prompt aqui — evita duplicação de OCR.
     const isOsIntegration = configService.getOsIntegrationStatus();
     if (isOsIntegration) {
-      await processOsQuestion(userPrompt, base64);
+      await processOsQuestion('', base64);
     } else if (mainWindow && !mainWindow.isDestroyed()) {
+      // Modo janela: roda OCR só pra exibir
+      let ocrText = '';
+      try { ocrText = await TesseractService.getTextFromImage(base64); } catch (_) {}
       mainWindow.webContents.send('ocr-result', {
         text: ocrText,
         image: `data:image/png;base64,${base64}`,
@@ -2694,13 +2691,14 @@ ipcMain.on('region-selected', async (event, rect) => {
     // Mostra loading discreto
     createOsNotificationWindow('loading', 'Analisando captura...');
 
-    // OCR + envio à IA (usa pipeline existente)
+    // Delega tudo a processOsQuestion (faz OCR + roteamento internamente)
     try {
-      const ocrText = await TesseractService.getTextFromImage(base64);
       const isOsIntegration = configService.getOsIntegrationStatus();
       if (isOsIntegration) {
-        await processOsQuestion(ocrText && ocrText.trim() ? ocrText : 'Descreva e responda o conteúdo da imagem capturada.', base64);
+        await processOsQuestion('', base64);
       } else if (mainWindow && !mainWindow.isDestroyed()) {
+        let ocrText = '';
+        try { ocrText = await TesseractService.getTextFromImage(base64); } catch (_) {}
         mainWindow.webContents.send('ocr-result', { text: ocrText, image: `data:image/png;base64,${base64}` });
       }
     } catch (e) {
@@ -2965,11 +2963,14 @@ async function processOsQuestion(text, image = null) {
       console.log(`🧭 Roteamento: ${useVision ? 'VISÃO' : 'TEXTO'} — ${visionReason}`);
 
       if (useVision) {
-        const ocrBlock = extractedText && extractedText.trim()
-          ? `\n\nOCR auxiliar (incompleto/ruidoso — use a IMAGEM como fonte da verdade):\n${extractedText}`
-          : '';
+        // PROMPT LIMPO no modo visão: o OCR ruim só confunde o modelo.
+        // O texto extra é mínimo — a imagem fala por si. Damos só dicas
+        // que o modelo precisa pra desambiguar (ex.: "x" pode ser multiplicação).
         text = (text && text.trim() ? `${text}\n\n` : '')
-          + `Analise a IMAGEM em anexo. Resolva o que pedir conforme as regras do sistema.${ocrBlock}`;
+          + 'Analise a IMAGEM com atenção. Responda conforme as regras do sistema.\n\n'
+          + 'IMPORTANTE: na imagem, "x" entre dois números significa MULTIPLICAÇÃO '
+          + '(ex.: "11x2" = 11 × 2 = 22, NÃO é 11 ao quadrado). '
+          + 'Notação de potência seria "11²" ou "11^2".';
       } else {
         // OCR limpo: monta um prompt de texto puro com o conteúdo extraído
         text = (text && text.trim() ? `${text}\n\n` : '')
@@ -2988,8 +2989,12 @@ async function processOsQuestion(text, image = null) {
         createOsNotificationWindow('response', 'Token da OpenAI não configurado.');
         return;
       }
-      const openAiModel = configService.getOpenAiModel();
       const sendImage = image && useVision;
+      // Modelo dedicado pra visão: nano confunde notação básica em imagens.
+      // gpt-4o-mini é barato e muito mais preciso em OCR/visual reasoning.
+      const openAiModel = sendImage
+        ? configService.getOpenAiVisionModel()
+        : configService.getOpenAiModel();
       console.log(`🤖 OpenAI ${openAiModel}${sendImage ? ' [VISÃO high]' : ' [TEXTO]'}...`);
       resposta = await OpenAIService.makeOpenAIRequest(
         text,
