@@ -2617,7 +2617,7 @@ async function captureFullScreenAuto() {
     // processOsQuestion. NÃO montamos prompt aqui — evita duplicação de OCR.
     const isOsIntegration = configService.getOsIntegrationStatus();
     if (isOsIntegration) {
-      await processOsQuestion('', base64);
+      await processOsQuestion('', base64, { forceVision: true });
     } else if (mainWindow && !mainWindow.isDestroyed()) {
       // Modo janela: roda OCR só pra exibir
       let ocrText = '';
@@ -2741,7 +2741,7 @@ ipcMain.on('region-selected', async (event, rect) => {
     try {
       const isOsIntegration = configService.getOsIntegrationStatus();
       if (isOsIntegration) {
-        await processOsQuestion('', base64);
+        await processOsQuestion('', base64, { forceVision: true });
       } else if (mainWindow && !mainWindow.isDestroyed()) {
         let ocrText = '';
         try { ocrText = await TesseractService.getTextFromImage(base64); } catch (_) {}
@@ -2975,7 +2975,12 @@ function shouldUseVisionFor(ocrText) {
   return { useVision: false, reason: `OCR limpo (${words.length} palavras, ruído ${(noiseRatio * 100).toFixed(0)}%)` };
 }
 
-async function processOsQuestion(text, image = null) {
+async function processOsQuestion(text, image = null, opts = {}) {
+  // opts.forceVision = true  →  pula o roteador, manda imagem sempre.
+  //   Use isto quando a imagem é a FONTE da pergunta (capturas de tela,
+  //   paste image). O OCR de tela cheia tipicamente captura a UI do navegador
+  //   e barra de tarefas, ignorando o conteúdo real (que pode ser texto
+  //   renderizado em canvas/SVG, números em quiz, etc).
   console.log(`🤖 processOsQuestion called - FORCEFULLY closing any notifications`);
 
   try {
@@ -2995,18 +3000,26 @@ async function processOsQuestion(text, image = null) {
     let visionReason = '';
 
     if (image) {
-      try {
-        extractedText = await TesseractService.getTextFromImage(image);
-        console.log(`✅ OCR: ${extractedText.substring(0, 100).replace(/\n/g, ' ')}...`);
-      } catch (ocrError) {
-        console.warn('OCR falhou:', ocrError.message || ocrError);
-        extractedText = '';
-      }
+      // Force-vision pula OCR completamente (mais rápido, e o OCR de tela
+      // cheia geralmente é só lixo de UI). A imagem fala por si.
+      if (opts.forceVision) {
+        useVision = true;
+        visionReason = 'forceVision (captura direta de tela/imagem)';
+        console.log(`🧭 Roteamento: VISÃO — ${visionReason}`);
+      } else {
+        try {
+          extractedText = await TesseractService.getTextFromImage(image);
+          console.log(`✅ OCR: ${extractedText.substring(0, 100).replace(/\n/g, ' ')}...`);
+        } catch (ocrError) {
+          console.warn('OCR falhou:', ocrError.message || ocrError);
+          extractedText = '';
+        }
 
-      const decision = shouldUseVisionFor(extractedText);
-      useVision = decision.useVision;
-      visionReason = decision.reason;
-      console.log(`🧭 Roteamento: ${useVision ? 'VISÃO' : 'TEXTO'} — ${visionReason}`);
+        const decision = shouldUseVisionFor(extractedText);
+        useVision = decision.useVision;
+        visionReason = decision.reason;
+        console.log(`🧭 Roteamento: ${useVision ? 'VISÃO' : 'TEXTO'} — ${visionReason}`);
+      }
 
       if (useVision) {
         // PROMPT LIMPO no modo visão: o OCR ruim só confunde o modelo.
@@ -3047,7 +3060,11 @@ async function processOsQuestion(text, image = null) {
         token,
         instruction,
         openAiModel,
-        sendImage ? image : null
+        sendImage ? image : null,
+        // Capturas de tela são sempre one-shot: não reaproveita histórico
+        // (não faz sentido carregar a imagem anterior junto da próxima).
+        // Isso também elimina QUALQUER cache/contexto entre requests.
+        { stateless: !!image }
       );
       console.log(`🤖 Got OpenAI response: ${resposta.substring(0, 50)}...`);
     } else {

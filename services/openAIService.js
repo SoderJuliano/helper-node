@@ -11,7 +11,12 @@ class OpenAIService {
         // not via ipc events to the service itself. This initialize method is kept for consistency.
     }
 
-    async makeOpenAIRequest(prompt, token, instruction, model, imageBase64) {
+    async makeOpenAIRequest(prompt, token, instruction, model, imageBase64, opts = {}) {
+        // opts.stateless = true  →  não usa nem grava histórico de sessão.
+        //   Use pra capturas de tela / paste image: cada uma é independente,
+        //   não faz sentido carregar a imagem anterior junto. Economiza tokens
+        //   e evita confundir o modelo com contexto irrelevante.
+        const stateless = !!opts.stateless;
         const sessionId = 'default'; // Using a single session for now
         const now = Date.now();
         const twoHours = 2 * 60 * 60 * 1000;
@@ -49,12 +54,19 @@ class OpenAIService {
             userMessage = { role: 'user', content: prompt };
         }
 
-        this.sessions[sessionId].messages.push(userMessage);
-        this.sessions[sessionId].lastActivity = now;
+        // Stateless: monta messages do zero, sem persistir nada.
+        const messages = stateless
+            ? [
+                { role: 'system', content: instruction || 'You are a helpful assistant.' },
+                userMessage,
+              ]
+            : (this.sessions[sessionId].messages.push(userMessage),
+               this.sessions[sessionId].lastActivity = now,
+               this.sessions[sessionId].messages);
 
         const requestPayload = {
             model: model || 'gpt-4.1-nano',
-            messages: this.sessions[sessionId].messages,
+            messages: messages,
         };
         // Log enxuto: só metadata útil. Sem despejar system prompt nem base64.
         const msgCount = requestPayload.messages.length;
@@ -80,14 +92,18 @@ class OpenAIService {
 
             console.log('Received response from OpenAI API.');
             const assistantResponse = response.data.choices[0].message.content;
-            // Add assistant's response to the session history
-            this.sessions[sessionId].messages.push({ role: 'assistant', content: assistantResponse });
+            // Add assistant's response to the session history (só quando histórico ativo)
+            if (!stateless) {
+                this.sessions[sessionId].messages.push({ role: 'assistant', content: assistantResponse });
+            }
 
             return assistantResponse;
         } catch (error) {
             console.error('Error calling OpenAI API:', error.response ? error.response.data : error.message);
             // Remove the last user message if the API call fails to avoid cluttering the history
-            this.sessions[sessionId].messages.pop();
+            if (!stateless) {
+                this.sessions[sessionId].messages.pop();
+            }
             throw new Error('Failed to get a response from OpenAI.');
         }
     }
