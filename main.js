@@ -2863,24 +2863,30 @@ async function processOsQuestionWithWindow(text) {
 
 async function processOsQuestion(text, image = null) {
   console.log(`🤖 processOsQuestion called - FORCEFULLY closing any notifications`);
-  
+
   try {
     const aiModel = configService.getAiModel();
     let resposta;
-    
-    // If image is provided, extract text from it first
+
+    // OCR opcional como CONTEXTO ADICIONAL (não substitui a imagem).
+    // Se houver imagem, mandamos a IMAGEM direto pra IA com visão (gpt-4.1-nano
+    // suporta multimodal). O OCR ainda é feito como fallback caso o texto
+    // ajude com símbolos/equações que a visão pode confundir.
     let extractedText = '';
     if (image) {
-      console.log(`🖼️ Processing pasted image with Tesseract OCR...`);
+      console.log(`🖼️ Imagem detectada — usando modo VISÃO + OCR como contexto extra`);
       try {
         extractedText = await TesseractService.getTextFromImage(image);
-        console.log(`✅ Extracted text: ${extractedText.substring(0, 100)}...`);
-        // Combine the text input with extracted text
-        text = text ? `${text}\n\nTexto extraído da imagem:\n${extractedText}` : extractedText;
+        console.log(`✅ OCR extra: ${extractedText.substring(0, 100)}...`);
       } catch (ocrError) {
-        console.error('Error extracting text from image:', ocrError);
-        text = text ? text : 'Erro ao extrair texto da imagem.';
+        console.warn('OCR falhou (segue só com visão):', ocrError.message || ocrError);
       }
+      // Compõe o texto do usuário, deixando claro que a verdade está na IMAGEM
+      const ocrBlock = extractedText && extractedText.trim()
+        ? `\n\nOCR auxiliar (pode estar incompleto, use a IMAGEM como verdade):\n${extractedText}`
+        : '';
+      text = (text && text.trim() ? `${text}\n\n` : '')
+        + `Analise a IMAGEM em anexo e responda objetivamente conforme as regras do sistema.${ocrBlock}`;
     }
 
     if (aiModel === 'openIa') {
@@ -2895,19 +2901,23 @@ async function processOsQuestion(text, image = null) {
         return;
       }
       const openAiModel = configService.getOpenAiModel();
-      console.log(`🤖 Making OpenAI request with model: ${openAiModel}...`);
-      resposta = await OpenAIService.makeOpenAIRequest(text, token, instruction, openAiModel);
+      console.log(`🤖 Making OpenAI request with model: ${openAiModel}${image ? ' (multimodal)' : ''}...`);
+      resposta = await OpenAIService.makeOpenAIRequest(text, token, instruction, openAiModel, image || null);
       console.log(`🤖 Got OpenAI response: ${resposta.substring(0, 50)}...`);
     } else {
+      // Backends que não suportam visão: cai pro pipeline texto-only com OCR
+      const textOnlyPrompt = image && extractedText
+        ? `Texto extraído da imagem (OCR):\n${extractedText}\n\n${text}`
+        : text;
       if (backendIsOnline) {
         try {
-          resposta = await BackendService.responder(text);
+          resposta = await BackendService.responder(textOnlyPrompt);
         } catch (backendError) {
           console.error("Backend failed, using Gemini fallback:", backendError);
-          resposta = await GeminiService.responder(text);
+          resposta = await GeminiService.responder(textOnlyPrompt);
         }
       } else {
-        resposta = await GeminiService.responder(text);
+        resposta = await GeminiService.responder(textOnlyPrompt);
       }
     }
 

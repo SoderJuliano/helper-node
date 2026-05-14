@@ -11,7 +11,7 @@ class OpenAIService {
         // not via ipc events to the service itself. This initialize method is kept for consistency.
     }
 
-    async makeOpenAIRequest(prompt, token, instruction, model) {
+    async makeOpenAIRequest(prompt, token, instruction, model, imageBase64) {
         const sessionId = 'default'; // Using a single session for now
         const now = Date.now();
         const twoHours = 2 * 60 * 60 * 1000;
@@ -31,16 +31,47 @@ class OpenAIService {
             };
         }
 
-        // Add user's prompt to the session history
-        this.sessions[sessionId].messages.push({ role: 'user', content: prompt });
+        // Build user message — multimodal if image fornecida
+        let userMessage;
+        if (imageBase64) {
+            // Detecta prefixo data: já presente; senão assume PNG
+            const dataUrl = imageBase64.startsWith('data:')
+                ? imageBase64
+                : `data:image/png;base64,${imageBase64}`;
+            userMessage = {
+                role: 'user',
+                content: [
+                    { type: 'text', text: prompt || 'Analise a imagem e responda diretamente.' },
+                    { type: 'image_url', image_url: { url: dataUrl, detail: 'high' } },
+                ],
+            };
+        } else {
+            userMessage = { role: 'user', content: prompt };
+        }
+
+        this.sessions[sessionId].messages.push(userMessage);
         this.sessions[sessionId].lastActivity = now;
 
         console.log('Sending request to OpenAI API...');
         const requestPayload = {
             model: model || 'gpt-4.1-nano',
-            messages: this.sessions[sessionId].messages
+            messages: this.sessions[sessionId].messages,
         };
-        console.log('OpenAI Request Payload:', JSON.stringify(requestPayload, null, 2));
+        // Log enxuto quando há imagem (não printar base64 inteiro nos logs)
+        if (imageBase64) {
+            console.log('OpenAI Request Payload (with image, base64 omitted):', JSON.stringify({
+                ...requestPayload,
+                messages: requestPayload.messages.map(m =>
+                    Array.isArray(m.content)
+                        ? { ...m, content: m.content.map(c => c.type === 'image_url'
+                            ? { type: 'image_url', image_url: { url: '[base64 omitted]', detail: 'high' } }
+                            : c) }
+                        : m
+                ),
+            }, null, 2));
+        } else {
+            console.log('OpenAI Request Payload:', JSON.stringify(requestPayload, null, 2));
+        }
 
         try {
             const response = await axios.post('https://api.openai.com/v1/chat/completions', requestPayload, {
