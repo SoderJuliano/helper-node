@@ -201,10 +201,30 @@
             bar.style.transform = computed;
         }
 
-        // Mouse dentro: pausa
-        document.addEventListener('mouseenter', cancelAutoClose, true);
-        // Mouse fora: recomeça do zero
-        document.addEventListener('mouseleave', startAutoClose, true);
+        // Mouse dentro/fora da JANELA inteira.
+        // BUG anterior: usava mouseenter/mouseleave em `document` com
+        // capture=true. Esses eventos não fazem bubble, mas em capture
+        // disparavam pra todo descendente — então mexer o mouse atravessava
+        // <p>, <code> etc. e a cada `mouseleave` de filho o timer reiniciava.
+        // Resultado: mouse parado fechava, mouse mexendo "pausava".
+        //
+        // Fix: usar mouseover/mouseout no documentElement com checagem de
+        // relatedTarget pra detectar saída REAL da janela. Eles fazem bubble
+        // mas a checagem evita o disparo entre filhos.
+        let mouseInside = false;
+        function onMouseOver(e) {
+            if (mouseInside) return;
+            mouseInside = true;
+            cancelAutoClose();
+        }
+        function onMouseOut(e) {
+            // relatedTarget = pra onde o mouse foi. null = saiu da janela.
+            if (e.relatedTarget) return;
+            mouseInside = false;
+            startAutoClose();
+        }
+        document.documentElement.addEventListener('mouseover', onMouseOver);
+        document.documentElement.addEventListener('mouseout', onMouseOut);
         // Inicia ao carregar
         window.addEventListener('load', () => {
             // Pequeno atraso para o usuário ver a barra cheia antes de começar a encolher
