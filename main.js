@@ -6,6 +6,7 @@ const {
   screen,
   desktopCapturer,
   nativeImage,
+  clipboard,
 } = require("electron");
 
 // === STDIO SAFETY ===
@@ -2451,6 +2452,17 @@ ipcMain.on("send-os-question", async (event, data) => {
 });
 
 // Resize do overlay recording-live conforme o conteúdo cresce.
+// Copia texto pro clipboard do sistema (overlay tem focusable=false,
+// então navigator.clipboard não funciona — precisa do main process)
+ipcMain.on("copy-to-clipboard", (event, text) => {
+  try {
+    clipboard.writeText(text || "");
+    console.log(`📋 Copiado pro clipboard: ${(text || '').length} chars`);
+  } catch (e) {
+    console.warn("Falha ao copiar pro clipboard:", e.message);
+  }
+});
+
 ipcMain.on("resize-overlay", (event, height) => {
   if (!osNotificationWindow || osNotificationWindow.isDestroyed()) return;
   try {

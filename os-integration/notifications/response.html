@@ -25,6 +25,10 @@
             word-wrap: break-word;
             overflow-wrap: break-word;
                scrollbar-width: none;
+               /* Permite selecionar texto pra copiar */
+               -webkit-user-select: text;
+               user-select: text;
+               cursor: text;
             }
 
             ::-webkit-scrollbar {
@@ -58,6 +62,29 @@
             align-items: center;
             justify-content: center;
             z-index: 1000;
+        }
+
+        .copy-all-btn {
+            position: absolute;
+            top: 5px;
+            right: 32px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #fff;
+            font-size: 11px;
+            cursor: pointer;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-family: "Source Code Pro", monospace;
+            z-index: 1000;
+            transition: background 0.15s;
+        }
+        .copy-all-btn:hover {
+            background: rgba(255, 255, 255, 0.18);
+        }
+        .copy-all-btn.copied {
+            background: rgba(0, 200, 80, 0.35);
+            border-color: rgba(0, 200, 80, 0.5);
         }
         
         /* Estilos para códigos */
@@ -160,11 +187,37 @@
 </head>
 <body>
     <div id="autoclose-bar"></div>
+    <button class="copy-all-btn" id="copy-all-btn" onclick="copyAllText()" title="Copiar resposta inteira">⧉ Copiar</button>
     <button class="close-btn" onclick="closeWindow()">×</button>
     
     <script>
         function closeWindow() {
             window.close();
+        }
+
+        // Copia o texto inteiro da resposta. Usa IPC porque a janela tem
+        // focusable=false (stealth) e navigator.clipboard exige document focus.
+        function copyAllText() {
+            const container = document.getElementById('response-content');
+            // Pega texto puro (sem tags HTML), preservando quebras de linha lógicas.
+            const text = container ? container.innerText.trim() : document.body.innerText.trim();
+            try {
+                if (window.electronAPI && window.electronAPI.copyToClipboard) {
+                    window.electronAPI.copyToClipboard(text);
+                } else {
+                    // Fallback (dev/janela com focus)
+                    navigator.clipboard.writeText(text).catch(() => {});
+                }
+                const btn = document.getElementById('copy-all-btn');
+                btn.classList.add('copied');
+                btn.textContent = '✓ Copiado';
+                setTimeout(() => {
+                    btn.classList.remove('copied');
+                    btn.textContent = '⧉ Copiar';
+                }, 1500);
+            } catch (e) {
+                console.error('Erro ao copiar:', e);
+            }
         }
 
         // === AUTO-CLOSE com barra de progresso reversa ===
