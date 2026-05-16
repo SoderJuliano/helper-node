@@ -1522,9 +1522,12 @@ async function toggleRecording() {
           mainWindow.webContents.send("transcription-start", { audioFilePath });
         }
 
-        // Converter áudio para formato compatível com Whisper
+        // Converter áudio para formato compatível com Whisper.
+        // parec grava PCM RAW (s16le, 16kHz, mono) em output.wav SEM header WAV.
+        // Por isso precisamos dizer ao ffmpeg o formato do input com -f s16le -ar 16000 -ac 1
+        // ANTES do -i; senão ele tenta autodetectar e falha com "Invalid data".
         const convertedAudioPath = path.join(__dirname, "output_converted.wav");
-        await execPromise(`ffmpeg -i ${audioFilePath} -ar 16000 -ac 1 -sample_fmt s16 -y ${convertedAudioPath}`);
+        await execPromise(`ffmpeg -f s16le -ar 16000 -ac 1 -i ${audioFilePath} -ar 16000 -ac 1 -sample_fmt s16 -y ${convertedAudioPath}`);
 
         const audioText = await transcribeAudio(convertedAudioPath);
 
