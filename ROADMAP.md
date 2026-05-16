@@ -2,6 +2,103 @@
 
 Este documento descreve a arquitetura atual para funcionalidades que dependem do sistema e o plano para melhorias futuras, visando uma experiência de usuário mais integrada.
 
+## ✅ Lançado em v0.2.0: Helper Tools — IA com acesso ao sistema
+
+Módulo opcional que dá à IA **ferramentas read-only** pra inspecionar o sistema
+de verdade, em vez de chutar. Desligado por padrão; ative em
+**Configurações → 🔧 Ferramentas avançadas**.
+
+### Arquitetura
+
+```
+services/helperTools/
+├── index.js              ← fachada (initialize, executeTool, getOpenAIToolsSchema)
+├── config.js             ← defaults + allowed extensions + sandbox roots
+├── policy.js             ← checkRead/checkWrite, sandbox, denied paths
+├── secretRedactor.js     ← filtra tokens/chaves antes de mandar pra IA
+├── audit.js              ← log append-only ~/.config/helper-node/audit.log
+├── backup.js             ← (para v0.3 — write tools)
+├── shouldEngage.js       ← regex pra decidir trocar pro modelHeavy
+├── confirmationDetector.js ← (para v0.3 — write/exec)
+├── platforms/
+│   ├── detect.js         ← os, distro, pkg manager, shell, DE, Wayland?
+│   └── commands.js       ← instala pacote nativo por pkg manager
+├── registry.js           ← Map<name, tool> + loadBuiltins()
+├── schema.js             ← gera tools[] formato OpenAI + texto pra Ollama
+├── executor.js           ← dispatcher único com timing + audit
+└── tools/
+    ├── listDir.js
+    ├── fileInfo.js
+    ├── readFile.js
+    ├── readFileChunk.js
+    ├── searchInFiles.js  (ripgrep → grep fallback)
+    ├── findFiles.js      (fd → find fallback)
+    ├── detectShellConfig.js
+    └── listPackages.js   (apt/pacman/dnf/zypper/apk/brew + flatpak/snap)
+```
+
+### Integração com OpenAI
+
+`OpenAIService.makeOpenAIRequest` aceita `opts.tools` + `opts.onToolCall` +
+`opts.maxToolCalls`. Quando o módulo está ON, `main.js` injeta as 8 tools via
+[function calling do OpenAI](https://platform.openai.com/docs/guides/function-calling)
+com `tool_choice:'auto'`. Loop reentrante até a IA dar resposta final ou
+hit em `maxToolCallsPerRequest` (default 5).
+
+**Histórico isolado:** o loop trabalha em cópia local do `messages[]`. Só
+persiste no histórico da sessão `[userMessage, assistantFinal]` — sem os
+`assistant(tool_calls)` + `tool` intermediários, que ficariam órfãos se o loop
+abortasse e quebrariam a próxima request com erro 400.
+
+### Segurança
+
+- **Read-only nesta versão** — nenhuma tool escreve arquivos ou executa shell.
+- **Sandbox** restrito ao `$HOME` (configurável) com lista de paths bloqueados
+  (`.ssh/`, `.gnupg/`, `.git/objects/`, `node_modules/`, etc.).
+- **Secret redactor** mascara PEM, Bearer, JWT, AWS AKIA, OpenAI `sk-`, GitHub
+  `gh*_`, Google `AIza*`, Slack `xox*`, ENV-style `password=`, URLs com
+  credenciais — **antes** do conteúdo chegar à IA.
+- **Audit log** append-only em `~/.config/helper-node/audit.log` registra toda
+  invocação (kind, tool, args truncados, duração, error).
+- **Mutex com OS Integration** — exclusivo por enquanto.
+
+### Multi-distro de verdade
+
+`listPackages` detecta o gerenciador nativo via `platform.detect()` e roda em
+paralelo com flatpak/snap quando disponíveis:
+
+| Distro | Gerenciador nativo | Comando |
+|---|---|---|
+| Ubuntu/Pop/Debian | apt | `dpkg-query -W` |
+| Arch/Garuda/Manjaro | pacman | `pacman -Q` |
+| Fedora/RHEL | dnf | `rpm -qa` |
+| openSUSE | zypper | `rpm -qa` |
+| Alpine | apk | `apk info -v` |
+| macOS | brew | `brew list --versions` |
+| qualquer | flatpak/snap | em paralelo se instalados |
+
+### Roteamento de modelo
+
+- Perguntas simples: modelo padrão (`gpt-4.1-nano`).
+- Perguntas com gatilhos de tarefa pesada (edição, instalação, comandos):
+  troca automaticamente pra `gpt-4o-mini` via `shouldForceHeavyModel` (regex).
+- Tools são **sempre oferecidas** quando o módulo está ON. A IA decide via
+  `tool_choice:'auto'`. Heurística regex só serve pra decisão de modelo.
+
+### Roadmap das próximas versões (helperTools)
+
+- **v0.3** — Write tools (`writeFile`, `patchFile`, `appendToFile`) com backup
+  automático em `~/.config/helper-node/backups/` + UI de confirmação overlay
+  (`confirm.html`) + wire do `confirmationDetector` pra voz.
+- **v0.4** — `runCommand` com whitelist + `runShellAdvanced` com confirmação
+  explícita; `sudoManager` + `sudo-prompt.html`.
+- **v0.5** — Adapter Ollama via proxy Java (endpoints `/llamatiny`, `/llama3`,
+  `/gemma3`, `/qwen25`) com structured prompt + JSON parser pra tool calls.
+- **Futuro** — whitelist editável via UI, macOS adapter testado, modo dry-run,
+  integração VS Code Tasks.
+
+---
+
 ## Arquitetura Atual: Atalho Global via Servidor IPC
 
 Para permitir que o atalho de gravação (`Ctrl+D`) funcione globalmente (fora do foco do aplicativo), a seguinte arquitetura foi implementada:

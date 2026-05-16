@@ -12,7 +12,8 @@ Assistente de voz com IA, transcrição offline e integração nativa com o sist
 - ⌨️ **Atalhos globais** integrados
 - 🪟 **Modo OS Integration** com janelas flutuantes
 - 🎧 **Modo Realtime Assistant** — escuta áudio do sistema (vídeos, lives, reuniões), transcreve ao vivo e gera comentários da IA por trecho
-- 💻 **Code blocks** com syntax highlight e botão copiar
+- � **Helper Tools** (novo em v0.2.0) — IA com acesso ao sistema: lista pastas/pacotes, lê arquivos, busca conteúdo. Tool-calling nativo OpenAI. Multi-distro (apt/pacman/dnf/zypper/apk/brew + flatpak/snap)
+- �💻 **Code blocks** com syntax highlight e botão copiar
 - 📚 **Histórico de sessões** persistente
 
 ---
@@ -22,8 +23,8 @@ Assistente de voz com IA, transcrição offline e integração nativa com o sist
 ### Ubuntu / Pop!_OS / Debian (.deb)
 
 ```bash
-wget https://github.com/SoderJuliano/helper-node/releases/download/v0.1.0/helper-node_0.1.0_amd64.deb
-sudo apt install ./helper-node_0.1.0_amd64.deb
+wget https://github.com/SoderJuliano/helper-node/releases/download/v0.2.0/helper-node_0.2.0_amd64.deb
+sudo apt install ./helper-node_0.2.0_amd64.deb
 helper-node
 ```
 
@@ -32,8 +33,8 @@ O `postinst` cria automaticamente um Python venv em `/opt/helper-node/venv` com 
 ### Arch Linux / Manjaro / EndeavourOS
 
 ```bash
-wget https://github.com/SoderJuliano/helper-node/releases/download/v0.1.0/helper-node-0.1.0-1-x86_64.pkg.tar.zst
-sudo pacman -U helper-node-0.1.0-1-x86_64.pkg.tar.zst
+wget https://github.com/SoderJuliano/helper-node/releases/download/v0.2.0/helper-node-0.2.0-1-x86_64.pkg.tar.zst
+sudo pacman -U helper-node-0.2.0-1-x86_64.pkg.tar.zst
 helper-node
 ```
 
@@ -104,7 +105,72 @@ perceber que há uma IA ajudando.
 
 ---
 
-## 🛠️ Desenvolvimento
+## � Helper Tools — IA com acesso ao seu sistema (v0.2.0+)
+
+Módulo opcional que dá à IA **ferramentas read-only** pra inspecionar seu sistema
+de verdade, em vez de chutar respostas. Desligado por padrão, ative em
+**Configurações → 🔧 Ferramentas avançadas**.
+
+### O que a IA pode fazer
+
+Quando ligado, a IA recebe um conjunto de **tools** via [function calling do OpenAI](https://platform.openai.com/docs/guides/function-calling)
+e decide sozinha quais chamar pra responder sua pergunta:
+
+| Tool | O que faz |
+|---|---|
+| `listDir` | Lista conteúdo de uma pasta (com profundidade configurável) |
+| `fileInfo` | Tamanho, número de linhas, se é binário |
+| `readFile` | Lê um arquivo inteiro (máx 500 linhas / 2MB) |
+| `readFileChunk` | Lê um intervalo de linhas específico |
+| `searchInFiles` | Busca regex em árvore de diretórios (ripgrep/grep) |
+| `findFiles` | Encontra arquivos por glob (fd/find) |
+| `detectShellConfig` | Detecta shell padrão + rc file (.bashrc/.zshrc/config.fish) |
+| `listPackages` | Lista pacotes instalados no sistema |
+
+### Multi-plataforma de verdade
+
+`listPackages` detecta automaticamente o gerenciador nativo e roda em paralelo
+com flatpak/snap quando disponíveis:
+
+- **apt** (Ubuntu/Pop/Debian) via `dpkg-query`
+- **pacman** (Arch/Garuda/Manjaro)
+- **dnf/zypper** (Fedora/openSUSE) via `rpm`
+- **apk** (Alpine)
+- **brew** (macOS)
+- **flatpak** + **snap** em qualquer distro que os tenha
+
+### Exemplos
+
+- *"qual a versão do helper-node instalado?"* → `listPackages({pattern:"helper-node"})`
+- *"o que tem na minha pasta de Downloads?"* → `listDir({path:"~/Downloads"})`
+- *"qual meu shell?"* → `detectShellConfig({})`
+- *"acha onde tem TODO no projeto X"* → `searchInFiles({pattern:"TODO", path:"..."})`
+
+### Segurança
+
+- **Read-only nesta versão** — nenhuma tool escreve arquivos ou executa comandos arbitrários.
+- **Sandbox de leitura**: pastas e arquivos sensíveis (chaves SSH/GPG, `.git/`, `node_modules/`, etc.) são bloqueados pela política.
+- **Redator de segredos**: tokens, chaves de API, JWTs e cookies de URL são filtrados do conteúdo antes de chegar à IA.
+- **Audit log append-only** em `~/.config/helper-node/audit.log` registra toda invocação de tool.
+- **Mutex com OS Integration**: os dois modos são exclusivos por enquanto.
+
+### Roteamento de modelo
+
+- Perguntas simples: modelo padrão (`gpt-4.1-nano`).
+- Perguntas com gatilhos de tarefa pesada (edição, instalação, comandos): troca automaticamente pra `gpt-4o-mini` via heurística regex.
+- Tools são **sempre oferecidas** quando o módulo está ON — `tool_choice:'auto'` deixa a IA decidir se chama ou não.
+
+### Roadmap (próximas versões)
+
+- Write tools (`writeFile`, `patchFile`, `appendToFile`) com backup automático
+- `runCommand` com whitelist + `runShellAdvanced` com confirmação por voz/clique
+- Suporte a sudo com política
+- Adapter Ollama para modelos locais (LLaMA/Qwen/Gemma)
+- UI de confirmação overlay
+
+---
+
+## �🛠️ Desenvolvimento
 
 ### Pré-requisitos
 

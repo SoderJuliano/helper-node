@@ -1,6 +1,6 @@
 # Maintainer: Helper Node Team <support@helper-node.app>
 pkgname=helper-node
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
 pkgdesc="AI-powered voice assistant with Whisper medium model transcription"
 arch=('x86_64')

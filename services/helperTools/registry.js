@@ -37,6 +37,7 @@ function loadBuiltins() {
     require("./tools/findFiles"),
     require("./tools/detectShellConfig"),
     require("./tools/listPackages"),
+    require("./tools/listDesktopApps"),
   ];
   for (const t of builtins) register(t);
   _loaded = true;
