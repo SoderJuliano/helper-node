@@ -46,4 +46,12 @@ function shouldEngage(text) {
   return false;
 }
 
-module.exports = { shouldEngage };
+// Mesma regex acima, mas só sinaliza "alta probabilidade de precisar de tools
+// pesadas" → caller pode usar pra trocar pro modelHeavy. Quando o módulo está
+// ligado, as tools são SEMPRE oferecidas (let the LLM decide), independente
+// deste sinal.
+function shouldForceHeavyModel(text) {
+  return shouldEngage(text);
+}
+
+module.exports = { shouldEngage, shouldForceHeavyModel };

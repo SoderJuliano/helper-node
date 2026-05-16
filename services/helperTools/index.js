@@ -8,7 +8,7 @@ const platform = require("./platforms/detect");
 const policy = require("./policy");
 const audit = require("./audit");
 const backup = require("./backup");
-const { shouldEngage } = require("./shouldEngage");
+const { shouldEngage, shouldForceHeavyModel } = require("./shouldEngage");
 const confirmationDetector = require("./confirmationDetector");
 const registry = require("./registry");
 const schema = require("./schema");
@@ -83,6 +83,7 @@ module.exports = {
   isEnabled,
   getConfig,
   shouldEngage,
+  shouldForceHeavyModel,
   getSystemPromptAddon,
   // Execução de tools
   executeTool: (name, args) => executor.execute(name, args, { cfg: _cfg }),

@@ -79,29 +79,40 @@ function buildHelperToolsOpenAIOpts(userText, baseInstruction, baseModel) {
     if (!helperTools.isEnabled || !helperTools.isEnabled()) {
       return { opts: {} };
     }
-    if (!helperTools.shouldEngage || !helperTools.shouldEngage(userText || "")) {
+    const schema = helperTools.getOpenAIToolsSchema ? helperTools.getOpenAIToolsSchema() : [];
+    if (!schema || schema.length === 0) {
+      console.warn("🧰 helperTools ON mas schema vazio (nenhuma tool registrada).");
       return { opts: {} };
     }
     const cfg = helperTools.getConfig ? helperTools.getConfig() : {};
-    const schema = helperTools.getOpenAIToolsSchema ? helperTools.getOpenAIToolsSchema() : [];
-    if (!schema || schema.length === 0) {
-      return { opts: {} };
-    }
     const addon = helperTools.getSystemPromptAddon ? helperTools.getSystemPromptAddon() : "";
     const instruction = [baseInstruction || "", addon].filter(Boolean).join("\n\n");
 
-    // modelHeavy vem como "openai:gpt-4o-mini" ou "ollama:qwen25"
+    // Heurística pra ESCOLHA DE MODELO (não pra ligar/desligar tools):
+    //   - se a pergunta tem cara de tarefa pesada (edita arquivo, instala pacote,
+    //     comandos) → modelHeavy
+    //   - caso contrário → mantém modelo passado pelo caller (geralmente o nano)
+    // Tools são SEMPRE oferecidas quando o módulo está ON; a IA decide via
+    // tool_choice:'auto' se chama ou não.
     let model = baseModel;
-    const rawModel = cfg.modelHeavy || "";
-    if (rawModel.startsWith("openai:")) {
-      model = rawModel.slice("openai:".length) || baseModel;
+    const forceHeavy = helperTools.shouldForceHeavyModel
+      ? helperTools.shouldForceHeavyModel(userText || "")
+      : false;
+    if (forceHeavy) {
+      const rawModel = cfg.modelHeavy || "";
+      if (rawModel.startsWith("openai:")) {
+        model = rawModel.slice("openai:".length) || baseModel;
+      }
     }
 
     const maxToolCalls = Number.isInteger(cfg.maxToolCallsPerRequest)
       ? cfg.maxToolCallsPerRequest
       : 5;
 
-    console.log(`🧰 helperTools engajado: tools=${schema.length} model=${model} maxToolCalls=${maxToolCalls}`);
+    console.log(
+      `🧰 helperTools engajado: tools=${schema.length} model=${model}` +
+      `${forceHeavy ? " [HEAVY]" : ""} maxToolCalls=${maxToolCalls}`
+    );
 
     return {
       opts: {
