@@ -1523,11 +1523,10 @@ async function toggleRecording() {
         }
 
         // Converter áudio para formato compatível com Whisper.
-        // parec grava PCM RAW (s16le, 16kHz, mono) em output.wav SEM header WAV.
-        // Por isso precisamos dizer ao ffmpeg o formato do input com -f s16le -ar 16000 -ac 1
-        // ANTES do -i; senão ele tenta autodetectar e falha com "Invalid data".
+        // pw-record gera WAV com header valido no sample rate/format do device
+        // (geralmente 48kHz, s32le). Whisper exige 16kHz mono s16, entao convertemos aqui.
         const convertedAudioPath = path.join(__dirname, "output_converted.wav");
-        await execPromise(`ffmpeg -f s16le -ar 16000 -ac 1 -i ${audioFilePath} -ar 16000 -ac 1 -sample_fmt s16 -y ${convertedAudioPath}`);
+        await execPromise(`ffmpeg -i ${audioFilePath} -ar 16000 -ac 1 -sample_fmt s16 -y ${convertedAudioPath}`);
 
         const audioText = await transcribeAudio(convertedAudioPath);
 
@@ -1596,9 +1595,12 @@ async function toggleRecording() {
 
         mainWindow.webContents.send("toggle-recording", { isRecording, audioFilePath });
       } else {
-        // Normal mode: record from mic + whisper
+        // Normal mode: record from mic + whisper.
+        // pw-record grava WAV com header valido (sample rate/format do device).
+        // Evita o problema do parec --raw que precisava de header forcado no ffmpeg
+        // e silenciosamente perdia audio em conversao de 48kHz s32le -> 16kHz s16le.
         await fs.unlink(audioFilePath).catch(() => {});
-        const command = `parec --device=@DEFAULT_SOURCE@ --rate=16000 --channels=1 --format=s16le --raw > "${audioFilePath}"`;
+        const command = `pw-record "${audioFilePath}"`;
         console.log("Executing:", command);
         recordingProcess = exec(command, (error) => {
           if (error && error.signal !== "SIGTERM" && error.code !== 0) {
