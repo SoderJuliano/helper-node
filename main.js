@@ -60,6 +60,7 @@ const RealtimeAssistantService = require("./services/realtimeAssistantService.js
 const ipcService = require("./services/ipcService.js");
 const configService = require("./services/configService.js");
 const historyService = require("./services/historyService.js");
+const helperTools = require("./services/helperTools");
 
 // Improve global shortcut reliability on Linux Wayland compositors
 if (process.platform === "linux") {
@@ -2308,7 +2309,47 @@ ipcMain.handle("get-os-integration-status", () => {
   return configService.getOsIntegrationStatus();
 });
 
+// ===== HelperTools (m\u00f3dulo de ferramentas avan\u00e7adas) =====
+ipcMain.handle("get-helper-tools-enabled", () => {
+  return configService.getHelperToolsEnabled();
+});
+
+ipcMain.handle("get-helper-tools-config", () => {
+  return configService.getHelperToolsConfig();
+});
+
+ipcMain.on("set-helper-tools-enabled", (event, enabled) => {
+  const wasEnabled = configService.getHelperToolsEnabled();
+  configService.setHelperToolsEnabled(!!enabled);
+  helperTools.updateConfig(configService.getHelperToolsConfig());
+  console.log(
+    `\ud83d\udd27 HelperTools: ${wasEnabled ? "ON" : "OFF"} \u2192 ${enabled ? "ON" : "OFF"}`
+  );
+  if (enabled) {
+    // Mutex: garantia extra. Configservice j\u00e1 desliga osIntegration; aqui
+    // s\u00f3 notificamos o renderer pra atualizar o UI dos outros toggles.
+    if (event && event.sender) {
+      event.sender.send("helper-tools-enabled-changed", {
+        enabled: true,
+        osIntegrationDisabled: true,
+      });
+    }
+  } else if (event && event.sender) {
+    event.sender.send("helper-tools-enabled-changed", { enabled: false });
+  }
+});
+
 ipcMain.on("save-os-integration-status", (event, status) => {
+  // Mutex: helperTools e osIntegration são incompatíveis por enquanto.
+  if (status && configService.getHelperToolsEnabled()) {
+    console.log(
+      "⚠️ save-os-integration-status: bloqueado, helperTools está ativo. Desligue-o primeiro."
+    );
+    if (event && event.sender) {
+      event.sender.send("os-integration-blocked-by-helper-tools");
+    }
+    return;
+  }
   if (status && configService.getRealtimeAssistantStatus()) {
     configService.setRealtimeAssistantStatus(false);
     realtimeAssistantService.stop().catch(() => {});
@@ -3184,6 +3225,7 @@ ipcMain.handle('delete-session', async (event, sessionId) => {
 
 app.whenReady().then(async () => {
   configService.initialize();
+  helperTools.initialize(configService.getHelperToolsConfig());
   OpenAIService.initialize();
   await historyService.initialize();
   await createWindow();

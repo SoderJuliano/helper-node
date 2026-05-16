@@ -10,6 +10,8 @@ const osIntegrationToggle = document.getElementById("os-integration-toggle");
 const osIntegrationStatus = document.getElementById("os-integration-status");
 const realtimeAssistantToggle = document.getElementById("realtime-assistant-toggle");
 const realtimeAssistantStatus = document.getElementById("realtime-assistant-status");
+const helperToolsToggle = document.getElementById("helper-tools-toggle");
+const helperToolsStatus = document.getElementById("helper-tools-status");
 const langSelect = document.getElementById("language-select");
 const backendUrlValue = document.getElementById("backend-url-value");
 const aiModelSelect = document.getElementById("ai-model");
@@ -42,6 +44,33 @@ function updateOsIntegrationStatus(isOsIntegration) {
 
 function updateRealtimeAssistantStatus(isRealtimeAssistant) {
   realtimeAssistantStatus.textContent = isRealtimeAssistant ? "ON" : "OFF";
+}
+
+function updateHelperToolsStatus(isEnabled) {
+  if (!helperToolsStatus) return;
+  helperToolsStatus.textContent = isEnabled ? "ON" : "OFF";
+}
+
+// Mutex: helperTools desativa modo integrado + assistente em tempo real.
+function applyHelperToolsExclusivity() {
+  if (!helperToolsToggle || !helperToolsToggle.checked) return;
+  if (osIntegrationToggle.checked) {
+    osIntegrationToggle.checked = false;
+    updateOsIntegrationStatus(false);
+  }
+  if (realtimeAssistantToggle.checked) {
+    realtimeAssistantToggle.checked = false;
+    updateRealtimeAssistantStatus(false);
+  }
+}
+
+// Liga modo integrado ou assistente → desliga helperTools.
+function disableHelperToolsIfOtherEnabled(toggle) {
+  if (!helperToolsToggle) return;
+  if (toggle.checked && helperToolsToggle.checked) {
+    helperToolsToggle.checked = false;
+    updateHelperToolsStatus(false);
+  }
 }
 
 function applyRealtimeAssistantExclusivity() {
@@ -100,6 +129,20 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (isRealtimeAssistant) {
     applyRealtimeAssistantExclusivity();
+  }
+
+  // -------------------------
+  // Load helper tools (ferramentas avançadas)
+  // -------------------------
+  try {
+    const helperToolsEnabled = await ipcRenderer.invoke("get-helper-tools-enabled");
+    if (helperToolsToggle) {
+      helperToolsToggle.checked = !!helperToolsEnabled;
+      updateHelperToolsStatus(!!helperToolsEnabled);
+      if (helperToolsEnabled) applyHelperToolsExclusivity();
+    }
+  } catch (e) {
+    console.warn("helperTools enabled load failed:", e);
   }
 
   // -------------------------
@@ -166,18 +209,21 @@ document.addEventListener("DOMContentLoaded", async () => {
 // Handle debug toggle live update
 debugModeToggle.addEventListener("change", () => {
   disableRealtimeIfOtherEnabled(debugModeToggle);
+  disableHelperToolsIfOtherEnabled(debugModeToggle);
   updateDebugModeStatus(debugModeToggle.checked);
 });
 
 // Handle print mode toggle live update
 printModeToggle.addEventListener("change", () => {
   disableRealtimeIfOtherEnabled(printModeToggle);
+  disableHelperToolsIfOtherEnabled(printModeToggle);
   updatePrintModeStatus(printModeToggle.checked);
 });
 
 // Handle OS integration toggle live update
 osIntegrationToggle.addEventListener("change", () => {
   disableRealtimeIfOtherEnabled(osIntegrationToggle);
+  disableHelperToolsIfOtherEnabled(osIntegrationToggle);
   updateOsIntegrationStatus(osIntegrationToggle.checked);
 });
 
@@ -185,8 +231,18 @@ realtimeAssistantToggle.addEventListener("change", () => {
   updateRealtimeAssistantStatus(realtimeAssistantToggle.checked);
   if (realtimeAssistantToggle.checked) {
     applyRealtimeAssistantExclusivity();
+    disableHelperToolsIfOtherEnabled(realtimeAssistantToggle);
   }
 });
+
+if (helperToolsToggle) {
+  helperToolsToggle.addEventListener("change", () => {
+    updateHelperToolsStatus(helperToolsToggle.checked);
+    if (helperToolsToggle.checked) {
+      applyHelperToolsExclusivity();
+    }
+  });
+}
 
 // Show/hide OpenAI token input based on AI model selection
 aiModelSelect.addEventListener('change', () => {
@@ -215,6 +271,11 @@ saveButton.addEventListener("click", async () => {
 
   // Save realtime assistant mode
   ipcRenderer.send("save-realtime-assistant-status", realtimeAssistantToggle.checked);
+
+  // Save helper tools (ferramentas avançadas)
+  if (helperToolsToggle) {
+    ipcRenderer.send("set-helper-tools-enabled", helperToolsToggle.checked);
+  }
 
   // Save language
   ipcRenderer.send("set-language", langSelect.value);

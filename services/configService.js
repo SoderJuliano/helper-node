@@ -58,6 +58,13 @@ const defaultConfig = {
   // imagens (~US$ 0.15 / 1M tokens input + ~150 tokens por imagem high).
   openAiVisionModel: "gpt-4o-mini",
   openIaToken: "",
+  // Configurações do módulo helperTools (leitura/edição de arquivos +
+  // execução de comandos). DESLIGADO por padrão. Quando ligado, desativa
+  // o modo integrado (osIntegration). Veja services/helperTools/config.js
+  // pra os defaults internos do módulo (whitelists, sandbox, etc).
+  helperTools: {
+    enabled: false,
+  },
 };
 
 let configPath;
@@ -329,6 +336,42 @@ function setRealtimeAssistantStatus(status) {
   currentConfig = null;
 }
 
+function getHelperToolsConfig() {
+  if (!currentConfig) {
+    currentConfig = loadConfig();
+  }
+  return currentConfig.helperTools || { enabled: false };
+}
+
+function setHelperToolsConfig(partial) {
+  if (!currentConfig) {
+    currentConfig = loadConfig();
+  }
+  currentConfig.helperTools = {
+    ...(currentConfig.helperTools || {}),
+    ...(partial || {}),
+  };
+  saveConfig(currentConfig);
+  currentConfig = null;
+}
+
+function getHelperToolsEnabled() {
+  return !!getHelperToolsConfig().enabled;
+}
+
+function setHelperToolsEnabled(enabled) {
+  setHelperToolsConfig({ enabled: !!enabled });
+  // Mutex: liga helperTools desliga osIntegration (decisão do usuário).
+  if (enabled) {
+    if (!currentConfig) currentConfig = loadConfig();
+    if (currentConfig.osIntegration) {
+      currentConfig.osIntegration = false;
+      saveConfig(currentConfig);
+      currentConfig = null;
+    }
+  }
+}
+
 module.exports = {
   initialize,
   getPromptInstruction,
@@ -353,5 +396,9 @@ module.exports = {
   setOpenAiVisionModel,
   getAudioCaptureMode,
   setAudioCaptureMode,
+  getHelperToolsConfig,
+  setHelperToolsConfig,
+  getHelperToolsEnabled,
+  setHelperToolsEnabled,
   getIp,
 };
