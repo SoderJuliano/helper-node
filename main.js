@@ -3301,7 +3301,11 @@ ipcMain.handle('get-session-by-id', async (event, sessionId) => {
  */
 ipcMain.handle('download-conversation-txt', async (event, sessionId) => {
   try {
-    const session = historyService.getSessionById(sessionId);
+    // dataset.sessionId vem como string; historyService usa Date.now() (number).
+    // Tenta number primeiro, fallback pra string original.
+    const numericId = Number(sessionId);
+    const session = historyService.getSessionById(Number.isFinite(numericId) ? numericId : sessionId)
+      || historyService.getSessionById(sessionId);
     if (!session) return { ok: false, error: 'Sessao nao encontrada.' };
 
     const homeDir = require('os').homedir();
