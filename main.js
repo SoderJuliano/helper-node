@@ -62,6 +62,66 @@ const configService = require("./services/configService.js");
 const historyService = require("./services/historyService.js");
 const helperTools = require("./services/helperTools");
 
+/**
+ * Monta opts pra OpenAIService.makeOpenAIRequest acoplando o helperTools quando:
+ *   1) o módulo está habilitado nas configs
+ *   2) o texto do usuário casa com algum gatilho (shouldEngage)
+ *
+ * Devolve também a instruction (system prompt) e o model corretos quando o
+ * módulo engaja — caller pode usar ou ignorar.
+ *
+ * Retorno:
+ *   { opts, instruction?, model? }
+ *   - opts é sempre seguro pra spread; vazio quando helperTools não engaja.
+ */
+function buildHelperToolsOpenAIOpts(userText, baseInstruction, baseModel) {
+  try {
+    if (!helperTools.isEnabled || !helperTools.isEnabled()) {
+      return { opts: {} };
+    }
+    if (!helperTools.shouldEngage || !helperTools.shouldEngage(userText || "")) {
+      return { opts: {} };
+    }
+    const cfg = helperTools.getConfig ? helperTools.getConfig() : {};
+    const schema = helperTools.getOpenAIToolsSchema ? helperTools.getOpenAIToolsSchema() : [];
+    if (!schema || schema.length === 0) {
+      return { opts: {} };
+    }
+    const addon = helperTools.getSystemPromptAddon ? helperTools.getSystemPromptAddon() : "";
+    const instruction = [baseInstruction || "", addon].filter(Boolean).join("\n\n");
+
+    // modelHeavy vem como "openai:gpt-4o-mini" ou "ollama:qwen25"
+    let model = baseModel;
+    const rawModel = cfg.modelHeavy || "";
+    if (rawModel.startsWith("openai:")) {
+      model = rawModel.slice("openai:".length) || baseModel;
+    }
+
+    const maxToolCalls = Number.isInteger(cfg.maxToolCallsPerRequest)
+      ? cfg.maxToolCallsPerRequest
+      : 5;
+
+    console.log(`🧰 helperTools engajado: tools=${schema.length} model=${model} maxToolCalls=${maxToolCalls}`);
+
+    return {
+      opts: {
+        tools: schema,
+        maxToolCalls,
+        onToolCall: async (name, args /*, meta */) => {
+          return await helperTools.executeTool(name, args, {
+            source: "openai-tool-call",
+          });
+        },
+      },
+      instruction,
+      model,
+    };
+  } catch (e) {
+    console.warn("buildHelperToolsOpenAIOpts falhou, seguindo sem tools:", e && e.message);
+    return { opts: {} };
+  }
+}
+
 // Improve global shortcut reliability on Linux Wayland compositors
 if (process.platform === "linux") {
   app.commandLine.appendSwitch("enable-features", "GlobalShortcutsPortal");
@@ -1707,7 +1767,15 @@ async function getIaResponse(text) {
             return;
         }
         const openAiModel = configService.getOpenAiModel();
-        resposta = await OpenAIService.makeOpenAIRequest(text, token, instruction, openAiModel);
+        const ht = buildHelperToolsOpenAIOpts(text, instruction, openAiModel);
+        resposta = await OpenAIService.makeOpenAIRequest(
+          text,
+          token,
+          ht.instruction || instruction,
+          ht.model || openAiModel,
+          null,
+          ht.opts
+        );
     } else {
         if (backendIsOnline) {
           console.log("Tentando usar o Backend Service...");
@@ -2146,7 +2214,15 @@ ipcMain.on("send-to-gemini", async (event, text) => {
             return;
         }
         const openAiModel = configService.getOpenAiModel();
-        resposta = await OpenAIService.makeOpenAIRequest(text, token, instruction, openAiModel);
+        const ht = buildHelperToolsOpenAIOpts(text, instruction, openAiModel);
+        resposta = await OpenAIService.makeOpenAIRequest(
+          text,
+          token,
+          ht.instruction || instruction,
+          ht.model || openAiModel,
+          null,
+          ht.opts
+        );
         event.sender.send("openai-final-response", { resposta });
         return; // Exit here to prevent further processing by the generic response handler
     } else {
@@ -2933,7 +3009,15 @@ async function processOsQuestionWithWindow(text) {
         return;
       }
       const openAiModel = configService.getOpenAiModel();
-      resposta = await OpenAIService.makeOpenAIRequest(promptForAI, token, instruction, openAiModel);
+      const ht = buildHelperToolsOpenAIOpts(promptForAI, instruction, openAiModel);
+      resposta = await OpenAIService.makeOpenAIRequest(
+        promptForAI,
+        token,
+        ht.instruction || instruction,
+        ht.model || openAiModel,
+        null,
+        ht.opts
+      );
     } else {
       if (backendIsOnline) {
         try { resposta = await BackendService.responder(promptForAI); }
@@ -3108,16 +3192,24 @@ async function processOsQuestion(text, image = null, opts = {}) {
         ? configService.getOpenAiVisionModel()
         : configService.getOpenAiModel();
       console.log(`🤖 OpenAI ${openAiModel}${sendImage ? ' [VISÃO high]' : ' [TEXTO]'}...`);
+      // helperTools só engaja em modo TEXTO (visão é one-shot stateless)
+      const ht = sendImage
+        ? { opts: { stateless: !!image } }
+        : (() => {
+            const _ht = buildHelperToolsOpenAIOpts(text, instruction, openAiModel);
+            _ht.opts = { ..._ht.opts, stateless: !!image };
+            return _ht;
+          })();
       resposta = await OpenAIService.makeOpenAIRequest(
         text,
         token,
-        instruction,
-        openAiModel,
+        ht.instruction || instruction,
+        ht.model || openAiModel,
         sendImage ? image : null,
         // Capturas de tela são sempre one-shot: não reaproveita histórico
         // (não faz sentido carregar a imagem anterior junto da próxima).
         // Isso também elimina QUALQUER cache/contexto entre requests.
-        { stateless: !!image }
+        ht.opts
       );
       console.log(`🤖 Got OpenAI response: ${resposta.substring(0, 50)}...`);
     } else {
