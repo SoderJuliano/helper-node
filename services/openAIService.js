@@ -55,14 +55,20 @@ class OpenAIService {
         }
 
         // Stateless: monta messages do zero, sem persistir nada.
+        // Tool-calling: SEMPRE trabalha em copia local pra nao poluir a sessao
+        // com assistant(tool_calls)+tool intermediarios. Se o loop falhar/abortar,
+        // a sessao fica intacta (sem 'tool_call_ids did not have response messages').
+        const hasTools = Array.isArray(opts.tools) && opts.tools.length;
         const messages = stateless
             ? [
                 { role: 'system', content: instruction || 'You are a helpful assistant.' },
                 userMessage,
               ]
-            : (this.sessions[sessionId].messages.push(userMessage),
-               this.sessions[sessionId].lastActivity = now,
-               this.sessions[sessionId].messages);
+            : hasTools
+              ? [...this.sessions[sessionId].messages, userMessage] // copia local
+              : (this.sessions[sessionId].messages.push(userMessage),
+                 this.sessions[sessionId].lastActivity = now,
+                 this.sessions[sessionId].messages);
 
         const requestPayload = {
             model: model || 'gpt-4.1-nano',
@@ -70,7 +76,7 @@ class OpenAIService {
         };
 
         // helperTools: se o caller passou tools[] (schema OpenAI), entra em loop de tool-calling
-        const tools = Array.isArray(opts.tools) && opts.tools.length ? opts.tools : null;
+        const tools = hasTools ? opts.tools : null;
         const onToolCall = typeof opts.onToolCall === 'function' ? opts.onToolCall : null;
         const maxToolCalls = Number.isInteger(opts.maxToolCalls) ? opts.maxToolCalls : 5;
         if (tools && onToolCall) {
@@ -112,6 +118,15 @@ class OpenAIService {
             }
 
             // ── Loop de tool-calling ───────────────────────────────────────
+            // requestPayload.messages e' uma copia local quando !stateless (vide topo).
+            // So persistimos no historico ao final, com [user, assistantFinal].
+            const persistTurn = (finalText) => {
+                if (stateless) return;
+                this.sessions[sessionId].messages.push(userMessage);
+                this.sessions[sessionId].messages.push({ role: 'assistant', content: finalText });
+                this.sessions[sessionId].lastActivity = now;
+            };
+
             let iterations = 0;
             while (iterations <= maxToolCalls) {
                 const response = await postOnce();
@@ -121,9 +136,7 @@ class OpenAIService {
                 // Sem mais tool calls → resposta final
                 if (!msg.tool_calls || msg.tool_calls.length === 0) {
                     const finalText = msg.content || '';
-                    if (!stateless) {
-                        this.sessions[sessionId].messages.push({ role: 'assistant', content: finalText });
-                    }
+                    persistTurn(finalText);
                     console.log(`🛠️  tool-calling concluído após ${iterations} iteraç${iterations === 1 ? 'ão' : 'ões'}`);
                     return finalText;
                 }
@@ -131,13 +144,11 @@ class OpenAIService {
                 if (iterations === maxToolCalls) {
                     console.warn(`⚠️  maxToolCalls=${maxToolCalls} atingido; abortando loop e devolvendo fallback`);
                     const fallback = msg.content || '(Limite de chamadas de ferramentas atingido sem resposta final.)';
-                    if (!stateless) {
-                        this.sessions[sessionId].messages.push({ role: 'assistant', content: fallback });
-                    }
+                    persistTurn(fallback);
                     return fallback;
                 }
 
-                // Empurra a assistant message com tool_calls no histórico desta requisição
+                // Empurra a assistant message com tool_calls na copia local desta requisição
                 requestPayload.messages.push({
                     role: 'assistant',
                     content: msg.content || null,
@@ -186,8 +197,10 @@ class OpenAIService {
             return '(loop tool-calling encerrado inesperadamente.)';
         } catch (error) {
             console.error('Error calling OpenAI API:', error.response ? error.response.data : error.message);
-            if (!stateless) {
-                // Remove o último user pra não poluir o histórico
+            // No caminho tool-calling com sessao, NAO mexemos no historico aqui
+            // porque o turno inteiro foi mantido em copia local (nada persistido).
+            // No caminho simples com sessao, o user ja foi pushado no inicio → pop.
+            if (!stateless && !tools) {
                 this.sessions[sessionId].messages.pop();
             }
             throw new Error('Failed to get a response from OpenAI.');

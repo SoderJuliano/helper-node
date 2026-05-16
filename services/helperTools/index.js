@@ -73,6 +73,8 @@ function getSystemPromptAddon() {
     "- Prefira caminhos absolutos (~/foo expandido para /home/usuario/foo).",
     "- Se uma operação for arriscada (sudo, rm, mv massivo), pare e peça confirmação.",
     "- Se não encontrar o arquivo, use searchInFiles ou findFiles antes de desistir.",
+    "- Para saber se um app/pacote está instalado, use listPackages com `pattern`",
+    "  (NÃO faça searchInFiles em $HOME inteiro — é lento e impreciso).",
     "",
   ].join("\n");
 }
