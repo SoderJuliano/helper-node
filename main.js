@@ -3286,6 +3286,71 @@ ipcMain.handle('get-session-by-id', async (event, sessionId) => {
   }
 });
 
+/**
+ * Salva o conteudo de uma sessao como .txt em ~/Downloads (com fallback pra
+ * ~/Documents, depois /tmp). Retorna { ok, path, error } pro renderer.
+ *
+ * Formato do arquivo:
+ *   # Helper Node - <titulo>
+ *   # Sessao: <id>  Data: <iso>
+ *
+ *   P: <pergunta>
+ *
+ *   R: <resposta>
+ *   ───────────────
+ */
+ipcMain.handle('download-conversation-txt', async (event, sessionId) => {
+  try {
+    const session = historyService.getSessionById(sessionId);
+    if (!session) return { ok: false, error: 'Sessao nao encontrada.' };
+
+    const homeDir = require('os').homedir();
+    const candidates = [
+      path.join(homeDir, 'Downloads'),
+      path.join(homeDir, 'Documents'),
+      '/tmp',
+    ];
+    let outDir = null;
+    for (const d of candidates) {
+      try {
+        await fs.access(d);
+        outDir = d;
+        break;
+      } catch (_) {}
+    }
+    if (!outDir) outDir = require('os').tmpdir();
+
+    const safeTitle = (session.title || 'conversa')
+      .toString()
+      .replace(/[\\/:*?"<>|]+/g, '_')
+      .replace(/\s+/g, '_')
+      .slice(0, 60);
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const fileName = `helper-node_${stamp}_${safeTitle}.txt`;
+    const fullPath = path.join(outDir, fileName);
+
+    const header = [
+      `# Helper Node - ${session.title || '(sem titulo)'}`,
+      `# Sessao: ${session.id}`,
+      `# Data: ${new Date().toISOString()}`,
+      '',
+      '',
+    ].join('\n');
+
+    const body = (session.conversations || []).map((msg) => {
+      const label = msg.role === 'user' ? 'P:' : 'R:';
+      return `${label}\n${msg.content}\n${'─'.repeat(60)}\n`;
+    }).join('\n');
+
+    await fs.writeFile(fullPath, header + body, 'utf8');
+    console.log(`📥 Conversa exportada: ${fullPath}`);
+    return { ok: true, path: fullPath };
+  } catch (error) {
+    console.error('Erro ao exportar conversa:', error);
+    return { ok: false, error: error.message };
+  }
+});
+
 ipcMain.handle('add-message', async (event, sessionId, role, content) => {
   try {
     const finalSessionId = await historyService.addMessage(sessionId, role, content);

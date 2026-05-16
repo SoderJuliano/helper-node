@@ -175,10 +175,11 @@
             left: 10%;
             right: 10%;
             max-height: 60vh;
-            background-color: rgba(0, 0, 0, 0.85);
-            border: 1px solid rgba(255, 255, 255, 0.3);
+            background-color: #101418;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
             border-radius: 8px;
-            padding: 20px;
+            padding: 36px 20px 20px;
             overflow-y: auto;
             color: #e0e0e0;
             font-size: 11px;
@@ -222,6 +223,70 @@
 
         .conversation-close-btn:hover {
             opacity: 1;
+        }
+
+        .conversation-download-btn {
+            position: absolute;
+            top: 8px;
+            right: 34px;
+            background: transparent;
+            border: none;
+            color: #ffffff;
+            cursor: pointer;
+            padding: 0;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0.6;
+            transition: opacity 0.2s, color 0.2s;
+        }
+
+        .conversation-download-btn:hover {
+            opacity: 1;
+            color: #81c784;
+        }
+
+        .conversation-download-btn svg {
+            width: 14px;
+            height: 14px;
+            display: block;
+            pointer-events: none;
+        }
+
+        /* Toast in-app (modo stealth = sem notificacao do SO) */
+        #app-toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            background: #1a2028;
+            border: 1px solid rgba(129, 199, 132, 0.5);
+            color: #e8f5e9;
+            padding: 10px 16px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-family: 'Source Code Pro', monospace;
+            max-width: 70%;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            z-index: 99999;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        #app-toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+            pointer-events: auto;
+        }
+
+        #app-toast.error {
+            border-color: rgba(239, 83, 80, 0.6);
+            color: #ffebee;
         }
 
         .conversation-message {
@@ -867,9 +932,15 @@
 
     <!-- Conversation Viewer -->
     <div id="conversation-viewer">
+        <button class="conversation-download-btn" id="conversation-download-btn" title="Baixar como .txt" aria-label="Baixar conversa">
+            <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M8 2 L8 11 M4.5 7.5 L8 11 L11.5 7.5 M3 13 L13 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
         <button class="conversation-close-btn" id="conversation-close-btn">×</button>
         <div id="conversation-content"></div>
     </div>
+    <div id="app-toast" role="status" aria-live="polite"></div>
 
 
     <script>
@@ -1050,6 +1121,7 @@
                         conversationContent.appendChild(msgDiv);
                     });
 
+                    conversationViewer.dataset.sessionId = sessionId;
                     conversationViewer.style.display = 'block';
                 } catch (error) {
                     console.error('Erro ao visualizar conversa:', error);
@@ -1059,6 +1131,41 @@
             // Fechar visualizador
             conversationCloseBtn.addEventListener('click', () => {
                 conversationViewer.style.display = 'none';
+            });
+
+            // ========== Toast in-app + Download da conversa ==========
+            const appToast = document.getElementById('app-toast');
+            let toastTimer = null;
+            function showToast(text, kind) {
+                appToast.textContent = text;
+                appToast.classList.toggle('error', kind === 'error');
+                appToast.classList.add('show');
+                if (toastTimer) clearTimeout(toastTimer);
+                toastTimer = setTimeout(() => {
+                    appToast.classList.remove('show');
+                }, 5000);
+            }
+
+            const conversationDownloadBtn = document.getElementById('conversation-download-btn');
+            conversationDownloadBtn.addEventListener('click', async () => {
+                const sid = conversationViewer.dataset.sessionId;
+                if (!sid) {
+                    showToast('Nenhuma conversa aberta pra baixar.', 'error');
+                    return;
+                }
+                conversationDownloadBtn.disabled = true;
+                try {
+                    const res = await window.electronAPI.downloadConversationTxt(sid);
+                    if (res && res.ok) {
+                        showToast(`Conversa salva em:\n${res.path}`);
+                    } else {
+                        showToast(`Falha ao baixar: ${(res && res.error) || 'erro desconhecido'}`, 'error');
+                    }
+                } catch (e) {
+                    showToast(`Falha ao baixar: ${e.message}`, 'error');
+                } finally {
+                    conversationDownloadBtn.disabled = false;
+                }
             });
 
             // Novo chat
