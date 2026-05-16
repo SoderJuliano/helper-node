@@ -10,6 +10,9 @@ const audit = require("./audit");
 const backup = require("./backup");
 const { shouldEngage } = require("./shouldEngage");
 const confirmationDetector = require("./confirmationDetector");
+const registry = require("./registry");
+const schema = require("./schema");
+const executor = require("./executor");
 
 let _cfg = { ...DEFAULT_HELPER_TOOLS_CONFIG };
 let _initialized = false;
@@ -22,10 +25,12 @@ function initialize(userConfig) {
   _cfg = { ...DEFAULT_HELPER_TOOLS_CONFIG, ...(userConfig || {}) };
   audit.init(_cfg.auditLogPath);
   backup.init(_cfg.backupDir, _cfg.maxBackupsPerFile);
+  registry.loadBuiltins();
   _initialized = true;
   audit.log("INIT", {
     enabled: _cfg.enabled,
     platform: platform.detect(),
+    toolsLoaded: registry.list().map((t) => t.name),
   });
 }
 
@@ -79,10 +84,16 @@ module.exports = {
   getConfig,
   shouldEngage,
   getSystemPromptAddon,
+  // Execução de tools
+  executeTool: (name, args) => executor.execute(name, args, { cfg: _cfg }),
+  // Schemas para passar pra IA
+  getOpenAIToolsSchema: schema.toOpenAITools,
+  getTextToolDescription: schema.toTextDescription,
   // re-exports úteis pra main.js / outros módulos
   policy,
   audit,
   backup,
   platform,
+  registry,
   confirmationDetector,
 };
