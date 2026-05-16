@@ -76,6 +76,15 @@ function getSystemPromptAddon() {
     "- Para saber se um app/pacote está instalado, use listPackages com `pattern`",
     "  (NÃO faça searchInFiles em $HOME inteiro — é lento e impreciso).",
     "",
+    "NOMES DE PACOTES/APPS (a entrada vem de transcrição de voz, normalize ANTES de buscar):",
+    "- Tente PRIMEIRO o pattern curto e simples em lowercase, sem espaços.",
+    "  Ex: 'Helper Node' / 'helper traço node' / 'HelperNode' → pattern='helper-node'.",
+    "  Ex: 'Visual Studio Code' → pattern='code' ou 'vscode'.",
+    "  Ex: 'Google Chrome' → pattern='chrome'.",
+    "- Se a primeira tentativa não achar nada, tente variações (com/sem hífen,",
+    "  só a primeira palavra, alias comum). NÃO repita a mesma busca.",
+    "- Palavras 'traço'/'underline'/'ponto' na fala viram '-' / '_' / '.' no nome.",
+    "",
   ].join("\n");
 }
 
