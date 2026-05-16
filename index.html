@@ -73,6 +73,15 @@
             min-height: 12px;
             color: #ffffff;
             user-select: none;
+            cursor: pointer;
+            -webkit-app-region: no-drag;
+            padding: 2px 4px;
+            border-radius: 4px;
+            transition: background-color 0.15s ease;
+        }
+
+        .panel-header:hover {
+            background-color: rgba(255, 255, 255, 0.06);
         }
 
         .panel-label {
@@ -262,17 +271,35 @@
 
         .commands-toggle {
             position: static;
-            width: 14px;
-            height: 14px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
             padding: 0;
             border: none;
             background: transparent;
-            color: #ffffff;
-            font-size: 10px;
-            line-height: 1;
+            color: rgba(255, 255, 255, 0.75);
             cursor: pointer;
             z-index: 2;
             -webkit-app-region: no-drag;
+            transition: transform 0.2s ease, color 0.15s ease;
+        }
+
+        .commands-toggle:hover {
+            color: #ffffff;
+        }
+
+        .commands-toggle svg {
+            width: 12px;
+            height: 12px;
+            display: block;
+            pointer-events: none;
+        }
+
+        /* Rotaciona o chevron quando expandido (panel sem 'collapsed') */
+        .panel:not(.collapsed) .commands-toggle {
+            transform: rotate(180deg);
         }
         
         .command-item {
@@ -777,10 +804,14 @@
     <div class="drag-area"></div>
     <div class="commands">
         <div class="panel" id="shortcut-panel">
-            <div class="panel-header">
+            <div class="panel-header" id="shortcut-header">
                 <span class="panel-label">atalhos</span>
                 <span class="panel-filler"></span>
-                <button id="shortcut-toggle" class="commands-toggle" aria-label="Recolher/expandir atalhos">V</button>
+                <button id="shortcut-toggle" class="commands-toggle" aria-label="Recolher/expandir atalhos" tabindex="-1">
+                    <svg viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M3 4.5 L6 7.5 L9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
             </div>
             <div class="commands-content" id="shortcut-content">
                 <div id="recording-shortcut" class="command-item">⚡︎ CTRL+D - Iniciar/Parar gravação 🎙️</div>
@@ -794,10 +825,14 @@
         </div>
 
         <div class="panel" id="history-panel">
-            <div class="panel-header">
+            <div class="panel-header" id="history-header">
                 <span class="panel-label">historico de conversas</span>
                 <span class="panel-filler"></span>
-                <button id="history-toggle" class="commands-toggle" aria-label="Recolher/expandir histórico">V</button>
+                <button id="history-toggle" class="commands-toggle" aria-label="Recolher/expandir histórico" tabindex="-1">
+                    <svg viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M3 4.5 L6 7.5 L9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
             </div>
             <div class="commands-content" id="history-content">
             </div>
@@ -854,27 +889,30 @@
             const transcriptionElement = document.getElementById('transcription');
             const shortcutPanel = document.getElementById('shortcut-panel');
             const shortcutToggle = document.getElementById('shortcut-toggle');
+            const shortcutHeader = document.getElementById('shortcut-header');
             const historyPanel = document.getElementById('history-panel');
             const historyToggle = document.getElementById('history-toggle');
+            const historyHeader = document.getElementById('history-header');
 
-            const setPanelCollapsed = (panel, toggle, collapsed) => {
-                if (collapsed) {
-                    panel.classList.add('collapsed');
-                    toggle.textContent = 'V';
-                } else {
-                    panel.classList.remove('collapsed');
-                    toggle.textContent = '^';
-                }
+            // Rotacao do chevron e' controlada por CSS (.panel:not(.collapsed) .commands-toggle).
+            // Aqui apenas alternamos a classe do painel.
+            const setPanelCollapsed = (panel, _toggle, collapsed) => {
+                panel.classList.toggle('collapsed', collapsed);
             };
 
-            shortcutToggle.addEventListener('click', (event) => {
+            // Clique no header inteiro alterna o painel (mais area clicavel).
+            const togglePanel = (panel) => {
+                setPanelCollapsed(panel, null, !panel.classList.contains('collapsed'));
+            };
+
+            shortcutHeader.addEventListener('click', (event) => {
                 event.stopPropagation();
-                setPanelCollapsed(shortcutPanel, shortcutToggle, !shortcutPanel.classList.contains('collapsed'));
+                togglePanel(shortcutPanel);
             });
 
-            historyToggle.addEventListener('click', (event) => {
+            historyHeader.addEventListener('click', (event) => {
                 event.stopPropagation();
-                setPanelCollapsed(historyPanel, historyToggle, !historyPanel.classList.contains('collapsed'));
+                togglePanel(historyPanel);
             });
 
             setPanelCollapsed(shortcutPanel, shortcutToggle, true);
