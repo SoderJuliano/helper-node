@@ -906,6 +906,27 @@ function commandExists(cmd) {
 }
 
 ipcMain.on("process-pasted-image", (event, base64Image) => {
+  // Dedup compartilhado com clipboard monitor: evita processar 2x
+  // (cenario: monitor pegou o screenshot, user da Ctrl+V em seguida)
+  try {
+    const stripped = (base64Image || '').replace(/^data:image\/[a-z]+;base64,/, '');
+    if (stripped) {
+      const currentHash = calculateImageHash(Buffer.from(stripped, 'base64'));
+      const now = Date.now();
+      if (lastProcessedImageHash === currentHash &&
+          lastProcessedTimestamp && (now - lastProcessedTimestamp) < IMAGE_COOLDOWN_MS) {
+        console.log('🚫 [paste] imagem ja processada pelo clipboard monitor, ignorando Ctrl+V duplicado');
+        return;
+      }
+      // Marca como processada pra o monitor nao re-disparar
+      lastProcessedImageHash = currentHash;
+      lastProcessedTimestamp = now;
+      lastClipboardImageHash = currentHash;
+    }
+  } catch (e) {
+    console.warn('[paste] falha ao calcular hash de dedup:', e && e.message);
+  }
+
   console.log("Main process received pasted image.");
   if (mainWindow && !mainWindow.isDestroyed()) {
     TesseractService.processPastedImage(base64Image, mainWindow).catch(
@@ -1191,7 +1212,7 @@ function startClipboardMonitoring() {
     } catch (error) {
       console.error('❌ Erro no monitoramento de clipboard:', error);
     }
-  }, 3000); // Verificar a cada 3 segundos para debug
+  }, 2000); // poll a cada 2s — leitura de clipboard e barata e da feedback mais rapido
 }
 
 // Função para parar monitoramento do clipboard
@@ -3484,6 +3505,15 @@ app.whenReady().then(async () => {
     bringWindowToFocus,
     captureScreenAuto: captureFullScreenAuto,
     openConfig: createConfigWindow,
+    // Disparado por atalho global (PrtSc) ANTES da ferramenta nativa abrir,
+    // ou por qualquer outra fonte que queira sinalizar "vou capturar".
+    // Apenas mostra o icone animado por ~2s; o monitor de clipboard cuida
+    // do processamento real quando a imagem aparecer.
+    captureFeedback: () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('screen-capturing', true);
+      }
+    },
   });
 
   // Envia o status inicial do modo debug para a janela principal

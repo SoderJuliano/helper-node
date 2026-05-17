@@ -34,6 +34,32 @@ fi
 echo "Detected Desktop Environment: $XDG_CURRENT_DESKTOP"
 HOTKEY_COMMAND="curl -X POST http://localhost:3000/toggle-recording"
 
+# Detecta ferramenta de captura nativa do DE pra encadear no PrtSc.
+# A ideia: PrtSc abre a ferramenta nativa E dispara nosso feedback visual
+# em paralelo, sem quebrar o fluxo que o usuario ja conhece.
+detect_screenshot_tool() {
+    case "$XDG_CURRENT_DESKTOP" in
+        *COSMIC*)  command -v cosmic-screenshot >/dev/null 2>&1 && echo "cosmic-screenshot" && return ;;
+        *GNOME*)   command -v gnome-screenshot >/dev/null 2>&1 && echo "gnome-screenshot -i" && return ;;
+        *KDE*|*PLASMA*) command -v spectacle >/dev/null 2>&1 && echo "spectacle" && return ;;
+        *Hyprland*) command -v grim >/dev/null 2>&1 && command -v slurp >/dev/null 2>&1 && echo "sh -c 'grim -g \"\$(slurp)\" - | wl-copy'" && return ;;
+    esac
+    # Fallback generico
+    for t in flameshot spectacle gnome-screenshot xfce4-screenshooter ksnip; do
+        if command -v "$t" >/dev/null 2>&1; then
+            case "$t" in
+                flameshot) echo "flameshot gui" ;;
+                gnome-screenshot) echo "gnome-screenshot -i" ;;
+                *) echo "$t" ;;
+            esac
+            return
+        fi
+    done
+    echo ""
+}
+SCREENSHOT_TOOL="$(detect_screenshot_tool)"
+CAPTURE_FEEDBACK_URL="http://localhost:3000/capture-feedback"
+
 # --- Step 3: Apply configuration based on DE ---
 if [[ "$XDG_CURRENT_DESKTOP" == *"GNOME"* ]]; then
     # --- GNOME Configuration ---
@@ -79,6 +105,13 @@ if [[ "$XDG_CURRENT_DESKTOP" == *"GNOME"* ]]; then
 
     # Hotkey for open-config (Ctrl+Shift+C) — escape hatch to reopen window if app gets stuck/hidden
     configure_gnome_hotkey "Open Config" "curl -X POST http://localhost:3000/open-config" "<Control><Shift>c" "helper-node-open-config"
+
+    # Hotkey for PrintScreen — encadeia ferramenta nativa + feedback visual no app
+    # IMPORTANTE: nao quebra a ferramenta nativa porque ela e' chamada em background.
+    if [ -n "$SCREENSHOT_TOOL" ]; then
+        PRINT_CMD="sh -c '($SCREENSHOT_TOOL) & curl -s -X POST $CAPTURE_FEEDBACK_URL >/dev/null 2>&1'"
+        configure_gnome_hotkey "Screenshot + Helper Feedback" "$PRINT_CMD" "Print" "helper-node-print-feedback"
+    fi
 
     # Get current custom keybindings
     EXISTING_BINDINGS=$(gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings | sed "s/^@as //")
@@ -163,6 +196,12 @@ elif [[ "$XDG_CURRENT_DESKTOP" == "Hyprland" ]]; then
 
     # Hotkey for open-config (Ctrl+Shift+C) — escape hatch to reopen window
     configure_hyprland_hotkey "CONTROL_SHIFT, C" "curl -X POST http://localhost:3000/open-config" "Open Config"
+
+    # PrintScreen: ferramenta nativa em background + feedback visual
+    if [ -n "$SCREENSHOT_TOOL" ]; then
+        HYP_PRINT_CMD="sh -c '($SCREENSHOT_TOOL) & curl -s -X POST $CAPTURE_FEEDBACK_URL >/dev/null 2>&1'"
+        configure_hyprland_hotkey ", Print" "$HYP_PRINT_CMD" "Screenshot + Helper Feedback"
+    fi
 
     echo "------------------------------------------------------------------"
     echo "SUCCESS: Hyprland hotkeys configured!"
@@ -277,7 +316,7 @@ elif [[ "$XDG_CURRENT_DESKTOP" == *"COSMIC"* ]]; then
     mkdir -p "$COSMIC_CONFIG_DIR"
     COSMIC_SHORTCUTS_FILE="$COSMIC_CONFIG_DIR/custom"
 
-    cat > "$COSMIC_SHORTCUTS_FILE" << 'EOF'
+    cat > "$COSMIC_SHORTCUTS_FILE" << EOF
 {
     (modifiers: [Ctrl], key: "d"): Spawn("curl -X POST http://localhost:3000/toggle-recording"),
     (modifiers: [Ctrl], key: "i"): Spawn("curl -X POST http://localhost:3000/bring-to-focus-and-input"),
@@ -285,7 +324,7 @@ elif [[ "$XDG_CURRENT_DESKTOP" == *"COSMIC"* ]]; then
     (modifiers: [Ctrl, Shift], key: "s"): Spawn("curl -X POST http://localhost:3000/capture-screen-auto"),
     (modifiers: [Ctrl, Shift], key: "c"): Spawn("curl -X POST http://localhost:3000/open-config"),
     (modifiers: [Ctrl, Shift], key: "1"): Spawn("curl -X POST http://localhost:3000/move-to-display/0"),
-    (modifiers: [Ctrl, Shift], key: "2"): Spawn("curl -X POST http://localhost:3000/move-to-display/1"),
+    (modifiers: [Ctrl, Shift], key: "2"): Spawn("curl -X POST http://localhost:3000/move-to-display/1"),$( [ -n "$SCREENSHOT_TOOL" ] && printf '\n    (modifiers: [], key: "Print"): Spawn("sh -c %s%s & curl -s -X POST %s >/dev/null 2>&1%s"),' "'" "$SCREENSHOT_TOOL" "$CAPTURE_FEEDBACK_URL" "'" )
 }
 EOF
 
