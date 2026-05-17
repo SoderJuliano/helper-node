@@ -63,7 +63,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.send("process-pasted-image", base64Image),
   processManualInputWithImage: (data) =>
     ipcRenderer.send("process-manual-input-with-image", data),
-  isMac: () => ipcRenderer.invoke("is-mac"),
   
   // OS Integration methods
   closeOsInput: () => ipcRenderer.send("close-os-input"),
