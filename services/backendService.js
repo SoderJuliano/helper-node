@@ -24,6 +24,25 @@ const httpsAgent = new https.Agent({
 // Variável para armazenar a URL da API
 let apiUrl = "";
 
+// === Roteamento de modelo Ollama (so backendService — nao toca OpenAI) ===
+// Decide qual endpoint do proxy Java usar com base no conteudo da mensagem.
+// Codigo/matematica/raciocinio tecnico -> qwen25 (14b, melhor reasoning).
+// Resto -> llama3 (8b, default geral e conversa).
+// NOTA: llamatiny (1b) foi removido do roteamento — muito burro pra
+// conversar, parafraseia o pr\u00f3prio prompt. Mantemos o endpoint disponivel
+// pro backend Java mas n\u00e3o roteamos nada pra ele aqui.
+function pickOllamaEndpoint(texto) {
+  const t = (texto || '').trim();
+  if (!t) return '/llama3';
+
+  // Sinais de codigo/matematica/raciocinio tecnico → qwen25
+  // (operadores, sintaxe de linguagem, palavras-chave de tarefa pesada)
+  const heavyRegex = /[=+\-*/%^<>]{1,3}|\b(function|class|def|var|let|const|import|return|if|else|while|for|switch)\b|[{};()[\]]|\b(calcule?|resolva|compute|derive|integre|fatore|prove|demonstre|implementa|implementar|c[oó]digo|fun[cç][aã]o|algoritmo|complexidade|otimiza|debug|stack trace|exception|exec[uú]ta|comando|shell|bash|sql|query|regex|json|yaml|xml)\b|\d+\s*[\+\-\*\/x×÷=]\s*\d+|`[^`]+`|```/i;
+  if (heavyRegex.test(t)) return '/qwen25';
+
+  return '/llama3';
+}
+
 class BackendService {
   constructor() {
     this.sessions = {};
@@ -183,19 +202,43 @@ class BackendService {
     const mappedLang = langMap[lang] || 'PORTUGUESE';
 
     try {
-      const endpoint = `${apiUrl}/llama3`;
+      // === Roteamento de modelo Ollama ===
+      // O backend Java expoe varios endpoints com modelos diferentes:
+      //   /llamatiny  → llama3.2:1b ou similar (super rapido, conversa casual)
+      //   /llama3     → llama3 8b (geral, default)
+      //   /qwen25     → qwen2.5:14b (raciocinio tecnico, codigo, matematica)
+      //   /gemma3     → gemma3 (alternativa)
+      // Heuristica: casual curto -> llamatiny, tecnico/code/math -> qwen25, resto -> llama3.
+      const modelEndpoint = pickOllamaEndpoint(texto);
+      const endpoint = `${apiUrl}${modelEndpoint}`;
+      console.log(`[backend] roteado para ${modelEndpoint} (${texto.slice(0, 40).replace(/\n/g, ' ')}...)`);
       const promptInstruction = configService.getPromptInstruction();
       
-      // Build prompt with conversation context
-      const promptWithContext = conversationContext 
-        ? `${promptInstruction}\n\nConversation context:\n${conversationContext}\nPlease respond to the latest human message.`
-        : `${promptInstruction}${texto}`;
+      // Build prompt with conversation context.
+      // llamatiny (1b) NAO consegue ignorar marcadores tipo "Conversation context:"
+      // — vira papagaio do template. Pra ele mandamos so a mensagem do user com
+      // histórico simplificado. Pros maiores mantemos o template antigo que o
+      // backend Java reconhece e processa.
+      let promptWithContext;
+      if (modelEndpoint === '/llamatiny') {
+        // Histórico simplificado: ultimas 2-3 trocas, sem labels Human:/Assistant:.
+        const lastMsgs = conversationContext
+          ? conversationContext.split(/\n/).filter(Boolean).slice(-4).join('\n')
+          : texto;
+        promptWithContext = `${promptInstruction}\n\n${lastMsgs}`;
+      } else {
+        // Backend Java faz parsing em "Conversation context:" e "Please respond..."
+        // — nao mudar sem alinhar com o servidor.
+        promptWithContext = conversationContext 
+          ? `${promptInstruction}\n\nConversation context:\n${conversationContext}\nPlease respond to the latest human message.`
+          : `${promptInstruction}${texto}`;
+      }
 
+      // Backend Java espera ChatRequest(String prompt, String language).
+      // Campos extras (ip, email, agent, newPrompt) sao ignorados pelo Jackson,
+      // mas mandar so o necessario fica mais limpo.
       const body = {
-        newPrompt: promptWithContext,
-        ip: ip,
-        email: "julianosoder.js@gmail.com",
-        agent: false,
+        prompt: promptWithContext,
         language: mappedLang,
       };
       const headers = {
@@ -206,12 +249,30 @@ class BackendService {
 
       console.log('Backend prompt with context:', promptWithContext);
 
-      const response = await axios.post(endpoint, body, { 
-        headers,
-        timeout: 180000, // 180 segundos para dar tempo do LLM processar
-        httpAgent,
-        httpsAgent
-      });
+      // Tenta no endpoint roteado; se 404 (modelo nao existe no proxy),
+      // cai automaticamente pra /llama3 que sempre existe.
+      let response;
+      try {
+        response = await axios.post(endpoint, body, { 
+          headers,
+          timeout: 180000,
+          httpAgent,
+          httpsAgent
+        });
+      } catch (errFirst) {
+        const is404 = errFirst.response && errFirst.response.status === 404;
+        if (is404 && modelEndpoint !== '/llama3') {
+          console.warn(`[backend] ${modelEndpoint} indisponivel (404), caindo pra /llama3`);
+          response = await axios.post(`${apiUrl}/llama3`, body, {
+            headers,
+            timeout: 180000,
+            httpAgent,
+            httpsAgent
+          });
+        } else {
+          throw errFirst;
+        }
+      }
 
       console.log(
         "Backend response data:",
@@ -299,25 +360,34 @@ class BackendService {
     const mappedLang = langMap[lang] || 'PORTUGUESE';
 
     try {
-      const endpoint = `${apiUrl}/llama3-stream`;
+      // Roteamento: mesma logica do responder() — escolhe modelo e usa
+      // a versao -stream do endpoint (ex.: /qwen25-stream, /llamatiny-stream).
+      const baseEndpoint = pickOllamaEndpoint(texto);
+      const endpoint = `${apiUrl}${baseEndpoint}-stream`;
+      console.log(`[backend-stream] roteado para ${baseEndpoint}-stream`);
       const promptInstruction = configService.getPromptInstruction();
       
-      // Build prompt with conversation context
-      const promptWithContext = conversationContext 
-        ? `${promptInstruction}\n\nConversation context:\n${conversationContext}\nPlease respond to the latest human message.`
-        : `${promptInstruction}${texto}`;
+      // Build prompt with conversation context (mesma logica de responder()).
+      let promptWithContext;
+      if (baseEndpoint === '/llamatiny') {
+        const lastMsgs = conversationContext
+          ? conversationContext.split(/\n/).filter(Boolean).slice(-4).join('\n')
+          : texto;
+        promptWithContext = `${promptInstruction}\n\n${lastMsgs}`;
+      } else {
+        promptWithContext = conversationContext 
+          ? `${promptInstruction}\n\nConversation context:\n${conversationContext}\nPlease respond to the latest human message.`
+          : `${promptInstruction}${texto}`;
+      }
 
       const body = {
-        newPrompt: promptWithContext,
-        ip: ip,
-        email: "julianosoder.js@gmail.com",
-        agent: false,
+        prompt: promptWithContext,
         language: mappedLang,
       };
 
       console.log('Backend stream prompt with context:', promptWithContext);
 
-      const response = await fetch(endpoint, {
+      const fetchOpts = {
         method: 'POST',
         headers: {
           'Authorization': 'Bearer Y3VzdG9tY3ZvbmxpbmU=',
@@ -325,7 +395,14 @@ class BackendService {
           'ngrok-skip-browser-warning': 'true',
         },
         body: JSON.stringify(body),
-      });
+      };
+
+      let response = await fetch(endpoint, fetchOpts);
+      // Fallback automatico pra /llama3-stream se o endpoint roteado nao existe
+      if (response.status === 404 && baseEndpoint !== '/llama3') {
+        console.warn(`[backend-stream] ${baseEndpoint}-stream indisponivel (404), caindo pra /llama3-stream`);
+        response = await fetch(`${apiUrl}/llama3-stream`, fetchOpts);
+      }
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
