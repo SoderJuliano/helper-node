@@ -81,33 +81,79 @@
         }
         .close-btn:hover { color: #fff; }
 
-        #live-text, #ai-response { user-select: text; }
+        #turns { user-select: text; max-height: 540px; overflow-y: auto; }
+        #turns::-webkit-scrollbar { width: 6px; }
+        #turns::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
 
-        #live-text {
+        .turn {
+            border-top: 1px solid rgba(255,255,255,0.08);
+            padding: 8px 0 4px 0;
+        }
+        .turn:first-child { border-top: none; padding-top: 2px; }
+
+        .turn-num {
+            font-size: 10px;
+            color: #555;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin-bottom: 2px;
+        }
+
+        .turn-user {
             color: #e0e0e0;
             font-size: 13px;
-            line-height: 1.6;
+            line-height: 1.55;
             word-wrap: break-word;
-            min-height: 30px;
+            min-height: 18px;
         }
+        .turn-user .partial { color: #888; font-style: italic; }
+        .turn-user.final { color: #fff; }
 
-        #live-text .partial {
-            color: #888;
-            font-style: italic;
-        }
-
-        .separator {
-            border: none;
-            border-top: 1px solid rgba(255,255,255,0.1);
-            margin: 10px 0;
-        }
-
-        #ai-response {
+        .turn-resp {
             display: none;
+            position: relative;
             color: #00aaff;
             font-size: 13px;
-            line-height: 1.6;
+            line-height: 1.55;
             word-wrap: break-word;
+            margin-top: 6px;
+            padding-left: 8px;
+            border-left: 2px solid rgba(0,170,255,0.4);
+            user-select: text;
+            -webkit-user-select: text;
+        }
+        .turn-resp.corrected { color: #66d9a0; border-left-color: rgba(102,217,160,0.5); }
+
+        .copy-btn {
+            position: absolute;
+            top: 0;
+            right: 0;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.15);
+            color: #ccc;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.15s;
+            -webkit-app-region: no-drag;
+        }
+        .turn-resp:hover .copy-btn { opacity: 1; }
+        .copy-btn:hover { background: rgba(255,255,255,0.18); color: #fff; }
+        .copy-btn.copied { background: rgba(102,217,160,0.25); color: #66d9a0; border-color: rgba(102,217,160,0.5); }
+
+        .turn-badge {
+            display: inline-block;
+            font-size: 9px;
+            color: #66d9a0;
+            border: 1px solid rgba(102,217,160,0.4);
+            border-radius: 3px;
+            padding: 1px 4px;
+            margin-left: 6px;
+            vertical-align: middle;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
         .loading-dots {
@@ -135,72 +181,130 @@
             <span class="header-text" id="header-label">Ouvindo...</span>
         </div>
 
-        <div id="live-text"></div>
-
-        <hr class="separator" id="separator" style="display:none;">
-
-        <div id="ai-response"></div>
+        <div id="turns"></div>
     </div>
 
     <script>
-        const liveText = document.getElementById('live-text');
-        const aiResponse = document.getElementById('ai-response');
-        const separator = document.getElementById('separator');
+        const turnsEl = document.getElementById('turns');
         const recIndicator = document.getElementById('rec-indicator');
         const headerLabel = document.getElementById('header-label');
 
-        let finalizedText = '';
-
-        // Called from main process
-        window.appendPartial = function(text) {
-            // Show finalized text + current partial in gray
-            liveText.innerHTML = escapeHtml(finalizedText) +
-                (finalizedText ? ' ' : '') +
-                '<span class="partial">' + escapeHtml(text) + '</span>';
-            scrollToBottom();
-        };
-
-        window.appendSentence = function(text) {
-            finalizedText += (finalizedText ? ' ' : '') + text;
-            liveText.textContent = finalizedText;
-            scrollToBottom();
-        };
-
-        window.showLoading = function() {
-            separator.style.display = 'block';
-            aiResponse.style.display = 'block';
-            aiResponse.innerHTML = '🤖 Pensando<span class="loading-dots"></span>';
-            recIndicator.classList.add('done');
-            headerLabel.textContent = 'Processando...';
-            scrollToBottom();
-        };
-
-        window.showResponse = function(text) {
-            separator.style.display = 'block';
-            aiResponse.style.display = 'block';
-            aiResponse.textContent = '🤖 ' + text;
-            recIndicator.classList.add('done');
-            headerLabel.textContent = 'Resposta';
-            scrollToBottom();
-        };
-
-        window.getTranscribedText = function() {
-            return finalizedText;
-        };
+        const turns = new Map(); // id -> { wrap, userEl, respEl, finalText }
 
         function escapeHtml(str) {
-            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
 
         function scrollToBottom() {
-            // Pede ao main para redimensionar a janela conforme o conteúdo cresce
             try {
+                turnsEl.scrollTop = turnsEl.scrollHeight;
                 const h = Math.min(600, document.getElementById('wrap').scrollHeight + 8);
                 if (window.electronAPI && window.electronAPI.resizeOverlay) {
                     window.electronAPI.resizeOverlay(h);
                 }
             } catch (_) {}
         }
+
+        // Cria nova bolha de turno
+        window.startTurn = function(id, num) {
+            if (turns.has(id)) return;
+            const wrap = document.createElement('div');
+            wrap.className = 'turn';
+            wrap.dataset.turnId = id;
+            wrap.innerHTML =
+                '<div class="turn-num">Turno ' + num + '</div>' +
+                '<div class="turn-user"></div>' +
+                '<div class="turn-resp"></div>';
+            turnsEl.appendChild(wrap);
+            const t = {
+                wrap,
+                userEl: wrap.querySelector('.turn-user'),
+                respEl: wrap.querySelector('.turn-resp'),
+                finalText: '',
+            };
+            turns.set(id, t);
+            recIndicator.classList.remove('done');
+            headerLabel.textContent = 'Ouvindo...';
+            scrollToBottom();
+        };
+
+        // Atualiza texto do user durante Vosk live (partial + final)
+        window.updateTurn = function(id, text) {
+            const t = turns.get(id);
+            if (!t) return;
+            t.userEl.innerHTML = '<span class="partial">' + escapeHtml(text) + '</span>';
+            scrollToBottom();
+        };
+
+        // Trava texto final + mostra "pensando"
+        window.markTurnFinal = function(id, text) {
+            const t = turns.get(id);
+            if (!t) return;
+            t.finalText = text;
+            t.userEl.classList.add('final');
+            t.userEl.textContent = text;
+            t.respEl.style.display = 'block';
+            t.respEl.innerHTML = '🤖 Pensando<span class="loading-dots"></span>';
+            headerLabel.textContent = 'Processando...';
+            scrollToBottom();
+        };
+
+        // Substitui texto user pos-correcao do Whisper
+        window.replaceTurnText = function(id, text) {
+            const t = turns.get(id);
+            if (!t) return;
+            t.finalText = text;
+            t.userEl.textContent = text;
+            // badge visual de correcao
+            if (!t.userEl.querySelector('.turn-badge')) {
+                const badge = document.createElement('span');
+                badge.className = 'turn-badge';
+                badge.textContent = '✓ Whisper';
+                t.userEl.appendChild(document.createTextNode(' '));
+                t.userEl.appendChild(badge);
+            }
+            scrollToBottom();
+        };
+
+        // Mostra resposta da IA (isCorrected = true se veio do Whisper)
+        window.showTurnResponse = function(id, resp, isCorrected) {
+            const t = turns.get(id);
+            if (!t) return;
+            const text = resp || '(sem resposta)';
+            t.respEl.style.display = 'block';
+            t.respEl.classList.toggle('corrected', !!isCorrected);
+            const prefix = isCorrected ? '🤖✨ ' : '🤖 ';
+            t.respEl.textContent = prefix + text;
+            // (re)injeta botão copy
+            const btn = document.createElement('button');
+            btn.className = 'copy-btn';
+            btn.textContent = 'copiar';
+            btn.dataset.payload = text;
+            btn.addEventListener('click', async (ev) => {
+                ev.stopPropagation();
+                try {
+                    await navigator.clipboard.writeText(btn.dataset.payload);
+                    btn.classList.add('copied');
+                    btn.textContent = 'copiado ✓';
+                    setTimeout(() => { btn.classList.remove('copied'); btn.textContent = 'copiar'; }, 1500);
+                } catch (e) {
+                    btn.textContent = 'erro';
+                    setTimeout(() => { btn.textContent = 'copiar'; }, 1500);
+                }
+            });
+            t.respEl.appendChild(btn);
+            recIndicator.classList.remove('done');
+            headerLabel.textContent = 'Ouvindo...';
+            scrollToBottom();
+        };
+
+        // Concatena texto de TODOS os turnos finalizados (compat com paste-on-stop)
+        window.getTranscribedText = function() {
+            return Array.from(turns.values())
+                .map(t => t.finalText)
+                .filter(Boolean)
+                .join(' ');
+        };
     </script>
 </body>
 </html>

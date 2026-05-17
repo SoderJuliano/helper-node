@@ -45,6 +45,7 @@ class Notification {
   static isSupported() { return false; }
 }
 const path = require("path");
+const os = require("os");
 const crypto = require("crypto");
 const { exec, spawn } = require("child_process");
 const util = require("util");
@@ -182,6 +183,7 @@ let recordingProcess = null;
 let isRecording = false;
 let waitingNotificationInterval = null;
 let clipboardMonitoringInterval = null;
+let clipboardWatchProc = null; // wl-paste --watch (Wayland event-driven)
 let lastClipboardImageHash = null;
 let lastProcessedImageHash = null;
 let lastProcessedTimestamp = null;
@@ -192,13 +194,40 @@ const audioFilePath = path.join(__dirname, "output.wav");
 // OS Integration windows
 let osInputWindow = null;
 let osNotificationWindow = null;
+// Janela SECUND\u00c1RIA pra mostrar resposta de imagem quando recording-live
+// est\u00e1 ativa \u2014 sen\u00e3o destruir\u00edamos a bolha de conversa pra mostrar a img.
+let osImageResponseWindow = null;
 let osCaptureWindow = null;
 let isOsIntegrationMode = false;
 let captureToolInterval = null;
 let osVoskSilenceTimer = null;
 
+// === Conversa contínua OS Mode (Vosk + Whisper) ===
+// Mesmo pipeline do RealtimeAssistantService, simplificado para uso no
+// recording-live overlay. Cada "turno" e' um segmento: buffer de PCM +
+// transcricao Vosk acumulada. Fecha por silencio (3s) ou tempo maximo (25s).
+// IA responde com texto Vosk imediatamente, depois Whisper corrige em
+// background e re-pergunta se a transcricao diferir significativamente.
+let osLiveSegment = null;
+let osLiveSilenceInterval = null;
+let osLiveTurnCount = 0;
+const OS_LIVE_SAMPLE_RATE = 16000;
+const OS_LIVE_SILENCE_RMS = 250;
+// Silêncio antes de fechar segmento. 3s era muito agressivo: cortava
+// perguntas longas em 2-3 partes nas pausas naturais de leitura/respiração.
+// 6s dá conforto para fala humana sem perder responsividade.
+const OS_LIVE_SILENCE_MS = 6000;
+// Tempo máximo de um único segmento. 60s acomoda explicações técnicas
+// longas ("como faz X dado Y com Z...").
+const OS_LIVE_MAX_MS = 60000;
+const OS_LIVE_TMP_DIR = path.join(os.tmpdir(), "helper-node-os-live");
+try { fs2.mkdirSync(OS_LIVE_TMP_DIR, { recursive: true }); } catch (_) {}
+
 function clearOsVoskSilenceTimer() {
   if (osVoskSilenceTimer) { clearTimeout(osVoskSilenceTimer); osVoskSilenceTimer = null; }
+  if (osLiveSilenceInterval) { clearInterval(osLiveSilenceInterval); osLiveSilenceInterval = null; }
+  osLiveSegment = null;
+  osLiveTurnCount = 0;
 }
 
 const VoskStreamService = require("./services/voskStreamService.js");
@@ -334,6 +363,10 @@ function createOsNotificationWindow(type, content) {
   const posY = 60;
 
   const isMovableOverlay = (type === 'recording-live' || type === 'response');
+  // recording-live PRECISA de focusable=true em COSMIC/Wayland pro X fechar
+  // e pra seleção de texto/copy funcionar. Sem foco, eventos de clique e
+  // seleção são dropados pelo compositor.
+  const isFocusable = (type === 'recording-live' || type === 'response');
 
   osNotificationWindow = new BrowserWindow({
     width: windowWidth,
@@ -350,8 +383,9 @@ function createOsNotificationWindow(type, content) {
     minimizable: false,
     maximizable: false,
     fullscreenable: false,
-    // STEALTH OVERLAY: não rouba foco da janela ativa (reunião, vídeo, IDE)
-    focusable: false,
+    // STEALTH OVERLAY: não rouba foco da janela ativa por padrão,
+    // mas habilita pra recording-live/response (X + copy funcionarem)
+    focusable: isFocusable,
     // Some no compartilhamento de tela (Teams/Meet/Zoom screen-share)
     // — funciona em X11; em Wayland depende do compositor
     type: 'toolbar',
@@ -1035,6 +1069,22 @@ function createIntermediateNotification() {
   }
 }
 
+// Detecta qualquer MIME de imagem na lista de tipos do clipboard.
+// Prioridade: PNG (lossless, melhor pra OCR) > JPEG > WEBP > BMP > TIFF.
+// Tinha lugares que só buscavam image/png e ignoravam screenshots em JPEG/BMP
+// (alguns apps de captura cospem JPEG por padrão).
+function pickImageMime(typesText) {
+  if (!typesText) return null;
+  const t = typesText.toLowerCase();
+  const order = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/bmp', 'image/tiff', 'image/x-bmp'];
+  for (const m of order) {
+    if (t.includes(m)) return m;
+  }
+  // Último recurso: qualquer image/*
+  const generic = t.match(/image\/[a-z0-9.+-]+/i);
+  return generic ? generic[0] : null;
+}
+
 // Inicializar baseline do clipboard para evitar processar imagens existentes
 async function initializeClipboardBaseline() {
   try {
@@ -1046,12 +1096,16 @@ async function initializeClipboardBaseline() {
     if (isWayland) {
       try {
         const wlResult = await execPromise('timeout 2 wl-paste --list-types 2>/dev/null || echo ""');
-        if (wlResult && wlResult.stdout.includes('image/png')) {
-          const imageResult = await execPromise('timeout 3 wl-paste --type image/png | base64 -w 0 2>/dev/null || echo ""');
+        const types = (wlResult && wlResult.stdout || '').toLowerCase();
+        const mime = pickImageMime(types);
+        if (mime) {
+          const imageResult = await execPromise(`timeout 3 wl-paste --type ${mime} | base64 -w 0 2>/dev/null || echo ""`);
           if (imageResult && imageResult.stdout.trim()) {
             hasImage = true;
-            imageData = 'data:image/png;base64,' + imageResult.stdout.trim();
+            imageData = `data:${mime};base64,` + imageResult.stdout.trim();
           }
+        } else if (types.trim()) {
+          console.log('📋 [baseline] clipboard tipos disponíveis (sem imagem):', types.split('\n').filter(Boolean).join(', '));
         }
       } catch (e) {
         console.log('📋 Wayland clipboard não disponível, tentando X11...');
@@ -1061,12 +1115,16 @@ async function initializeClipboardBaseline() {
     if (!hasImage) {
       try {
         const xclipResult = await execPromise('timeout 2 xclip -selection clipboard -t TARGETS -o 2>/dev/null || echo ""');
-        if (xclipResult && xclipResult.stdout.includes('image/png')) {
-          const imageResult = await execPromise('timeout 3 xclip -selection clipboard -t image/png -o | base64 -w 0 2>/dev/null || echo ""');
+        const types = (xclipResult && xclipResult.stdout || '').toLowerCase();
+        const mime = pickImageMime(types);
+        if (mime) {
+          const imageResult = await execPromise(`timeout 3 xclip -selection clipboard -t ${mime} -o | base64 -w 0 2>/dev/null || echo ""`);
           if (imageResult && imageResult.stdout.trim()) {
             hasImage = true;
-            imageData = 'data:image/png;base64,' + imageResult.stdout.trim();
+            imageData = `data:${mime};base64,` + imageResult.stdout.trim();
           }
+        } else if (types.trim()) {
+          console.log('📋 [baseline] X11 clipboard tipos (sem imagem):', types.split('\n').filter(Boolean).join(', '));
         }
       } catch (e) {
         console.log('📋 X11 clipboard não disponível');
@@ -1093,6 +1151,29 @@ async function initializeClipboardBaseline() {
   }
 }
 
+// Em Wayland (especialmente COSMIC), wl-paste em polling background é
+// frequentemente bloqueado pelo compositor até a app ganhar foco. Solução:
+// 'wl-paste --watch <cmd>' usa o protocolo data-device e o compositor empurra
+// notificações de mudança no clipboard, FUNCIONANDO SEM foco da app.
+// Quando dispara, forçamos um "tick" imediato do polling pra ler o conteúdo.
+function startWaylandClipboardWatch(triggerCheck) {
+  if (clipboardWatchProc) { try { clipboardWatchProc.kill('SIGTERM'); } catch (_) {} clipboardWatchProc = null; }
+  if (process.env.XDG_SESSION_TYPE !== 'wayland') return;
+  try {
+    // 'true' como comando: só queremos a notificação de mudança, não o conteúdo
+    clipboardWatchProc = spawn('wl-paste', ['--watch', 'true'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    clipboardWatchProc.stdout.on('data', () => triggerCheck && triggerCheck());
+    clipboardWatchProc.on('error', (e) => console.log('📋 wl-paste --watch indisponível:', e.message));
+    clipboardWatchProc.on('exit', (code) => {
+      console.log('📋 wl-paste --watch encerrou (code=' + code + ')');
+      clipboardWatchProc = null;
+    });
+    console.log('📋 wl-paste --watch ativo (event-driven, não precisa de foco da app)');
+  } catch (e) {
+    console.log('📋 falha ao iniciar wl-paste --watch:', e.message);
+  }
+}
+
 // Função para iniciar monitoramento do clipboard usando ferramentas nativas
 function startClipboardMonitoring() {
   if (clipboardMonitoringInterval) {
@@ -1103,8 +1184,10 @@ function startClipboardMonitoring() {
   
   // Initialize with current clipboard content to avoid processing existing images
   initializeClipboardBaseline();
-  
-  clipboardMonitoringInterval = setInterval(async () => {
+
+  // Função de checagem extraída pra ser chamada tanto pelo polling quanto
+  // pelo wl-paste --watch (Wayland event-driven).
+  const checkClipboardNow = async () => {
     try {
       const isPrintModeEnabled = configService.getPrintModeStatus();
       if (!isPrintModeEnabled) return;
@@ -1119,12 +1202,14 @@ function startClipboardMonitoring() {
         // Try Wayland first
         try {
           const wlResult = await execPromise('wl-paste --list-types 2>/dev/null').catch(() => null);
-          if (wlResult && wlResult.stdout.includes('image/png')) {
+          const types = (wlResult && wlResult.stdout || '').toLowerCase();
+          const mime = pickImageMime(types);
+          if (mime) {
             try {
-              const imageResult = await execPromise('wl-paste --type image/png | base64 -w 0');
+              const imageResult = await execPromise(`wl-paste --type ${mime} | base64 -w 0`);
               if (imageResult && imageResult.stdout && imageResult.stdout.trim()) {
                 hasImage = true;
-                imageData = 'data:image/png;base64,' + imageResult.stdout.trim();
+                imageData = `data:${mime};base64,` + imageResult.stdout.trim();
                 const base64Data = imageResult.stdout.trim();
                 currentHash = calculateImageHash(Buffer.from(base64Data, 'base64'));
               }
@@ -1142,19 +1227,19 @@ function startClipboardMonitoring() {
       if (!hasImage) {
         try {
           const xclipResult = await execPromise('xclip -selection clipboard -t TARGETS -o 2>/dev/null').catch(() => null);
-          if (xclipResult && xclipResult.stdout.includes('image/png')) {
-            const imageResult = await execPromise('xclip -selection clipboard -t image/png -o | base64 -w 0').catch(() => null);
+          const types = (xclipResult && xclipResult.stdout || '').toLowerCase();
+          const mime = pickImageMime(types);
+          if (mime) {
+            const imageResult = await execPromise(`xclip -selection clipboard -t ${mime} -o | base64 -w 0`).catch(() => null);
             if (imageResult && imageResult.stdout) {
               hasImage = true;
-              imageData = 'data:image/png;base64,' + imageResult.stdout.trim();
+              imageData = `data:${mime};base64,` + imageResult.stdout.trim();
               const base64Data = imageResult.stdout.trim();
               currentHash = calculateImageHash(Buffer.from(base64Data, 'base64'));
             }
           }
         } catch (e) {
           // Silent error handling
-          // No image found in either clipboard
-          console.log('🖥️ X11 also failed');
         }
       }
       
@@ -1199,8 +1284,14 @@ function startClipboardMonitoring() {
           // Check if OS integration mode is enabled
           const isOsIntegration = configService.getOsIntegrationStatus();
           if (isOsIntegration) {
-            // Use OS notification
-            createOsNotificationWindow('loading', 'Nova imagem detectada! Processando...');
+            // Se Vosk (recording-live) est\u00e1 rodando, N\u00c3O cria janela loading
+            // \u2014 isso destruiria a bolha de conversa. A resposta vai abrir
+            // numa janela secund\u00e1ria via showImageResponseInSecondaryWindow.
+            if (!VoskStreamService.isRunning()) {
+              createOsNotificationWindow('loading', 'Nova imagem detectada! Processando...');
+            } else {
+              console.log('[os-image] Vosk ativo \u2014 pulando janela loading (preserva recording-live)');
+            }
           } else if (appConfig.notificationsEnabled && Notification.isSupported()) {
             new Notification({
               title: 'Helper-Node',
@@ -1227,7 +1318,17 @@ function startClipboardMonitoring() {
     } catch (error) {
       console.error('❌ Erro no monitoramento de clipboard:', error);
     }
-  }, 2000); // poll a cada 2s — leitura de clipboard e barata e da feedback mais rapido
+  }; // fim checkClipboardNow
+
+  // Polling: 2s em X11, 5s em Wayland (Wayland confia no --watch pra notificação rápida).
+  const pollMs = process.env.XDG_SESSION_TYPE === 'wayland' ? 5000 : 2000;
+  clipboardMonitoringInterval = setInterval(checkClipboardNow, pollMs);
+
+  // Wayland: instala watcher event-driven (dispara checkClipboardNow imediatamente em qualquer mudança).
+  startWaylandClipboardWatch(() => {
+    console.log('📋 wl-paste --watch: clipboard mudou → verificando...');
+    checkClipboardNow();
+  });
 }
 
 // Função para parar monitoramento do clipboard
@@ -1237,6 +1338,10 @@ function stopClipboardMonitoring() {
     clipboardMonitoringInterval = null;
     lastClipboardImageHash = null;
     console.log('🛑 Monitoramento de clipboard parado');
+  }
+  if (clipboardWatchProc) {
+    try { clipboardWatchProc.kill('SIGTERM'); } catch (_) {}
+    clipboardWatchProc = null;
   }
   
   // Parar também o monitoramento de captura
@@ -1258,16 +1363,26 @@ async function processNewClipboardImage(base64Image) {
     const text = await TesseractService.getTextFromImage(base64Image);
     
     if (!text || text.trim().length === 0) {
-      console.warn('⚠️ Nenhum texto encontrado na imagem');
-      
+      console.warn('⚠️ OCR vazio — mandando direto pra visão da IA');
+
       if (isOsIntegration) {
-        createOsNotificationWindow('response', 'Nenhum texto encontrado na imagem');
-      } else if (appConfig.notificationsEnabled && Notification.isSupported()) {
-        new Notification({
-          title: 'Helper-Node',
-          body: 'Nenhum texto encontrado na imagem',
-          silent: true,
-        }).show();
+        createOsNotificationWindow('loading', 'Analisando imagem (visão)...');
+        try {
+          await processOsQuestion('', base64Image, { forceVision: true });
+        } catch (error) {
+          console.error('Error in processOsQuestion (vision fallback):', error);
+          if (osNotificationWindow && !osNotificationWindow.isDestroyed()) {
+            osNotificationWindow.close();
+            osNotificationWindow = null;
+          }
+          await new Promise(resolve => setTimeout(resolve, 100));
+          createOsNotificationWindow('response', 'Erro ao analisar imagem.');
+        }
+      } else {
+        // Fora do OS mode: tambem manda visao se o renderer principal estiver disponivel
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('process-image-vision', base64Image);
+        }
       }
       return;
     }
@@ -1527,13 +1642,21 @@ async function toggleRecording() {
 
       if (isOsIntegration && VoskStreamService.isRunning()) {
         // OS Integration + Vosk (modo conversa contínua):
-        // Ctrl+D segundo toque = encerra a sessão (não envia nada extra,
-        // pois as perguntas já foram respondidas inline).
-        clearOsVoskSilenceTimer();
+        // Ctrl+D segundo toque = encerra. NAO bloqueia esperando IA: para
+        // Vosk já (sem entrada nova) e fecha o segmento pendente em
+        // background — senão o usuário fica achando que travou.
+        const pending = osLiveSegment;
+        // Para captura ANTES de mexer em segmento, pra não nascer novo
         VoskStreamService.stop();
         isRecording = false;
+        clearOsVoskSilenceTimer();
         console.log("OS Integration: conversa contínua encerrada");
-        destroyNotificationWindow();
+        if (pending && pending.hasSpeech && !pending.closing) {
+          // Reanexa pra closeOsLiveSegment achar
+          osLiveSegment = pending;
+          console.log('[os-live] stop manual — fechando segmento pendente em background');
+          closeOsLiveSegment().catch(e => console.error('[os-live] flush on stop:', e.message));
+        }
         return;
       }
 
@@ -1614,24 +1737,20 @@ async function toggleRecording() {
 
         // Start Vosk streaming
         const modelPath = path.join(__dirname, "vosk-model");
+        osLiveTurnCount = 0;
+        osLiveSegment = null;
         await VoskStreamService.start({
           audioSources,
           modelPath,
           onEvent: (event) => {
             if (!osNotificationWindow || osNotificationWindow.isDestroyed()) return;
-            if (event.type === 'partial') {
-              osNotificationWindow.webContents.executeJavaScript(
-                `window.appendPartial(${JSON.stringify(event.text)})`
-              ).catch(() => {});
-            } else if (event.type === 'result') {
-              osNotificationWindow.webContents.executeJavaScript(
-                `window.appendSentence(${JSON.stringify(event.text)})`
-              ).catch(() => {});
-              // Conversa contínua: detectar perguntas e responder inline
-              maybeAnswerInline(event.text).catch(err => console.error('inline answer error:', err));
-            }
+            handleOsLiveVoskEvent(event);
           },
         });
+
+        // Checa silencio/timeout a cada 500ms (separado do polling Vosk)
+        if (osLiveSilenceInterval) clearInterval(osLiveSilenceInterval);
+        osLiveSilenceInterval = setInterval(() => checkOsLiveSegmentLimits(), 500);
 
         mainWindow.webContents.send("toggle-recording", { isRecording, audioFilePath });
       } else {
@@ -3049,125 +3168,261 @@ ipcMain.on("cancel-recording", () => {
   }
 });
 
-// === Conversa contínua: detecta perguntas em sentenças finalizadas ===
-// Pequenos heurísticos para evitar disparos espúrios. Roda em background,
-// não bloqueia o Vosk e não fecha o overlay.
-let inlineAnswerInFlight = false;
-async function maybeAnswerInline(sentence) {
-  if (!sentence || inlineAnswerInFlight) return;
-  if (!osNotificationWindow || osNotificationWindow.isDestroyed()) return;
+// === Conversa contínua OS Mode: pipeline Vosk + Whisper ===
+// Mesma ideia do RealtimeAssistantService, simplificado para o overlay
+// recording-live. NAO usa heuristica "looksLikeQuestion" — manda todo
+// segmento pra IA, ela decide via system prompt se responde ou ignora.
+// Multi-turno: depois de responder, novo segmento comeca limpo na bolha
+// seguinte, igual chat.
 
-  const lower = sentence.toLowerCase().trim();
-  if (lower.length < 6) return;
+function handleOsLiveVoskEvent(event) {
+  if (!event) return;
+  if (event.type === 'ready' || event.type === 'stopped') return;
+  if (event.type === 'error') {
+    console.warn('[os-live] vosk error:', event.message);
+    return;
+  }
+  if (event.type === 'audio') return _onOsLiveAudioChunk(event.data);
 
-  const looksLikeQuestion =
-    lower.includes('?') ||
-    /^(o que|qual|quais|quanto|quantos|quantas|quem|onde|quando|por que|porque|porqu[eê]|como|sera|ser[áa])\b/.test(lower) ||
-    /\b(voc[eê] sabe|me explica|pode explicar|me ajuda|qual a|qual o|tem como)\b/.test(lower);
-
-  if (!looksLikeQuestion) return;
-
-  inlineAnswerInFlight = true;
-  try {
-    osNotificationWindow.webContents.executeJavaScript(`window.showLoading()`).catch(() => {});
-    await processOsQuestionWithWindow(sentence);
-  } catch (e) {
-    console.error('maybeAnswerInline failed:', e);
-  } finally {
-    inlineAnswerInFlight = false;
+  if (event.type === 'partial') {
+    const seg = _ensureOsLiveSegment();
+    seg.partial = event.text || '';
+    _renderOsLiveTurn(seg);
+    return;
+  }
+  if (event.type === 'result') {
+    const txt = (event.text || '').trim();
+    if (!txt) return;
+    const seg = _ensureOsLiveSegment();
+    seg.voskBuffer.push(txt);
+    seg.partial = '';
+    seg.hasSpeech = true;
+    _renderOsLiveTurn(seg);
   }
 }
 
-async function processOsQuestionWithWindow(text) {
-  // === Correção fonética ===
-  // O Vosk PT-BR transcreve termos técnicos em inglês foneticamente:
-  //   "paiton" / "peito" / "paitão" → Python
-  //   "javascripi" / "djavascript" → JavaScript
-  //   "ricte" / "ricti" → React
-  //   "naide" → Node
-  //   "tipescript" / "taipscripti" → TypeScript
-  //   "deno" pode aparecer como "deno" mesmo, ok
-  //   "doca" / "doquer" → Docker
-  //   "linucs" → Linux
-  //   "cosmiqui" → COSMIC
-  // Aplicamos um pré-processamento leve, e ainda avisamos a IA para
-  // interpretar o pedido considerando o ruído fonético.
-  const correctionMap = [
-    [/\b(paitão|paitao|paiton|peito|paitons?|paitan)\b/gi, 'Python'],
-    [/\b(djavascripti?|javascripi|djavascripi|javascripti)\b/gi, 'JavaScript'],
-    [/\b(taipescript|tipescript|taipiscripti|taipscripti|tipiscripti)\b/gi, 'TypeScript'],
-    [/\b(naide(\s+(jés|geis|jeis))?|nodgeis|nodjs|naid)\b/gi, 'Node.js'],
-    [/\b(ricti|ricte|reactji|réacti)\b/gi, 'React'],
-    [/\b(vyou|viu (jés|geis))\b/gi, 'Vue.js'],
-    [/\b(éngular|enguelar|angul[áa]r)\b/gi, 'Angular'],
-    [/\b(doquer|doca|dóquer)\b/gi, 'Docker'],
-    [/\b(cubernetis|cubernet|kubernetiz)\b/gi, 'Kubernetes'],
-    [/\b(linucs|linukis|linaks)\b/gi, 'Linux'],
-    [/\b(cosmiqui|c[oó]smiki)\b/gi, 'COSMIC'],
-    [/\b(guit hub|guitirrabi|guirabi)\b/gi, 'GitHub'],
-    [/\b(vis(o|u) cód|vis cod|vês code|vê[sz] c[oó]di)\b/gi, 'VS Code'],
-    [/\b(ai pi ai|ei pi ai|api eis)\b/gi, 'API'],
-    [/\b(djés on|jeison|gesson)\b/gi, 'JSON'],
-    [/\b(s qu[ée]l|esse qu[ée]l|escu[ée]l)\b/gi, 'SQL'],
-    [/\b(po(s|z)gris|postgrês)\b/gi, 'PostgreSQL'],
-    [/\b(redís|réd[ie]s)\b/gi, 'Redis'],
-    [/\b(open ei ai|openei|opena[ií])\b/gi, 'OpenAI'],
-    [/\b(djemini|geminai)\b/gi, 'Gemini'],
-    [/\b(cl[oó]di|cl[oó]de)\b/gi, 'Claude'],
-    [/\b(estack ovurfláu|stack ovurfláu)\b/gi, 'Stack Overflow'],
-  ];
-  let normalized = text;
-  for (const [re, repl] of correctionMap) normalized = normalized.replace(re, repl);
+function _ensureOsLiveSegment() {
+  if (osLiveSegment && !osLiveSegment.closing) return osLiveSegment;
+  osLiveTurnCount += 1;
+  const seg = {
+    id: 'osseg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+    turnNumber: osLiveTurnCount,
+    voskBuffer: [],
+    partial: '',
+    pcmChunks: [],
+    pcmBytes: 0,
+    startedAt: Date.now(),
+    lastLoudAt: Date.now(),
+    hasSpeech: false,
+    closing: false,
+    voskText: '',
+    whisperText: null,
+    responseVosk: null,
+    responseWhisper: null,
+  };
+  osLiveSegment = seg;
+  // Cria bolha nova no overlay
+  if (osNotificationWindow && !osNotificationWindow.isDestroyed()) {
+    osNotificationWindow.webContents.executeJavaScript(
+      `window.startTurn && window.startTurn(${JSON.stringify(seg.id)}, ${seg.turnNumber})`
+    ).catch(() => {});
+  }
+  return seg;
+}
 
-  const promptForAI = normalized === text
-    ? text
-    : `Pergunta (transcrição PT-BR de fala, pode ter erros fonéticos em termos técnicos em inglês — interprete com bom senso):\n\n${normalized}\n\n(Original com possíveis erros: "${text}")`;
+function _onOsLiveAudioChunk(chunk) {
+  if (!chunk) return;
+  const seg = _ensureOsLiveSegment();
+  seg.pcmChunks.push(chunk);
+  seg.pcmBytes += chunk.length;
+  if (_computeRMS(chunk) > OS_LIVE_SILENCE_RMS) seg.lastLoudAt = Date.now();
+}
 
+function _segmentTextOsLive(seg) {
+  const finalized = seg.voskBuffer.join(' ').trim();
+  const partial = (seg.partial || '').trim();
+  return [finalized, partial].filter(Boolean).join(' ');
+}
+
+function _renderOsLiveTurn(seg) {
+  if (!osNotificationWindow || osNotificationWindow.isDestroyed()) return;
+  const text = _segmentTextOsLive(seg);
+  osNotificationWindow.webContents.executeJavaScript(
+    `window.updateTurn && window.updateTurn(${JSON.stringify(seg.id)}, ${JSON.stringify(text)})`
+  ).catch(() => {});
+}
+
+function checkOsLiveSegmentLimits() {
+  const seg = osLiveSegment;
+  if (!seg || seg.closing || !seg.hasSpeech) return;
+  const now = Date.now();
+  if (now - seg.startedAt >= OS_LIVE_MAX_MS) {
+    console.log(`[os-live] ${seg.id}: max duracao -> fechar`);
+    return void closeOsLiveSegment().catch(console.error);
+  }
+  if (now - seg.lastLoudAt >= OS_LIVE_SILENCE_MS) {
+    console.log(`[os-live] ${seg.id}: silencio -> fechar`);
+    closeOsLiveSegment().catch(console.error);
+  }
+}
+
+async function closeOsLiveSegment() {
+  const seg = osLiveSegment;
+  if (!seg || seg.closing) return;
+  seg.closing = true;
+  osLiveSegment = null;
+
+  seg.voskText = _segmentTextOsLive(seg);
+  if (!seg.voskText || !seg.hasSpeech) return;
+
+  // Salva WAV pra Whisper rodar em paralelo
+  const pcm = Buffer.concat(seg.pcmChunks, seg.pcmBytes);
+  seg.pcmChunks = [];
+  const wavPath = path.join(OS_LIVE_TMP_DIR, seg.id + '.wav');
   try {
-    const aiModel = configService.getAiModel();
-    let resposta;
+    fs2.mkdirSync(OS_LIVE_TMP_DIR, { recursive: true });
+    fs2.writeFileSync(wavPath, _buildWavFile(pcm, OS_LIVE_SAMPLE_RATE, 1, 16));
+  } catch (e) { console.error('[os-live] WAV write failed:', e.message); }
 
-    if (aiModel === 'openIa') {
-      const token = configService.getOpenIaToken();
-      const instruction = configService.getPromptInstruction();
-      if (!token) {
-        if (osNotificationWindow && !osNotificationWindow.isDestroyed()) {
-          osNotificationWindow.webContents.executeJavaScript(`window.showResponse('Token da OpenAI não configurado.')`);
-        }
-        return;
-      }
-      const openAiModel = configService.getOpenAiModel();
-      const ht = buildHelperToolsOpenAIOpts(promptForAI, instruction, openAiModel);
-      resposta = await OpenAIService.makeOpenAIRequest(
-        promptForAI,
-        token,
-        ht.instruction || instruction,
-        ht.model || openAiModel,
-        null,
-        ht.opts
-      );
-    } else {
-      if (backendIsOnline) {
-        try { resposta = await BackendService.responder(promptForAI); }
-        catch (_) { resposta = await GeminiService.responder(promptForAI); }
-      } else {
-        resposta = await GeminiService.responder(promptForAI);
-      }
-    }
+  // Marca bolha como "processando"
+  if (osNotificationWindow && !osNotificationWindow.isDestroyed()) {
+    osNotificationWindow.webContents.executeJavaScript(
+      `window.markTurnFinal && window.markTurnFinal(${JSON.stringify(seg.id)}, ${JSON.stringify(seg.voskText)})`
+    ).catch(() => {});
+  }
 
-    // Show response in the live window (increase height to fit)
+  // 1) Pergunta IA com texto Vosk (rapido)
+  try {
+    const resp = await _askOsLiveAI(seg.voskText, null);
+    seg.responseVosk = resp;
     if (osNotificationWindow && !osNotificationWindow.isDestroyed()) {
-      osNotificationWindow.setSize(380, 400);
       osNotificationWindow.webContents.executeJavaScript(
-        `window.showResponse(${JSON.stringify(resposta || 'Sem resposta.')})`
+        `window.showTurnResponse && window.showTurnResponse(${JSON.stringify(seg.id)}, ${JSON.stringify(resp)}, false)`
       ).catch(() => {});
     }
-  } catch (error) {
-    console.error('Error in processOsQuestionWithWindow:', error);
+  } catch (err) {
+    console.error('[os-live] AI vosk error:', err.message);
     if (osNotificationWindow && !osNotificationWindow.isDestroyed()) {
-      osNotificationWindow.webContents.executeJavaScript(`window.showResponse('Erro ao gerar resposta.')`);
+      osNotificationWindow.webContents.executeJavaScript(
+        `window.showTurnResponse && window.showTurnResponse(${JSON.stringify(seg.id)}, ${JSON.stringify('Erro: ' + err.message)}, false)`
+      ).catch(() => {});
     }
   }
+
+  // 2) Whisper async pra corrigir e re-perguntar se diferir
+  if (fs2.existsSync(wavPath)) {
+    _runOsLiveWhisper(seg, wavPath).catch(e => console.error('[os-live] whisper:', e.message));
+  }
+}
+
+async function _runOsLiveWhisper(seg, wavPath) {
+  const whisperBin = path.join(__dirname, 'whisper', 'build', 'bin', 'whisper-cli');
+  const modelMed = path.join(__dirname, 'whisper', 'models', 'ggml-medium.bin');
+  const modelSm = path.join(__dirname, 'whisper', 'models', 'ggml-small.bin');
+  const model = fs2.existsSync(modelMed) ? modelMed : (fs2.existsSync(modelSm) ? modelSm : null);
+  if (!fs2.existsSync(whisperBin) || !model) {
+    try { fs2.unlinkSync(wavPath); } catch (_) {}
+    return;
+  }
+  const lang = (configService.getLanguage && configService.getLanguage()) === 'us-en' ? 'en' : 'pt';
+  const cmd = `"${whisperBin}" -m "${model}" -f "${wavPath}" -l ${lang} --threads 8 --no-timestamps --best-of 3 --beam-size 3`;
+  console.log('[os-live] whisper rodando para', seg.id);
+
+  let text = '';
+  try {
+    const { stdout } = await execPromise(cmd, { maxBuffer: 10 * 1024 * 1024 });
+    text = (stdout || '').replace(/\[[^\]]*\]/g, '').replace(/\s+/g, ' ').trim();
+  } catch (e) {
+    console.error('[os-live] whisper exec error:', e.message);
+    try { fs2.unlinkSync(wavPath); } catch (_) {}
+    return;
+  }
+  try { fs2.unlinkSync(wavPath); } catch (_) {}
+
+  if (!text || text === seg.voskText) return;
+  if (_textsAreEquivalent(text, seg.voskText)) return;
+  console.log(`[os-live] whisper corrigiu ${seg.id}: "${seg.voskText}" -> "${text}"`);
+  seg.whisperText = text;
+
+  // Atualiza a bolha do user com texto corrigido
+  if (osNotificationWindow && !osNotificationWindow.isDestroyed()) {
+    osNotificationWindow.webContents.executeJavaScript(
+      `window.replaceTurnText && window.replaceTurnText(${JSON.stringify(seg.id)}, ${JSON.stringify(text)})`
+    ).catch(() => {});
+  }
+
+  // Re-pergunta IA com versao corrigida
+  try {
+    const resp = await _askOsLiveAI(text, seg.responseVosk);
+    seg.responseWhisper = resp;
+    if (osNotificationWindow && !osNotificationWindow.isDestroyed()) {
+      osNotificationWindow.webContents.executeJavaScript(
+        `window.showTurnResponse && window.showTurnResponse(${JSON.stringify(seg.id)}, ${JSON.stringify(resp)}, true)`
+      ).catch(() => {});
+    }
+  } catch (err) {
+    console.error('[os-live] AI whisper error:', err.message);
+  }
+}
+
+async function _askOsLiveAI(transcript, previousResponse) {
+  const token = configService.getOpenIaToken();
+  if (!token) throw new Error('Token da OpenAI nao configurado.');
+  const model = configService.getOpenAiModel();
+  const instruction = configService.getPromptInstruction();
+
+  const userPrompt = previousResponse
+    ? `TRANSCRIÇÃO CORRIGIDA (Whisper, mais precisa) de um trecho que ja foi enviado em versao menos precisa (Vosk):\n\n"${transcript}"\n\nResposta anterior (com base na versao imprecisa): "${previousResponse}"\n\nRefaca sua ajuda com base APENAS na versao corrigida.`
+    : `TRANSCRIÇÃO ao vivo (modelo Vosk, pode conter erros) do audio captado:\n\n"${transcript}"\n\nResponda conforme as regras do system prompt. Se for incompreensivel ou sem conteudo, responda APENAS '(trecho sem conteudo relevante)'.`;
+
+  // Tool calling fica desligado aqui (latencia). Stateless tambem — cada
+  // turno e' independente pra IA conseguir tratar contexto via prompt.
+  return await OpenAIService.makeOpenAIRequest(
+    userPrompt,
+    token,
+    instruction,
+    model,
+    null,
+    { stateless: true }
+  );
+}
+
+function _textsAreEquivalent(a, b) {
+  const norm = s => s.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/g, ' ').trim();
+  return norm(a) === norm(b);
+}
+
+function _computeRMS(buf) {
+  if (!buf || buf.length < 2) return 0;
+  let sumSq = 0, count = 0;
+  for (let i = 0; i + 1 < buf.length; i += 2) {
+    const s = buf.readInt16LE(i);
+    sumSq += s * s; count++;
+  }
+  if (!count) return 0;
+  return Math.sqrt(sumSq / count);
+}
+
+function _buildWavFile(pcm, sampleRate, channels, bitsPerSample) {
+  const byteRate = sampleRate * channels * bitsPerSample / 8;
+  const blockAlign = channels * bitsPerSample / 8;
+  const dataSize = pcm.length;
+  const fileSize = 36 + dataSize;
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0);
+  header.writeUInt32LE(fileSize, 4);
+  header.write('WAVE', 8);
+  header.write('fmt ', 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(channels, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(byteRate, 28);
+  header.writeUInt16LE(blockAlign, 32);
+  header.writeUInt16LE(bitsPerSample, 34);
+  header.write('data', 36);
+  header.writeUInt32LE(dataSize, 40);
+  return Buffer.concat([header, pcm], 44 + dataSize);
 }
 
 // === Heurística de roteamento OCR vs VISÃO ===
@@ -3238,6 +3493,51 @@ function shouldUseVisionFor(ocrText) {
 
   // OCR limpo o suficiente — TEXTO basta
   return { useVision: false, reason: `OCR limpo (${words.length} palavras, ruído ${(noiseRatio * 100).toFixed(0)}%)` };
+}
+
+// Janela SECUND\u00c1RIA pra resposta de imagem quando recording-live (Vosk)
+// est\u00e1 ativa. Reutiliza response.html, posiciona um pouco abaixo da
+// recording-live (que fica top-right) pra n\u00e3o sobrepor.
+function showImageResponseInSecondaryWindow(htmlContent) {
+  try {
+    if (osImageResponseWindow && !osImageResponseWindow.isDestroyed()) {
+      osImageResponseWindow.close();
+      osImageResponseWindow = null;
+    }
+  } catch (_) {}
+
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  const winW = 420, winH = 320;
+  // Posiciona abaixo da recording-live (~y=60 + h=400 + gap). Se n\u00e3o couber, joga na meia altura.
+  const posX = Math.max(0, width - winW - 30);
+  const desiredY = 60 + 420 + 12;
+  const posY = (desiredY + winH > height - 20) ? Math.max(20, Math.floor(height / 2 - winH / 2)) : desiredY;
+
+  osImageResponseWindow = new BrowserWindow({
+    width: winW, height: winH,
+    x: posX, y: posY,
+    frame: false, transparent: true, alwaysOnTop: true,
+    skipTaskbar: true, resizable: false, movable: true,
+    minimizable: false, maximizable: false, fullscreenable: false,
+    focusable: false, type: 'toolbar', hasShadow: false,
+    webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, 'preload.js') },
+  });
+  try { osImageResponseWindow.setContentProtection(true); } catch (_) {}
+  osImageResponseWindow.setAlwaysOnTop(true, 'screen-saver');
+  osImageResponseWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+
+  const filePath = path.join(__dirname, 'os-integration', 'notifications', 'response.html');
+  osImageResponseWindow.loadFile(filePath).catch(err => console.error('[os-image] load response.html:', err));
+  osImageResponseWindow.webContents.once('dom-ready', () => {
+    osImageResponseWindow.webContents.executeJavaScript(`
+      if (typeof window.setResponseContent === 'function') {
+        window.setResponseContent(${JSON.stringify(htmlContent)});
+      } else {
+        document.body.innerHTML = ${JSON.stringify(htmlContent)} + '<button class="close-btn" onclick="window.close()" style="position:absolute;top:5px;right:8px;background:none;border:none;color:#fff;font-size:18px;cursor:pointer;padding:0;width:20px;height:20px;z-index:1000;">×</button>';
+      }
+    `).catch(() => {});
+  });
+  osImageResponseWindow.on('closed', () => { osImageResponseWindow = null; });
 }
 
 async function processOsQuestion(text, image = null, opts = {}) {
@@ -3355,16 +3655,20 @@ async function processOsQuestion(text, image = null, opts = {}) {
     }
 
     console.log(`🔔 Destroying loading notification and showing response`);
-    
-    // CRITICAL: Ensure the loading notification is completely destroyed before creating response
-    destroyNotificationWindow();
-    
-    // Wait a bit longer to ensure the window is fully destroyed
-    await new Promise(resolve => setTimeout(resolve, 300));
-    
-    // Show response in OS notification with HTML formatting  
+
+    // Se a recording-live (Vosk) est\u00e1 ativa, NAO destroi essa janela \u2014
+    // mostra a resposta numa janela secund\u00e1ria pra n\u00e3o engolir a conversa.
     const formattedResponse = formatToHTML(resposta);
-    createOsNotificationWindow('response', formattedResponse);
+    if (VoskStreamService.isRunning()) {
+      console.log('[os-image] Vosk ativo \u2014 abrindo response em janela secund\u00e1ria');
+      showImageResponseInSecondaryWindow(formattedResponse);
+    } else {
+      // CRITICAL: Ensure the loading notification is completely destroyed before creating response
+      destroyNotificationWindow();
+      // Wait a bit longer to ensure the window is fully destroyed
+      await new Promise(resolve => setTimeout(resolve, 300));
+      createOsNotificationWindow('response', formattedResponse);
+    }
     
   } catch (error) {
     console.error('Error in processOsQuestion:', error);
