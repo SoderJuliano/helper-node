@@ -289,12 +289,21 @@ elif [[ "$XDG_CURRENT_DESKTOP" == *"COSMIC"* ]]; then
 }
 EOF
 
-    # Restaura comportamento padrao do PrtSc: se a gente ja tinha escrito um
-    # override em system_actions (versoes 0.2.x intermediarias), apaga.
+    # Stealth mode: sobrescreve System(Screenshot) pra rodar cosmic-screenshot
+    # SEM a notificacao "Screenshot saved..." que fica em cima do nosso loading.
+    # O comportamento (abrir ferramenta interativa) e' identico ao default, so
+    # tira a notificacao.
     COSMIC_SYS_ACTIONS="$COSMIC_CONFIG_DIR/system_actions"
-    if [ -f "$COSMIC_SYS_ACTIONS" ] && grep -q 'capture-feedback' "$COSMIC_SYS_ACTIONS"; then
+    if command -v cosmic-screenshot >/dev/null 2>&1; then
+        cat > "$COSMIC_SYS_ACTIONS" << 'EOF'
+{
+    Screenshot: "cosmic-screenshot --notify=false",
+}
+EOF
+        echo "✓ Notificações da ferramenta de captura desativadas (modo stealth)."
+    elif [ -f "$COSMIC_SYS_ACTIONS" ] && grep -q 'capture-feedback' "$COSMIC_SYS_ACTIONS"; then
+        # Limpa override antigo de versões intermediárias (v0.2.x)
         rm -f "$COSMIC_SYS_ACTIONS"
-        echo "ℹ️  system_actions antigo removido (PrtSc volta ao default System(Screenshot))."
     fi
 
     # Touch parent dir mtime to nudge cosmic-config watcher (belt-and-suspenders)
