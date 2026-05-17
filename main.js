@@ -929,6 +929,8 @@ ipcMain.on("process-pasted-image", (event, base64Image) => {
 
   console.log("Main process received pasted image.");
   if (mainWindow && !mainWindow.isDestroyed()) {
+    // Feedback visual (idempotente — se JS paste handler ja disparou, vira no-op rapido)
+    mainWindow.webContents.send('screen-capturing', true);
     TesseractService.processPastedImage(base64Image, mainWindow).catch(
       (error) => {
         console.error("Error processing pasted image in main process:", error);
@@ -1177,6 +1179,11 @@ function startClipboardMonitoring() {
           }
           
           console.log('📸 NOVA IMAGEM DETECTADA no clipboard! Processando automaticamente...');
+          
+          // Feedback visual imediato (icone pulsante por 2s)
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('screen-capturing', true);
+          }
           
           // Set processing lock
           isProcessingImage = true;
