@@ -2705,6 +2705,17 @@ async function compressImageForVision(inputBase64OrBuffer, label = '') {
 // É o que mais se aproxima da experiência "PrintScreen → vai direto pra IA"
 // que o usuário tinha no Garuda. Sem clique extra, sem janela de seleção.
 async function captureFullScreenAuto() {
+  // Guardrail: só faz sentido com OS Integration ON + Print Mode ON.
+  // Se chamado fora desse cenário (curl direto, config mudou no meio), ignora
+  // silenciosamente. O tooltip já esconde o atalho nesse caso.
+  const osOn = configService.getOsIntegrationStatus();
+  const printOn = configService.getPrintModeStatus();
+  if (!osOn || !printOn) {
+    console.log(`[capture-auto] ignorado (osIntegration=${osOn}, printMode=${printOn}). ` +
+                'Use a ferramenta nativa do SO e cole no input com Ctrl+V.');
+    return;
+  }
+
   const tmpDir = path.join(app.getPath('temp'), `helpernode-shot-${Date.now()}`);
   const tmpPng = path.join(app.getPath('temp'), `helpernode-shot-${Date.now()}.png`);
   const isWayland = process.env.XDG_SESSION_TYPE === 'wayland';
