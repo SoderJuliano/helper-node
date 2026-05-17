@@ -2323,6 +2323,10 @@ ipcMain.handle("is-hyprland", () => {
   return isHyprland();
 });
 
+ipcMain.handle("is-mac", () => {
+  return process.platform === "darwin";
+});
+
 ipcMain.handle("get-backend-url", async () => {
   return await BackendService.getApiUrl();
 });

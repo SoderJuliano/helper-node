@@ -318,6 +318,8 @@
         .conversation-message-content {
             white-space: pre-wrap;
             word-wrap: break-word;
+            text-align: left;
+            justify-content: flex-start;
         }
 
         .commands-content {
@@ -368,7 +370,35 @@
         }
         
         .command-item {
-            margin: 5px 0;
+            padding: 4px 0;
+            cursor: pointer;
+            color: #e0e0e0;
+            transition: color 0.2s, text-shadow 0.2s;
+            font-size: 9px;
+            white-space: wrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 240px;
+            display: flex;
+            align-items: flex-start;
+            gap: 4px;
+            line-height: 1.4;
+        }
+
+        .command-item:hover {
+            color: #ffffff;
+            text-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
+        }
+
+        .command-item strong {
+            color: #81c784;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+        }
+
+        .command-item:hover strong {
+            color: #ffeb3b;
         }
         
         .hidden {
@@ -879,13 +909,7 @@
                 </button>
             </div>
             <div class="commands-content" id="shortcut-content">
-                <div id="recording-shortcut" class="command-item">⚡︎ CTRL+D - Iniciar/Parar gravação 🎙️</div>
-                <div id="manual-input-shortcut" class="command-item">⚡︎ CTRL+I - Inserir pergunta ✍️</div>
-                <div id="capture-screen-shortcut" class="command-item">⚡︎ CTRL+SHIFT+X - Capturar tela 📝</div>
-                <div class="command-item">⚡︎ CTRL+SHIFT+C - Configurações ⚙️</div>
-                <div id="move-to-screen-1" class="command-item">⚡︎ CTRL+SHIFT+1 - Move to screen 1 🖵←🖵</div>
-                <div id="move-to-screen-2" class="command-item">⚡︎ CTRL+SHIFT+2 - Move to screen 2 🖵→🖵</div>
-                <div id="debug-indicator" class="command-item" style="display: none; color: #ffab40;">🐞 Modo Debug Ativo</div>
+                <!-- Preenchido dinamicamente por JS -->
             </div>
         </div>
 
@@ -964,6 +988,83 @@
             const historyPanel = document.getElementById('history-panel');
             const historyToggle = document.getElementById('history-toggle');
             const historyHeader = document.getElementById('history-header');
+
+            // ===== DYNAMIC SHORTCUTS LOADER =====
+            const detectSystem = async () => {
+                // Detecta Hyprland olhando pra variáveis de ambiente (via IPC do main)
+                const isHyprland = await window.electronAPI.isHyprland?.() || false;
+                const isMac = await window.electronAPI.isMac?.() || false;
+                return { isHyprland, isMac };
+            };
+
+            const { isHyprland, isMac } = await detectSystem();
+            const shortcutContent = document.getElementById('shortcut-content');
+
+            // Define shortcuts por sistema (ordem: recording, input, capture, config, move/workspace, focus)
+            const shortcutsBySystem = {
+                gnome: [
+                    { id: 'recording-shortcut', keys: 'CTRL+D', action: 'Iniciar/Parar gravação', icon: '🎙️' },
+                    { id: 'manual-input-shortcut', keys: 'CTRL+I', action: 'Inserir pergunta', icon: '✍️', altKeys: 'CTRL+SHIFT+I' },
+                    { id: 'capture-screen-shortcut', keys: 'CTRL+SHIFT+X', action: 'Capturar tela', icon: '📝' },
+                    { id: 'config-shortcut', keys: 'CTRL+SHIFT+C', action: 'Configurações', icon: '⚙️' },
+                    { id: 'move-to-screen-1', keys: 'CTRL+SHIFT+1', action: 'Mover para tela 1', icon: '🖵←' },
+                    { id: 'move-to-screen-2', keys: 'CTRL+SHIFT+2', action: 'Mover para tela 2', icon: '🖵→' },
+                    { id: 'focus-app', keys: 'CTRL+A', action: 'Focar janela', icon: '🎯' }
+                ],
+                hyprland: [
+                    { id: 'recording-shortcut', keys: 'SUPER+D', action: 'Iniciar/Parar gravação', icon: '🎙️' },
+                    { id: 'manual-input-shortcut', keys: 'SUPER+I', action: 'Inserir pergunta', icon: '✍️', altKeys: 'SUPER+SHIFT+I' },
+                    { id: 'capture-screen-shortcut', keys: 'SUPER+SHIFT+X', action: 'Capturar tela', icon: '📝' },
+                    { id: 'config-shortcut', keys: 'SUPER+SHIFT+C', action: 'Configurações', icon: '⚙️' },
+                    { id: 'move-to-workspace-1', keys: 'SUPER+SHIFT+1', action: 'Mover para workspace 1', icon: '📍' },
+                    { id: 'move-to-workspace-2', keys: 'SUPER+SHIFT+2', action: 'Mover para workspace 2', icon: '📍' },
+                    { id: 'focus-app', keys: 'SUPER+A', action: 'Focar janela', icon: '🎯' }
+                ],
+                mac: [
+                    { id: 'recording-shortcut', keys: 'Cmd+D', action: 'Iniciar/Parar gravação', icon: '🎙️' },
+                    { id: 'manual-input-shortcut', keys: 'Cmd+I', action: 'Inserir pergunta', icon: '✍️', altKeys: 'Cmd+Shift+I' },
+                    { id: 'capture-screen-shortcut', keys: 'Cmd+Shift+X', action: 'Capturar tela', icon: '📷' },
+                    { id: 'config-shortcut', keys: 'Cmd+,', action: 'Configurações', icon: '⚙️' },
+                    { id: 'focus-app', keys: 'Cmd+Tab', action: 'Focar janela', icon: '🎯' }
+                ]
+            };
+
+            // Detecta sistema e carrega atalhos apropriados
+            let systemShortcuts = [];
+            if (isMac) {
+                systemShortcuts = shortcutsBySystem.mac;
+                console.log('🍎 Atalhos macOS carregados');
+            } else if (isHyprland) {
+                systemShortcuts = shortcutsBySystem.hyprland;
+                console.log('🪟 Atalhos Hyprland carregados');
+            } else {
+                systemShortcuts = shortcutsBySystem.gnome;
+                console.log('🐧 Atalhos GNOME carregados');
+            }
+
+            // Renderiza atalhos dinamicamente
+            shortcutContent.innerHTML = '';
+            systemShortcuts.forEach(shortcut => {
+                const item = document.createElement('div');
+                item.id = shortcut.id;
+                item.className = 'command-item';
+                
+                const keysText = shortcut.altKeys 
+                    ? `${shortcut.keys} / ${shortcut.altKeys}`
+                    : shortcut.keys;
+                
+                item.innerHTML = `⚡︎ <strong>${keysText}</strong> - ${shortcut.action} ${shortcut.icon}`;
+                shortcutContent.appendChild(item);
+            });
+
+            // Adiciona debug indicator (escondido por padrão)
+            const debugIndicator = document.createElement('div');
+            debugIndicator.id = 'debug-indicator';
+            debugIndicator.className = 'command-item';
+            debugIndicator.style.display = 'none';
+            debugIndicator.style.color = '#ffab40';
+            debugIndicator.innerHTML = '🐞 Modo Debug Ativo';
+            shortcutContent.appendChild(debugIndicator);
 
             // Rotacao do chevron e' controlada por CSS (.panel:not(.collapsed) .commands-toggle).
             // Aqui apenas alternamos a classe do painel.
@@ -1432,17 +1533,9 @@
             const moveToScreen2 = document.getElementById('move-to-screen-2');
             const captureScreenShortcut = document.getElementById('capture-screen-shortcut');
 
-            if (isHyprland) {
-                // Correto: Reflete os atalhos do setup-hotkey.sh para Hyprland
-                document.getElementById('move-to-screen-1').textContent = '⚡︎ SUPER+SHIFT+1 - Move to workspace 1 🖵←🖵';
-                document.getElementById('move-to-screen-2').textContent = '⚡︎ SUPER+SHIFT+2 - Move to workspace 2 🖵→🖵';
-                // Oculta o atalho de captura de tela, pois não é mais usado no Hyprland
-                document.getElementById('capture-screen-shortcut').style.display = 'none';
-                // Os atalhos principais também mudam no script para Hyprland
-                document.getElementById('recording-shortcut').textContent = '⚡︎ SUPER+D - Iniciar/Parar gravação 🎙️';
-                document.getElementById('manual-input-shortcut').textContent = '⚡︎ SUPER+I / CTRL+I - Inserir pergunta ✍️';
-            }
-        });
+            // Lógica de atalhos dinâmicos já implementada acima no DOMContentLoaded
+            // O bloco antigo de detecção de Hyprland foi removido e substituído por
+            // sistema de renderização dinâmica no código anterior.
 
         setTimeout(() => {
             greeting.classList.add('hidden');
