@@ -7,7 +7,13 @@
 ## 🚨 Convenções obrigatórias
 
 1. **Idioma:** todo código, commit, comentário e resposta em **português brasileiro**. Logs prefixados com tags tipo `[realtime]`, `[helperTools]`, `[audio]`.
-2. **Commits temáticos pequenos** com prefixo (`feat:`, `fix:`, `ui:`, `build:`, `refactor:`). Nunca commit gigante "wip".
+2. **Commits SEMPRE de 1 linha só** — ninguém merece ler bíblia por commit. Prefixos permitidos:
+   - `fix:` — bugfix (ex: `fix: arruma captura de tela no COSMIC`)
+   - `feat:` — feature nova (ex: `feat: tooltip dinâmico de atalhos por SO`)
+   - `release:` — bump de versão
+   - `chore:` — refactor interno, ajuste de build, limpeza
+   - `ui:` — ajuste visual sem mudar lógica
+   - `build:` — script de pacote, deb, arch
 3. **Não criar arquivos `.md` novos** sem pedido explícito. Atualizar [README.markdown](../README.markdown) e [ROADMAP.md](../ROADMAP.md) quando feature relevante.
 4. **Não tocar em `whisper/` (submódulo)** — é repo clonado, intocável.
 5. **Sem fallback automático entre providers** (OpenAI ↔ Ollama). Usuário escolhe, agente respeita.
