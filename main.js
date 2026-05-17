@@ -322,13 +322,15 @@ function createOsNotificationWindow(type, content) {
   } else if (type === 'recording-live') {
     // Tamanho inicial confortável: cabe header + 1 linha de fala
     // sem precisar de scrollbar. Cresce dinamicamente via resize-overlay.
-    windowWidth = 320;
+    // 380px: largura suficiente pra não cortar palavras grandes em PT-BR.
+    windowWidth = 380;
     windowHeight = 110;
   }
 
-  // Position in top right corner (5px a mais pra dentro: 25 em vez de 20)
+  // Position in top right corner (afasta 30px da borda direita
+  // pra evitar corte em compositores que reservam barra de scroll/overflow)
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-  const posX = Math.max(0, width - windowWidth - 25);
+  const posX = Math.max(0, width - windowWidth - 30);
   const posY = 60;
 
   const isMovableOverlay = (type === 'recording-live' || type === 'response');
@@ -1075,6 +1077,12 @@ async function initializeClipboardBaseline() {
       const base64Data = imageData.replace(/^data:image\/png;base64,/, '');
       const currentHash = calculateImageHash(Buffer.from(base64Data, 'base64'));
       lastClipboardImageHash = currentHash;
+      // CRITICAL: marca a imagem que ja estava no clipboard como "recem-processada"
+      // pra evitar que ela dispare auto-envio quando o monitor (re)inicia ao trocar
+      // de modo (Normal <-> OS Integration). Sem isso, abrir Ctrl+I em OS mode com
+      // uma imagem antiga no clipboard dispara OCR+IA dessa imagem velha.
+      lastProcessedImageHash = currentHash;
+      lastProcessedTimestamp = Date.now();
       console.log('📋 Clipboard baseline inicializado:', currentHash.substring(0, 8));
     } else {
       console.log('📋 Nenhuma imagem no clipboard para baseline');
@@ -1270,8 +1278,12 @@ async function processNewClipboardImage(base64Image) {
     if (isOsIntegration) {
       createOsNotificationWindow('loading', 'Enviando para IA...');
       // Process using OS integration mode
+      // CRITICAL: passa a IMAGEM também (não só OCR). Capturas de UI/canvas/quiz
+      // geram OCR vazio ou ruim — o auto-router em processOsQuestion decide
+      // se manda só texto ou visão. Sem isso, OS mode silenciosamente "perde"
+      // capturas onde o OCR não pega o conteúdo.
       try {
-        await processOsQuestion(text);
+        await processOsQuestion(text, base64Image);
       } catch (error) {
         console.error('Error in processOsQuestion for clipboard image:', error);
         // Explicitly close any existing notification before showing error

@@ -82,6 +82,7 @@ build_deb() {
         done
 
         cp vosk-stream.py "${APP_ROOT}/"
+        cp vosk-vocab.json "${APP_ROOT}/" 2>/dev/null || true
         cp package.json package-lock.json "${APP_ROOT}/" 2>/dev/null || true
         cp *.traineddata "${APP_ROOT}/" 2>/dev/null || true
         cp helper-node.sh helper-node.desktop setup-hotkey.sh capture-screenshot.sh install-deps.sh "${APP_ROOT}/" 2>/dev/null || true
@@ -166,7 +167,7 @@ build_arch() {
         --transform "s,^,helper-node/," \
         main.js index.html config.html config.js preload.js \
         assets/ os-integration/ services/ \
-        whisper/ vosk-model/ vosk-stream.py package.json *.traineddata \
+        whisper/ vosk-model/ vosk-stream.py vosk-vocab.json package.json *.traineddata \
         helper-node.sh helper-node.desktop setup-hotkey.sh \
         README.markdown ROADMAP.md 2>/dev/null || true
     
