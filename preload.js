@@ -84,4 +84,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   downloadConversationTxt: (sessionId) => ipcRenderer.invoke("download-conversation-txt", sessionId),
   newChat: () => ipcRenderer.invoke("new-chat"),
   deleteSession: (sessionId) => ipcRenderer.invoke("delete-session", sessionId),
+
+  // Confirmacao de acoes destrutivas (systemPowerAction etc.)
+  confirmActionRespond: (requestId, ok) =>
+    ipcRenderer.send("confirm-action-respond", { requestId, ok }),
 });

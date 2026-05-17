@@ -2825,6 +2825,74 @@ ipcMain.on("resize-overlay", (event, height) => {
   } catch (_) {}
 });
 
+// === Confirm action overlay ===
+// Usado por tools mutantes (systemPowerAction etc.) pra pedir clique humano
+// antes de executar algo destrutivo. Retorna Promise<boolean>.
+const _confirmActionPending = new Map(); // requestId -> { resolve, win, timer }
+
+function showConfirmActionOverlay(opts) {
+  return new Promise((resolve) => {
+    const requestId = `cfm_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const payload = { ...opts, requestId };
+    const json = Buffer.from(JSON.stringify(payload)).toString('base64');
+
+    const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
+    const w = 420, h = 200;
+    const win = new BrowserWindow({
+      width: w, height: h,
+      x: Math.floor((sw - w) / 2),
+      y: Math.floor((sh - h) / 3),
+      frame: false, transparent: true, alwaysOnTop: true,
+      skipTaskbar: true, resizable: false, movable: true,
+      focusable: true, hasShadow: true,
+      webPreferences: {
+        nodeIntegration: false, contextIsolation: true,
+        preload: path.join(__dirname, "preload.js"),
+      },
+    });
+    win.setAlwaysOnTop(true, 'screen-saver');
+    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    try { win.setContentProtection(true); } catch (_) {}
+
+    const filePath = path.join(__dirname, 'os-integration', 'notifications', 'confirmAction.html');
+    win.loadFile(filePath, { search: `json=${json}` }).catch(err =>
+      console.error('[confirm] load failed:', err)
+    );
+    win.focus();
+
+    const timer = setTimeout(() => {
+      if (_confirmActionPending.has(requestId)) {
+        console.log(`[confirm] ${requestId} timeout -> cancelado`);
+        finalize(false);
+      }
+    }, (opts.timeoutMs || 20000) + 500);
+
+    function finalize(ok) {
+      const entry = _confirmActionPending.get(requestId);
+      if (!entry) return;
+      _confirmActionPending.delete(requestId);
+      clearTimeout(entry.timer);
+      try { if (!entry.win.isDestroyed()) entry.win.close(); } catch (_) {}
+      entry.resolve(!!ok);
+    }
+
+    _confirmActionPending.set(requestId, { resolve, win, timer, finalize });
+
+    win.on('closed', () => {
+      // Se fechou sem responder, assume cancelado
+      if (_confirmActionPending.has(requestId)) finalize(false);
+    });
+  });
+}
+
+ipcMain.on("confirm-action-respond", (event, payload) => {
+  if (!payload || !payload.requestId) return;
+  const entry = _confirmActionPending.get(payload.requestId);
+  if (!entry) return;
+  console.log(`[confirm] ${payload.requestId} respondido: ${payload.ok}`);
+  entry.finalize(!!payload.ok);
+});
+
 // === Compressão de imagem para envio à OpenAI ===
 // PNG full-screen 1080p ≈ 5-7 MB → 6.7-9 MB em base64. Caro e lento.
 // OpenAI recomenda max 1568px por lado pra "high detail" (vision).
@@ -3819,6 +3887,13 @@ ipcMain.handle('delete-session', async (event, sessionId) => {
 app.whenReady().then(async () => {
   configService.initialize();
   helperTools.initialize(configService.getHelperToolsConfig());
+  // Registra confirmer para tools mutantes (systemPowerAction etc.)
+  try {
+    const spa = require('./services/helperTools/tools/systemPowerAction');
+    if (spa && typeof spa.setConfirmer === 'function') {
+      spa.setConfirmer((opts) => showConfirmActionOverlay(opts));
+    }
+  } catch (e) { console.warn('Confirmer setup falhou:', e.message); }
   OpenAIService.initialize();
   await historyService.initialize();
   await createWindow();

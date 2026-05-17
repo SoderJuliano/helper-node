@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Confirmar ação</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { background: transparent; overflow: hidden; }
+        body {
+            color: white;
+            font-family: "Source Code Pro", monospace;
+            font-size: 13px;
+            user-select: none;
+        }
+        #wrap {
+            background: rgba(25, 25, 28, 0.97);
+            border: 1px solid rgba(255, 80, 80, 0.5);
+            border-radius: 10px;
+            padding: 14px 18px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+        }
+        .title {
+            color: #ff6464;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+        .message {
+            color: #fff;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 6px;
+            line-height: 1.4;
+        }
+        .detail {
+            color: #aaa;
+            font-size: 12px;
+            margin-bottom: 14px;
+            line-height: 1.4;
+            font-style: italic;
+        }
+        .actions {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+        button {
+            font-family: inherit;
+            font-size: 12px;
+            padding: 6px 14px;
+            border-radius: 5px;
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: all 0.12s;
+        }
+        button.cancel {
+            background: rgba(255,255,255,0.08);
+            color: #ddd;
+            border-color: rgba(255,255,255,0.18);
+        }
+        button.cancel:hover { background: rgba(255,255,255,0.16); color: #fff; }
+        button.confirm {
+            background: #d33;
+            color: #fff;
+            font-weight: 600;
+        }
+        button.confirm:hover { background: #ee4444; }
+        .countdown {
+            color: #777;
+            font-size: 11px;
+            margin-top: 8px;
+            text-align: right;
+        }
+    </style>
+</head>
+<body>
+    <div id="wrap">
+        <div class="title">⚠️ Confirmacao necessaria</div>
+        <div class="message" id="msg">A IA quer executar uma acao.</div>
+        <div class="detail" id="detail" style="display:none"></div>
+        <div class="actions">
+            <button class="cancel" id="btn-cancel">Cancelar</button>
+            <button class="confirm" id="btn-ok">Confirmar</button>
+        </div>
+        <div class="countdown" id="cd"></div>
+    </div>
+
+    <script>
+        // payload vem via ?json=base64(JSON.stringify({...}))
+        let payload = {};
+        try {
+            const qs = new URLSearchParams(window.location.search);
+            const raw = qs.get("json");
+            if (raw) payload = JSON.parse(atob(raw));
+        } catch (e) { console.error(e); }
+
+        document.getElementById("msg").textContent = payload.message || "Confirmar acao?";
+        if (payload.detail) {
+            const d = document.getElementById("detail");
+            d.style.display = "block";
+            d.textContent = payload.detail;
+        }
+        document.getElementById("btn-ok").textContent = payload.confirmText || "Confirmar";
+        document.getElementById("btn-cancel").textContent = payload.cancelText || "Cancelar";
+
+        function respond(ok) {
+            if (window.electronAPI && window.electronAPI.confirmActionRespond) {
+                window.electronAPI.confirmActionRespond(payload.requestId, ok);
+            }
+            window.close();
+        }
+
+        document.getElementById("btn-ok").addEventListener("click", () => respond(true));
+        document.getElementById("btn-cancel").addEventListener("click", () => respond(false));
+
+        // Countdown visual (timeout efetivo eh feito no main)
+        const total = payload.timeoutMs || 20000;
+        const start = Date.now();
+        const cd = document.getElementById("cd");
+        const tick = setInterval(() => {
+            const remaining = Math.max(0, Math.ceil((total - (Date.now() - start)) / 1000));
+            cd.textContent = `Cancela em ${remaining}s`;
+            if (remaining <= 0) {
+                clearInterval(tick);
+                respond(false);
+            }
+        }, 250);
+
+        // Atalhos: Enter confirma, Esc cancela
+        window.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") respond(true);
+            else if (e.key === "Escape") respond(false);
+        });
+    </script>
+</body>
+</html>
