@@ -74,9 +74,6 @@ if [[ "$XDG_CURRENT_DESKTOP" == *"GNOME"* ]]; then
     # Hotkey for bring-to-focus-and-input (Ctrl+Shift+I)
     configure_gnome_hotkey "Focus App and Input (Ctrl+Shift+I)" "curl -X POST http://localhost:3000/bring-to-focus-and-input" "<Control><Shift>i" "helper-node-focus-input-ctrl-shift"
 
-    # Hotkey for capture-screen (Ctrl+Shift+X)
-    configure_gnome_hotkey "Capture Screen" "curl -X POST http://localhost:3000/capture-screen" "<Control><Shift>x" "helper-node-capture-screen"
-
     # Hotkey for capture-screen-auto (Ctrl+Shift+S) — print direto + IA, sem seleção
     configure_gnome_hotkey "Capture Screen Auto" "curl -X POST http://localhost:3000/capture-screen-auto" "<Control><Shift>s" "helper-node-capture-screen-auto"
 
@@ -117,7 +114,7 @@ if [[ "$XDG_CURRENT_DESKTOP" == *"GNOME"* ]]; then
 
     echo "------------------------------------------------------------------"
     echo "SUCCESS: GNOME hotkeys configured!"
-    echo "Global hotkeys should now be active: Ctrl+D, Ctrl+Shift+1, Ctrl+Shift+2, Ctrl+I, Ctrl+Shift+I, Ctrl+Shift+X, Ctrl+Shift+C."
+    echo "Global hotkeys should now be active: Ctrl+D, Ctrl+Shift+1, Ctrl+Shift+2, Ctrl+I, Ctrl+Shift+I, Ctrl+Shift+S, Ctrl+Shift+C."
     echo "If they don't work immediately, you may need to log out and log back in."
     echo "------------------------------------------------------------------"
 
@@ -233,15 +230,6 @@ TriggerOnRelease=false
 CommandURL=curl -X POST http://localhost:3000/bring-to-focus-and-input
 
 [Data_6]
-Comment=Capture Screen
-Enabled=true
-Name=Helper-Node: Capture Screen
-Type=SHORTCUT
-Shortcut=Ctrl+Shift+X
-TriggerOnRelease=false
-CommandURL=curl -X POST http://localhost:3000/capture-screen
-
-[Data_7]
 Comment=Open Config (escape hatch)
 Enabled=true
 Name=Helper-Node: Open Config
@@ -250,7 +238,7 @@ Shortcut=Ctrl+Shift+C
 TriggerOnRelease=false
 CommandURL=curl -X POST http://localhost:3000/open-config
 
-[Data_8]
+[Data_7]
 Comment=Capture Screen Auto (Ctrl+Shift+S)
 Enabled=true
 Name=Helper-Node: Capture Screen Auto
@@ -272,7 +260,7 @@ EOF
 
     echo "------------------------------------------------------------------"
     echo "SUCCESS: KDE Plasma hotkeys configured!"
-    echo "Global hotkeys should now be active: Ctrl+D, Ctrl+Shift+1, Ctrl+Shift+2, Ctrl+I, Ctrl+Shift+I, Ctrl+Shift+X, Ctrl+Shift+C."
+    echo "Global hotkeys should now be active: Ctrl+D, Ctrl+Shift+1, Ctrl+Shift+2, Ctrl+I, Ctrl+Shift+I, Ctrl+Shift+S, Ctrl+Shift+C."
     echo "If they don't work immediately, try restarting KHotKeys: kquitapp5 khotkeys && kstart5 khotkeys"
     echo "------------------------------------------------------------------"
 
@@ -294,7 +282,6 @@ elif [[ "$XDG_CURRENT_DESKTOP" == *"COSMIC"* ]]; then
     (modifiers: [Ctrl], key: "d"): Spawn("curl -X POST http://localhost:3000/toggle-recording"),
     (modifiers: [Ctrl], key: "i"): Spawn("curl -X POST http://localhost:3000/bring-to-focus-and-input"),
     (modifiers: [Ctrl, Shift], key: "i"): Spawn("curl -X POST http://localhost:3000/bring-to-focus-and-input"),
-    (modifiers: [Ctrl, Shift], key: "x"): Spawn("curl -X POST http://localhost:3000/capture-screen"),
     (modifiers: [Ctrl, Shift], key: "s"): Spawn("curl -X POST http://localhost:3000/capture-screen-auto"),
     (modifiers: [Ctrl, Shift], key: "c"): Spawn("curl -X POST http://localhost:3000/open-config"),
     (modifiers: [Ctrl, Shift], key: "1"): Spawn("curl -X POST http://localhost:3000/move-to-display/0"),
@@ -313,7 +300,6 @@ EOF
     echo "  Ctrl+D         -> Toggle Recording"
     echo "  Ctrl+I         -> Focus App and Input"
     echo "  Ctrl+Shift+I   -> Focus App and Input (alternativo)"
-    echo "  Ctrl+Shift+X   -> Capture Screen"
     echo "  Ctrl+Shift+S   -> Capture Screen AUTO (print direto + IA)"
     echo "  Ctrl+Shift+C   -> Open Config / re-show window (escape hatch)"
     echo "  Ctrl+Shift+1   -> Move to Display 1"
@@ -334,7 +320,7 @@ else
     echo "  Ctrl+D         -> curl -X POST http://localhost:3000/toggle-recording"
     echo "  Ctrl+I         -> curl -X POST http://localhost:3000/bring-to-focus-and-input"
     echo "  Ctrl+Shift+I   -> curl -X POST http://localhost:3000/bring-to-focus-and-input"
-    echo "  Ctrl+Shift+X   -> curl -X POST http://localhost:3000/capture-screen"
+    echo "  Ctrl+Shift+S   -> curl -X POST http://localhost:3000/capture-screen-auto"
     echo "  Ctrl+Shift+1   -> curl -X POST http://localhost:3000/move-to-display/0"
     echo "  Ctrl+Shift+2   -> curl -X POST http://localhost:3000/move-to-display/1"
     echo "------------------------------------------------------------------"

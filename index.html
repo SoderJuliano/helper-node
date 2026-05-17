@@ -371,6 +371,12 @@
         .command-item {
             margin: 5px 0;
         }
+
+        .command-item strong {
+            color: #81c784;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+        }
         
         .hidden {
             opacity: 0;
@@ -880,13 +886,7 @@
                 </button>
             </div>
             <div class="commands-content" id="shortcut-content">
-                <div id="recording-shortcut" class="command-item">⚡︎ CTRL+D - Iniciar/Parar gravação 🎙️</div>
-                <div id="manual-input-shortcut" class="command-item">⚡︎ CTRL+I - Inserir pergunta ✍️</div>
-                <div id="capture-screen-shortcut" class="command-item">⚡︎ CTRL+SHIFT+X - Capturar tela 📝</div>
-                <div class="command-item">⚡︎ CTRL+SHIFT+C - Configurações ⚙️</div>
-                <div id="move-to-screen-1" class="command-item">⚡︎ CTRL+SHIFT+1 - Mover para tela 1 🖵←</div>
-                <div id="move-to-screen-2" class="command-item">⚡︎ CTRL+SHIFT+2 - Mover para tela 2 🖵→</div>
-                <div id="focus-app" class="command-item">⚡︎ CTRL+A - Focar janela 🎯</div>
+                <!-- Preenchido dinamicamente por window.electronAPI.getAvailableShortcuts() -->
                 <div id="debug-indicator" class="command-item" style="display: none; color: #ffab40;">🐞 Modo Debug Ativo</div>
             </div>
         </div>
@@ -1421,21 +1421,36 @@
                 }
             });
 
-            // Adapta atalhos por sistema (try/catch pra nunca quebrar histórico/painéis)
-            try {
-                const isHyprland = typeof window.electronAPI.isHyprland === 'function'
-                    ? await window.electronAPI.isHyprland() : false;
+            // Renderiza tooltip de atalhos dinamicamente.
+            // Main decide o que mostrar baseado em SO, DE e configs ativas.
+            // Renderer s\u00f3 desenha. Reage a mudan\u00e7as via 'shortcuts-changed'.
+            const renderShortcuts = async () => {
+                try {
+                    const sc = document.getElementById('shortcut-content');
+                    if (!sc || typeof window.electronAPI.getAvailableShortcuts !== 'function') return;
+                    const data = await window.electronAPI.getAvailableShortcuts();
+                    const items = (data && data.items) || [];
 
-                if (isHyprland) {
-                    document.getElementById('recording-shortcut').textContent = '⚡︎ SUPER+D - Iniciar/Parar gravação 🎙️';
-                    document.getElementById('manual-input-shortcut').textContent = '⚡︎ SUPER+I / SUPER+SHIFT+I - Inserir pergunta ✍️';
-                    document.getElementById('capture-screen-shortcut').textContent = '⚡︎ SUPER+SHIFT+X - Capturar tela 📝';
-                    document.getElementById('move-to-screen-1').textContent = '⚡︎ SUPER+SHIFT+1 - Mover para workspace 1 📍';
-                    document.getElementById('move-to-screen-2').textContent = '⚡︎ SUPER+SHIFT+2 - Mover para workspace 2 📍';
-                    document.getElementById('focus-app').textContent = '⚡︎ SUPER+A - Focar janela 🎯';
+                    // Preserva debug-indicator no fim
+                    const dbg = document.getElementById('debug-indicator');
+                    sc.innerHTML = '';
+                    items.forEach(s => {
+                        const div = document.createElement('div');
+                        div.className = 'command-item';
+                        div.id = 'sc-' + s.id;
+                        const keysText = s.altKeys ? `${s.keys} / ${s.altKeys}` : s.keys;
+                        div.innerHTML = `\u26a1\ufe0e <strong>${keysText}</strong> - ${s.action} ${s.icon || ''}`;
+                        sc.appendChild(div);
+                    });
+                    if (dbg) sc.appendChild(dbg);
+                } catch (err) {
+                    console.warn('[shortcuts] Falha ao renderizar atalhos:', err);
                 }
-            } catch (err) {
-                console.warn('[shortcuts] Erro ao adaptar atalhos por sistema:', err);
+            };
+
+            await renderShortcuts();
+            if (typeof window.electronAPI.onShortcutsChanged === 'function') {
+                window.electronAPI.onShortcutsChanged(renderShortcuts);
             }
         });
 

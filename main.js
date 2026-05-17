@@ -2323,6 +2323,65 @@ ipcMain.handle("is-hyprland", () => {
   return isHyprland();
 });
 
+// === Atalhos dispon\u00edveis dinamicamente (por SO + DE + modo) ===
+// Retorna apenas atalhos que REALMENTE funcionam no contexto atual.
+// O renderer consome isso e renderiza o tooltip; nada \u00e9 hardcoded l\u00e1.
+ipcMain.handle("get-available-shortcuts", () => {
+  const sessionType = (process.env.XDG_SESSION_TYPE || "").toLowerCase();
+  const desktop = (process.env.XDG_CURRENT_DESKTOP || "").toUpperCase();
+  const isWayland = sessionType === "wayland";
+  const isCosmic = desktop.includes("COSMIC");
+  const isHyprlandEnv = !!process.env.HYPRLAND_INSTANCE_SIGNATURE;
+  const isX11 = sessionType === "x11" || (!isWayland && !isHyprlandEnv);
+
+  const osIntegrationOn = configService.getOsIntegrationStatus();
+  const printModeOn = configService.getPrintModeStatus();
+
+  // Prefixo de tecla varia: Hyprland usa SUPER, demais usam CTRL
+  const mod = isHyprlandEnv ? "SUPER" : "CTRL";
+  const shift = isHyprlandEnv ? "SUPER+SHIFT" : "CTRL+SHIFT";
+
+  const items = [];
+
+  // Sempre dispon\u00edvel (registrado via gsettings/COSMIC/Hyprland config)
+  items.push({ id: "recording", keys: `${mod}+D`, action: "Iniciar/Parar grava\u00e7\u00e3o", icon: "\ud83c\udf99\ufe0f" });
+  items.push({ id: "manual-input", keys: `${mod}+I`, altKeys: `${shift}+I`, action: "Inserir pergunta", icon: "\u270d\ufe0f" });
+  items.push({ id: "open-config", keys: `${shift}+C`, action: "Configura\u00e7\u00f5es", icon: "\u2699\ufe0f" });
+
+  // Captura stealth (Ctrl+Shift+S): s\u00f3 faz sentido com OS Integration ON.
+  // Quando print-mode est\u00e1 OFF, o user prefere usar ferramenta nativa do SO
+  // + Ctrl+V no input. N\u00e3o mostramos.
+  if (osIntegrationOn && printModeOn) {
+    items.push({ id: "capture-stealth", keys: `${shift}+S`, action: "Captura stealth + IA", icon: "\ud83d\udcf8" });
+  }
+
+  // Mover janela entre telas: s\u00f3 funciona em X11 ou Hyprland.
+  // Wayland puro (COSMIC, GNOME Wayland) ignora setBounds() pelo compositor.
+  if (isX11 || isHyprlandEnv) {
+    if (isHyprlandEnv) {
+      items.push({ id: "move-1", keys: `${shift}+1`, action: "Mover para workspace 1", icon: "\ud83d\udccd" });
+      items.push({ id: "move-2", keys: `${shift}+2`, action: "Mover para workspace 2", icon: "\ud83d\udccd" });
+    } else {
+      items.push({ id: "move-1", keys: `${shift}+1`, action: "Mover para tela 1", icon: "\ud83d\uddb5\u2190" });
+      items.push({ id: "move-2", keys: `${shift}+2`, action: "Mover para tela 2", icon: "\ud83d\uddb5\u2192" });
+    }
+  }
+
+  return {
+    env: { sessionType, desktop, isWayland, isCosmic, isHyprland: isHyprlandEnv, isX11 },
+    flags: { osIntegrationOn, printModeOn },
+    items,
+  };
+});
+
+// Notifica o renderer sempre que algo que muda os atalhos for alterado.
+// O renderer escuta isso e repede get-available-shortcuts.
+function notifyShortcutsChanged() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try { mainWindow.webContents.send("shortcuts-changed"); } catch (_) {}
+  }
+}
+
 ipcMain.handle("get-backend-url", async () => {
   return await BackendService.getApiUrl();
 });
@@ -2369,6 +2428,7 @@ ipcMain.on("save-print-mode-status", (event, status) => {
 
   configService.setPrintModeStatus(status);
   console.log('Print mode status changed to:', status);
+  notifyShortcutsChanged();
   
   if (status) {
     // Notificação de ativação
@@ -2449,6 +2509,7 @@ ipcMain.on("save-os-integration-status", (event, status) => {
 
   configService.setOsIntegrationStatus(status);
   console.log('OS Integration status changed to:', status);
+  notifyShortcutsChanged();
   
   if (status) {
     // Automatically enable print mode when OS integration is enabled
@@ -3410,7 +3471,6 @@ app.whenReady().then(async () => {
     toggleRecording,
     moveToDisplay,
     bringWindowToFocus,
-    captureScreen,
     captureScreenAuto: captureFullScreenAuto,
     openConfig: createConfigWindow,
   });

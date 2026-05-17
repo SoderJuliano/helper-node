@@ -54,6 +54,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   startNotifications: () => ipcRenderer.send("start-notifications"),
   cancelIaRequest: () => ipcRenderer.send("cancel-ia-request"),
   isHyprland: () => ipcRenderer.invoke("is-hyprland"),
+  getAvailableShortcuts: () => ipcRenderer.invoke("get-available-shortcuts"),
+  onShortcutsChanged: (callback) => ipcRenderer.on("shortcuts-changed", () => callback()),
   getDebugModeStatus: () => ipcRenderer.invoke("get-debug-mode-status"), // Added for debug mode access
   getPromptInstruction: () => ipcRenderer.invoke("get-prompt-instruction"), // Added for prompt instruction access
   getBackendUrl: () => ipcRenderer.invoke("get-backend-url"),
