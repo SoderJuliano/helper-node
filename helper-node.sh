@@ -114,4 +114,8 @@ if [ ! -u "$APP_DIR/node_modules/electron/dist/chrome-sandbox" ]; then
     ELECTRON_ARGS+=("--no-sandbox")
 fi
 
+# Garante que o whisper-cli ache libwhisper.so e libggml*.so, ja que o RUNPATH
+# embutido no binario aponta pra paths absolutos da maquina de build.
+export LD_LIBRARY_PATH="$APP_DIR/whisper/build/src:$APP_DIR/whisper/build/ggml/src${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
 exec "$ELECTRON_BIN" "$APP_DIR/main.js" "${ELECTRON_ARGS[@]}" "$@"

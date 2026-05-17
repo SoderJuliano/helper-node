@@ -65,7 +65,22 @@ build_deb() {
     # Copy application files
     echo -e "${YELLOW}→${NC} Copying application files..."
         cp -r main.js main_new_notification.js createOsNotificationWindow_fixed.js index.html config.html config.js preload.js "${APP_ROOT}/" 2>/dev/null || true
-        cp -r assets os-integration services whisper vosk-model "${APP_ROOT}/"
+        cp -r assets os-integration services vosk-model "${APP_ROOT}/"
+
+        # Whisper: copia seletiva (binarios + libs + modelos reais)
+        # Evita repo git, fontes C++, examples, tests, bindings e modelos for-tests-
+        echo -e "${YELLOW}→${NC} Copying whisper runtime (selective)..."
+        mkdir -p "${APP_ROOT}/whisper/build" "${APP_ROOT}/whisper/models"
+        cp -r whisper/build/bin "${APP_ROOT}/whisper/build/"
+        mkdir -p "${APP_ROOT}/whisper/build/src" "${APP_ROOT}/whisper/build/ggml/src"
+        cp -P whisper/build/src/libwhisper.so* "${APP_ROOT}/whisper/build/src/"
+        cp -P whisper/build/ggml/src/libggml*.so* "${APP_ROOT}/whisper/build/ggml/src/"
+        for m in whisper/models/ggml-*.bin; do
+            base="$(basename "$m")"
+            [[ "$base" == for-tests-* ]] && continue
+            cp "$m" "${APP_ROOT}/whisper/models/"
+        done
+
         cp vosk-stream.py "${APP_ROOT}/"
         cp package.json package-lock.json "${APP_ROOT}/" 2>/dev/null || true
         cp *.traineddata "${APP_ROOT}/" 2>/dev/null || true
