@@ -96,22 +96,6 @@ function start(funcs) {
     }
   });
 
-  // Feedback visual de \"capturando tela\" — disparado por atalho global PrtSc
-  // ANTES da ferramenta nativa abrir. Apenas pisca o icone, nao processa nada.
-  app.post('/capture-feedback', (req, res) => {
-    if (callbacks.captureFeedback) {
-      try {
-        callbacks.captureFeedback();
-        res.status(200).send({ message: 'Feedback de captura disparado.' });
-      } catch (error) {
-        console.error('Erro ao disparar capture-feedback via IPC:', error);
-        res.status(500).send({ message: 'Erro interno.' });
-      }
-    } else {
-      res.status(500).send({ message: 'Callback de capture-feedback não configurado.' });
-    }
-  });
-
   app.post('/open-config', (req, res) => {
     if (callbacks.openConfig) {
       try {

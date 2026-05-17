@@ -592,19 +592,6 @@
             z-index: 1000;
         }
 
-        @keyframes capture-pulse {
-            0%   { transform: scale(1);   opacity: 0.85; }
-            50%  { transform: scale(1.25); opacity: 1; }
-            100% { transform: scale(1);   opacity: 0.85; }
-        }
-
-        .capture-icon.pulsing {
-            display: block !important;
-            animation: capture-pulse 700ms ease-in-out infinite;
-            transform-origin: center center;
-            filter: drop-shadow(0 0 8px rgba(120, 180, 255, 0.55));
-        }
-
 
         .ia-response {
             font-family: "Source Code Pro", monospace;
@@ -922,7 +909,6 @@
 
     <div id="animation-container"></div>
     <img src="./assets/robot.gif" id="robot" class="icon" />
-    <img src="./assets/captura-de-tela.png" alt="capturing..." id="capture" class="icon capture-icon" />
 
     <div class="content">
         <h1 id="greeting">Olá amigo</h1>
@@ -1609,14 +1595,8 @@
                                 window.electronAPI.processPastedImage(base64Image);
                             } else {
                                 // FLUXO ANTIGO: Input manual fechado, processa imediatamente
-                                const captureIcon = document.getElementById('capture');
-                                captureIcon.classList.add('pulsing');
-                                if (captureIcon._pulseTimer) clearTimeout(captureIcon._pulseTimer);
-                                captureIcon._pulseTimer = setTimeout(() => {
-                                    captureIcon.classList.remove('pulsing');
-                                    captureIcon.style.display = 'none';
-                                    captureIcon._pulseTimer = null;
-                                }, 2000);
+                                const robot = document.getElementById('robot');
+                                if (robot) robot.style.display = 'block';
 
                                 const message = "Image in context";
 
@@ -2008,16 +1988,13 @@
             });
 
             window.electronAPI.onCapturingScreen((val) => {
-                const captureIcon = document.getElementById('capture');
-                if (!captureIcon) return;
-                captureIcon.classList.add('pulsing');
-                // Limpa timer anterior pra evitar piscadas se chamarem 2x seguidas
-                if (captureIcon._pulseTimer) clearTimeout(captureIcon._pulseTimer);
-                captureIcon._pulseTimer = setTimeout(() => {
-                    captureIcon.classList.remove('pulsing');
-                    captureIcon.style.display = 'none';
-                    captureIcon._pulseTimer = null;
-                }, 2000);
+                // Usa o robot loading padrao (mesmo "pensando" das respostas).
+                // val=true: imagem entrou no contexto, OCR/IA processando.
+                // val=false: handler de captura terminou (ja existem outros pontos
+                // que escondem o robot após a resposta da IA).
+                const robot = document.getElementById('robot');
+                if (!robot) return;
+                robot.style.display = val ? 'block' : 'none';
             })
 
             // ===== STREAMING LISTENERS =====

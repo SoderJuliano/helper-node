@@ -1180,7 +1180,7 @@ function startClipboardMonitoring() {
           
           console.log('📸 NOVA IMAGEM DETECTADA no clipboard! Processando automaticamente...');
           
-          // Feedback visual imediato (icone pulsante por 2s)
+          // Sinaliza loading no renderer (robot.gif) ate IA responder
           if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('screen-capturing', true);
           }
@@ -3512,15 +3512,6 @@ app.whenReady().then(async () => {
     bringWindowToFocus,
     captureScreenAuto: captureFullScreenAuto,
     openConfig: createConfigWindow,
-    // Disparado por atalho global (PrtSc) ANTES da ferramenta nativa abrir,
-    // ou por qualquer outra fonte que queira sinalizar "vou capturar".
-    // Apenas mostra o icone animado por ~2s; o monitor de clipboard cuida
-    // do processamento real quando a imagem aparecer.
-    captureFeedback: () => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('screen-capturing', true);
-      }
-    },
   });
 
   // Envia o status inicial do modo debug para a janela principal
