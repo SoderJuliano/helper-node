@@ -324,9 +324,20 @@ elif [[ "$XDG_CURRENT_DESKTOP" == *"COSMIC"* ]]; then
     (modifiers: [Ctrl, Shift], key: "s"): Spawn("curl -X POST http://localhost:3000/capture-screen-auto"),
     (modifiers: [Ctrl, Shift], key: "c"): Spawn("curl -X POST http://localhost:3000/open-config"),
     (modifiers: [Ctrl, Shift], key: "1"): Spawn("curl -X POST http://localhost:3000/move-to-display/0"),
-    (modifiers: [Ctrl, Shift], key: "2"): Spawn("curl -X POST http://localhost:3000/move-to-display/1"),$( [ -n "$SCREENSHOT_TOOL" ] && printf '\n    (modifiers: [], key: "Print"): Spawn("sh -c %s%s & curl -s -X POST %s >/dev/null 2>&1%s"),' "'" "$SCREENSHOT_TOOL" "$CAPTURE_FEEDBACK_URL" "'" )
+    (modifiers: [Ctrl, Shift], key: "2"): Spawn("curl -X POST http://localhost:3000/move-to-display/1"),
 }
 EOF
+
+    # PrtSc: ao invés de tentar bindar uma Spawn (perde pra System(Screenshot) default),
+    # sobrescrevemos a ação System(Screenshot) pra rodar a ferramenta nativa + nosso
+    # curl de feedback em paralelo. Mantém o comportamento padrão do PrtSc intacto.
+    COSMIC_SYS_ACTIONS="$COSMIC_CONFIG_DIR/system_actions"
+    cat > "$COSMIC_SYS_ACTIONS" << EOF
+{
+    Screenshot: "sh -c 'cosmic-screenshot & curl -s -X POST $CAPTURE_FEEDBACK_URL >/dev/null 2>&1'",
+}
+EOF
+    touch "$COSMIC_SYS_ACTIONS"
 
     # Touch parent dir mtime to nudge cosmic-config watcher (belt-and-suspenders)
     touch "$COSMIC_SHORTCUTS_FILE"
