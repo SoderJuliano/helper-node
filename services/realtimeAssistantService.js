@@ -3,31 +3,53 @@ const path = require("path");
 const fs = require("fs");
 const fsp = require("fs").promises;
 const os = require("os");
-const { exec } = require("child_process");
+const { exec, spawn } = require("child_process");
 const util = require("util");
 const execPromise = util.promisify(exec);
 const voskStreamService = require("./voskStreamService");
 
 /**
- * Realtime Assistant — Vosk live + Whisper background correction.
+ * Realtime Assistant — Whisper-first (Option A).
  *
- * Per segment:
- *   1. Vosk transcribes live (partial + result update one bubble in place).
- *   2. PCM is buffered.
- *   3. Segment closes when:
- *        - >=5s of silence AND vosk has speech, OR
- *        - >=25s elapsed (forced cut).
- *   4. On close:
- *        a) ask AI with Vosk text → emit `segment_response` (raw)
- *        b) async: WAV → whisper-cli → emit `segment_whisper_correction`
- *           → re-ask AI → emit `segment_response_corrected`
- *        c) history is replaced (not appended) when corrections come in.
+ * Vosk roda só pra feedback visual ao vivo (mostra que esta ouvindo).
+ * A IA recebe APENAS o texto refinado do Whisper (fonte de verdade).
+ * Se Whisper falhar/timeout, cai pro texto Vosk como fallback.
+ *
+ * Por segmento:
+ *   1. Vosk transcreve ao vivo → atualiza bolha do usuario (preview).
+ *   2. PCM e bufferizado em paralelo.
+ *   3. Segmento fecha quando:
+ *        - >= SILENCE_DURATION_MS de silencio (com regra de conectores), OU
+ *        - >= MAX_SEGMENT_MS atingido COM silencio recente (grace ate HARD_CAP).
+ *   4. Ao fechar:
+ *        a) emite segment_vosk_final (UI mostra "transcrevendo com Whisper").
+ *        b) enfileira Whisper (max N paralelos).
+ *        c) Whisper termina (ou timeout/falha) → texto final definido.
+ *        d) emite segment_whisper_correction com texto final.
+ *        e) chama IA UMA VEZ com texto final → emite segment_response.
+ *        f) escreve historico (user + assistant) uma unica vez.
  */
 
 const SAMPLE_RATE = 16000;
 const SILENCE_RMS_THRESHOLD = 250;
-const SILENCE_DURATION_MS = 5000;
-const MAX_SEGMENT_MS = 25000;
+const SILENCE_DURATION_MS = 4000;        // pausa real, nao respirada
+const MAX_SEGMENT_MS = 90000;            // explicacao tecnica longa cabe
+const GRACE_EXTEND_MS = 15000;           // se ainda falando ao bater max, estende
+const HARD_CAP_MS = 120000;              // limite absoluto (sem chance de virar audiobook)
+const CONNECTOR_GRACE_MS = 4000;         // se parou em conector, aguarda mais X
+const LOUD_ACTIVE_WINDOW_MS = 700;       // "ainda falando" = teve som loud nos ultimos N ms
+const WHISPER_TIMEOUT_MS = 45000;        // mata whisper se ultrapassar
+const MAX_PARALLEL_WHISPER = 2;          // evita N whisper-cli concorrendo no CPU
+
+// Tokens que indicam fala incompleta ("...porque", "...entao", "...e").
+// Quando o ultimo token do parcial bate, NAO fechamos por silencio na hora —
+// damos CONNECTOR_GRACE_MS extra pra terminar a frase.
+const CONNECTORS = new Set([
+  "porque","entao","então","mas","e","ai","aí","que","e'","ou","tipo","dai","daí",
+  "so","só","pra","para","quando","enquanto","com","sem","no","na","do","da",
+  "um","uma","os","as","de","vou","vai","ele","ela","isso","se","ja","já",
+  "mais","meu","minha","nosso","nossa","em","por","como","qual","essa","esse"
+]);
 
 class RealtimeAssistantService {
   constructor({ configService, getMainWindow, onFatalStop, historyService }) {
@@ -47,6 +69,10 @@ class RealtimeAssistantService {
 
     this.currentSegment = null;
     this._silenceCheckInterval = null;
+
+    // Fila do Whisper: limita paralelismo pra nao travar CPU.
+    this._whisperQueue = [];
+    this._whisperRunning = 0;
   }
 
   isActive() { return this.active; }
@@ -137,14 +163,44 @@ class RealtimeAssistantService {
     const seg = this.currentSegment;
     if (!seg || seg.closing || !seg.hasSpeech) return;
     const now = Date.now();
-    if (now - seg.startedAt >= MAX_SEGMENT_MS) {
-      console.log(`[realtime] ${seg.id}: max duration → close`);
+    const elapsed = now - seg.startedAt;
+    const sinceLoud = now - seg.lastLoudAt;
+
+    // Hard-cap absoluto: depois disso fecha sem pena.
+    if (elapsed >= HARD_CAP_MS) {
+      console.log(`[realtime] ${seg.id}: hard-cap ${(elapsed/1000)|0}s → close`);
       return void this._closeAndProcessSegment().catch(console.error);
     }
-    if (now - seg.lastLoudAt >= SILENCE_DURATION_MS) {
-      console.log(`[realtime] ${seg.id}: silence → close`);
-      this._closeAndProcessSegment().catch(console.error);
+
+    // Estourou max: so fecha se o usuario PAROU de falar (silencio recente).
+    // Caso contrario, da grace ate HARD_CAP_MS.
+    if (elapsed >= MAX_SEGMENT_MS + GRACE_EXTEND_MS) {
+      console.log(`[realtime] ${seg.id}: max+grace ${(elapsed/1000)|0}s → close`);
+      return void this._closeAndProcessSegment().catch(console.error);
     }
+    if (elapsed >= MAX_SEGMENT_MS && sinceLoud >= LOUD_ACTIVE_WINDOW_MS) {
+      console.log(`[realtime] ${seg.id}: max duration + silencio → close`);
+      return void this._closeAndProcessSegment().catch(console.error);
+    }
+
+    // Silencio normal: regra de conectores.
+    if (sinceLoud >= SILENCE_DURATION_MS) {
+      const lastToken = this._lastSpokenToken(seg);
+      const isConnector = lastToken && CONNECTORS.has(lastToken);
+      const grace = isConnector ? (SILENCE_DURATION_MS + CONNECTOR_GRACE_MS) : SILENCE_DURATION_MS;
+      if (sinceLoud >= grace) {
+        console.log(`[realtime] ${seg.id}: silence ${(sinceLoud/1000)|0}s (last="${lastToken||''}") → close`);
+        this._closeAndProcessSegment().catch(console.error);
+      }
+      // senao: espera mais um pouco — pode estar terminando frase
+    }
+  }
+
+  _lastSpokenToken(seg) {
+    const text = this._segmentText(seg).toLowerCase().trim();
+    if (!text) return null;
+    const m = text.match(/([\wáéíóúâêôãõàç']+)\s*$/i);
+    return m ? m[1] : null;
   }
 
   _ensureSegment() {
@@ -180,71 +236,181 @@ class RealtimeAssistantService {
 
     const pcm = Buffer.concat(seg.pcmChunks, seg.pcmBytes);
     seg.pcmChunks = [];
-    const wavPath = path.join(this.tmpDir, seg.id + ".wav");
-    try { await fsp.writeFile(wavPath, buildWavFile(pcm, SAMPLE_RATE, 1, 16)); }
-    catch (e) { console.error("WAV write failed:", e.message); }
+    seg.durationSec = pcm.length / (SAMPLE_RATE * 2); // s16le mono
 
+    const wavPath = path.join(this.tmpDir, seg.id + ".wav");
+    let wavOk = false;
+    try {
+      await fsp.writeFile(wavPath, buildWavFile(pcm, SAMPLE_RATE, 1, 16));
+      wavOk = true;
+    } catch (e) { console.error("WAV write failed:", e.message); }
+
+    // UI: avisa que segmento fechou e estamos transcrevendo com Whisper.
     this.emitUpdate({ type: "segment_vosk_final", id: seg.id, text: seg.voskText, timestamp: new Date().toISOString() });
 
-    try {
-      const resp = await this._askAI(seg.voskText, false);
-      seg.responseRaw = resp;
-      this.emitUpdate({ type: "segment_response", id: seg.id, response: resp, source: "vosk", timestamp: new Date().toISOString() });
-      await this._writeHistory(seg, seg.voskText, resp);
-    } catch (err) { this._handleAIError(err, seg); }
+    // Enfileira tudo (Whisper -> IA -> historico) — IA so chama UMA vez no fim.
+    this._enqueueWhisper(async () => {
+      let finalText = seg.voskText;
+      let whisperOk = false;
 
-    if (fs.existsSync(wavPath)) {
-      this._runWhisperCorrection(seg, wavPath).catch(e => console.error("whisper correction:", e.message));
+      if (wavOk) {
+        try {
+          const text = await this._runWhisperAdaptive(seg, wavPath);
+          if (text && text.trim()) {
+            finalText = text.trim();
+            whisperOk = true;
+          }
+        } catch (e) {
+          console.warn(`[realtime] whisper falhou em ${seg.id}: ${e.message} — usando Vosk como fallback`);
+        }
+      }
+      // Cleanup wav
+      try { await fsp.unlink(wavPath); } catch (_) {}
+
+      seg.whisperText = whisperOk ? finalText : null;
+      // Sempre emite o texto definitivo (whisper ou vosk fallback).
+      this.emitUpdate({
+        type: "segment_whisper_correction",
+        id: seg.id,
+        text: finalText,
+        source: whisperOk ? "whisper" : "vosk-fallback",
+        timestamp: new Date().toISOString(),
+      });
+
+      // Agora sim — pergunta a IA UMA unica vez com o texto final.
+      try {
+        const resp = await this._askAI(finalText);
+        seg.responseFinal = resp;
+        this.emitUpdate({
+          type: "segment_response",
+          id: seg.id,
+          response: resp,
+          source: whisperOk ? "whisper" : "vosk-fallback",
+          timestamp: new Date().toISOString(),
+        });
+        await this._writeHistory(seg, finalText, resp);
+      } catch (err) { this._handleAIError(err, seg); }
+    });
+  }
+
+  // ---------- Whisper queue ----------
+  _enqueueWhisper(task) {
+    this._whisperQueue.push(task);
+    this._drainWhisperQueue();
+  }
+
+  _drainWhisperQueue() {
+    while (this._whisperRunning < MAX_PARALLEL_WHISPER && this._whisperQueue.length) {
+      const task = this._whisperQueue.shift();
+      this._whisperRunning++;
+      Promise.resolve()
+        .then(() => task())
+        .catch(e => console.error("[realtime] whisper task error:", e.message))
+        .finally(() => {
+          this._whisperRunning--;
+          this._drainWhisperQueue();
+        });
     }
   }
 
-  async _runWhisperCorrection(seg, wavPath) {
+  // Roda whisper com timeout + best-of adaptativo por duracao.
+  // Para audios > 90s, acelera 1.3x com ffmpeg antes (cabe melhor no budget).
+  async _runWhisperAdaptive(seg, wavPath) {
     const whisperBin = path.join(__dirname, "..", "whisper", "build", "bin", "whisper-cli");
     const modelMed = path.join(__dirname, "..", "whisper", "models", "ggml-medium.bin");
     const modelSm  = path.join(__dirname, "..", "whisper", "models", "ggml-small.bin");
     const model = fs.existsSync(modelMed) ? modelMed : (fs.existsSync(modelSm) ? modelSm : null);
     if (!fs.existsSync(whisperBin) || !model) {
-      console.warn("[realtime] whisper unavailable, skip correction");
-      try { await fsp.unlink(wavPath); } catch (_) {}
-      return;
+      throw new Error("whisper-cli ou modelo indisponivel");
     }
+
+    const dur = seg.durationSec || 0;
+    // Best-of / beam adaptativo (mantem modelo medium sempre)
+    let bestOf, beam, atempo;
+    if (dur <= 15)      { bestOf = 5; beam = 5; atempo = 1.0; }
+    else if (dur <= 45) { bestOf = 3; beam = 3; atempo = 1.0; }
+    else if (dur <= 90) { bestOf = 1; beam = 1; atempo = 1.0; }
+    else                { bestOf = 1; beam = 1; atempo = 1.3; }
+
+    // Pre-processa com ffmpeg se atempo != 1.0
+    let inputPath = wavPath;
+    let speedPath = null;
+    if (atempo !== 1.0) {
+      speedPath = wavPath.replace(/\.wav$/, ".x.wav");
+      try {
+        await execPromise(
+          `ffmpeg -y -loglevel error -i "${wavPath}" -filter:a "atempo=${atempo}" -ar 16000 -ac 1 -c:a pcm_s16le "${speedPath}"`,
+          { timeout: 20000 }
+        );
+        inputPath = speedPath;
+        console.log(`[realtime] ${seg.id}: pre-aceleracao ffmpeg ${atempo}x ok (dur ${dur.toFixed(1)}s)`);
+      } catch (e) {
+        console.warn(`[realtime] ${seg.id}: ffmpeg atempo falhou (${e.message}) — usando wav original`);
+        speedPath = null;
+        inputPath = wavPath;
+      }
+    }
+
     const lang = (this.configService.getLanguage && this.configService.getLanguage()) === 'us-en' ? 'en' : 'pt';
-    const cmd = `"${whisperBin}" -m "${model}" -f "${wavPath}" -l ${lang} --threads 8 --no-timestamps --best-of 3 --beam-size 3`;
-    console.log("[realtime] whisper running for", seg.id);
+    const args = [
+      "-m", model,
+      "-f", inputPath,
+      "-l", lang,
+      "--threads", "8",
+      "--no-timestamps",
+      "--best-of", String(bestOf),
+      "--beam-size", String(beam),
+    ];
+    console.log(`[realtime] whisper start ${seg.id} dur=${dur.toFixed(1)}s best=${bestOf} beam=${beam} atempo=${atempo}`);
+    const t0 = Date.now();
 
     let text = "";
     try {
-      const { stdout } = await execPromise(cmd, { maxBuffer: 10 * 1024 * 1024 });
-      text = (stdout || "").replace(/\[[^\]]*\]/g, "").replace(/\s+/g, " ").trim();
-    } catch (e) {
-      console.error("[realtime] whisper exec error:", e.message);
-      try { await fsp.unlink(wavPath); } catch (_) {}
-      return;
+      text = await this._spawnWhisper(whisperBin, args, WHISPER_TIMEOUT_MS);
+    } finally {
+      if (speedPath) { try { await fsp.unlink(speedPath); } catch (_) {} }
     }
-    try { await fsp.unlink(wavPath); } catch (_) {}
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+    text = (text || "").replace(/\[[^\]]*\]/g, "").replace(/\s+/g, " ").trim();
+    console.log(`[realtime] whisper done ${seg.id} em ${elapsed}s → ${text.length} chars`);
+    return text;
+  }
 
-    if (!text || text === seg.voskText) return;
-    console.log(`[realtime] whisper corrected ${seg.id}: "${seg.voskText}" -> "${text}"`);
-    seg.whisperText = text;
-    this.emitUpdate({ type: "segment_whisper_correction", id: seg.id, text, timestamp: new Date().toISOString() });
-
-    try {
-      const resp = await this._askAI(text, true, seg.responseRaw);
-      seg.responseCorrected = resp;
-      this.emitUpdate({ type: "segment_response_corrected", id: seg.id, response: resp, source: "whisper", timestamp: new Date().toISOString() });
-      await this._updateHistory(seg, text, resp);
-    } catch (err) { this._handleAIError(err, seg); }
+  // Spawn cru com timeout efetivo (SIGKILL se ultrapassar).
+  _spawnWhisper(bin, args, timeoutMs) {
+    return new Promise((resolve, reject) => {
+      const proc = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
+      let stdout = "";
+      let stderr = "";
+      let killed = false;
+      const timer = setTimeout(() => {
+        killed = true;
+        try { proc.kill("SIGKILL"); } catch (_) {}
+        reject(new Error(`timeout ${timeoutMs}ms`));
+      }, timeoutMs);
+      proc.stdout.on("data", d => { stdout += d.toString(); });
+      proc.stderr.on("data", d => { stderr += d.toString(); });
+      proc.on("error", e => { clearTimeout(timer); reject(e); });
+      proc.on("close", code => {
+        clearTimeout(timer);
+        if (killed) return; // ja rejeitou
+        if (code === 0) return resolve(stdout);
+        reject(new Error(`exit ${code}: ${stderr.slice(-200)}`));
+      });
+    });
   }
 
   // ---------- AI ----------
-  async _askAI(transcript, isCorrection, previousResponse) {
+  async _askAI(transcript) {
     const token = this.configService.getOpenIaToken();
     if (!token) throw new Error("Token da OpenAI não configurado.");
     const model = this.configService.getOpenAiModel();
 
-    const userPrompt = isCorrection
-      ? `TRANSCRIÇÃO CORRIGIDA (Whisper, mais precisa) de um trecho que já foi enviado em versão menos precisa (Vosk):\n\n"${transcript}"\n\nResposta anterior (com base na versão imprecisa): "${previousResponse || '(nenhuma)'}"\n\nRefaça sua ajuda com base APENAS na versão corrigida, seguindo as MESMAS regras de formato do system prompt.`
-      : `TRANSCRIÇÃO ao vivo (modelo rápido Vosk, pode conter erros) do áudio captado:\n\n"${transcript}"\n\nAja segundo as regras do system prompt. Se for incompreensível, responda APENAS '(trecho sem conteúdo relevante)'.`;
+    const userPrompt =
+      `TRANSCRIÇÃO do áudio captado (refinada por Whisper, alta qualidade):\n\n` +
+      `"${transcript}"\n\n` +
+      `Aja segundo as regras do system prompt. Se for incompreensível ou sem conteúdo útil, ` +
+      `responda APENAS '(trecho sem conteúdo relevante)'.`;
 
     const payload = {
       model, max_tokens: 500,
@@ -297,7 +463,6 @@ class RealtimeAssistantService {
       "- NÃO repita o que foi falado. ENTREGUE O VALOR.",
       "- Se for sugestão de resposta, prefixe '💬 Sugestão:'.",
       "- Se for resposta a pergunta técnica, vá direto na resposta com bullets ou cálculo.",
-      "- Se vier versão CORRIGIDA (Whisper) de trecho anterior, REFAÇA do zero — não acumule contexto antigo errado.",
     ].join("\n");
   }
 
