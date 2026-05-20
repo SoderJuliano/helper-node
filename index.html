@@ -835,33 +835,94 @@
             transform: translateY(0);
         }
 
-        /* === Workspace panel === */
-        .ws-add-btn {
+        /* === Workspace bar (inline, clipe + chips) === */
+        .ws-bar {
+            display: flex;
+            align-items: center;
+            gap: 6px;
             padding: 4px 6px;
             margin-top: 4px;
-            background-color: rgba(33, 150, 243, 0.55);
-            border: 1px solid rgba(33, 150, 243, 0.9);
-            color: #ffffff;
-            border-radius: 3px;
-            cursor: pointer;
-            font-size: 9px;
-            transition: background-color 0.2s;
-            text-align: center;
-            width: 100%;
-            box-sizing: border-box;
+            background: rgba(45, 45, 45, 0.55);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 4px;
+            flex-wrap: wrap;
+            min-height: 26px;
             -webkit-app-region: no-drag;
         }
-        .ws-add-btn:hover { background-color: rgba(33, 150, 243, 0.9); }
-        .ws-empty {
-            padding: 6px 0;
-            color: rgba(255,255,255,0.45);
-            font-size: 9px;
-            font-style: italic;
+        .ws-clip-btn {
+            width: 22px;
+            height: 22px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: transparent;
+            border: none;
+            border-radius: 3px;
+            color: rgba(255,255,255,0.7);
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: background 0.15s, color 0.15s;
         }
-        .ws-file-link {
+        .ws-clip-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+        .ws-clip-btn svg { width: 14px; height: 14px; }
+        .ws-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            flex: 1;
+            min-width: 0;
+        }
+        .ws-chip {
             display: inline-flex;
             align-items: center;
             gap: 4px;
+            padding: 2px 4px 2px 6px;
+            background: rgba(33, 150, 243, 0.18);
+            border: 1px solid rgba(33, 150, 243, 0.4);
+            border-radius: 10px;
+            font-size: 9px;
+            color: #d6e6ff;
+            max-width: 160px;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .ws-chip:hover { background: rgba(33, 150, 243, 0.32); }
+        .ws-chip-label {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .ws-chip-x {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 14px;
+            height: 14px;
+            padding: 0;
+            background: transparent;
+            border: none;
+            border-radius: 50%;
+            color: rgba(255,255,255,0.55);
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: background 0.15s, color 0.15s;
+        }
+        .ws-chip-x:hover { background: rgba(255,80,80,0.5); color: #fff; }
+        .ws-chip-x svg { width: 8px; height: 8px; }
+
+        /* Linha discreta de evento de arquivo (criado/editado/etc) */
+        .ws-file-event {
+            margin: 4px 0;
+            font-size: 11px;
+            color: rgba(255,255,255,0.55);
+            display: flex;
+            align-items: baseline;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+        .ws-file-event-label { color: rgba(255,255,255,0.45); }
+        .ws-file-link {
             color: #9ec5ff;
             cursor: pointer;
             text-decoration: none;
@@ -911,7 +972,7 @@
     <div class="commands">
         <div class="panel" id="shortcut-panel">
             <div class="panel-header" id="shortcut-header">
-                <span class="panel-label">atalhos</span>
+                <span class="panel-label">Atalhos</span>
                 <span class="panel-filler"></span>
                 <button id="shortcut-toggle" class="commands-toggle" aria-label="Recolher/expandir atalhos" tabindex="-1">
                     <svg viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -927,7 +988,7 @@
 
         <div class="panel" id="history-panel">
             <div class="panel-header" id="history-header">
-                <span class="panel-label">historico de conversas</span>
+                <span class="panel-label">Histórico de conversas</span>
                 <span class="panel-filler"></span>
                 <button id="history-toggle" class="commands-toggle" aria-label="Recolher/expandir histórico" tabindex="-1">
                     <svg viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -940,18 +1001,13 @@
             <button class="new-chat-btn" id="new-chat-btn">+ Novo Chat</button>
         </div>
 
-        <div class="panel collapsed" id="workspace-panel" style="display:none;">
-            <div class="panel-header" id="workspace-header">
-                <span class="panel-label">anexos</span>
-                <span class="panel-filler"></span>
-                <button id="workspace-toggle" class="commands-toggle" aria-label="Recolher/expandir anexos" tabindex="-1">
-                    <svg viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                        <path d="M3 4.5 L6 7.5 L9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                </button>
-            </div>
-            <div class="commands-content" id="workspace-content"></div>
-            <button class="ws-add-btn" id="workspace-add">📎 Anexar arquivo ou pasta</button>
+        <div class="ws-bar" id="workspace-panel" style="display:none;">
+            <button id="workspace-add" class="ws-clip-btn" title="Anexar arquivo ou pasta" aria-label="Anexar arquivo ou pasta">
+                <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M10.5 4.5 L5.8 9.2 a2 2 0 1 0 2.83 2.83 L13.5 7.16 a3.5 3.5 0 1 0 -4.95 -4.95 L3.3 7.46 a5 5 0 0 0 7.07 7.07 L14.5 10.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </button>
+            <div class="ws-chips" id="workspace-content"></div>
         </div>
     </div>
 
@@ -1006,9 +1062,8 @@
             const historyToggle = document.getElementById('history-toggle');
             const historyHeader = document.getElementById('history-header');
 
-            // === Workspace panel (anexos pra contexto da IA) ===
+            // === Workspace bar (anexos pra contexto da IA) ===
             const wsPanel = document.getElementById('workspace-panel');
-            const wsHeader = document.getElementById('workspace-header');
             const wsContent = document.getElementById('workspace-content');
             const wsAddBtn = document.getElementById('workspace-add');
 
@@ -1016,33 +1071,27 @@
                 if (!wsContent) return;
                 wsContent.innerHTML = '';
                 const list = attachments || [];
-                if (!list.length) {
-                    const empty = document.createElement('div');
-                    empty.className = 'ws-empty';
-                    empty.textContent = 'nenhum anexo';
-                    wsContent.appendChild(empty);
-                    return;
-                }
+                if (!list.length) return; // vazio: so' aparece o clipe
                 for (const a of list) {
-                    const item = document.createElement('div');
-                    item.className = 'panel-item';
+                    const chip = document.createElement('div');
+                    chip.className = 'ws-chip';
+                    chip.title = a.path;
 
-                    const title = document.createElement('span');
-                    title.className = 'panel-item-title';
-                    const icon = a.type === 'dir' ? '📁 ' : '📄 ';
-                    title.title = a.path;
-                    title.textContent = icon + a.path.split('/').slice(-2).join('/');
-                    title.style.cursor = 'pointer';
-                    title.addEventListener('click', () => {
+                    const label = document.createElement('span');
+                    label.className = 'ws-chip-label';
+                    const icon = a.type === 'dir' ? '📁' : '📄';
+                    label.textContent = `${icon} ${a.path.split('/').slice(-1)[0]}`;
+                    chip.addEventListener('click', (e) => {
+                        if (e.target.closest('.ws-chip-x')) return;
                         if (window.electronAPI && window.electronAPI.workspaceOpenExternal) {
                             window.electronAPI.workspaceOpenExternal(a.path);
                         }
                     });
 
                     const xBtn = document.createElement('button');
-                    xBtn.className = 'panel-item-delete';
+                    xBtn.className = 'ws-chip-x';
                     xBtn.title = 'Remover anexo';
-                    xBtn.innerHTML = '<svg viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 3 L9 9 M9 3 L3 9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+                    xBtn.innerHTML = '<svg viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 3 L9 9 M9 3 L3 9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
                     xBtn.addEventListener('click', async (e) => {
                         e.stopPropagation();
                         if (window.electronAPI && window.electronAPI.workspaceRemove) {
@@ -1051,9 +1100,9 @@
                         }
                     });
 
-                    item.appendChild(title);
-                    item.appendChild(xBtn);
-                    wsContent.appendChild(item);
+                    chip.appendChild(label);
+                    chip.appendChild(xBtn);
+                    wsContent.appendChild(chip);
                 }
             }
 
@@ -1117,28 +1166,34 @@
                     if (data.attachments) renderWorkspacePanel(data.attachments);
                 });
             }
-            // Listener pra IA ter editado um arquivo → mostra link clicável no chat
+            // Listener pra IA ter editado um arquivo → mostra linha sutil clicável
             if (window.electronAPI && window.electronAPI.onWorkspaceFileWritten) {
                 window.electronAPI.onWorkspaceFileWritten((data) => {
                     try {
-                        const wrapper = document.createElement('div');
-                        wrapper.style.cssText = 'margin: 6px 0; padding: 6px 10px; background: rgba(80,160,80,0.12); border-left: 2px solid #88c088; border-radius: 4px; font-size: 12px;';
-                        const verb = data.action === 'create' ? '📝 criado' :
-                                     data.action === 'edit' ? '✏️ editado' :
-                                     data.action === 'append' ? '➕ adicionado a' :
-                                     data.action === 'patch' ? '🩹 patch em' :
-                                     data.action === 'delete' ? '🗑️ apagado' : 'modificado';
-                        wrapper.innerHTML = `${verb}: `;
+                        const verb = data.action === 'create' ? 'criado' :
+                                     data.action === 'edit'   ? 'editado' :
+                                     data.action === 'append' ? 'append em' :
+                                     data.action === 'patch'  ? 'patch em' :
+                                     data.action === 'delete' ? 'apagado' : 'modificado';
+                        const line = document.createElement('div');
+                        line.className = 'ws-file-event';
+                        const label = document.createElement('span');
+                        label.className = 'ws-file-event-label';
+                        label.textContent = verb + ' → ';
                         const link = document.createElement('a');
                         link.className = 'ws-file-link';
-                        link.textContent = data.path;
+                        // mostra so basename + pai (path completo no tooltip)
+                        const parts = (data.path || '').split('/');
+                        link.textContent = parts.slice(-2).join('/');
+                        link.title = data.path;
                         link.addEventListener('click', (e) => {
                             e.preventDefault();
                             window.electronAPI.workspaceOpenExternal(data.path);
                         });
-                        wrapper.appendChild(link);
+                        line.appendChild(label);
+                        line.appendChild(link);
                         if (transcriptionElement) {
-                            transcriptionElement.appendChild(wrapper);
+                            transcriptionElement.appendChild(line);
                             transcriptionElement.scrollTo({ top: transcriptionElement.scrollHeight, behavior: 'smooth' });
                         }
                     } catch (e) { console.warn('file-written render failed:', e); }
@@ -1168,12 +1223,7 @@
                 togglePanel(historyPanel);
             });
 
-            if (wsHeader && wsPanel) {
-                wsHeader.addEventListener('click', (event) => {
-                    event.stopPropagation();
-                    togglePanel(wsPanel);
-                });
-            }
+            // (workspace-bar nao e' colaps\u00e1vel; sem header click)
 
             setPanelCollapsed(shortcutPanel, shortcutToggle, true);
             setPanelCollapsed(historyPanel, historyToggle, true);
