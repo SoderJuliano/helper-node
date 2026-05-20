@@ -25,30 +25,42 @@ const ALLOWED = {
 let _confirmer = null;
 function setConfirmer(fn) { _confirmer = fn; }
 
-async function _runLock() {
-  // Ordem de tentativa: loginctl lock-session (mais portatil),
-  // depois fallbacks por DE.
-  const candidates = [
-    ["loginctl", ["lock-session"]],
-    ["cosmic-greeter", ["lock"]],
-    ["gnome-screensaver-command", ["-l"]],
-    ["xdg-screensaver", ["lock"]],
-    ["swaylock", []],
-    ["i3lock", []],
-  ];
-  for (const [bin, args] of candidates) {
-    try {
-      await execAsync(`command -v ${bin}`);
-      await new Promise((resolve, reject) => {
-        const p = spawn(bin, args, { detached: true, stdio: "ignore" });
-        p.on("error", reject);
-        p.unref();
-        setTimeout(resolve, 300); // assume sucesso se nao crashou em 300ms
-      });
-      return { ok: true, result: { action: "lock", ran: `${bin} ${args.join(" ")}` } };
-    } catch (_) { /* tenta o proximo */ }
+function _hasBin(bin) {
+  return execAsync(`command -v ${bin}`).then(() => true).catch(() => false);
+}
+
+async function _execLogged(cmd) {
+  console.log(`[systemPowerAction] exec: ${cmd}`);
+  try {
+    const { stdout, stderr } = await execAsync(cmd, { timeout: 8000 });
+    if (stdout && stdout.trim()) console.log(`[systemPowerAction] stdout: ${stdout.trim()}`);
+    if (stderr && stderr.trim()) console.log(`[systemPowerAction] stderr: ${stderr.trim()}`);
+    return { ok: true, stdout, stderr };
+  } catch (e) {
+    const msg = `exit=${e.code || "?"} stderr=${(e.stderr || "").toString().trim()} err=${e.message}`;
+    console.error(`[systemPowerAction] FAIL: ${msg}`);
+    return { ok: false, error: msg };
   }
-  return { ok: false, error: "Nenhum comando de lock disponivel (loginctl/cosmic-greeter/gnome-screensaver/xdg-screensaver/swaylock/i3lock)" };
+}
+
+async function _runLock() {
+  // Ordem: loginctl lock-session (mais portatil) -> fallbacks por DE.
+  const candidates = [
+    "loginctl lock-session",
+    "cosmic-greeter lock",
+    "gnome-screensaver-command -l",
+    "xdg-screensaver lock",
+    "swaylock",
+    "i3lock",
+  ];
+  for (const cmd of candidates) {
+    const bin = cmd.split(/\s+/)[0];
+    if (!(await _hasBin(bin))) continue;
+    const r = await _execLogged(cmd);
+    if (r.ok) return { ok: true, result: { action: "lock", ran: cmd } };
+    // tenta o proximo
+  }
+  return { ok: false, error: "Nenhum comando de lock funcionou (loginctl/cosmic-greeter/gnome-screensaver/xdg-screensaver/swaylock/i3lock)" };
 }
 
 module.exports = {
@@ -112,14 +124,46 @@ module.exports = {
     // Executa
     try {
       if (action === "lock") return await _runLock();
-      const [bin, ...rest] = spec.cmd;
-      await new Promise((resolve, reject) => {
-        const p = spawn(bin, rest, { detached: true, stdio: "ignore" });
-        p.on("error", reject);
-        p.unref();
-        setTimeout(resolve, 500); // poweroff/reboot vao matar a sessao, nao esperamos exit
-      });
-      return { ok: true, result: { action, executed: true, ran: spec.cmd.join(" ") } };
+
+      // Estratégia: tenta loginctl primeiro; se falhar, cai pra systemctl
+      // (que cobre poweroff/reboot/suspend) ou pra `shutdown` como ultimo
+      // recurso. Para logout, fallback é matar a sessao do compositor.
+      const fallbacks = {
+        poweroff: [
+          "loginctl poweroff",
+          "systemctl poweroff",
+          "dbus-send --system --print-reply --dest=org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager.PowerOff boolean:true",
+          "shutdown -h now",
+        ],
+        reboot: [
+          "loginctl reboot",
+          "systemctl reboot",
+          "dbus-send --system --print-reply --dest=org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager.Reboot boolean:true",
+          "shutdown -r now",
+        ],
+        suspend: [
+          "loginctl suspend",
+          "systemctl suspend",
+          "dbus-send --system --print-reply --dest=org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager.Suspend boolean:true",
+        ],
+        logout: [
+          `loginctl terminate-user ${process.getuid && process.getuid() || ""}`.trim(),
+          "loginctl kill-session self",
+          "pkill -KILL -u $USER cosmic-comp",
+          "pkill -KILL -u $USER gnome-shell",
+        ],
+      };
+
+      const chain = fallbacks[action] || [];
+      let lastErr = "";
+      for (const cmd of chain) {
+        const r = await _execLogged(cmd);
+        if (r.ok) {
+          return { ok: true, result: { action, executed: true, ran: cmd } };
+        }
+        lastErr = r.error;
+      }
+      return { ok: false, error: `Todos os métodos falharam para ${action}. Último erro: ${lastErr}` };
     } catch (e) {
       return { ok: false, error: `Falha ao executar ${action}: ${e.message || String(e)}` };
     }
