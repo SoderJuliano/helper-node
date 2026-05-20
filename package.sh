@@ -174,20 +174,47 @@ build_arch() {
     # Copy PKGBUILD
     cp build/arch/PKGBUILD "${ARCH_BUILD}/"
     
-    # Build package (if on Arch-based system)
+    # Build package: nativo (makepkg) ou via container Arch (docker/podman).
+    # Em distros nao-Arch (Pop/Ubuntu/Debian), cai automaticamente pro container.
     if command -v makepkg &> /dev/null; then
-        echo -e "${YELLOW}→${NC} Building Arch package..."
+        echo -e "${YELLOW}→${NC} Building Arch package (makepkg nativo)..."
         cd "${ARCH_BUILD}"
         makepkg -f --nodeps
         cd "${PROJECT_ROOT}"
-        
-        # Move package to dist
         mv "${ARCH_BUILD}"/*.pkg.tar.zst "${DIST_DIR}/" 2>/dev/null || true
-        
         echo -e "${GREEN}✓${NC} Arch package created: ${DIST_DIR}/${APP_NAME}-${VERSION}-1-x86_64.pkg.tar.zst"
+    elif command -v docker &> /dev/null || command -v podman &> /dev/null; then
+        CONTAINER_CMD="docker"
+        command -v docker &> /dev/null || CONTAINER_CMD="podman"
+        echo -e "${YELLOW}→${NC} makepkg ausente; usando container Arch via ${CONTAINER_CMD}..."
+        # NOTA: o container instala base-devel + nodejs + npm + fakeroot,
+        # cria um user nao-root (makepkg recusa rodar como root) e roda
+        # makepkg -f --nodeps --skipchecksums. PKGBUILD ja faz npm install
+        # dentro do container, entao gera tudo isolado da maquina host.
+        ${CONTAINER_CMD} run --rm -v "${ARCH_BUILD}:/build" -w /build archlinux:latest bash -c '
+            set -e
+            pacman -Sy --noconfirm --needed base-devel nodejs npm fakeroot >/dev/null 2>&1
+            id -u builder &>/dev/null || useradd -m builder
+            chown -R builder:builder /build
+            su builder -c "makepkg -f --nodeps --skipchecksums"
+        '
+        # Move pacote final pra dist/ e limpa lixo (pkg/, src/, debug pkg)
+        if ls "${ARCH_BUILD}"/helper-node-${VERSION}-*-x86_64.pkg.tar.zst &>/dev/null; then
+            mv "${ARCH_BUILD}"/helper-node-${VERSION}-*-x86_64.pkg.tar.zst "${DIST_DIR}/"
+            # debug package nao serve pra distribuicao
+            rm -f "${ARCH_BUILD}"/helper-node-debug-*.pkg.tar.zst 2>/dev/null || true
+            # pkg/ e src/ sao do makepkg; podem ter ownership de root via container
+            rm -rf "${ARCH_BUILD}/pkg" "${ARCH_BUILD}/src" 2>/dev/null \
+                || sudo rm -rf "${ARCH_BUILD}/pkg" "${ARCH_BUILD}/src" 2>/dev/null \
+                || true
+            echo -e "${GREEN}✓${NC} Arch package created: ${DIST_DIR}/${APP_NAME}-${VERSION}-1-x86_64.pkg.tar.zst"
+        else
+            echo -e "${RED}✗${NC} container Arch terminou mas .pkg.tar.zst nao foi gerado"
+            return 1
+        fi
     else
-        echo -e "${YELLOW}⚠${NC} makepkg not found. PKGBUILD and tarball created for manual build."
-        echo -e "${YELLOW}→${NC} Files in: ${ARCH_BUILD}/"
+        echo -e "${YELLOW}⚠${NC} makepkg/docker/podman nao encontrados — pacote Arch NAO gerado."
+        echo -e "${YELLOW}→${NC} Tarball + PKGBUILD em ${ARCH_BUILD}/ pra build manual numa maquina Arch."
     fi
 }
 
