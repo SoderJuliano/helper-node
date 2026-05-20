@@ -345,6 +345,17 @@
             </label>
         </div>
 
+        <div class="setting-item" id="workspace-access-item" title="Permite anexar pastas e arquivos como contexto da conversa. A IA pode ler/editar dentro deles (com confirmação). Requer Ferramentas Avançadas ligado.">
+            <label for="workspace-access-toggle">Acesso a diretórios (anexar pastas/arquivos)</label>
+            <span id="workspace-access-status" style="font-weight: bold; margin-left: 10px; min-width: 30px; text-align: center; -webkit-app-region: no-drag;">OFF</span>
+            <label class="switch">
+                <input type="checkbox" id="workspace-access-toggle" hidden>
+                <div class="switch__wrapper">
+                    <div class="switch__toggle"></div>
+                </div>
+            </label>
+        </div>
+
         <div class="setting-item">
             <label for="language-select">Idioma</label>
             <select id="language-select" class="custom-select">

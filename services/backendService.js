@@ -43,6 +43,109 @@ function pickOllamaEndpoint(texto) {
   return '/llama3';
 }
 
+// ── Tool calling para Ollama (sem function-calling nativo) ────────────────────
+// Ollama nao tem `tools[]` igual OpenAI. Solucao: instruimos o modelo a emitir
+// blocos `TOOL_CALL: {"name":"...","args":{...}}` no texto da resposta.
+// Parseamos, executamos via helperTools/executor (mesmo pipeline do OpenAI:
+// confirmer, audit log, secret redactor) e re-perguntamos com TOOL_RESULT.
+// Loop ate a IA nao emitir mais tool calls ou bater maxIters.
+
+function buildOllamaToolsAddon(toolsSchema) {
+  if (!Array.isArray(toolsSchema) || toolsSchema.length === 0) return '';
+  const lines = ['', '═══ TOOL CALLING (modo Ollama) ═══', ''];
+  lines.push('Voce tem acesso a estas ferramentas. Para chamar uma, emita NA RESPOSTA');
+  lines.push('um bloco EXATO no formato (uma linha, JSON puro, sem markdown ao redor):');
+  lines.push('');
+  lines.push('TOOL_CALL: {"name":"<nome>","args":{...}}');
+  lines.push('');
+  lines.push('Pode emitir VARIOS TOOL_CALL na mesma resposta. O sistema executa cada um');
+  lines.push('e devolve TOOL_RESULT: <name> <json> na proxima mensagem. Iterate ate ter');
+  lines.push('todas as informacoes que precisa, dai escreva a RESPOSTA FINAL ao usuario');
+  lines.push('SEM nenhum TOOL_CALL (resposta normal em texto/markdown).');
+  lines.push('');
+  lines.push('FERRAMENTAS DISPONIVEIS:');
+  for (const t of toolsSchema) {
+    const fn = t.function || t;
+    const name = fn.name;
+    const desc = (fn.description || '').replace(/\n/g, ' ').slice(0, 200);
+    const params = fn.parameters && fn.parameters.properties
+      ? Object.entries(fn.parameters.properties)
+          .map(([k, v]) => `${k}:${v.type || '?'}`)
+          .join(', ')
+      : '';
+    lines.push(`- ${name}(${params}) — ${desc}`);
+  }
+  lines.push('');
+  lines.push('REGRAS:');
+  lines.push('- TOOL_CALL deve ser JSON valido EXATO. Nada de comentarios, sem ``` ao redor.');
+  lines.push('- Tools mutates (writeFile, deleteFile, patchFile, appendToFile, systemPowerAction)');
+  lines.push('  abrem confirmacao visual pro usuario — chame quando faz sentido, sem medo.');
+  lines.push('- Quando terminar (resposta final ao usuario), NAO inclua TOOL_CALL nenhum.');
+  lines.push('- Para LER arquivos do projeto, use listDir + readFile. Para EDITAR, writeFile.');
+  lines.push('');
+  return lines.join('\n');
+}
+
+// Procura blocos TOOL_CALL: {...} na resposta. Estrategia: acha a posicao de
+// "TOOL_CALL:" (case-insensitive, ignora ``` ao redor) e extrai o PRIMEIRO
+// objeto JSON balanceado a partir dali. Funciona mesmo quando o modelo embrulha
+// o call em markdown code fence ou nao deixa linha em branco depois.
+function parseOllamaToolCalls(text) {
+  if (!text) return [];
+  const calls = [];
+  const re = /TOOL_CALL\s*:?\s*/gi;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    // Procura o primeiro '{' apos o match
+    const start = m.index + m[0].length;
+    const jsonStart = text.indexOf('{', start);
+    if (jsonStart === -1 || jsonStart - start > 8) continue; // longe demais, nao e' o JSON
+    const objStr = extractFirstJsonObject(text.slice(jsonStart));
+    if (!objStr) continue;
+    try {
+      const obj = JSON.parse(objStr);
+      if (obj && obj.name) {
+        calls.push({ raw: text.slice(m.index, jsonStart + objStr.length), obj });
+        // avanca o cursor pro fim deste obj pra nao recapturar
+        re.lastIndex = jsonStart + objStr.length;
+      }
+    } catch (_) {}
+  }
+  return calls;
+}
+
+// Extrai o primeiro objeto JSON balanceado de uma string (defesa contra
+// objetos que JSON.parse direto explode por causa de extras no final).
+function extractFirstJsonObject(s) {
+  let depth = 0, start = -1;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (c === '}') {
+      depth--;
+      if (depth === 0 && start >= 0) return s.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+// Remove TOOL_CALL ... {JSON balanceado} do texto, deixando so a parte
+// "humana" da resposta. Usa o mesmo extrator do parser.
+function stripToolCallBlocks(text) {
+  if (!text) return text;
+  const calls = parseOllamaToolCalls(text);
+  let out = text;
+  for (const c of calls) {
+    out = out.split(c.raw).join('');
+  }
+  // Limpa code fences vazios deixados pra tras
+  out = out.replace(/```\s*\n\s*```/g, '').trim();
+  return out;
+}
+
+
 class BackendService {
   constructor() {
     this.sessions = {};
@@ -171,8 +274,14 @@ class BackendService {
     }
   }
 
-  async responder(texto) {
+  async responder(texto, opts = {}) {
     if (!texto) throw new Error("Não entendi");
+
+    // opts = { tools?: [...], onToolCall?: fn, maxToolCalls?: number }
+    // Quando tools presente, ativa loop de tool-calling structured-prompt.
+    const tools = Array.isArray(opts.tools) && opts.tools.length ? opts.tools : null;
+    const onToolCall = typeof opts.onToolCall === 'function' ? opts.onToolCall : null;
+    const maxToolCalls = Number.isInteger(opts.maxToolCalls) ? opts.maxToolCalls : 5;
 
     // Se a URL não foi pega ainda, tenta novamente
     if (!apiUrl) {
@@ -212,7 +321,14 @@ class BackendService {
       const modelEndpoint = pickOllamaEndpoint(texto);
       const endpoint = `${apiUrl}${modelEndpoint}`;
       console.log(`[backend] roteado para ${modelEndpoint} (${texto.slice(0, 40).replace(/\n/g, ' ')}...)`);
-      const promptInstruction = configService.getPromptInstruction();
+      let promptInstruction = configService.getPromptInstruction();
+
+      // Tool calling Ollama: anexa instrucoes de formato + lista de tools no system prompt.
+      // NAO mexe no roteamento — usa o endpoint que o pickOllamaEndpoint escolheu.
+      let effectiveEndpoint = modelEndpoint;
+      if (tools && onToolCall) {
+        promptInstruction = `${promptInstruction}\n\n${buildOllamaToolsAddon(tools)}`;
+      }
       
       // Build prompt with conversation context.
       // llamatiny (1b) NAO consegue ignorar marcadores tipo "Conversation context:"
@@ -237,6 +353,30 @@ class BackendService {
       // Backend Java espera ChatRequest(String prompt, String language).
       // Campos extras (ip, email, agent, newPrompt) sao ignorados pelo Jackson,
       // mas mandar so o necessario fica mais limpo.
+
+      // Workspace context (se ON): prepend listagem/arquivos anexados.
+      // Só injeta na primeira pergunta da sessão (flag interna do store).
+      try {
+        const wsEnabled = configService.getWorkspaceAccessEnabled && configService.getWorkspaceAccessEnabled();
+        if (wsEnabled) {
+          const workspace = require('./workspace');
+          const attCount = workspace.list().length;
+          const modelKey = modelEndpoint.replace(/^\//, '');
+          const ctx = await workspace.buildContextIfNeeded(modelKey);
+          if (ctx) {
+            workspace.markContextSent();
+            promptWithContext = ctx + "\n\n---\n\n" + promptWithContext;
+            console.log(`[workspace] ✅ contexto injetado no prompt Ollama (${ctx.length} chars, ${attCount} anexos, model=${modelKey})`);
+          } else {
+            console.log(`[workspace] contexto ja injetado nesta sessao; IA usa as tools para explorar`);
+          }
+        } else {
+          console.log('[workspace] toggle "Acesso a diretorios" esta OFF — nenhum contexto sera injetado');
+        }
+      } catch (e) {
+        console.warn('[workspace] falhou injetar contexto no Ollama:', e.message);
+      }
+
       const body = {
         prompt: promptWithContext,
         language: mappedLang,
@@ -249,11 +389,11 @@ class BackendService {
 
       console.log('Backend prompt with context:', promptWithContext);
 
-      // Tenta no endpoint roteado; se 404 (modelo nao existe no proxy),
-      // cai automaticamente pra /llama3 que sempre existe.
+      // Tenta no endpoint roteado (effectiveEndpoint pode ter sido forcado pra qwen25 quando tools ON);
+      // se 404 (modelo nao existe no proxy), cai automaticamente pra /llama3 que sempre existe.
       let response;
       try {
-        response = await axios.post(endpoint, body, { 
+        response = await axios.post(`${apiUrl}${effectiveEndpoint}`, body, { 
           headers,
           timeout: 180000,
           httpAgent,
@@ -261,14 +401,15 @@ class BackendService {
         });
       } catch (errFirst) {
         const is404 = errFirst.response && errFirst.response.status === 404;
-        if (is404 && modelEndpoint !== '/llama3') {
-          console.warn(`[backend] ${modelEndpoint} indisponivel (404), caindo pra /llama3`);
+        if (is404 && effectiveEndpoint !== '/llama3') {
+          console.warn(`[backend] ${effectiveEndpoint} indisponivel (404), caindo pra /llama3`);
           response = await axios.post(`${apiUrl}/llama3`, body, {
             headers,
             timeout: 180000,
             httpAgent,
             httpsAgent
           });
+          effectiveEndpoint = '/llama3';
         } else {
           throw errFirst;
         }
@@ -284,7 +425,62 @@ class BackendService {
       }
 
       // Assumindo que a resposta do seu backend tem o mesmo formato do Ollama ou retorna o texto diretamente
-      const resposta = response.data.response || response.data;
+      let resposta = response.data.response || response.data;
+      if (typeof resposta !== 'string') resposta = String(resposta);
+
+      // ─── LOOP DE TOOL CALLING (so se opts.tools foi passado) ───────────
+      if (tools && onToolCall) {
+        let workingPrompt = promptWithContext;
+        let iter = 0;
+        while (iter < maxToolCalls) {
+          const calls = parseOllamaToolCalls(resposta);
+          if (!calls.length) break; // resposta final do modelo
+
+          console.log(`[backend][tools] iter=${iter + 1}/${maxToolCalls} — ${calls.length} tool_call(s) detectada(s)`);
+          const results = [];
+          for (const c of calls) {
+            const name = c.obj.name;
+            const args = c.obj.args || c.obj.arguments || {};
+            console.log(`[backend][tools] → ${name}(${JSON.stringify(args).slice(0, 120)})`);
+            let toolResult;
+            try {
+              toolResult = await onToolCall(name, args, { source: 'ollama-tool-loop' });
+            } catch (e) {
+              toolResult = { error: String(e && e.message || e) };
+            }
+            let serialized;
+            try { serialized = typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult); }
+            catch (_) { serialized = String(toolResult); }
+            if (serialized.length > 8 * 1024) serialized = serialized.slice(0, 8 * 1024) + '\n…[truncated]';
+            results.push(`TOOL_RESULT: ${name}\n${serialized}`);
+          }
+
+          // Re-pergunta: contexto atualizado contendo a resposta do modelo
+          // (com TOOL_CALLs) + os TOOL_RESULTs. Pedimos resposta final ou
+          // novos tool calls.
+          workingPrompt = `${workingPrompt}\n\nASSISTANT_PREVIOUS:\n${resposta}\n\n${results.join('\n\n')}\n\nCom base nos TOOL_RESULT acima, ou emita novos TOOL_CALL se precisar de mais info, ou escreva a RESPOSTA FINAL ao usuario (sem nenhum TOOL_CALL).`;
+
+          const followBody = { prompt: workingPrompt, language: mappedLang };
+          let followResp;
+          try {
+            followResp = await axios.post(`${apiUrl}${effectiveEndpoint}`, followBody, {
+              headers, timeout: 180000, httpAgent, httpsAgent,
+            });
+          } catch (e) {
+            console.error('[backend][tools] erro no follow-up:', e.message);
+            break;
+          }
+          resposta = followResp.data.response || followResp.data;
+          if (typeof resposta !== 'string') resposta = String(resposta);
+          iter++;
+        }
+
+        if (iter === maxToolCalls && parseOllamaToolCalls(resposta).length) {
+          console.warn(`[backend][tools] maxToolCalls=${maxToolCalls} atingido; devolvendo resposta truncada`);
+        }
+        // Limpa qualquer TOOL_CALL residual da resposta final
+        resposta = stripToolCallBlocks(resposta) || resposta;
+      }
 
       // Add assistant response to session history
       this.addAssistantResponse(sessionId, resposta);

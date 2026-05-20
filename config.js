@@ -12,6 +12,9 @@ const realtimeAssistantToggle = document.getElementById("realtime-assistant-togg
 const realtimeAssistantStatus = document.getElementById("realtime-assistant-status");
 const helperToolsToggle = document.getElementById("helper-tools-toggle");
 const helperToolsStatus = document.getElementById("helper-tools-status");
+const workspaceAccessToggle = document.getElementById("workspace-access-toggle");
+const workspaceAccessStatus = document.getElementById("workspace-access-status");
+const workspaceAccessItem = document.getElementById("workspace-access-item");
 const langSelect = document.getElementById("language-select");
 const backendUrlValue = document.getElementById("backend-url-value");
 const aiModelSelect = document.getElementById("ai-model");
@@ -49,6 +52,25 @@ function updateRealtimeAssistantStatus(isRealtimeAssistant) {
 function updateHelperToolsStatus(isEnabled) {
   if (!helperToolsStatus) return;
   helperToolsStatus.textContent = isEnabled ? "ON" : "OFF";
+  // Atualiza disponibilidade de workspaceAccess (depende de helperTools).
+  if (workspaceAccessToggle && workspaceAccessItem) {
+    if (!isEnabled) {
+      workspaceAccessToggle.checked = false;
+      updateWorkspaceAccessStatus(false);
+      workspaceAccessToggle.disabled = true;
+      workspaceAccessItem.style.opacity = "0.5";
+      workspaceAccessItem.title = "Requer Ferramentas Avançadas ligado.";
+    } else {
+      workspaceAccessToggle.disabled = false;
+      workspaceAccessItem.style.opacity = "1";
+      workspaceAccessItem.title = "Permite anexar pastas/arquivos como contexto. A IA pode ler/editar dentro deles (com confirmação).";
+    }
+  }
+}
+
+function updateWorkspaceAccessStatus(isEnabled) {
+  if (!workspaceAccessStatus) return;
+  workspaceAccessStatus.textContent = isEnabled ? "ON" : "OFF";
 }
 
 // Mutex: helperTools desativa modo integrado + assistente em tempo real.
@@ -143,6 +165,19 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   } catch (e) {
     console.warn("helperTools enabled load failed:", e);
+  }
+
+  // -------------------------
+  // Load workspace access
+  // -------------------------
+  try {
+    const wsEnabled = await ipcRenderer.invoke("get-workspace-access-enabled");
+    if (workspaceAccessToggle) {
+      workspaceAccessToggle.checked = !!wsEnabled;
+      updateWorkspaceAccessStatus(!!wsEnabled);
+    }
+  } catch (e) {
+    console.warn("workspaceAccess load failed:", e);
   }
 
   // -------------------------
@@ -244,6 +279,16 @@ if (helperToolsToggle) {
   });
 }
 
+if (workspaceAccessToggle) {
+  workspaceAccessToggle.addEventListener("change", () => {
+    // Garante que helperTools esteja ligado
+    if (workspaceAccessToggle.checked && !(helperToolsToggle && helperToolsToggle.checked)) {
+      workspaceAccessToggle.checked = false;
+    }
+    updateWorkspaceAccessStatus(workspaceAccessToggle.checked);
+  });
+}
+
 // Show/hide OpenAI token input based on AI model selection
 aiModelSelect.addEventListener('change', () => {
     if (aiModelSelect.value === 'openIa') {
@@ -275,6 +320,11 @@ saveButton.addEventListener("click", async () => {
   // Save helper tools (ferramentas avançadas)
   if (helperToolsToggle) {
     ipcRenderer.send("set-helper-tools-enabled", helperToolsToggle.checked);
+  }
+
+  // Save workspace access
+  if (workspaceAccessToggle) {
+    ipcRenderer.send("set-workspace-access-enabled", workspaceAccessToggle.checked);
   }
 
   // Save language

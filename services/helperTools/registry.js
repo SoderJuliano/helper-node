@@ -39,6 +39,10 @@ function loadBuiltins() {
     require("./tools/listPackages"),
     require("./tools/listDesktopApps"),
     require("./tools/systemPowerAction"),
+    require("./tools/writeFile"),
+    require("./tools/appendToFile"),
+    require("./tools/deleteFile"),
+    require("./tools/patchFile"),
   ];
   for (const t of builtins) register(t);
   _loaded = true;

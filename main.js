@@ -53,7 +53,7 @@ const execPromise = util.promisify(exec);
 const fs = require("fs").promises;
 const fs2 = require("fs");
 // const LlamaService = require('./services/llamaService.js');
-const GeminiService = require("./services/geminiService.js"); // Mantido para a funcionalidade de cancelamento
+// GeminiService removido em 0.2.4: dependia do binario `gemini` CLI que nao\n// existe no sistema. Backend Ollama + OpenAI cobrem todos os casos.
 const BackendService = require("./services/backendService.js");
 const TesseractService = require("./services/tesseractService.js");
 const OpenAIService = require("./services/openAIService.js");
@@ -62,6 +62,7 @@ const ipcService = require("./services/ipcService.js");
 const configService = require("./services/configService.js");
 const historyService = require("./services/historyService.js");
 const helperTools = require("./services/helperTools");
+const workspace = require("./services/workspace");
 
 /**
  * Monta opts pra OpenAIService.makeOpenAIRequest acoplando o helperTools quando:
@@ -131,6 +132,42 @@ function buildHelperToolsOpenAIOpts(userText, baseInstruction, baseModel) {
   } catch (e) {
     console.warn("buildHelperToolsOpenAIOpts falhou, seguindo sem tools:", e && e.message);
     return { opts: {} };
+  }
+}
+
+// === Workspace context injection ===
+// Se workspaceAccess + helperTools estao ON e ha anexos, prepend o bloco
+// de contexto (listagem + conteudo de arquivos pequenos) na primeira
+// pergunta da sessao. Apos enviar, marca contextSent pra nao re-injetar.
+// Retorna o texto possivelmente modificado.
+async function prependWorkspaceContextIfNeeded(text, modelKey) {
+  try {
+    const wsOn = configService.getWorkspaceAccessEnabled && configService.getWorkspaceAccessEnabled();
+    const htOn = helperTools.isEnabled && helperTools.isEnabled();
+    const attCount = workspace.list().length;
+    if (!wsOn) {
+      console.log(`[workspace] SKIP: toggle Acesso a diretorios OFF`);
+      return text;
+    }
+    if (!htOn) {
+      console.log(`[workspace] SKIP: Ferramentas avancadas OFF`);
+      return text;
+    }
+    if (attCount === 0) {
+      console.log(`[workspace] SKIP: nenhum anexo no painel`);
+      return text;
+    }
+    const ctx = await workspace.buildContextIfNeeded(modelKey || "");
+    if (!ctx) {
+      console.log(`[workspace] SKIP: contexto ja injetado nesta sessao (anexos=${attCount}). Use 'Novo Chat' pra reinjetar.`);
+      return text;
+    }
+    workspace.markContextSent();
+    console.log(`[workspace] ✅ contexto injetado (${ctx.length} chars, ${attCount} anexos, model=${modelKey})`);
+    return ctx + "\n\n---\n\n" + (text || "");
+  } catch (e) {
+    console.warn("[workspace] prependContext falhou:", e.message);
+    return text;
   }
 }
 
@@ -1459,7 +1496,7 @@ async function registerGlobalShortcuts() {
     ? [
         { combo: "Ctrl+D", action: "toggle-recording" },
         { combo: "Ctrl+I", action: "manual-input" },
-        { combo: "Ctrl+A", action: "focus-window" },
+        // Ctrl+A NAO e' registrado: precisa ser livre pra selectAll nativo em textarea/input.
         { combo: "Ctrl+Shift+C", action: "open-config" },
         { combo: "Ctrl+Shift+X", action: "capture-screen" },
         { combo: "Ctrl+Shift+S", action: "capture-region-native" },
@@ -1469,7 +1506,7 @@ async function registerGlobalShortcuts() {
     : [
         { combo: "CommandOrControl+D", action: "toggle-recording" },
         { combo: "CommandOrControl+I", action: "manual-input" },
-        { combo: "CommandOrControl+A", action: "focus-window" },
+        // Cmd/Ctrl+A NAO e' registrado: livre pra selectAll nativo.
         { combo: "CommandOrControl+Shift+C", action: "open-config" },
         { combo: "CommandOrControl+Shift+X", action: "capture-screen" },
         { combo: "CommandOrControl+Shift+S", action: "capture-region-native" },
@@ -1942,9 +1979,10 @@ async function getIaResponse(text) {
             return;
         }
         const openAiModel = configService.getOpenAiModel();
-        const ht = buildHelperToolsOpenAIOpts(text, instruction, openAiModel);
+        const _wsText1 = await prependWorkspaceContextIfNeeded(text, openAiModel);
+        const ht = buildHelperToolsOpenAIOpts(_wsText1, instruction, openAiModel);
         resposta = await OpenAIService.makeOpenAIRequest(
-          text,
+          _wsText1,
           token,
           ht.instruction || instruction,
           ht.model || openAiModel,
@@ -1952,21 +1990,20 @@ async function getIaResponse(text) {
           ht.opts
         );
     } else {
-        if (backendIsOnline) {
-          console.log("Tentando usar o Backend Service...");
-          try {
-            resposta = await BackendService.responder(text);
-          } catch (backendError) {
-            console.error(
-              "Falha no Backend Service, usando Gemini como fallback...",
-              backendError
-            );
-            backendIsOnline = false; // Marca como offline para a próxima tentativa ser mais rápida
-            resposta = await GeminiService.responder(text);
-          }
-        } else {
-          console.log("Backend offline, usando Gemini Service...");
-          resposta = await GeminiService.responder(text);
+        // Ollama/Backend e' o unico provider nao-OpenAI suportado.
+        // Helper tools agora funcionam tambem no Ollama (via structured prompt + parser).
+        try {
+          const instructionO = configService.getPromptInstruction();
+          const _wsTxtO = await prependWorkspaceContextIfNeeded(text, 'ollama');
+          const _htO = buildHelperToolsOpenAIOpts(_wsTxtO, instructionO, configService.getOpenAiModel());
+          resposta = await BackendService.responder(_wsTxtO, _htO.opts);
+          backendIsOnline = true;
+        } catch (backendError) {
+          console.error("Backend Ollama falhou:", backendError && backendError.message);
+          backendIsOnline = false;
+          throw new Error(
+            "Backend Ollama indisponivel. Verifique se o servico esta rodando ou troque pra OpenAI em Configuracoes."
+          );
         }
     }
 
@@ -2389,9 +2426,10 @@ ipcMain.on("send-to-gemini", async (event, text) => {
             return;
         }
         const openAiModel = configService.getOpenAiModel();
-        const ht = buildHelperToolsOpenAIOpts(text, instruction, openAiModel);
+        const _wsText2 = await prependWorkspaceContextIfNeeded(text, openAiModel);
+        const ht = buildHelperToolsOpenAIOpts(_wsText2, instruction, openAiModel);
         resposta = await OpenAIService.makeOpenAIRequest(
-          text,
+          _wsText2,
           token,
           ht.instruction || instruction,
           ht.model || openAiModel,
@@ -2401,21 +2439,19 @@ ipcMain.on("send-to-gemini", async (event, text) => {
         event.sender.send("openai-final-response", { resposta });
         return; // Exit here to prevent further processing by the generic response handler
     } else {
-        if (backendIsOnline) {
-          console.log("IPC: Tentando usar o Backend Service...");
-          try {
-            resposta = await BackendService.responder(text);
-          } catch (backendError) {
-            console.error(
-              "IPC: Falha no Backend Service, usando Gemini como fallback...",
-              backendError
-            );
-            backendIsOnline = false; // Marcar como offline
-            resposta = await GeminiService.responder(text);
-          }
-        } else {
-          console.log("IPC: Backend offline, usando Gemini Service...");
-          resposta = await GeminiService.responder(text);
+        // Ollama/Backend e' o unico provider nao-OpenAI suportado.
+        try {
+          const instructionO2 = configService.getPromptInstruction();
+          const _wsTxtO2 = await prependWorkspaceContextIfNeeded(text, 'ollama');
+          const _htO2 = buildHelperToolsOpenAIOpts(_wsTxtO2, instructionO2, configService.getOpenAiModel());
+          resposta = await BackendService.responder(_wsTxtO2, _htO2.opts);
+          backendIsOnline = true;
+        } catch (backendError) {
+          console.error("IPC: Backend Ollama falhou:", backendError && backendError.message);
+          backendIsOnline = false;
+          throw new Error(
+            "Backend Ollama indisponivel. Verifique se o servico esta rodando ou troque pra OpenAI em Configuracoes."
+          );
         }
     }
     event.sender.send("gemini-response", { resposta });
@@ -2467,10 +2503,7 @@ ipcMain.on("start-notifications", () => {
 });
 
 ipcMain.on("cancel-ia-request", () => {
-  // Atualmente, o cancelamento só funciona para o GeminiService.
-  // O BackendService não tem um método de cancelamento implementado.
-  GeminiService.cancelCurrentRequest();
-
+  // Backend Ollama / OpenAI nao tem cancelamento implementado por enquanto.
   if (waitingNotificationInterval) {
     clearInterval(waitingNotificationInterval);
     waitingNotificationInterval = null;
@@ -2647,6 +2680,96 @@ ipcMain.on("set-helper-tools-enabled", (event, enabled) => {
     }
   } else if (event && event.sender) {
     event.sender.send("helper-tools-enabled-changed", { enabled: false });
+  }
+});
+
+// ===== Workspace Access (anexar diretórios/arquivos como contexto) =====
+ipcMain.handle("get-workspace-access-enabled", () => {
+  return configService.getWorkspaceAccessEnabled
+    ? configService.getWorkspaceAccessEnabled()
+    : false;
+});
+ipcMain.on("set-workspace-access-enabled", (event, enabled) => {
+  if (!configService.setWorkspaceAccessEnabled) return;
+  configService.setWorkspaceAccessEnabled(!!enabled);
+  console.log(`📂 WorkspaceAccess: → ${enabled ? "ON" : "OFF"}`);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("workspace-changed", { enabled: !!enabled, attachments: workspace.list() });
+  }
+});
+
+ipcMain.handle("workspace:pick-file", async () => {
+  const { dialog } = require("electron");
+  const res = await dialog.showOpenDialog(mainWindow, {
+    title: "Anexar arquivo ao workspace",
+    properties: ["openFile", "multiSelections"],
+  });
+  if (res.canceled || !res.filePaths.length) return { ok: false, canceled: true };
+  const added = [];
+  for (const p of res.filePaths) {
+    try { await workspace.addPath(p, "file"); added.push(p); }
+    catch (e) { console.warn("[workspace] add file falhou:", e.message); }
+  }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("workspace-changed", { attachments: workspace.list() });
+  }
+  return { ok: true, added, attachments: workspace.list() };
+});
+
+ipcMain.handle("workspace:pick-dir", async () => {
+  const { dialog } = require("electron");
+  const res = await dialog.showOpenDialog(mainWindow, {
+    title: "Anexar diretório ao workspace",
+    properties: ["openDirectory"],
+  });
+  if (res.canceled || !res.filePaths.length) return { ok: false, canceled: true };
+  const added = [];
+  for (const p of res.filePaths) {
+    try { await workspace.addPath(p, "dir"); added.push(p); }
+    catch (e) { console.warn("[workspace] add dir falhou:", e.message); }
+  }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("workspace-changed", { attachments: workspace.list() });
+  }
+  return { ok: true, added, attachments: workspace.list() };
+});
+
+ipcMain.handle("workspace:list", () => workspace.list());
+
+ipcMain.handle("workspace:remove", (event, id) => {
+  workspace.removePath(id);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("workspace-changed", { attachments: workspace.list() });
+  }
+  return workspace.list();
+});
+
+ipcMain.handle("workspace:clear", () => {
+  workspace.clear();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("workspace-changed", { attachments: [] });
+  }
+  return [];
+});
+
+ipcMain.handle("workspace:open-external", async (event, p) => {
+  const { shell } = require("electron");
+  try {
+    // shell.openPath devolve string vazia em sucesso, ou msg de erro
+    const err = await shell.openPath(p);
+    if (!err) return { ok: true };
+    // Fallback xdg-open (COSMIC as vezes recusa shell.openPath em dirs)
+    const { spawn } = require("child_process");
+    spawn("xdg-open", [p], { detached: true, stdio: "ignore" }).unref();
+    return { ok: true, fallback: "xdg-open", shellErr: err };
+  } catch (e) {
+    try {
+      const { spawn } = require("child_process");
+      spawn("xdg-open", [p], { detached: true, stdio: "ignore" }).unref();
+      return { ok: true, fallback: "xdg-open" };
+    } catch (e2) {
+      return { ok: false, error: e.message };
+    }
   }
 });
 
@@ -3688,16 +3811,18 @@ async function processOsQuestion(text, image = null, opts = {}) {
         ? configService.getOpenAiVisionModel()
         : configService.getOpenAiModel();
       console.log(`🤖 OpenAI ${openAiModel}${sendImage ? ' [VISÃO high]' : ' [TEXTO]'}...`);
+      // Workspace context: só em modo TEXTO
+      const _wsText3 = sendImage ? text : await prependWorkspaceContextIfNeeded(text, openAiModel);
       // helperTools só engaja em modo TEXTO (visão é one-shot stateless)
       const ht = sendImage
         ? { opts: { stateless: !!image } }
         : (() => {
-            const _ht = buildHelperToolsOpenAIOpts(text, instruction, openAiModel);
+            const _ht = buildHelperToolsOpenAIOpts(_wsText3, instruction, openAiModel);
             _ht.opts = { ..._ht.opts, stateless: !!image };
             return _ht;
           })();
       resposta = await OpenAIService.makeOpenAIRequest(
-        text,
+        _wsText3,
         token,
         ht.instruction || instruction,
         ht.model || openAiModel,
@@ -3709,16 +3834,19 @@ async function processOsQuestion(text, image = null, opts = {}) {
       );
       console.log(`🤖 Got OpenAI response: ${resposta.substring(0, 50)}...`);
     } else {
-      // Backends sem visão (Gemini local, llama): só TEXTO
-      if (backendIsOnline) {
-        try {
-          resposta = await BackendService.responder(text);
-        } catch (backendError) {
-          console.error("Backend failed, using Gemini fallback:", backendError);
-          resposta = await GeminiService.responder(text);
-        }
-      } else {
-        resposta = await GeminiService.responder(text);
+      // Backends sem visão (Ollama): só TEXTO. Mas com tool calling agora.
+      try {
+        const instructionO3 = configService.getPromptInstruction();
+        const _wsTxtO3 = await prependWorkspaceContextIfNeeded(text, 'ollama');
+        const _htO3 = buildHelperToolsOpenAIOpts(_wsTxtO3, instructionO3, configService.getOpenAiModel());
+        resposta = await BackendService.responder(_wsTxtO3, _htO3.opts);
+        backendIsOnline = true;
+      } catch (backendError) {
+        console.error("Backend Ollama falhou:", backendError && backendError.message);
+        backendIsOnline = false;
+        throw new Error(
+          "Backend Ollama indisponivel. Verifique se o servico esta rodando ou troque pra OpenAI em Configuracoes."
+        );
       }
     }
 
@@ -3862,6 +3990,8 @@ ipcMain.handle('create-new-session', async (event, title) => {
 ipcMain.handle('new-chat', async () => {
   try {
     const session = await historyService.createNewSession('Nova conversa');
+    // Nova sessao = re-injeta contexto do workspace na proxima pergunta.
+    try { workspace.resetContextSent && workspace.resetContextSent(); } catch (_) {}
     return session;
   } catch (error) {
     console.error('Erro ao criar novo chat:', error);
@@ -3892,6 +4022,27 @@ app.whenReady().then(async () => {
     const spa = require('./services/helperTools/tools/systemPowerAction');
     if (spa && typeof spa.setConfirmer === 'function') {
       spa.setConfirmer((opts) => showConfirmActionOverlay(opts));
+    }
+    // Write tools: confirmer + listener pra notificar UI quando arquivo for editado
+    const _writeNotifier = (data) => {
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('workspace-file-written', data);
+        }
+      } catch (_) {}
+    };
+    for (const toolName of ['writeFile', 'appendToFile', 'deleteFile', 'patchFile']) {
+      try {
+        const t = require(`./services/helperTools/tools/${toolName}`);
+        if (t && typeof t.setConfirmer === 'function') {
+          t.setConfirmer((opts) => showConfirmActionOverlay(opts));
+        }
+        if (t && typeof t.setOnFileWritten === 'function') {
+          t.setOnFileWritten(_writeNotifier);
+        }
+      } catch (e) {
+        console.warn(`[main] falha ao registrar confirmer pra ${toolName}:`, e.message);
+      }
     }
   } catch (e) { console.warn('Confirmer setup falhou:', e.message); }
   OpenAIService.initialize();

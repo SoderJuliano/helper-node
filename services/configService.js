@@ -65,6 +65,12 @@ const defaultConfig = {
   helperTools: {
     enabled: false,
   },
+  // Acesso a diretórios (anexos de workspace). Depende de helperTools.
+  // Quando ON, a IA recebe contexto de pastas/arquivos anexados na sessão
+  // e pode ler/editar/apagar arquivos dentro deles (com confirmação).
+  workspaceAccess: {
+    enabled: false,
+  },
 };
 
 let configPath;
@@ -369,7 +375,33 @@ function setHelperToolsEnabled(enabled) {
       saveConfig(currentConfig);
       currentConfig = null;
     }
+  } else {
+    // Desliga workspaceAccess junto (dependência).
+    if (!currentConfig) currentConfig = loadConfig();
+    if (currentConfig.workspaceAccess && currentConfig.workspaceAccess.enabled) {
+      currentConfig.workspaceAccess.enabled = false;
+      saveConfig(currentConfig);
+      currentConfig = null;
+    }
   }
+}
+
+function getWorkspaceAccessEnabled() {
+  if (!currentConfig) currentConfig = loadConfig();
+  return !!(currentConfig.workspaceAccess && currentConfig.workspaceAccess.enabled);
+}
+
+function setWorkspaceAccessEnabled(enabled) {
+  if (!currentConfig) currentConfig = loadConfig();
+  if (!currentConfig.workspaceAccess) currentConfig.workspaceAccess = {};
+  // Só permite ligar se helperTools estiver ligado.
+  if (enabled && !(currentConfig.helperTools && currentConfig.helperTools.enabled)) {
+    console.warn("[config] workspaceAccess requer helperTools ligado — ignorando");
+    return;
+  }
+  currentConfig.workspaceAccess.enabled = !!enabled;
+  saveConfig(currentConfig);
+  currentConfig = null;
 }
 
 module.exports = {
@@ -400,5 +432,7 @@ module.exports = {
   setHelperToolsConfig,
   getHelperToolsEnabled,
   setHelperToolsEnabled,
+  getWorkspaceAccessEnabled,
+  setWorkspaceAccessEnabled,
   getIp,
 };

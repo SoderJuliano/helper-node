@@ -88,4 +88,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Confirmacao de acoes destrutivas (systemPowerAction etc.)
   confirmActionRespond: (requestId, ok) =>
     ipcRenderer.send("confirm-action-respond", { requestId, ok }),
+
+  // === Workspace (anexos pra contexto da IA) ===
+  workspacePickFile: () => ipcRenderer.invoke("workspace:pick-file"),
+  workspacePickDir: () => ipcRenderer.invoke("workspace:pick-dir"),
+  workspaceList: () => ipcRenderer.invoke("workspace:list"),
+  workspaceRemove: (id) => ipcRenderer.invoke("workspace:remove", id),
+  workspaceClear: () => ipcRenderer.invoke("workspace:clear"),
+  workspaceOpenExternal: (p) => ipcRenderer.invoke("workspace:open-external", p),
+  getWorkspaceAccessEnabled: () => ipcRenderer.invoke("get-workspace-access-enabled"),
+  onWorkspaceChanged: (cb) =>
+    ipcRenderer.on("workspace-changed", (event, data) => cb(data)),
+  onWorkspaceFileWritten: (cb) =>
+    ipcRenderer.on("workspace-file-written", (event, data) => cb(data)),
 });
