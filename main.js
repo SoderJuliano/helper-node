@@ -120,11 +120,57 @@ function buildHelperToolsOpenAIOpts(userText, baseInstruction, baseModel) {
       opts: {
         tools: schema,
         maxToolCalls,
-        onToolCall: async (name, args /*, meta */) => {
-          return await helperTools.executeTool(name, args, {
-            source: "openai-tool-call",
-          });
-        },
+        onToolCall: (() => {
+          // Anti-duplicação POR PERGUNTA: se a IA pedir writeFile/appendToFile/
+          // patchFile com o MESMO (path+content/patch) duas vezes no mesmo turno,
+          // a segunda vez retorna ok:true sem rodar. Bug observado: qwen25
+          // repete writeFile 3-4x do mesmo README após confirmação.
+          const crypto = require('crypto');
+          const seen = new Map(); // key → first result
+          const hashKey = (name, args) => {
+            try {
+              const a = args || {};
+              if (name === 'writeFile' || name === 'appendToFile') {
+                const h = crypto.createHash('sha256')
+                  .update(String(a.path || '')).update('\0')
+                  .update(String(a.content || ''))
+                  .digest('hex').slice(0, 16);
+                return `${name}:${h}`;
+              }
+              if (name === 'patchFile') {
+                const h = crypto.createHash('sha256')
+                  .update(String(a.path || '')).update('\0')
+                  .update(String(a.patch || a.diff || ''))
+                  .digest('hex').slice(0, 16);
+                return `${name}:${h}`;
+              }
+              if (name === 'deleteFile') {
+                return `${name}:${String(a.path || '')}`;
+              }
+            } catch (_) {}
+            return null;
+          };
+          return async (name, args /*, meta */) => {
+            const key = hashKey(name, args);
+            if (key && seen.has(key)) {
+              console.log(`🚫 anti-dup: ${name} já executado neste turno (key=${key}); retornando resultado anterior sem reexecutar.`);
+              const prev = seen.get(key);
+              return {
+                ok: true,
+                result: {
+                  duplicate: true,
+                  note: "Esta operação já foi executada neste turno. Prossiga para a próxima ação (ex: commit, push). NÃO repita.",
+                  previousResult: prev && prev.result ? prev.result : undefined,
+                },
+              };
+            }
+            const res = await helperTools.executeTool(name, args, {
+              source: "openai-tool-call",
+            });
+            if (key && res && res.ok !== false) seen.set(key, res);
+            return res;
+          };
+        })(),
       },
       instruction,
       model,
@@ -4031,7 +4077,7 @@ app.whenReady().then(async () => {
         }
       } catch (_) {}
     };
-    for (const toolName of ['writeFile', 'appendToFile', 'deleteFile', 'patchFile']) {
+    for (const toolName of ['writeFile', 'appendToFile', 'deleteFile', 'patchFile', 'runShellAdvanced']) {
       try {
         const t = require(`./services/helperTools/tools/${toolName}`);
         if (t && typeof t.setConfirmer === 'function') {

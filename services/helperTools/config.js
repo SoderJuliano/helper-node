@@ -253,9 +253,6 @@ const SAFE_COMMANDS = Object.freeze({
   java: ["-version", "--version"],
   javac: ["-version"],
   node: ["--version", "-v"],
-  npm: ["--version", "-v"],
-  pnpm: ["--version", "-v"],
-  yarn: ["--version", "-v"],
   python: ["--version", "-V"],
   python3: ["--version", "-V"],
   pip: ["--version"],
@@ -269,8 +266,20 @@ const SAFE_COMMANDS = Object.freeze({
   "docker-compose": ["--version"],
   kubectl: ["version", "--client"],
 
-  // Git (read-only)
+  // Maven / Gradle (build commands liberados — read-only do POV de seguranca:
+  // afetam so o projeto/.m2, nao o sistema. Se algo der errado, e' isolado.)
+  mvn: ["--version", "-v", "clean", "install", "test", "compile", "package", "verify", "dependency:tree", "spring-boot:run"],
+  mvnw: "*",
+  "./mvnw": "*",
+  gradle: ["--version", "-v", "tasks", "build", "test", "clean", "assemble"],
+  gradlew: "*",
+  "./gradlew": "*",
+
+  // Git (read + write basico — commit/push/pull/checkout liberados pra
+  // operacoes normais de dev. Tags e branches tambem. Forca-bruta tipo
+  // 'git reset --hard' continua exigindo runShellAdvanced.)
   git: [
+    // read-only
     "status",
     "log",
     "diff",
@@ -280,7 +289,26 @@ const SAFE_COMMANDS = Object.freeze({
     "rev-parse",
     "config",
     "--version",
+    "ls-files",
+    "stash",
+    // write basicos
+    "add",
+    "commit",
+    "push",
+    "pull",
+    "fetch",
+    "checkout",
+    "switch",
+    "merge",
+    "tag",
+    "init",
+    "clone",
   ],
+
+  // npm/yarn/pnpm: scripts e install (read-only do sistema, modifica so node_modules)
+  npm: ["--version", "-v", "install", "i", "ci", "run", "test", "start", "build", "list", "ls", "outdated", "audit"],
+  yarn: ["--version", "-v", "install", "run", "test", "start", "build", "list", "outdated", "audit"],
+  pnpm: ["--version", "-v", "install", "i", "run", "test", "start", "build", "list", "outdated", "audit"],
 });
 
 module.exports = {

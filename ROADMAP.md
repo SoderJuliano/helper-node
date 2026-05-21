@@ -87,13 +87,20 @@ paralelo com flatpak/snap quando disponíveis:
 
 ### Roadmap das próximas versões (helperTools)
 
-- **v0.3** — Write tools (`writeFile`, `patchFile`, `appendToFile`) com backup
-  automático em `~/.config/helper-node/backups/` + UI de confirmação overlay
-  (`confirm.html`) + wire do `confirmationDetector` pra voz.
-- **v0.4** — `runCommand` com whitelist + `runShellAdvanced` com confirmação
-  explícita; `sudoManager` + `sudo-prompt.html`.
+- ✅ **v0.3 (CONCLUÍDO)** — Write tools (`writeFile`, `patchFile`, `appendToFile`,
+  `deleteFile`) com backup automático em `~/.config/helper-node/backups/` + UI
+  de confirmação overlay (`confirm-action.html`).
+- ✅ **v0.4 (CONCLUÍDO)** — `runCommand` com whitelist `SAFE_COMMANDS` (git
+  read+write básico, npm/yarn/pnpm, mvn/gradle + wrappers, ls/cat/head/tail,
+  versões de runtime) + `runShellAdvanced` (bash arbitrário com confirmação
+  visual e `HARD_DENY_PATTERNS` pra bloquear `rm -rf /`, `mkfs.*`, fork bomb).
+  Anti-duplicação de writeFile/appendToFile/patchFile/deleteFile por hash
+  (path+content) no escopo de uma pergunta — previne IA repetir 4x o mesmo
+  edit. Tools disponíveis pra OpenAI (function calling) E Ollama (parser
+  TOOL_CALL).
 - **v0.5** — Adapter Ollama via proxy Java (endpoints `/llamatiny`, `/llama3`,
-  `/gemma3`, `/qwen25`) com structured prompt + JSON parser pra tool calls.
+  `/gemma3`, `/qwen25`) com structured prompt + JSON parser pra tool calls
+  [PARCIALMENTE FEITO em backendService.js — falta sudoManager + sudo-prompt].
 - **Futuro** — whitelist editável via UI, macOS adapter testado, modo dry-run,
   integração VS Code Tasks.
 

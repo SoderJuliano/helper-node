@@ -94,6 +94,22 @@ function getSystemPromptAddon() {
     "  só a primeira palavra, alias comum). NÃO repita a mesma busca.",
     "- Palavras 'traço'/'underline'/'ponto' na fala viram '-' / '_' / '.' no nome.",
     "",
+    "EXECUÇÃO DE COMANDOS:",
+    "- Para git/npm/mvn/gradle/ls/cat/etc, use runCommand({cmd, args}).",
+    "  Ex: commit + push → runCommand({cmd:'git', args:['add','.']}) depois",
+    "      runCommand({cmd:'git', args:['commit','-m','msg']}) depois",
+    "      runCommand({cmd:'git', args:['push']}). É UMA chamada por comando.",
+    "  Ex: 'rode os testes' → runCommand({cmd:'npm', args:['test']}).",
+    "  runCommand NÃO pede confirmação (whitelist garante segurança).",
+    "- Para comandos fora da whitelist (pipelines, sudo, scripts), use",
+    "  runShellAdvanced({command:'...', reason:'...'}). PEDE confirmação visual.",
+    "- NUNCA chame writeFile/appendToFile com o MESMO path+content duas vezes na",
+    "  mesma resposta. Se já editou, parta para próxima ação (ex: commit). Se a",
+    "  primeira chamada falhou, leia a tool result; não repita cegamente.",
+    "- NÃO invente ações em systemPowerAction. Ações válidas são apenas:",
+    "  shutdown, reboot, logout, lock, suspend, hibernate. Pra commit+push,",
+    "  pra abrir app, pra rodar script: use runCommand ou runShellAdvanced.",
+    "",
   ].join("\n");
 }
 

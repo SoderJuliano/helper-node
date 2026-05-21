@@ -43,6 +43,8 @@ function loadBuiltins() {
     require("./tools/appendToFile"),
     require("./tools/deleteFile"),
     require("./tools/patchFile"),
+    require("./tools/runCommand"),
+    require("./tools/runShellAdvanced"),
   ];
   for (const t of builtins) register(t);
   _loaded = true;
