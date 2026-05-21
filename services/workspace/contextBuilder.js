@@ -81,13 +81,38 @@ function generateTreeStructure(rootPath) {
   }
 }
 
+function escapeForDoubleQuotes(str) {
+  return String(str || '').replace(/(["\\$`])/g, '\\$1');
+}
+
+function collectCandidatePaths(attachments, maxItems = 220) {
+  const out = [];
+  for (const att of attachments) {
+    if (att.type === 'file') {
+      out.push(att.path);
+      continue;
+    }
+    if (att.type !== 'dir') continue;
+    try {
+      const root = escapeForDoubleQuotes(att.path);
+      const cmd = `find "${root}" \\( -name '.git' -o -name 'node_modules' -o -name 'target' -o -name 'build' -o -name '.idea' -o -name '__pycache__' -o -name '.venv' -o -name 'dist' \\) -prune -o -type f -print 2>/dev/null | sort | head -${maxItems}`;
+      const output = execSync(cmd, { encoding: 'utf8', stdio: 'pipe' }).trim();
+      if (!output) continue;
+      out.push(...output.split('\n').filter(Boolean));
+    } catch (_) {
+      // best effort: em caso de falha, segue com os anexos já conhecidos
+    }
+  }
+  return Array.from(new Set(out));
+}
+
 /**
  * Detecta arquivos relevantes baseado em keywords da pergunta.
  * Heurística simples: extensões + nomes de arquivo.
  * @param {string} texto - pergunta do usuário
  * @param {array} attachments - lista de paths anexados
  */
-function suggestRelevantFiles(texto, attachments) {
+function suggestRelevantFiles(texto, attachments, candidates = []) {
   const keywords = {};
   let hasKeyword = false;
 
@@ -145,9 +170,11 @@ function suggestRelevantFiles(texto, attachments) {
 
   // Fallback: se nenhum keyword específico, sugere arquivos que definem "qual projeto é"
   // (pom.xml, package.json, README, src/main, etc)
+  const searchBase = (Array.isArray(candidates) && candidates.length ? candidates : attachments.map(a => a.path)).map(p => String(p).toLowerCase());
+
   if (!hasKeyword) {
     // Detecta tipo de projeto pela estrutura
-    const allPaths = attachments.map(a => a.path.toLowerCase());
+    const allPaths = searchBase;
     if (allPaths.some(p => p.includes('pom.xml'))) {
       // Maven/Java
       Object.assign(keywords, {
@@ -195,14 +222,22 @@ function suggestRelevantFiles(texto, attachments) {
     }
   }
 
-  // Filtra attachments que matched keywords
-  const scored = attachments.map(att => {
+  // Filtra candidatos que bateram com keywords
+  const scored = (Array.isArray(candidates) && candidates.length ? candidates : attachments.map(a => a.path)).map(candidatePath => {
     let score = 0;
-    const name = path.basename(att.path).toLowerCase();
+    const candidate = String(candidatePath);
+    const lower = candidate.toLowerCase();
+    const name = path.basename(lower);
     for (const [kw, weight] of Object.entries(keywords)) {
-      if (name.includes(kw.toLowerCase())) score += weight;
+      const k = kw.toLowerCase();
+      if (name.includes(k)) score += weight;
+      if (lower.includes(k)) score += weight * 0.6;
     }
-    return { path: att.path, score };
+    // Penaliza caminho de teste em perguntas não relacionadas a teste
+    if (!/\b(teste|test|spec|unit|integration)\b/i.test(texto) && /\b(test|spec)\b/i.test(lower)) {
+      score -= 0.6;
+    }
+    return { path: candidate, score };
   });
 
   return scored
@@ -244,7 +279,8 @@ async function buildContextBlock(opts = {}) {
   // Sugere arquivos relevantes baseado na pergunta (se houver no contexto)
   let relevantSuggestion = '';
   if (opts.userText) {
-    const suggested = suggestRelevantFiles(opts.userText, attachments);
+    const candidates = collectCandidatePaths(attachments);
+    const suggested = suggestRelevantFiles(opts.userText, attachments, candidates);
     if (suggested) {
       relevantSuggestion = `Arquivos sugeridos para análise:\n${suggested}`;
       console.log(`[tree] sugestão gerada: ${suggested.split('\n').length} arquivos`);

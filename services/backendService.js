@@ -47,6 +47,31 @@ function pickOllamaEndpoint(texto) {
   return '/llama3';
 }
 
+function isProjectAnalysisPrompt(texto) {
+  const t = String(texto || '').toLowerCase();
+  return /\b(que projeto|tipo de projeto|o que faz|arquitetura|estrutura|endpoint|endpoints|controller|rest|api|servi[cç]o|usecase|hexagonal|spring|maven|gradle|depend[eê]ncia|pom\.xml|application\.ya?ml)\b/.test(t);
+}
+
+function buildDeepAnalysisAddon({ toolsEnabled, wsEnabled, attCount, texto }) {
+  if (!toolsEnabled) return '';
+  if (!wsEnabled || attCount <= 0) return '';
+  if (!isProjectAnalysisPrompt(texto)) return '';
+
+  return [
+    '',
+    '═══ MODO ANÁLISE DE PROJETO (OBRIGATÓRIO) ═══',
+    '- Neste cenário, IGNORE qualquer limite anterior de "máximo 65 palavras".',
+    '- Responda de forma completa e objetiva (300-900 palavras quando necessário).',
+    '- Antes da RESPOSTA FINAL, faça no mínimo 3 TOOL_CALL de leitura para evidência real do código:',
+    '  1) listDir do diretório raiz anexado',
+    '  2) readFile de manifesto/config principal (pom.xml, package.json, build.gradle, application.yaml/properties)',
+    '  3) readFile de 1-2 arquivos de entrada/fluxo (controller/use case/service/application)',
+    '- Só finalize após citar evidências dos arquivos lidos (nomes de arquivo + conclusão).',
+    '- Estruture a resposta em tópicos: Tipo do projeto, O que ele faz, Arquitetura, Fluxo principal, Tecnologias e Pontos de atenção.',
+    '',
+  ].join('\n');
+}
+
 // ── Tool calling para Ollama (sem function-calling nativo) ────────────────────
 // Ollama nao tem `tools[]` igual OpenAI. Solucao: instruimos o modelo a emitir
 // blocos `TOOL_CALL: {"name":"...","args":{...}}` no texto da resposta.
@@ -323,12 +348,15 @@ class BackendService {
       //   /gemma3     → gemma3 (alternativa)
       // Heuristica: casual curto -> llamatiny, tecnico/code/math -> qwen25, resto -> llama3.
       let modelEndpoint = pickOllamaEndpoint(texto);
+      let workspace = null;
+      let wsEnabled = false;
+      let attCount = 0;
       // Quando houver anexos no workspace, usa qwen25 por padrão.
       // Isso melhora muito perguntas sobre projeto/codigo/endpoints.
       try {
-        const workspace = require('./workspace');
-        const wsEnabled = configService.getWorkspaceAccessEnabled && configService.getWorkspaceAccessEnabled();
-        const attCount = workspace.list().length;
+        workspace = require('./workspace');
+        wsEnabled = !!(configService.getWorkspaceAccessEnabled && configService.getWorkspaceAccessEnabled());
+        attCount = wsEnabled ? workspace.list().length : 0;
         if (wsEnabled && attCount > 0) {
           modelEndpoint = '/qwen25';
           console.log(`[backend] workspace com anexos (${attCount}) -> forçando ${modelEndpoint}`);
@@ -344,7 +372,13 @@ class BackendService {
       // NAO mexe no roteamento — usa o endpoint que o pickOllamaEndpoint escolheu.
       let effectiveEndpoint = modelEndpoint;
       if (tools && onToolCall) {
-        promptInstruction = `${promptInstruction}\n\n${buildOllamaToolsAddon(tools)}`;
+        const analysisAddon = buildDeepAnalysisAddon({
+          toolsEnabled: true,
+          wsEnabled,
+          attCount,
+          texto,
+        });
+        promptInstruction = `${promptInstruction}\n\n${buildOllamaToolsAddon(tools)}${analysisAddon}`;
       }
       
       // Build prompt with conversation context.
@@ -374,10 +408,7 @@ class BackendService {
       // Workspace context (se ON): prepend listagem/arquivos anexados.
       // Só injeta na primeira pergunta da sessão (flag interna do store).
       try {
-        const wsEnabled = configService.getWorkspaceAccessEnabled && configService.getWorkspaceAccessEnabled();
-        if (wsEnabled) {
-          const workspace = require('./workspace');
-          const attCount = workspace.list().length;
+        if (wsEnabled && workspace) {
           const modelKey = modelEndpoint.replace(/^\//, '');
           const ctx = await workspace.buildContextIfNeeded(modelKey, { userText: texto });
           if (ctx) {

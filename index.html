@@ -621,9 +621,9 @@
             text-align: start;
             color: #e0e0e0; /* Corrigido para texto claro */
             font-family: 'Courier New', monospace;
-            display: block;
-            white-space: pre-wrap;
-            overflow-wrap: anywhere; /* Quebra linhas longas em qualquer ponto */
+            display: inline;
+            white-space: normal;
+            overflow-wrap: break-word;
             max-width: 100%;
         }
 
@@ -933,6 +933,9 @@
         /* Cursor pointer em blocos de código */
         .ia-response pre code,
         .streaming-response pre code {
+            display: block;
+            white-space: pre;
+            overflow-wrap: normal;
             cursor: pointer;
             transition: background-color 0.2s;
         }
