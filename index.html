@@ -470,6 +470,8 @@
             background-color: rgba(0, 0, 0, 0.4);
             border-radius: 5px;
             box-sizing: border-box;
+            scrollbar-width: thin;
+            scrollbar-color: #4a4a52 transparent;
         }
 
         .content {
@@ -614,6 +616,34 @@
             box-sizing: border-box;
             margin: 8px 0;
             font-family: 'Courier New', monospace; /* Fonte específica para código */
+            scrollbar-width: thin;
+            scrollbar-color: #4a4a52 transparent;
+        }
+
+        /* Scrollbar custom dentro de blocos de codigo (substitui a branca grossa do Chromium). */
+        .ia-response pre::-webkit-scrollbar,
+        #transcription pre::-webkit-scrollbar {
+            height: 6px;
+            width: 6px;
+            background: transparent;
+        }
+        .ia-response pre::-webkit-scrollbar-track,
+        #transcription pre::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .ia-response pre::-webkit-scrollbar-thumb,
+        #transcription pre::-webkit-scrollbar-thumb {
+            background: #3a3a42;
+            border-radius: 3px;
+            transition: background 0.2s;
+        }
+        .ia-response pre:hover::-webkit-scrollbar-thumb,
+        #transcription pre:hover::-webkit-scrollbar-thumb {
+            background: #5a5a62;
+        }
+        .ia-response pre::-webkit-scrollbar-corner,
+        #transcription pre::-webkit-scrollbar-corner {
+            background: transparent;
         }
 
         .ia-response code {
