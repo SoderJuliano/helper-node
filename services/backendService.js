@@ -196,6 +196,15 @@ function buildToolFirstSystemPrompt(toolsSchema) {
   lines.push('3. Para writeFile, monte o conteudo COMPLETO em "content" (escape \\n para quebras).');
   lines.push('4. NAO use ```markdown ao redor. NAO explique. Apenas emita o TOOL_CALL.');
   lines.push('');
+  lines.push('═══ CRITICO: TAREFAS MULTI-ARQUIVO ═══');
+  lines.push('Se o usuario pediu pra criar VARIOS arquivos (ex: controller + service + adapter + port),');
+  lines.push('emita UM TOOL_CALL writeFile POR ARQUIVO, em iteracoes sucessivas. Apos cada TOOL_RESULT,');
+  lines.push('voce vai receber o resultado e DEVE emitir o PROXIMO TOOL_CALL writeFile pro proximo arquivo.');
+  lines.push('SO encerre (resposta em texto sem TOOL_CALL) quando TODOS os arquivos pedidos estiverem criados.');
+  lines.push('');
+  lines.push('NUNCA, NUNCA imprima codigo dentro de ```java ``` ou ```xml ``` achando que isso cria arquivo.');
+  lines.push('Mostrar codigo em markdown e\' INUTIL — nao cria nada no disco. SO TOOL_CALL writeFile cria arquivo.');
+  lines.push('');
   return lines.join('\n');
 }
 
@@ -486,7 +495,7 @@ class BackendService {
     // Quando tools presente, ativa loop de tool-calling structured-prompt.
     const tools = Array.isArray(opts.tools) && opts.tools.length ? opts.tools : null;
     const onToolCall = typeof opts.onToolCall === 'function' ? opts.onToolCall : null;
-    const maxToolCalls = Number.isInteger(opts.maxToolCalls) ? opts.maxToolCalls : 5;
+    const maxToolCalls = Number.isInteger(opts.maxToolCalls) ? opts.maxToolCalls : 10;
 
     // Se a URL não foi pega ainda, tenta novamente
     if (!apiUrl) {
@@ -684,14 +693,25 @@ class BackendService {
         // Conta tools executadas com sucesso — se ja houve >=1, NAO forcar retry
         // quando a resposta vier sem TOOL_CALL (provavelmente terminou).
         let toolsExecutedOk = 0;
+        // Detecta blocos de codigo na resposta — sinal de que o modelo
+        // imprimiu codigo em markdown achando que estava criando arquivo.
+        // Quando isso acontece numa intent de WRITE, e' tarefa incompleta.
+        const hasCodeBlocks = (txt) => /```[a-zA-Z0-9_+-]*\s*\n[\s\S]+?```/.test(String(txt || ''));
         while (iter < maxToolCalls) {
           const calls = parseOllamaToolCalls(resposta);
           if (!calls.length) {
-            // So forca retry se NENHUMA tool rodou ainda. Caso contrario,
-            // assume que o modelo terminou (resposta final em texto).
-            if (mustUseTools && toolsExecutedOk === 0 && forcedRetryCount < 2) {
+            // Decisao do retry forcado:
+            // - intent write/read/shell + nenhuma tool rodou ainda → forca
+            // - intent WRITE + ja rodou alguma tool MAS resposta tem ```code```
+            //   (modelo so "explicou" o resto em markdown em vez de criar) → forca
+            const writeIntentWithCodeLeak = isWriteIntent(texto) && toolsExecutedOk > 0 && hasCodeBlocks(resposta);
+            const shouldRetry = mustUseTools && forcedRetryCount < 3 && (toolsExecutedOk === 0 || writeIntentWithCodeLeak);
+            if (shouldRetry) {
               forcedRetryCount++;
-              console.warn(`[backend][tools] sem TOOL_CALL em intento de leitura/escrita; forçando retry estrito ${forcedRetryCount}/2`);
+              const reason = writeIntentWithCodeLeak
+                ? `tarefa incompleta (modelo imprimiu codigo em markdown em vez de chamar writeFile)`
+                : `sem TOOL_CALL em intento de leitura/escrita`;
+              console.warn(`[backend][tools] ${reason}; forçando retry estrito ${forcedRetryCount}/3`);
               // Prompt MINIMO, sem o template original (que confunde o modelo).
               // Mostra ferramentas, paths reais do workspace e exige TOOL_CALL puro.
               const wsLine = wsPaths.length
@@ -703,11 +723,19 @@ class BackendService {
               }).join('\n- ');
               const _ws0 = wsPaths[0] || '/abs/path';
               const _isGitQ = isShellCommandIntent(texto);
+              // Lista arquivos JA criados pra dar contexto ao modelo no retry.
+              const _filesCreated = _ranSummary
+                .filter(s => s.startsWith('✓ writeFile'))
+                .map(s => s.replace(/^✓ writeFile\s*→\s*/, ''))
+                .filter(Boolean);
+              const _alreadyCreatedLine = _filesCreated.length
+                ? `\nARQUIVOS JA CRIADOS NESTE TURNO (NAO RECRIE): ${_filesCreated.join(', ')}\n`
+                : '';
               workingPrompt = [
                 'Voce e um agente que SO responde com TOOL_CALL. Nada mais.',
                 '',
                 wsLine,
-                '',
+                _alreadyCreatedLine,
                 `Pedido do usuario: ${texto}`,
                 '',
                 'FERRAMENTAS:',
@@ -718,9 +746,9 @@ class BackendService {
                 '',
                 _isGitQ
                   ? `EXEMPLO (esta pergunta e sobre git/build/testes — USE runCommand):\nTOOL_CALL: {"name":"runCommand","args":{"cmd":"git","args":["status","--short"],"cwd":"${_ws0}"}}\n\nNAO use listDir/findFiles em .git/ — e' inutil e lento. Use runCommand sempre.`
-                  : `EXEMPLO para criar README:\nTOOL_CALL: {"name":"writeFile","args":{"path":"${_ws0}/README.md","content":"# Titulo\\n\\nDescricao do projeto...","reason":"criar readme"}}`,
+                  : `EXEMPLO para criar arquivo:\nTOOL_CALL: {"name":"writeFile","args":{"path":"${_ws0}/src/main/java/.../Service.java","content":"package ...;\\n\\npublic class Service {...}","reason":"criar service"}}\n\nATENCAO: MOSTRAR codigo em \`\`\`java\`\`\` NAO CRIA ARQUIVO. SO writeFile cria arquivo.\nSe falta criar mais arquivos, emita o PROXIMO writeFile AGORA. Nada de explicar.`,
                 '',
-                'Sua resposta (apenas o TOOL_CALL, nada mais):',
+                'Sua resposta (apenas o TOOL_CALL do PROXIMO arquivo a criar, nada mais):',
               ].join('\n');
               try {
                 const forcedResp = await axios.post(`${apiUrl}${effectiveEndpoint}`, { prompt: workingPrompt, language: mappedLang }, {
@@ -778,6 +806,10 @@ class BackendService {
                   const _cmdline = `${args.cmd || ''} ${(Array.isArray(args.args) ? args.args : []).join(' ')}`.trim();
                   const _exit = toolResult.result && typeof toolResult.result.exitCode === 'number' ? toolResult.result.exitCode : '?';
                   _ranSummary.push(`✓ \`${_cmdline}\` (exit=${_exit})`);
+                } else if (name === 'writeFile' || name === 'appendToFile' || name === 'patchFile') {
+                  _ranSummary.push(`✓ ${name} → ${args.path || '?'}`);
+                } else if (name === 'deleteFile') {
+                  _ranSummary.push(`✓ deleteFile → ${args.path || '?'}`);
                 } else {
                   _ranSummary.push(`✓ ${name}`);
                 }
