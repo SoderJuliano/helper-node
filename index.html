@@ -674,6 +674,14 @@
             width: 16px;
             height: 16px;
         }
+        .copy-button.copied {
+            background: rgba(76, 175, 80, 0.2);
+            color: rgba(149, 255, 170, 0.95);
+        }
+        .copy-button.copy-error {
+            background: rgba(244, 67, 54, 0.2);
+            color: rgba(255, 138, 128, 0.95);
+        }
 
         .copy-all-button, .copy-all-stream-button {
             position: absolute;
@@ -769,6 +777,11 @@
             gap: 10px;
             margin-top: 10px;
             justify-content: flex-start;
+        }
+
+        .manual-input-container {
+            margin-top: 14px;
+            margin-bottom: 16px;
         }
 
         .send-button {
@@ -965,11 +978,6 @@
         .ia-response code:not(pre code):hover,
         .streaming-response code:not(pre code):hover {
             background-color: rgba(100, 100, 100, 0.5);
-        }
-
-        .copy-button {
-            position: relative;
-            right: 0;
         }
 
         .copy-button:active {
@@ -1424,7 +1432,7 @@
             newChatBtn.addEventListener('click', async () => {
                 try {
                     historyState.currentSessionId = null;
-                    transcriptionElement.innerHTML = '';
+                    removeManualInputContainer();
                     conversationViewer.style.display = 'none';
                     window.historySession.reset();
                     console.log('✓ Novo chat iniciado');
@@ -1655,15 +1663,16 @@
                     const textToCopy = clonePre.innerText.trim();
                     navigator.clipboard.writeText(textToCopy)
                         .then(() => {
-                            const originalText = button.textContent;
-                            button.textContent = '✔️';
-                            setTimeout(() => { button.textContent = originalText; }, 2000);
+                            showCopyToast();
+                            button.classList.remove('copy-error');
+                            button.classList.add('copied');
+                            setTimeout(() => { button.classList.remove('copied'); }, 1200);
                         })
                         .catch(err => {
                             console.error('Erro ao copiar:', err);
-                            const originalText = button.textContent;
-                            button.textContent = '❌';
-                            setTimeout(() => { button.textContent = originalText; }, 2000);
+                            button.classList.remove('copied');
+                            button.classList.add('copy-error');
+                            setTimeout(() => { button.classList.remove('copy-error'); }, 1200);
                         });
                     return; // Stop further processing
                 }
@@ -1729,10 +1738,19 @@
             greeting.classList.add('hidden');
         }, 3000);
 
-        // Esconder o "Olá amigo" ao clicar
+        // Esconder o "Olá amigo" ao clicar e, em áreas livres da tela,
+        // abrir input manual (atalho equivalente ao Ctrl+I).
         const greeting = document.getElementById('greeting');
-        document.body.addEventListener('click', () => {
+        document.body.addEventListener('click', (event) => {
             greeting.classList.add('hidden');
+
+            const interactive = event.target.closest(
+                'button, a, input, textarea, .edit-container, .copy-button, .copy-all-button, .copy-all-stream-button, .panel, #conversation-viewer'
+            );
+            if (interactive) return;
+            if (manualInputActive || isEditingQuestion) return;
+            if (document.getElementById('conversation-viewer').style.display !== 'none') return;
+            openManualInput();
         });
 
         // Configurar a animação Lottie
@@ -1744,6 +1762,43 @@
         let isEditingQuestion = false;
         let manualInputActive = false;
         let pastedImageForManualInput = null;
+
+        function scrollTranscriptionToBottom(behavior = 'smooth') {
+            const el = document.getElementById('transcription');
+            if (!el) return;
+            el.scrollTo({ top: el.scrollHeight, behavior });
+        }
+
+        function removeManualInputContainer() {
+            const existing = document.querySelector('.manual-input-container');
+            if (existing) existing.remove();
+        }
+
+        function appendQuestionEntry(text) {
+            const transcriptionElement = document.getElementById('transcription');
+            const questionSpan = document.createElement('span');
+            questionSpan.className = 'question-text';
+            questionSpan.textContent = text;
+
+            const editIcon = document.createElement('span');
+            editIcon.className = 'edit-icon';
+            editIcon.textContent = '✏️';
+            questionSpan.appendChild(editIcon);
+
+            questionSpan.addEventListener('click', () => handleQuestionEdit(questionSpan));
+            transcriptionElement.appendChild(questionSpan);
+            currentQuestionElement = questionSpan;
+            scrollTranscriptionToBottom();
+            return questionSpan;
+        }
+
+        function isDirectTypingKey(e) {
+            if (!e || e.ctrlKey || e.metaKey || e.altKey) return false;
+            if (e.key !== 'Backspace' && e.key.length !== 1) return false;
+            const t = e.target;
+            if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return false;
+            return true;
+        }
 
         // Função para mostrar toast de "copiado"
         async function showCopyToast() {
@@ -1871,23 +1926,7 @@
                                 if (robot) robot.style.display = 'block';
 
                                 const message = "Image in context";
-
-                                const transcriptionElement = document.getElementById('transcription');
-                                transcriptionElement.innerHTML = ''; // Clear previous content
-                                
-                                const questionSpan = document.createElement('span');
-                                questionSpan.className = 'question-text';
-                                questionSpan.textContent = message;
-                                
-                                const editIcon = document.createElement('span');
-                                editIcon.className = 'edit-icon';
-                                editIcon.textContent = '✏️';
-                                questionSpan.appendChild(editIcon);
-                                
-                                questionSpan.addEventListener('click', () => handleQuestionEdit(questionSpan));
-                                
-                                transcriptionElement.appendChild(questionSpan);
-                                currentQuestionElement = questionSpan;
+                                appendQuestionEntry(message);
 
                                 window.electronAPI.processPastedImage(base64Image);
                             }
@@ -1951,28 +1990,13 @@
 
                     const pre = document.createElement('pre');
                     pre.textContent = JSON.stringify(debugInfo, null, 2);
-                    
-                    transcriptionElement.innerHTML = '';
                     transcriptionElement.appendChild(pre);
+                    scrollTranscriptionToBottom();
                     
                     return; // Finaliza a execução aqui para o modo debug
                 }
-                
-                const questionSpan = document.createElement('span');
-                questionSpan.className = 'question-text';
-                questionSpan.textContent = text;
-                
-                const editIcon = document.createElement('span');
-                editIcon.className = 'edit-icon';
-                editIcon.textContent = '✏️';
-                questionSpan.appendChild(editIcon);
-                
-                transcriptionElement.innerHTML = '';
-                transcriptionElement.appendChild(questionSpan);
-                
-                questionSpan.addEventListener('click', () => handleQuestionEdit(questionSpan));
-                
-                currentQuestionElement = questionSpan;
+
+                appendQuestionEntry(text);
             });
 
             window.electronAPI.onTranscriptionError((message) => {
@@ -2032,32 +2056,6 @@
 
                 document.getElementById('robot').style.display = 'none';
 
-                // Add event listeners for copy buttons
-                const copyButtons = newResponse.querySelectorAll('.copy-button');
-                copyButtons.forEach(btn => {
-                    btn.addEventListener('click', async (e) => {
-                        const codeId = btn.getAttribute('data-code-id');
-                        const codeElement = document.getElementById(codeId);
-                        if (codeElement) {
-                            try {
-                                await navigator.clipboard.writeText(codeElement.textContent);
-                                showCopyToast();
-                                const originalText = btn.textContent;
-                                btn.textContent = '✓ Copied!';
-                                setTimeout(() => {
-                                    btn.textContent = originalText;
-                                }, 2000);
-                            } catch (err) {
-                                console.error('Erro ao copiar:', err);
-                                btn.textContent = '✗ Error';
-                                setTimeout(() => {
-                                    btn.textContent = originalText || '[Copy]';
-                                }, 2000);
-                            }
-                        }
-                    });
-                });
-
                 // Adiciona o botão "Copiar Tudo"
                 const copyAllButton = document.createElement('button');
                 copyAllButton.textContent = 'Copy All';
@@ -2065,12 +2063,7 @@
                 newResponse.appendChild(copyAllButton);
 
                 // Scroll suave para o fim
-                setTimeout(() => {
-                    transcriptionElement.scrollTo({
-                        top: transcriptionElement.scrollHeight,
-                        behavior: 'smooth'
-                    });
-                }, 100);
+                setTimeout(() => scrollTranscriptionToBottom('smooth'), 100);
 
             });
 
@@ -2097,39 +2090,8 @@
 
                 document.getElementById('robot').style.display = 'none';
 
-                // Add event listeners for copy buttons generated by formatOpenAIResponse
-                const copyButtons = newResponse.querySelectorAll('.copy-button');
-                copyButtons.forEach(btn => {
-                    btn.addEventListener('click', async (e) => {
-                        const codeId = btn.getAttribute('data-code-id');
-                        const codeElement = document.getElementById(codeId);
-                        if (codeElement) {
-                            try {
-                                await navigator.clipboard.writeText(codeElement.textContent);
-                                showCopyToast();
-                                const originalText = btn.textContent;
-                                btn.textContent = '✓ Copied!';
-                                setTimeout(() => {
-                                    btn.textContent = originalText;
-                                }, 2000);
-                            } catch (err) {
-                                console.error('Erro ao copiar:', err);
-                                btn.textContent = '✗ Error';
-                                setTimeout(() => {
-                                    btn.textContent = 'Copy';
-                                }, 2000);
-                            }
-                        }
-                    });
-                });
-
                 // Scroll suave para o fim
-                setTimeout(() => {
-                    transcriptionElement.scrollTo({
-                        top: transcriptionElement.scrollHeight,
-                        behavior: 'smooth'
-                    });
-                }, 100);
+                setTimeout(() => scrollTranscriptionToBottom('smooth'), 100);
 
             });
 
@@ -2157,8 +2119,8 @@
                     const errorMsg = document.createElement('p');
                     errorMsg.style.color = '#ff6b6b';
                     errorMsg.textContent = `Erro no OCR: ${error}`;
-                    transcriptionElement.innerHTML = '';
                     transcriptionElement.appendChild(errorMsg);
+                    scrollTranscriptionToBottom();
                     return;
                 }
 
@@ -2216,35 +2178,28 @@
                 // Detectar conteúdo HTML/CSS e renderizar como bloco de código
                 const hasHtmlTags = /<\/?[a-zA-Z][^>]*>/m.test(text || '');
                 const hasCssBraces = /\{[\s\S]*\}/m.test(text || '');
-                transcriptionElement.innerHTML = '';
+                const ocrContainer = document.createElement('div');
+                ocrContainer.className = 'ia-response';
                 
                 if (text && (hasHtmlTags || hasCssBraces)) {
                     const pre = document.createElement('pre');
                     const code = document.createElement('code');
                     const copyBtn = document.createElement('button');
                     copyBtn.className = 'copy-button';
-                    copyBtn.textContent = 'Copy';
-                    copyBtn.addEventListener('click', async () => {
-                        try {
-                            await navigator.clipboard.writeText(text);
-                            const originalText = copyBtn.textContent;
-                            copyBtn.textContent = '✔️';
-                            setTimeout(() => { copyBtn.textContent = originalText; }, 2000);
-                        } catch (err) {
-                            console.error('Erro ao copiar:', err);
-                            const originalText = copyBtn.textContent;
-                            copyBtn.textContent = '❌';
-                            setTimeout(() => { copyBtn.textContent = originalText; }, 2000);
-                        }
-                    });
+                    copyBtn.title = 'Copiar';
+                    copyBtn.setAttribute('aria-label', 'Copiar código');
+                    copyBtn.innerHTML = '<svg fill="currentColor" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>';
                     code.textContent = text;
                     pre.appendChild(copyBtn);
                     pre.appendChild(code);
-                    transcriptionElement.appendChild(pre);
+                    ocrContainer.appendChild(pre);
                 } else {
                     // Texto simples ou vazio
-                    transcriptionElement.textContent = text || 'Nenhum texto encontrado na imagem';
+                    ocrContainer.textContent = text || 'Nenhum texto encontrado na imagem';
                 }
+
+                transcriptionElement.appendChild(ocrContainer);
+                scrollTranscriptionToBottom();
 
                 // Só envia para IA se encontrou texto
                 if (text && text.trim().length > 0) {
@@ -2351,33 +2306,6 @@
                     
                     streamingElement.innerHTML = formatted;
                     
-                    // Add event listeners for copy buttons generated by formatStreamedText
-                    const copyButtons = streamingElement.querySelectorAll('.copy-button');
-                    console.log('Adding click listeners to', copyButtons.length, 'copy buttons');
-                    copyButtons.forEach(btn => {
-                        btn.addEventListener('click', async (e) => {
-                            const codeId = btn.getAttribute('data-code-id');
-                            const codeElement = document.getElementById(codeId);
-                            if (codeElement) {
-                                try {
-                                    await navigator.clipboard.writeText(codeElement.textContent);
-                                    showCopyToast();
-                                    const originalText = btn.textContent;
-                                    btn.textContent = '✓ Copied!';
-                                    setTimeout(() => {
-                                        btn.textContent = originalText;
-                                    }, 2000);
-                                } catch (err) {
-                                    console.error('Erro ao copiar:', err);
-                                    btn.textContent = '✗ Error';
-                                    setTimeout(() => {
-                                        btn.textContent = 'Copy';
-                                    }, 2000);
-                                }
-                            }
-                        });
-                    });
-                    
                     // Adiciona o botão "Copiar Tudo", que será gerenciado pelo listener centralizado
                     const copyAllButton = document.createElement('button');
                     copyAllButton.textContent = 'Copy All';
@@ -2428,11 +2356,13 @@
             window.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape' && manualInputActive) {
                     manualInputActive = false;
-                    const transcriptionElement = document.getElementById('transcription');
-                    transcriptionElement.innerHTML = '';
+                    removeManualInputContainer();
                     pastedImageForManualInput = null;
                     document.getElementById('screenshot-preview').style.display = 'none';
                     e.stopPropagation();
+                    e.preventDefault();
+                } else if (isDirectTypingKey(e) && !manualInputActive && !isEditingQuestion) {
+                    openManualInput(e.key === 'Backspace' ? '' : e.key);
                     e.preventDefault();
                 } else if (e.key === 'Escape' && document.getElementById('conversation-viewer').style.display !== 'none') {
                     // Close conversation viewer with Escape key
@@ -2751,12 +2681,17 @@
             console.log('Notificações iniciadas');
         }
         
-        function openManualInput() {
+        function openManualInput(initialText = '') {
             if (manualInputActive || isEditingQuestion) {
                 // Se já está ativo, apenas garante o foco no input
-                const existingInput = document.querySelector('.edit-textarea');
+                const existingInput = document.querySelector('.manual-input-container .edit-textarea');
                 if (existingInput) {
                     existingInput.focus();
+                    if (initialText) {
+                        const start = existingInput.selectionStart;
+                        const end = existingInput.selectionEnd;
+                        existingInput.setRangeText(initialText, start, end, 'end');
+                    }
                 }
                 return;
             }
@@ -2766,15 +2701,15 @@
             document.getElementById('screenshot-preview').style.display = 'none'; // Esconde o preview
             
             const transcriptionElement = document.getElementById('transcription');
-            
-            // Limpa conteúdo anterior se houver
-            transcriptionElement.innerHTML = '';
+            removeManualInputContainer();
             
             const container = document.createElement('div');
+            container.className = 'edit-container manual-input-container';
             const inputField = document.createElement('textarea'); // Changed to textarea
             inputField.className = 'edit-textarea'; // Use edit-textarea class
             inputField.rows = 5; // Set default rows for textarea
             inputField.placeholder = 'Insira sua pergunta e digite Enter';
+            if (initialText) inputField.value = initialText;
             
             container.appendChild(inputField);
             
@@ -2795,10 +2730,15 @@
             container.appendChild(controls); // Append controls to container
             
             transcriptionElement.appendChild(container);
+            scrollTranscriptionToBottom();
             
             // Foca no input com um pequeno delay para garantir que o DOM foi atualizado
             setTimeout(() => {
                 inputField.focus();
+                if (initialText) {
+                    const pos = inputField.value.length;
+                    inputField.setSelectionRange(pos, pos);
+                }
             }, 100);
             
             // Enter quebra linha, Shift+Enter envia
@@ -2807,7 +2747,7 @@
                     e.preventDefault(); // Previne comportamento padrão
                     e.stopPropagation(); // Evita que o evento se propague
                     manualInputActive = false;
-                    transcriptionElement.innerHTML = '';
+                    container.remove();
                     pastedImageForManualInput = null; // Limpa a imagem
                     document.getElementById('screenshot-preview').style.display = 'none'; // Esconde o preview
                 } else if (e.key === 'Enter' && e.shiftKey) {
