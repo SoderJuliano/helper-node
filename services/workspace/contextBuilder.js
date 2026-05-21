@@ -58,7 +58,8 @@ async function readSmallFileSafe(absPath) {
 function generateTreeStructure(rootPath) {
   try {
     const maxLines = 100;
-    const cmd = `find "${rootPath}" -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/\\.*' -type f -o -type d 2>/dev/null | sort | head -${maxLines}`;
+    // Exclui .git, node_modules, .idea, __pycache__, .venv, .egg-info, dist, build
+    const cmd = `find "${rootPath}" -not -path '*/.*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' -not -path '*.egg-info*' -not -path '*/dist/*' -not -path '*/build/*' -not -path '*/target/*' -type f -o -type d 2>/dev/null | sort | head -${maxLines}`;
     const output = execSync(cmd, { encoding: 'utf8', stdio: 'pipe' }).trim();
     
     if (!output) return '';
@@ -87,47 +88,110 @@ function generateTreeStructure(rootPath) {
  */
 function suggestRelevantFiles(texto, attachments) {
   const keywords = {};
+  let hasKeyword = false;
 
   // Keywords → extensões/nomes de arquivo típicos
-  if (/endpoint|rota|route|api|rest|controller|server/i.test(texto)) {
+  if (/endpoint|rota|route|api|rest|controller|server|servi[cç]o|backend/i.test(texto)) {
     Object.assign(keywords, {
       'backendService': 1,
       'controller': 1,
       'route': 1,
       'api': 1,
+      'service': 0.7,
       '.ts': 0.5,
       '.js': 0.3,
     });
+    hasKeyword = true;
   }
-  if (/config|ambiente|variable|env|secret|token/i.test(texto)) {
+  if (/config|configur|ambiente|variable|env|secret|token|propriedade/i.test(texto)) {
     Object.assign(keywords, {
       'config': 1,
+      'properties': 1,
       '.json': 0.5,
       '.env': 1,
       '.yml': 0.5,
+      '.yaml': 0.5,
     });
+    hasKeyword = true;
   }
-  if (/banco|database|sql|query|schema|model/i.test(texto)) {
+  if (/banco|database|sql|query|schema|model|entity/i.test(texto)) {
     Object.assign(keywords, {
       'database': 1,
       'model': 1,
+      'entity': 1,
       '.sql': 1,
       'schema': 0.5,
     });
+    hasKeyword = true;
   }
-  if (/teste|test|unit|integration/i.test(texto)) {
+  if (/teste|test|unit|integration|spec/i.test(texto)) {
     Object.assign(keywords, {
       'test': 1,
       'spec': 1,
+      'Test': 1,
     });
+    hasKeyword = true;
   }
-  if (/package|depend|maven|npm|gradle/i.test(texto)) {
+  if (/package|depend|maven|npm|gradle|yarn|pnpm|composer|pip|gem/i.test(texto)) {
     Object.assign(keywords, {
       'package.json': 1,
       'pom.xml': 1,
       'build.gradle': 1,
       '.lock': 0.3,
     });
+    hasKeyword = true;
+  }
+
+  // Fallback: se nenhum keyword específico, sugere arquivos que definem "qual projeto é"
+  // (pom.xml, package.json, README, src/main, etc)
+  if (!hasKeyword) {
+    // Detecta tipo de projeto pela estrutura
+    const allPaths = attachments.map(a => a.path.toLowerCase());
+    if (allPaths.some(p => p.includes('pom.xml'))) {
+      // Maven/Java
+      Object.assign(keywords, {
+        'pom.xml': 2,
+        'src': 1,
+        'main': 0.8,
+        'application': 0.7,
+        '.properties': 0.5,
+      });
+    } else if (allPaths.some(p => p.includes('package.json'))) {
+      // Node.js/JavaScript
+      Object.assign(keywords, {
+        'package.json': 2,
+        'src': 1,
+        'index': 0.8,
+        'server': 0.7,
+        '.js': 0.3,
+        '.ts': 0.5,
+      });
+    } else if (allPaths.some(p => p.includes('build.gradle'))) {
+      // Gradle/Kotlin
+      Object.assign(keywords, {
+        'build.gradle': 2,
+        'src': 1,
+        'app': 0.8,
+      });
+    } else if (allPaths.some(p => p.includes('requirements.txt') || p.includes('setup.py'))) {
+      // Python
+      Object.assign(keywords, {
+        'setup.py': 1.5,
+        'requirements.txt': 1.5,
+        'main.py': 1,
+        'src': 0.8,
+      });
+    } else {
+      // Fallback genérico: README, arquivos em root, src/main
+      Object.assign(keywords, {
+        'README': 1.5,
+        'pom.xml': 1.5,
+        'package.json': 1.5,
+        'build.gradle': 1.5,
+        'Dockerfile': 0.8,
+        'src': 1,
+      });
+    }
   }
 
   // Filtra attachments que matched keywords
