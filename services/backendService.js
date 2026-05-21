@@ -674,10 +674,22 @@ class BackendService {
           if (workspace) wsPaths = workspace.list().map(a => a.path).filter(Boolean);
         } catch (_) {}
         let forcedRetryCount = 0;
+        // Anti-dup runCommand: cmd+args+cwd ja executado neste turno.
+        // Bug observado: depois de add/commit/push, modelo nao fecha resposta,
+        // forcedRetry empurra de novo e ele repete "git add".
+        const _ranCmds = new Set();
+        // Resumo dos comandos rodados pra montar fallback quando o modelo nao
+        // gera resposta final.
+        const _ranSummary = [];
+        // Conta tools executadas com sucesso — se ja houve >=1, NAO forcar retry
+        // quando a resposta vier sem TOOL_CALL (provavelmente terminou).
+        let toolsExecutedOk = 0;
         while (iter < maxToolCalls) {
           const calls = parseOllamaToolCalls(resposta);
           if (!calls.length) {
-            if (mustUseTools && forcedRetryCount < 2) {
+            // So forca retry se NENHUMA tool rodou ainda. Caso contrario,
+            // assume que o modelo terminou (resposta final em texto).
+            if (mustUseTools && toolsExecutedOk === 0 && forcedRetryCount < 2) {
               forcedRetryCount++;
               console.warn(`[backend][tools] sem TOOL_CALL em intento de leitura/escrita; forçando retry estrito ${forcedRetryCount}/2`);
               // Prompt MINIMO, sem o template original (que confunde o modelo).
@@ -733,10 +745,43 @@ class BackendService {
             const args = c.obj.args || c.obj.arguments || {};
             console.log(`[backend][tools] → ${name}(${JSON.stringify(args).slice(0, 120)})`);
             let toolResult;
-            try {
-              toolResult = await onToolCall(name, args, { source: 'ollama-tool-loop' });
-            } catch (e) {
-              toolResult = { error: String(e && e.message || e) };
+            // Anti-dup runCommand no escopo do turno.
+            let _dupKey = null;
+            if (name === 'runCommand') {
+              try {
+                const _cmd = String(args.cmd || '');
+                const _args = Array.isArray(args.args) ? args.args.join(' ') : '';
+                const _cwd = String(args.cwd || '');
+                _dupKey = `${_cmd}|${_args}|${_cwd}`;
+              } catch (_) {}
+            }
+            if (_dupKey && _ranCmds.has(_dupKey)) {
+              console.log(`[backend][tools] 🚫 anti-dup runCommand: ${_dupKey} ja executado neste turno`);
+              toolResult = {
+                ok: true,
+                result: {
+                  duplicate: true,
+                  note: 'Este comando ja foi executado neste turno. NAO repita. Escreva a RESPOSTA FINAL ao usuario resumindo o que foi feito.',
+                },
+              };
+            } else {
+              try {
+                toolResult = await onToolCall(name, args, { source: 'ollama-tool-loop' });
+              } catch (e) {
+                toolResult = { error: String(e && e.message || e) };
+              }
+              if (_dupKey) _ranCmds.add(_dupKey);
+              if (toolResult && toolResult.ok !== false && !(toolResult.result && toolResult.result.duplicate)) {
+                toolsExecutedOk++;
+                // Resumo legivel pra fallback caso modelo nao feche a resposta.
+                if (name === 'runCommand') {
+                  const _cmdline = `${args.cmd || ''} ${(Array.isArray(args.args) ? args.args : []).join(' ')}`.trim();
+                  const _exit = toolResult.result && typeof toolResult.result.exitCode === 'number' ? toolResult.result.exitCode : '?';
+                  _ranSummary.push(`✓ \`${_cmdline}\` (exit=${_exit})`);
+                } else {
+                  _ranSummary.push(`✓ ${name}`);
+                }
+              }
             }
             let serialized;
             try { serialized = typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult); }
@@ -776,6 +821,10 @@ class BackendService {
         const stripped = stripToolCallBlocks(resposta);
         if (stripped && stripped.trim()) {
           resposta = stripped;
+        } else if (toolsExecutedOk > 0 && _ranSummary.length) {
+          // Modelo nao fechou a resposta mas as tools rodaram com sucesso.
+          // Devolve um resumo do que foi feito ao inves de erro generico.
+          resposta = `Pronto! Comandos executados:\n\n${_ranSummary.join('\n')}`;
         } else {
           resposta = hitLimit
             ? 'Não consegui concluir essa tarefa dentro do limite de ferramentas (a IA ficou em loop). Tente reformular a pergunta ou ser mais específico.'
