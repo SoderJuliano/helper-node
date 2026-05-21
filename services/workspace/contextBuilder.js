@@ -58,13 +58,14 @@ async function readSmallFileSafe(absPath) {
 function generateTreeStructure(rootPath) {
   try {
     const maxLines = 100;
-    // Exclui .git, node_modules, .idea, __pycache__, .venv, .egg-info, dist, build
-    const cmd = `find "${rootPath}" -not -path '*/.*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' -not -path '*.egg-info*' -not -path '*/dist/*' -not -path '*/build/*' -not -path '*/target/*' -type f -o -type d 2>/dev/null | sort | head -${maxLines}`;
+    // Exclui explicitamente todos os diretórios build/cache/.git antes dos -type
+    // Usa parênteses pra agrupar a lógica de exclusão
+    const cmd = `find "${rootPath}" \\( -name '.git' -o -name 'node_modules' -o -name 'target' -o -name 'build' -o -name '.idea' -o -name '__pycache__' -o -name '.venv' -o -name 'dist' \\) -prune -o \\( -type f -o -type d \\) -print 2>/dev/null | grep -v '^$' | sort | head -${maxLines}`;
     const output = execSync(cmd, { encoding: 'utf8', stdio: 'pipe' }).trim();
     
     if (!output) return '';
 
-    const lines = output.split('\n');
+    const lines = output.split('\n').filter(Boolean);
     const formatted = lines.map(line => {
       const depth = (line.match(/\//g) || []).length - (rootPath.match(/\//g) || []).length;
       const indent = '  '.repeat(depth);
@@ -235,6 +236,8 @@ async function buildContextBlock(opts = {}) {
     const dirPath = attachments.find(a => a.type === 'dir')?.path;
     if (dirPath) {
       treeStructure = generateTreeStructure(dirPath);
+      const lineCount = treeStructure.split('\n').length;
+      console.log(`[tree] estrutura gerada: ${lineCount} linhas, ${treeStructure.length} chars`);
     }
   }
 
@@ -244,7 +247,12 @@ async function buildContextBlock(opts = {}) {
     const suggested = suggestRelevantFiles(opts.userText, attachments);
     if (suggested) {
       relevantSuggestion = `Arquivos sugeridos para análise:\n${suggested}`;
+      console.log(`[tree] sugestão gerada: ${suggested.split('\n').length} arquivos`);
+    } else {
+      console.log(`[tree] nenhum arquivo sugerido para: "${opts.userText.slice(0, 60)}"`);
     }
+  } else {
+    console.log('[tree] opts.userText não foi passado');
   }
 
   for (const att of attachments) {
