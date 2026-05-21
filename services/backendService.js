@@ -38,7 +38,11 @@ function pickOllamaEndpoint(texto) {
   // Sinais de codigo/matematica/raciocinio tecnico → qwen25
   // (operadores, sintaxe de linguagem, palavras-chave de tarefa pesada)
   const heavyRegex = /[=+\-*/%^<>]{1,3}|\b(function|class|def|var|let|const|import|return|if|else|while|for|switch)\b|[{};()[\]]|\b(calcule?|resolva|compute|derive|integre|fatore|prove|demonstre|implementa|implementar|c[oó]digo|fun[cç][aã]o|algoritmo|complexidade|otimiza|debug|stack trace|exception|exec[uú]ta|comando|shell|bash|sql|query|regex|json|yaml|xml)\b|\d+\s*[\+\-\*\/x×÷=]\s*\d+|`[^`]+`|```/i;
+  // Palavras de projeto/dev/backend (endpoints, controllers, arquitetura, etc.)
+  // devem ir direto pro qwen25, mesmo sem sintaxe de codigo explicita.
+  const devProjectRegex = /\b(projeto|repositorio|reposit[oó]rio|codebase|backend|frontend|fullstack|endpoint|endpoints|rota|rotas|controller|controllers|rest|api|apis|servi[cç]o|servi[cç]os|arquitetura|refatora|refatorar|pull request|commit|classe|classes|m[eé]todo|m[eé]todos|bug|erro|stacktrace)\b/i;
   if (heavyRegex.test(t)) return '/qwen25';
+  if (devProjectRegex.test(t)) return '/qwen25';
 
   return '/llama3';
 }
@@ -318,7 +322,20 @@ class BackendService {
       //   /qwen25     → qwen2.5:14b (raciocinio tecnico, codigo, matematica)
       //   /gemma3     → gemma3 (alternativa)
       // Heuristica: casual curto -> llamatiny, tecnico/code/math -> qwen25, resto -> llama3.
-      const modelEndpoint = pickOllamaEndpoint(texto);
+      let modelEndpoint = pickOllamaEndpoint(texto);
+      // Quando houver anexos no workspace, usa qwen25 por padrão.
+      // Isso melhora muito perguntas sobre projeto/codigo/endpoints.
+      try {
+        const workspace = require('./workspace');
+        const wsEnabled = configService.getWorkspaceAccessEnabled && configService.getWorkspaceAccessEnabled();
+        const attCount = workspace.list().length;
+        if (wsEnabled && attCount > 0) {
+          modelEndpoint = '/qwen25';
+          console.log(`[backend] workspace com anexos (${attCount}) -> forçando ${modelEndpoint}`);
+        }
+      } catch (e) {
+        console.warn('[backend] falha ao verificar anexos de workspace para roteamento:', e.message);
+      }
       const endpoint = `${apiUrl}${modelEndpoint}`;
       console.log(`[backend] roteado para ${modelEndpoint} (${texto.slice(0, 40).replace(/\n/g, ' ')}...)`);
       let promptInstruction = configService.getPromptInstruction();
@@ -362,7 +379,7 @@ class BackendService {
           const workspace = require('./workspace');
           const attCount = workspace.list().length;
           const modelKey = modelEndpoint.replace(/^\//, '');
-          const ctx = await workspace.buildContextIfNeeded(modelKey);
+          const ctx = await workspace.buildContextIfNeeded(modelKey, { userText: texto });
           if (ctx) {
             workspace.markContextSent();
             promptWithContext = ctx + "\n\n---\n\n" + promptWithContext;

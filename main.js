@@ -157,7 +157,7 @@ async function prependWorkspaceContextIfNeeded(text, modelKey) {
       console.log(`[workspace] SKIP: nenhum anexo no painel`);
       return text;
     }
-    const ctx = await workspace.buildContextIfNeeded(modelKey || "");
+    const ctx = await workspace.buildContextIfNeeded(modelKey || "", { userText: text });
     if (!ctx) {
       console.log(`[workspace] SKIP: contexto ja injetado nesta sessao (anexos=${attCount}). Use 'Novo Chat' pra reinjetar.`);
       return text;
