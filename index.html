@@ -807,37 +807,48 @@
             line-height: 1.4;
             padding: 0;
             margin: 0;
-            caret-color: transparent; /* esconde caret nativo, usamos '_' fake */
+            caret-color: #5fd75f; /* caret nativo verde, segue exatamente o texto */
             overflow-y: auto;
             scrollbar-width: thin;
         }
         .terminal-input::placeholder { color: #6a6a72; font-style: normal; }
-        /* Cursor '_' piscando posicionado ao lado do texto digitado */
-        .terminal-cursor {
-            display: inline-block;
-            color: #5fd75f;
-            font-weight: bold;
-            animation: terminal-blink 1.05s steps(2, start) infinite;
-            margin-left: 1px;
+        /* Quando o '_' decorativo esta visivel (textarea vazio), some o placeholder
+           pra nao sobrepor. O placeholder volta no focus em outro slot via JS. */
+        .terminal-input-wrap:not(.has-text) .terminal-input::placeholder { color: transparent; }
+        .terminal-hint {
+            position: absolute;
+            left: 38px;
+            top: 8px;
+            color: #6a6a72;
+            font-size: 14px;
+            font-style: normal;
             pointer-events: none;
             user-select: none;
+            white-space: nowrap;
+            opacity: 0.7;
         }
-        @keyframes terminal-blink {
-            0%, 50% { opacity: 1; }
-            50.01%, 100% { opacity: 0; }
-        }
-        /* Ghost line: mostra o que esta sendo digitado sobreposto pro cursor seguir o texto */
-        .terminal-ghost {
+        .terminal-input-wrap.has-text .terminal-hint { display: none; }
+        /* Cursor '_' piscando aparece SO quando o textarea esta vazio,
+           dando o efeito "prompt esperando comando". Quando o user comeca
+           a digitar, o caret nativo verde toma o lugar. */
+        .terminal-cursor {
             position: absolute;
             left: 24px;
             top: 8px;
-            right: 10px;
-            color: transparent;
-            font: inherit;
-            line-height: 1.4;
-            white-space: pre-wrap;
+            color: #5fd75f;
+            font-weight: bold;
+            animation: terminal-blink 1.05s steps(2, start) infinite;
             pointer-events: none;
-            word-wrap: break-word;
+            user-select: none;
+            line-height: 1.4;
+            font-family: inherit;
+            font-size: inherit;
+            transition: opacity 0.1s;
+        }
+        .terminal-input-wrap.has-text .terminal-cursor { display: none; }
+        @keyframes terminal-blink {
+            0%, 50% { opacity: 1; }
+            50.01%, 100% { opacity: 0; }
         }
 
         .edit-controls {
@@ -2775,34 +2786,40 @@
             const container = document.createElement('div');
             container.className = 'edit-container manual-input-container';
 
-            // Wrap estilo terminal: '>' antes + textarea transparente + '_' piscando.
+            // Wrap estilo terminal: '>' antes + textarea com caret verde + '_' piscando quando vazio.
             const wrap = document.createElement('div');
             wrap.className = 'terminal-input-wrap';
 
-            // Ghost layer: replica o texto pra posicionar o cursor logo apos a ultima letra.
-            const ghost = document.createElement('span');
-            ghost.className = 'terminal-ghost';
+            // Cursor decorativo: pisca quando o textarea esta vazio.
             const cursor = document.createElement('span');
             cursor.className = 'terminal-cursor';
             cursor.textContent = '_';
-            ghost.appendChild(document.createTextNode(''));
-            ghost.appendChild(cursor);
+
+            // Dica curta ao lado do cursor (some quando user digita).
+            const hint = document.createElement('span');
+            hint.className = 'terminal-hint';
+            hint.textContent = 'digite sua pergunta — Shift+Enter envia · Esc fecha';
 
             const inputField = document.createElement('textarea');
             inputField.className = 'terminal-input';
             inputField.rows = 1;
-            inputField.placeholder = 'digite sua pergunta... (Shift+Enter envia, Esc fecha)';
+            inputField.placeholder = '';
             if (initialText) inputField.value = initialText;
 
-            // Auto-grow + atualiza ghost pro cursor seguir o texto.
+            // Toggle visibilidade do _ + auto-grow.
             const syncGhost = () => {
-                ghost.firstChild.nodeValue = inputField.value || '';
+                if (inputField.value.length > 0) {
+                    wrap.classList.add('has-text');
+                } else {
+                    wrap.classList.remove('has-text');
+                }
                 inputField.style.height = 'auto';
                 inputField.style.height = Math.min(inputField.scrollHeight, 200) + 'px';
             };
             inputField.addEventListener('input', syncGhost);
 
-            wrap.appendChild(ghost);
+            wrap.appendChild(cursor);
+            wrap.appendChild(hint);
             wrap.appendChild(inputField);
             container.appendChild(wrap);
             
