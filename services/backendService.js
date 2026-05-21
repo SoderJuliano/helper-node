@@ -84,6 +84,20 @@ function isFileReadIntent(texto) {
     && /\b(readme|help\.md|arquivo|file|pom\.xml|application\.ya?ml|controller|service|java|md)\b/.test(t);
 }
 
+// Pergunta que pede execucao de comando shell — tipicamente git/build/test.
+// Ex: "tem alteracoes nao comitadas?", "roda os testes", "qual a branch atual?",
+// "faz commit e push", "build do projeto".
+function isShellCommandIntent(texto) {
+  const t = String(texto || '').toLowerCase();
+  // Git status / log / branches / commits
+  if (/\b(commit|comit|comitad[ao]s?|push|pull|branch|merge|rebase|stash|tag|alteraço?es|alteracoes|mudancas|mudanças|staged|unstaged|untracked|untrackeds?|modificad[ao]s?)\b/.test(t)) return true;
+  // Build / test / install / run scripts
+  if (/\b(roda|rode|rodar|executa|executar|build|compila|compilar|testa|testar|instala|instalar)\b.*\b(test[es]?|build|projeto|maven|mvn|gradle|npm|yarn|pnpm|script)\b/.test(t)) return true;
+  // "qual a versao do X", "esta instalado?"
+  if (/\b(qual a vers[aã]o|versao do|version do|esta? instalad[ao])\b/.test(t)) return true;
+  return false;
+}
+
 // ── Tool calling para Ollama (sem function-calling nativo) ────────────────────
 // Ollama nao tem `tools[]` igual OpenAI. Solucao: instruimos o modelo a emitir
 // blocos `TOOL_CALL: {"name":"...","args":{...}}` no texto da resposta.
@@ -169,6 +183,12 @@ function buildToolFirstSystemPrompt(toolsSchema) {
   lines.push('- Para criar README.md: TOOL_CALL: {"name":"writeFile","args":{"path":"/home/user/proj/README.md","content":"# Titulo\\n...","reason":"criar readme"}}');
   lines.push('- Para ler pom.xml: TOOL_CALL: {"name":"readFile","args":{"path":"/home/user/proj/pom.xml"}}');
   lines.push('- Para listar pasta: TOOL_CALL: {"name":"listDir","args":{"path":"/home/user/proj"}}');
+  lines.push('- Para "tem alteracoes nao comitadas?": TOOL_CALL: {"name":"runCommand","args":{"cmd":"git","args":["status","--short"],"cwd":"/home/user/proj"}}');
+  lines.push('- Para fazer commit: TOOL_CALL: {"name":"runCommand","args":{"cmd":"git","args":["commit","-am","mensagem"],"cwd":"/home/user/proj"}}');
+  lines.push('- Para rodar testes: TOOL_CALL: {"name":"runCommand","args":{"cmd":"npm","args":["test"],"cwd":"/home/user/proj"}}');
+  lines.push('');
+  lines.push('REGRA CRITICA: NAO use listDir/findFiles dentro de .git/. Pra qualquer pergunta sobre');
+  lines.push('GIT (status, commits, branches, push, pull), use runCommand com cmd="git".');
   lines.push('');
   lines.push('REGRAS:');
   lines.push('1. Comece a resposta JA com "TOOL_CALL:" — nada antes.');
@@ -532,7 +552,7 @@ class BackendService {
       // "use negrito") domina o modelo e ele ignora as tools. Detectamos esse
       // intent e trocamos por um prompt tool-first minimalista.
       const toolFirstMode = !!(tools && onToolCall && wsEnabled && attCount > 0
-        && (isWriteIntent(texto) || isFileReadIntent(texto)));
+        && (isWriteIntent(texto) || isFileReadIntent(texto) || isShellCommandIntent(texto)));
       if (tools && onToolCall) {
         if (toolFirstMode) {
           promptInstruction = buildToolFirstSystemPrompt(tools);
@@ -647,7 +667,7 @@ class BackendService {
       if (tools && onToolCall) {
         let workingPrompt = promptWithContext;
         let iter = 0;
-        const mustUseTools = wsEnabled && attCount > 0 && (isWriteIntent(texto) || isFileReadIntent(texto));
+        const mustUseTools = wsEnabled && attCount > 0 && (isWriteIntent(texto) || isFileReadIntent(texto) || isShellCommandIntent(texto));
         // Paths absolutos dos anexos pro retry forçado embutir no exemplo
         let wsPaths = [];
         try {
@@ -669,6 +689,8 @@ class BackendService {
                 const fn = t.function || t;
                 return `${fn.name}(${fn.parameters && fn.parameters.properties ? Object.keys(fn.parameters.properties).join(',') : ''})`;
               }).join('\n- ');
+              const _ws0 = wsPaths[0] || '/abs/path';
+              const _isGitQ = isShellCommandIntent(texto);
               workingPrompt = [
                 'Voce e um agente que SO responde com TOOL_CALL. Nada mais.',
                 '',
@@ -682,8 +704,9 @@ class BackendService {
                 'FORMATO OBRIGATORIO da sua resposta (uma linha, sem markdown, sem texto antes):',
                 'TOOL_CALL: {"name":"<tool>","args":{...}}',
                 '',
-                'EXEMPLO para criar README:',
-                `TOOL_CALL: {"name":"writeFile","args":{"path":"${wsPaths[0] || '/abs/path'}/README.md","content":"# Titulo\\n\\nDescricao do projeto...","reason":"criar readme"}}`,
+                _isGitQ
+                  ? `EXEMPLO (esta pergunta e sobre git/build/testes — USE runCommand):\nTOOL_CALL: {"name":"runCommand","args":{"cmd":"git","args":["status","--short"],"cwd":"${_ws0}"}}\n\nNAO use listDir/findFiles em .git/ — e' inutil e lento. Use runCommand sempre.`
+                  : `EXEMPLO para criar README:\nTOOL_CALL: {"name":"writeFile","args":{"path":"${_ws0}/README.md","content":"# Titulo\\n\\nDescricao do projeto...","reason":"criar readme"}}`,
                 '',
                 'Sua resposta (apenas o TOOL_CALL, nada mais):',
               ].join('\n');
@@ -742,11 +765,22 @@ class BackendService {
           iter++;
         }
 
-        if (iter === maxToolCalls && parseOllamaToolCalls(resposta).length) {
-          console.warn(`[backend][tools] maxToolCalls=${maxToolCalls} atingido; devolvendo resposta truncada`);
+        const hitLimit = iter === maxToolCalls && parseOllamaToolCalls(resposta).length;
+        if (hitLimit) {
+          console.warn(`[backend][tools] maxToolCalls=${maxToolCalls} atingido; resposta tinha TOOL_CALL residual`);
         }
-        // Limpa qualquer TOOL_CALL residual da resposta final
-        resposta = stripToolCallBlocks(resposta) || resposta;
+        // Limpa qualquer TOOL_CALL residual da resposta final.
+        // CRITICO: NAO usar "|| resposta" como fallback — se o strip zerar tudo
+        // significa que a resposta era 100% TOOL_CALL e devolver raw vaza JSON
+        // tecnico na UI. Melhor mensagem honesta de fallback.
+        const stripped = stripToolCallBlocks(resposta);
+        if (stripped && stripped.trim()) {
+          resposta = stripped;
+        } else {
+          resposta = hitLimit
+            ? 'Não consegui concluir essa tarefa dentro do limite de ferramentas (a IA ficou em loop). Tente reformular a pergunta ou ser mais específico.'
+            : 'Não consegui montar uma resposta útil dessa vez. Tente reformular a pergunta.';
+        }
       }
 
       // Add assistant response to session history
