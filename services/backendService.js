@@ -124,6 +124,58 @@ function buildOllamaToolsAddon(toolsSchema) {
   lines.push('- Quando terminar (resposta final ao usuario), NAO inclua TOOL_CALL nenhum.');
   lines.push('- Para LER arquivos do projeto, use listDir + readFile. Para EDITAR, writeFile.');
   lines.push('');
+  lines.push('EXEMPLOS CONCRETOS (siga EXATAMENTE este formato):');
+  lines.push('');
+  lines.push('User: "cria um readme pro projeto"');
+  lines.push('Resposta correta (UMA linha, sem markdown, sem texto antes):');
+  lines.push('TOOL_CALL: {"name":"writeFile","args":{"path":"/abs/path/README.md","content":"# Titulo\\n\\nDescricao...","reason":"Criar README"}}');
+  lines.push('');
+  lines.push('User: "o que tem no pom.xml?"');
+  lines.push('Resposta correta:');
+  lines.push('TOOL_CALL: {"name":"readFile","args":{"path":"/abs/path/pom.xml"}}');
+  lines.push('');
+  lines.push('ERRADO (NAO FACA): explicar o que vai fazer, usar ```markdown ao redor,');
+  lines.push('inventar texto tipo "Texto explicativo:" ou "Vou criar...". Apenas EMITA o TOOL_CALL.');
+  lines.push('');
+  return lines.join('\n');
+}
+
+// System prompt minimalista para modo tool-first.
+// Quando o usuario pede explicitamente pra ler/escrever arquivo, o prompt completo
+// (com regras de "max 65 palavras", "sem floreio", "use negrito") domina o modelo
+// e ele ignora as tools. Aqui derrubamos tudo isso e deixamos so o essencial.
+function buildToolFirstSystemPrompt(toolsSchema) {
+  const lines = [
+    'Voce e um agente que executa tarefas atraves de TOOL_CALL.',
+    '',
+    'O usuario anexou um workspace e quer que voce LEIA ou ESCREVA arquivos nele.',
+    'Sua UNICA resposta valida nesta etapa e um bloco TOOL_CALL.',
+    '',
+    'FORMATO OBRIGATORIO (uma linha, JSON puro, SEM markdown, SEM texto antes ou depois):',
+    'TOOL_CALL: {"name":"<nome>","args":{...}}',
+    '',
+    'FERRAMENTAS:',
+  ];
+  for (const t of toolsSchema) {
+    const fn = t.function || t;
+    const name = fn.name;
+    const params = fn.parameters && fn.parameters.properties
+      ? Object.keys(fn.parameters.properties).join(', ')
+      : '';
+    lines.push(`- ${name}(${params})`);
+  }
+  lines.push('');
+  lines.push('EXEMPLOS:');
+  lines.push('- Para criar README.md: TOOL_CALL: {"name":"writeFile","args":{"path":"/home/user/proj/README.md","content":"# Titulo\\n...","reason":"criar readme"}}');
+  lines.push('- Para ler pom.xml: TOOL_CALL: {"name":"readFile","args":{"path":"/home/user/proj/pom.xml"}}');
+  lines.push('- Para listar pasta: TOOL_CALL: {"name":"listDir","args":{"path":"/home/user/proj"}}');
+  lines.push('');
+  lines.push('REGRAS:');
+  lines.push('1. Comece a resposta JA com "TOOL_CALL:" — nada antes.');
+  lines.push('2. Use o caminho ABSOLUTO do workspace anexado.');
+  lines.push('3. Para writeFile, monte o conteudo COMPLETO em "content" (escape \\n para quebras).');
+  lines.push('4. NAO use ```markdown ao redor. NAO explique. Apenas emita o TOOL_CALL.');
+  lines.push('');
   return lines.join('\n');
 }
 
@@ -134,23 +186,62 @@ function buildOllamaToolsAddon(toolsSchema) {
 function parseOllamaToolCalls(text) {
   if (!text) return [];
   const calls = [];
-  const re = /TOOL_CALL\s*:?\s*/gi;
+  const re = /TOOL[_\s-]*CALL\s*:?\s*/gi;
   let m;
   while ((m = re.exec(text)) !== null) {
-    // Procura o primeiro '{' apos o match
+    // Procura o primeiro '{' apos o match — afrouxado para tolerar code fences
+    // (```json\n{...}```), quebras de linha e ate ~120 chars de lixo no meio.
     const start = m.index + m[0].length;
     const jsonStart = text.indexOf('{', start);
-    if (jsonStart === -1 || jsonStart - start > 8) continue; // longe demais, nao e' o JSON
+    if (jsonStart === -1 || jsonStart - start > 120) continue;
     const objStr = extractFirstJsonObject(text.slice(jsonStart));
     if (!objStr) continue;
     try {
       const obj = JSON.parse(objStr);
       if (obj && obj.name) {
         calls.push({ raw: text.slice(m.index, jsonStart + objStr.length), obj });
-        // avanca o cursor pro fim deste obj pra nao recapturar
         re.lastIndex = jsonStart + objStr.length;
       }
     } catch (_) {}
+  }
+
+  // Fallback: modelo emitiu JSON com {"name":"writeFile",...} sem o marcador
+  // TOOL_CALL: na frente. Acontece bastante com qwen25/llama3.
+  if (calls.length === 0) {
+    const fenceRe = /```(?:json)?\s*(\{[\s\S]*?\})\s*```/gi;
+    let fm;
+    while ((fm = fenceRe.exec(text)) !== null) {
+      try {
+        const obj = JSON.parse(fm[1]);
+        if (obj && obj.name && typeof obj.name === 'string') {
+          calls.push({ raw: fm[0], obj });
+        }
+      } catch (_) {}
+    }
+    // Ultimo recurso: scaneia JSONs balanceados no texto inteiro procurando
+    // {"name":"<tool>","args":...}. So aceita se "name" bater com uma tool real.
+    if (calls.length === 0) {
+      const knownNames = new Set(
+        // lazy: extraido do schema na hora do parse via heuristica simples
+        ['listDir','fileInfo','readFile','readFileChunk','searchInFiles','findFiles',
+         'detectShellConfig','listPackages','listDesktopApps','systemPowerAction',
+         'writeFile','appendToFile','deleteFile','patchFile']
+      );
+      let i = 0;
+      while (i < text.length) {
+        const open = text.indexOf('{', i);
+        if (open === -1) break;
+        const objStr = extractFirstJsonObject(text.slice(open));
+        if (!objStr) break;
+        try {
+          const obj = JSON.parse(objStr);
+          if (obj && obj.name && knownNames.has(obj.name)) {
+            calls.push({ raw: objStr, obj });
+          }
+        } catch (_) {}
+        i = open + (objStr ? objStr.length : 1);
+      }
+    }
   }
   return calls;
 }
@@ -436,14 +527,25 @@ class BackendService {
       // Tool calling Ollama: anexa instrucoes de formato + lista de tools no system prompt.
       // NAO mexe no roteamento — usa o endpoint que o pickOllamaEndpoint escolheu.
       let effectiveEndpoint = modelEndpoint;
+      // Quando o usuario PEDE explicitamente pra ler/escrever arquivo, o
+      // system prompt completo (com regras "max 65 palavras", "sem floreio",
+      // "use negrito") domina o modelo e ele ignora as tools. Detectamos esse
+      // intent e trocamos por um prompt tool-first minimalista.
+      const toolFirstMode = !!(tools && onToolCall && wsEnabled && attCount > 0
+        && (isWriteIntent(texto) || isFileReadIntent(texto)));
       if (tools && onToolCall) {
-        const analysisAddon = buildDeepAnalysisAddon({
-          toolsEnabled: true,
-          wsEnabled,
-          attCount,
-          texto,
-        });
-        promptInstruction = `${promptInstruction}\n\n${buildOllamaToolsAddon(tools)}${analysisAddon}`;
+        if (toolFirstMode) {
+          promptInstruction = buildToolFirstSystemPrompt(tools);
+          console.log('[backend][tools] modo TOOL-FIRST ativo (intent=write/read, ignorando regras de formatacao)');
+        } else {
+          const analysisAddon = buildDeepAnalysisAddon({
+            toolsEnabled: true,
+            wsEnabled,
+            attCount,
+            texto,
+          });
+          promptInstruction = `${promptInstruction}\n\n${buildOllamaToolsAddon(tools)}${analysisAddon}`;
+        }
       }
       
       // Build prompt with conversation context.
@@ -546,6 +648,11 @@ class BackendService {
         let workingPrompt = promptWithContext;
         let iter = 0;
         const mustUseTools = wsEnabled && attCount > 0 && (isWriteIntent(texto) || isFileReadIntent(texto));
+        // Paths absolutos dos anexos pro retry forçado embutir no exemplo
+        let wsPaths = [];
+        try {
+          if (workspace) wsPaths = workspace.list().map(a => a.path).filter(Boolean);
+        } catch (_) {}
         let forcedRetryCount = 0;
         while (iter < maxToolCalls) {
           const calls = parseOllamaToolCalls(resposta);
@@ -553,13 +660,40 @@ class BackendService {
             if (mustUseTools && forcedRetryCount < 2) {
               forcedRetryCount++;
               console.warn(`[backend][tools] sem TOOL_CALL em intento de leitura/escrita; forçando retry estrito ${forcedRetryCount}/2`);
-              workingPrompt = `${workingPrompt}\n\nASSISTANT_PREVIOUS:\n${resposta}\n\nOBRIGATORIO AGORA: voce DEVE responder SOMENTE com TOOL_CALL JSON valido (sem texto explicativo) para executar a tarefa pedida. Se for criar/editar arquivo, use writeFile/patchFile/appendToFile com path absoluto dentro do workspace anexado. Se for consultar arquivo, use findFiles/listDir + readFile. Nao responda em linguagem natural nesta etapa.`;
+              // Prompt MINIMO, sem o template original (que confunde o modelo).
+              // Mostra ferramentas, paths reais do workspace e exige TOOL_CALL puro.
+              const wsLine = wsPaths.length
+                ? `Workspace anexado (use estes paths absolutos): ${wsPaths.join(', ')}`
+                : 'Workspace anexado: (sem paths detectados — peca confirmacao se necessario)';
+              const toolList = (tools || []).map(t => {
+                const fn = t.function || t;
+                return `${fn.name}(${fn.parameters && fn.parameters.properties ? Object.keys(fn.parameters.properties).join(',') : ''})`;
+              }).join('\n- ');
+              workingPrompt = [
+                'Voce e um agente que SO responde com TOOL_CALL. Nada mais.',
+                '',
+                wsLine,
+                '',
+                `Pedido do usuario: ${texto}`,
+                '',
+                'FERRAMENTAS:',
+                `- ${toolList}`,
+                '',
+                'FORMATO OBRIGATORIO da sua resposta (uma linha, sem markdown, sem texto antes):',
+                'TOOL_CALL: {"name":"<tool>","args":{...}}',
+                '',
+                'EXEMPLO para criar README:',
+                `TOOL_CALL: {"name":"writeFile","args":{"path":"${wsPaths[0] || '/abs/path'}/README.md","content":"# Titulo\\n\\nDescricao do projeto...","reason":"criar readme"}}`,
+                '',
+                'Sua resposta (apenas o TOOL_CALL, nada mais):',
+              ].join('\n');
               try {
                 const forcedResp = await axios.post(`${apiUrl}${effectiveEndpoint}`, { prompt: workingPrompt, language: mappedLang }, {
                   headers, timeout: 180000, httpAgent, httpsAgent,
                 });
                 resposta = forcedResp.data.response || forcedResp.data;
                 if (typeof resposta !== 'string') resposta = String(resposta);
+                console.log(`[backend][tools] retry ${forcedRetryCount} resposta: ${resposta.slice(0, 200).replace(/\n/g, ' ')}`);
                 iter++;
                 continue;
               } catch (e) {

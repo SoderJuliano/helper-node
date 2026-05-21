@@ -17,6 +17,9 @@
 3. **Não criar arquivos `.md` novos** sem pedido explícito. Atualizar [README.markdown](../README.markdown) e [ROADMAP.md](../ROADMAP.md) quando feature relevante.
 4. **Não tocar em `whisper/` (submódulo)** — é repo clonado, intocável.
 5. **Sem fallback automático entre providers** (OpenAI ↔ Ollama). Usuário escolhe, agente respeita.
+   - Ollama selecionado → SÓ usa endpoints Ollama (`/llama3`, `/qwen25`, `/gemma3`, `/llamatiny`). Tool calling DEVE funcionar via structured prompt + parser, mesmo que o modelo seja teimoso. **NÃO** redirecionar pra OpenAI "porque OpenAI tem tool calling nativo melhor". O fix é no prompt/parser, não no provider.
+   - OpenAI selecionado → SÓ usa `openAIService` com `tools[]` nativo.
+   - Mesma regra pra streaming, visão, etc.
 
 ---
 
