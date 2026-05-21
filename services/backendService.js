@@ -181,9 +181,62 @@ function stripToolCallBlocks(text) {
   for (const c of calls) {
     out = out.split(c.raw).join('');
   }
+  // Fallback defensivo: quando o modelo imprime TOOL_CALL com JSON quebrado
+  // (ex.: faltando chave), o parser nao consegue capturar. Ainda assim, nao
+  // devemos exibir esse payload tecnico para o usuario final.
+  out = stripDanglingToolCallFragments(out);
   // Limpa code fences vazios deixados pra tras
   out = out.replace(/```\s*\n\s*```/g, '').trim();
   return out;
+}
+
+// Remove residuos de TOOL_CALL que nao puderam ser parseados (JSON incompleto,
+// truncado ou com lixo no final). Estrategia:
+// - remove fences que contenham TOOL_CALL
+// - remove trecho TOOL_CALL: { ... } quando achar JSON balanceado
+// - se nao achar fechamento, remove ate fim da linha (ou fim do texto)
+function stripDanglingToolCallFragments(text) {
+  if (!text) return text;
+
+  let out = text.replace(/```[\s\S]*?TOOL_CALL[\s\S]*?```/gi, '');
+  const re = /TOOL_CALL\s*:?\s*/gi;
+  let m;
+  let cursor = 0;
+  let cleaned = '';
+
+  while ((m = re.exec(out)) !== null) {
+    cleaned += out.slice(cursor, m.index);
+
+    const afterMarker = m.index + m[0].length;
+    const jsonStart = out.indexOf('{', afterMarker);
+
+    // Sem JSON logo apos TOOL_CALL -> descarta apenas a linha do marcador.
+    if (jsonStart === -1 || jsonStart - afterMarker > 12) {
+      const nextNl = out.indexOf('\n', afterMarker);
+      cursor = nextNl === -1 ? out.length : nextNl + 1;
+      re.lastIndex = cursor;
+      continue;
+    }
+
+    const objStr = extractFirstJsonObject(out.slice(jsonStart));
+    if (objStr) {
+      cursor = jsonStart + objStr.length;
+      re.lastIndex = cursor;
+      continue;
+    }
+
+    // JSON truncado: remove ate o fim da linha (ou fim do texto).
+    const nextNl = out.indexOf('\n', jsonStart);
+    cursor = nextNl === -1 ? out.length : nextNl + 1;
+    re.lastIndex = cursor;
+  }
+
+  cleaned += out.slice(cursor);
+
+  // Normaliza espaços extras após remoções.
+  return cleaned
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 
