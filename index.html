@@ -737,8 +737,8 @@
         .edit-input, .edit-textarea {
             width: 100%;
             background-color: rgba(50, 50, 50, 0.9);
-            color: #fff; /* Ajuste para uma cor visível */
-            border: 2px solid #4CAF50; /* Cor mais agradável */
+            color: #fff; /* Ajuste para uma cor visivel */
+            border: 2px solid #4CAF50; /* Cor mais agradavel */
             border-radius: 5px;
             padding: 10px;
             font-family: "Source Code Pro", monospace;
@@ -756,20 +756,88 @@
             border-color: #81c784;
         }
 
-        /* Animação de digitação */
-        @keyframes typing {
-            from { width: 0 }
-            to { width: 100% }
-        }
-
         .edit-textarea {
-            min-height: 150px;
-            animation: typing 500ms steps(40, end) forwards;
+            min-height: 120px;
             white-space: pre-wrap;
         }
 
-        .edit-textarea {
-            min-height: 120px;
+        /* ============ MANUAL INPUT (estilo terminal) ============
+           Usado quando o usuario digita pergunta manual via Ctrl+I ou
+           clicando na tela. Visual de prompt de terminal: prefixo '>' verde,
+           cursor '_' piscando, fundo igual ao app (sem destaque verde),
+           altura compacta com auto-grow.
+        */
+        .terminal-input-wrap {
+            position: relative;
+            background: rgba(20, 20, 22, 0.95);
+            border: 1px solid #2a2a2e;
+            border-radius: 6px;
+            padding: 8px 10px 8px 24px;
+            font-family: "Source Code Pro", "JetBrains Mono", monospace;
+            font-size: 15px;
+            color: #e6e6e6;
+            transition: border-color 0.15s ease;
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02);
+        }
+        .terminal-input-wrap:focus-within {
+            border-color: #4a4a52;
+        }
+        /* Prompt '>' antes do textarea */
+        .terminal-input-wrap::before {
+            content: '>';
+            position: absolute;
+            left: 9px;
+            top: 8px;
+            color: #5fd75f;
+            font-weight: bold;
+            user-select: none;
+            pointer-events: none;
+        }
+        .terminal-input {
+            display: block;
+            width: 100%;
+            min-height: 22px;
+            max-height: 200px;
+            background: transparent;
+            border: none;
+            outline: none;
+            resize: none;
+            color: #e6e6e6;
+            font: inherit;
+            line-height: 1.4;
+            padding: 0;
+            margin: 0;
+            caret-color: transparent; /* esconde caret nativo, usamos '_' fake */
+            overflow-y: auto;
+            scrollbar-width: thin;
+        }
+        .terminal-input::placeholder { color: #6a6a72; font-style: normal; }
+        /* Cursor '_' piscando posicionado ao lado do texto digitado */
+        .terminal-cursor {
+            display: inline-block;
+            color: #5fd75f;
+            font-weight: bold;
+            animation: terminal-blink 1.05s steps(2, start) infinite;
+            margin-left: 1px;
+            pointer-events: none;
+            user-select: none;
+        }
+        @keyframes terminal-blink {
+            0%, 50% { opacity: 1; }
+            50.01%, 100% { opacity: 0; }
+        }
+        /* Ghost line: mostra o que esta sendo digitado sobreposto pro cursor seguir o texto */
+        .terminal-ghost {
+            position: absolute;
+            left: 24px;
+            top: 8px;
+            right: 10px;
+            color: transparent;
+            font: inherit;
+            line-height: 1.4;
+            white-space: pre-wrap;
+            pointer-events: none;
+            word-wrap: break-word;
         }
 
         .edit-controls {
@@ -2683,14 +2751,15 @@
         
         function openManualInput(initialText = '') {
             if (manualInputActive || isEditingQuestion) {
-                // Se já está ativo, apenas garante o foco no input
-                const existingInput = document.querySelector('.manual-input-container .edit-textarea');
+                // Se ja esta ativo, apenas garante o foco no input
+                const existingInput = document.querySelector('.manual-input-container .terminal-input');
                 if (existingInput) {
                     existingInput.focus();
                     if (initialText) {
                         const start = existingInput.selectionStart;
                         const end = existingInput.selectionEnd;
                         existingInput.setRangeText(initialText, start, end, 'end');
+                        existingInput.dispatchEvent(new Event('input'));
                     }
                 }
                 return;
@@ -2705,13 +2774,37 @@
             
             const container = document.createElement('div');
             container.className = 'edit-container manual-input-container';
-            const inputField = document.createElement('textarea'); // Changed to textarea
-            inputField.className = 'edit-textarea'; // Use edit-textarea class
-            inputField.rows = 5; // Set default rows for textarea
-            inputField.placeholder = 'Insira sua pergunta e digite Enter';
+
+            // Wrap estilo terminal: '>' antes + textarea transparente + '_' piscando.
+            const wrap = document.createElement('div');
+            wrap.className = 'terminal-input-wrap';
+
+            // Ghost layer: replica o texto pra posicionar o cursor logo apos a ultima letra.
+            const ghost = document.createElement('span');
+            ghost.className = 'terminal-ghost';
+            const cursor = document.createElement('span');
+            cursor.className = 'terminal-cursor';
+            cursor.textContent = '_';
+            ghost.appendChild(document.createTextNode(''));
+            ghost.appendChild(cursor);
+
+            const inputField = document.createElement('textarea');
+            inputField.className = 'terminal-input';
+            inputField.rows = 1;
+            inputField.placeholder = 'digite sua pergunta... (Shift+Enter envia, Esc fecha)';
             if (initialText) inputField.value = initialText;
-            
-            container.appendChild(inputField);
+
+            // Auto-grow + atualiza ghost pro cursor seguir o texto.
+            const syncGhost = () => {
+                ghost.firstChild.nodeValue = inputField.value || '';
+                inputField.style.height = 'auto';
+                inputField.style.height = Math.min(inputField.scrollHeight, 200) + 'px';
+            };
+            inputField.addEventListener('input', syncGhost);
+
+            wrap.appendChild(ghost);
+            wrap.appendChild(inputField);
+            container.appendChild(wrap);
             
             const controls = document.createElement('div');
             controls.className = 'edit-controls';
@@ -2731,6 +2824,8 @@
             
             transcriptionElement.appendChild(container);
             scrollTranscriptionToBottom();
+            // Sincroniza ghost no init (vazio ou com initialText) pra cursor aparecer.
+            syncGhost();
             
             // Foca no input com um pequeno delay para garantir que o DOM foi atualizado
             setTimeout(() => {
