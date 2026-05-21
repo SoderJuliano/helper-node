@@ -13,7 +13,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 APP_NAME="helper-node"
-VERSION="0.3.0"
+VERSION="0.3.1"
 BUILD_DIR="$(pwd)/build"
 DIST_DIR="$(pwd)/dist"
 PROJECT_ROOT="$(pwd)"
@@ -23,7 +23,7 @@ APP_CONFIG_CANDIDATES=(
 )
 
 echo -e "${GREEN}╔════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║  Helper Node Package Builder v0.3.0    ║${NC}"
+echo -e "${GREEN}║  Helper Node Package Builder v0.3.1    ║${NC}"
 echo -e "${GREEN}╚════════════════════════════════════════╝${NC}"
 echo ""
 
