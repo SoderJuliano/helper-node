@@ -72,6 +72,18 @@ function buildDeepAnalysisAddon({ toolsEnabled, wsEnabled, attCount, texto }) {
   ].join('\n');
 }
 
+function isWriteIntent(texto) {
+  const t = String(texto || '').toLowerCase();
+  return /\b(cria|criar|gere|gerar|escreve|escrever|edita|editar|atualiza|atualizar|altera|alterar|patch|apaga|deleta|delete|append|adiciona|inclui)\b/.test(t)
+    && /\b(readme|arquivo|file|md|markdown|yaml|yml|json|java|js|ts|pom\.xml|application\.ya?ml)\b/.test(t);
+}
+
+function isFileReadIntent(texto) {
+  const t = String(texto || '').toLowerCase();
+  return /\b(o que tem|mostra|mostrar|leia|ler|abre|abrir|conte[uú]do|conteudo|me diga o que tem|qual o conteudo|resuma o arquivo)\b/.test(t)
+    && /\b(readme|help\.md|arquivo|file|pom\.xml|application\.ya?ml|controller|service|java|md)\b/.test(t);
+}
+
 // ── Tool calling para Ollama (sem function-calling nativo) ────────────────────
 // Ollama nao tem `tools[]` igual OpenAI. Solucao: instruimos o modelo a emitir
 // blocos `TOOL_CALL: {"name":"...","args":{...}}` no texto da resposta.
@@ -480,9 +492,29 @@ class BackendService {
       if (tools && onToolCall) {
         let workingPrompt = promptWithContext;
         let iter = 0;
+        const mustUseTools = wsEnabled && attCount > 0 && (isWriteIntent(texto) || isFileReadIntent(texto));
+        let forcedRetryCount = 0;
         while (iter < maxToolCalls) {
           const calls = parseOllamaToolCalls(resposta);
-          if (!calls.length) break; // resposta final do modelo
+          if (!calls.length) {
+            if (mustUseTools && forcedRetryCount < 2) {
+              forcedRetryCount++;
+              console.warn(`[backend][tools] sem TOOL_CALL em intento de leitura/escrita; forçando retry estrito ${forcedRetryCount}/2`);
+              workingPrompt = `${workingPrompt}\n\nASSISTANT_PREVIOUS:\n${resposta}\n\nOBRIGATORIO AGORA: voce DEVE responder SOMENTE com TOOL_CALL JSON valido (sem texto explicativo) para executar a tarefa pedida. Se for criar/editar arquivo, use writeFile/patchFile/appendToFile com path absoluto dentro do workspace anexado. Se for consultar arquivo, use findFiles/listDir + readFile. Nao responda em linguagem natural nesta etapa.`;
+              try {
+                const forcedResp = await axios.post(`${apiUrl}${effectiveEndpoint}`, { prompt: workingPrompt, language: mappedLang }, {
+                  headers, timeout: 180000, httpAgent, httpsAgent,
+                });
+                resposta = forcedResp.data.response || forcedResp.data;
+                if (typeof resposta !== 'string') resposta = String(resposta);
+                iter++;
+                continue;
+              } catch (e) {
+                console.error('[backend][tools] erro no retry forçado:', e.message);
+              }
+            }
+            break; // resposta final do modelo
+          }
 
           console.log(`[backend][tools] iter=${iter + 1}/${maxToolCalls} — ${calls.length} tool_call(s) detectada(s)`);
           const results = [];
