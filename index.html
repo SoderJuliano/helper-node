@@ -649,44 +649,54 @@
 
         .copy-button {
             position: absolute;
-            top: 5px;
-            right: 5px;
-            background: #ddd;
-            border: 1px solid #999;
-            border-radius: 3px;
-            padding: 2px 6px;
+            top: 8px;
+            right: 8px;
+            background: transparent;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 6px;
             cursor: pointer;
-            font-size: 12px;
-            color: #333;
-            font-family: "Source Code Pro", monospace;
-            font-optical-sizing: auto;
-            font-weight: normal;
+            font-size: 0;
+            color: rgba(255, 255, 255, 0.5);
+            transition: all 0.15s ease;
             z-index: 2;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+        }
+        .copy-button:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: rgba(255, 255, 255, 0.9);
+        }
+        .copy-button svg {
+            width: 16px;
+            height: 16px;
         }
 
         .copy-all-button, .copy-all-stream-button {
             position: absolute;
-            top: 5px;
+            top: 8px;
             right: 50px;
-            background: #ddd;
-            border: 1px solid #999;
-            border-radius: 3px;
-            padding: 2px 6px;
+            background: transparent;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 6px;
             cursor: pointer;
-            font-size: 12px;
-            color: #333;
-            font-family: "Source Code Pro", monospace;
-            font-optical-sizing: auto;
-            font-weight: normal;
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.5);
+            font-family: monospace;
+            transition: all 0.15s ease;
             z-index: 2;
+        }
+        .copy-all-button:hover, .copy-all-stream-button:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: rgba(255, 255, 255, 0.9);
         }
 
         code {
             z-index: 1;
-        }
-
-        .copy-button:hover {
-            background: #ccc;
         }
 
         .question-text {
@@ -2476,7 +2486,7 @@
                 const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
                 const codeId = `stream-code-${Date.now()}-${codeBlocks.length}`;
                 codeBlocks.push(
-                    `<pre><button class="copy-button" data-code-id="${codeId}">Copy</button><code id="${codeId}" class="language-${lang || 'text'}">${escapeHTML(code.trim())}</code></pre>`
+                    `<pre><button class="copy-button" data-code-id="${codeId}" title="Copiar"><svg fill="currentColor" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg></button><code id="${codeId}" class="language-${lang || 'text'}">${escapeHTML(code.trim())}</code></pre>`
                 );
                 console.log('Added code block', codeBlocks.length - 1, 'with language:', lang || 'text');
                 return placeholder;
@@ -2491,7 +2501,7 @@
                 const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
                 const codeId = `stream-code-${Date.now()}-${codeBlocks.length}`;
                 codeBlocks.push(
-                    `<pre><button class="copy-button" data-code-id="${codeId}">Copy</button><code id="${codeId}" class="language-text">${escapeHTML(code.trim())}</code></pre>`
+                    `<pre><button class="copy-button" data-code-id="${codeId}" title="Copiar"><svg fill="currentColor" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg></button><code id="${codeId}" class="language-text">${escapeHTML(code.trim())}</code></pre>`
                 );
                 console.log('Added single backtick code block', codeBlocks.length - 1);
                 return placeholder;
@@ -2553,7 +2563,7 @@
                 const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
                 const codeId = `openai-code-${Date.now()}-${codeBlocks.length}`; // Unique ID for OpenAI code blocks
                 codeBlocks.push(
-                    `<pre><button class="copy-button" data-code-id="${codeId}">Copy</button><code id="${codeId}" class="language-${lang || 'text'}">${escapeHTML(code.trim())}</code></pre>`
+                    `<pre><button class="copy-button" data-code-id="${codeId}" title="Copiar"><svg fill="currentColor" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg></button><code id="${codeId}" class="language-${lang || 'text'}">${escapeHTML(code.trim())}</code></pre>`
                 );
                 return placeholder;
             });
