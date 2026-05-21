@@ -783,7 +783,6 @@
         .terminal-input-wrap:focus-within {
             border-color: #4a4a52;
         }
-        /* Prompt '>' antes do textarea */
         .terminal-input-wrap::before {
             content: '>';
             position: absolute;
@@ -797,61 +796,37 @@
             font-size: 15px;
             font-family: inherit;
         }
+        /* contenteditable: cursor '_' real fica DEPOIS do texto, sem replicacao. */
         .terminal-input {
             display: block;
-            width: 100%;
             min-height: 22px;
             max-height: 200px;
+            overflow-y: auto;
             background: transparent;
             border: none;
             outline: none;
-            resize: none;
             color: #e6e6e6;
             font: inherit;
             line-height: 1.4;
             padding: 0;
             margin: 0;
-            caret-color: transparent; /* escondido: o cursor visivel e' o '_' no ghost */
-            overflow-y: auto;
-            scrollbar-width: thin;
-            position: relative;
-            z-index: 2;
-            box-sizing: border-box;
-        }
-        .terminal-input::selection { background: rgba(95, 215, 95, 0.3); }
-        /* Ghost: replica o texto digitado (transparente) com o '_' no final.
-           Posicionado EXATAMENTE no mesmo lugar do textarea, mesma font/padding,
-           pra o '_' cair colado no ultimo char. */
-        .terminal-ghost {
-            position: absolute;
-            left: 24px;
-            top: 8px;
-            right: 10px;
-            color: transparent;
-            font-family: "Source Code Pro", "JetBrains Mono", monospace;
-            font-size: 15px;
-            line-height: 1.4;
             white-space: pre-wrap;
             word-wrap: break-word;
             overflow-wrap: break-word;
-            pointer-events: none;
-            user-select: none;
-            z-index: 1;
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+            caret-color: transparent; /* nativo escondido — _ DOM e' o cursor */
+            scrollbar-width: thin;
         }
-        .terminal-ghost .gtext { color: transparent; }
-        .terminal-ghost .gcursor {
+        .terminal-input::selection { background: rgba(95, 215, 95, 0.3); }
+        .terminal-input .gcursor {
             color: #5fd75f;
             font-weight: bold;
             animation: terminal-blink 1.05s steps(2, start) infinite;
+            user-select: none;
         }
         @keyframes terminal-blink {
             0%, 50% { opacity: 1; }
             50.01%, 100% { opacity: 0; }
         }
-        /* Hint lateral: aparece so quando vazio */
         .terminal-hint {
             position: absolute;
             left: 38px;
@@ -864,11 +839,9 @@
             user-select: none;
             white-space: nowrap;
             opacity: 0.7;
-            z-index: 1;
             line-height: 1.4;
         }
         .terminal-input-wrap.has-text .terminal-hint { display: none; }
-        .terminal-input::placeholder { color: transparent; }
 
         .edit-controls {
             display: flex;
@@ -2234,15 +2207,12 @@
                 if (manualInputActive) {
                     pastedImageForManualInput = base64Image || (`file://${screenshotPath}`);
                     robot.style.display = 'none';
-                    // Insere o texto OCR no início do textarea
-                    const textarea = document.querySelector('.edit-textarea');
-                    if (textarea && text) {
-                        const existingText = textarea.value;
-                        textarea.value = text + '\n' + existingText;
-                        textarea.focus();
-                        // Posiciona o cursor no final do texto existente (após a quebra de linha)
-                        const cursorPos = text.length + 1 + existingText.length;
-                        textarea.setSelectionRange(cursorPos, cursorPos);
+                    // Insere o texto OCR no início do input (terminal contenteditable)
+                    const tInput = document.querySelector('.manual-input-container .terminal-input');
+                    if (tInput && text) {
+                        const existingText = tInput.value;
+                        tInput.value = text + '\n' + existingText;
+                        tInput.focus();
                     }
                     return;
                 }
@@ -2786,9 +2756,11 @@
                 if (existingInput) {
                     existingInput.focus();
                     if (initialText) {
-                        const start = existingInput.selectionStart;
-                        const end = existingInput.selectionEnd;
-                        existingInput.setRangeText(initialText, start, end, 'end');
+                        // contenteditable: append no fim antes do cursor
+                        const cur = existingInput.querySelector('.gcursor');
+                        const tn = document.createTextNode(initialText);
+                        if (cur) existingInput.insertBefore(tn, cur);
+                        else existingInput.appendChild(tn);
                         existingInput.dispatchEvent(new Event('input'));
                     }
                 }
@@ -2805,52 +2777,92 @@
             const container = document.createElement('div');
             container.className = 'edit-container manual-input-container';
 
-            // Wrap estilo terminal: '>' antes + textarea com caret invisivel + ghost mostrando '_' no fim.
+            // Wrap estilo terminal: '>' antes + contenteditable + '_' DOM no fim.
             const wrap = document.createElement('div');
             wrap.className = 'terminal-input-wrap';
-
-            // Ghost: replica o texto (transparente) + '_' verde piscando no fim.
-            // Usa mesma font/padding do textarea pra o '_' alinhar perfeitamente
-            // com a posicao real onde o proximo caractere seria escrito.
-            const ghost = document.createElement('div');
-            ghost.className = 'terminal-ghost';
-            const gText = document.createElement('span');
-            gText.className = 'gtext';
-            const gCursor = document.createElement('span');
-            gCursor.className = 'gcursor';
-            gCursor.textContent = '_';
-            ghost.appendChild(gText);
-            ghost.appendChild(gCursor);
 
             // Dica curta ao lado do cursor (some quando user digita).
             const hint = document.createElement('span');
             hint.className = 'terminal-hint';
             hint.textContent = 'digite sua pergunta — Shift+Enter envia · Esc fecha';
 
-            const inputField = document.createElement('textarea');
+            // Usamos contenteditable em vez de textarea: assim o '_' piscando
+            // e' um <span> REAL dentro do conteudo, sempre apos a posicao do
+            // cursor (re-anexado no end no input event). Zero replicacao,
+            // zero desalinhamento.
+            const inputField = document.createElement('div');
             inputField.className = 'terminal-input';
-            inputField.rows = 1;
-            inputField.placeholder = '';
-            if (initialText) inputField.value = initialText;
+            inputField.setAttribute('contenteditable', 'plaintext-only');
+            inputField.setAttribute('spellcheck', 'false');
+            inputField.setAttribute('data-placeholder', '');
 
-            // Sincroniza ghost com o texto + auto-grow + toggle has-text pro hint.
-            const syncGhost = () => {
-                gText.textContent = inputField.value;
-                if (inputField.value.length > 0) {
-                    wrap.classList.add('has-text');
-                } else {
-                    wrap.classList.remove('has-text');
-                }
-                inputField.style.height = 'auto';
-                inputField.style.height = Math.min(inputField.scrollHeight, 200) + 'px';
-            };
-            inputField.addEventListener('input', syncGhost);
-            // Tambem em scroll, pra ghost acompanhar quando textarea rolar internamente.
-            inputField.addEventListener('scroll', () => {
-                ghost.style.transform = `translateY(${-inputField.scrollTop}px)`;
+            const gCursor = document.createElement('span');
+            gCursor.className = 'gcursor';
+            gCursor.contentEditable = 'false';
+            gCursor.textContent = '_';
+
+            // API pseudo-textarea pra resto do codigo (submitManualQuestion etc).
+            Object.defineProperty(inputField, 'value', {
+                get() {
+                    // Texto sem o cursor (que tem contentEditable=false).
+                    const clone = inputField.cloneNode(true);
+                    clone.querySelectorAll('.gcursor').forEach(n => n.remove());
+                    return clone.innerText.replace(/\u00A0/g, ' ');
+                },
+                set(v) {
+                    inputField.textContent = v || '';
+                    syncCursor();
+                },
+                configurable: true,
             });
 
-            wrap.appendChild(ghost);
+            // Garante que o '_' esteja sempre no FIM do conteudo + toggle has-text.
+            const syncCursor = () => {
+                // Remove cursores duplicados (caso o usuario tenha colado).
+                inputField.querySelectorAll('.gcursor').forEach(n => n.remove());
+                inputField.appendChild(gCursor);
+                const txt = inputField.value;
+                if (txt.length > 0) wrap.classList.add('has-text');
+                else wrap.classList.remove('has-text');
+            };
+
+            // Coloca cursor de selecao logo ANTES do '_' (que e' nao-editavel).
+            const moveCaretBeforeCursor = () => {
+                try {
+                    const sel = window.getSelection();
+                    const range = document.createRange();
+                    range.setStartBefore(gCursor);
+                    range.collapse(true);
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                } catch (_) {}
+            };
+
+            inputField.addEventListener('input', () => {
+                syncCursor();
+                // Se o usuario digitou DEPOIS do _, o syncCursor moveu o _ pro fim.
+                // Reposiciona o caret antes do _.
+                moveCaretBeforeCursor();
+            });
+            // Bloqueia tentar digitar/selecionar dentro do span do cursor.
+            inputField.addEventListener('keydown', () => {
+                // Se selecao esta apos o _, normaliza antes do _ no proximo tick.
+                setTimeout(() => {
+                    const sel = window.getSelection();
+                    if (!sel.rangeCount) return;
+                    const r = sel.getRangeAt(0);
+                    if (r.startContainer === gCursor || (gCursor.contains(r.startContainer))) {
+                        moveCaretBeforeCursor();
+                    }
+                }, 0);
+            }, true);
+
+            // Init: insere o cursor.
+            if (initialText) {
+                inputField.textContent = initialText;
+            }
+            syncCursor();
+
             wrap.appendChild(hint);
             wrap.appendChild(inputField);
             container.appendChild(wrap);
@@ -2873,16 +2885,11 @@
             
             transcriptionElement.appendChild(container);
             scrollTranscriptionToBottom();
-            // Sincroniza ghost no init (vazio ou com initialText) pra cursor aparecer.
-            syncGhost();
             
             // Foca no input com um pequeno delay para garantir que o DOM foi atualizado
             setTimeout(() => {
                 inputField.focus();
-                if (initialText) {
-                    const pos = inputField.value.length;
-                    inputField.setSelectionRange(pos, pos);
-                }
+                moveCaretBeforeCursor();
             }, 100);
             
             // Enter quebra linha, Shift+Enter envia
