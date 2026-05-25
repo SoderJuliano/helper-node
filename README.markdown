@@ -156,8 +156,8 @@ com flatpak/snap quando disponíveis:
 
 ### Roteamento de modelo
 
-- Perguntas simples: modelo padrão (`gpt-4.1-nano`).
-- Perguntas com gatilhos de tarefa pesada (edição, instalação, comandos): troca automaticamente pra `gpt-4o-mini` via heurística regex.
+- Perguntas simples: usa o modelo escolhido nas Configurações (default `gpt-4.1-nano`).
+- Perguntas com gatilhos de tarefa pesada (edição, instalação, comandos): faz **upgrade** pra `gpt-4o-mini` **só se o modelo escolhido for de tier inferior**. Se você escolheu `gpt-4.1` ou `gpt-5.1`, sua escolha é **respeitada** — quem paga mais por token quer o modelo melhor também nas tools, não silenciosamente um downgrade.
 - Tools são **sempre oferecidas** quando o módulo está ON — `tool_choice:'auto'` deixa a IA decidir se chama ou não.
 
 ### Roadmap (próximas versões)

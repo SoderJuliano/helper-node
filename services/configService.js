@@ -53,6 +53,11 @@ const defaultConfig = {
   language: "pt-br",
   aiModel: "llama",
   openAiModel: "gpt-4.1-nano",
+  // Ollama LOCAL (rodando no PC do user na porta 11434). Independente do
+  // backend Java remoto. App NAO instala Ollama nem baixa modelos — mostra
+  // instrucoes na tela de Configuracoes pro user fazer manualmente.
+  ollamaLocalModel: "qwen2.5-coder:7b",
+  ollamaLocalHost: "http://localhost:11434",
   // Modelo dedicado pra modo VISÃO. nano é fraco demais em visão (confunde
   // 11x2 com 11x²). gpt-4o-mini ainda é barato e MUITO mais preciso em
   // imagens (~US$ 0.15 / 1M tokens input + ~150 tokens por imagem high).
@@ -244,6 +249,17 @@ function setAiModel(aiModel) {
     currentConfig = loadConfig();
   }
   currentConfig.aiModel = aiModel;
+  // Mutex: ollamaLocal NAO suporta helperTools/workspaceAccess nesta versao
+  // (decisao do user pra manter simples). Desliga automaticamente.
+  if (aiModel === 'ollamaLocal') {
+    if (currentConfig.helperTools && currentConfig.helperTools.enabled) {
+      currentConfig.helperTools.enabled = false;
+      console.log('[config] ollamaLocal selecionado → helperTools desligado automaticamente');
+    }
+    if (currentConfig.workspaceAccess && currentConfig.workspaceAccess.enabled) {
+      currentConfig.workspaceAccess.enabled = false;
+    }
+  }
   saveConfig(currentConfig);
   currentConfig = null;
 }
@@ -276,6 +292,30 @@ function setOpenAiVisionModel(model) {
     currentConfig = loadConfig();
   }
   currentConfig.openAiVisionModel = model;
+  saveConfig(currentConfig);
+  currentConfig = null;
+}
+
+function getOllamaLocalModel() {
+  if (!currentConfig) currentConfig = loadConfig();
+  return currentConfig.ollamaLocalModel || defaultConfig.ollamaLocalModel;
+}
+
+function setOllamaLocalModel(model) {
+  if (!currentConfig) currentConfig = loadConfig();
+  currentConfig.ollamaLocalModel = model || defaultConfig.ollamaLocalModel;
+  saveConfig(currentConfig);
+  currentConfig = null;
+}
+
+function getOllamaLocalHost() {
+  if (!currentConfig) currentConfig = loadConfig();
+  return currentConfig.ollamaLocalHost || defaultConfig.ollamaLocalHost;
+}
+
+function setOllamaLocalHost(host) {
+  if (!currentConfig) currentConfig = loadConfig();
+  currentConfig.ollamaLocalHost = host || defaultConfig.ollamaLocalHost;
   saveConfig(currentConfig);
   currentConfig = null;
 }
@@ -426,6 +466,10 @@ module.exports = {
   setOpenAiModel,
   getOpenAiVisionModel,
   setOpenAiVisionModel,
+  getOllamaLocalModel,
+  setOllamaLocalModel,
+  getOllamaLocalHost,
+  setOllamaLocalHost,
   getAudioCaptureMode,
   setAudioCaptureMode,
   getHelperToolsConfig,

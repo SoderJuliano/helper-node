@@ -370,6 +370,7 @@
                 <option value="llama" selected>Llama</option>
                 <option value="llama-stream">Llama Stream</option>
                 <option value="openIa">ChatGPT</option>
+                <option value="ollamaLocal">Ollama Local (offline)</option>
             </select>
         </div>
 
@@ -386,6 +387,59 @@
             <label for="openai-token">OpenAI Token</label>
             <input type="password" id="openai-token" class="custom-input" placeholder="Cole seu token da OpenAI aqui">
             <span id="clear-openai-token" style="cursor: pointer; color: #ff6b6b; margin-left: 10px;">Limpar</span>
+        </div>
+
+        <!-- Ollama Local: select de modelo curado pra hardware mediano -->
+        <div class="setting-item" id="ollama-local-model-container" style="display: none;">
+            <label for="ollama-local-model-select">Modelo Ollama Local</label>
+            <select id="ollama-local-model-select" class="custom-select">
+                <option value="qwen2.5-coder:7b" selected>qwen2.5-coder:7b · ~4.7 GB · código (recomendado)</option>
+                <option value="llama3.1:8b">llama3.1:8b · ~4.9 GB · generalista PT-BR</option>
+                <option value="gemma3:12b">gemma3:12b · ~8.1 GB · visão + tools (16 GB VRAM)</option>
+            </select>
+        </div>
+
+        <!-- Painel de instruções: aparece SÓ quando ollamaLocal está selecionado -->
+        <div id="ollama-local-info" style="display: none; margin-top: 12px; padding: 14px; background-color: rgba(0,0,0,0.5); border-radius: 5px; font-size: 12.5px; line-height: 1.5; color: #ddd; -webkit-app-region: no-drag;">
+            <div style="font-weight: bold; color: #00d68f; margin-bottom: 8px;">📦 Ollama Local — instalação manual</div>
+            <div style="margin-bottom: 10px;">
+                O app <strong>não instala o Ollama pra você</strong>. Siga o passo-a-passo abaixo (uma vez só) e depois é só usar.
+            </div>
+            <div style="margin-bottom: 6px;"><strong>1. Instalar o Ollama</strong> (uma vez):</div>
+            <pre style="background:#0d0d0d; padding:8px 10px; border-radius:4px; margin:0 0 10px 0; overflow-x:auto; font-size:12px; color:#9ef0a8; user-select:text;">curl -fsSL https://ollama.com/install.sh | sh</pre>
+            <div style="margin-bottom: 6px;">Ou baixe direto em <a href="https://ollama.com/download" target="_blank" style="color:#00aaff;">ollama.com/download</a> (tem versão Windows/macOS/Linux).</div>
+
+            <div style="margin: 12px 0 6px 0;"><strong>2. Baixar o modelo escolhido acima</strong> (cada um faz só uma vez):</div>
+            <pre id="ollama-local-pull-cmd" style="background:#0d0d0d; padding:8px 10px; border-radius:4px; margin:0 0 10px 0; overflow-x:auto; font-size:12px; color:#9ef0a8; user-select:text;">ollama pull qwen2.5-coder:7b</pre>
+
+            <div style="margin: 12px 0 6px 0;"><strong>3. Verificar se está rodando</strong>:</div>
+            <pre style="background:#0d0d0d; padding:8px 10px; border-radius:4px; margin:0 0 10px 0; overflow-x:auto; font-size:12px; color:#9ef0a8; user-select:text;">ollama serve     # opcional — o instalador já deixa rodando como serviço</pre>
+            <button id="check-ollama-btn" style="margin-top: 4px; padding: 6px 12px; background:#2a6c45; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; -webkit-app-region: no-drag;">
+                🔍 Verificar status agora
+            </button>
+            <div id="ollama-status-result" style="margin-top: 8px; font-size: 12px;"></div>
+
+            <div style="margin-top: 14px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.08);">
+                <div style="font-weight: bold; color: #ffb74d; margin-bottom: 6px;">⚙️ Requisitos mínimos por modelo</div>
+                <table style="width:100%; font-size:11.5px; color:#ccc; border-collapse: collapse;">
+                    <tr style="color:#888;">
+                        <th style="text-align:left; padding:3px 6px;">Modelo</th>
+                        <th style="text-align:left; padding:3px 6px;">RAM</th>
+                        <th style="text-align:left; padding:3px 6px;">VRAM</th>
+                        <th style="text-align:left; padding:3px 6px;">Tamanho</th>
+                    </tr>
+                    <tr><td style="padding:3px 6px;">qwen2.5-coder:7b</td><td style="padding:3px 6px;">8 GB+</td><td style="padding:3px 6px;">6 GB+</td><td style="padding:3px 6px;">~4.7 GB</td></tr>
+                    <tr><td style="padding:3px 6px;">llama3.1:8b</td><td style="padding:3px 6px;">8 GB+</td><td style="padding:3px 6px;">6 GB+</td><td style="padding:3px 6px;">~4.9 GB</td></tr>
+                    <tr><td style="padding:3px 6px;">gemma3:12b</td><td style="padding:3px 6px;">16 GB+</td><td style="padding:3px 6px;">10 GB+</td><td style="padding:3px 6px;">~8.1 GB</td></tr>
+                </table>
+                <div style="margin-top: 8px; color:#888; font-size:11px;">
+                    Sem GPU? Roda mesmo assim na CPU/RAM — só fica mais lento (5-15 tok/s). Recomendado: 32 GB RAM DDR4.
+                </div>
+            </div>
+
+            <div style="margin-top: 12px; padding: 8px 10px; background: rgba(255,180,77,0.08); border-radius: 4px; font-size: 11.5px; color: #ffb74d;">
+                ⚠️ <strong>Ferramentas avançadas</strong> e <strong>Acesso a diretórios</strong> são desativados ao usar Ollama Local nesta versão (mantém simples e estável). Use ChatGPT se precisar dessas features.
+            </div>
         </div>
 
     </div>

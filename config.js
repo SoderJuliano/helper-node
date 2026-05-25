@@ -22,6 +22,12 @@ const openIaTokenContainer = document.getElementById("openai-token-container");
 const openIaTokenInput = document.getElementById("openai-token");
 const openAiModelContainer = document.getElementById("openai-model-container");
 const openAiModelSelect = document.getElementById("openai-model-select");
+const ollamaLocalModelContainer = document.getElementById("ollama-local-model-container");
+const ollamaLocalModelSelect = document.getElementById("ollama-local-model-select");
+const ollamaLocalInfo = document.getElementById("ollama-local-info");
+const ollamaPullCmd = document.getElementById("ollama-local-pull-cmd");
+const checkOllamaBtn = document.getElementById("check-ollama-btn");
+const ollamaStatusResult = document.getElementById("ollama-status-result");
 
 // Helper function to update the debug mode status text
 function updateDebugModeStatus(isDebugging) {
@@ -206,10 +212,23 @@ document.addEventListener("DOMContentLoaded", async () => {
     openAiModelSelect.value = savedOpenAiModel;
   }
 
+  // Load saved Ollama Local model
+  try {
+    const savedOllamaModel = await ipcRenderer.invoke("get-ollama-local-model");
+    if (savedOllamaModel && ollamaLocalModelSelect) {
+      ollamaLocalModelSelect.value = savedOllamaModel;
+      updateOllamaPullCmd();
+    }
+  } catch (e) { console.warn("ollama local model load failed:", e); }
+
   // Show/hide OpenAI fields based on saved model
   if (aiModelSelect.value === 'openIa') {
     openIaTokenContainer.style.display = 'flex';
     openAiModelContainer.style.display = 'flex';
+  } else if (aiModelSelect.value === 'ollamaLocal') {
+    if (ollamaLocalModelContainer) ollamaLocalModelContainer.style.display = 'flex';
+    if (ollamaLocalInfo) ollamaLocalInfo.style.display = 'block';
+    applyOllamaLocalExclusivity();
   }
 
   // -------------------------
@@ -289,16 +308,87 @@ if (workspaceAccessToggle) {
   });
 }
 
-// Show/hide OpenAI token input based on AI model selection
+// Mostra/esconde campos do provider selecionado.
+function updateOllamaPullCmd() {
+  if (!ollamaLocalModelSelect || !ollamaPullCmd) return;
+  ollamaPullCmd.textContent = `ollama pull ${ollamaLocalModelSelect.value}`;
+}
+
+// Quando ollamaLocal selecionado, desliga helperTools/workspaceAccess.
+function applyOllamaLocalExclusivity() {
+  if (aiModelSelect.value !== 'ollamaLocal') return;
+  if (helperToolsToggle && helperToolsToggle.checked) {
+    helperToolsToggle.checked = false;
+    updateHelperToolsStatus(false);
+  }
+  if (workspaceAccessToggle && workspaceAccessToggle.checked) {
+    workspaceAccessToggle.checked = false;
+    updateWorkspaceAccessStatus(false);
+  }
+  // Desabilita os toggles (visual) enquanto ollamaLocal estiver selecionado.
+  if (helperToolsToggle) {
+    helperToolsToggle.disabled = true;
+    const item = helperToolsToggle.closest('.setting-item');
+    if (item) { item.style.opacity = '0.5'; item.title = 'Indisponível com Ollama Local — troque pro ChatGPT pra usar.'; }
+  }
+  if (workspaceAccessToggle) {
+    workspaceAccessToggle.disabled = true;
+  }
+}
+
+function releaseOllamaLocalExclusivity() {
+  if (helperToolsToggle) {
+    helperToolsToggle.disabled = false;
+    const item = helperToolsToggle.closest('.setting-item');
+    if (item) { item.style.opacity = '1'; item.title = 'Permite à IA ler e editar arquivos do seu computador, executar comandos e gerar scripts.'; }
+  }
+  if (workspaceAccessToggle && helperToolsToggle && helperToolsToggle.checked) {
+    workspaceAccessToggle.disabled = false;
+  }
+}
+
+// Show/hide OpenAI/Ollama fields based on AI model selection
 aiModelSelect.addEventListener('change', () => {
-    if (aiModelSelect.value === 'openIa') {
-        openIaTokenContainer.style.display = 'flex';
-        openAiModelContainer.style.display = 'flex';
+    const v = aiModelSelect.value;
+    openIaTokenContainer.style.display = (v === 'openIa') ? 'flex' : 'none';
+    openAiModelContainer.style.display = (v === 'openIa') ? 'flex' : 'none';
+    if (ollamaLocalModelContainer) ollamaLocalModelContainer.style.display = (v === 'ollamaLocal') ? 'flex' : 'none';
+    if (ollamaLocalInfo) ollamaLocalInfo.style.display = (v === 'ollamaLocal') ? 'block' : 'none';
+    if (v === 'ollamaLocal') {
+      applyOllamaLocalExclusivity();
     } else {
-        openIaTokenContainer.style.display = 'none';
-        openAiModelContainer.style.display = 'none';
+      releaseOllamaLocalExclusivity();
     }
 });
+
+if (ollamaLocalModelSelect) {
+    ollamaLocalModelSelect.addEventListener('change', updateOllamaPullCmd);
+}
+
+if (checkOllamaBtn) {
+    checkOllamaBtn.addEventListener('click', async () => {
+        ollamaStatusResult.textContent = '⏳ Verificando...';
+        ollamaStatusResult.style.color = '#888';
+        try {
+            const res = await ipcRenderer.invoke('check-ollama-local-status');
+            if (!res || !res.running) {
+                ollamaStatusResult.innerHTML = '❌ <span style="color:#ff6b6b">Ollama não está rodando.</span> Rode <code style="background:#0d0d0d;padding:2px 5px;border-radius:3px;color:#9ef0a8;">ollama serve</code> no terminal.';
+                return;
+            }
+            const selected = ollamaLocalModelSelect.value;
+            const installed = res.models || [];
+            const hasIt = installed.some(m => m === selected || m.startsWith(selected.split(':')[0] + ':'));
+            if (hasIt) {
+                ollamaStatusResult.innerHTML = `✅ <span style="color:#9ef0a8">Ollama rodando.</span> Modelo <code style="color:#9ef0a8">${selected}</code> está baixado. Pronto pra uso!`;
+            } else {
+                ollamaStatusResult.innerHTML = `⚠️ <span style="color:#ffb74d">Ollama rodando, mas modelo <code>${selected}</code> não está baixado.</span><br>Modelos disponíveis: ${installed.length ? installed.join(', ') : '(nenhum)'}<br>Rode: <code style="background:#0d0d0d;padding:2px 5px;border-radius:3px;color:#9ef0a8;">ollama pull ${selected}</code>`;
+            }
+        } catch (e) {
+            ollamaStatusResult.innerHTML = `❌ Erro ao verificar: ${e.message}`;
+            ollamaStatusResult.style.color = '#ff6b6b';
+        }
+    });
+}
 
 // Save everything
 saveButton.addEventListener("click", async () => {
@@ -335,6 +425,11 @@ saveButton.addEventListener("click", async () => {
   
   // Save OpenAI model
   ipcRenderer.send("set-openai-model", openAiModelSelect.value);
+
+  // Save Ollama Local model
+  if (ollamaLocalModelSelect) {
+    ipcRenderer.send("set-ollama-local-model", ollamaLocalModelSelect.value);
+  }
 
   // Always save OpenAI token, regardless of current model
   // This ensures the token persists even when switching to other models

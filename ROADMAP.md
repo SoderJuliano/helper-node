@@ -79,9 +79,12 @@ paralelo com flatpak/snap quando disponíveis:
 
 ### Roteamento de modelo
 
-- Perguntas simples: modelo padrão (`gpt-4.1-nano`).
+- Perguntas simples: usa o modelo escolhido (default `gpt-4.1-nano`).
 - Perguntas com gatilhos de tarefa pesada (edição, instalação, comandos):
-  troca automaticamente pra `gpt-4o-mini` via `shouldForceHeavyModel` (regex).
+  faz upgrade pra `gpt-4o-mini` (`shouldForceHeavyModel` regex) **somente se**
+  o modelo do usuário for de tier inferior. Escolhas caras (`gpt-4.1`,
+  `gpt-5.1`) são respeitadas — sem downgrade silencioso. Tier baseado em
+  pricing OpenAI (nano=1, mini=2, 4.1/4o=3, 5.x=4, 5.4/5.5=5).
 - Tools são **sempre oferecidas** quando o módulo está ON. A IA decide via
   `tool_choice:'auto'`. Heurística regex só serve pra decisão de modelo.
 

@@ -91,11 +91,35 @@ function buildHelperToolsOpenAIOpts(userText, baseInstruction, baseModel) {
     const instruction = [baseInstruction || "", addon].filter(Boolean).join("\n\n");
 
     // Heurística pra ESCOLHA DE MODELO (não pra ligar/desligar tools):
-    //   - se a pergunta tem cara de tarefa pesada (edita arquivo, instala pacote,
-    //     comandos) → modelHeavy
-    //   - caso contrário → mantém modelo passado pelo caller (geralmente o nano)
+    //   - se a pergunta tem cara de tarefa pesada (edita arquivo, instala
+    //     pacote, comandos) → upgrade pra modelHeavy
+    //   - MAS só fazemos upgrade se o modelo do usuário for MAIS BARATO/FRACO
+    //     que o modelHeavy. Se ele já escolheu 4.1 ou 5.1, RESPEITA — quem
+    //     paga 8x mais por token não quer ser silenciosamente downgrade pra
+    //     gpt-4o-mini só porque pediu pra editar um arquivo. Se o user paga
+    //     mais, ele quer o modelo mais capaz também nas tools.
+    //   - Se o usuário tá no default nano (barato), aí sim upgrade pra heavy.
     // Tools são SEMPRE oferecidas quando o módulo está ON; a IA decide via
     // tool_choice:'auto' se chama ou não.
+    //
+    // Tier (maior = mais caro/capaz). Reflete pricing OpenAI:
+    //   nano family       ~ $0.05-0.10 input  → tier 1
+    //   mini family       ~ $0.15-0.25 input  → tier 2 (gpt-4o-mini, gpt-5-mini)
+    //   gpt-4.1           ~ $2.00 input       → tier 3
+    //   gpt-4o            ~ $2.50 input       → tier 3
+    //   gpt-5/5.1/5.2     ~ $1.25-1.75 input  → tier 4 (mais novo, melhor)
+    //   gpt-5.4/5.5       ~ $2.50-5.00 input  → tier 5
+    const modelTier = (m) => {
+      const s = String(m || "").toLowerCase();
+      if (!s) return 0;
+      if (/gpt-5\.[45]/.test(s)) return 5;
+      if (/gpt-5(\.\d)?($|[^.\d])/.test(s) && !/(mini|nano)/.test(s)) return 4;
+      if (/gpt-4\.1($|[^-])/.test(s) && !/(mini|nano)/.test(s)) return 3;
+      if (/gpt-4o($|[^-])/.test(s) && !/mini/.test(s)) return 3;
+      if (/mini/.test(s)) return 2;
+      if (/nano/.test(s)) return 1;
+      return 2; // desconhecido — assume médio
+    };
     let model = baseModel;
     const forceHeavy = helperTools.shouldForceHeavyModel
       ? helperTools.shouldForceHeavyModel(userText || "")
@@ -103,7 +127,14 @@ function buildHelperToolsOpenAIOpts(userText, baseInstruction, baseModel) {
     if (forceHeavy) {
       const rawModel = cfg.modelHeavy || "";
       if (rawModel.startsWith("openai:")) {
-        model = rawModel.slice("openai:".length) || baseModel;
+        const heavyName = rawModel.slice("openai:".length);
+        const userTier = modelTier(baseModel);
+        const heavyTier = modelTier(heavyName);
+        // Só faz upgrade se o modelo do user é mais fraco que o heavy.
+        // Senão respeita escolha do user (que já está pagando por algo melhor).
+        if (heavyName && heavyTier > userTier) {
+          model = heavyName;
+        }
       }
     }
 
@@ -111,9 +142,11 @@ function buildHelperToolsOpenAIOpts(userText, baseInstruction, baseModel) {
       ? cfg.maxToolCallsPerRequest
       : 5;
 
+    const modelTag = forceHeavy
+      ? (model === baseModel ? " [HEAVY-kept-user]" : " [HEAVY-upgraded]")
+      : "";
     console.log(
-      `🧰 helperTools engajado: tools=${schema.length} model=${model}` +
-      `${forceHeavy ? " [HEAVY]" : ""} maxToolCalls=${maxToolCalls}`
+      `🧰 helperTools engajado: tools=${schema.length} model=${model}${modelTag} maxToolCalls=${maxToolCalls}`
     );
 
     return {
@@ -2035,6 +2068,12 @@ async function getIaResponse(text) {
           null,
           ht.opts
         );
+    } else if (aiModel === 'ollamaLocal') {
+        // Ollama rodando no PC do user. SEM helperTools/workspaceAccess (mutex
+        // em configService). Erros de Ollama-down / modelo-ausente vem como
+        // texto markdown amigavel direto pra UI.
+        const OllamaLocalService = require('./services/ollamaLocalService');
+        resposta = await OllamaLocalService.responder(text);
     } else {
         // Ollama/Backend e' o unico provider nao-OpenAI suportado.
         // Helper tools agora funcionam tambem no Ollama (via structured prompt + parser).
@@ -2934,6 +2973,32 @@ ipcMain.handle("get-openai-model", () => {
 
 ipcMain.on("set-openai-model", (event, model) => {
   configService.setOpenAiModel(model);
+});
+
+// IPC Handlers for Ollama Local
+ipcMain.handle("get-ollama-local-model", () => {
+  return configService.getOllamaLocalModel();
+});
+
+ipcMain.on("set-ollama-local-model", (event, model) => {
+  configService.setOllamaLocalModel(model);
+});
+
+ipcMain.handle("get-ollama-local-host", () => {
+  return configService.getOllamaLocalHost();
+});
+
+// Status check: o user clica "verificar" no painel pra ver se Ollama tá up.
+ipcMain.handle("check-ollama-local-status", async () => {
+  try {
+    const svc = require("./services/ollamaLocalService");
+    const ok = await svc.ping();
+    if (!ok) return { running: false, models: null };
+    const models = await svc.listInstalledModels();
+    return { running: true, models: models || [] };
+  } catch (e) {
+    return { running: false, error: String(e && e.message), models: null };
+  }
 });
 
 // IPC Handlers for OpenAI Token
