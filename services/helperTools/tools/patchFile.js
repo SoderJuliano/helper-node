@@ -42,7 +42,7 @@ module.exports = {
   setConfirmer,
   setOnFileWritten,
 
-  async run(args) {
+  async run(args, ctx) {
     const target = args && args.path ? path.resolve(args.path) : "";
     if (!target) return { ok: false, error: "path obrigatório" };
     if (!workspace.isPathAllowed(target)) {
@@ -65,14 +65,22 @@ module.exports = {
     const updated = original.replace(oldText, newText);
     const preview = `- ${oldText.split("\n").slice(0, 3).join("\\n").slice(0, 120)}…\n+ ${newText.split("\n").slice(0, 3).join("\\n").slice(0, 120)}…`;
 
-    const confirmed = await _confirmer({
-      title: "Confirmação necessária",
-      message: "A IA quer EDITAR o arquivo:",
-      detail: `${target}\n\n${preview}`,
-      confirmText: "Aplicar patch",
-      cancelText: "Cancelar",
-      timeoutMs: 30000,
-    });
+    let confirmed = false;
+    if (ctx && ctx.force) {
+      console.log(`[patchFile] force=true → ignorando confirmação visual para ${target}`);
+      confirmed = true;
+    } else {
+      if (typeof _confirmer !== "function") return { ok: false, error: "confirmer não registrado" };
+      confirmed = await _confirmer({
+        title: "Confirmação necessária",
+        message: "A IA quer EDITAR o arquivo:",
+        detail: `${target}\n\n${preview}`,
+        confirmText: "Aplicar patch",
+        cancelText: "Cancelar",
+        timeoutMs: 30000,
+      });
+    }
+
     if (!confirmed) return { ok: true, result: { patched: false, reason: "cancelado" } };
 
     try {

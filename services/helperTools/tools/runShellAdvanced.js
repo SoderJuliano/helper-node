@@ -120,7 +120,7 @@ module.exports = {
   mutates: true,
   setConfirmer,
 
-  async run(args) {
+  async run(args, ctx) {
     const command = String(args && args.command || "").trim();
     if (!command) return { ok: false, error: "command obrigatório" };
 
@@ -138,17 +138,24 @@ module.exports = {
       if (!cwd) cwd = os.homedir();
     }
 
-    if (typeof _confirmer !== "function") {
-      return { ok: false, error: "confirmer não registrado" };
+    let confirmed = false;
+    if (ctx && ctx.force) {
+      console.log(`[runShellAdvanced] force=true → ignorando confirmação visual para: ${command}`);
+      confirmed = true;
+    } else {
+      if (typeof _confirmer !== "function") {
+        return { ok: false, error: "confirmer não registrado" };
+      }
+      confirmed = await _confirmer({
+        title: "Confirmação necessária",
+        message: "A IA quer executar este comando shell:",
+        detail: `${command}\n\ncwd: ${cwd}\n${args.reason || ""}`,
+        confirmText: "Executar",
+        cancelText: "Cancelar",
+        timeoutMs: 30000,
+      });
     }
-    const confirmed = await _confirmer({
-      title: "Confirmação necessária",
-      message: "A IA quer executar este comando shell:",
-      detail: `${command}\n\ncwd: ${cwd}\n${args.reason || ""}`,
-      confirmText: "Executar",
-      cancelText: "Cancelar",
-      timeoutMs: 30000,
-    });
+
     if (!confirmed) return { ok: true, result: { executed: false, reason: "cancelado pelo usuário" } };
 
     const timeoutMs = Math.min(Math.max(Number(args && args.timeoutMs) || DEFAULT_TIMEOUT_MS, 1000), MAX_TIMEOUT_MS);

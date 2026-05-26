@@ -17,19 +17,19 @@ class OpenAIService {
         //   não faz sentido carregar a imagem anterior junto. Economiza tokens
         //   e evita confundir o modelo com contexto irrelevante.
         const stateless = !!opts.stateless;
-        const sessionId = 'default'; // Using a single session for now
+        const sessionId = opts.sessionId || 'default';
         const now = Date.now();
         const twoHours = 2 * 60 * 60 * 1000;
 
         // Clear session if inactive for more than 2 hours
         if (this.sessions[sessionId] && (now - this.sessions[sessionId].lastActivity > twoHours)) {
             delete this.sessions[sessionId];
-            console.log('OpenAI session expired and was cleared.');
+            console.log(`OpenAI session ${sessionId} expired and was cleared.`);
         }
 
         // Create a new session if it doesn't exist
         if (!this.sessions[sessionId]) {
-            console.log('Creating new OpenAI session.');
+            console.log(`Creating new OpenAI session: ${sessionId}`);
             this.sessions[sessionId] = {
                 messages: [{ role: 'system', content: instruction || 'You are a helpful assistant.' }],
                 lastActivity: now

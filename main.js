@@ -63,6 +63,7 @@ const configService = require("./services/configService.js");
 const historyService = require("./services/historyService.js");
 const helperTools = require("./services/helperTools");
 const workspace = require("./services/workspace");
+const agenticWorkflow = require("./services/agenticWorkflowService");
 
 /**
  * Monta opts pra OpenAIService.makeOpenAIRequest acoplando o helperTools quando:
@@ -140,7 +141,7 @@ function buildHelperToolsOpenAIOpts(userText, baseInstruction, baseModel) {
 
     const maxToolCalls = Number.isInteger(cfg.maxToolCallsPerRequest)
       ? cfg.maxToolCallsPerRequest
-      : 5;
+      : 30;
 
     const modelTag = forceHeavy
       ? (model === baseModel ? " [HEAVY-kept-user]" : " [HEAVY-upgraded]")
@@ -2059,15 +2060,38 @@ async function getIaResponse(text) {
         }
         const openAiModel = configService.getOpenAiModel();
         const _wsText1 = await prependWorkspaceContextIfNeeded(text, openAiModel);
-        const ht = buildHelperToolsOpenAIOpts(_wsText1, instruction, openAiModel);
-        resposta = await OpenAIService.makeOpenAIRequest(
-          _wsText1,
-          token,
-          ht.instruction || instruction,
-          ht.model || openAiModel,
-          null,
-          ht.opts
-        );
+
+        // Decide se usa o Agentic Workflow (multi-fases) ou single-shot.
+        // Requisitos: OpenAI + Advanced Tools ON + Workspace Access ON + Intent de escrita/complexa.
+        const useAgentic = configService.getHelperToolsEnabled() && 
+                          configService.getWorkspaceAccessEnabled() && 
+                          helperTools.shouldForceHeavyModel(text);
+
+        if (useAgentic) {
+            console.log('🤖 Iniciando AGENTIC WORKFLOW (multi-fase)...');
+            // Limpa qualquer sessão anterior pra evitar contaminação de contexto (ex: Pikachu vs Helper-Node)
+            if (OpenAIService.sessions) OpenAIService.sessions = {};
+            
+            try {
+              resposta = await agenticWorkflow.run(
+                  _wsText1, 
+                  { token, model: openAiModel, baseInstruction: instruction },
+                  mainWindow.webContents
+              );
+            } catch (err) {
+              resposta = `[Agentic Workflow] Interrompido ou falhou: ${err.message}`;
+            }
+        } else {
+            const ht = buildHelperToolsOpenAIOpts(_wsText1, instruction, openAiModel);
+            resposta = await OpenAIService.makeOpenAIRequest(
+              _wsText1,
+              token,
+              ht.instruction || instruction,
+              ht.model || openAiModel,
+              null,
+              ht.opts
+            );
+        }
     } else if (aiModel === 'ollamaLocal') {
         // Ollama rodando no PC do user. SEM helperTools/workspaceAccess (mutex
         // em configService). Erros de Ollama-down / modelo-ausente vem como
@@ -2512,17 +2536,38 @@ ipcMain.on("send-to-gemini", async (event, text) => {
         }
         const openAiModel = configService.getOpenAiModel();
         const _wsText2 = await prependWorkspaceContextIfNeeded(text, openAiModel);
-        const ht = buildHelperToolsOpenAIOpts(_wsText2, instruction, openAiModel);
-        resposta = await OpenAIService.makeOpenAIRequest(
-          _wsText2,
-          token,
-          ht.instruction || instruction,
-          ht.model || openAiModel,
-          null,
-          ht.opts
-        );
+
+        const useAgentic = configService.getHelperToolsEnabled() && 
+                          configService.getWorkspaceAccessEnabled() && 
+                          helperTools.shouldForceHeavyModel(text);
+
+        if (useAgentic) {
+            console.log('🤖 IPC: Iniciando AGENTIC WORKFLOW (multi-fase)...');
+            // Limpa qualquer sessão anterior pra evitar contaminação
+            if (OpenAIService.sessions) OpenAIService.sessions = {};
+            
+            try {
+              resposta = await agenticWorkflow.run(
+                  _wsText2, 
+                  { token, model: openAiModel, baseInstruction: instruction },
+                  event.sender
+              );
+            } catch (err) {
+              resposta = `[Agentic Workflow] Interrompido ou falhou: ${err.message}`;
+            }
+        } else {
+            const ht = buildHelperToolsOpenAIOpts(_wsText2, instruction, openAiModel);
+            resposta = await OpenAIService.makeOpenAIRequest(
+              _wsText2,
+              token,
+              ht.instruction || instruction,
+              ht.model || openAiModel,
+              null,
+              ht.opts
+            );
+        }
         event.sender.send("openai-final-response", { resposta });
-        return; // Exit here to prevent further processing by the generic response handler
+        return; 
     } else {
         // Ollama/Backend e' o unico provider nao-OpenAI suportado.
         try {
@@ -2547,6 +2592,10 @@ ipcMain.on("send-to-gemini", async (event, text) => {
       "Failed to process IA response from any source"
     );
   }
+});
+
+ipcMain.on("stop-agentic-workflow", (event, sessionId) => {
+  agenticWorkflow.stop(sessionId);
 });
 
 ipcMain.on("send-to-gemini-stream", async (event, text) => {
@@ -3922,27 +3971,45 @@ async function processOsQuestion(text, image = null, opts = {}) {
         ? configService.getOpenAiVisionModel()
         : configService.getOpenAiModel();
       console.log(`🤖 OpenAI ${openAiModel}${sendImage ? ' [VISÃO high]' : ' [TEXTO]'}...`);
-      // Workspace context: só em modo TEXTO
       const _wsText3 = sendImage ? text : await prependWorkspaceContextIfNeeded(text, openAiModel);
-      // helperTools só engaja em modo TEXTO (visão é one-shot stateless)
-      const ht = sendImage
-        ? { opts: { stateless: !!image } }
-        : (() => {
-            const _ht = buildHelperToolsOpenAIOpts(_wsText3, instruction, openAiModel);
-            _ht.opts = { ..._ht.opts, stateless: !!image };
-            return _ht;
-          })();
-      resposta = await OpenAIService.makeOpenAIRequest(
-        _wsText3,
-        token,
-        ht.instruction || instruction,
-        ht.model || openAiModel,
-        sendImage ? image : null,
-        // Capturas de tela são sempre one-shot: não reaproveita histórico
-        // (não faz sentido carregar a imagem anterior junto da próxima).
-        // Isso também elimina QUALQUER cache/contexto entre requests.
-        ht.opts
-      );
+
+      const useAgentic = !sendImage && 
+                        configService.getHelperToolsEnabled() && 
+                        configService.getWorkspaceAccessEnabled() && 
+                        helperTools.shouldForceHeavyModel(_wsText3);
+
+      if (useAgentic) {
+          console.log('🤖 OCR: Iniciando AGENTIC WORKFLOW (multi-fase)...');
+          try {
+            resposta = await agenticWorkflow.run(
+                _wsText3, 
+                { token, model: openAiModel, baseInstruction: instruction },
+                osNotificationWindow.webContents
+            );
+          } catch (err) {
+            resposta = `[Agentic Workflow] Interrompido ou falhou: ${err.message}`;
+          }
+      } else {
+          // helperTools só engaja em modo TEXTO (visão é one-shot stateless)
+          const ht = sendImage
+            ? { opts: { stateless: !!image } }
+            : (() => {
+                const _ht = buildHelperToolsOpenAIOpts(_wsText3, instruction, openAiModel);
+                _ht.opts = { ..._ht.opts, stateless: !!image };
+                return _ht;
+              })();
+          resposta = await OpenAIService.makeOpenAIRequest(
+            _wsText3,
+            token,
+            ht.instruction || instruction,
+            ht.model || openAiModel,
+            sendImage ? image : null,
+            // Capturas de tela são sempre one-shot: não reaproveita histórico
+            // (não faz sentido carregar a imagem anterior junto da próxima).
+            // Isso também elimina QUALQUER cache/contexto entre requests.
+            ht.opts
+          );
+      }
       console.log(`🤖 Got OpenAI response: ${resposta.substring(0, 50)}...`);
     } else {
       // Backends sem visão (Ollama): só TEXTO. Mas com tool calling agora.

@@ -122,7 +122,7 @@ module.exports = {
   shouldForceHeavyModel,
   getSystemPromptAddon,
   // Execução de tools
-  executeTool: (name, args) => executor.execute(name, args, { cfg: _cfg }),
+  executeTool: (name, args, ctx) => executor.execute(name, args, { ...ctx, cfg: _cfg }),
   // Schemas para passar pra IA
   getOpenAIToolsSchema: schema.toOpenAITools,
   getTextToolDescription: schema.toTextDescription,

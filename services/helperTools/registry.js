@@ -20,6 +20,14 @@ function list() {
   return Array.from(tools.values());
 }
 
+function listReadOnly() {
+  return Array.from(tools.values()).filter((t) => !t.mutates);
+}
+
+function listMutating() {
+  return Array.from(tools.values()).filter((t) => !!t.mutates);
+}
+
 function clear() {
   tools.clear();
 }
@@ -50,4 +58,4 @@ function loadBuiltins() {
   _loaded = true;
 }
 
-module.exports = { register, get, list, clear, loadBuiltins };
+module.exports = { register, get, list, listReadOnly, listMutating, clear, loadBuiltins };
