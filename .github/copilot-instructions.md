@@ -25,6 +25,11 @@
 
 ## 🏗️ Arquitetura
 
+### Ambiente de Produção (Servidor do Usuário)
+- **Hardware:** Xeon E5 2690 (12 cores/24 threads), 32GB RAM DDR3 1600MHz.
+- **GPU:** AMD Radeon RX 9060 8GB GDDR6.
+- **Modelos (Ollama/MCP):** Llama 3 (8B) e Qwen 2.5 (14B/7B). GPU foca até 8GB.
+
 ### Ambiente de dev
 - **VS Code roda dentro de sandbox Flatpak** → sem `npm`, `dpkg-deb`, `git push` nativo.
 - Para executar qualquer coisa no host: `flatpak-spawn --host bash -lc '...'`.
@@ -70,10 +75,14 @@ package.sh                 # build .deb e .pkg.tar.zst
 - Whisper roda assíncrono em background pra corrigir.
 - Resultado: `segment_whisper_correction` IPC event atualiza UI.
 
+**Agentic Workflow (Multi-fase):**
+- Implementado para **OpenAI** e **Ollama (Backend MCP)**.
+- Ativado quando: "Ferramentas Avançadas" ON + "Acesso ao Workspace" ON + "Intento de escrita/pesquisa complexa".
+- **Fases:** Discovery (leitura), Planning (plano), Implementation (escrita/comandos), Review (conclusão).
+- **Sessões:** IDs únicos por run (ex: `agentic-ollama-123`) p/ evitar contaminação.
+- **Tool Calling Ollama:** Via structured prompt (`TOOL_CALL: {json}`). Loop até 30 iterações.
+
 **Tool calling (helperTools):**
-- Loop em [services/openAIService.js](../services/openAIService.js): chama OpenAI → se response tem `tool_calls`, executa via `helperTools/executor.js` → adiciona resultado ao messages → re-chama. Máx 5 iterações.
-- Tools sempre engajam quando módulo está ON (sem regex restritivo).
-- **Tool calls + results NÃO entram no historyService** (poluem histórico do usuário).
 
 ---
 

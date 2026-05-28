@@ -64,6 +64,7 @@ const historyService = require("./services/historyService.js");
 const helperTools = require("./services/helperTools");
 const workspace = require("./services/workspace");
 const agenticWorkflow = require("./services/agenticWorkflowService");
+const ollamaAgenticWorkflow = require("./services/ollamaAgenticWorkflowService");
 
 /**
  * Monta opts pra OpenAIService.makeOpenAIRequest acoplando o helperTools quando:
@@ -141,7 +142,7 @@ function buildHelperToolsOpenAIOpts(userText, baseInstruction, baseModel) {
 
     const maxToolCalls = Number.isInteger(cfg.maxToolCallsPerRequest)
       ? cfg.maxToolCallsPerRequest
-      : 30;
+      : 50;
 
     const modelTag = forceHeavy
       ? (model === baseModel ? " [HEAVY-kept-user]" : " [HEAVY-upgraded]")
@@ -2104,8 +2105,27 @@ async function getIaResponse(text) {
         try {
           const instructionO = configService.getPromptInstruction();
           const _wsTxtO = await prependWorkspaceContextIfNeeded(text, 'ollama');
-          const _htO = buildHelperToolsOpenAIOpts(_wsTxtO, instructionO, configService.getOpenAiModel());
-          resposta = await BackendService.responder(_wsTxtO, _htO.opts);
+
+          const useAgentic = configService.getHelperToolsEnabled() && 
+                            configService.getWorkspaceAccessEnabled() && 
+                            helperTools.shouldForceHeavyModel(_wsTxtO);
+
+          if (useAgentic) {
+              console.log('🤖 Iniciando AGENTIC WORKFLOW OLLAMA (multi-fase)...');
+              BackendService.clearSessions();
+              try {
+                resposta = await ollamaAgenticWorkflow.run(
+                    _wsTxtO, 
+                    { baseInstruction: instructionO },
+                    mainWindow.webContents
+                );
+              } catch (err) {
+                resposta = `[Ollama Agentic] Interrompido ou falhou: ${err.message}`;
+              }
+          } else {
+              const _htO = buildHelperToolsOpenAIOpts(_wsTxtO, instructionO, configService.getOpenAiModel());
+              resposta = await BackendService.responder(_wsTxtO, _htO.opts);
+          }
           backendIsOnline = true;
         } catch (backendError) {
           console.error("Backend Ollama falhou:", backendError && backendError.message);
@@ -2573,8 +2593,27 @@ ipcMain.on("send-to-gemini", async (event, text) => {
         try {
           const instructionO2 = configService.getPromptInstruction();
           const _wsTxtO2 = await prependWorkspaceContextIfNeeded(text, 'ollama');
-          const _htO2 = buildHelperToolsOpenAIOpts(_wsTxtO2, instructionO2, configService.getOpenAiModel());
-          resposta = await BackendService.responder(_wsTxtO2, _htO2.opts);
+
+          const useAgentic = configService.getHelperToolsEnabled() && 
+                            configService.getWorkspaceAccessEnabled() && 
+                            helperTools.shouldForceHeavyModel(_wsTxtO2);
+
+          if (useAgentic) {
+              console.log('🤖 IPC: Iniciando AGENTIC WORKFLOW OLLAMA (multi-fase)...');
+              BackendService.clearSessions();
+              try {
+                resposta = await ollamaAgenticWorkflow.run(
+                    _wsTxtO2, 
+                    { baseInstruction: instructionO2 },
+                    event.sender
+                );
+              } catch (err) {
+                resposta = `[Ollama Agentic] Interrompido ou falhou: ${err.message}`;
+              }
+          } else {
+              const _htO2 = buildHelperToolsOpenAIOpts(_wsTxtO2, instructionO2, configService.getOpenAiModel());
+              resposta = await BackendService.responder(_wsTxtO2, _htO2.opts);
+          }
           backendIsOnline = true;
         } catch (backendError) {
           console.error("IPC: Backend Ollama falhou:", backendError && backendError.message);
@@ -2596,6 +2635,15 @@ ipcMain.on("send-to-gemini", async (event, text) => {
 
 ipcMain.on("stop-agentic-workflow", (event, sessionId) => {
   agenticWorkflow.stop(sessionId);
+  if (typeof ollamaAgenticWorkflow !== 'undefined') {
+    ollamaAgenticWorkflow.stop(sessionId);
+  }
+});
+
+ipcMain.on("clear-ai-sessions", () => {
+  console.log("🧹 Limpando sessões de IA (OpenAI + Backend)...");
+  if (OpenAIService.sessions) OpenAIService.sessions = {};
+  BackendService.clearSessions();
 });
 
 ipcMain.on("send-to-gemini-stream", async (event, text) => {
@@ -2713,6 +2761,15 @@ ipcMain.handle("get-backend-url", async () => {
 });
 
 // IPC Handlers for Config
+ipcMain.handle("get-app-version", () => {
+  try {
+    const pkg = require("./package.json");
+    return pkg.version;
+  } catch (e) {
+    return "0.0.0";
+  }
+});
+
 ipcMain.handle("get-prompt-instruction", () => {
   return configService.getPromptInstruction();
 });
@@ -4016,8 +4073,27 @@ async function processOsQuestion(text, image = null, opts = {}) {
       try {
         const instructionO3 = configService.getPromptInstruction();
         const _wsTxtO3 = await prependWorkspaceContextIfNeeded(text, 'ollama');
-        const _htO3 = buildHelperToolsOpenAIOpts(_wsTxtO3, instructionO3, configService.getOpenAiModel());
-        resposta = await BackendService.responder(_wsTxtO3, _htO3.opts);
+
+        const useAgentic = configService.getHelperToolsEnabled() && 
+                          configService.getWorkspaceAccessEnabled() && 
+                          helperTools.shouldForceHeavyModel(text || _wsTxtO3);
+
+        if (useAgentic) {
+            console.log('🤖 OCR: Iniciando AGENTIC WORKFLOW OLLAMA (multi-fase)...');
+            BackendService.clearSessions();
+            try {
+              resposta = await ollamaAgenticWorkflow.run(
+                  _wsTxtO3, 
+                  { baseInstruction: instructionO3 },
+                  osNotificationWindow.webContents
+              );
+            } catch (err) {
+              resposta = `[Ollama Agentic] Interrompido ou falhou: ${err.message}`;
+            }
+        } else {
+            const _htO3 = buildHelperToolsOpenAIOpts(_wsTxtO3, instructionO3, configService.getOpenAiModel());
+            resposta = await BackendService.responder(_wsTxtO3, _htO3.opts);
+        }
         backendIsOnline = true;
       } catch (backendError) {
         console.error("Backend Ollama falhou:", backendError && backendError.message);

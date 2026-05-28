@@ -77,7 +77,7 @@ const DEFAULT_HELPER_TOOLS_CONFIG = Object.freeze({
   auditLogPath: path.join(HOME, ".config", "helper-node", "audit.log"),
 
   // Limites do loop de tool-calling
-  maxToolCallsPerRequest: 5,
+  maxToolCallsPerRequest: 50,
   maxFileSizeForRead: 2 * 1024 * 1024, // 2 MB
   maxLinesForFullRead: 500,
 });

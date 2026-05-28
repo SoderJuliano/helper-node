@@ -109,4 +109,5 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("agentic-debug-info", (event, data) => cb(data)),
   stopAgenticWorkflow: (sessionId) =>
     ipcRenderer.send("stop-agentic-workflow", sessionId),
+  clearAiSessions: () => ipcRenderer.send("clear-ai-sessions"),
 });

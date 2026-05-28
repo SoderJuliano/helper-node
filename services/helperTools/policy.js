@@ -22,6 +22,7 @@ function expandHome(p) {
 }
 
 function resolveAbs(p) {
+  if (typeof p === "string") p = p.trim();
   const expanded = expandHome(p);
   return path.resolve(expanded);
 }

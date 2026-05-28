@@ -13,7 +13,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 APP_NAME="helper-node"
-VERSION="0.3.3"
+VERSION="0.3.4"
 BUILD_DIR="$(pwd)/build"
 DIST_DIR="$(pwd)/dist"
 PROJECT_ROOT="$(pwd)"
@@ -23,7 +23,7 @@ APP_CONFIG_CANDIDATES=(
 )
 
 echo -e "${GREEN}╔════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║  Helper Node Package Builder v0.3.2    ║${NC}"
+echo -e "${GREEN}║  Helper Node Package Builder v${VERSION}  ║${NC}"
 echo -e "${GREEN}╚════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -198,16 +198,12 @@ build_arch() {
             chown -R builder:builder /build
             su builder -c "makepkg -f --nodeps --skipchecksums"
         '
-        # Move pacote final pra dist/ e limpa lixo (pkg/, src/, debug pkg)
+        # Move pacote final pra dist/ e limpa TUDO desnecessario
         if ls "${ARCH_BUILD}"/helper-node-${VERSION}-*-x86_64.pkg.tar.zst &>/dev/null; then
             mv "${ARCH_BUILD}"/helper-node-${VERSION}-*-x86_64.pkg.tar.zst "${DIST_DIR}/"
-            # debug package nao serve pra distribuicao
-            rm -f "${ARCH_BUILD}"/helper-node-debug-*.pkg.tar.zst 2>/dev/null || true
-            # pkg/ e src/ sao do makepkg; podem ter ownership de root via container
-            rm -rf "${ARCH_BUILD}/pkg" "${ARCH_BUILD}/src" 2>/dev/null \
-                || sudo rm -rf "${ARCH_BUILD}/pkg" "${ARCH_BUILD}/src" 2>/dev/null \
-                || true
             echo -e "${GREEN}✓${NC} Arch package created: ${DIST_DIR}/${APP_NAME}-${VERSION}-1-x86_64.pkg.tar.zst"
+            # Limpa pasta arch-build completamente (tarball, debug pkg, pkg/, src/, etc)
+            rm -rf "${ARCH_BUILD}" 2>/dev/null || true
         else
             echo -e "${RED}✗${NC} container Arch terminou mas .pkg.tar.zst nao foi gerado"
             return 1

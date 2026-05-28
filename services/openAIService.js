@@ -78,7 +78,7 @@ class OpenAIService {
         // helperTools: se o caller passou tools[] (schema OpenAI), entra em loop de tool-calling
         const tools = hasTools ? opts.tools : null;
         const onToolCall = typeof opts.onToolCall === 'function' ? opts.onToolCall : null;
-        const maxToolCalls = Number.isInteger(opts.maxToolCalls) ? opts.maxToolCalls : 5;
+        const maxToolCalls = Number.isInteger(opts.maxToolCalls) ? opts.maxToolCalls : 50;
         if (tools && onToolCall) {
             requestPayload.tools = tools;
             requestPayload.tool_choice = 'auto';

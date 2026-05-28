@@ -1675,11 +1675,28 @@
             // Novo chat
             newChatBtn.addEventListener('click', async () => {
                 try {
+                    // Limpa a UI
+                    transcriptionElement.innerHTML = '';
+                    greeting.style.display = 'block';
+                    
+                    // Reseta estado local
                     historyState.currentSessionId = null;
-                    removeManualInputContainer();
-                    conversationViewer.style.display = 'none';
                     window.historySession.reset();
-                    console.log('✓ Novo chat iniciado');
+                    
+                    // Reseta variáveis de streaming
+                    streamingElement = null;
+                    streamingText = '';
+                    typingCursor = null;
+                    
+                    // Fecha visualizador se estiver aberto
+                    conversationViewer.style.display = 'none';
+                    removeManualInputContainer();
+                    
+                    // Notifica o backend para limpar sessões de IA imediatamente
+                    window.electronAPI.clearAiSessions();
+                    
+                    console.log('✓ Novo chat iniciado: UI limpa e sessões resetadas');
+                    showToast('Nova conversa iniciada');
                 } catch (error) {
                     console.error('Erro ao criar novo chat:', error);
                 }
@@ -2999,42 +3016,68 @@
                 else wrap.classList.remove('has-text');
             };
 
-            // Coloca cursor de selecao logo ANTES do '_' (que e' nao-editavel).
-            const moveCaretBeforeCursor = () => {
+            // Reposiciona o '_' para ficar logo ANTES da posicao atual do caret.
+            const syncCursorWithCaretPosition = () => {
                 try {
                     const sel = window.getSelection();
-                    const range = document.createRange();
-                    range.setStartBefore(gCursor);
-                    range.collapse(true);
-                    sel.removeAllRanges();
-                    sel.addRange(range);
+                    if (!sel.rangeCount) return;
+                    
+                    // Remove o cursor visual de qualquer lugar
+                    inputField.querySelectorAll('.gcursor').forEach(n => n.remove());
+                    
+                    // Obtem a posicao do caret
+                    const caretRange = sel.getRangeAt(0).cloneRange();
+                    caretRange.collapse(true);
+                    
+                    // Insere o cursor visual NA posicao do caret
+                    try {
+                        caretRange.insertNode(gCursor);
+                    } catch (_) {
+                        // Se falhar, coloca no fim (fallback)
+                        inputField.appendChild(gCursor);
+                    }
+                    
+                    // Atualiza toggle has-text
+                    const txt = inputField.value;
+                    if (txt.length > 0) wrap.classList.add('has-text');
+                    else wrap.classList.remove('has-text');
                 } catch (_) {}
             };
 
             inputField.addEventListener('input', () => {
-                syncCursor();
-                // Se o usuario digitou DEPOIS do _, o syncCursor moveu o _ pro fim.
-                // Reposiciona o caret antes do _.
-                moveCaretBeforeCursor();
+                syncCursorWithCaretPosition();
             });
-            // Bloqueia tentar digitar/selecionar dentro do span do cursor.
-            inputField.addEventListener('keydown', () => {
-                // Se selecao esta apos o _, normaliza antes do _ no proximo tick.
+
+            // Monitor setas direcionais, Home, End, Delete, Backspace
+            inputField.addEventListener('keydown', (e) => {
+                const keysToHandle = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'Delete', 'Backspace'];
+                if (keysToHandle.includes(e.key)) {
+                    // Deixa a navegacao acontecer naturalmente
+                    setTimeout(() => {
+                        syncCursorWithCaretPosition();
+                    }, 0);
+                }
+            });
+
+            // Monitor clique do mouse
+            inputField.addEventListener('mousedown', () => {
                 setTimeout(() => {
-                    const sel = window.getSelection();
-                    if (!sel.rangeCount) return;
-                    const r = sel.getRangeAt(0);
-                    if (r.startContainer === gCursor || (gCursor.contains(r.startContainer))) {
-                        moveCaretBeforeCursor();
-                    }
+                    syncCursorWithCaretPosition();
                 }, 0);
-            }, true);
+            });
+
+            // Monitor selectionchange global (caso caret se mova por outras vias)
+            document.addEventListener('selectionchange', () => {
+                if (document.activeElement === inputField) {
+                    syncCursorWithCaretPosition();
+                }
+            });
 
             // Init: insere o cursor.
             if (initialText) {
                 inputField.textContent = initialText;
             }
-            syncCursor();
+            syncCursorWithCaretPosition();
 
             wrap.appendChild(hint);
             wrap.appendChild(inputField);
@@ -3062,7 +3105,7 @@
             // Foca no input com um pequeno delay para garantir que o DOM foi atualizado
             setTimeout(() => {
                 inputField.focus();
-                moveCaretBeforeCursor();
+                syncCursorWithCaretPosition();
             }, 100);
             
             // Enter quebra linha, Shift+Enter envia
