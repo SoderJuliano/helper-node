@@ -45,7 +45,7 @@ module.exports = {
   setConfirmer,
   setOnFileWritten,
 
-  async run(args) {
+  async run(args, ctx) {
     const target = args && args.path ? path.resolve(args.path) : "";
     const content = String(args && args.content || "");
     if (!target) return { ok: false, error: "path obrigatório" };
@@ -55,19 +55,27 @@ module.exports = {
     if (!workspace.isPathAllowed(target)) {
       return { ok: false, error: `path "${target}" não está em nenhum anexo do workspace. Adicione a pasta/arquivo primeiro.` };
     }
-    if (typeof _confirmer !== "function") {
-      return { ok: false, error: "confirmer não registrado" };
-    }
     const existed = fss.existsSync(target);
     const action = existed ? "SOBRESCREVER" : "CRIAR";
-    const confirmed = await _confirmer({
-      title: "Confirmação necessária",
-      message: `A IA quer ${action} o arquivo:`,
-      detail: `${target}\n${args.reason || ""}\n\n${content.length} bytes${existed ? " · backup automático antes" : ""}`,
-      confirmText: existed ? "Sobrescrever" : "Criar",
-      cancelText: "Cancelar",
-      timeoutMs: 30000,
-    });
+    
+    let confirmed = false;
+    if (ctx && ctx.force) {
+      console.log(`[writeFile] force=true → ignorando confirmação visual para ${target}`);
+      confirmed = true;
+    } else {
+      if (typeof _confirmer !== "function") {
+        return { ok: false, error: "confirmer não registrado" };
+      }
+      confirmed = await _confirmer({
+        title: "Confirmação necessária",
+        message: `A IA quer ${action} o arquivo:`,
+        detail: `${target}\n${args.reason || ""}\n\n${content.length} bytes${existed ? " · backup automático antes" : ""}`,
+        confirmText: existed ? "Sobrescrever" : "Criar",
+        cancelText: "Cancelar",
+        timeoutMs: 30000,
+      });
+    }
+
     if (!confirmed) return { ok: true, result: { written: false, reason: "cancelado pelo usuário" } };
 
     try {

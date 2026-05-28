@@ -105,7 +105,6 @@ paralelo com flatpak/snap quando disponíveis:
   `/gemma3`, `/qwen25`) com structured prompt + JSON parser pra tool calls
   [PARCIALMENTE FEITO em backendService.js — falta sudoManager + sudo-prompt].
 - **Futuro** — whitelist editável via UI, macOS adapter testado, modo dry-run,
-  integração VS Code Tasks.
 
 ---
 

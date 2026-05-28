@@ -35,7 +35,7 @@ module.exports = {
   setConfirmer,
   setOnFileWritten,
 
-  async run(args) {
+  async run(args, ctx) {
     const target = args && args.path ? path.resolve(args.path) : "";
     if (!target) return { ok: false, error: "path obrigatório" };
     if (!workspace.isPathAllowed(target)) {
@@ -46,16 +46,23 @@ module.exports = {
     }
     const st = await fs.stat(target);
     if (st.isDirectory()) return { ok: false, error: "deleteFile não apaga diretórios. Use deletePath (não implementado) ou faça pelo shell." };
-    if (typeof _confirmer !== "function") return { ok: false, error: "confirmer não registrado" };
+    
+    let confirmed = false;
+    if (ctx && ctx.force) {
+      console.log(`[deleteFile] force=true → ignorando confirmação visual para ${target}`);
+      confirmed = true;
+    } else {
+      if (typeof _confirmer !== "function") return { ok: false, error: "confirmer não registrado" };
+      confirmed = await _confirmer({
+        title: "⚠️ Confirmação necessária",
+        message: "A IA quer APAGAR o arquivo:",
+        detail: `${target}\n${args.reason || ""}\n\n${st.size} bytes${await _hasGioTrash() ? " · vai pra lixeira" : " · DELETE permanente (sem lixeira)"}`,
+        confirmText: "Apagar",
+        cancelText: "Cancelar",
+        timeoutMs: 30000,
+      });
+    }
 
-    const confirmed = await _confirmer({
-      title: "⚠️ Confirmação necessária",
-      message: "A IA quer APAGAR o arquivo:",
-      detail: `${target}\n${args.reason || ""}\n\n${st.size} bytes${await _hasGioTrash() ? " · vai pra lixeira" : " · DELETE permanente (sem lixeira)"}`,
-      confirmText: "Apagar",
-      cancelText: "Cancelar",
-      timeoutMs: 30000,
-    });
     if (!confirmed) return { ok: true, result: { deleted: false, reason: "cancelado" } };
 
     try {

@@ -4,8 +4,9 @@
 
 const registry = require("./registry");
 
-function toOpenAITools() {
-  return registry.list().map((t) => ({
+function toOpenAITools(customList) {
+  const list = customList || registry.list();
+  return list.map((t) => ({
     type: "function",
     function: {
       name: t.name,

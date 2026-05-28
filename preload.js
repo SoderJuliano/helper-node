@@ -101,4 +101,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("workspace-changed", (event, data) => cb(data)),
   onWorkspaceFileWritten: (cb) =>
     ipcRenderer.on("workspace-file-written", (event, data) => cb(data)),
+
+  // === Agentic Workflow (multi-phase) ===
+  onAgenticPhaseUpdate: (cb) =>
+    ipcRenderer.on("agentic-phase-update", (event, data) => cb(data)),
+  onAgenticDebugInfo: (cb) =>
+    ipcRenderer.on("agentic-debug-info", (event, data) => cb(data)),
+  stopAgenticWorkflow: (sessionId) =>
+    ipcRenderer.send("stop-agentic-workflow", sessionId),
 });

@@ -1086,6 +1086,89 @@
             transform: scale(0.8);
         }
 
+        /* === Agentic Workflow UI === */
+        #agentic-status-container {
+            display: none;
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(20, 20, 22, 0.9);
+            border: 1px solid rgba(76, 175, 80, 0.5);
+            border-radius: 8px;
+            padding: 8px 16px;
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            font-family: 'Inter', sans-serif;
+            font-size: 13px;
+            min-width: 300px;
+            pointer-events: auto;
+        }
+
+        #agentic-status-text {
+            flex: 1;
+            color: #e0e0e0;
+            font-weight: 500;
+        }
+
+        #agentic-phase-tag {
+            background: rgba(76, 175, 80, 0.2);
+            color: #81c784;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            text-transform: uppercase;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+        }
+
+        .agentic-stop-btn {
+            background: rgba(244, 67, 54, 0.1);
+            border: 1px solid rgba(244, 67, 54, 0.4);
+            color: #ff8a80;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 14px;
+            font-weight: bold;
+            padding: 0;
+            line-height: 1;
+        }
+
+        .agentic-stop-btn:hover {
+            background: rgba(244, 67, 54, 0.3);
+            border-color: rgba(244, 67, 54, 0.8);
+            color: #fff;
+        }
+
+        .agentic-debug-block {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 10px;
+            margin: 10px 0;
+            font-size: 11px;
+            max-height: 200px;
+            overflow-y: auto;
+            text-align: left;
+        }
+
+        .agentic-debug-header {
+            font-weight: bold;
+            color: #ffab40;
+            margin-bottom: 6px;
+            display: flex;
+            justify-content: space-between;
+        }
+
     </style>
     <!-- Inclua a biblioteca Lottie -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js"></script>
@@ -1170,6 +1253,13 @@
     </div>
     <div id="app-toast" role="status" aria-live="polite"></div>
 
+    <!-- Agentic Workflow Status -->
+    <div id="agentic-status-container" style="display: none;">
+        <div id="agentic-phase-tag">DISCOVERY</div>
+        <div id="agentic-status-text">Iniciando...</div>
+        <button id="agentic-stop-btn" class="agentic-stop-btn" title="Interromper processo">×</button>
+    </div>
+
 
     <script>
 
@@ -1184,6 +1274,58 @@
             const historyPanel = document.getElementById('history-panel');
             const historyToggle = document.getElementById('history-toggle');
             const historyHeader = document.getElementById('history-header');
+
+            // === Agentic Workflow Listeners ===
+            const agenticContainer = document.getElementById('agentic-status-container');
+            const agenticPhaseTag = document.getElementById('agentic-phase-tag');
+            const agenticStatusText = document.getElementById('agentic-status-text');
+            const agenticStopBtn = document.getElementById('agentic-stop-btn');
+            let activeAgenticSession = null;
+
+            window.electronAPI.onAgenticPhaseUpdate(({ phase, status, sessionId }) => {
+                activeAgenticSession = sessionId;
+                agenticContainer.style.display = 'flex';
+                agenticPhaseTag.textContent = phase;
+                agenticStatusText.textContent = status;
+
+                if (phase === 'completed' || phase === 'error') {
+                    setTimeout(() => {
+                        if (activeAgenticSession === sessionId) {
+                            agenticContainer.style.display = 'none';
+                            activeAgenticSession = null;
+                        }
+                    }, 5000);
+                }
+            });
+
+            window.electronAPI.onAgenticDebugInfo(({ type, data, sessionId }) => {
+                const isDebug = document.getElementById('debug-indicator').style.display !== 'none';
+                if (!isDebug) return;
+
+                const transcriptionElement = document.getElementById('transcription');
+                const debugBlock = document.createElement('div');
+                debugBlock.className = 'agentic-debug-block';
+                
+                const header = document.createElement('div');
+                header.className = 'agentic-debug-header';
+                header.innerHTML = `<span>🔍 DEBUG: ${type.toUpperCase()}</span><span>${new Date().toLocaleTimeString()}</span>`;
+                
+                const content = document.createElement('pre');
+                content.style.margin = '0';
+                content.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+                
+                debugBlock.appendChild(header);
+                debugBlock.appendChild(content);
+                transcriptionElement.appendChild(debugBlock);
+                scrollTranscriptionToBottom();
+            });
+
+            agenticStopBtn.addEventListener('click', () => {
+                if (activeAgenticSession) {
+                    window.electronAPI.stopAgenticWorkflow(activeAgenticSession);
+                    agenticStatusText.textContent = 'Interrompendo...';
+                }
+            });
 
             // === Workspace bar (anexos pra contexto da IA) ===
             const wsPanel = document.getElementById('workspace-panel');
