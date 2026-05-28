@@ -144,9 +144,9 @@ function buildOllamaToolsAddon(toolsSchema) {
   lines.push('Resposta correta (UMA linha, sem markdown, sem texto antes):');
   lines.push('TOOL_CALL: {"name":"writeFile","args":{"path":"/abs/path/README.md","content":"# Titulo\\n\\nDescricao...","reason":"Criar README"}}');
   lines.push('');
-  lines.push('User: "o que tem no pom.xml?"');
+  lines.push('User: "o que tem no arquivo de config?"');
   lines.push('Resposta correta:');
-  lines.push('TOOL_CALL: {"name":"readFile","args":{"path":"/abs/path/pom.xml"}}');
+  lines.push('TOOL_CALL: {"name":"readFile","args":{"path":"/abs/path/config.json"}}');
   lines.push('');
   lines.push('ERRADO (NAO FACA): explicar o que vai fazer, usar ```markdown ao redor,');
   lines.push('inventar texto tipo "Texto explicativo:" ou "Vou criar...". Apenas EMITA o TOOL_CALL.');
@@ -155,9 +155,6 @@ function buildOllamaToolsAddon(toolsSchema) {
 }
 
 // System prompt minimalista para modo tool-first.
-// Quando o usuario pede explicitamente pra ler/escrever arquivo, o prompt completo
-// (com regras de "max 65 palavras", "sem floreio", "use negrito") domina o modelo
-// e ele ignora as tools. Aqui derrubamos tudo isso e deixamos so o essencial.
 function buildToolFirstSystemPrompt(toolsSchema) {
   const lines = [
     'Voce e um agente que executa tarefas atraves de TOOL_CALL.',
@@ -181,7 +178,7 @@ function buildToolFirstSystemPrompt(toolsSchema) {
   lines.push('');
   lines.push('EXEMPLOS:');
   lines.push('- Para criar README.md: TOOL_CALL: {"name":"writeFile","args":{"path":"/home/user/proj/README.md","content":"# Titulo\\n...","reason":"criar readme"}}');
-  lines.push('- Para ler pom.xml: TOOL_CALL: {"name":"readFile","args":{"path":"/home/user/proj/pom.xml"}}');
+  lines.push('- Para ler config: TOOL_CALL: {"name":"readFile","args":{"path":"/home/user/proj/package.json"}}');
   lines.push('- Para listar pasta: TOOL_CALL: {"name":"listDir","args":{"path":"/home/user/proj"}}');
   lines.push('- Para "tem alteracoes nao comitadas?": TOOL_CALL: {"name":"runCommand","args":{"cmd":"git","args":["status","--short"],"cwd":"/home/user/proj"}}');
   lines.push('- Para fazer commit: TOOL_CALL: {"name":"runCommand","args":{"cmd":"git","args":["commit","-am","mensagem"],"cwd":"/home/user/proj"}}');
@@ -197,12 +194,11 @@ function buildToolFirstSystemPrompt(toolsSchema) {
   lines.push('4. NAO use ```markdown ao redor. NAO explique. Apenas emita o TOOL_CALL.');
   lines.push('');
   lines.push('═══ CRITICO: TAREFAS MULTI-ARQUIVO ═══');
-  lines.push('Se o usuario pediu pra criar VARIOS arquivos (ex: controller + service + adapter + port),');
-  lines.push('emita UM TOOL_CALL writeFile POR ARQUIVO, em iteracoes sucessivas. Apos cada TOOL_RESULT,');
-  lines.push('voce vai receber o resultado e DEVE emitir o PROXIMO TOOL_CALL writeFile pro proximo arquivo.');
+  lines.push('Se o usuario pediu pra criar VARIOS arquivos, emita UM TOOL_CALL writeFile POR ARQUIVO, em iteracoes sucessivas.');
+  lines.push('Apos cada TOOL_RESULT, voce vai receber o resultado e DEVE emitir o PROXIMO TOOL_CALL pro proximo arquivo.');
   lines.push('SO encerre (resposta em texto sem TOOL_CALL) quando TODOS os arquivos pedidos estiverem criados.');
   lines.push('');
-  lines.push('NUNCA, NUNCA imprima codigo dentro de ```java ``` ou ```xml ``` achando que isso cria arquivo.');
+  lines.push('NUNCA, NUNCA imprima codigo dentro de ``` blocos achando que isso cria arquivo.');
   lines.push('Mostrar codigo em markdown e\' INUTIL — nao cria nada no disco. SO TOOL_CALL writeFile cria arquivo.');
   lines.push('');
   return lines.join('\n');
@@ -429,6 +425,11 @@ class BackendService {
     }
   }
 
+  clearSessions() {
+    this.sessions = {};
+    console.log('[backend] Todas as sessões limpas.');
+  }
+
   async getLastEnvUrl() {
     try {
       const response = await axios.get(
@@ -491,11 +492,12 @@ class BackendService {
   async responder(texto, opts = {}) {
     if (!texto) throw new Error("Não entendi");
 
-    // opts = { tools?: [...], onToolCall?: fn, maxToolCalls?: number }
-    // Quando tools presente, ativa loop de tool-calling structured-prompt.
+    // opts = { tools?: [...], onToolCall?: fn, maxToolCalls?: number, sessionId?: string, instruction?: string }
     const tools = Array.isArray(opts.tools) && opts.tools.length ? opts.tools : null;
     const onToolCall = typeof opts.onToolCall === 'function' ? opts.onToolCall : null;
-    const maxToolCalls = Number.isInteger(opts.maxToolCalls) ? opts.maxToolCalls : 10;
+    const maxToolCalls = Number.isInteger(opts.maxToolCalls) ? opts.maxToolCalls : 50;
+    const sessionId = opts.sessionId || 'default';
+    const customInstruction = opts.instruction;
 
     // Se a URL não foi pega ainda, tenta novamente
     if (!apiUrl) {
@@ -508,8 +510,6 @@ class BackendService {
       throw new Error("Could not retrieve backend URL.");
     }
 
-    const sessionId = 'default'; // Using a single session for now
-    
     // Manage session context (adds user message and builds context)
     const conversationContext = this.manageSessionContext(sessionId, texto);
 
@@ -526,18 +526,10 @@ class BackendService {
 
     try {
       // === Roteamento de modelo Ollama ===
-      // O backend Java expoe varios endpoints com modelos diferentes:
-      //   /llamatiny  → llama3.2:1b ou similar (super rapido, conversa casual)
-      //   /llama3     → llama3 8b (geral, default)
-      //   /qwen25     → qwen2.5:14b (raciocinio tecnico, codigo, matematica)
-      //   /gemma3     → gemma3 (alternativa)
-      // Heuristica: casual curto -> llamatiny, tecnico/code/math -> qwen25, resto -> llama3.
       let modelEndpoint = pickOllamaEndpoint(texto);
       let workspace = null;
       let wsEnabled = false;
       let attCount = 0;
-      // Quando houver anexos no workspace, usa qwen25 por padrão.
-      // Isso melhora muito perguntas sobre projeto/codigo/endpoints.
       try {
         workspace = require('./workspace');
         wsEnabled = !!(configService.getWorkspaceAccessEnabled && configService.getWorkspaceAccessEnabled());
@@ -551,23 +543,45 @@ class BackendService {
       }
       const endpoint = `${apiUrl}${modelEndpoint}`;
       console.log(`[backend] roteado para ${modelEndpoint} (${texto.slice(0, 40).replace(/\n/g, ' ')}...)`);
-      let promptInstruction = configService.getPromptInstruction();
+      
+      // Use custom instruction if provided, otherwise use the default one
+      let promptInstruction = customInstruction || configService.getPromptInstruction();
 
       // Tool calling Ollama: anexa instrucoes de formato + lista de tools no system prompt.
-      // NAO mexe no roteamento — usa o endpoint que o pickOllamaEndpoint escolheu.
       let effectiveEndpoint = modelEndpoint;
-      // Quando o usuario PEDE explicitamente pra ler/escrever arquivo, o
-      // system prompt completo (com regras "max 65 palavras", "sem floreio",
-      // "use negrito") domina o modelo e ele ignora as tools. Detectamos esse
-      // intent e trocamos por um prompt tool-first minimalista.
-      const toolFirstMode = !!(tools && onToolCall && wsEnabled && attCount > 0
-        && (isWriteIntent(texto) || isFileReadIntent(texto) || isShellCommandIntent(texto)));
+      const writeIntent = isWriteIntent(texto);
+      const readIntent = isFileReadIntent(texto);
+      const shellIntent = isShellCommandIntent(texto);
+      
+      // CRITICAL: If tools are enabled and workspace is attached, we are in STRICT MODE.
+      // The AI MUST NOT output code in markdown; it MUST use tools.
+      const isStrictMode = !!(tools && onToolCall && wsEnabled && attCount > 0);
+      const toolFirstMode = isStrictMode && (writeIntent || readIntent || shellIntent);
+      const forceTools = opts.forceTools || toolFirstMode;
+
       if (tools && onToolCall) {
-        if (toolFirstMode) {
+        if (isStrictMode && !customInstruction) {
+          // Absolute enforcement for strict mode: no chatty rules, just action.
+          promptInstruction = [
+            "═══ REGRAS DE OURO (MODO AGENTE ATIVO) ═══",
+            "1. VOCÊ É UM AGENTE DE EXECUÇÃO. Sua missão é realizar a tarefa através de TOOL_CALL.",
+            "2. NUNCA, SOB NENHUMA CIRCUNSTÂNCIA, escreva código dentro de blocos ``` (markdown).",
+            "3. Se precisar criar/editar arquivo, use writeFile/patchFile.",
+            "4. Se precisar ler, use listDir/readFile.",
+            "5. Se precisar rodar comandos, use runCommand.",
+            "6. MOSTRAR CÓDIGO NA TELA É PROIBIDO E SERÁ REJEITADO PELO SISTEMA.",
+            "7. Comece sua resposta IMEDIATAMENTE com TOOL_CALL:.",
+            "",
+            buildOllamaToolsAddon(tools)
+          ].join("\n");
+          console.log('[backend][strict] MODO ESTRITO ATIVO: Bloqueando saída de texto/código raw.');
+        } else if (forceTools && !customInstruction) { 
           promptInstruction = buildToolFirstSystemPrompt(tools);
-          console.log('[backend][tools] modo TOOL-FIRST ativo (intent=write/read, ignorando regras de formatacao)');
+          console.log('[backend][tools] modo TOOL-FIRST ativo (intent detected, ignoring formatting rules)');
         } else {
-          const analysisAddon = buildDeepAnalysisAddon({
+          // If customInstruction is provided, we still need the tool list and format instructions,
+          // but we should avoid the deep analysis addon if we're already in a specialized phase.
+          const analysisAddon = customInstruction ? '' : buildDeepAnalysisAddon({
             toolsEnabled: true,
             wsEnabled,
             attCount,
@@ -578,47 +592,20 @@ class BackendService {
       }
       
       // Build prompt with conversation context.
-      // llamatiny (1b) NAO consegue ignorar marcadores tipo "Conversation context:"
-      // — vira papagaio do template. Pra ele mandamos so a mensagem do user com
-      // histórico simplificado. Pros maiores mantemos o template antigo que o
-      // backend Java reconhece e processa.
       let promptWithContext;
       if (modelEndpoint === '/llamatiny') {
-        // Histórico simplificado: ultimas 2-3 trocas, sem labels Human:/Assistant:.
         const lastMsgs = conversationContext
           ? conversationContext.split(/\n/).filter(Boolean).slice(-4).join('\n')
           : texto;
         promptWithContext = `${promptInstruction}\n\n${lastMsgs}`;
       } else {
-        // Backend Java faz parsing em "Conversation context:" e "Please respond..."
-        // — nao mudar sem alinhar com o servidor.
+        const instructionSuffix = isStrictMode 
+          ? "EXECUTE AS AÇÕES PEDIDAS USANDO AS FERRAMENTAS (TOOL_CALL). NÃO RESPONDA COM TEXTO NEM CÓDIGO RAW."
+          : "Please respond to the latest human message.";
+        
         promptWithContext = conversationContext 
-          ? `${promptInstruction}\n\nConversation context:\n${conversationContext}\nPlease respond to the latest human message.`
+          ? `${promptInstruction}\n\nConversation context:\n${conversationContext}\n${instructionSuffix}`
           : `${promptInstruction}${texto}`;
-      }
-
-      // Backend Java espera ChatRequest(String prompt, String language).
-      // Campos extras (ip, email, agent, newPrompt) sao ignorados pelo Jackson,
-      // mas mandar so o necessario fica mais limpo.
-
-      // Workspace context (se ON): prepend listagem/arquivos anexados.
-      // Só injeta na primeira pergunta da sessão (flag interna do store).
-      try {
-        if (wsEnabled && workspace) {
-          const modelKey = modelEndpoint.replace(/^\//, '');
-          const ctx = await workspace.buildContextIfNeeded(modelKey, { userText: texto });
-          if (ctx) {
-            workspace.markContextSent();
-            promptWithContext = ctx + "\n\n---\n\n" + promptWithContext;
-            console.log(`[workspace] ✅ contexto injetado no prompt Ollama (${ctx.length} chars, ${attCount} anexos, model=${modelKey})`);
-          } else {
-            console.log(`[workspace] contexto ja injetado nesta sessao; IA usa as tools para explorar`);
-          }
-        } else {
-          console.log('[workspace] toggle "Acesso a diretorios" esta OFF — nenhum contexto sera injetado');
-        }
-      } catch (e) {
-        console.warn('[workspace] falhou injetar contexto no Ollama:', e.message);
       }
 
       const body = {
@@ -633,8 +620,6 @@ class BackendService {
 
       console.log('Backend prompt with context:', promptWithContext);
 
-      // Tenta no endpoint roteado (effectiveEndpoint pode ter sido forcado pra qwen25 quando tools ON);
-      // se 404 (modelo nao existe no proxy), cai automaticamente pra /llama3 que sempre existe.
       let response;
       try {
         response = await axios.post(`${apiUrl}${effectiveEndpoint}`, body, { 
@@ -668,7 +653,6 @@ class BackendService {
         throw new Error("Empty response from backend");
       }
 
-      // Assumindo que a resposta do seu backend tem o mesmo formato do Ollama ou retorna o texto diretamente
       let resposta = response.data.response || response.data;
       if (typeof resposta !== 'string') resposta = String(resposta);
 
@@ -676,54 +660,45 @@ class BackendService {
       if (tools && onToolCall) {
         let workingPrompt = promptWithContext;
         let iter = 0;
-        const mustUseTools = wsEnabled && attCount > 0 && (isWriteIntent(texto) || isFileReadIntent(texto) || isShellCommandIntent(texto));
-        // Paths absolutos dos anexos pro retry forçado embutir no exemplo
+        const mustUseTools = forceTools;
+        
         let wsPaths = [];
         try {
           if (workspace) wsPaths = workspace.list().map(a => a.path).filter(Boolean);
         } catch (_) {}
         let forcedRetryCount = 0;
-        // Anti-dup runCommand: cmd+args+cwd ja executado neste turno.
-        // Bug observado: depois de add/commit/push, modelo nao fecha resposta,
-        // forcedRetry empurra de novo e ele repete "git add".
         const _ranCmds = new Set();
-        // Resumo dos comandos rodados pra montar fallback quando o modelo nao
-        // gera resposta final.
         const _ranSummary = [];
-        // Conta tools executadas com sucesso — se ja houve >=1, NAO forcar retry
-        // quando a resposta vier sem TOOL_CALL (provavelmente terminou).
         let toolsExecutedOk = 0;
-        // Detecta blocos de codigo na resposta — sinal de que o modelo
-        // imprimiu codigo em markdown achando que estava criando arquivo.
-        // Quando isso acontece numa intent de WRITE, e' tarefa incompleta.
         const hasCodeBlocks = (txt) => /```[a-zA-Z0-9_+-]*\s*\n[\s\S]+?```/.test(String(txt || ''));
+
         while (iter < maxToolCalls) {
           const calls = parseOllamaToolCalls(resposta);
           if (!calls.length) {
             // Decisao do retry forcado:
-            // - intent write/read/shell + nenhuma tool rodou ainda → forca
-            // - intent WRITE + ja rodou alguma tool MAS resposta tem ```code```
+            // - mustUseTools + nenhuma tool rodou ainda → forca
+            // - mustUseTools + ja rodou alguma tool MAS resposta tem ```code```
             //   (modelo so "explicou" o resto em markdown em vez de criar) → forca
-            const writeIntentWithCodeLeak = isWriteIntent(texto) && toolsExecutedOk > 0 && hasCodeBlocks(resposta);
+            const writeIntentWithCodeLeak = writeIntent && toolsExecutedOk > 0 && hasCodeBlocks(resposta);
             const shouldRetry = mustUseTools && forcedRetryCount < 3 && (toolsExecutedOk === 0 || writeIntentWithCodeLeak);
+            
             if (shouldRetry) {
               forcedRetryCount++;
               const reason = writeIntentWithCodeLeak
                 ? `tarefa incompleta (modelo imprimiu codigo em markdown em vez de chamar writeFile)`
-                : `sem TOOL_CALL em intento de leitura/escrita`;
+                : `sem TOOL_CALL em intento de ferramentas (forced/detected)`;
               console.warn(`[backend][tools] ${reason}; forçando retry estrito ${forcedRetryCount}/3`);
-              // Prompt MINIMO, sem o template original (que confunde o modelo).
-              // Mostra ferramentas, paths reais do workspace e exige TOOL_CALL puro.
+              
               const wsLine = wsPaths.length
                 ? `Workspace anexado (use estes paths absolutos): ${wsPaths.join(', ')}`
-                : 'Workspace anexado: (sem paths detectados — peca confirmacao se necessario)';
+                : 'Workspace anexado: (sem paths detectados)';
               const toolList = (tools || []).map(t => {
                 const fn = t.function || t;
                 return `${fn.name}(${fn.parameters && fn.parameters.properties ? Object.keys(fn.parameters.properties).join(',') : ''})`;
               }).join('\n- ');
               const _ws0 = wsPaths[0] || '/abs/path';
-              const _isGitQ = isShellCommandIntent(texto);
-              // Lista arquivos JA criados pra dar contexto ao modelo no retry.
+              const _isGitQ = shellIntent;
+              
               const _filesCreated = _ranSummary
                 .filter(s => s.startsWith('✓ writeFile'))
                 .map(s => s.replace(/^✓ writeFile\s*→\s*/, ''))
@@ -731,6 +706,7 @@ class BackendService {
               const _alreadyCreatedLine = _filesCreated.length
                 ? `\nARQUIVOS JA CRIADOS NESTE TURNO (NAO RECRIE): ${_filesCreated.join(', ')}\n`
                 : '';
+              
               workingPrompt = [
                 'Voce e um agente que SO responde com TOOL_CALL. Nada mais.',
                 '',
@@ -750,6 +726,7 @@ class BackendService {
                 '',
                 'Sua resposta (apenas o TOOL_CALL do PROXIMO arquivo a criar, nada mais):',
               ].join('\n');
+              
               try {
                 const forcedResp = await axios.post(`${apiUrl}${effectiveEndpoint}`, { prompt: workingPrompt, language: mappedLang }, {
                   headers, timeout: 180000, httpAgent, httpsAgent,
@@ -903,7 +880,7 @@ class BackendService {
     }
   }
 
-  async responderStream(texto, onChunk, onComplete, onError) {
+  async responderStream(texto, onChunk, onComplete, onError, opts = {}) {
     // Validação mais robusta
     if (!texto || typeof texto !== 'string' || texto.trim().length === 0) {
       console.error('Texto inválido para streaming:', texto);
@@ -923,7 +900,8 @@ class BackendService {
       return;
     }
 
-    const sessionId = 'default'; // Using a single session for now
+    const sessionId = opts.sessionId || 'default';
+    const customInstruction = opts.instruction;
     
     // Manage session context (adds user message and builds context)
     const conversationContext = this.manageSessionContext(sessionId, texto);
@@ -943,7 +921,9 @@ class BackendService {
       const baseEndpoint = pickOllamaEndpoint(texto);
       const endpoint = `${apiUrl}${baseEndpoint}-stream`;
       console.log(`[backend-stream] roteado para ${baseEndpoint}-stream`);
-      const promptInstruction = configService.getPromptInstruction();
+      
+      // Use custom instruction if provided, otherwise use the default one
+      let promptInstruction = customInstruction || configService.getPromptInstruction();
       
       // Build prompt with conversation context (mesma logica de responder()).
       let promptWithContext;

@@ -70,7 +70,7 @@ class AgenticWorkflowService {
                     onToolCall: (name, args) => this.handleToolCall(name, args, sessionId),
                     stateless: false,
                     sessionId: aiSessionId,
-                    maxToolCalls: 30
+                    maxToolCalls: 50
                 }
             );
 
@@ -103,7 +103,7 @@ class AgenticWorkflowService {
                     onToolCall: (name, args) => this.handleToolCall(name, args, sessionId),
                     stateless: false,
                     sessionId: aiSessionId,
-                    maxToolCalls: 30
+                    maxToolCalls: 50
                 }
             );
 
@@ -137,7 +137,7 @@ class AgenticWorkflowService {
                     onToolCall: (name, args) => this.handleToolCall(name, args, sessionId),
                     stateless: false, 
                     sessionId: aiSessionId,
-                    maxToolCalls: 30
+                    maxToolCalls: 50
                 }
             );
 
@@ -168,7 +168,7 @@ class AgenticWorkflowService {
                     tools: schema.toOpenAITools(fullTools),
                     onToolCall: (name, args) => this.handleToolCall(name, args, sessionId),
                     sessionId: aiSessionId,
-                    maxToolCalls: 30
+                    maxToolCalls: 50
                 }
             );
 

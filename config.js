@@ -17,6 +17,7 @@ const workspaceAccessStatus = document.getElementById("workspace-access-status")
 const workspaceAccessItem = document.getElementById("workspace-access-item");
 const langSelect = document.getElementById("language-select");
 const backendUrlValue = document.getElementById("backend-url-value");
+const appVersionValue = document.getElementById("app-version-value");
 const aiModelSelect = document.getElementById("ai-model");
 const openIaTokenContainer = document.getElementById("openai-token-container");
 const openIaTokenInput = document.getElementById("openai-token");
@@ -198,6 +199,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   const savedAiModel = await ipcRenderer.invoke("get-ai-model");
   if (savedAiModel) {
     aiModelSelect.value = savedAiModel;
+  }
+
+  // -------------------------
+  // Load app version
+  // -------------------------
+  try {
+    const version = await ipcRenderer.invoke("get-app-version");
+    if (appVersionValue) appVersionValue.textContent = version;
+  } catch (e) {
+    console.warn("get-app-version failed:", e);
   }
   
   // Always load OpenAI token, regardless of current model
