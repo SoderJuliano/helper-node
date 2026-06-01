@@ -4381,4 +4381,3 @@ app.on("will-quit", () => {
   realtimeAssistantService.stop().catch(() => {});
 });
 
-console.log('Olá Mundo');

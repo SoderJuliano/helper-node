@@ -47,7 +47,11 @@ module.exports = {
     const isRegex = !!args.regex;
     const cs = !!args.caseSensitive;
     const max = Math.max(1, Math.min(50, Number(args.maxResults) || 50));
-    const filePat = args.filePattern;
+    // Normaliza filePattern: ".js" → "*.js" (modelo costuma mandar sem o *)
+    let filePat = args.filePattern;
+    if (filePat && !filePat.includes('*') && filePat.startsWith('.')) {
+      filePat = '*' + filePat;
+    }
 
     const hasRg = await _hasRipgrep();
     const matches = [];

@@ -35,7 +35,7 @@ module.exports = {
       }
       const raw = await fs.readFile(abs, "utf-8");
       const lines = raw.split("\n");
-      const maxLines = (cfg && cfg.maxLinesForFullRead) || 500;
+      const maxLines = (cfg && cfg.maxLinesForFullRead) || 1000;
       const truncated = lines.length > maxLines;
       const content = truncated ? lines.slice(0, maxLines).join("\n") : raw;
 
@@ -48,6 +48,7 @@ module.exports = {
           totalLines: lines.length,
           returnedLines: truncated ? maxLines : lines.length,
           truncated,
+          truncatedNote: truncated ? `Arquivo tem ${lines.length} linhas. Retornadas apenas as primeiras ${maxLines}. Para buscar algo específico no arquivo inteiro, use searchInFiles. Para ler outro trecho, use readFileChunk com lineStart/lineEnd.` : undefined,
           content: redacted.text,
           secretsRedacted: redacted.redactedCount,
         },
