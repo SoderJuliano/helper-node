@@ -2778,6 +2778,14 @@ ipcMain.on("save-prompt-instruction", (event, instruction) => {
   configService.setPromptInstruction(instruction);
 });
 
+ipcMain.handle("get-backend-api-key", () => {
+  return configService.getBackendApiKey();
+});
+
+ipcMain.on("save-backend-api-key", (event, key) => {
+  configService.setBackendApiKey(key);
+});
+
 ipcMain.handle("get-debug-mode-status", () => {
   return configService.getDebugModeStatus();
 });
@@ -4372,3 +4380,5 @@ app.on("will-quit", () => {
   stopClipboardMonitoring();
   realtimeAssistantService.stop().catch(() => {});
 });
+
+console.log('Olá Mundo');

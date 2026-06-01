@@ -10,7 +10,7 @@ const httpAgent = new http.Agent({
   keepAliveMsecs: 60000,
   maxSockets: 50,
   maxFreeSockets: 10,
-  timeout: 180000
+  timeout: 360000  // 6 min — qwen3.6-17b pode demorar bastante
 });
 
 const httpsAgent = new https.Agent({
@@ -18,7 +18,7 @@ const httpsAgent = new https.Agent({
   keepAliveMsecs: 60000,
   maxSockets: 50,
   maxFreeSockets: 10,
-  timeout: 180000
+  timeout: 360000  // 6 min — qwen3.6-17b pode demorar bastante
 });
 
 // Variável para armazenar a URL da API
@@ -39,10 +39,10 @@ function pickOllamaEndpoint(texto) {
   // (operadores, sintaxe de linguagem, palavras-chave de tarefa pesada)
   const heavyRegex = /[=+\-*/%^<>]{1,3}|\b(function|class|def|var|let|const|import|return|if|else|while|for|switch)\b|[{};()[\]]|\b(calcule?|resolva|compute|derive|integre|fatore|prove|demonstre|implementa|implementar|c[oó]digo|fun[cç][aã]o|algoritmo|complexidade|otimiza|debug|stack trace|exception|exec[uú]ta|comando|shell|bash|sql|query|regex|json|yaml|xml)\b|\d+\s*[\+\-\*\/x×÷=]\s*\d+|`[^`]+`|```/i;
   // Palavras de projeto/dev/backend (endpoints, controllers, arquitetura, etc.)
-  // devem ir direto pro qwen25, mesmo sem sintaxe de codigo explicita.
+  // devem ir direto pro qwen3.6-17b, mesmo sem sintaxe de codigo explicita.
   const devProjectRegex = /\b(projeto|repositorio|reposit[oó]rio|codebase|backend|frontend|fullstack|endpoint|endpoints|rota|rotas|controller|controllers|rest|api|apis|servi[cç]o|servi[cç]os|arquitetura|refatora|refatorar|pull request|commit|classe|classes|m[eé]todo|m[eé]todos|bug|erro|stacktrace)\b/i;
-  if (heavyRegex.test(t)) return '/qwen25';
-  if (devProjectRegex.test(t)) return '/qwen25';
+  if (heavyRegex.test(t)) return '/qwen3.6-17b';
+  if (devProjectRegex.test(t)) return '/qwen3.6-17b';
 
   return '/llama3';
 }
@@ -105,8 +105,9 @@ function isShellCommandIntent(texto) {
 // confirmer, audit log, secret redactor) e re-perguntamos com TOOL_RESULT.
 // Loop ate a IA nao emitir mais tool calls ou bater maxIters.
 
-function buildOllamaToolsAddon(toolsSchema) {
+function buildOllamaToolsAddon(toolsSchema, wsPaths = []) {
   if (!Array.isArray(toolsSchema) || toolsSchema.length === 0) return '';
+  const ws0 = wsPaths[0] || '/abs/path';
   const lines = ['', '═══ TOOL CALLING (modo Ollama) ═══', ''];
   lines.push('Voce tem acesso a estas ferramentas. Para chamar uma, emita NA RESPOSTA');
   lines.push('um bloco EXATO no formato (uma linha, JSON puro, sem markdown ao redor):');
@@ -136,17 +137,20 @@ function buildOllamaToolsAddon(toolsSchema) {
   lines.push('- Tools mutates (writeFile, deleteFile, patchFile, appendToFile, systemPowerAction)');
   lines.push('  abrem confirmacao visual pro usuario — chame quando faz sentido, sem medo.');
   lines.push('- Quando terminar (resposta final ao usuario), NAO inclua TOOL_CALL nenhum.');
-  lines.push('- Para LER arquivos do projeto, use listDir + readFile. Para EDITAR, writeFile.');
+  lines.push('- Para LER: use listDir + readFile.');
+  lines.push('- Para EDITAR (adicionar linha, mudar trecho): use patchFile — NAO writeFile.');
+  lines.push('  writeFile APAGA O ARQUIVO INTEIRO e reescreve do zero. So use writeFile para CRIAR arquivo novo.');
+  lines.push('  patchFile substitui apenas o trecho exato — use para qualquer edicao em arquivo existente.');
   lines.push('');
   lines.push('EXEMPLOS CONCRETOS (siga EXATAMENTE este formato):');
   lines.push('');
   lines.push('User: "cria um readme pro projeto"');
   lines.push('Resposta correta (UMA linha, sem markdown, sem texto antes):');
-  lines.push('TOOL_CALL: {"name":"writeFile","args":{"path":"/abs/path/README.md","content":"# Titulo\\n\\nDescricao...","reason":"Criar README"}}');
+  lines.push(`TOOL_CALL: {"name":"writeFile","args":{"path":"${ws0}/README.md","content":"# Titulo\\n\\nDescricao...","reason":"Criar README"}}`);
   lines.push('');
   lines.push('User: "o que tem no arquivo de config?"');
   lines.push('Resposta correta:');
-  lines.push('TOOL_CALL: {"name":"readFile","args":{"path":"/abs/path/config.json"}}');
+  lines.push(`TOOL_CALL: {"name":"readFile","args":{"path":"${ws0}/package.json"}}`);
   lines.push('');
   lines.push('ERRADO (NAO FACA): explicar o que vai fazer, usar ```markdown ao redor,');
   lines.push('inventar texto tipo "Texto explicativo:" ou "Vou criar...". Apenas EMITA o TOOL_CALL.');
@@ -196,6 +200,8 @@ function buildToolFirstSystemPrompt(toolsSchema, wsPaths = []) {
   lines.push('2. Use o caminho ABSOLUTO do workspace anexado.');
   lines.push('3. Para writeFile, monte o conteudo COMPLETO em "content" (escape \\n para quebras).');
   lines.push('4. NAO use ```markdown ao redor. NAO explique. Apenas emita o TOOL_CALL.');
+  lines.push('5. CRITICO: writeFile APAGA O ARQUIVO INTEIRO. Para EDITAR arquivo existente,');
+  lines.push('   use patchFile (substitui trecho exato). So use writeFile para CRIAR arquivo NOVO.');
   lines.push('');
   lines.push('═══ CRITICO: TAREFAS MULTI-ARQUIVO ═══');
   lines.push('Se o usuario pediu pra criar VARIOS arquivos, emita UM TOOL_CALL writeFile POR ARQUIVO, em iteracoes sucessivas.');
@@ -359,6 +365,15 @@ function stripDanglingToolCallFragments(text) {
     .trim();
 }
 
+
+// Remove o bloco de raciocinio interno do qwen3 e similares.
+// O modelo envolve o "pensamento" em <think>...</think> antes da resposta final.
+// Isso é util internamente mas poluiria a UI do usuario.
+function stripThinkingBlock(text) {
+  if (!text) return text;
+  // Remove tudo entre <think> e </think> (incluindo as tags), case-insensitive
+  return text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+}
 
 class BackendService {
   constructor() {
@@ -541,7 +556,7 @@ class BackendService {
         attCount = wsEnabled ? workspace.list().length : 0;
         if (wsEnabled && attCount > 0) {
           wsPaths = workspace.list().map(a => a.path).filter(Boolean);
-          modelEndpoint = '/qwen25';
+          modelEndpoint = '/qwen3.6-17b';
           console.log(`[backend] workspace com anexos (${attCount}) -> forçando ${modelEndpoint}`);
           console.log(`[backend] wsPaths injetados no system prompt: ${wsPaths.join(', ')}`);
         }
@@ -576,29 +591,31 @@ class BackendService {
             "═══ REGRAS DE OURO (MODO AGENTE ATIVO) ═══",
             "1. VOCÊ É UM AGENTE DE EXECUÇÃO. Sua missão é realizar a tarefa através de TOOL_CALL.",
             "2. NUNCA, SOB NENHUMA CIRCUNSTÂNCIA, escreva código dentro de blocos ``` (markdown).",
-            "3. Se precisar criar/editar arquivo, use writeFile/patchFile.",
-            "4. Se precisar ler, use listDir/readFile.",
-            "5. Se precisar rodar comandos, use runCommand.",
-            "6. MOSTRAR CÓDIGO NA TELA É PROIBIDO E SERÁ REJEITADO PELO SISTEMA.",
-            "7. Comece sua resposta IMEDIATAMENTE com TOOL_CALL:.",
+            "3. Se precisar CRIAR arquivo novo: use writeFile.",
+            "4. Se precisar EDITAR arquivo existente (add linha, mudar trecho): use patchFile. NUNCA writeFile em arquivo existente — apaga tudo.",
+            "5. Se precisar ler, use listDir/readFile.",
+            "6. Se precisar rodar comandos, use runCommand.",
+            "7. MOSTRAR CÓDIGO NA TELA É PROIBIDO E SERÁ REJEITADO PELO SISTEMA.",
+            "8. Comece sua resposta IMEDIATAMENTE com TOOL_CALL:.",
             wsPathsLine,
             "",
-            buildOllamaToolsAddon(tools)
+            buildOllamaToolsAddon(tools, wsPaths)
           ].filter(Boolean).join("\n");
           console.log('[backend][strict] MODO ESTRITO ATIVO: Bloqueando saída de texto/código raw.');
         } else if (forceTools && !customInstruction) {
           promptInstruction = buildToolFirstSystemPrompt(tools, wsPaths);
           console.log('[backend][tools] modo TOOL-FIRST ativo (intent detected, ignoring formatting rules)');
         } else {
-          // If customInstruction is provided, we still need the tool list and format instructions,
-          // but we should avoid the deep analysis addon if we're already in a specialized phase.
+          // customInstruction presente (ex: fases do agente agentico).
+          // Ainda precisamos injetar o wsPathsLine + tool list para o modelo nao alucinar paths.
           const analysisAddon = customInstruction ? '' : buildDeepAnalysisAddon({
             toolsEnabled: true,
             wsEnabled,
             attCount,
             texto,
           });
-          promptInstruction = `${promptInstruction}\n\n${buildOllamaToolsAddon(tools)}${analysisAddon}`;
+          const wsHeader = wsPathsLine ? `${wsPathsLine}\n\n` : '';
+          promptInstruction = `${wsHeader}${promptInstruction}\n\n${buildOllamaToolsAddon(tools, wsPaths)}${analysisAddon}`;
         }
       }
       
@@ -628,14 +645,22 @@ class BackendService {
         "Content-Type": "application/json",
         "ngrok-skip-browser-warning": "true",
       };
+      // Endpoint pesado requer API key separada configurável pelo usuário
+      if (effectiveEndpoint === '/qwen3.6-17b') {
+        const apiKey = configService.getBackendApiKey() || '123';
+        headers['apikey'] = apiKey;
+      }
 
       console.log('Backend prompt with context:', promptWithContext);
+
+      const _modelName = effectiveEndpoint.replace('/', '');
+      console.log(`[backend] chamando modelo: ${_modelName}`);
 
       let response;
       try {
         response = await axios.post(`${apiUrl}${effectiveEndpoint}`, body, { 
           headers,
-          timeout: 180000,
+          timeout: 360000,
           httpAgent,
           httpsAgent
         });
@@ -645,7 +670,7 @@ class BackendService {
           console.warn(`[backend] ${effectiveEndpoint} indisponivel (404), caindo pra /llama3`);
           response = await axios.post(`${apiUrl}/llama3`, body, {
             headers,
-            timeout: 180000,
+            timeout: 360000,
             httpAgent,
             httpsAgent
           });
@@ -666,6 +691,10 @@ class BackendService {
 
       let resposta = response.data.response || response.data;
       if (typeof resposta !== 'string') resposta = String(resposta);
+
+      // Remove bloco de "thinking" do qwen3 e similares (<think>...</think>).
+      // O modelo raciocina internamente mas o usuario so precisa ver a conclusao.
+      resposta = stripThinkingBlock(resposta);
 
       // ─── LOOP DE TOOL CALLING (so se opts.tools foi passado) ───────────
       if (tools && onToolCall) {
@@ -736,7 +765,7 @@ class BackendService {
               
               try {
                 const forcedResp = await axios.post(`${apiUrl}${effectiveEndpoint}`, { prompt: workingPrompt, language: mappedLang }, {
-                  headers, timeout: 180000, httpAgent, httpsAgent,
+                  headers, timeout: 360000, httpAgent, httpsAgent,
                 });
                 resposta = forcedResp.data.response || forcedResp.data;
                 if (typeof resposta !== 'string') resposta = String(resposta);
@@ -815,7 +844,7 @@ class BackendService {
           let followResp;
           try {
             followResp = await axios.post(`${apiUrl}${effectiveEndpoint}`, followBody, {
-              headers, timeout: 180000, httpAgent, httpsAgent,
+              headers, timeout: 360000, httpAgent, httpsAgent,
             });
           } catch (e) {
             console.error('[backend][tools] erro no follow-up:', e.message);

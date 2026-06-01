@@ -58,6 +58,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onShortcutsChanged: (callback) => ipcRenderer.on("shortcuts-changed", () => callback()),
   getDebugModeStatus: () => ipcRenderer.invoke("get-debug-mode-status"), // Added for debug mode access
   getPromptInstruction: () => ipcRenderer.invoke("get-prompt-instruction"), // Added for prompt instruction access
+  getBackendApiKey: () => ipcRenderer.invoke("get-backend-api-key"),
+  saveBackendApiKey: (key) => ipcRenderer.send("save-backend-api-key", key),
   getBackendUrl: () => ipcRenderer.invoke("get-backend-url"),
   getLanguage: () => ipcRenderer.invoke("get-language"),
   setLanguage: (language) => ipcRenderer.send("set-language", language),

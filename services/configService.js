@@ -76,6 +76,9 @@ const defaultConfig = {
   workspaceAccess: {
     enabled: false,
   },
+  // API Key do backend remoto. Necessário para endpoints pesados (ex: qwen3.6-17b).
+  // Endpoints leves (llama3, qwen25) usam o Bearer token fixo hardcoded.
+  backendApiKey: "",
 };
 
 let configPath;
@@ -444,6 +447,18 @@ function setWorkspaceAccessEnabled(enabled) {
   currentConfig = null;
 }
 
+function getBackendApiKey() {
+  if (!currentConfig) currentConfig = loadConfig();
+  return currentConfig.backendApiKey || "";
+}
+
+function setBackendApiKey(key) {
+  if (!currentConfig) currentConfig = loadConfig();
+  currentConfig.backendApiKey = key || "";
+  saveConfig(currentConfig);
+  currentConfig = null;
+}
+
 module.exports = {
   initialize,
   getPromptInstruction,
@@ -478,5 +493,7 @@ module.exports = {
   setHelperToolsEnabled,
   getWorkspaceAccessEnabled,
   setWorkspaceAccessEnabled,
+  getBackendApiKey,
+  setBackendApiKey,
   getIp,
 };

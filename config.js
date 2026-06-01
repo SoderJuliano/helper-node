@@ -216,7 +216,18 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (savedToken) {
       openIaTokenInput.value = savedToken;
   }
-  
+
+  // Carregar API key do backend (qwen3.6-17b)
+  try {
+    const savedBackendApiKey = await ipcRenderer.invoke("get-backend-api-key");
+    const backendApiKeyInput = document.getElementById("backend-api-key");
+    if (savedBackendApiKey && backendApiKeyInput) {
+      backendApiKeyInput.value = savedBackendApiKey;
+    }
+  } catch (e) {
+    console.warn("get-backend-api-key failed:", e);
+  }
+
   // Load saved OpenAI model
   const savedOpenAiModel = await ipcRenderer.invoke("get-openai-model");
   if (savedOpenAiModel) {
@@ -445,6 +456,12 @@ saveButton.addEventListener("click", async () => {
   // Always save OpenAI token, regardless of current model
   // This ensures the token persists even when switching to other models
   ipcRenderer.send("set-open-ia-token", openIaTokenInput.value);
+
+  // Salvar API key do backend (qwen3.6-17b)
+  const backendApiKeyInput = document.getElementById("backend-api-key");
+  if (backendApiKeyInput) {
+    ipcRenderer.send("save-backend-api-key", backendApiKeyInput.value);
+  }
 
   // Close window
   window.close();
