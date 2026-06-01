@@ -41,8 +41,8 @@ function pickOllamaEndpoint(texto) {
   // Palavras de projeto/dev/backend (endpoints, controllers, arquitetura, etc.)
   // devem ir direto pro qwen3.6-17b, mesmo sem sintaxe de codigo explicita.
   const devProjectRegex = /\b(projeto|repositorio|reposit[oó]rio|codebase|backend|frontend|fullstack|endpoint|endpoints|rota|rotas|controller|controllers|rest|api|apis|servi[cç]o|servi[cç]os|arquitetura|refatora|refatorar|pull request|commit|classe|classes|m[eé]todo|m[eé]todos|bug|erro|stacktrace)\b/i;
-  if (heavyRegex.test(t)) return '/qwen3.6-17b';
-  if (devProjectRegex.test(t)) return '/qwen3.6-17b';
+  if (heavyRegex.test(t)) return '/gemma3';
+  if (devProjectRegex.test(t)) return '/gemma3';
 
   return '/llama3';
 }
@@ -257,10 +257,9 @@ function parseOllamaToolCalls(text) {
     // {"name":"<tool>","args":...}. So aceita se "name" bater com uma tool real.
     if (calls.length === 0) {
       const knownNames = new Set(
-        // lazy: extraido do schema na hora do parse via heuristica simples
         ['listDir','fileInfo','readFile','readFileChunk','searchInFiles','findFiles',
          'detectShellConfig','listPackages','listDesktopApps','systemPowerAction',
-         'writeFile','appendToFile','deleteFile','patchFile']
+         'writeFile','appendToFile','deleteFile','patchFile','runCommand','runShellAdvanced']
       );
       let i = 0;
       while (i < text.length) {
@@ -556,7 +555,7 @@ class BackendService {
         attCount = wsEnabled ? workspace.list().length : 0;
         if (wsEnabled && attCount > 0) {
           wsPaths = workspace.list().map(a => a.path).filter(Boolean);
-          modelEndpoint = '/qwen3.6-17b';
+          modelEndpoint = '/gemma3';
           console.log(`[backend] workspace com anexos (${attCount}) -> forçando ${modelEndpoint}`);
           console.log(`[backend] wsPaths injetados no system prompt: ${wsPaths.join(', ')}`);
         }
@@ -645,13 +644,11 @@ class BackendService {
         "Content-Type": "application/json",
         "ngrok-skip-browser-warning": "true",
       };
-      // Endpoint pesado requer API key separada configurável pelo usuário
+      // qwen3.6-17b é modelo pesado reservado — não rotear por ora
       if (effectiveEndpoint === '/qwen3.6-17b') {
         const apiKey = configService.getBackendApiKey() || '123';
         headers['apikey'] = apiKey;
       }
-
-      console.log('Backend prompt with context:', promptWithContext);
 
       const _modelName = effectiveEndpoint.replace('/', '');
       console.log(`[backend] chamando modelo: ${_modelName}`);
@@ -786,45 +783,60 @@ class BackendService {
             const args = c.obj.args || c.obj.arguments || {};
             console.log(`[backend][tools] → ${name}(${JSON.stringify(args).slice(0, 120)})`);
             let toolResult;
-            // Anti-dup runCommand no escopo do turno.
-            let _dupKey = null;
-            if (name === 'runCommand') {
-              try {
-                const _cmd = String(args.cmd || '');
-                const _args = Array.isArray(args.args) ? args.args.join(' ') : '';
-                const _cwd = String(args.cwd || '');
-                _dupKey = `${_cmd}|${_args}|${_cwd}`;
-              } catch (_) {}
-            }
-            if (_dupKey && _ranCmds.has(_dupKey)) {
-              console.log(`[backend][tools] 🚫 anti-dup runCommand: ${_dupKey} ja executado neste turno`);
-              toolResult = {
-                ok: true,
-                result: {
-                  duplicate: true,
-                  note: 'Este comando ja foi executado neste turno. NAO repita. Escreva a RESPOSTA FINAL ao usuario resumindo o que foi feito.',
-                },
-              };
+            // Rejeita tools inventadas — para o loop antes de executar
+            const knownToolNames = new Set(['listDir','fileInfo','readFile','readFileChunk','searchInFiles','findFiles','detectShellConfig','listPackages','listDesktopApps','systemPowerAction','writeFile','appendToFile','deleteFile','patchFile','runCommand','runShellAdvanced']);
+            if (!knownToolNames.has(name)) {
+              console.warn(`[backend][tools] ⚠️ tool desconhecida ignorada: "${name}"`);
+              toolResult = { error: `Ferramenta "${name}" não existe. Use apenas as ferramentas listadas. Escreva a RESPOSTA FINAL ao usuário agora.` };
             } else {
-              try {
-                toolResult = await onToolCall(name, args, { source: 'ollama-tool-loop' });
-              } catch (e) {
-                toolResult = { error: String(e && e.message || e) };
+              // Normaliza args.command → cmd/args antes de tudo (mesmo que runCommand.run() tb normalize)
+            let normalizedArgs = args;
+            if (normalizedArgs && normalizedArgs.command && !normalizedArgs.cmd) {
+              const parts = String(normalizedArgs.command).trim().split(/\s+/);
+              normalizedArgs = { ...normalizedArgs, cmd: parts[0], args: parts.slice(1) };
+              delete normalizedArgs.command;
+              c.obj.args = normalizedArgs; // propaga pra execução
+            }
+
+            // Anti-dup runCommand no escopo do turno.
+              let _dupKey = null;
+              if (name === 'runCommand') {
+                try {
+                  const _cmd = String(args.cmd || '');
+                  const _args = Array.isArray(args.args) ? args.args.join(' ') : '';
+                  const _cwd = String(args.cwd || '');
+                  _dupKey = `${_cmd}|${_args}|${_cwd}`;
+                } catch (_) {}
               }
-              if (_dupKey) _ranCmds.add(_dupKey);
-              if (toolResult && toolResult.ok !== false && !(toolResult.result && toolResult.result.duplicate)) {
-                toolsExecutedOk++;
-                // Resumo legivel pra fallback caso modelo nao feche a resposta.
-                if (name === 'runCommand') {
-                  const _cmdline = `${args.cmd || ''} ${(Array.isArray(args.args) ? args.args : []).join(' ')}`.trim();
-                  const _exit = toolResult.result && typeof toolResult.result.exitCode === 'number' ? toolResult.result.exitCode : '?';
-                  _ranSummary.push(`✓ \`${_cmdline}\` (exit=${_exit})`);
-                } else if (name === 'writeFile' || name === 'appendToFile' || name === 'patchFile') {
-                  _ranSummary.push(`✓ ${name} → ${args.path || '?'}`);
-                } else if (name === 'deleteFile') {
-                  _ranSummary.push(`✓ deleteFile → ${args.path || '?'}`);
-                } else {
-                  _ranSummary.push(`✓ ${name}`);
+              if (_dupKey && _ranCmds.has(_dupKey)) {
+                console.log(`[backend][tools] 🚫 anti-dup runCommand: ${_dupKey} ja executado neste turno`);
+                toolResult = {
+                  ok: true,
+                  result: {
+                    duplicate: true,
+                    note: 'Este comando ja foi executado neste turno. NAO repita. Escreva a RESPOSTA FINAL ao usuario resumindo o que foi feito.',
+                  },
+                };
+              } else {
+                try {
+                  toolResult = await onToolCall(name, args, { source: 'ollama-tool-loop' });
+                } catch (e) {
+                  toolResult = { error: String(e && e.message || e) };
+                }
+                if (_dupKey) _ranCmds.add(_dupKey);
+                if (toolResult && toolResult.ok !== false && !(toolResult.result && toolResult.result.duplicate)) {
+                  toolsExecutedOk++;
+                  if (name === 'runCommand') {
+                    const _cmdline = `${args.cmd || ''} ${(Array.isArray(args.args) ? args.args : []).join(' ')}`.trim();
+                    const _exit = toolResult.result && typeof toolResult.result.exitCode === 'number' ? toolResult.result.exitCode : '?';
+                    _ranSummary.push(`✓ \`${_cmdline}\` (exit=${_exit})`);
+                  } else if (name === 'writeFile' || name === 'appendToFile' || name === 'patchFile') {
+                    _ranSummary.push(`✓ ${name} → ${args.path || '?'}`);
+                  } else if (name === 'deleteFile') {
+                    _ranSummary.push(`✓ deleteFile → ${args.path || '?'}`);
+                  } else {
+                    _ranSummary.push(`✓ ${name}`);
+                  }
                 }
               }
             }
@@ -838,7 +850,13 @@ class BackendService {
           // Re-pergunta: contexto atualizado contendo a resposta do modelo
           // (com TOOL_CALLs) + os TOOL_RESULTs. Pedimos resposta final ou
           // novos tool calls.
-          workingPrompt = `${workingPrompt}\n\nASSISTANT_PREVIOUS:\n${resposta}\n\n${results.join('\n\n')}\n\nCom base nos TOOL_RESULT acima, ou emita novos TOOL_CALL se precisar de mais info, ou escreva a RESPOSTA FINAL ao usuario (sem nenhum TOOL_CALL).`;
+          // Se já temos resultados de ferramentas de leitura/comando simples,
+          // força o modelo a finalizar em vez de continuar chamando tools.
+          const hadReadOrCmd = calls.some(c => ['runCommand','runShellAdvanced','listDir','readFile','searchInFiles','findFiles','fileInfo'].includes(c.obj.name));
+          const followupSuffix = hadReadOrCmd
+            ? `\n\nVOCÊ JÁ TEM TODAS AS INFORMAÇÕES NECESSÁRIAS. Escreva a RESPOSTA FINAL ao usuário AGORA em texto normal. NÃO emita mais nenhum TOOL_CALL. Apenas responda.`
+            : `\n\nCom base nos TOOL_RESULT acima, ou emita novos TOOL_CALL se precisar de mais info, ou escreva a RESPOSTA FINAL ao usuario (sem nenhum TOOL_CALL).`;
+          workingPrompt = `${workingPrompt}\n\nASSISTANT_PREVIOUS:\n${resposta}\n\n${results.join('\n\n')}${followupSuffix}`;
 
           const followBody = { prompt: workingPrompt, language: mappedLang };
           let followResp;
@@ -957,11 +975,8 @@ class BackendService {
       const baseEndpoint = pickOllamaEndpoint(texto);
       const endpoint = `${apiUrl}${baseEndpoint}-stream`;
       console.log(`[backend-stream] roteado para ${baseEndpoint}-stream`);
-      
-      // Use custom instruction if provided, otherwise use the default one
+
       let promptInstruction = customInstruction || configService.getPromptInstruction();
-      
-      // Build prompt with conversation context (mesma logica de responder()).
       let promptWithContext;
       if (baseEndpoint === '/llamatiny') {
         const lastMsgs = conversationContext
@@ -969,7 +984,7 @@ class BackendService {
           : texto;
         promptWithContext = `${promptInstruction}\n\n${lastMsgs}`;
       } else {
-        promptWithContext = conversationContext 
+        promptWithContext = conversationContext
           ? `${promptInstruction}\n\nConversation context:\n${conversationContext}\nPlease respond to the latest human message.`
           : `${promptInstruction}${texto}`;
       }
@@ -979,7 +994,6 @@ class BackendService {
         language: mappedLang,
       };
 
-      console.log('Backend stream prompt with context:', promptWithContext);
 
       const fetchOpts = {
         method: 'POST',

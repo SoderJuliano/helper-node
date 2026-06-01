@@ -20,15 +20,22 @@ class OllamaAgenticWorkflowService {
             await this.updatePhase(eventSender, 'classification', 'Analisando intenção...', sessionId);
 
             const classification = await BackendService.responder(
-                `Classifique como "READ_ONLY" (pergunta) ou "WRITE" (criar/editar).\nPergunta: "${userText}"\nResposta (UMA palavra):`,
+                `Classifique em UMA palavra: "READ_ONLY", "QUERY" ou "WRITE".
+- READ_ONLY: pergunta conceitual que a IA responde com conhecimento próprio (ex: "o que é async/await?")
+- QUERY: pergunta que precisa consultar o sistema/projeto pra responder (ex: "tem arquivos não comitados?", "quantos arquivos tem?", "o que tem no package.json?", "qual branch estou?")
+- WRITE: criar, editar, deletar arquivo ou rodar comando que modifica algo (ex: "faz um commit", "edita o backendService", "cria um README")
+Pergunta: "${userText}"
+Resposta (UMA palavra):`,
                 { sessionId: `${aiSessionId}-c` }
             );
 
-            const isWrite = classification.trim().toUpperCase().includes('WRITE');
-            console.log(`[OllamaAgentic][${sessionId}] Intent: ${isWrite ? 'WRITE' : 'READ_ONLY'}`);
+            const classWord = classification.trim().toUpperCase().split(/\s/)[0];
+            const isWrite = classWord === 'WRITE';
+            const isQuery = classWord === 'QUERY';
+            console.log(`[OllamaAgentic][${sessionId}] Intent: ${classWord}`);
 
             // === READ_ONLY MODE ===
-            if (!isWrite) {
+            if (!isWrite && !isQuery) {
                 await this.updatePhase(eventSender, 'answer', 'Respondendo...', sessionId);
                 const answer = await BackendService.responder(
                     `${baseInstruction}\n\nResponda: "${userText}"`,
@@ -38,9 +45,43 @@ class OllamaAgenticWorkflowService {
                 return answer;
             }
 
+            // === QUERY MODE — pergunta que precisa de tools de leitura/shell ===
+            if (isQuery) {
+                await this.updatePhase(eventSender, 'answer', 'Consultando...', sessionId);
+                const toolsRO = registry.listReadOnly().concat(
+                    registry.list().filter(t => ['runCommand', 'runShellAdvanced'].includes(t.name))
+                );
+                const answer = await BackendService.responder(userText, {
+                    tools: toolsRO,
+                    onToolCall: (n, a) => this.handleToolCall(n, a, sessionId, false),
+                    sessionId: aiSessionId,
+                    instruction: baseInstruction,
+                    maxToolCalls: 10,
+                });
+                await this.updatePhase(eventSender, 'completed', 'Pronto!', sessionId);
+                return answer;
+            }
+
             // === PHASE 0.5: SUB-CLASSIFICATION (via llama3 — decision simple) ===
             const editType = await this.classifyEditType(userText, sessionId);
             console.log(`[OllamaAgentic][${sessionId}] EditType: ${editType}`);
+
+            // SHELL: não precisa de 4 fases — executa os comandos direto
+            if (editType === 'SHELL') {
+                await this.updatePhase(eventSender, 'implementation', 'Executando...', sessionId);
+                const shellTools = registry.listReadOnly().concat(
+                    registry.list().filter(t => ['runCommand', 'runShellAdvanced'].includes(t.name))
+                );
+                const result = await BackendService.responder(userText, {
+                    tools: shellTools,
+                    onToolCall: (n, a) => this.handleToolCall(n, a, sessionId, true),
+                    sessionId: aiSessionId,
+                    instruction: baseInstruction,
+                    maxToolCalls: 15,
+                });
+                await this.updatePhase(eventSender, 'completed', 'Concluído!', sessionId);
+                return result;
+            }
 
             // === WRITE MODE: 4 PHASES WITH TOOL FILTERING ===
             return await this.executeWriteWorkflow(userText, baseInstruction, sessionId, aiSessionId, eventSender, editType);
@@ -54,25 +95,24 @@ class OllamaAgenticWorkflowService {
     }
 
     async classifyEditType(userText, sessionId) {
-        const prompt = `Classifique o tipo de edição em UMA palavra: CREATE, EDIT, DELETE, ou APPEND.
+        const prompt = `Classifique o tipo de edição em UMA palavra: CREATE, EDIT, DELETE, APPEND ou SHELL.
 
 Guia:
-- CREATE: novo arquivo/pasta
+- CREATE: criar arquivo/pasta novo
 - EDIT: modificar conteúdo existente (linha, função, trecho)
 - DELETE: remover arquivo/pasta
-- APPEND: adicionar ao final
+- APPEND: adicionar ao final de arquivo
+- SHELL: rodar comando de terminal (git commit, git add, npm, build, testes, etc.)
 
 Pergunta: "${userText}"
-Resposta:`;
+Resposta (UMA palavra):`;
 
         try {
-            // Usa llama3 (rápido, decisões simples) via BackendService
-            const result = await BackendService.responder(prompt, { 
+            const result = await BackendService.responder(prompt, {
                 sessionId: `${sessionId}-subclass`,
-                model: 'llama3' // Force modelo simples
             });
-            const type = result.trim().toUpperCase();
-            return ['CREATE', 'EDIT', 'DELETE', 'APPEND'].includes(type) ? type : 'EDIT';
+            const type = result.trim().toUpperCase().split(/\s/)[0].replace(/[^A-Z]/g, '');
+            return ['CREATE', 'EDIT', 'DELETE', 'APPEND', 'SHELL'].includes(type) ? type : 'EDIT';
         } catch (e) {
             console.warn(`[classifyEditType] Erro, default='EDIT':`, e.message);
             return 'EDIT';
@@ -80,27 +120,22 @@ Resposta:`;
     }
 
     getToolsByEditType(editType) {
-        // Filtra tools baseado no tipo de edição
         const toolsRO = registry.listReadOnly();
         const allTools = registry.list();
         
-        const toolMap = new Map(allTools.map(t => [t.name, t]));
-        
         switch (editType) {
             case 'CREATE':
-                // CREATE: writeFile, appendToFile, createDir
-                return toolsRO.concat(allTools.filter(t => ['writeFile', 'appendToFile'].includes(t.name)));
+                return toolsRO.concat(allTools.filter(t => ['writeFile', 'appendToFile', 'runCommand', 'runShellAdvanced'].includes(t.name)));
             case 'EDIT':
-                // EDIT: patchFile, searchInFiles, readFile (no writeFile completo!)
-                return toolsRO.concat(allTools.filter(t => ['patchFile', 'appendToFile'].includes(t.name)));
+                return toolsRO.concat(allTools.filter(t => ['patchFile', 'appendToFile', 'runCommand', 'runShellAdvanced'].includes(t.name)));
             case 'DELETE':
-                // DELETE: deleteFile + read tools
-                return toolsRO.concat(allTools.filter(t => ['deleteFile'].includes(t.name)));
+                return toolsRO.concat(allTools.filter(t => ['deleteFile', 'runCommand', 'runShellAdvanced'].includes(t.name)));
             case 'APPEND':
-                // APPEND: appendToFile + read tools
-                return toolsRO.concat(allTools.filter(t => ['appendToFile'].includes(t.name)));
+                return toolsRO.concat(allTools.filter(t => ['appendToFile', 'runCommand', 'runShellAdvanced'].includes(t.name)));
+            case 'SHELL':
+                // SHELL: foco em rodar comandos, ainda tem read tools pra contexto
+                return toolsRO.concat(allTools.filter(t => ['runCommand', 'runShellAdvanced'].includes(t.name)));
             default:
-                // Fallback: tudo
                 return allTools;
         }
     }

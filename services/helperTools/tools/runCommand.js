@@ -148,6 +148,13 @@ module.exports = {
   mutates: false, // whitelist é segura
 
   async run(args) {
+    // Normaliza quando modelo manda {"command":"git add ."} em vez de {"cmd":"git","args":["add","."]}
+    if (args && args.command && !args.cmd) {
+      const parts = String(args.command).trim().split(/\s+/);
+      args = { ...args, cmd: parts[0], args: parts.slice(1) };
+      delete args.command;
+    }
+
     const cmd = (args && args.cmd || "").trim();
     const cmdArgs = Array.isArray(args && args.args) ? args.args.map(String) : [];
     if (!cmd) return { ok: false, error: "cmd obrigatório" };
