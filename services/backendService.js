@@ -155,11 +155,15 @@ function buildOllamaToolsAddon(toolsSchema) {
 }
 
 // System prompt minimalista para modo tool-first.
-function buildToolFirstSystemPrompt(toolsSchema) {
+function buildToolFirstSystemPrompt(toolsSchema, wsPaths = []) {
+  const wsLine = wsPaths.length
+    ? `WORKSPACE ANEXADO — use EXATAMENTE estes paths absolutos:\n${wsPaths.map(p => `  - ${p}`).join('\n')}`
+    : 'O usuario anexou um workspace e quer que voce LEIA ou ESCREVA arquivos nele.';
+  const ws0 = wsPaths[0] || '/home/user/proj';
   const lines = [
     'Voce e um agente que executa tarefas atraves de TOOL_CALL.',
     '',
-    'O usuario anexou um workspace e quer que voce LEIA ou ESCREVA arquivos nele.',
+    wsLine,
     'Sua UNICA resposta valida nesta etapa e um bloco TOOL_CALL.',
     '',
     'FORMATO OBRIGATORIO (uma linha, JSON puro, SEM markdown, SEM texto antes ou depois):',
@@ -177,12 +181,12 @@ function buildToolFirstSystemPrompt(toolsSchema) {
   }
   lines.push('');
   lines.push('EXEMPLOS:');
-  lines.push('- Para criar README.md: TOOL_CALL: {"name":"writeFile","args":{"path":"/home/user/proj/README.md","content":"# Titulo\\n...","reason":"criar readme"}}');
-  lines.push('- Para ler config: TOOL_CALL: {"name":"readFile","args":{"path":"/home/user/proj/package.json"}}');
-  lines.push('- Para listar pasta: TOOL_CALL: {"name":"listDir","args":{"path":"/home/user/proj"}}');
-  lines.push('- Para "tem alteracoes nao comitadas?": TOOL_CALL: {"name":"runCommand","args":{"cmd":"git","args":["status","--short"],"cwd":"/home/user/proj"}}');
-  lines.push('- Para fazer commit: TOOL_CALL: {"name":"runCommand","args":{"cmd":"git","args":["commit","-am","mensagem"],"cwd":"/home/user/proj"}}');
-  lines.push('- Para rodar testes: TOOL_CALL: {"name":"runCommand","args":{"cmd":"npm","args":["test"],"cwd":"/home/user/proj"}}');
+  lines.push(`- Para criar README.md: TOOL_CALL: {"name":"writeFile","args":{"path":"${ws0}/README.md","content":"# Titulo\\n...","reason":"criar readme"}}`);
+  lines.push(`- Para ler config: TOOL_CALL: {"name":"readFile","args":{"path":"${ws0}/package.json"}}`);
+  lines.push(`- Para listar pasta: TOOL_CALL: {"name":"listDir","args":{"path":"${ws0}"}}`);
+  lines.push(`- Para "tem alteracoes nao comitadas?": TOOL_CALL: {"name":"runCommand","args":{"cmd":"git","args":["status","--short"],"cwd":"${ws0}"}}`);
+  lines.push(`- Para fazer commit: TOOL_CALL: {"name":"runCommand","args":{"cmd":"git","args":["commit","-am","mensagem"],"cwd":"${ws0}"}}`);
+  lines.push(`- Para rodar testes: TOOL_CALL: {"name":"runCommand","args":{"cmd":"npm","args":["test"],"cwd":"${ws0}"}}`);
   lines.push('');
   lines.push('REGRA CRITICA: NAO use listDir/findFiles dentro de .git/. Pra qualquer pergunta sobre');
   lines.push('GIT (status, commits, branches, push, pull), use runCommand com cmd="git".');
@@ -530,13 +534,16 @@ class BackendService {
       let workspace = null;
       let wsEnabled = false;
       let attCount = 0;
+      let wsPaths = []; // paths reais do workspace — injetados no system prompt logo abaixo
       try {
         workspace = require('./workspace');
         wsEnabled = !!(configService.getWorkspaceAccessEnabled && configService.getWorkspaceAccessEnabled());
         attCount = wsEnabled ? workspace.list().length : 0;
         if (wsEnabled && attCount > 0) {
+          wsPaths = workspace.list().map(a => a.path).filter(Boolean);
           modelEndpoint = '/qwen25';
           console.log(`[backend] workspace com anexos (${attCount}) -> forçando ${modelEndpoint}`);
+          console.log(`[backend] wsPaths injetados no system prompt: ${wsPaths.join(', ')}`);
         }
       } catch (e) {
         console.warn('[backend] falha ao verificar anexos de workspace para roteamento:', e.message);
@@ -560,6 +567,9 @@ class BackendService {
       const forceTools = opts.forceTools || toolFirstMode;
 
       if (tools && onToolCall) {
+        const wsPathsLine = wsPaths.length
+          ? `WORKSPACE ANEXADO — use EXATAMENTE estes paths absolutos (não invente outros):\n${wsPaths.map(p => `  - ${p}`).join('\n')}`
+          : '';
         if (isStrictMode && !customInstruction) {
           // Absolute enforcement for strict mode: no chatty rules, just action.
           promptInstruction = [
@@ -571,12 +581,13 @@ class BackendService {
             "5. Se precisar rodar comandos, use runCommand.",
             "6. MOSTRAR CÓDIGO NA TELA É PROIBIDO E SERÁ REJEITADO PELO SISTEMA.",
             "7. Comece sua resposta IMEDIATAMENTE com TOOL_CALL:.",
+            wsPathsLine,
             "",
             buildOllamaToolsAddon(tools)
-          ].join("\n");
+          ].filter(Boolean).join("\n");
           console.log('[backend][strict] MODO ESTRITO ATIVO: Bloqueando saída de texto/código raw.');
-        } else if (forceTools && !customInstruction) { 
-          promptInstruction = buildToolFirstSystemPrompt(tools);
+        } else if (forceTools && !customInstruction) {
+          promptInstruction = buildToolFirstSystemPrompt(tools, wsPaths);
           console.log('[backend][tools] modo TOOL-FIRST ativo (intent detected, ignoring formatting rules)');
         } else {
           // If customInstruction is provided, we still need the tool list and format instructions,
@@ -661,11 +672,7 @@ class BackendService {
         let workingPrompt = promptWithContext;
         let iter = 0;
         const mustUseTools = forceTools;
-        
-        let wsPaths = [];
-        try {
-          if (workspace) wsPaths = workspace.list().map(a => a.path).filter(Boolean);
-        } catch (_) {}
+        // wsPaths já foi preenchido antes do if(tools && onToolCall) com os paths reais
         let forcedRetryCount = 0;
         const _ranCmds = new Set();
         const _ranSummary = [];
