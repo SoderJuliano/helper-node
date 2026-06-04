@@ -308,6 +308,9 @@ let lastProcessedTimestamp = null;
 const IMAGE_COOLDOWN_MS = 30000; // 30 seconds cooldown
 let isProcessingImage = false; // Simple lock for image processing
 const audioFilePath = path.join(__dirname, "output.wav");
+// Monitoramento da pasta de screenshots do COSMIC (PrintScreen nativo)
+let screenshotFolderWatcher = null;
+let screenshotFolderWatcherPath = null;
 
 // OS Integration windows
 let osInputWindow = null;
@@ -563,10 +566,10 @@ function createOsNotificationWindow(type, content) {
 
 function switchToOsIntegrationMode() {
   isOsIntegrationMode = true;
-  
   // Start capture tool monitoring when entering OS integration mode
   startCaptureToolMonitoring();
-  
+  // Monitora pasta de screenshots do COSMIC (captura via PrintScreen nativo)
+  startScreenshotFolderMonitoring();
   // Hide main window
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.hide();
@@ -575,10 +578,10 @@ function switchToOsIntegrationMode() {
 
 function switchToNormalMode() {
   isOsIntegrationMode = false;
-  
   // Stop capture tool monitoring when leaving OS integration mode
   stopCaptureToolMonitoring();
-  
+  // Para monitoramento da pasta de screenshots
+  stopScreenshotFolderMonitoring();
   // Close OS integration windows
   if (osInputWindow && !osInputWindow.isDestroyed()) {
     osInputWindow.close();
@@ -1464,6 +1467,145 @@ function stopClipboardMonitoring() {
   
   // Parar também o monitoramento de captura
   stopCaptureToolMonitoring();
+  stopScreenshotFolderMonitoring();
+}
+
+// ─── Monitoramento da pasta de screenshots do COSMIC ─────────────────────────
+// O COSMIC intercepta o PrintScreen antes do Electron — a gente nunca vê o
+// evento. Mas o COSMIC salva o arquivo em ~/Pictures/Screenshots/ (ou
+// ~/Pictures/ dependendo da config). Monitoramos com fs.watch: quando um
+// novo PNG aparecer, lemos e processamos como se viesse do clipboard.
+// Funciona sem foco, sem gambiarras, sem alterar nada no sistema.
+// Caminhos conhecidos onde cada SO/DE salva screenshots por padrão.
+// Monitoramos TODOS que existirem simultaneamente.
+// PT-BR: ~/Imagens, ~/Documentos, ~/Área de Trabalho
+// EN:    ~/Pictures, ~/Documents, ~/Desktop
+// KDE Plasma: ~/Pictures/Screenshots
+// macOS:      ~/Desktop, ~/Documents
+// Xfce/LXDE:  diretório home diretamente
+const SCREENSHOT_DIRS = [
+  // PT-BR (Pop!_OS, Ubuntu, Fedora, Mint, Debian locale pt-BR)
+  path.join(os.homedir(), 'Imagens'),
+  path.join(os.homedir(), 'Documentos'),
+  path.join(os.homedir(), 'Área de Trabalho'),
+  path.join(os.homedir(), 'Area_de_Trabalho'),
+  // EN (Ubuntu, Arch, Fedora, macOS locale en)
+  path.join(os.homedir(), 'Pictures'),
+  path.join(os.homedir(), 'Pictures', 'Screenshots'), // KDE Spectacle
+  path.join(os.homedir(), 'Documents'),
+  path.join(os.homedir(), 'Desktop'),
+  // macOS
+  path.join(os.homedir(), 'Library', 'Mobile Documents', 'com~apple~CloudDocs', 'Desktop'),
+];
+
+function resolveScreenshotDir() {
+  // Retorna TODAS as pastas existentes pra monitorar em paralelo
+  return SCREENSHOT_DIRS.filter(dir => {
+    try { return fs2.existsSync(dir) && fs2.statSync(dir).isDirectory(); } catch (_) { return false; }
+  });
+}
+
+// watcher pode ser um array agora (múltiplas pastas)
+function startScreenshotFolderMonitoring() {
+  if (screenshotFolderWatcher) return; // já ativo
+
+  const watchDirs = resolveScreenshotDir();
+  if (!watchDirs.length) {
+    // nenhuma pasta existe ainda — tenta criar ~/Imagens e monitorar
+    const fallback = path.join(os.homedir(), 'Imagens');
+    try { fs2.mkdirSync(fallback, { recursive: true }); } catch (_) {}
+    watchDirs.push(fallback);
+  }
+
+  console.log(`[screenshot-watch] Monitorando ${watchDirs.length} pasta(s): ${watchDirs.join(', ')}`);
+
+  // Baseline global: ignora arquivos já existentes em todas as pastas
+  const knownFiles = new Set();
+  for (const dir of watchDirs) {
+    try {
+      fs2.readdirSync(dir)
+        .filter(f => /\.(png|jpg|jpeg|webp)$/i.test(f))
+        .forEach(f => knownFiles.add(path.join(dir, f)));
+    } catch (_) {}
+  }
+  console.log(`[screenshot-watch] Baseline: ${knownFiles.size} arquivo(s) ignorado(s)`);
+
+  const watchers = [];
+
+  const handleNewFile = async (dir, filename) => {
+    if (!filename) return;
+    if (!/\.(png|jpg|jpeg|webp)$/i.test(filename)) return;
+    const filePath = path.join(dir, filename);
+    if (knownFiles.has(filePath)) return;
+
+    // Aguarda até 2s para o arquivo ser escrito completamente
+    let attempts = 0;
+    while (attempts < 20) {
+      await new Promise(r => setTimeout(r, 100));
+      try {
+        const stat = fs2.statSync(filePath);
+        if (stat.size > 0) break;
+      } catch (_) { return; }
+      attempts++;
+    }
+    if (!fs2.existsSync(filePath)) return;
+
+    knownFiles.add(filePath);
+
+    const isPrintModeEnabled = configService.getPrintModeStatus();
+    if (!isPrintModeEnabled) return;
+
+    try {
+      const buf = fs2.readFileSync(filePath);
+      const base64Image = `data:image/png;base64,${buf.toString('base64')}`;
+      const hash = calculateImageHash(buf);
+      const now = Date.now();
+
+      if (lastProcessedImageHash === hash && lastProcessedTimestamp && (now - lastProcessedTimestamp) < IMAGE_COOLDOWN_MS) {
+        console.log('[screenshot-watch] 🚫 imagem já processada, ignorando');
+        return;
+      }
+      if (isProcessingImage) {
+        console.log('[screenshot-watch] 🔒 já processando outra imagem, ignorando');
+        return;
+      }
+
+      lastProcessedImageHash = hash;
+      lastProcessedTimestamp = now;
+      lastClipboardImageHash = hash;
+
+      console.log(`[screenshot-watch] 📸 novo screenshot: ${filePath}`);
+      await processNewClipboardImage(base64Image);
+    } catch (e) {
+      console.error('[screenshot-watch] erro ao processar arquivo:', e.message);
+    }
+  };
+
+  for (const dir of watchDirs) {
+    try {
+      const w = fs2.watch(dir, (eventType, filename) => {
+        if (eventType === 'rename') handleNewFile(dir, filename);
+      });
+      w.on('error', (e) => console.error(`[screenshot-watch] erro em ${dir}:`, e.message));
+      watchers.push(w);
+    } catch (e) {
+      console.error(`[screenshot-watch] falha ao observar ${dir}:`, e.message);
+    }
+  }
+
+  // Guarda array de watchers como objeto com close()
+  screenshotFolderWatcher = {
+    close: () => watchers.forEach(w => { try { w.close(); } catch (_) {} })
+  };
+  screenshotFolderWatcherPath = watchDirs.join(', ');
+}
+
+function stopScreenshotFolderMonitoring() {
+  if (screenshotFolderWatcher) {
+    try { screenshotFolderWatcher.close(); } catch (_) {}
+    screenshotFolderWatcher = null;
+    console.log('[screenshot-watch] 🛑 Monitoramento de pasta de screenshots parado');
+  }
 }
 
 // Função para processar nova imagem do clipboard

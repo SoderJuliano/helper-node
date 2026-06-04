@@ -59,25 +59,22 @@ function updateRealtimeAssistantStatus(isRealtimeAssistant) {
 function updateHelperToolsStatus(isEnabled) {
   if (!helperToolsStatus) return;
   helperToolsStatus.textContent = isEnabled ? "ON" : "OFF";
-  // Atualiza disponibilidade de workspaceAccess (depende de helperTools).
-  if (workspaceAccessToggle && workspaceAccessItem) {
-    if (!isEnabled) {
-      workspaceAccessToggle.checked = false;
-      updateWorkspaceAccessStatus(false);
-      workspaceAccessToggle.disabled = true;
-      workspaceAccessItem.style.opacity = "0.5";
-      workspaceAccessItem.title = "Requer Ferramentas Avançadas ligado.";
-    } else {
-      workspaceAccessToggle.disabled = false;
-      workspaceAccessItem.style.opacity = "1";
-      workspaceAccessItem.title = "Permite anexar pastas/arquivos como contexto. A IA pode ler/editar dentro deles (com confirmação).";
-    }
-  }
 }
 
 function updateWorkspaceAccessStatus(isEnabled) {
   if (!workspaceAccessStatus) return;
   workspaceAccessStatus.textContent = isEnabled ? "ON" : "OFF";
+}
+
+// Mostra/oculta workspaceAccess dependendo do modelo: só disponível pro OpenAI.
+function applyWorkspaceAccessVisibility(model) {
+  if (!workspaceAccessItem) return;
+  const isOpenAI = model === 'openIa';
+  workspaceAccessItem.style.display = isOpenAI ? '' : 'none';
+  if (!isOpenAI && workspaceAccessToggle) {
+    workspaceAccessToggle.checked = false;
+    updateWorkspaceAccessStatus(false);
+  }
 }
 
 // Mutex: helperTools desativa modo integrado + assistente em tempo real.
@@ -200,6 +197,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (savedAiModel) {
     aiModelSelect.value = savedAiModel;
   }
+  applyWorkspaceAccessVisibility(aiModelSelect.value);
+  const _isOllamaInit = (aiModelSelect.value === 'llama' || aiModelSelect.value === 'ollamaLocal');
+  const backendApiKeyContainerInit = document.getElementById('backend-api-key-container');
+  if (backendApiKeyContainerInit) backendApiKeyContainerInit.style.display = _isOllamaInit ? 'flex' : 'none';
 
   // -------------------------
   // Load app version
@@ -322,10 +323,6 @@ if (helperToolsToggle) {
 
 if (workspaceAccessToggle) {
   workspaceAccessToggle.addEventListener("change", () => {
-    // Garante que helperTools esteja ligado
-    if (workspaceAccessToggle.checked && !(helperToolsToggle && helperToolsToggle.checked)) {
-      workspaceAccessToggle.checked = false;
-    }
     updateWorkspaceAccessStatus(workspaceAccessToggle.checked);
   });
 }
@@ -336,51 +333,32 @@ function updateOllamaPullCmd() {
   ollamaPullCmd.textContent = `ollama pull ${ollamaLocalModelSelect.value}`;
 }
 
-// Quando ollamaLocal selecionado, desliga helperTools/workspaceAccess.
+// Quando ollamaLocal selecionado, desliga workspaceAccess (exclusivo do OpenAI).
 function applyOllamaLocalExclusivity() {
   if (aiModelSelect.value !== 'ollamaLocal') return;
-  if (helperToolsToggle && helperToolsToggle.checked) {
-    helperToolsToggle.checked = false;
-    updateHelperToolsStatus(false);
-  }
   if (workspaceAccessToggle && workspaceAccessToggle.checked) {
     workspaceAccessToggle.checked = false;
     updateWorkspaceAccessStatus(false);
   }
-  // Desabilita os toggles (visual) enquanto ollamaLocal estiver selecionado.
-  if (helperToolsToggle) {
-    helperToolsToggle.disabled = true;
-    const item = helperToolsToggle.closest('.setting-item');
-    if (item) { item.style.opacity = '0.5'; item.title = 'Indisponível com Ollama Local — troque pro ChatGPT pra usar.'; }
-  }
-  if (workspaceAccessToggle) {
-    workspaceAccessToggle.disabled = true;
-  }
 }
 
 function releaseOllamaLocalExclusivity() {
-  if (helperToolsToggle) {
-    helperToolsToggle.disabled = false;
-    const item = helperToolsToggle.closest('.setting-item');
-    if (item) { item.style.opacity = '1'; item.title = 'Permite à IA ler e editar arquivos do seu computador, executar comandos e gerar scripts.'; }
-  }
-  if (workspaceAccessToggle && helperToolsToggle && helperToolsToggle.checked) {
-    workspaceAccessToggle.disabled = false;
-  }
+  // nada a fazer — visibilidade do workspaceAccess já é controlada por applyWorkspaceAccessVisibility
 }
 
 // Show/hide OpenAI/Ollama fields based on AI model selection
 aiModelSelect.addEventListener('change', () => {
     const v = aiModelSelect.value;
+    const isOllama = (v === 'llama' || v === 'ollamaLocal');
     openIaTokenContainer.style.display = (v === 'openIa') ? 'flex' : 'none';
     openAiModelContainer.style.display = (v === 'openIa') ? 'flex' : 'none';
     if (ollamaLocalModelContainer) ollamaLocalModelContainer.style.display = (v === 'ollamaLocal') ? 'flex' : 'none';
     if (ollamaLocalInfo) ollamaLocalInfo.style.display = (v === 'ollamaLocal') ? 'block' : 'none';
-    if (v === 'ollamaLocal') {
-      applyOllamaLocalExclusivity();
-    } else {
-      releaseOllamaLocalExclusivity();
-    }
+    const backendApiKeyContainer = document.getElementById('backend-api-key-container');
+    if (backendApiKeyContainer) backendApiKeyContainer.style.display = isOllama ? 'flex' : 'none';
+    applyWorkspaceAccessVisibility(v);
+    if (v === 'ollamaLocal') applyOllamaLocalExclusivity();
+    else releaseOllamaLocalExclusivity();
 });
 
 if (ollamaLocalModelSelect) {

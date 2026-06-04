@@ -240,6 +240,23 @@ function parseOllamaToolCalls(text) {
     } catch (_) {}
   }
 
+  // Fallback: modelo emitiu "TOOL_CALL: git status" (shell sem JSON).
+  // Acontece com gemma3 quando não segue o formato estruturado.
+  if (calls.length === 0) {
+    const shellRe = /TOOL[_\s-]*CALL\s*:?\s*([a-z][^\n`{]+)/gi;
+    let sm;
+    while ((sm = shellRe.exec(text)) !== null) {
+      const raw = sm[1].trim().replace(/^`+|`+$/g, '').trim();
+      if (!raw || raw.startsWith('{')) continue;
+      const parts = raw.split(/\s+/);
+      const cmd = parts[0];
+      const knownCmds = ['git','npm','ls','cat','find','grep','echo','node','python','pip','curl','wget','mkdir','cp','mv','rm'];
+      if (!knownCmds.includes(cmd)) continue;
+      const obj = { name: 'runCommand', args: { cmd, args: parts.slice(1) } };
+      calls.push({ raw: sm[0], obj });
+    }
+  }
+
   // Fallback: modelo emitiu JSON com {"name":"writeFile",...} sem o marcador
   // TOOL_CALL: na frente. Acontece bastante com qwen25/llama3.
   if (calls.length === 0) {
@@ -568,6 +585,17 @@ class BackendService {
       // Use custom instruction if provided, otherwise use the default one
       let promptInstruction = customInstruction || configService.getPromptInstruction();
 
+      // Tools de escrita de arquivo são exclusivas do OpenAI.
+      // No Ollama só passamos read-only + comandos.
+      const OLLAMA_WRITE_TOOLS_BLOCKED = new Set(['writeFile', 'appendToFile', 'deleteFile', 'patchFile']);
+      let effectiveTools = tools;
+      if (tools) {
+        effectiveTools = tools.filter(t => {
+          const name = (t.function || t).name;
+          return !OLLAMA_WRITE_TOOLS_BLOCKED.has(name);
+        });
+      }
+
       // Tool calling Ollama: anexa instrucoes de formato + lista de tools no system prompt.
       let effectiveEndpoint = modelEndpoint;
       const writeIntent = isWriteIntent(texto);
@@ -576,37 +604,32 @@ class BackendService {
       
       // CRITICAL: If tools are enabled and workspace is attached, we are in STRICT MODE.
       // The AI MUST NOT output code in markdown; it MUST use tools.
-      const isStrictMode = !!(tools && onToolCall && wsEnabled && attCount > 0);
+      const isStrictMode = !!(effectiveTools && onToolCall && wsEnabled && attCount > 0);
       const toolFirstMode = isStrictMode && (writeIntent || readIntent || shellIntent);
       const forceTools = opts.forceTools || toolFirstMode;
 
-      if (tools && onToolCall) {
+      if (effectiveTools && onToolCall) {
         const wsPathsLine = wsPaths.length
           ? `WORKSPACE ANEXADO — use EXATAMENTE estes paths absolutos (não invente outros):\n${wsPaths.map(p => `  - ${p}`).join('\n')}`
           : '';
         if (isStrictMode && !customInstruction) {
-          // Absolute enforcement for strict mode: no chatty rules, just action.
           promptInstruction = [
             "═══ REGRAS DE OURO (MODO AGENTE ATIVO) ═══",
             "1. VOCÊ É UM AGENTE DE EXECUÇÃO. Sua missão é realizar a tarefa através de TOOL_CALL.",
             "2. NUNCA, SOB NENHUMA CIRCUNSTÂNCIA, escreva código dentro de blocos ``` (markdown).",
-            "3. Se precisar CRIAR arquivo novo: use writeFile.",
-            "4. Se precisar EDITAR arquivo existente (add linha, mudar trecho): use patchFile. NUNCA writeFile em arquivo existente — apaga tudo.",
-            "5. Se precisar ler, use listDir/readFile.",
-            "6. Se precisar rodar comandos, use runCommand.",
-            "7. MOSTRAR CÓDIGO NA TELA É PROIBIDO E SERÁ REJEITADO PELO SISTEMA.",
-            "8. Comece sua resposta IMEDIATAMENTE com TOOL_CALL:.",
+            "3. Se precisar ler, use listDir/readFile.",
+            "4. Se precisar rodar comandos, use runCommand.",
+            "5. MOSTRAR CÓDIGO NA TELA É PROIBIDO E SERÁ REJEITADO PELO SISTEMA.",
+            "6. Comece sua resposta IMEDIATAMENTE com TOOL_CALL:.",
             wsPathsLine,
             "",
-            buildOllamaToolsAddon(tools, wsPaths)
+            buildOllamaToolsAddon(effectiveTools, wsPaths)
           ].filter(Boolean).join("\n");
           console.log('[backend][strict] MODO ESTRITO ATIVO: Bloqueando saída de texto/código raw.');
         } else if (forceTools && !customInstruction) {
-          promptInstruction = buildToolFirstSystemPrompt(tools, wsPaths);
+          promptInstruction = buildToolFirstSystemPrompt(effectiveTools, wsPaths);
           console.log('[backend][tools] modo TOOL-FIRST ativo (intent detected, ignoring formatting rules)');
         } else {
-          // customInstruction presente (ex: fases do agente agentico).
-          // Ainda precisamos injetar o wsPathsLine + tool list para o modelo nao alucinar paths.
           const analysisAddon = customInstruction ? '' : buildDeepAnalysisAddon({
             toolsEnabled: true,
             wsEnabled,
@@ -780,7 +803,15 @@ class BackendService {
           const results = [];
           for (const c of calls) {
             const name = c.obj.name;
-            const args = c.obj.args || c.obj.arguments || {};
+            const rawArgs = c.obj.args || c.obj.arguments || {};
+            // Normaliza {"command":"git add ."} → {"cmd":"git","args":["add","."]}
+            let args = rawArgs;
+            if (args && args.command && !args.cmd) {
+              const parts = String(args.command).trim().split(/\s+/);
+              args = { ...args, cmd: parts[0], args: parts.slice(1) };
+              delete args.command;
+              c.obj.args = args;
+            }
             console.log(`[backend][tools] → ${name}(${JSON.stringify(args).slice(0, 120)})`);
             let toolResult;
             // Rejeita tools inventadas — para o loop antes de executar
@@ -789,16 +820,7 @@ class BackendService {
               console.warn(`[backend][tools] ⚠️ tool desconhecida ignorada: "${name}"`);
               toolResult = { error: `Ferramenta "${name}" não existe. Use apenas as ferramentas listadas. Escreva a RESPOSTA FINAL ao usuário agora.` };
             } else {
-              // Normaliza args.command → cmd/args antes de tudo (mesmo que runCommand.run() tb normalize)
-            let normalizedArgs = args;
-            if (normalizedArgs && normalizedArgs.command && !normalizedArgs.cmd) {
-              const parts = String(normalizedArgs.command).trim().split(/\s+/);
-              normalizedArgs = { ...normalizedArgs, cmd: parts[0], args: parts.slice(1) };
-              delete normalizedArgs.command;
-              c.obj.args = normalizedArgs; // propaga pra execução
-            }
-
-            // Anti-dup runCommand no escopo do turno.
+              // Anti-dup runCommand no escopo do turno.
               let _dupKey = null;
               if (name === 'runCommand') {
                 try {

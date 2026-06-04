@@ -43,9 +43,10 @@
             width: 260px;
             text-align: start;
             font-size: 10px;
-            display: flex;
+            display: none;
             flex-direction: column;
             gap: 6px;
+            z-index: 100;
         }
 
         .panel {
@@ -180,12 +181,16 @@
             box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
             border-radius: 8px;
             padding: 36px 20px 20px;
-            overflow-y: auto;
+            overflow: visible;
             color: #e0e0e0;
             font-size: 11px;
             line-height: 1.6;
             display: none;
             z-index: 5000;
+        }
+        #conversation-content {
+            max-height: calc(60vh - 60px);
+            overflow-y: auto;
             scrollbar-width: thin;
         }
 
@@ -219,6 +224,8 @@
             justify-content: center;
             opacity: 0.6;
             transition: opacity 0.2s;
+            z-index: 5100;
+            pointer-events: auto;
         }
 
         .conversation-close-btn:hover {
@@ -414,17 +421,17 @@
         #transcription {
             max-width: 80%;
             min-width: 500px;
-            top: 20%;
-            bottom: 5%; /* Define um limite inferior, permitindo que o contêiner cresça */
+            top: calc(8% + 15px);
+            bottom: 5%;
             left: 10%;
             right: 10%;
-            padding: 50px;
+            padding: 12px 20px;
             position: fixed;
             color: white;
-            overflow-y: auto; /* Was hidden; enable scrolling by default */
+            overflow-y: auto;
             overflow-x: hidden;
-            scrollbar-width: none; /* Firefox */
-            -ms-overflow-style: none; /* IE/Edge */
+            scrollbar-width: none;
+            -ms-overflow-style: none;
         }
 
         /* Hide scrollbar visuals while allowing scroll */
@@ -601,7 +608,114 @@
             font-weight: normal;
             line-height: 1.5;
             overflow-wrap: break-word;
-            margin-top: 20px;
+            margin-top: 4px;
+        }
+
+        /* Agrupa pergunta + resposta numa unidade visual com hover elevation */
+        .interaction-block {
+            position: relative;
+            border-radius: 8px;
+            padding: 6px 8px;
+            margin-top: 30px;
+            transition: background 0.2s;
+        }
+        .interaction-block:first-child {
+            margin-top: 0;
+        }
+        .interaction-block:hover {
+            background: rgba(255,255,255,0.04);
+        }
+        /* === Botão ⌬ para esconder/mostrar painéis === */
+        #panels-toggle-btn {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            background: transparent;
+            border: none;
+            color: rgba(255,255,255,0.35);
+            font-size: 14px;
+            cursor: pointer;
+            padding: 2px 5px;
+            border-radius: 4px;
+            z-index: 1100;
+            transition: color 0.15s, background 0.15s;
+            -webkit-app-region: no-drag;
+        }
+        #panels-toggle-btn:hover {
+            color: rgba(255,255,255,0.85);
+            background: rgba(255,255,255,0.08);
+        }
+
+        /* === Copy All fixo no topo da transcrição === */
+        #transcription-header {
+            position: fixed;
+            top: calc(8% + 15px);
+            right: 10%;
+            z-index: 50;
+            display: flex;
+            justify-content: flex-end;
+        }
+        .copy-all-fixed-btn {
+            display: none;
+            background: transparent;
+            border: none;
+            color: rgba(255,255,255,0.3);
+            font-size: 10px;
+            font-family: monospace;
+            cursor: pointer;
+            padding: 3px 8px;
+            border-radius: 4px;
+            transition: color 0.15s, background 0.15s;
+        }
+        .copy-all-fixed-btn:hover {
+            color: rgba(255,255,255,0.9);
+            background: rgba(255,255,255,0.08);
+        }
+        .copy-all-fixed-btn.copied {
+            color: #81c784;
+        }
+
+        /* === Botão Copiar dentro de cada interaction-block === */
+        .interaction-block .copy-interaction-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: transparent;
+            border: none;
+            border-radius: 4px;
+            padding: 3px 7px;
+            cursor: pointer;
+            font-size: 10px;
+            color: rgba(255,255,255,0);
+            font-family: monospace;
+            transition: all 0.15s ease;
+            z-index: 3;
+            pointer-events: none;
+        }
+        .interaction-block:hover .copy-interaction-btn {
+            color: rgba(255,255,255,0.45);
+            pointer-events: auto;
+        }
+        .interaction-block:hover .copy-interaction-btn:hover {
+            background: rgba(255,255,255,0.08);
+            color: rgba(255,255,255,0.9);
+        }
+
+        /* Lista de arquivos editados horizontalmente */
+        .tool-files-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin: 6px 0 2px 0;
+        }
+        .tool-file-chip {
+            font-size: 11px;
+            background: rgba(0,200,120,0.12);
+            color: rgba(160,255,200,0.85);
+            border: 1px solid rgba(0,200,120,0.2);
+            border-radius: 4px;
+            padding: 2px 7px;
+            font-family: monospace;
         }
 
         .ia-response pre {
@@ -713,25 +827,7 @@
             color: rgba(255, 138, 128, 0.95);
         }
 
-        .copy-all-button, .copy-all-stream-button {
-            position: absolute;
-            top: 8px;
-            right: 50px;
-            background: transparent;
-            border: none;
-            border-radius: 4px;
-            padding: 4px 6px;
-            cursor: pointer;
-            font-size: 11px;
-            color: rgba(255, 255, 255, 0.5);
-            font-family: monospace;
-            transition: all 0.15s ease;
-            z-index: 2;
-        }
-        .copy-all-button:hover, .copy-all-stream-button:hover {
-            background: rgba(255, 255, 255, 0.08);
-            color: rgba(255, 255, 255, 0.9);
-        }
+
 
         code {
             z-index: 1;
@@ -739,14 +835,15 @@
 
         .question-text {
             position: relative;
-            display: inline-block;
-            padding: 5px 10px;
+            display: block;
+            text-align: left;
+            padding: 3px 0;
             border-radius: 5px;
             transition: background-color 0.3s;
             cursor: pointer;
             font-weight: bold;
             color: #ffffff;
-            margin-bottom: 20px;
+            margin-bottom: 4px;
         }
 
         .question-text:hover {
@@ -1175,6 +1272,7 @@
 </head>
 <body>
     <div class="drag-area"></div>
+    <button id="panels-toggle-btn" title="Mostrar/esconder painéis">⌬</button>
     <div class="commands">
         <div class="panel" id="shortcut-panel">
             <div class="panel-header" id="shortcut-header">
@@ -1222,6 +1320,9 @@
 
     <div class="content">
         <h1 id="greeting">Olá amigo</h1>
+        <div id="transcription-header">
+            <button id="copy-all-btn" class="copy-all-fixed-btn">Copy All</button>
+        </div>
         <div id="transcription"></div>
     </div>
     
@@ -1274,6 +1375,40 @@
             const historyPanel = document.getElementById('history-panel');
             const historyToggle = document.getElementById('history-toggle');
             const historyHeader = document.getElementById('history-header');
+            const commandsDiv = document.querySelector('.commands');
+
+            // === Botão ⌬ — esconde/mostra painéis ===
+            const panelsToggleBtn = document.getElementById('panels-toggle-btn');
+            if (panelsToggleBtn && commandsDiv) {
+                panelsToggleBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const isHidden = window.getComputedStyle(commandsDiv).display === 'none';
+                    commandsDiv.style.display = isHidden ? 'flex' : 'none';
+                    panelsToggleBtn.style.color = isHidden ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.35)';
+                });
+            }
+
+            // === Botão Copy All fixo no topo ===
+            const copyAllFixedBtn = document.getElementById('copy-all-btn');
+            if (copyAllFixedBtn) {
+                copyAllFixedBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const blocks = transcriptionElement.querySelectorAll('.interaction-block');
+                    let allText = '';
+                    blocks.forEach(block => {
+                        const q = block.querySelector('.question-text');
+                        const a = block.querySelector('.ia-response');
+                        if (q) allText += `Pergunta: ${getQuestionText(q)}\n\n`;
+                        if (a) allText += `Resposta: ${a.innerText || a.textContent}\n\n---\n\n`;
+                    });
+                    navigator.clipboard.writeText(allText.trim()).then(() => {
+                        copyAllFixedBtn.textContent = 'Copiado ✓';
+                        copyAllFixedBtn.classList.add('copied');
+                        setTimeout(() => { copyAllFixedBtn.textContent = 'Copy All'; copyAllFixedBtn.classList.remove('copied'); }, 1500);
+                    });
+                });
+            }
+
 
             // === Agentic Workflow Listeners ===
             const agenticContainer = document.getElementById('agentic-status-container');
@@ -1431,34 +1566,42 @@
                     if (data.attachments) renderWorkspacePanel(data.attachments);
                 });
             }
-            // Listener pra IA ter editado um arquivo → mostra linha sutil clicável
+            // Listener pra IA ter editado um arquivo → chips horizontais no último interaction-block
             if (window.electronAPI && window.electronAPI.onWorkspaceFileWritten) {
                 window.electronAPI.onWorkspaceFileWritten((data) => {
                     try {
-                        const verb = data.action === 'create' ? 'criado' :
-                                     data.action === 'edit'   ? 'editado' :
-                                     data.action === 'append' ? 'append em' :
-                                     data.action === 'patch'  ? 'patch em' :
-                                     data.action === 'delete' ? 'apagado' : 'modificado';
-                        const line = document.createElement('div');
-                        line.className = 'ws-file-event';
-                        const label = document.createElement('span');
-                        label.className = 'ws-file-event-label';
-                        label.textContent = verb + ' → ';
-                        const link = document.createElement('a');
-                        link.className = 'ws-file-link';
-                        // mostra so basename + pai (path completo no tooltip)
+                        const verb = data.action === 'create' ? '✨' :
+                                     data.action === 'edit'   ? '✏️' :
+                                     data.action === 'append' ? '➕' :
+                                     data.action === 'patch'  ? '🩹' :
+                                     data.action === 'delete' ? '🗑️' : '📝';
                         const parts = (data.path || '').split('/');
-                        link.textContent = parts.slice(-2).join('/');
-                        link.title = data.path;
-                        link.addEventListener('click', (e) => {
-                            e.preventDefault();
+                        const shortName = parts.slice(-2).join('/');
+
+                        // Procura ou cria a lista de chips no último interaction-block
+                        const lastBlock = transcriptionElement
+                            ? transcriptionElement.querySelector('.interaction-block:last-child')
+                            : null;
+                        const container = lastBlock || transcriptionElement;
+                        if (!container) return;
+
+                        let filesList = container.querySelector('.tool-files-list');
+                        if (!filesList) {
+                            filesList = document.createElement('div');
+                            filesList.className = 'tool-files-list';
+                            container.appendChild(filesList);
+                        }
+
+                        const chip = document.createElement('span');
+                        chip.className = 'tool-file-chip';
+                        chip.title = data.path;
+                        chip.textContent = `${verb} ${shortName}`;
+                        chip.addEventListener('click', () => {
                             window.electronAPI.workspaceOpenExternal(data.path);
                         });
-                        line.appendChild(label);
-                        line.appendChild(link);
+                        filesList.appendChild(chip);
+
                         if (transcriptionElement) {
-                            transcriptionElement.appendChild(line);
                             transcriptionElement.scrollTo({ top: transcriptionElement.scrollHeight, behavior: 'smooth' });
                         }
                     } catch (e) { console.warn('file-written render failed:', e); }
@@ -1677,6 +1820,8 @@
                 try {
                     // Limpa a UI
                     transcriptionElement.innerHTML = '';
+                    const cabReset = document.getElementById('copy-all-btn');
+                    if (cabReset) cabReset.style.display = 'none';
                     greeting.style.display = 'block';
                     
                     // Reseta estado local
@@ -1687,11 +1832,19 @@
                     streamingElement = null;
                     streamingText = '';
                     typingCursor = null;
-                    
+
+                    // CRÍTICO: reseta flags de estado que travam a UI
+                    manualInputActive = false;
+                    isEditingQuestion = false;
+                    currentQuestionElement = null;
+
                     // Fecha visualizador se estiver aberto
                     conversationViewer.style.display = 'none';
                     removeManualInputContainer();
-                    
+
+                    // Para o robô/loading se estiver rodando
+                    stopProcessing();
+
                     // Notifica o backend para limpar sessões de IA imediatamente
                     window.electronAPI.clearAiSessions();
                     
@@ -1937,29 +2090,6 @@
                         });
                     return; // Stop further processing
                 }
-
-                const copyAllBtn = event.target.closest('.copy-all-button, .copy-all-stream-button');
-                if (copyAllBtn) {
-                    const responseElement = copyAllBtn.parentElement;
-                    const clone = responseElement.cloneNode(true);
-                    
-                    // Remove all buttons from the clone
-                    clone.querySelectorAll('.copy-button, .copy-all-button, .copy-all-stream-button').forEach(btn => btn.remove());
-                    
-                    const responseText = clone.innerText.trim();
-                    navigator.clipboard.writeText(responseText)
-                        .then(() => {
-                            const originalText = copyAllBtn.textContent;
-                            copyAllBtn.textContent = '✔️';
-                            setTimeout(() => { copyAllBtn.textContent = originalText; }, 2000);
-                        })
-                        .catch(err => {
-                            console.error('Erro ao copiar tudo:', err);
-                            const originalText = copyAllBtn.textContent;
-                            copyAllBtn.textContent = '❌';
-                            setTimeout(() => { copyAllBtn.textContent = originalText; }, 2000);
-                        });
-                }
             });
 
             // Renderiza tooltip de atalhos dinamicamente.
@@ -2006,7 +2136,7 @@
             greeting.classList.add('hidden');
 
             const interactive = event.target.closest(
-                'button, a, input, textarea, .edit-container, .copy-button, .copy-all-button, .copy-all-stream-button, .panel, #conversation-viewer'
+                'button, a, input, textarea, .edit-container, .copy-button, .block-action-btn, .block-actions-toggle, .block-actions-close, .panel, #conversation-viewer'
             );
             if (interactive) return;
             if (manualInputActive || isEditingQuestion) return;
@@ -2035,20 +2165,55 @@
             if (existing) existing.remove();
         }
 
+        function createBlockActions(transcriptionElement) {
+            // Botão simples "Copiar" dentro do bloco
+            const copyBtn = document.createElement('button');
+            copyBtn.className = 'copy-interaction-btn';
+            copyBtn.textContent = 'Copiar';
+            copyBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const block = copyBtn.closest('.interaction-block');
+                const qEl = block.querySelector('.question-text');
+                const qText = qEl ? getQuestionText(qEl) : '';
+                const aEl = block.querySelector('.ia-response');
+                const aText = aEl ? (aEl.innerText || aEl.textContent) : '';
+                const full = (qText ? `Pergunta: ${qText}\n\n` : '') + (aText ? `Resposta: ${aText}` : '');
+                navigator.clipboard.writeText(full).then(() => {
+                    copyBtn.textContent = 'Copiado ✓';
+                    setTimeout(() => { copyBtn.textContent = 'Copiar'; }, 1500);
+                });
+            });
+            return copyBtn;
+        }
+
         function appendQuestionEntry(text) {
             const transcriptionElement = document.getElementById('transcription');
+
+            // Cria o bloco que agrupa pergunta + resposta
+            const interactionBlock = document.createElement('div');
+            interactionBlock.className = 'interaction-block';
+
             const questionSpan = document.createElement('span');
             questionSpan.className = 'question-text';
             questionSpan.textContent = text;
 
             const editIcon = document.createElement('span');
             editIcon.className = 'edit-icon';
-            editIcon.textContent = '✏️';
+            editIcon.innerHTML = EDIT_ICON_SVG;
             questionSpan.appendChild(editIcon);
 
             questionSpan.addEventListener('click', () => handleQuestionEdit(questionSpan));
-            transcriptionElement.appendChild(questionSpan);
+
+            // === Bloco de ações ⌬ ===
+            const blockActions = createBlockActions(transcriptionElement);
+
+            interactionBlock.appendChild(questionSpan);
+            interactionBlock.appendChild(blockActions);
+            transcriptionElement.appendChild(interactionBlock);
             currentQuestionElement = questionSpan;
+            // Mostrar Copy All assim que houver pelo menos 1 bloco
+            const cab = document.getElementById('copy-all-btn');
+            if (cab) cab.style.display = 'block';
             scrollTranscriptionToBottom();
             return questionSpan;
         }
@@ -2304,24 +2469,22 @@
                 const isAlreadyHTML = /<pre|<code/.test(response);
                 
                 if (isAlreadyHTML) {
-                    // Response is already formatted HTML (from Gemini or old Llama)
                     newResponse.innerHTML = response;
                 } else {
-                    // Response is plain markdown text (from Backend), format it like OpenAI
                     const formattedResponse = formatOpenAIResponse(response);
                     newResponse.innerHTML = formattedResponse;
                 }
 
-                // O espaçamento é feito via CSS (margin-top: 20px na .ia-response)
-                transcriptionElement.appendChild(newResponse);
+                // Adiciona dentro do interaction-block da pergunta atual (se existir)
+                const lastBlock = transcriptionElement.querySelector('.interaction-block:last-child');
+                if (lastBlock) {
+                    lastBlock.appendChild(newResponse);
+                } else {
+                    transcriptionElement.appendChild(newResponse);
+                }
 
                 document.getElementById('robot').style.display = 'none';
 
-                // Adiciona o botão "Copiar Tudo"
-                const copyAllButton = document.createElement('button');
-                copyAllButton.textContent = 'Copy All';
-                copyAllButton.classList.add('copy-all-button');
-                newResponse.appendChild(copyAllButton);
 
                 // Scroll suave para o fim
                 setTimeout(() => scrollTranscriptionToBottom('smooth'), 100);
@@ -2347,7 +2510,12 @@
                 const formattedResponse = formatOpenAIResponse(response);
                 newResponse.innerHTML = formattedResponse;
 
-                transcriptionElement.appendChild(newResponse);
+                const lastBlockOAI = transcriptionElement.querySelector('.interaction-block:last-child');
+                if (lastBlockOAI) {
+                    lastBlockOAI.appendChild(newResponse);
+                } else {
+                    transcriptionElement.appendChild(newResponse);
+                }
 
                 document.getElementById('robot').style.display = 'none';
 
@@ -2414,16 +2582,15 @@
                 // --- START MODIFICATION ---
                 // If there's an existing question (from paste event "Image in context"), append to it
                 if (currentQuestionElement && currentQuestionElement.textContent.includes("Image in context")) {
-                    let combinedText = currentQuestionElement.textContent.replace('✏️', '').trim(); // Get current text from the question span
+                    let combinedText = getQuestionText(currentQuestionElement);
                     // Add the OCR text, potentially on a new line for clarity
                     combinedText += `\n${text}`; 
                     
                     currentQuestionElement.textContent = combinedText; // Update the question span
                     const editIcon = document.createElement('span'); // Re-add edit icon
                     editIcon.className = 'edit-icon';
-                    editIcon.textContent = '✏️';
-                    currentQuestionElement.appendChild(editIcon);
-                    
+                    editIcon.innerHTML = EDIT_ICON_SVG;
+
                     sentToAI(text || 'Processo texto da imagem');
                     
                     setTimeout(() => {
@@ -2501,7 +2668,12 @@
                     typingCursor = document.createElement('span');
                     typingCursor.className = 'typing-cursor';
                     
-                    transcriptionElement.appendChild(streamingElement);
+                    const lastBlockStream = transcriptionElement.querySelector('.interaction-block:last-child');
+                    if (lastBlockStream) {
+                        lastBlockStream.appendChild(streamingElement);
+                    } else {
+                        transcriptionElement.appendChild(streamingElement);
+                    }
                     streamingElement.appendChild(typingCursor);
                     streamingText = '';
                     console.log('Elemento de streaming criado');
@@ -2563,12 +2735,6 @@
                     console.log('Texto formatado:', formatted.substring(0, 200) + '...');
                     
                     streamingElement.innerHTML = formatted;
-                    
-                    // Adiciona o botão "Copiar Tudo", que será gerenciado pelo listener centralizado
-                    const copyAllButton = document.createElement('button');
-                    copyAllButton.textContent = 'Copy All';
-                    copyAllButton.classList.add('copy-all-button');
-                    streamingElement.appendChild(copyAllButton);
                     
                     console.log('Stream formatting completed successfully');
                 } else {
@@ -2786,6 +2952,15 @@
             return formatted;
         }
         
+        const EDIT_ICON_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 21H21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path fill-rule="evenodd" clip-rule="evenodd" d="M18.0235 10.4646L7.58554 20.9026H2.76801L2.76489 16.0819L13.2029 5.64392L18.0235 10.4646Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.2029 5.64388L15.0004 3.84641C15.7814 3.06536 17.0477 3.06536 17.8288 3.84641L19.821 5.83863C20.6021 6.61968 20.6021 7.88601 19.821 8.66706L18.0235 10.4645V10.4645" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+        function getQuestionText(questionSpan) {
+            // Pega só o texto puro, ignorando o span do edit-icon (SVG não tem texto)
+            return (questionSpan.firstChild && questionSpan.firstChild.nodeType === Node.TEXT_NODE
+                ? questionSpan.firstChild.nodeValue
+                : questionSpan.textContent).trim();
+        }
+
         function handleQuestionEdit(questionSpan) {
             if (isEditingQuestion) return;
             
@@ -2798,7 +2973,7 @@
             // Para as animações e notificações
             stopProcessing();
             
-            const currentText = questionSpan.textContent.replace('✏️', '').trim();
+            const currentText = getQuestionText(questionSpan);
             console.log('Texto atual:', currentText);
             
             const container = document.createElement('div');
@@ -2860,7 +3035,7 @@
             originalSpan.textContent = originalText;
             const editIcon = document.createElement('span');
             editIcon.className = 'edit-icon';
-            editIcon.textContent = '✏️';
+            editIcon.innerHTML = EDIT_ICON_SVG;
             originalSpan.appendChild(editIcon);
             
             // Reativa o evento de clique
@@ -2887,20 +3062,30 @@
             typingCursor = null;
             console.log('Variáveis de streaming resetadas globalmente');
             
-            // Recria o span com o novo texto
+            // Recria o span com o novo texto dentro de um interaction-block
             const questionSpan = document.createElement('span');
             questionSpan.className = 'question-text';
             questionSpan.textContent = newText;
             
             const editIcon = document.createElement('span');
             editIcon.className = 'edit-icon';
-            editIcon.textContent = '✏️';
+            editIcon.innerHTML = EDIT_ICON_SVG;
             questionSpan.appendChild(editIcon);
             
             questionSpan.addEventListener('click', () => handleQuestionEdit(questionSpan));
-            
-            console.log('Substituindo container por questionSpan');
-            container.replaceWith(questionSpan);
+
+            // Se o container está dentro de um interaction-block, substitui o bloco inteiro
+            const parentBlock = container.closest('.interaction-block');
+            const newBlock = document.createElement('div');
+            newBlock.className = 'interaction-block';
+            newBlock.appendChild(questionSpan);
+            newBlock.appendChild(createBlockActions(document.getElementById('transcription')));
+
+            if (parentBlock) {
+                parentBlock.replaceWith(newBlock);
+            } else {
+                container.replaceWith(newBlock);
+            }
             currentQuestionElement = questionSpan;
             
             console.log('Enviando pergunta editada:', newText);
@@ -3139,7 +3324,10 @@
                 const questionSpan = document.createElement('span');
                 questionSpan.className = 'question-text';
                 questionSpan.textContent = `${text} (Image in context)`;
-                container.replaceWith(questionSpan);
+                const ib1 = document.createElement('div');
+                ib1.className = 'interaction-block';
+                ib1.appendChild(questionSpan);
+                container.replaceWith(ib1);
                 currentQuestionElement = questionSpan;
 
                 startProcessing();
@@ -3185,19 +3373,22 @@
                 container.replaceWith(pre);
 
             } else {
-                // Cria o span com a pergunta
                 const questionSpan = document.createElement('span');
                 questionSpan.className = 'question-text';
                 questionSpan.textContent = text;
                 
                 const editIcon = document.createElement('span');
                 editIcon.className = 'edit-icon';
-                editIcon.textContent = '✏️';
+                editIcon.innerHTML = EDIT_ICON_SVG;
                 questionSpan.appendChild(editIcon);
                 
                 questionSpan.addEventListener('click', () => handleQuestionEdit(questionSpan));
-                
-                container.replaceWith(questionSpan);
+
+                const ib2 = document.createElement('div');
+                ib2.className = 'interaction-block';
+                ib2.appendChild(questionSpan);
+                ib2.appendChild(createBlockActions(document.getElementById('transcription')));
+                container.replaceWith(ib2);
                 currentQuestionElement = questionSpan;
             }
             
