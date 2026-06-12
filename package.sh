@@ -13,7 +13,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 APP_NAME="helper-node"
-VERSION="0.3.4"
+VERSION="0.3.5"
 BUILD_DIR="$(pwd)/build"
 DIST_DIR="$(pwd)/dist"
 PROJECT_ROOT="$(pwd)"
