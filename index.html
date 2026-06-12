@@ -38,15 +38,24 @@
         
         .commands {
             position: absolute;
-            top: 35px;  /* Ajustado para ficar abaixo da área de arrasto */
+            top: 35px;
             left: 10px;
             width: 260px;
             text-align: start;
             font-size: 10px;
-            display: none;
+            display: flex;
             flex-direction: column;
             gap: 6px;
             z-index: 100;
+            opacity: 0;
+            pointer-events: none;
+            transform: translateX(-10px);
+            transition: opacity 0.5s ease, transform 0.5s ease;
+        }
+        .commands.open {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateX(0);
         }
 
         .panel {
@@ -634,13 +643,15 @@
             background: transparent;
             border: none;
             color: rgba(255,255,255,0.35);
-            font-size: 14px;
+            font-size: 28px;
             cursor: pointer;
             padding: 2px 5px;
             border-radius: 4px;
             z-index: 1100;
             transition: color 0.15s, background 0.15s;
             -webkit-app-region: no-drag;
+            display: flex;
+            align-items: center;
         }
         #panels-toggle-btn:hover {
             color: rgba(255,255,255,0.85);
@@ -1267,48 +1278,58 @@
             justify-content: space-between;
         }
 
-        /* === Assistente de Tradução — badge fixo no canto superior direito === */
-        #ta-indicator {
+        /* === Assistente de Tradução — indicador ao vivo (sem texto, só animação) === */
+        #ta-live-indicator {
             display: none;
             position: fixed;
-            top: 22px;
-            right: 22px;
-            z-index: 9990;
+            top: 14px;
+            right: 14px;
+            z-index: 9991;
+            width: 45px;
+            height: 45px;
             align-items: center;
-            gap: 9px;
-            background: rgba(14, 14, 16, 0.88);
-            border: 1px solid rgba(255, 255, 255, 0.09);
-            border-radius: 20px;
-            padding: 7px 16px 7px 12px;
+            justify-content: center;
             pointer-events: none;
-            backdrop-filter: blur(6px);
-            box-shadow: 0 3px 14px rgba(0,0,0,0.55);
+            transition: opacity 0.3s;
         }
-        #ta-indicator.visible { display: flex; }
-        #ta-indicator-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            flex-shrink: 0;
-            background: #ff4444;
-            animation: ta-pulse 1.1s ease-in-out infinite;
+        #ta-live-indicator.visible { display: flex; }
+        #ta-live-indicator.hidden-by-loader { opacity: 0; }
+
+        /* Pulsating circle (mic aberto) — 15×15, animação lenta */
+        #ta-live-pulse { display: none; position: relative; width: 15px; height: 15px; }
+        #ta-live-indicator.state-mic #ta-live-pulse { display: block; }
+        #ta-live-pulse:before {
+            content: '';
+            position: relative;
+            display: block;
+            width: 300%;
+            height: 300%;
+            box-sizing: border-box;
+            margin-left: -100%;
+            margin-top: -100%;
+            border-radius: 45px;
+            background-color: #01a4e9;
+            animation: pulse-ring 2.5s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
         }
-        #ta-indicator-dot.dim {
-            background: #555;
-            animation: ta-pulse-dim 2s ease-in-out infinite;
+        #ta-live-pulse:after {
+            content: '';
+            position: absolute;
+            left: 0; top: 0;
+            display: block;
+            width: 100%; height: 100%;
+            background-color: white;
+            border-radius: 15px;
+            box-shadow: 0 0 8px rgba(0,0,0,.3);
+            animation: pulse-dot 2.5s cubic-bezier(0.455, 0.03, 0.515, 0.955) -.4s infinite;
         }
-        #ta-indicator-label {
-            font-size: 11px;
-            color: rgba(255,255,255,0.65);
-            white-space: nowrap;
+        @keyframes pulse-ring {
+            0% { transform: scale(.33); }
+            80%, 100% { opacity: 0; }
         }
-        @keyframes ta-pulse {
-            0%, 100% { transform: scale(1);   opacity: 1;   }
-            50%       { transform: scale(1.8); opacity: 0.4; }
-        }
-        @keyframes ta-pulse-dim {
-            0%, 100% { transform: scale(1);   opacity: 0.45; }
-            50%       { transform: scale(1.3); opacity: 0.18; }
+        @keyframes pulse-dot {
+            0% { transform: scale(.8); }
+            50% { transform: scale(1); }
+            100% { transform: scale(.8); }
         }
         .ta-meta {
             font-size: 11px;
@@ -1342,7 +1363,7 @@
 </head>
 <body>
     <div class="drag-area"></div>
-    <button id="panels-toggle-btn" title="Mostrar/esconder painéis">⌬</button>
+    <button id="panels-toggle-btn" title="Mostrar/esconder painéis"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8.636 12.5a.5.5 0 0 1-.5.5H1.5A1.5 1.5 0 0 1 0 11.5v-10A1.5 1.5 0 0 1 1.5 0h10A1.5 1.5 0 0 1 13 1.5v6.636a.5.5 0 0 1-1 0V1.5a.5.5 0 0 0-.5-.5h-10a.5.5 0 0 0-.5.5v10a.5.5 0 0 0 .5.5h6.636a.5.5 0 0 1 .5.5"/><path fill-rule="evenodd" d="M16 15.5a.5.5 0 0 1-.5.5h-5a.5.5 0 0 1 0-1h3.793L6.146 6.854a.5.5 0 1 1 .708-.708L15 14.293V10.5a.5.5 0 0 1 1 0z"/></svg></button>
     <div class="commands">
         <div class="panel" id="shortcut-panel">
             <div class="panel-header" id="shortcut-header">
@@ -1424,10 +1445,9 @@
     </div>
     <div id="app-toast" role="status" aria-live="polite"></div>
 
-    <!-- Badge fixo: indica que o Assistente de Tradução está capturando áudio -->
-    <div id="ta-indicator">
-        <div id="ta-indicator-dot"></div>
-        <span id="ta-indicator-label">Ouvindo...</span>
+    <!-- Indicador ao vivo: pulsating circle discreta enquanto mic está aberto -->
+    <div id="ta-live-indicator">
+        <div id="ta-live-pulse"></div>
     </div>
 
     <!-- Agentic Workflow Status -->
@@ -1455,12 +1475,15 @@
 
             // === Botão ⌬ — esconde/mostra painéis ===
             const panelsToggleBtn = document.getElementById('panels-toggle-btn');
+            const SVG_OPEN  = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8.636 12.5a.5.5 0 0 1-.5.5H1.5A1.5 1.5 0 0 1 0 11.5v-10A1.5 1.5 0 0 1 1.5 0h10A1.5 1.5 0 0 1 13 1.5v6.636a.5.5 0 0 1-1 0V1.5a.5.5 0 0 0-.5-.5h-10a.5.5 0 0 0-.5.5v10a.5.5 0 0 0 .5.5h6.636a.5.5 0 0 1 .5.5"/><path fill-rule="evenodd" d="M16 15.5a.5.5 0 0 1-.5.5h-5a.5.5 0 0 1 0-1h3.793L6.146 6.854a.5.5 0 1 1 .708-.708L15 14.293V10.5a.5.5 0 0 1 1 0z"/></svg>`;
+            const SVG_CLOSE = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M7.364 3.5a.5.5 0 0 1 .5-.5H14.5A1.5 1.5 0 0 1 16 4.5v10a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 3 14.5V7.864a.5.5 0 1 1 1 0V14.5a.5.5 0 0 0 .5.5h10a.5.5 0 0 0 .5-.5v-10a.5.5 0 0 0-.5-.5H7.864a.5.5 0 0 1-.5-.5"/><path fill-rule="evenodd" d="M0 .5A.5.5 0 0 1 .5 0h5a.5.5 0 0 1 0 1H1.707l8.147 8.146a.5.5 0 0 1-.708.708L1 1.707V5.5a.5.5 0 0 1-1 0z"/></svg>`;
             if (panelsToggleBtn && commandsDiv) {
                 panelsToggleBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    const isHidden = window.getComputedStyle(commandsDiv).display === 'none';
-                    commandsDiv.style.display = isHidden ? 'flex' : 'none';
-                    panelsToggleBtn.style.color = isHidden ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.35)';
+                    const isOpen = commandsDiv.classList.contains('open');
+                    commandsDiv.classList.toggle('open', !isOpen);
+                    panelsToggleBtn.innerHTML = isOpen ? SVG_OPEN : SVG_CLOSE;
+                    panelsToggleBtn.style.color = isOpen ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.75)';
                 });
             }
 
@@ -3479,33 +3502,35 @@
 
         // === Assistente de Tradução ===
         if (window.electronAPI && window.electronAPI.onTranslationResult) {
-            const _taInd     = document.getElementById('ta-indicator');
-            const _taIndDot  = document.getElementById('ta-indicator-dot');
-            const _taIndLbl  = document.getElementById('ta-indicator-label');
+            // Funções stub — badge removido, mantidas para não quebrar chamadas no modo teste
+            const _taShow = () => {};
+            const _taHide = () => {};
 
-            const _taShow = (label, dim = false) => {
-                if (!_taInd) return;
-                _taIndDot.className = dim ? 'dim' : '';
-                _taIndLbl.textContent = label;
-                _taInd.classList.add('visible');
-            };
-            const _taHide = () => { if (_taInd) _taInd.classList.remove('visible'); };
-
-            // Indicador visual para o modo ao vivo
-            if (window.electronAPI.onTranslationStatus) {
+            // Pulsating circle: aparece com mic aberto, some quando robot/lottie estão visíveis
+            const _taLive = document.getElementById('ta-live-indicator');
+            if (_taLive && window.electronAPI.onTranslationStatus) {
                 window.electronAPI.onTranslationStatus((status) => {
                     if (status === 'mic_open') {
-                        _taIndDot.style.background = '';
-                        _taShow('🎤 Ouvindo...', true);
+                        _taLive.className = 'visible state-mic';
                     } else if (status === 'processing') {
-                        _taIndDot.style.background = '#555';
-                        _taIndDot.className = 'dim';
-                        _taIndLbl.textContent = '⏳ Traduzindo...';
-                        if (_taInd) _taInd.classList.add('visible');
+                        // Esconde o pulse enquanto a IA processa
+                        _taLive.classList.add('hidden-by-loader');
                     } else if (status === 'idle') {
-                        _taHide();
+                        _taLive.className = '';
                     }
                 });
+
+                // Esconde o pulse enquanto robot.gif ou lottie estiverem visíveis
+                const _robot = document.getElementById('robot');
+                const _animCont = document.getElementById('animation-container');
+                const _syncPulse = () => {
+                    const busy = (_robot && _robot.style.display === 'block') ||
+                                 (_animCont && _animCont.style.display !== '' && _animCont.style.display !== 'none');
+                    _taLive.classList.toggle('hidden-by-loader', busy);
+                };
+                const _obs = new MutationObserver(_syncPulse);
+                if (_robot)   _obs.observe(_robot,   { attributes: true, attributeFilter: ['style'] });
+                if (_animCont) _obs.observe(_animCont, { attributes: true, attributeFilter: ['style'] });
             }
 
             const _taMeta = (text) => {
