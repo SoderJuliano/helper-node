@@ -65,6 +65,8 @@ const helperTools = require("./services/helperTools");
 const workspace = require("./services/workspace");
 const agenticWorkflow = require("./services/agenticWorkflowService");
 const ollamaAgenticWorkflow = require("./services/ollamaAgenticWorkflowService");
+const translationAssistant = require("./services/translationAssistant");
+const { runTestMode } = require("./services/translationAssistant/testMode");
 
 /**
  * Monta opts pra OpenAIService.makeOpenAIRequest acoplando o helperTools quando:
@@ -364,6 +366,23 @@ const realtimeAssistantService = new RealtimeAssistantService({
       mainWindow.webContents.send("toggle-recording", { isRecording, audioFilePath });
     }
   },
+});
+
+// Entrega resultados do Assistente de Tradução: overlay stealth ou janela principal
+translationAssistant.onResult(({ transcript, response, mode }) => {
+  try {
+    const cfg = configService.getConfig();
+    if (cfg.osIntegration) {
+      // Monta texto curto pra overlay (response já vem formatado com TRADUÇÃO: / RESPOSTA:)
+      createOsNotificationWindow('response', response);
+    } else if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('translation-status', 'processing');
+      mainWindow.webContents.send('translation-result', { transcript, response });
+      mainWindow.webContents.send('translation-status', 'mic_open');
+    }
+  } catch (e) {
+    console.error('[TranslationAssistant] erro ao entregar resultado:', e.message);
+  }
 });
 
 function createConfigWindow() {
@@ -3213,6 +3232,127 @@ ipcMain.on("set-language", (event, language) => {
   configService.setLanguage(language);
 });
 
+// === Assistente de Tradução ===
+ipcMain.handle("get-translation-assistant-config", () => {
+  return configService.getTranslationAssistantConfig();
+});
+
+ipcMain.on("set-translation-assistant-config", (event, partial) => {
+  configService.setTranslationAssistantConfig(partial || {});
+
+  // Auto-inicia ou para o assistente ao vivo conforme o toggle de habilitação
+  if (typeof partial.enabled === 'boolean') {
+    const cfg = configService.getConfig();
+    if (partial.enabled) {
+      if (!cfg.openIaToken) {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('translation-result', {
+            transcript: '',
+            response: '❌ Configure sua API key da OpenAI antes de usar o Assistente de Tradução.',
+          });
+        }
+        return;
+      }
+      if (!translationAssistant.isActive()) {
+        const ta = cfg.translationAssistant || {};
+        translationAssistant.start({
+          apiKey: cfg.openIaToken,
+          userName: ta.userName || '',
+          userBackground: ta.userBackground || '',
+          targetLanguage: ta.targetLanguage || 'pt-br',
+        }).then(() => {
+          if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('translation-status', 'mic_open');
+        }).catch((e) => console.error('[TranslationAssistant] falha ao iniciar:', e.message));
+      }
+    } else {
+      if (translationAssistant.isActive()) {
+        translationAssistant.stop().then(() => {
+          if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('translation-status', 'idle');
+        }).catch(() => {});
+      }
+    }
+  }
+});
+
+ipcMain.on("set-translation-test-mode", (event, enabled) => {
+  // Salva o estado no config
+  configService.setTranslationAssistantConfig({ testMode: !!enabled });
+
+  if (!enabled) return;
+
+  const cfg = configService.getConfig();
+
+  // Sem API key: desmarca imediatamente e avisa o usuário
+  if (!cfg.openIaToken) {
+    configService.setTranslationAssistantConfig({ testMode: false });
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('translation-result', {
+        transcript: '',
+        response: '❌ Configure sua API key da OpenAI antes de usar o modo de teste.',
+      });
+    }
+    return;
+  }
+
+  const ta = cfg.translationAssistant || {};
+
+  // Entrega eventos para o renderer com o objeto de status completo
+  const deliver = (data) => {
+    try {
+      if (cfg.osIntegration) {
+        const text = data.response || data.evaluation || data.error || data.message || '';
+        if (text) createOsNotificationWindow('response', text);
+      } else if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('translation-result', data);
+      }
+    } catch (e) {
+      console.error('[TranslationAssistant] testMode deliver error:', e.message);
+    }
+  };
+
+  // Executa em background para não bloquear o IPC
+  runTestMode({
+    apiKey: cfg.openIaToken,
+    userName: ta.userName || '',
+    userBackground: ta.userBackground || '',
+    targetLanguage: ta.targetLanguage || 'pt-br',
+
+    onResult: (data) => deliver(data),
+
+    onDone: () => {
+      deliver({ status: 'complete', message: '✅ Teste concluído — 5 perguntas processadas.' });
+      configService.setTranslationAssistantConfig({ testMode: false });
+    },
+  }).catch((err) => {
+    console.error('[TranslationAssistant] testMode falhou:', err.message);
+    configService.setTranslationAssistantConfig({ testMode: false });
+  });
+});
+
+ipcMain.handle("translation-start", async () => {
+  const cfg = configService.getConfig();
+  if (!cfg.openIaToken) return { error: 'API key não configurada' };
+  // Para o assistente em tempo real se estiver ativo (evita conflito de mic)
+  if (realtimeAssistantService.isActive()) {
+    await realtimeAssistantService.stop().catch(() => {});
+  }
+  const ta = cfg.translationAssistant || {};
+  await translationAssistant.start({
+    apiKey: cfg.openIaToken,
+    userName: ta.userName || '',
+    userBackground: ta.userBackground || '',
+    targetLanguage: ta.targetLanguage || 'pt-br',
+  });
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('translation-status', 'mic_open');
+  return { ok: true };
+});
+
+ipcMain.handle("translation-stop", async () => {
+  await translationAssistant.stop();
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('translation-status', 'idle');
+  return { ok: true };
+});
+
 // IPC Handlers for AI Model
 ipcMain.handle("get-ai-model", () => {
   return configService.getAiModel();
@@ -4474,6 +4614,28 @@ app.whenReady().then(async () => {
     // Capture tool monitoring só no OS integration mode, não no print mode básico
   }
   
+  // Inicializar Translation Assistant se estiver ativo
+  const initialTaCfg = configService.getTranslationAssistantConfig ? configService.getTranslationAssistantConfig() : null;
+  if (initialTaCfg && initialTaCfg.enabled) {
+    const cfg = configService.getConfig();
+    if (cfg.openIaToken) {
+      console.log('[TranslationAssistant] enabled in config, auto-starting...');
+      setTimeout(() => {
+        if (!translationAssistant.isActive()) {
+          const ta = cfg.translationAssistant || {};
+          translationAssistant.start({
+            apiKey: cfg.openIaToken,
+            userName: ta.userName || '',
+            userBackground: ta.userBackground || '',
+            targetLanguage: ta.targetLanguage || 'pt-br',
+          }).then(() => {
+            if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('translation-status', 'mic_open');
+          }).catch((e) => console.error('[TranslationAssistant] auto-start falhou:', e.message));
+        }
+      }, 1500);
+    }
+  }
+
   // Inicializar OS integration mode se estiver ativo
   const initialOsIntegration = configService.getOsIntegrationStatus();
   console.log('🔗 Checking OS integration status:', initialOsIntegration);

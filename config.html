@@ -448,6 +448,53 @@
             </div>
         </div>
 
+        <!-- Assistente de Tradução (entrevistas) -->
+        <div id="translation-assistant-section" style="margin-top: 14px; padding: 14px; background-color: rgba(0,0,0,0.35); border-radius: 5px; -webkit-app-region: no-drag;">
+            <div style="font-weight: bold; color: #00aaff; margin-bottom: 8px;">🌐 Assistente de Tradução (Entrevistas)</div>
+            <p style="font-size: 12px; color: #ffb74d; margin: 0 0 10px 0;">⚠️ Esta opção consome créditos da API OpenAI. A chave de API deve estar configurada acima.</p>
+
+            <div class="setting-item" style="margin-bottom: 10px;">
+                <label for="translation-enabled">Habilitar Assistente de Tradução</label>
+                <span id="translation-enabled-status" style="font-weight: bold; margin-left: 10px; min-width: 30px; text-align: center; -webkit-app-region: no-drag;">OFF</span>
+                <label class="switch">
+                    <input type="checkbox" id="translation-enabled" hidden>
+                    <div class="switch__wrapper">
+                        <div class="switch__toggle"></div>
+                    </div>
+                </label>
+            </div>
+
+            <div style="margin-bottom: 8px;">
+                <label for="translation-username" style="display: block; margin-bottom: 4px; font-size: 13px;">Seu nome (para contexto da IA)</label>
+                <input type="text" id="translation-username" class="custom-input" placeholder="Ex: João Silva">
+            </div>
+
+            <div style="margin-bottom: 8px;">
+                <label for="translation-background" style="display: block; margin-bottom: 4px; font-size: 13px;">Seu background profissional</label>
+                <textarea id="translation-background" style="width:100%; min-height:70px; padding:8px 12px; border-radius:5px; border:1px solid #555; background-color:#252525; color:white; font-size:13px; box-sizing:border-box; -webkit-app-region:no-drag; resize:vertical;" placeholder="Ex: Desenvolvedor backend com 5 anos de experiência em Node.js e AWS..."></textarea>
+            </div>
+
+            <div class="setting-item" style="margin-bottom: 0;">
+                <label for="translation-target-lang">Idioma alvo (para onde traduzir)</label>
+                <select id="translation-target-lang" class="custom-select">
+                    <option value="pt-br">Português (BR)</option>
+                    <option value="en">English</option>
+                    <option value="es">Español</option>
+                </select>
+            </div>
+
+            <hr style="margin: 16px 0; opacity: 0.3; border-color: #555;">
+            <div style="-webkit-app-region: no-drag;">
+                <label for="translation-test-mode" style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer; font-size: 13px;">
+                    <input type="checkbox" id="translation-test-mode" style="margin-top: 2px; flex-shrink: 0;">
+                    <span><strong>Modo de Teste</strong> — reproduz os 5 áudios de <code style="background:#1a1a1a; padding:1px 4px; border-radius:3px;">test-audios/</code> e exibe tradução + resposta sugerida para cada um</span>
+                </label>
+                <p style="font-size: 11.5px; color: #888; margin: 6px 0 0 20px;">
+                    Ao salvar com esta opção marcada, o app processa os áudios automaticamente e desmarca ao final.
+                </p>
+            </div>
+        </div>
+
     </div>
     <button id="save-btn">Salvar e Fechar</button>
     <div style="margin-top: 20px; padding: 15px; background-color: rgba(0, 0, 0, 0.3); border-radius: 5px; -webkit-app-region: no-drag; display: flex; justify-content: space-between; align-items: center;">

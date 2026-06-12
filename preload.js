@@ -112,4 +112,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   stopAgenticWorkflow: (sessionId) =>
     ipcRenderer.send("stop-agentic-workflow", sessionId),
   clearAiSessions: () => ipcRenderer.send("clear-ai-sessions"),
+
+  // === Assistente de Tradução ===
+  onTranslationResult: (cb) =>
+    ipcRenderer.on("translation-result", (event, data) => cb(data)),
+  onTranslationStatus: (cb) =>
+    ipcRenderer.on("translation-status", (_e, status) => cb(status)),
+  translationStart: () => ipcRenderer.invoke("translation-start"),
+  translationStop: () => ipcRenderer.invoke("translation-stop"),
 });

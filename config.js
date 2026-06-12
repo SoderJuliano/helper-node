@@ -450,3 +450,65 @@ document.getElementById("clear-openai-token").addEventListener("click", () => {
     openIaTokenInput.value = "";
     ipcRenderer.send("set-open-ia-token", ""); // Clear token in main process as well
 });
+
+// === Assistente de Tradução ===
+const translationEnabledToggle = document.getElementById('translation-enabled');
+const translationEnabledStatus = document.getElementById('translation-enabled-status');
+const translationUsernameInput = document.getElementById('translation-username');
+const translationBackgroundInput = document.getElementById('translation-background');
+const translationTargetLangSelect = document.getElementById('translation-target-lang');
+
+function updateTranslationEnabledStatus(v) {
+  if (translationEnabledStatus) translationEnabledStatus.textContent = v ? 'ON' : 'OFF';
+}
+
+if (translationEnabledToggle) {
+  translationEnabledToggle.addEventListener('change', () => {
+    updateTranslationEnabledStatus(translationEnabledToggle.checked);
+    ipcRenderer.send('set-translation-assistant-config', { enabled: translationEnabledToggle.checked });
+  });
+}
+
+if (translationUsernameInput) {
+  translationUsernameInput.addEventListener('input', () => {
+    ipcRenderer.send('set-translation-assistant-config', { userName: translationUsernameInput.value });
+  });
+}
+
+if (translationBackgroundInput) {
+  translationBackgroundInput.addEventListener('input', () => {
+    ipcRenderer.send('set-translation-assistant-config', { userBackground: translationBackgroundInput.value });
+  });
+}
+
+if (translationTargetLangSelect) {
+  translationTargetLangSelect.addEventListener('change', () => {
+    ipcRenderer.send('set-translation-assistant-config', { targetLanguage: translationTargetLangSelect.value });
+  });
+}
+
+const translationTestModeInput = document.getElementById('translation-test-mode');
+if (translationTestModeInput) {
+  translationTestModeInput.addEventListener('change', () => {
+    // Usa canal dedicado para que o main process possa disparar o teste
+    ipcRenderer.send('set-translation-test-mode', translationTestModeInput.checked);
+  });
+}
+
+// Carrega valores salvos do Assistente de Tradução ao abrir config
+(async () => {
+  try {
+    const ta = await ipcRenderer.invoke('get-translation-assistant-config');
+    if (!ta) return;
+    if (translationEnabledToggle) {
+      translationEnabledToggle.checked = !!ta.enabled;
+      updateTranslationEnabledStatus(!!ta.enabled);
+    }
+    if (translationUsernameInput) translationUsernameInput.value = ta.userName || '';
+    if (translationBackgroundInput) translationBackgroundInput.value = ta.userBackground || '';
+    if (translationTargetLangSelect) translationTargetLangSelect.value = ta.targetLanguage || 'pt-br';
+    if (translationTestModeInput) translationTestModeInput.checked = !!ta.testMode;
+  } catch (e) {
+    console.warn('[TranslationAssistant] load config failed:', e.message);
+  }
+})();

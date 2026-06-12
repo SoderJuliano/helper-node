@@ -79,6 +79,16 @@ const defaultConfig = {
   // API Key do backend remoto. Necessário para endpoints pesados (ex: qwen3.6-17b).
   // Endpoints leves (llama3, qwen25) usam o Bearer token fixo hardcoded.
   backendApiKey: "",
+  // Assistente de Tradução (entrevistas). Captura áudio, detecta fim de fala,
+  // transcreve via gpt-4o-mini-transcribe e retorna tradução + sugestão de
+  // resposta em PT-BR ou idioma escolhido.
+  translationAssistant: {
+    enabled: false,
+    userName: "",
+    userBackground: "",
+    targetLanguage: "pt-br",
+    testMode: false,
+  },
 };
 
 let configPath;
@@ -459,6 +469,44 @@ function setBackendApiKey(key) {
   currentConfig = null;
 }
 
+function getTranslationAssistantConfig() {
+  if (!currentConfig) currentConfig = loadConfig();
+  return { ...defaultConfig.translationAssistant, ...(currentConfig.translationAssistant || {}) };
+}
+
+function setTranslationAssistantConfig(partial) {
+  if (!currentConfig) currentConfig = loadConfig();
+  currentConfig.translationAssistant = {
+    ...(currentConfig.translationAssistant || defaultConfig.translationAssistant),
+    ...partial,
+  };
+  saveConfig(currentConfig);
+  currentConfig = null;
+}
+
+// Retorna a configuração completa mesclada com defaults.
+// Útil para IPC handlers genéricos (config-get-all).
+function getConfig() {
+  if (!currentConfig) currentConfig = loadConfig();
+  return { ...currentConfig };
+}
+
+// Setter genérico com suporte a dot-notation (ex: "translationAssistant.enabled").
+function setConfigValue(dotPath, value) {
+  if (!currentConfig) currentConfig = loadConfig();
+  const keys = dotPath.split('.');
+  let obj = currentConfig;
+  for (let i = 0; i < keys.length - 1; i++) {
+    if (obj[keys[i]] === undefined || typeof obj[keys[i]] !== 'object') {
+      obj[keys[i]] = {};
+    }
+    obj = obj[keys[i]];
+  }
+  obj[keys[keys.length - 1]] = value;
+  saveConfig(currentConfig);
+  currentConfig = null;
+}
+
 module.exports = {
   initialize,
   getPromptInstruction,
@@ -495,5 +543,9 @@ module.exports = {
   setWorkspaceAccessEnabled,
   getBackendApiKey,
   setBackendApiKey,
+  getTranslationAssistantConfig,
+  setTranslationAssistantConfig,
+  getConfig,
+  setConfigValue,
   getIp,
 };
