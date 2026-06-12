@@ -67,6 +67,7 @@ const agenticWorkflow = require("./services/agenticWorkflowService");
 const ollamaAgenticWorkflow = require("./services/ollamaAgenticWorkflowService");
 const translationAssistant = require("./services/translationAssistant");
 const { runTestMode } = require("./services/translationAssistant/testMode");
+const { analyzeInterviewImage } = require("./services/translationAssistant/imageAnalysis");
 
 /**
  * Monta opts pra OpenAIService.makeOpenAIRequest acoplando o helperTools quando:
@@ -1997,7 +1998,7 @@ async function registerGlobalShortcuts() {
     const registered = globalShortcut.register(combo, async () => {
       // Mutex amplo: TA + OS Integration ativos suprime todos os atalhos
       // exceto open-config (necessário pro usuário desligar o modo).
-      if (isTranslationOnlyMode() && action !== "open-config") {
+      if (isTranslationOnlyMode() && action !== "open-config" && action !== "capture-region-native") {
         console.log(`[mutex] atalho ${combo} (${action}) ignorado — TA + OS Integration ativos`);
         return;
       }
@@ -3875,16 +3876,13 @@ async function compressImageForVision(inputBase64OrBuffer, label = '') {
 // É o que mais se aproxima da experiência "PrintScreen → vai direto pra IA"
 // que o usuário tinha no Garuda. Sem clique extra, sem janela de seleção.
 async function captureFullScreenAuto() {
-  // Guardrail: só faz sentido com OS Integration ON + Print Mode ON.
-  // Se chamado fora desse cenário (curl direto, config mudou no meio), ignora
-  // silenciosamente. O tooltip já esconde o atalho nesse caso.
   const osOn = configService.getOsIntegrationStatus();
   const printOn = configService.getPrintModeStatus();
-  if (!osOn || !printOn) {
-    console.log(`[capture-auto] ignorado (osIntegration=${osOn}, printMode=${printOn}). ` +
-                'Use a ferramenta nativa do SO e cole no input com Ctrl+V.');
-    return;
-  }
+  const taCurrentlyActive = translationAssistant.isActive() &&
+    translationOverlayWindow && !translationOverlayWindow.isDestroyed();
+
+  // Pula se nenhum modo está ativo para tratar o screenshot
+  if (!osOn && !printOn && !taCurrentlyActive) { return; }
 
   const tmpDir = path.join(app.getPath('temp'), `helpernode-shot-${Date.now()}`);
   const tmpPng = path.join(app.getPath('temp'), `helpernode-shot-${Date.now()}.png`);
@@ -3999,6 +3997,75 @@ async function captureFullScreenAuto() {
     // em ~40x sem perda perceptivél de qualidade visual / OCR.
     const compressed = await compressImageForVision(imgBuffer, 'fullscreen');
     const base64 = compressed.dataUrl;
+
+    // Quando Translation Assistant está ativo, usa análise de entrevista dedicada
+    // e injeta o resultado diretamente no overlay — sem OCR, sem processOsQuestion.
+    if (taCurrentlyActive) {
+      if (osNotificationWindow && !osNotificationWindow.isDestroyed()) {
+        try { osNotificationWindow.close(); } catch (_) {}
+        osNotificationWindow = null;
+      }
+      const apiKey = configService.getOpenIaToken();
+      if (!apiKey) {
+        sendToTranslationOverlay('translation-result', {
+          type: 'image', mode: 'image',
+          transcript: '❌ API key não configurada. Configure em Ajustes.',
+          response: '',
+        });
+        return;
+      }
+      sendToTranslationOverlay('translation-result', {
+        type: 'image', mode: 'image',
+        transcript: '📸 Analisando captura de tela...',
+        response: '',
+      });
+      try {
+        const analysis = await analyzeInterviewImage(base64, apiKey);
+        sendToTranslationOverlay('translation-result', {
+          type: 'image', mode: 'image',
+          transcript: '',
+          response: analysis,
+        });
+      } catch (err) {
+        console.error('[screenshot-interview] erro:', err.message);
+        sendToTranslationOverlay('translation-result', {
+          type: 'image', mode: 'image',
+          transcript: `❌ Erro ao analisar imagem: ${err.message}`,
+          response: '',
+        });
+      }
+      return;
+    }
+
+    // TA ativo em modo janela (sem overlay) → análise de entrevista via visão, resultado no chat
+    if (!osOn && translationAssistant.isActive() && mainWindow && !mainWindow.isDestroyed()) {
+      const apiKey = configService.getOpenIaToken();
+      if (!apiKey) {
+        if (osNotificationWindow && !osNotificationWindow.isDestroyed()) {
+          try { osNotificationWindow.close(); } catch (_) {}
+          osNotificationWindow = null;
+        }
+        createOsNotificationWindow('response', '❌ API key não configurada. Configure em Ajustes.');
+        return;
+      }
+      // Mantém a notificação de loading visível como feedback enquanto analisa
+      try {
+        const analysis = await analyzeInterviewImage(base64, apiKey);
+        if (osNotificationWindow && !osNotificationWindow.isDestroyed()) {
+          try { osNotificationWindow.close(); } catch (_) {}
+          osNotificationWindow = null;
+        }
+        mainWindow.webContents.send('openai-final-response', { resposta: analysis });
+      } catch (err) {
+        console.error('[screenshot-interview-window] erro:', err.message);
+        if (osNotificationWindow && !osNotificationWindow.isDestroyed()) {
+          try { osNotificationWindow.close(); } catch (_) {}
+          osNotificationWindow = null;
+        }
+        createOsNotificationWindow('response', `❌ Erro ao analisar imagem: ${err.message}`);
+      }
+      return;
+    }
 
     // Delega TODO o trabalho (OCR + roteamento texto/visão + IA) para
     // processOsQuestion. NÃO montamos prompt aqui — evita duplicação de OCR.

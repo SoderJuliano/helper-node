@@ -214,6 +214,43 @@
     .copy-btn:hover { background: rgba(255,255,255,0.14); color: #fff; }
     .copy-btn.copied { background: rgba(74,222,128,0.25); border-color: rgba(74,222,128,0.4); color: #4ade80; }
 
+    /* ---------- BLOCOS DE IMAGEM ---------- */
+    .image-block {
+      border-left-color: #a78bfa !important;
+      background: rgba(167, 139, 250, 0.05);
+      border-radius: 0 8px 8px 0;
+    }
+
+    .img-section-label {
+      font-size: 10.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: #a78bfa;
+      margin: 10px 0 3px 0;
+    }
+    .img-section-label:first-child { margin-top: 0; }
+
+    .image-response {
+      font-size: 13.5px;
+      line-height: 1.65;
+      color: #e5e7eb;
+    }
+
+    .image-response pre {
+      background: rgba(0,0,0,0.4);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin: 8px 0 4px 0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      color: #86efac;
+      overflow-x: auto;
+      white-space: pre;
+    }
+
     /* ---------- EMPTY STATE ---------- */
     #empty {
       flex: 1;
@@ -294,12 +331,37 @@
       return html;
     }
 
+    function formatImageResponse(text) {
+      if (!text) return '';
+      return escapeHtml(text)
+        .replace(/📸 O QUE É:/g, '<div class="img-section-label">📸 O que é</div>')
+        .replace(/💡 ABORDAGEM:/g, '<div class="img-section-label">💡 Abordagem</div>')
+        .replace(/✍️ SUGESTÃO:/g, '<div class="img-section-label">✍️ Sugestão</div>')
+        .replace(/```[\w]*\n?([\s\S]*?)```/g, '<pre>$1</pre>')
+        .replace(/\n/g, '<br>');
+    }
+
     function addMessage(data) {
-      const { transcript, response, mode } = data || {};
+      const { transcript, response, mode, type } = data || {};
       if (!transcript && !response) return;
 
       const empty = document.getElementById('empty');
       if (empty) empty.remove();
+
+      const container = document.getElementById('messages');
+
+      // Bloco especial para análise de imagem
+      if (type === 'image') {
+        const block = document.createElement('div');
+        block.className = 'message-block image-block';
+        const content = response || transcript;
+        block.innerHTML = `<div class="img-section-label" style="color:#a78bfa;margin-top:0">📸 análise de tela</div>` +
+          `<div class="image-response">${formatImageResponse(content)}</div>`;
+        container.appendChild(block);
+        container.scrollTop = container.scrollHeight;
+        requestAnimationFrame(() => { if (api.requestTranslationResize) api.requestTranslationResize(); });
+        return;
+      }
 
       const block = document.createElement('div');
       block.className = 'message-block ' + (mode || 'interviewer');
@@ -345,7 +407,6 @@
         }
       }
 
-      const container = document.getElementById('messages');
       container.appendChild(block);
       container.scrollTop = container.scrollHeight;
 

@@ -40,11 +40,17 @@ async function transcribeAudio(audioPath, apiKey) {
  *   TRADUÇÃO: <texto>
  *   RESPOSTA: <sugestão>
  */
-const CODE_TOPICS_RE = /\b(java|spring|node\.?js|react|angular|vue|typescript|javascript|python|c\+\+|c#|\.net|golang|rust|kotlin|swift|php|ruby|sql|postgres|mysql|mongodb|redis|docker|kubernetes|git|ci\/cd|rest.?api|graphql|microservice|garbage.collec|thread|async|promise|closure|design.pattern|solid|algorithm|data.struct|hash.?map|array|linked.list|tree|heap|stack|queue|recursion|big.?o|time.complex|memory.manag|jvm|bytecode|compiler|interpreter|llm|machine.learning|ml|neural|tensorflow|pytorch)\b/i;
+// Detecta PEDIDO EXPLÍCITO de código/exemplo na fala do entrevistador.
+// "Tell me about yourself, experience with React" → NÃO é pedido de código.
+// "Write a function in React that..." / "Show me a code example" → É pedido.
+// Mencionar tecnologia (Java, React) sozinho NÃO ativa o modo código.
+const CODE_REQUEST_RE = /\b(write (a |an |the )?(function|method|class|snippet|code|example|program|query|component|test|loop|algorithm)|escreva (uma |um |o )?(fun[çc][ãa]o|m[ée]todo|classe|c[oó]digo|exemplo|programa|consulta|componente|teste|loop|algoritmo)|implement (a |an |the )?|implementa (uma |um )?|give (me )?(a |an )?(code|example|snippet|implementation)|me d[êe] (um |o )?(exemplo|c[oó]digo|trecho)|show me (a |an |the |some )?(code|example|snippet|implementation)|me mostre? (um |o |a )?(c[oó]digo|exemplo|trecho)|como (escrever|implementar|fazer) (uma? |um )?(fun[çc][ãa]o|c[oó]digo|m[ée]todo|classe|algoritmo)|how (would|do|to) (you |i )?(write|implement|code|build|create)|c[oó]digo (de|para|que)|exemplo de c[oó]digo|code example|coding (challenge|question|exercise)|leetcode|live coding)\b/i;
 
-async function getTranslationAndSuggestion(transcript, { userName, userBackground, targetLanguage }, apiKey) {
-  const isCodeTopic = CODE_TOPICS_RE.test(transcript);
-  const model = isCodeTopic ? 'gpt-5.1-codex-mini' : 'gpt-4o-mini';
+async function getTranslationAndSuggestion(transcript, { userName, userBackground, targetLanguage }, apiKey, opts = {}) {
+  const isCodeRequest = CODE_REQUEST_RE.test(transcript);
+  // opts.forceModel é usado pelo fallback — sem ele a recursão re-detectaria
+  // codeRequest e voltaria pro mesmo modelo quebrado, criando loop infinito.
+  const model = opts.forceModel || (isCodeRequest ? 'gpt-4.1' : 'gpt-4o-mini');
 
   const systemPrompt = `Você é um ASSISTENTE DE ENTREVISTAS DE EMPREGO.
 Usuário: ${userName || 'o candidato'}
@@ -58,12 +64,14 @@ Regras para a sugestão de resposta:
 - Use inglês simples. Nível B2, palavras comuns do dia a dia.
 - Evite: leverage → use, thrive → do well, robust → solid, utilize → use.
 - Use as versões MODERNAS das tecnologias (Java 21+, Node.js 22+, React 19, Spring Boot 3, etc.). Nunca mencione versões antigas (Java 8, Node 12, etc.) como se fossem atuais.
-- Se a pergunta envolve código: dê 1 exemplo de código curto (2-5 linhas) que ilustre a resposta, no bloco:\n\`\`\`<linguagem>\n<código>\n\`\`\`
-- Máximo 3 frases de texto + 1 bloco de código (se aplicável). Sem parágrafos longos.
+- NUNCA inclua bloco de código a menos que o entrevistador PEÇA EXPLICITAMENTE um exemplo, implementação ou trecho de código (palavras como: "show me code", "write a function", "example of", "how would you implement", "give me an example", "código de", "exemplo de", "escreva uma função").
+- Mencionar uma tecnologia (Java, React, Spring) NÃO é pedido de código — responda apenas com texto.
+- Quando o pedido for de código: 1 bloco curto (2-6 linhas) no formato \`\`\`<linguagem>\n<código>\n\`\`\` e máximo 1 frase de contexto antes.
+- Quando NÃO houver pedido de código: 2-3 frases curtas em texto puro, sem código.
 - Não comece com "Certainly!" ou "Of course!".
 - Formato obrigatório:
 TRADUÇÃO: <texto traduzido>
-RESPOSTA: <resposta em inglês com código se necessário>`;
+RESPOSTA: <resposta em inglês — texto puro, OU texto + código apenas se pedido>`;
 
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -83,14 +91,14 @@ RESPOSTA: <resposta em inglês com código se necessário>`;
 
   const data = await res.json();
   if (!res.ok) {
-    // Fallback para gpt-4o-mini se o modelo codex não estiver disponível
+    // Fallback para gpt-4o-mini se o modelo escolhido não estiver disponível
     if (model !== 'gpt-4o-mini') {
-      console.warn(`[TranslationAssistant] ${model} indisponível, usando gpt-4o-mini`);
-      return getTranslationAndSuggestion(transcript, { userName, userBackground, targetLanguage }, apiKey);
+      console.warn(`[TranslationAssistant] ${model} indisponível (${data.error?.message || 'erro'}), fallback para gpt-4o-mini`);
+      return getTranslationAndSuggestion(transcript, { userName, userBackground, targetLanguage }, apiKey, { forceModel: 'gpt-4o-mini' });
     }
     throw new Error(data.error?.message || 'GPT failed');
   }
-  console.log(`[TranslationAssistant] modelo usado: ${model} (codeTopic=${isCodeTopic})`);
+  console.log(`[TranslationAssistant] modelo usado: ${model} (codeRequest=${isCodeRequest})`);
   return data.choices[0].message.content;
 }
 
