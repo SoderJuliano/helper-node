@@ -82,6 +82,13 @@ build_deb() {
         done
 
         cp vosk-stream.py "${APP_ROOT}/"
+
+        # Bundle vosk wheel so postinst installs offline (no download during install)
+        echo -e "${YELLOW}→${NC} Downloading vosk wheel for offline bundling..."
+        mkdir -p "${APP_ROOT}/python-packages"
+        python3 -m pip download vosk --only-binary :all: --dest "${APP_ROOT}/python-packages/" --quiet 2>&1 \
+            && echo -e "${GREEN}  vosk wheel bundled OK${NC}" \
+            || echo -e "${YELLOW}  WARNING: vosk wheel download failed — will download at install time${NC}"
         cp vosk-vocab.json "${APP_ROOT}/" 2>/dev/null || true
         cp package.json package-lock.json "${APP_ROOT}/" 2>/dev/null || true
         cp *.traineddata "${APP_ROOT}/" 2>/dev/null || true
@@ -112,7 +119,8 @@ build_deb() {
             echo -e "${RED}Error: electron binary not found inside package tree.${NC}"
             exit 1
         fi
-    
+
+
     # Copy DEBIAN control files
     echo -e "${YELLOW}→${NC} Adding control files..."
     cp build/deb/DEBIAN/* "${DEB_ROOT}/DEBIAN/"
@@ -137,8 +145,43 @@ build_deb() {
     
     # Cleanup
     rm -rf "${BUILD_DIR}/deb-root"
-    
-    echo -e "${GREEN}✓${NC} DEB package created: ${DIST_DIR}/${APP_NAME}_${VERSION}_amd64.deb"
+
+    # Generate graphical installer (bypasses cosmic-store bugs with large local .deb)
+    cat > "${DIST_DIR}/instalar.sh" << 'INSTALLER_EOF'
+#!/usr/bin/env bash
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DEB="$(ls "$SCRIPT_DIR"/helper-node_*.deb 2>/dev/null | sort -V | tail -1)"
+if [ -z "$DEB" ]; then
+    echo "ERRO: arquivo .deb não encontrado em $SCRIPT_DIR"
+    echo "Pressione Enter..."; read -r; exit 1
+fi
+TMP_DEB="/tmp/helper-node-install.deb"
+echo "Copiando pacote..."; cp "$DEB" "$TMP_DEB"; chmod 644 "$TMP_DEB"
+echo "Instalando $(basename "$DEB")... (será pedida sua senha)"
+echo ""
+pkexec apt install -y "$TMP_DEB"; EXIT=$?
+rm -f "$TMP_DEB"
+echo ""
+[ $EXIT -eq 0 ] && echo "✓ Instalado! Execute: helper-node" || echo "✗ Falhou (código $EXIT)"
+echo "Pressione Enter..."; read -r
+INSTALLER_EOF
+    chmod +x "${DIST_DIR}/instalar.sh"
+
+    cat > "${DIST_DIR}/Instalar Helper Node.desktop" << 'DESKTOP_EOF'
+[Desktop Entry]
+Version=1.0
+Name=Instalar Helper Node
+Comment=Instala o Helper Node no sistema
+Exec=bash -c 'cd "%d" && bash instalar.sh'
+Terminal=true
+Type=Application
+Icon=system-software-install
+Categories=System;
+DESKTOP_EOF
+    chmod +x "${DIST_DIR}/Instalar Helper Node.desktop"
+
+    echo -e "${GREEN}✓${NC} DEB package created: ${DEB_OUTPUT}"
+    echo -e "${GREEN}✓${NC} Instalador gráfico: ${DIST_DIR}/instalar.sh"
 }
 
 # Function to build Arch package

@@ -22,13 +22,21 @@ Assistente de voz com IA, transcrição offline e integração nativa com o sist
 
 ### Ubuntu / Pop!_OS / Debian (.deb)
 
+**Opção 1 — Instalador gráfico (2 cliques):**
+
+Baixe o `.deb` e o `instalar.sh` da release, deixe os dois na mesma pasta e dê duplo clique no `instalar.sh` (ou em `Instalar Helper Node.desktop`). Vai abrir um terminal, pedir sua senha na janelinha do sistema e instalar em segundos.
+
+**Opção 2 — Terminal:**
+
 ```bash
 wget https://github.com/SoderJuliano/helper-node/releases/download/v0.2.0/helper-node_0.2.0_amd64.deb
 sudo apt install ./helper-node_0.2.0_amd64.deb
 helper-node
 ```
 
-O `postinst` cria automaticamente um Python venv em `/opt/helper-node/venv` com Vosk instalado — **zero configuração manual**.
+O `postinst` cria automaticamente um Python venv em `/opt/helper-node/venv` com Vosk instalado **a partir do wheel empacotado no próprio .deb** — instalação offline, zero configuração manual.
+
+> ⚠️ **Não use a loja de aplicativos (cosmic-store) do Pop!_OS 24.04 para instalar o .deb.** O cosmic-store (que substituiu o Pop!_Shop no COSMIC) tem um bug com pacotes `.deb` locais grandes: trava em "Installing (0%)" indefinidamente. Não é um problema do pacote — pelo terminal ou pelo `instalar.sh` a instalação leva segundos. Há também uma limitação de permissão: o usuário `_apt` não consegue ler arquivos dentro do seu home (`drwxr-x---`), por isso o `instalar.sh` copia o pacote para `/tmp` antes de instalar.
 
 ### Arch Linux / Manjaro / EndeavourOS
 

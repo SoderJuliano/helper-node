@@ -1,40 +1,40 @@
 #!/bin/bash
 set -e
 
-# Post-installation script for Helper Node
-
 echo "Configuring Helper Node..."
 
-# Create symlink for easy access
 ln -sf /opt/helper-node/helper-node.sh /usr/local/bin/helper-node
 
-# Set executable permissions
-chmod +x /opt/helper-node/helper-node.sh
-chmod +x /opt/helper-node/setup-hotkey.sh
-chmod +x /opt/helper-node/whisper/build/bin/whisper-cli
+chmod +x /opt/helper-node/helper-node.sh                2>/dev/null || true
+chmod +x /opt/helper-node/setup-hotkey.sh               2>/dev/null || true
+chmod +x /opt/helper-node/capture-screenshot.sh         2>/dev/null || true
+chmod +x /opt/helper-node/whisper/build/bin/whisper-cli 2>/dev/null || true
 
-# Create config directory for users
 mkdir -p /etc/helper-node
 
-# Set up local Python venv with Vosk (self-contained — no user pip required)
 VENV_DIR="/opt/helper-node/venv"
 if [ ! -x "$VENV_DIR/bin/python3" ]; then
     echo "Creating Python venv for Vosk speech recognition..."
     python3 -m venv "$VENV_DIR" || echo "WARNING: venv creation failed; realtime mode will not work"
 fi
 if [ -x "$VENV_DIR/bin/pip" ]; then
-    echo "Installing Vosk into venv (downloading ~50MB)..."
     "$VENV_DIR/bin/pip" install --quiet --upgrade pip || true
-    "$VENV_DIR/bin/pip" install --quiet vosk || echo "WARNING: vosk install failed; realtime mode will not work"
+    PKGS_DIR="/opt/helper-node/python-packages"
+    if ls "$PKGS_DIR"/vosk*.whl "$PKGS_DIR"/vosk*.tar.gz 2>/dev/null | grep -q .; then
+        echo "Installing Vosk from bundled package (offline)..."
+        "$VENV_DIR/bin/pip" install --quiet --no-index --find-links "$PKGS_DIR" vosk \
+            || echo "WARNING: vosk install failed; realtime mode will not work"
+    else
+        echo "Installing Vosk from internet (~50MB)..."
+        "$VENV_DIR/bin/pip" install --quiet vosk \
+            || echo "WARNING: vosk install failed; realtime mode will not work"
+    fi
 fi
 
-# Register desktop entry
 if [ -f /opt/helper-node/helper-node.desktop ]; then
-    xdg-desktop-menu install --novendor /opt/helper-node/helper-node.desktop
+    xdg-desktop-menu install --novendor /opt/helper-node/helper-node.desktop 2>/dev/null || true
 fi
-
-# Update desktop database
-if command -v update-desktop-database &> /dev/null; then
+if command -v update-desktop-database &>/dev/null; then
     update-desktop-database /usr/share/applications 2>/dev/null || true
 fi
 
@@ -42,8 +42,6 @@ echo "✓ Helper Node installed successfully!"
 echo ""
 echo "To start Helper Node, run: helper-node"
 echo "Or find it in your applications menu."
-echo ""
-echo "Global hotkeys will be configured on first run."
 echo ""
 
 exit 0
