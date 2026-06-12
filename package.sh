@@ -33,10 +33,18 @@ if [ ! -f "main.js" ] || [ ! -f "package.json" ]; then
     exit 1
 fi
 
-# Clean previous builds
+# Clean only the artifacts being rebuilt — keep the other package type intact
 echo -e "${YELLOW}→${NC} Cleaning previous builds..."
-rm -rf "$DIST_DIR"
 mkdir -p "$DIST_DIR"
+if [ "$1" == "deb" ]; then
+    rm -f "$DIST_DIR"/*.deb
+elif [ "$1" == "arch" ]; then
+    rm -f "$DIST_DIR"/*.pkg.tar.zst
+    rm -rf "$DIST_DIR/arch-build"
+else
+    rm -f "$DIST_DIR"/*.deb "$DIST_DIR"/*.pkg.tar.zst
+    rm -rf "$DIST_DIR/arch-build"
+fi
 
 # Check dependencies
 echo -e "${YELLOW}→${NC} Checking dependencies..."
