@@ -51,7 +51,7 @@ install_packages_arch() {
   warn "Installing packages via pacman (sudo required)"
   
   # Base packages including Wayland screenshot tools (work on both X11 and Wayland)
-  sudo pacman -S --needed git nodejs npm make gcc curl ffmpeg cmake gnome-screenshot grim slurp imagemagick python python-pip pipewire pipewire-pulse libpulse || {
+  sudo pacman -S --needed git nodejs npm make gcc curl ffmpeg cmake gnome-screenshot grim slurp imagemagick python python-pip pipewire pipewire-pulse libpulse xorg-xprop || {
     err "pacman install failed"; exit 1;
   }
 
@@ -82,7 +82,7 @@ install_packages_debian() {
   fi
   
   # Base packages
-  local packages="git nodejs make g++ curl ffmpeg cmake gnome-screenshot imagemagick python3 python3-venv python3-pip pipewire pulseaudio-utils"
+  local packages="git nodejs make g++ curl ffmpeg cmake gnome-screenshot imagemagick python3 python3-venv python3-pip pipewire pipewire-utils pulseaudio-utils x11-utils"
   
   # Add Wayland screenshot tools (Sway/Hyprland/Wayfire — not COSMIC)
   if [[ "$is_wayland" == "true" && "$is_cosmic" == "false" ]]; then

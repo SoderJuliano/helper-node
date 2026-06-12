@@ -1,0 +1,16 @@
+[helper-node overlay]
+Description=Helper Node — janela overlay stealth (invisível no compartilhamento)
+above=true
+aboverule=2
+skiptaskbar=true
+skiptaskbarrule=2
+skippager=true
+skippagerrule=2
+skipswitcher=true
+skipswitcherrule=2
+noborder=true
+noborderrule=2
+types=16
+
+[Rules]
+1=helper-node overlay

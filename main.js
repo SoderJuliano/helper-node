@@ -455,6 +455,39 @@ function createOsInputWindow() {
   });
 }
 
+// Proteção contra captura de tela — stealth window
+// Chamada após criar qualquer janela overlay que não deve aparecer em gravações/compartilhamentos.
+function applyStealthProtection(win) {
+  if (process.platform === 'darwin') {
+    try { win.setContentProtection(true); } catch (_) {}
+    return;
+  }
+  if (process.platform === 'linux') {
+    try { win.setContentProtection(true); } catch (_) {}
+    // X11: define tipo de janela como UTILITY — invisível para a maioria dos
+    // compositors e ferramentas de captura (OBS "Window Capture", ffmpeg x11grab).
+    win.webContents.once('did-finish-load', () => {
+      try {
+        const { execFile } = require('child_process');
+        const handle = win.getNativeWindowHandle();
+        const winId = (handle.length >= 8)
+          ? handle.readBigUInt64LE(0).toString(16)
+          : handle.readUInt32LE(0).toString(16);
+        execFile('xprop', [
+          '-id', `0x${winId}`,
+          '-format', '_NET_WM_WINDOW_TYPE', '32a',
+          '-set', '_NET_WM_WINDOW_TYPE', '_NET_WM_WINDOW_TYPE_UTILITY',
+        ], (err) => {
+          if (err) console.log('[stealth] xprop indisponível (normal em Wayland puro):', err.message);
+          else console.log(`[stealth] X11 UTILITY atom aplicado (winId=0x${winId})`);
+        });
+      } catch (e) {
+        console.log('[stealth] proteção X11 não aplicada:', e.message);
+      }
+    });
+  }
+}
+
 // Helper function to completely destroy the notification window
 function destroyNotificationWindow() {
   if (osNotificationWindow && !osNotificationWindow.isDestroyed()) {
@@ -537,8 +570,8 @@ function createOsNotificationWindow(type, content) {
     },
   });
 
-  // Bloqueia captura de tela do app pelos compositores que respeitam a flag
-  try { osNotificationWindow.setContentProtection(true); } catch (_) {}
+  // Proteção multicamada: setContentProtection + xprop X11 UTILITY atom
+  applyStealthProtection(osNotificationWindow);
   // Mantém SEMPRE acima de tudo (inclusive janelas em fullscreen de browser)
   osNotificationWindow.setAlwaysOnTop(true, 'screen-saver');
   osNotificationWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });

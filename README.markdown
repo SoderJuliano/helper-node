@@ -178,12 +178,12 @@ com flatpak/snap quando disponíveis:
 # Pop!_OS / Ubuntu / Debian
 sudo apt install git nodejs npm make g++ curl ffmpeg cmake \
                  python3 python3-venv python3-pip \
-                 pipewire pulseaudio-utils \
+                 pipewire pipewire-utils pulseaudio-utils x11-utils \
                  gnome-screenshot imagemagick
 
 # Arch
 sudo pacman -S git nodejs npm make gcc curl ffmpeg cmake \
-               python python-pip pipewire pipewire-pulse libpulse \
+               python python-pip pipewire pipewire-pulse libpulse xorg-xprop \
                gnome-screenshot grim slurp imagemagick
 ```
 
@@ -242,6 +242,48 @@ Electron (main.js)
             ├── parec (PipeWire monitor)
             └── python3 vosk-stream.py
                 └── Vosk + modelo PT-BR FB
+```
+
+---
+
+## 🪟 Wayland / Hyprland / KDE Plasma — Janela invisível em capturas
+
+O app usa `setContentProtection` + `type: toolbar` + atom X11 `UTILITY` para se esconder de gravações e compartilhamentos de tela. Em compositors que respeitam esses mecanismos (KWin X11, Mutter) isso funciona sem configuração extra.
+
+Em **Hyprland** e **KDE Plasma** é necessário uma etapa adicional:
+
+### Hyprland
+
+```bash
+# 1. Copie o arquivo de regras
+cp /opt/helper-node/resources/hyprland-rules.conf ~/.config/hypr/helper-node-rules.conf
+
+# 2. Adicione ao seu hyprland.conf:
+#    source = ~/.config/hypr/helper-node-rules.conf
+
+# 3. Recarregue
+hyprctl reload
+```
+
+O arquivo `resources/hyprland-rules.conf` configura `nofocus`, `pin`, `noshadow` e `noanim` para a janela overlay do app, impedindo que o `xdg-desktop-portal` a inclua nas capturas de tela do Google Meet, Microsoft Teams e OBS.
+
+### KDE Plasma (X11 e Wayland)
+
+```
+Sistema → Janelas → Regras de Janelas → Importar
+```
+
+Importe o arquivo `resources/kwin-rule.kwinrule` incluído no pacote. Ele marca a janela overlay com `skiptaskbar`, `skippager`, `skipswitcher` e `noborder`, tornando-a transparente para ferramentas de captura do KDE.
+
+### Teste manual
+
+```bash
+# OBS: adicione fonte "Captura de Janela" → a overlay não deve aparecer na lista
+# ffmpeg x11grab (X11):
+ffmpeg -video_size 1920x1080 -framerate 5 -f x11grab -i :0.0 -t 3 /tmp/test-capture.mp4
+
+# Screenshot simples:
+scrot /tmp/test-screenshot.png
 ```
 
 ---
