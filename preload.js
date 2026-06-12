@@ -118,6 +118,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("translation-result", (event, data) => cb(data)),
   onTranslationStatus: (cb) =>
     ipcRenderer.on("translation-status", (_e, status) => cb(status)),
+  onTranslationClear: (cb) =>
+    ipcRenderer.on("translation-clear", () => cb()),
   translationStart: () => ipcRenderer.invoke("translation-start"),
   translationStop: () => ipcRenderer.invoke("translation-stop"),
+  // Overlay dedicado (translation-overlay.html)
+  requestTranslationResize: () =>
+    ipcRenderer.send("request-translation-resize"),
+  overlayPosition: (pos) => ipcRenderer.send('overlay-position', pos),
 });

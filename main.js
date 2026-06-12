@@ -368,13 +368,20 @@ const realtimeAssistantService = new RealtimeAssistantService({
   },
 });
 
-// Entrega resultados do Assistente de Tradução: overlay stealth ou janela principal
+// Entrega resultados do Assistente de Tradução.
+// Em OS Integration: usa a janela DEDICADA (translation-overlay.html), persistente
+// no canto direito, sem auto-close. Não toca em osNotificationWindow (que é do Vosk).
 translationAssistant.onResult(({ transcript, response, mode }) => {
   try {
     const cfg = configService.getConfig();
     if (cfg.osIntegration) {
-      // Monta texto curto pra overlay (response já vem formatado com TRADUÇÃO: / RESPOSTA:)
-      createOsNotificationWindow('response', response);
+      // Garante que o overlay existe (recria se foi fechado)
+      if (!translationOverlayWindow || translationOverlayWindow.isDestroyed()) {
+        createTranslationOverlay();
+      }
+      sendToTranslationOverlay('translation-status', 'processing');
+      sendToTranslationOverlay('translation-result', { transcript, response, mode: mode || 'interviewer' });
+      sendToTranslationOverlay('translation-status', 'mic_open');
     } else if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('translation-status', 'processing');
       mainWindow.webContents.send('translation-result', { transcript, response });
@@ -384,6 +391,161 @@ translationAssistant.onResult(({ transcript, response, mode }) => {
     console.error('[TranslationAssistant] erro ao entregar resultado:', e.message);
   }
 });
+
+// === Translation Assistant Overlay ===
+// Janela dedicada do Assistente de Tradução. NÃO toca em osNotificationWindow
+// (que continua sendo usada por Vosk recording-live + outras notificações).
+// - Lado direito da tela, ~20% de largura (mínimo 380px = mesma do Vosk).
+// - 80% de altura, margem 10px da borda direita.
+// - Stealth: setContentProtection + xprop X11 UTILITY (via applyStealthProtection).
+// - Click-through: overlay tipo FPS counter. Mouse só pega no header/lista.
+// - Sem timer de auto-close — fica aberta enquanto TA estiver ativo.
+let translationOverlayWindow = null;
+
+// Calcula posição/tamanho do overlay com base no display do cursor (multi-monitor).
+function computeTranslationOverlayBounds() {
+  // getCursorScreenPoint + getDisplayNearestPoint = display onde o usuário
+  // está agora (em vez de sempre o primary). Importante em multi-monitor.
+  let display;
+  try {
+    const cursor = screen.getCursorScreenPoint();
+    display = screen.getDisplayNearestPoint(cursor);
+  } catch (_) {
+    display = screen.getPrimaryDisplay();
+  }
+  const wa = display.workArea; // {x, y, width, height} — respeita docks
+  const VOSK_MIN_WIDTH = 380;
+  const winWidth = Math.max(VOSK_MIN_WIDTH, Math.round(wa.width * 0.20));
+  const winHeight = Math.round(wa.height * 0.80);
+  // 10px da borda direita, clampeado para não sair da tela
+  const posX = Math.max(wa.x, wa.x + wa.width - winWidth - 10);
+  const posY = Math.max(wa.y, wa.y + Math.round((wa.height - winHeight) / 2));
+  return { x: posX, y: posY, width: winWidth, height: winHeight, displayId: display.id };
+}
+
+function forceTranslationOverlayPosition(label) {
+  if (!translationOverlayWindow || translationOverlayWindow.isDestroyed()) return;
+  const b = computeTranslationOverlayBounds();
+  try { translationOverlayWindow.setBounds(b); } catch (_) {}
+  try { translationOverlayWindow.setPosition(b.x, b.y); } catch (_) {}
+  try {
+    const got = translationOverlayWindow.getBounds();
+    console.log(`[translation-overlay] ${label}: alvo=${b.x},${b.y} ${b.width}x${b.height} | real=${got.x},${got.y} ${got.width}x${got.height}`);
+  } catch (_) {}
+}
+
+function createTranslationOverlay() {
+  if (translationOverlayWindow && !translationOverlayWindow.isDestroyed()) {
+    // Já existe — só reposiciona, caso o compositor tenha movido.
+    forceTranslationOverlayPosition('recreate-reposition');
+    return translationOverlayWindow;
+  }
+
+  const b = computeTranslationOverlayBounds();
+  console.log(`[translation-overlay] criando: x=${b.x} y=${b.y} w=${b.width} h=${b.height} display=${b.displayId}`);
+
+  translationOverlayWindow = new BrowserWindow({
+    width: b.width,
+    height: b.height,
+    x: b.x,
+    y: b.y,
+    useContentSize: false,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    movable: true,         // header pode arrastar via -webkit-app-region
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    focusable: false,      // overlay tipo FPS counter — nunca rouba foco
+    hasShadow: false,
+    // Sem `type: 'toolbar'` — em COSMIC/XWayland causa erro kAtomsToCache
+    // e parece levar o compositor a centralizar a janela.
+    show: false,
+    title: 'helper-node-translation-overlay',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  translationOverlayWindow.setAlwaysOnTop(true, 'screen-saver');
+  translationOverlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+
+  // Stealth (não aparece em gravação/compartilhamento de tela)
+  applyStealthProtection(translationOverlayWindow);
+
+  translationOverlayWindow.loadFile(
+    path.join(__dirname, 'os-integration', 'notifications', 'translation-overlay.html')
+  );
+
+  // Reforça posição em múltiplos hooks — COSMIC/Wayland costuma reposicionar
+  // janelas frame:false+transparent:true para o centro da tela.
+  forceTranslationOverlayPosition('post-create');
+
+  translationOverlayWindow.once('ready-to-show', () => {
+    forceTranslationOverlayPosition('ready-to-show');
+    try { translationOverlayWindow.show(); } catch (_) {}
+    forceTranslationOverlayPosition('post-show');
+    // NÃO usamos setIgnoreMouseEvents — em Linux/Wayland o `forward: true`
+    // não funciona, então mouseenter no header nunca chega ao JS e o drag
+    // quebra. focusable=false já garante que a janela não rouba foco.
+  });
+
+  translationOverlayWindow.webContents.on('did-finish-load', () => {
+    forceTranslationOverlayPosition('did-finish-load');
+    // Click-through inicial — JS no overlay religa via IPC ao hover no header.
+    // SÓ em macOS/Windows: lá `forward: true` entrega mouseenter/leave ao DOM.
+    // Em Linux pulamos: senão mousedown do drag manual também não chega.
+    // focusable=false já garante que a janela não rouba foco do teclado.
+    if (process.platform !== 'linux') {
+      try { translationOverlayWindow.setIgnoreMouseEvents(true, { forward: true }); } catch (_) {}
+    }
+  });
+
+  // Reposicionamento tardio: alguns compositors movem a janela 500ms após
+  // o mapping. Aplica setBounds uma vez depois desse delay.
+  setTimeout(() => forceTranslationOverlayPosition('delayed-500ms'), 500);
+
+  translationOverlayWindow.on('closed', () => {
+    translationOverlayWindow = null;
+  });
+
+  return translationOverlayWindow;
+}
+
+function destroyTranslationOverlay() {
+  if (translationOverlayWindow && !translationOverlayWindow.isDestroyed()) {
+    try { translationOverlayWindow.close(); } catch (_) {}
+  }
+  translationOverlayWindow = null;
+}
+
+function sendToTranslationOverlay(channel, payload) {
+  if (translationOverlayWindow && !translationOverlayWindow.isDestroyed()) {
+    try { translationOverlayWindow.webContents.send(channel, payload); } catch (_) {}
+  }
+}
+
+// Estica a janela em +200px quando o conteúdo passa do tamanho atual,
+// até um máximo de 40% da tela. Depois disso o scroll interno toma conta.
+function expandTranslationOverlayIfNeeded() {
+  if (!translationOverlayWindow || translationOverlayWindow.isDestroyed()) return;
+  // Usa o mesmo display em que a janela está
+  const bounds = translationOverlayWindow.getBounds();
+  const display = screen.getDisplayMatching(bounds);
+  const wa = display.workArea;
+  const maxW = Math.round(wa.width * 0.40);
+  if (bounds.width >= maxW) return;
+  const newW = Math.min(bounds.width + 200, maxW);
+  const x = wa.x + wa.width - newW - 10;
+  try {
+    translationOverlayWindow.setBounds({ x, y: bounds.y, width: newW, height: bounds.height });
+  } catch (_) {}
+}
 
 function createConfigWindow() {
   if (configWindow) {
@@ -455,6 +617,16 @@ function createOsInputWindow() {
   });
 }
 
+// Mutex global: quando OS Integration + Translation Assistant estão ambos
+// ativos, suprime TUDO o resto (atalhos de Vosk/captura/manual-input, monitor
+// de clipboard, monitor de screenshots). Só o overlay do Translation Assistant
+// aparece — comportamento "stealth interview".
+function isTranslationOnlyMode() {
+  try {
+    return configService.getOsIntegrationStatus() && translationAssistant.isActive();
+  } catch (_) { return false; }
+}
+
 // Proteção contra captura de tela — stealth window
 // Chamada após criar qualquer janela overlay que não deve aparecer em gravações/compartilhamentos.
 function applyStealthProtection(win) {
@@ -519,8 +691,10 @@ function createOsNotificationWindow(type, content) {
   let windowHeight = 96;
 
   if (type === 'response') {
-    windowWidth = 400;
-    windowHeight = 260;
+    // 2x mais alta — entrevistas têm respostas longas (TRADUÇÃO + RESPOSTA + código)
+    // Forçada no canto direito (posY baixo + posX = direita) — não centralizar.
+    windowWidth = 440;
+    windowHeight = 520;
   } else if (type === 'recording-live') {
     // Tamanho inicial confortável: cabe header + 1 linha de fala
     // sem precisar de scrollbar. Cresce dinamicamente via resize-overlay.
@@ -575,8 +749,13 @@ function createOsNotificationWindow(type, content) {
   // Mantém SEMPRE acima de tudo (inclusive janelas em fullscreen de browser)
   osNotificationWindow.setAlwaysOnTop(true, 'screen-saver');
   osNotificationWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  // Reforça posição para compositores que ignoram x/y das options
+  // Reforça posição para compositores que ignoram x/y das options (COSMIC/Hyprland centralizam às vezes)
   try { osNotificationWindow.setPosition(posX, posY); } catch (_) {}
+  try { osNotificationWindow.setBounds({ x: posX, y: posY, width: windowWidth, height: windowHeight }); } catch (_) {}
+  // Re-aplica depois do load — alguns compositors movem a janela ao mostrar
+  osNotificationWindow.once('ready-to-show', () => {
+    try { osNotificationWindow.setBounds({ x: posX, y: posY, width: windowWidth, height: windowHeight }); } catch (_) {}
+  });
 
   // Simply load the appropriate HTML file - let the files handle their own content
   let filePath;
@@ -640,10 +819,11 @@ function switchToNormalMode() {
   }
   destroyNotificationWindow(); // Use helper function instead
   destroyCaptureWindow(); // Close capture window
-  
+  destroyTranslationOverlay(); // Fecha overlay dedicado do tradutor se aberto
+
   // Stop capture tool monitoring when leaving OS integration mode
   stopCaptureToolMonitoring();
-  
+
   // Show main window
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.show();
@@ -765,6 +945,10 @@ async function detectActiveSelectionInterface() {
 }
 
 function startCaptureToolMonitoring() {
+  if (isTranslationOnlyMode()) {
+    console.log('[mutex] captureToolMonitoring suprimido — Translation Assistant ativo');
+    return;
+  }
   if (captureToolInterval) {
     clearInterval(captureToolInterval);
   }
@@ -1349,10 +1533,14 @@ function startWaylandClipboardWatch(triggerCheck) {
 
 // Função para iniciar monitoramento do clipboard usando ferramentas nativas
 function startClipboardMonitoring() {
+  if (isTranslationOnlyMode()) {
+    console.log('[mutex] clipboardMonitoring suprimido — Translation Assistant ativo');
+    return;
+  }
   if (clipboardMonitoringInterval) {
     clearInterval(clipboardMonitoringInterval);
   }
-  
+
   console.log('🎯 Iniciando monitoramento NATIVO de clipboard para novas imagens...');
   
   // Initialize with current clipboard content to avoid processing existing images
@@ -1559,6 +1747,10 @@ function resolveScreenshotDir() {
 
 // watcher pode ser um array agora (múltiplas pastas)
 function startScreenshotFolderMonitoring() {
+  if (isTranslationOnlyMode()) {
+    console.log('[mutex] screenshotFolderMonitoring suprimido — Translation Assistant ativo');
+    return;
+  }
   if (screenshotFolderWatcher) return; // já ativo
 
   const watchDirs = resolveScreenshotDir();
@@ -1803,11 +1995,18 @@ async function registerGlobalShortcuts() {
 
   allShortcuts.forEach(({ combo, action }) => {
     const registered = globalShortcut.register(combo, async () => {
+      // Mutex amplo: TA + OS Integration ativos suprime todos os atalhos
+      // exceto open-config (necessário pro usuário desligar o modo).
+      if (isTranslationOnlyMode() && action !== "open-config") {
+        console.log(`[mutex] atalho ${combo} (${action}) ignorado — TA + OS Integration ativos`);
+        return;
+      }
+
       if (action === "open-config") {
         createConfigWindow();
         return;
       }
-      
+
       // Handle manual-input action for OS integration mode
       if (action === "manual-input") {
         await bringWindowToFocus(); // This function already handles OS integration mode
@@ -2036,6 +2235,14 @@ async function toggleRecording() {
       const isOsIntegration = configService.getOsIntegrationStatus();
 
       if (isOsIntegration) {
+        // Mutex: Translation Assistant já escuta mic+sys e responde sozinho.
+        // Subir Vosk Live em paralelo faz dois pipelines responderem o mesmo
+        // áudio com prompts diferentes — duplicando custo e poluindo a tela.
+        if (translationAssistant.isActive()) {
+          console.log("OS Integration: Translation Assistant ativo — Ctrl+D ignorado (mutex).");
+          return;
+        }
+
         // OS Integration: use Vosk streaming with live text window
         isRecording = true;
         console.log("OS Integration: Starting Vosk live recording");
@@ -3294,12 +3501,34 @@ ipcMain.on("set-translation-assistant-config", (event, partial) => {
           userBackground: ta.userBackground || '',
           targetLanguage: ta.targetLanguage || 'pt-br',
         }).then(() => {
+          // Em OS Integration, parar tudo o que não é o TA (clipboard, screenshot watch,
+          // capture tool) — só o overlay de tradução fica ativo.
+          if (cfg.osIntegration) {
+            try { stopClipboardMonitoring(); } catch (_) {}
+            try { stopCaptureToolMonitoring(); } catch (_) {}
+            try { stopScreenshotFolderMonitoring(); } catch (_) {}
+            console.log('[mutex] TA ativo + OS Integration: monitorings de print/captura/screenshot parados');
+            // Sobe o overlay dedicado do tradutor
+            createTranslationOverlay();
+            sendToTranslationOverlay('translation-status', 'mic_open');
+          }
           if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('translation-status', 'mic_open');
         }).catch((e) => console.error('[TranslationAssistant] falha ao iniciar:', e.message));
       }
     } else {
       if (translationAssistant.isActive()) {
         translationAssistant.stop().then(() => {
+          // Ao desligar o TA, se OS Integration ainda estiver ativo, restaura
+          // os monitorings normais (print mode + ferramentas de captura).
+          if (cfg.osIntegration) {
+            if (configService.getPrintModeStatus()) {
+              try { startClipboardMonitoring(); } catch (_) {}
+              try { startScreenshotFolderMonitoring(); } catch (_) {}
+            }
+            try { startCaptureToolMonitoring(); } catch (_) {}
+            console.log('[mutex] TA desligado: monitorings restaurados');
+          }
+          destroyTranslationOverlay();
           if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('translation-status', 'idle');
         }).catch(() => {});
       }
@@ -3376,14 +3605,65 @@ ipcMain.handle("translation-start", async () => {
     userBackground: ta.userBackground || '',
     targetLanguage: ta.targetLanguage || 'pt-br',
   });
+  if (cfg.osIntegration) {
+    createTranslationOverlay();
+    sendToTranslationOverlay('translation-status', 'mic_open');
+  }
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('translation-status', 'mic_open');
   return { ok: true };
 });
 
 ipcMain.handle("translation-stop", async () => {
   await translationAssistant.stop();
+  destroyTranslationOverlay();
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('translation-status', 'idle');
   return { ok: true };
+});
+
+function positionTranslationOverlay(position) {
+  if (!translationOverlayWindow || translationOverlayWindow.isDestroyed()) return;
+
+  const currentBounds = translationOverlayWindow.getBounds();
+  const currentCenter = {
+    x: currentBounds.x + Math.round(currentBounds.width / 2),
+    y: currentBounds.y + Math.round(currentBounds.height / 2),
+  };
+
+  let display;
+  if (position === 'next-monitor') {
+    const all = screen.getAllDisplays();
+    const current = screen.getDisplayNearestPoint(currentCenter);
+    const idx = all.findIndex(d => d.id === current.id);
+    display = all[(idx + 1) % all.length];
+  } else {
+    display = screen.getDisplayNearestPoint(currentCenter);
+  }
+
+  const { x: dX, y: dY, width: dW, height: dH } = display.workArea;
+  const [winW, winH] = translationOverlayWindow.getSize();
+
+  const newY = dY + Math.round((dH - winH) / 2);
+  let newX;
+  if (position === 'left') {
+    newX = dX + 10;
+  } else if (position === 'center') {
+    newX = dX + Math.round((dW - winW) / 2);
+  } else {
+    newX = dX + dW - winW - 10; // right / next-monitor / default
+  }
+
+  console.log(`[overlay-position] ${position} → display ${display.id} x=${newX} y=${newY}`);
+  try { translationOverlayWindow.setBounds({ x: newX, y: newY, width: winW, height: winH }, true); } catch (_) {}
+}
+
+ipcMain.on('overlay-position', (_event, position) => {
+  positionTranslationOverlay(position);
+});
+
+// Pedido de expansão de largura (+200px até 40% da tela) — chamado depois de
+// renderizar cada nova mensagem.
+ipcMain.on("request-translation-resize", () => {
+  expandTranslationOverlayIfNeeded();
 });
 
 // IPC Handlers for AI Model
@@ -4662,6 +4942,15 @@ app.whenReady().then(async () => {
             userBackground: ta.userBackground || '',
             targetLanguage: ta.targetLanguage || 'pt-br',
           }).then(() => {
+            // Mutex: se OS Integration ativo, suprime monitorings que possam ter subido
+            if (configService.getOsIntegrationStatus()) {
+              try { stopClipboardMonitoring(); } catch (_) {}
+              try { stopCaptureToolMonitoring(); } catch (_) {}
+              try { stopScreenshotFolderMonitoring(); } catch (_) {}
+              console.log('[mutex] auto-start TA + OS Integration: monitorings suprimidos');
+              createTranslationOverlay();
+              sendToTranslationOverlay('translation-status', 'mic_open');
+            }
             if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('translation-status', 'mic_open');
           }).catch((e) => console.error('[TranslationAssistant] auto-start falhou:', e.message));
         }

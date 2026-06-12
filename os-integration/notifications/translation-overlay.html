@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Translation Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Roboto:ital,wght@0,100..900;1,100..900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      height: 100%;
+      font-family: 'DM Sans', 'Roboto', 'Inter', system-ui, sans-serif;
+      color: #ececec;
+      user-select: none;
+      overflow: hidden;
+    }
+
+    body {
+      background: rgba(20, 20, 22, 0.78);
+      -webkit-backdrop-filter: blur(14px) saturate(140%);
+      backdrop-filter: blur(14px) saturate(140%);
+      display: flex;
+      flex-direction: column;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+
+    /* COSMIC/Pop!_OS fallback quando blur não está disponível */
+    @supports not (backdrop-filter: blur(1px)) {
+      body { background: #1e1e1e; }
+    }
+
+    /* ---------- HEADER COM BOTÕES DE POSIÇÃO ---------- */
+    #pos-header {
+      height: 20px;
+      min-height: 20px;
+      background: rgba(255, 255, 255, 0.03);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 1px;
+      padding: 0 4px;
+      flex-shrink: 0;
+    }
+
+    .pos-btn {
+      background: transparent;
+      border: none;
+      color: rgba(255, 255, 255, 0.28);
+      font-size: 10px;
+      width: 20px;
+      height: 18px;
+      border-radius: 3px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.12s, color 0.12s;
+      padding: 0;
+      line-height: 1;
+    }
+    .pos-btn:hover  { background: rgba(255,255,255,0.09); color: rgba(255,255,255,0.85); }
+    .pos-btn:active { background: rgba(255,255,255,0.16); }
+
+    /* ---------- STATUS ---------- */
+    #status-bar {
+      padding: 8px 14px;
+      font-size: 11px;
+      letter-spacing: 0.05em;
+      color: rgba(255, 255, 255, 0.45);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    #status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #555;
+      transition: background 0.3s;
+      flex-shrink: 0;
+    }
+    #status-dot.listening  { background: #4ade80; animation: pulse 2s infinite; }
+    #status-dot.processing { background: #facc15; animation: pulse 1s infinite; }
+    #status-dot.speaking   { background: #f87171; animation: pulse 0.7s infinite; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%      { opacity: 0.35; transform: scale(0.85); }
+    }
+
+    /* ---------- MESSAGES ---------- */
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      scroll-behavior: smooth;
+    }
+    #messages::-webkit-scrollbar          { width: 5px; }
+    #messages::-webkit-scrollbar-track    { background: transparent; }
+    #messages::-webkit-scrollbar-thumb    { background: rgba(255,255,255,0.12); border-radius: 2px; }
+    #messages::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); }
+
+    .message-block {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding-left: 10px;
+      border-left: 2px solid rgba(255,255,255,0.08);
+      animation: fadein 0.25s ease;
+    }
+    @keyframes fadein {
+      from { opacity: 0; transform: translateY(4px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .message-block.interviewer { border-left-color: #60a5fa; }
+    .message-block.candidate   { border-left-color: #4ade80; }
+    .message-block.system      { border-left-color: #facc15; }
+
+    .timestamp {
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      color: rgba(255,255,255,0.32);
+      text-transform: uppercase;
+    }
+
+    .transcript {
+      font-size: 12.5px;
+      line-height: 1.5;
+      color: rgba(255,255,255,0.55);
+      font-style: italic;
+    }
+
+    .translation {
+      font-size: 13.5px;
+      line-height: 1.55;
+      color: #d4d4d4;
+    }
+
+    .response-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: #93c5fd;
+      margin-top: 2px;
+    }
+
+    .response {
+      font-size: 14.5px;
+      font-weight: 500;
+      line-height: 1.65;
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      padding: 10px 12px;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+    }
+    .response p { margin: 0 0 6px 0; }
+    .response p:last-child { margin-bottom: 0; }
+    .response strong { color: #fff; font-weight: 700; }
+
+    /* Bloco de código dentro da resposta */
+    .response pre {
+      background: rgba(0,0,0,0.45);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin: 8px 0 4px 0;
+      overflow-x: auto;
+      font-family: 'JetBrains Mono', 'Source Code Pro', monospace;
+      font-size: 12.5px;
+      line-height: 1.55;
+      position: relative;
+    }
+    .response pre code {
+      font-family: inherit;
+      color: #f5f5f5;
+      white-space: pre;
+    }
+    .response code:not(pre code) {
+      background: rgba(255,255,255,0.1);
+      padding: 2px 5px;
+      border-radius: 3px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.92em;
+    }
+
+    .copy-btn {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      color: rgba(255,255,255,0.7);
+      font-size: 10px;
+      font-family: inherit;
+      letter-spacing: 0.05em;
+      padding: 2px 7px;
+      border-radius: 3px;
+      cursor: pointer;
+      -webkit-app-region: no-drag;
+    }
+    .copy-btn:hover { background: rgba(255,255,255,0.14); color: #fff; }
+    .copy-btn.copied { background: rgba(74,222,128,0.25); border-color: rgba(74,222,128,0.4); color: #4ade80; }
+
+    /* ---------- EMPTY STATE ---------- */
+    #empty {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: rgba(255,255,255,0.25);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      text-align: center;
+      padding: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div id="pos-header">
+    <button class="pos-btn" id="btn-left"    title="Esquerda">◀</button>
+    <button class="pos-btn" id="btn-center"  title="Centro">◉</button>
+    <button class="pos-btn" id="btn-right"   title="Direita">▶</button>
+    <button class="pos-btn" id="btn-monitor" title="Próximo monitor">⊞</button>
+  </div>
+
+  <div id="status-bar">
+    <div id="status-dot"></div>
+    <span id="status-text">Aguardando...</span>
+  </div>
+
+  <div id="messages">
+    <div id="empty">Aguardando primeira fala…</div>
+  </div>
+
+  <script>
+    const api = window.electronAPI || {};
+
+    // === STATUS ===
+    function updateStatus(status) {
+      const dot  = document.getElementById('status-dot');
+      const text = document.getElementById('status-text');
+      const map = {
+        mic_open:   { cls: 'listening',  txt: 'Ouvindo' },
+        speaking:   { cls: 'speaking',   txt: 'Fala detectada' },
+        processing: { cls: 'processing', txt: 'Traduzindo…' },
+        idle:       { cls: '',           txt: 'Aguardando…' },
+      };
+      const s = map[status] || map.idle;
+      dot.className = '';
+      if (s.cls) dot.classList.add(s.cls);
+      text.textContent = s.txt;
+    }
+
+    // === RENDER ===
+    function escapeHtml(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    // Parse markdown leve: ```lang\ncode\n``` em <pre><code> com botão copiar
+    // **bold** em <strong>, `inline` em <code>, quebras em <br>.
+    function renderResponseHtml(text) {
+      if (!text) return '';
+      let html = '';
+      const codeRe = /```(\w*)\n([\s\S]*?)```/g;
+      let lastIdx = 0, m;
+      const renderInline = (t) => escapeHtml(t)
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/`([^`\n]+?)`/g, '<code>$1</code>')
+        .replace(/\n/g, '<br>');
+      while ((m = codeRe.exec(text)) !== null) {
+        const before = text.slice(lastIdx, m.index);
+        if (before.trim()) html += '<p>' + renderInline(before) + '</p>';
+        const lang = (m[1] || 'text').toLowerCase();
+        const code = m[2].replace(/\n$/, '');
+        html += '<pre><button class="copy-btn">copy</button><code class="lang-' + lang + '">' + escapeHtml(code) + '</code></pre>';
+        lastIdx = codeRe.lastIndex;
+      }
+      const tail = text.slice(lastIdx);
+      if (tail.trim()) html += '<p>' + renderInline(tail) + '</p>';
+      return html;
+    }
+
+    function addMessage(data) {
+      const { transcript, response, mode } = data || {};
+      if (!transcript && !response) return;
+
+      const empty = document.getElementById('empty');
+      if (empty) empty.remove();
+
+      const block = document.createElement('div');
+      block.className = 'message-block ' + (mode || 'interviewer');
+
+      // Timestamp curto
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2,'0');
+      const mm = String(now.getMinutes()).padStart(2,'0');
+      const ts = document.createElement('div');
+      ts.className = 'timestamp';
+      ts.textContent = (mode === 'candidate' ? 'Você' : 'Entrevistador') + ' · ' + hh + ':' + mm;
+      block.appendChild(ts);
+
+      if (transcript) {
+        const t = document.createElement('div');
+        t.className = 'transcript';
+        t.textContent = transcript;
+        block.appendChild(t);
+      }
+
+      // Parse "TRADUÇÃO: ...\nRESPOSTA: ..."
+      if (response) {
+        const traduMatch = response.match(/TRADU[ÇC][ÃA]O:\s*([\s\S]*?)(?=\n*RESPOSTA:|$)/i);
+        const respMatch  = response.match(/RESPOSTA:\s*([\s\S]*)$/i);
+        const trad = traduMatch ? traduMatch[1].trim() : '';
+        const resp = respMatch  ? respMatch[1].trim()  : (traduMatch ? '' : response);
+
+        if (trad) {
+          const td = document.createElement('div');
+          td.className = 'translation';
+          td.textContent = trad;
+          block.appendChild(td);
+        }
+        if (resp) {
+          const rl = document.createElement('div');
+          rl.className = 'response-label';
+          rl.textContent = mode === 'candidate' ? 'Avaliação' : 'Sugestão';
+          block.appendChild(rl);
+          const rd = document.createElement('div');
+          rd.className = 'response';
+          rd.innerHTML = renderResponseHtml(resp);
+          block.appendChild(rd);
+        }
+      }
+
+      const container = document.getElementById('messages');
+      container.appendChild(block);
+      container.scrollTop = container.scrollHeight;
+
+      // Após render, checa se precisa esticar janela
+      requestAnimationFrame(() => {
+        if (api.requestTranslationResize) api.requestTranslationResize();
+      });
+    }
+
+    function clearMessages() {
+      const container = document.getElementById('messages');
+      container.innerHTML = '<div id="empty">Histórico limpo</div>';
+    }
+
+    // === BOTÕES DE POSIÇÃO ===
+    document.getElementById('btn-left').addEventListener('click', () => {
+      window.electronAPI?.overlayPosition?.('left');
+    });
+    document.getElementById('btn-center').addEventListener('click', () => {
+      window.electronAPI?.overlayPosition?.('center');
+    });
+    document.getElementById('btn-right').addEventListener('click', () => {
+      window.electronAPI?.overlayPosition?.('right');
+    });
+    document.getElementById('btn-monitor').addEventListener('click', () => {
+      window.electronAPI?.overlayPosition?.('next-monitor');
+    });
+
+    // Copy buttons (delegated)
+    document.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.copy-btn');
+      if (!btn) return;
+      const pre = btn.closest('pre');
+      const code = pre ? pre.querySelector('code') : null;
+      if (!code) return;
+      try {
+        if (api.copyToClipboard) api.copyToClipboard(code.textContent);
+        else await navigator.clipboard.writeText(code.textContent);
+        btn.classList.add('copied');
+        btn.textContent = '✓ copiado';
+        setTimeout(() => { btn.classList.remove('copied'); btn.textContent = 'copy'; }, 1300);
+      } catch (_) {}
+    });
+
+    // === WIRING IPC ===
+    if (api.onTranslationResult) api.onTranslationResult((data) => addMessage(data));
+    if (api.onTranslationStatus) api.onTranslationStatus((status) => updateStatus(status));
+    if (api.onTranslationClear)  api.onTranslationClear(() => clearMessages());
+
+    // Estado inicial
+    updateStatus('mic_open');
+  </script>
+</body>
+</html>
