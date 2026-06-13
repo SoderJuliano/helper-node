@@ -157,21 +157,36 @@ build_deb() {
     # Generate graphical installer (bypasses cosmic-store bugs with large local .deb)
     cat > "${DIST_DIR}/instalar.sh" << 'INSTALLER_EOF'
 #!/usr/bin/env bash
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Instalador do Helper Node. Acha o .deb ao lado deste script, REMOVE a versão
+# anterior (se houver) e instala — funciona mesmo reinstalando a mesma versão.
+# Em terminal usa sudo (PAM/tty, senha de login normal); sem terminal cai pro pkexec.
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 DEB="$(ls "$SCRIPT_DIR"/helper-node_*.deb 2>/dev/null | sort -V | tail -1)"
 if [ -z "$DEB" ]; then
     echo "ERRO: arquivo .deb não encontrado em $SCRIPT_DIR"
-    echo "Pressione Enter..."; read -r; exit 1
+    read -rp "Pressione Enter..."; exit 1
 fi
-TMP_DEB="/tmp/helper-node-install.deb"
-echo "Copiando pacote..."; cp "$DEB" "$TMP_DEB"; chmod 644 "$TMP_DEB"
-echo "Instalando $(basename "$DEB")... (será pedida sua senha)"
+
+if [ -t 0 ] && command -v sudo >/dev/null 2>&1; then
+    SUDO="sudo"; echo "(será pedida sua senha de sudo)"
+else
+    SUDO="pkexec"
+fi
+
+echo "Removendo versão anterior (se houver)..."
+$SUDO apt-get remove -y helper-node 2>/dev/null
+
+echo "Instalando $(basename "$DEB")..."
+$SUDO apt-get install -y "$DEB"; EXIT=$?
+
 echo ""
-pkexec apt install -y "$TMP_DEB"; EXIT=$?
-rm -f "$TMP_DEB"
-echo ""
-[ $EXIT -eq 0 ] && echo "✓ Instalado! Execute: helper-node" || echo "✗ Falhou (código $EXIT)"
-echo "Pressione Enter..."; read -r
+if [ "$EXIT" -eq 0 ]; then
+    echo "✓ Instalado! Execute: helper-node"
+else
+    echo "✗ Falhou (código $EXIT)"
+    echo "  Tente manualmente:  sudo apt install \"$DEB\""
+fi
+[ -t 0 ] && read -rp "Pressione Enter..."
 INSTALLER_EOF
     chmod +x "${DIST_DIR}/instalar.sh"
 
@@ -180,7 +195,7 @@ INSTALLER_EOF
 Version=1.0
 Name=Instalar Helper Node
 Comment=Instala o Helper Node no sistema
-Exec=bash -c 'cd "%d" && bash instalar.sh'
+Exec=bash -c 'p="%k"; p="${p#file://}"; d="$(dirname "$p")"; [ -d "$d" ] && cd "$d"; exec bash ./instalar.sh'
 Terminal=true
 Type=Application
 Icon=system-software-install

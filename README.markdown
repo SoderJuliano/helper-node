@@ -69,6 +69,17 @@ helper-node
 | `Ctrl+Shift+X` | Capturar screenshot e analisar (OCR) |
 | `Ctrl+Shift+1/2` | Mover para display 1 / 2 |
 
+> **`Ctrl+D` — gravação Whisper (modo janela e modo integrado com SO):** grava uma
+> mensagem curta e, ao apertar de novo, transcreve com **Whisper** e responde.
+> No **modo integrado**, a resposta aparece numa overlay transparente no canto
+> superior direito que fecha sozinha em ~10 s (durante a gravação aparece a
+> animação de "ouvindo"; durante o processamento, a de "pensando"). O **Vosk não
+> participa do `Ctrl+D`** — gravação por Ctrl+D é sempre só Whisper.
+>
+> **`Ctrl+D` — Realtime Assistant:** quando o modo **Realtime Assistant** está
+> ligado nas configurações, o `Ctrl+D` passa a **iniciar/parar** esse modo
+> (escuta contínua Vosk + correção Whisper) — ver seção abaixo.
+
 ---
 
 ## 🎧 Modo Realtime Assistant (Copiloto Stealth)
@@ -76,6 +87,9 @@ helper-node
 Escuta **microfone + áudio do sistema simultaneamente** (você + interlocutores em
 Teams/Meet/Zoom/WhatsApp/YouTube) e age como **copiloto discreto** durante
 conversas, reuniões e estudos.
+
+> **Ligar/desligar:** com o modo Realtime Assistant ativo nas configurações,
+> use **`Ctrl+D`** para iniciar e parar a escuta contínua.
 
 **Pipeline híbrido Vosk-rápido + Whisper-lento:**
 

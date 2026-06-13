@@ -310,7 +310,17 @@ let lastProcessedImageHash = null;
 let lastProcessedTimestamp = null;
 const IMAGE_COOLDOWN_MS = 30000; // 30 seconds cooldown
 let isProcessingImage = false; // Simple lock for image processing
-const audioFilePath = path.join(__dirname, "output.wav");
+// Trava anti-spam do Ctrl+D: true enquanto o áudio do toque anterior está sendo
+// transcrito/respondido. Evita que apertar Ctrl+D repetidamente dispare vários
+// envios do mesmo/novos áudios em paralelo (modo integrado e janela).
+let recordingBusy = false;
+// Gravações de áudio vão para um diretório temporário do usuário (gravável em
+// qualquer OS). __dirname pode ser read-only quando instalado (ex.: /opt no
+// Linux, /Applications no macOS, Program Files no Windows), o que fazia
+// pw-record/ffmpeg falharem com EACCES e a gravação morrer em silêncio.
+const AUDIO_TMP_DIR = path.join(os.tmpdir(), "helper-node-audio");
+try { fs2.mkdirSync(AUDIO_TMP_DIR, { recursive: true }); } catch (_) {}
+const audioFilePath = path.join(AUDIO_TMP_DIR, "output.wav");
 // Monitoramento da pasta de screenshots do COSMIC (PrintScreen nativo)
 let screenshotFolderWatcher = null;
 let screenshotFolderWatcherPath = null;
@@ -731,6 +741,9 @@ function createOsNotificationWindow(type, content) {
     minimizable: false,
     maximizable: false,
     fullscreenable: false,
+    // Cria escondida e só mostra DEPOIS de posicionar — COSMIC/Wayland
+    // centraliza janelas frameless ao mapear (mesma técnica da translation-overlay).
+    show: false,
     // STEALTH OVERLAY: não rouba foco da janela ativa por padrão,
     // mas habilita pra recording-live/response (X + copy funcionarem)
     focusable: isFocusable,
@@ -756,7 +769,15 @@ function createOsNotificationWindow(type, content) {
   // Re-aplica depois do load — alguns compositors movem a janela ao mostrar
   osNotificationWindow.once('ready-to-show', () => {
     try { osNotificationWindow.setBounds({ x: posX, y: posY, width: windowWidth, height: windowHeight }); } catch (_) {}
+    try { osNotificationWindow.show(); } catch (_) {}
   });
+  // COSMIC/Hyprland às vezes movem/centralizam a janela DEPOIS do mapping —
+  // reaplica a posição uma vez após o delay (mesma técnica da translation-overlay).
+  setTimeout(() => {
+    if (osNotificationWindow && !osNotificationWindow.isDestroyed()) {
+      try { osNotificationWindow.setBounds({ x: posX, y: posY, width: windowWidth, height: windowHeight }); } catch (_) {}
+    }
+  }, 500);
 
   // Simply load the appropriate HTML file - let the files handle their own content
   let filePath;
@@ -2148,6 +2169,13 @@ async function toggleRecording() {
       return;
     }
 
+    // Anti-spam: ignora Ctrl+D enquanto ainda estamos transcrevendo/respondendo
+    // o áudio do toque anterior (senão múltiplos toques enviam o mesmo áudio).
+    if (recordingBusy) {
+      console.log("Ctrl+D ignorado — ainda processando o áudio anterior.");
+      return;
+    }
+
     if (isRecording) {
       // === STOP RECORDING ===
       const isOsIntegration = configService.getOsIntegrationStatus();
@@ -2178,6 +2206,8 @@ async function toggleRecording() {
       }
       isRecording = false;
       console.log("Recording stopped");
+      // A partir daqui processamos o áudio — trava o Ctrl+D até mostrar a resposta.
+      recordingBusy = true;
 
       if (!isOsIntegration) {
         if (appConfig.notificationsEnabled && Notification.isSupported()) {
@@ -2200,7 +2230,7 @@ async function toggleRecording() {
         // Converter áudio para formato compatível com Whisper.
         // pw-record gera WAV com header valido no sample rate/format do device
         // (geralmente 48kHz, s32le). Whisper exige 16kHz mono s16, entao convertemos aqui.
-        const convertedAudioPath = path.join(__dirname, "output_converted.wav");
+        const convertedAudioPath = path.join(AUDIO_TMP_DIR, "output_converted.wav");
         await execPromise(`ffmpeg -i ${audioFilePath} -ar 16000 -ac 1 -sample_fmt s16 -y ${convertedAudioPath}`);
 
         const audioText = await transcribeAudio(convertedAudioPath);
@@ -2229,71 +2259,49 @@ async function toggleRecording() {
         isRecording = false;
         console.error("Audio processing failed:", error);
         try { await fs.unlink(audioFilePath).catch(() => {}); } catch (_) {}
-        try { await fs.unlink(path.join(__dirname, "output_converted.wav")).catch(() => {}); } catch (_) {}
+        try { await fs.unlink(path.join(AUDIO_TMP_DIR, "output_converted.wav")).catch(() => {}); } catch (_) {}
+      } finally {
+        // Libera o Ctrl+D — áudio processado (com sucesso ou erro).
+        recordingBusy = false;
       }
     } else {
       // === START RECORDING ===
       const isOsIntegration = configService.getOsIntegrationStatus();
 
-      if (isOsIntegration) {
-        // Mutex: Translation Assistant já escuta mic+sys e responde sozinho.
-        // Subir Vosk Live em paralelo faz dois pipelines responderem o mesmo
-        // áudio com prompts diferentes — duplicando custo e poluindo a tela.
-        if (translationAssistant.isActive()) {
-          console.log("OS Integration: Translation Assistant ativo — Ctrl+D ignorado (mutex).");
-          return;
-        }
-
-        // OS Integration: use Vosk streaming with live text window
-        isRecording = true;
-        console.log("OS Integration: Starting Vosk live recording");
-
-        // Create live recording window
-        destroyNotificationWindow();
-        createOsNotificationWindow('recording-live', '');
-
-        // Detect audio sources (mic + system monitor)
-        const audioSources = await getAudioSources();
-
-        // Start Vosk streaming
-        const modelPath = path.join(__dirname, "vosk-model");
-        osLiveTurnCount = 0;
-        osLiveSegment = null;
-        await VoskStreamService.start({
-          audioSources,
-          modelPath,
-          onEvent: (event) => {
-            if (!osNotificationWindow || osNotificationWindow.isDestroyed()) return;
-            handleOsLiveVoskEvent(event);
-          },
-        });
-
-        // Checa silencio/timeout a cada 500ms (separado do polling Vosk)
-        if (osLiveSilenceInterval) clearInterval(osLiveSilenceInterval);
-        osLiveSilenceInterval = setInterval(() => checkOsLiveSegmentLimits(), 500);
-
-        mainWindow.webContents.send("toggle-recording", { isRecording, audioFilePath });
-      } else {
-        // Normal mode: record from mic + whisper.
-        // pw-record grava WAV com header valido (sample rate/format do device).
-        // Evita o problema do parec --raw que precisava de header forcado no ffmpeg
-        // e silenciosamente perdia audio em conversao de 48kHz s32le -> 16kHz s16le.
-        await fs.unlink(audioFilePath).catch(() => {});
-        const command = `pw-record "${audioFilePath}"`;
-        console.log("Executing:", command);
-        recordingProcess = exec(command, (error) => {
-          if (error && error.signal !== "SIGTERM" && error.code !== 0) {
-            console.error("Recording error:", error);
-          }
-        });
-        isRecording = true;
-        console.log("Recording started");
-
-        if (appConfig.notificationsEnabled && Notification.isSupported()) {
-          new Notification({ title: "Helper-Node", body: "Gravando...", silent: true }).show();
-        }
-        mainWindow.webContents.send("toggle-recording", { isRecording, audioFilePath });
+      // Mutex: em modo integrado, se o Translation Assistant está ativo ele já
+      // escuta mic+sys e responde sozinho — não sobe gravação em paralelo.
+      if (isOsIntegration && translationAssistant.isActive()) {
+        console.log("OS Integration: Translation Assistant ativo — Ctrl+D ignorado (mutex).");
+        return;
       }
+
+      // Ctrl+D = gravação CURTA transcrita por Whisper — tanto no modo janela
+      // quanto no integrado com SO. O Vosk "conversa contínua" NÃO pertence ao
+      // Ctrl+D: isso é o Assistente em Tempo Real, um modo separado.
+      // pw-record grava WAV com header válido (sample rate/format do device).
+      // Evita o problema do parec --raw que precisava de header forçado no ffmpeg
+      // e silenciosamente perdia áudio na conversão 48kHz s32le -> 16kHz s16le.
+      await fs.unlink(audioFilePath).catch(() => {});
+      const command = `pw-record "${audioFilePath}"`;
+      console.log("Executing:", command);
+      recordingProcess = exec(command, (error) => {
+        if (error && error.signal !== "SIGTERM" && error.code !== 0) {
+          console.error("Recording error:", error);
+        }
+      });
+      isRecording = true;
+      console.log("Recording started");
+
+      if (isOsIntegration) {
+        // Feedback de GRAVANDO: mesma overlay transparente/sem moldura do robot.gif
+        // (loading), porém com as bolinhas de "ouvindo". Assim o usuário sabe que
+        // está gravando, e o robot.gif só aparece depois (processando). Mesma posição.
+        destroyNotificationWindow();
+        createOsNotificationWindow('recording', '');
+      } else if (appConfig.notificationsEnabled && Notification.isSupported()) {
+        new Notification({ title: "Helper-Node", body: "Gravando...", silent: true }).show();
+      }
+      mainWindow.webContents.send("toggle-recording", { isRecording, audioFilePath });
     }
   } catch (error) {
     console.error("Error toggling recording:", error);
