@@ -77,6 +77,26 @@ function applyWorkspaceAccessVisibility(model) {
   }
 }
 
+// Edição Lite (100% online): esconde tudo que é local/backend e força OpenAI.
+function applyLiteUi() {
+  try {
+    aiModelSelect.value = 'openIa';
+    aiModelSelect.dispatchEvent(new Event('change'));
+    const si = aiModelSelect.closest('.setting-item');
+    if (si) si.style.display = 'none';
+  } catch (_) {}
+  try {
+    const si = realtimeAssistantToggle.closest('.setting-item');
+    if (si) si.style.display = 'none';
+  } catch (_) {}
+  ['backend-url', 'backend-api-key-container', 'ollama-local-model-container', 'ollama-local-info'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  if (openIaTokenContainer) openIaTokenContainer.style.display = 'flex';
+  if (openAiModelContainer) openAiModelContainer.style.display = 'flex';
+}
+
 // Mutex: helperTools desativa modo integrado + assistente em tempo real.
 function applyHelperToolsExclusivity() {
   if (!helperToolsToggle || !helperToolsToggle.checked) return;
@@ -281,6 +301,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     backendUrlValue.textContent = "Erro ao carregar URL";
     backendUrlValue.style.color = "#ff6b6b";
   }
+
+  // Edição Lite: ajusta a UI (100% online) depois que tudo carregou.
+  try {
+    const _edition = await ipcRenderer.invoke('get-edition');
+    if (_edition === 'lite') applyLiteUi();
+  } catch (_) {}
 });
 
 // Handle debug toggle live update

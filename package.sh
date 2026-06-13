@@ -33,18 +33,9 @@ if [ ! -f "main.js" ] || [ ! -f "package.json" ]; then
     exit 1
 fi
 
-# Clean only the artifacts being rebuilt — keep the other package type intact
-echo -e "${YELLOW}→${NC} Cleaning previous builds..."
+# Cada build limpa só o SEU próprio artefato (dentro de build_deb/build_arch),
+# pra não apagar as outras edições/formatos. Aqui só garante o diretório.
 mkdir -p "$DIST_DIR"
-if [ "$1" == "deb" ]; then
-    rm -f "$DIST_DIR"/*.deb
-elif [ "$1" == "arch" ]; then
-    rm -f "$DIST_DIR"/*.pkg.tar.zst
-    rm -rf "$DIST_DIR/arch-build"
-else
-    rm -f "$DIST_DIR"/*.deb "$DIST_DIR"/*.pkg.tar.zst
-    rm -rf "$DIST_DIR/arch-build"
-fi
 
 # Check dependencies
 echo -e "${YELLOW}→${NC} Checking dependencies..."
@@ -60,9 +51,10 @@ build_deb() {
     echo -e "${GREEN}  Building DEB Package${NC}"
     echo -e "${GREEN}═══════════════════════════════════${NC}"
     
-        DEB_ROOT="${BUILD_DIR}/deb-root/${APP_NAME}_${VERSION}_amd64"
+        DEB_ROOT="${BUILD_DIR}/deb-root/${PKG_NAME}_${VERSION}_amd64"
         APP_ROOT="${DEB_ROOT}/opt/helper-node"
-        DEB_OUTPUT="${DIST_DIR}/${APP_NAME}_${VERSION}_amd64.deb"
+        DEB_OUTPUT="${DIST_DIR}/${PKG_NAME}_${VERSION}_amd64.deb"
+        rm -f "${DEB_OUTPUT}"
     
     # Create directory structure
     echo -e "${YELLOW}→${NC} Creating DEB directory structure..."
@@ -73,7 +65,15 @@ build_deb() {
     # Copy application files
     echo -e "${YELLOW}→${NC} Copying application files..."
         cp -r main.js main_new_notification.js createOsNotificationWindow_fixed.js index.html config.html config.js preload.js "${APP_ROOT}/" 2>/dev/null || true
-        cp -r assets os-integration services vosk-model "${APP_ROOT}/"
+        cp -r assets os-integration services "${APP_ROOT}/"
+
+        # Marca a edição pro runtime (services/edition.js lê esse arquivo)
+        echo "{\"edition\":\"${EDITION}\"}" > "${APP_ROOT}/edition.json"
+
+        # === Modelos LOCAIS (Whisper + Vosk) — só na edição FULL ===
+        # Na Lite (100% online) tudo isso é omitido → pacote ~600MB menor.
+        if [ "$EDITION" != "lite" ]; then
+        cp -r vosk-model "${APP_ROOT}/"
 
         # Whisper: copia seletiva (binarios + libs + modelos reais)
         # Evita repo git, fontes C++, examples, tests, bindings e modelos for-tests-
@@ -98,6 +98,7 @@ build_deb() {
             && echo -e "${GREEN}  vosk wheel bundled OK${NC}" \
             || echo -e "${YELLOW}  WARNING: vosk wheel download failed — will download at install time${NC}"
         cp vosk-vocab.json "${APP_ROOT}/" 2>/dev/null || true
+        fi
         cp package.json package-lock.json "${APP_ROOT}/" 2>/dev/null || true
         cp *.traineddata "${APP_ROOT}/" 2>/dev/null || true
         cp helper-node.sh helper-node.desktop setup-hotkey.sh capture-screenshot.sh install-deps.sh "${APP_ROOT}/" 2>/dev/null || true
@@ -129,12 +130,35 @@ build_deb() {
         fi
 
 
-    # Copy DEBIAN control files
+    # Copy DEBIAN scripts (postinst/preinst/prerm), depois gera o control por edição
     echo -e "${YELLOW}→${NC} Adding control files..."
     cp build/deb/DEBIAN/* "${DEB_ROOT}/DEBIAN/"
     chmod 755 "${DEB_ROOT}/DEBIAN/postinst"
     chmod 755 "${DEB_ROOT}/DEBIAN/preinst"
     chmod 755 "${DEB_ROOT}/DEBIAN/prerm"
+
+    # Gera o control: nome e Depends variam por edição. Lite não precisa de python/vosk.
+    DEB_DEPENDS="libgtk-3-0t64 | libgtk-3-0, libnss3, libxss1, libxtst6, libasound2t64 | libasound2, libgbm1, libdrm2, xdg-utils, libatspi2.0-0t64 | libatspi2.0-0, ffmpeg, pipewire-bin, pulseaudio-utils, libnotify4"
+    if [ "$EDITION" != "lite" ]; then
+        DEB_DEPENDS="${DEB_DEPENDS}, python3, python3-venv, python3-pip"
+    fi
+    OTHER_EDITION="lite"; [ "$EDITION" == "lite" ] && OTHER_EDITION="full"
+    cat > "${DEB_ROOT}/DEBIAN/control" <<CONTROL_EOF
+Package: ${PKG_NAME}
+Version: ${VERSION}
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: Helper Node Team <support@helper-node.app>
+Depends: ${DEB_DEPENDS}
+Provides: helper-node
+Conflicts: helper-node, ${APP_NAME}-${OTHER_EDITION}
+Replaces: helper-node, ${APP_NAME}-${OTHER_EDITION}
+Description: Assistente de voz com IA (edição ${EDITION})
+ Helper Node — copiloto stealth com IA. Edição ${EDITION}.
+ A edição full inclui transcrição offline (Whisper/Vosk + Ollama local);
+ a edição lite é 100% online (somente modelos cloud) e bem menor.
+CONTROL_EOF
     
     # Set permissions
     echo -e "${YELLOW}→${NC} Setting permissions..."
@@ -161,7 +185,7 @@ build_deb() {
 # anterior (se houver) e instala — funciona mesmo reinstalando a mesma versão.
 # Em terminal usa sudo (PAM/tty, senha de login normal); sem terminal cai pro pkexec.
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
-DEB="$(ls "$SCRIPT_DIR"/helper-node_*.deb 2>/dev/null | sort -V | tail -1)"
+DEB="$(ls "$SCRIPT_DIR"/helper-node*.deb 2>/dev/null | sort -V | tail -1)"
 if [ -z "$DEB" ]; then
     echo "ERRO: arquivo .deb não encontrado em $SCRIPT_DIR"
     read -rp "Pressione Enter..."; exit 1
@@ -223,6 +247,11 @@ build_arch() {
     # Create tarball
     echo -e "${YELLOW}→${NC} Creating source tarball..."
     TARBALL="${ARCH_BUILD}/helper-node-${VERSION}.tar.gz"
+    # Modelos locais (whisper/vosk) só na edição full
+    LOCAL_AI_FILES=""
+    if [ "$EDITION" != "lite" ]; then
+        LOCAL_AI_FILES="whisper/ vosk-model/ vosk-stream.py vosk-vocab.json"
+    fi
     tar czf "${TARBALL}" \
         --exclude='node_modules' \
         --exclude='build' \
@@ -233,12 +262,55 @@ build_arch() {
         --transform "s,^,helper-node/," \
         main.js index.html config.html config.js preload.js \
         assets/ os-integration/ services/ \
-        whisper/ vosk-model/ vosk-stream.py vosk-vocab.json package.json *.traineddata \
+        ${LOCAL_AI_FILES} package.json *.traineddata \
         helper-node.sh helper-node.desktop setup-hotkey.sh \
         README.markdown ROADMAP.md 2>/dev/null || true
-    
-    # Copy PKGBUILD
-    cp build/arch/PKGBUILD "${ARCH_BUILD}/"
+
+    # Gera o PKGBUILD por edição (nome, depends, edition.json). Lite não usa python/vosk.
+    if [ "$EDITION" != "lite" ]; then
+        ARCH_DEPENDS="'curl' 'ffmpeg' 'nodejs' 'python' 'python-vosk' 'pipewire' 'pipewire-pulse' 'libpulse' 'xorg-xprop' 'wl-clipboard' 'gtk3' 'libnotify' 'nss' 'libxss' 'libxtst' 'xdg-utils' 'at-spi2-core' 'alsa-lib'"
+    else
+        ARCH_DEPENDS="'ffmpeg' 'nodejs' 'pipewire' 'pipewire-pulse' 'libpulse' 'xorg-xprop' 'wl-clipboard' 'gtk3' 'libnotify' 'nss' 'libxss' 'libxtst' 'xdg-utils' 'at-spi2-core' 'alsa-lib'"
+    fi
+    cat > "${ARCH_BUILD}/PKGBUILD" <<PKGBUILD_EOF
+# Maintainer: Helper Node Team <support@helper-node.app>
+pkgname=${PKG_NAME}
+pkgver=${VERSION}
+pkgrel=1
+pkgdesc="Helper Node — copiloto IA stealth (edição ${EDITION})"
+arch=('x86_64')
+url="https://github.com/SoderJuliano/helper-node"
+license=('MIT')
+depends=(${ARCH_DEPENDS})
+provides=('helper-node')
+conflicts=('helper-node' '${APP_NAME}-${OTHER_EDITION}')
+replaces=('helper-node' '${APP_NAME}-${OTHER_EDITION}')
+source=("helper-node-${VERSION}.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+    cd "\${srcdir}/helper-node"
+    npm install --production
+    npm install electron --save-dev
+}
+
+package() {
+    cd "\${srcdir}/helper-node"
+    install -dm755 "\${pkgdir}/opt/helper-node"
+    cp -r * "\${pkgdir}/opt/helper-node/"
+    echo '{"edition":"${EDITION}"}' > "\${pkgdir}/opt/helper-node/edition.json"
+    rm -rf "\${pkgdir}/opt/helper-node/build" "\${pkgdir}/opt/helper-node/dist" "\${pkgdir}/opt/helper-node/.git" 2>/dev/null || true
+    chmod +x "\${pkgdir}/opt/helper-node/helper-node.sh"
+    chmod +x "\${pkgdir}/opt/helper-node/setup-hotkey.sh" 2>/dev/null || true
+    chmod +x "\${pkgdir}/opt/helper-node/whisper/build/bin"/* 2>/dev/null || true
+    install -Dm644 helper-node.desktop "\${pkgdir}/usr/share/applications/helper-node.desktop"
+    if [ -f "assets/linux.png" ]; then
+        install -Dm644 assets/linux.png "\${pkgdir}/usr/share/pixmaps/helper-node.png"
+    fi
+    install -dm755 "\${pkgdir}/usr/local/bin"
+    ln -s /opt/helper-node/helper-node.sh "\${pkgdir}/usr/local/bin/helper-node"
+}
+PKGBUILD_EOF
     
     # Build package: nativo (makepkg) ou via container Arch (docker/podman).
     # Em distros nao-Arch (Pop/Ubuntu/Debian), cai automaticamente pro container.
@@ -248,7 +320,7 @@ build_arch() {
         makepkg -f --nodeps
         cd "${PROJECT_ROOT}"
         mv "${ARCH_BUILD}"/*.pkg.tar.zst "${DIST_DIR}/" 2>/dev/null || true
-        echo -e "${GREEN}✓${NC} Arch package created: ${DIST_DIR}/${APP_NAME}-${VERSION}-1-x86_64.pkg.tar.zst"
+        echo -e "${GREEN}✓${NC} Arch package created: ${DIST_DIR}/${PKG_NAME}-${VERSION}-1-x86_64.pkg.tar.zst"
     elif command -v docker &> /dev/null || command -v podman &> /dev/null; then
         CONTAINER_CMD="docker"
         command -v docker &> /dev/null || CONTAINER_CMD="podman"
@@ -265,9 +337,9 @@ build_arch() {
             su builder -c "makepkg -f --nodeps --skipchecksums"
         '
         # Move pacote final pra dist/ e limpa TUDO desnecessario
-        if ls "${ARCH_BUILD}"/helper-node-${VERSION}-*-x86_64.pkg.tar.zst &>/dev/null; then
-            mv "${ARCH_BUILD}"/helper-node-${VERSION}-*-x86_64.pkg.tar.zst "${DIST_DIR}/"
-            echo -e "${GREEN}✓${NC} Arch package created: ${DIST_DIR}/${APP_NAME}-${VERSION}-1-x86_64.pkg.tar.zst"
+        if ls "${ARCH_BUILD}"/${PKG_NAME}-${VERSION}-*-x86_64.pkg.tar.zst &>/dev/null; then
+            mv "${ARCH_BUILD}"/${PKG_NAME}-${VERSION}-*-x86_64.pkg.tar.zst "${DIST_DIR}/"
+            echo -e "${GREEN}✓${NC} Arch package created: ${DIST_DIR}/${PKG_NAME}-${VERSION}-1-x86_64.pkg.tar.zst"
             # Limpa pasta arch-build completamente (tarball, debug pkg, pkg/, src/, etc)
             rm -rf "${ARCH_BUILD}" 2>/dev/null || true
         else
@@ -283,16 +355,30 @@ build_arch() {
 # Main build process
 echo -e "${YELLOW}→${NC} Using isolated dependency install for packaging (local dev node_modules will not be modified)..."
 
-# Build packages based on arguments
-if [ "$1" == "deb" ]; then
-    build_deb
-elif [ "$1" == "arch" ]; then
-    build_arch
-else
-    # Build both
-    build_deb
-    build_arch
-fi
+# Edição: full (offline, modelos locais) ou lite (100% online, pacote pequeno)
+build_one() {
+    local fmt="$1"
+    EDITION="${2:-full}"
+    PKG_NAME="${APP_NAME}-${EDITION}"
+    OTHER_EDITION="lite"; [ "$EDITION" == "lite" ] && OTHER_EDITION="full"
+    echo -e "${GREEN}»»» Edição: ${EDITION} | Formato: ${fmt} | Pacote: ${PKG_NAME}${NC}"
+    if [ "$fmt" == "deb" ]; then build_deb; else build_arch; fi
+}
+
+# Uso: package.sh deb [full|lite] | arch [full|lite] | all
+case "$1" in
+    deb)  build_one deb  "${2:-full}" ;;
+    arch) build_one arch "${2:-full}" ;;
+    all)
+        build_one deb  full
+        build_one deb  lite
+        build_one arch full
+        build_one arch lite ;;
+    *)
+        # padrão: full deb + full arch (compatível com o comportamento antigo)
+        build_one deb  full
+        build_one arch full ;;
+esac
 
 # Summary
 echo ""

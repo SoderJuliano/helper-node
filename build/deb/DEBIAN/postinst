@@ -12,23 +12,28 @@ chmod +x /opt/helper-node/whisper/build/bin/whisper-cli 2>/dev/null || true
 
 mkdir -p /etc/helper-node
 
-VENV_DIR="/opt/helper-node/venv"
-if [ ! -x "$VENV_DIR/bin/python3" ]; then
-    echo "Creating Python venv for Vosk speech recognition..."
-    python3 -m venv "$VENV_DIR" || echo "WARNING: venv creation failed; realtime mode will not work"
-fi
-if [ -x "$VENV_DIR/bin/pip" ]; then
-    "$VENV_DIR/bin/pip" install --quiet --upgrade pip || true
-    PKGS_DIR="/opt/helper-node/python-packages"
-    if ls "$PKGS_DIR"/vosk*.whl "$PKGS_DIR"/vosk*.tar.gz 2>/dev/null | grep -q .; then
-        echo "Installing Vosk from bundled package (offline)..."
-        "$VENV_DIR/bin/pip" install --quiet --no-index --find-links "$PKGS_DIR" vosk \
-            || echo "WARNING: vosk install failed; realtime mode will not work"
-    else
-        echo "Installing Vosk from internet (~50MB)..."
-        "$VENV_DIR/bin/pip" install --quiet vosk \
-            || echo "WARNING: vosk install failed; realtime mode will not work"
+# Vosk/venv só na edição FULL (a lite não empacota vosk-model → 100% online).
+if [ -d /opt/helper-node/vosk-model ]; then
+    VENV_DIR="/opt/helper-node/venv"
+    if [ ! -x "$VENV_DIR/bin/python3" ]; then
+        echo "Creating Python venv for Vosk speech recognition..."
+        python3 -m venv "$VENV_DIR" || echo "WARNING: venv creation failed; realtime mode will not work"
     fi
+    if [ -x "$VENV_DIR/bin/pip" ]; then
+        "$VENV_DIR/bin/pip" install --quiet --upgrade pip || true
+        PKGS_DIR="/opt/helper-node/python-packages"
+        if ls "$PKGS_DIR"/vosk*.whl "$PKGS_DIR"/vosk*.tar.gz 2>/dev/null | grep -q .; then
+            echo "Installing Vosk from bundled package (offline)..."
+            "$VENV_DIR/bin/pip" install --quiet --no-index --find-links "$PKGS_DIR" vosk \
+                || echo "WARNING: vosk install failed; realtime mode will not work"
+        else
+            echo "Installing Vosk from internet (~50MB)..."
+            "$VENV_DIR/bin/pip" install --quiet vosk \
+                || echo "WARNING: vosk install failed; realtime mode will not work"
+        fi
+    fi
+else
+    echo "Edição lite (100% online) — sem Vosk; pulando criação do venv."
 fi
 
 if [ -f /opt/helper-node/helper-node.desktop ]; then

@@ -18,6 +18,26 @@ Assistente de voz com IA, transcrição offline e integração nativa com o sist
 
 ---
 
+## 📦 Edições: Lite (online) vs Full (offline)
+
+O Helper Node é distribuído em **duas edições** — escolha no download:
+
+| | **Lite** (`helper-node-lite`) | **Full** (`helper-node-full`) |
+|---|---|---|
+| Tamanho do `.deb` | **~127 MB** | ~654 MB |
+| Transcrição (Ctrl+D) | OpenAI cloud (`gpt-4o-mini-transcribe`) | Whisper.cpp local |
+| OCR de tela (integrado) | Visão `gpt-4o` (online) | Tesseract local |
+| Provedores de IA | Só OpenAI | OpenAI + LLaMA/Ollama local + backend |
+| Realtime Assistant (Vosk) | — (não incluso) | ✅ Vosk + correção Whisper |
+| Funciona offline | Não (sempre online) | Sim (modelos locais) |
+| Requer API key OpenAI | **Sim** | Opcional |
+
+A **Lite** é a recomendada para a maioria: pacote pequeno, instala fácil (não esbarra no bug do cosmic-store com `.deb` grande) e sem modelos pesados. A **Full** é para quem quer rodar 100% offline com Whisper/Vosk locais e/ou Ollama/backend próprio.
+
+> As duas edições se **excluem** (`Conflicts`/`Provides: helper-node`): instale uma OU outra. O comando de execução continua `helper-node` nas duas. Internamente a edição é marcada em `/opt/helper-node/edition.json` e lida por `services/edition.js`.
+
+---
+
 ## 📥 Instalação
 
 ### Ubuntu / Pop!_OS / Debian (.deb)
@@ -29,8 +49,12 @@ Baixe o `.deb` e o `instalar.sh` da release, deixe os dois na mesma pasta e dê 
 **Opção 2 — Terminal:**
 
 ```bash
-wget https://github.com/SoderJuliano/helper-node/releases/download/v0.2.0/helper-node_0.2.0_amd64.deb
-sudo apt install ./helper-node_0.2.0_amd64.deb
+# Edição Lite (recomendada — ~127MB, 100% online):
+sudo apt install ./helper-node-lite_0.3.5_amd64.deb
+
+# OU edição Full (offline, ~654MB, Whisper/Vosk/Ollama locais):
+sudo apt install ./helper-node-full_0.3.5_amd64.deb
+
 helper-node
 ```
 

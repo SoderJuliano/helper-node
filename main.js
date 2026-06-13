@@ -60,6 +60,7 @@ const OpenAIService = require("./services/openAIService.js");
 const RealtimeAssistantService = require("./services/realtimeAssistantService.js");
 const ipcService = require("./services/ipcService.js");
 const configService = require("./services/configService.js");
+const edition = require("./services/edition.js");
 const historyService = require("./services/historyService.js");
 const helperTools = require("./services/helperTools");
 const workspace = require("./services/workspace");
@@ -68,6 +69,8 @@ const ollamaAgenticWorkflow = require("./services/ollamaAgenticWorkflowService")
 const translationAssistant = require("./services/translationAssistant");
 const { runTestMode } = require("./services/translationAssistant/testMode");
 const { analyzeInterviewImage } = require("./services/translationAssistant/imageAnalysis");
+// Transcrição cloud (gpt-4o-mini-transcribe) — usada no Ctrl+D da edição Lite.
+const { transcribeAudio: cloudTranscribeAudio } = require("./services/translationAssistant/openaiClient");
 
 /**
  * Monta opts pra OpenAIService.makeOpenAIRequest acoplando o helperTools quando:
@@ -1194,23 +1197,31 @@ async function captureScreen() {
           const imgBuffer = await fs.readFile(tmpPng);
           const base64Image = `data:image/png;base64,${imgBuffer.toString('base64')}`;
           
-          // Extract text with OCR
-          console.log('🔍 Extraindo texto da captura...');
-          const ocrText = await TesseractService.getTextFromImage(base64Image);
-          
-          if (!ocrText || ocrText.trim().length === 0) {
-            console.warn('⚠️ Nenhum texto encontrado na captura');
-            destroyNotificationWindow();
-            await new Promise(resolve => setTimeout(resolve, 200));
-            createOsNotificationWindow('response', 'Nenhum texto encontrado na imagem.');
-            return;
+          if (edition.isLite()) {
+            // Lite (100% online): sem OCR local — manda a imagem direto pro
+            // gpt-4o (visão), que lê o texto e responde no mesmo fluxo.
+            console.log('🔍 Lite: captura → visão gpt-4o (sem OCR local)');
+            createOsNotificationWindow('loading', 'Enviando para IA...');
+            await processOsQuestion('', base64Image, { forceVision: true });
+          } else {
+            // Extract text with OCR
+            console.log('🔍 Extraindo texto da captura...');
+            const ocrText = await TesseractService.getTextFromImage(base64Image);
+
+            if (!ocrText || ocrText.trim().length === 0) {
+              console.warn('⚠️ Nenhum texto encontrado na captura');
+              destroyNotificationWindow();
+              await new Promise(resolve => setTimeout(resolve, 200));
+              createOsNotificationWindow('response', 'Nenhum texto encontrado na imagem.');
+              return;
+            }
+
+            console.log('📝 Texto extraído da captura:', ocrText);
+
+            // Send to AI
+            createOsNotificationWindow('loading', 'Enviando para IA...');
+            await processOsQuestion(ocrText);
           }
-          
-          console.log('📝 Texto extraído da captura:', ocrText);
-          
-          // Send to AI
-          createOsNotificationWindow('loading', 'Enviando para IA...');
-          await processOsQuestion(ocrText);
           
         } catch (e) {
           console.error("Erro ao processar captura:", e);
@@ -2161,9 +2172,16 @@ async function toggleRealtimeAssistantRecording() {
   }
 }
 
+// Na edição Lite, o app é 100% online → sempre OpenAI cloud, ignorando qualquer
+// aiModel local (llama/llama-stream/ollamaLocal/backend) que tenha sobrado no config.
+function getEffectiveAiModel() {
+  return edition.isLite() ? 'openIa' : configService.getAiModel();
+}
+
 async function toggleRecording() {
   try {
-    const isRealtimeAssistantEnabled = configService.getRealtimeAssistantStatus();
+    // Na Lite, o Realtime Assistant (Vosk+Whisper local) não existe — nunca entra.
+    const isRealtimeAssistantEnabled = !edition.isLite() && configService.getRealtimeAssistantStatus();
     if (isRealtimeAssistantEnabled) {
       await toggleRealtimeAssistantRecording();
       return;
@@ -2233,7 +2251,10 @@ async function toggleRecording() {
         const convertedAudioPath = path.join(AUDIO_TMP_DIR, "output_converted.wav");
         await execPromise(`ffmpeg -i ${audioFilePath} -ar 16000 -ac 1 -sample_fmt s16 -y ${convertedAudioPath}`);
 
-        const audioText = await transcribeAudio(convertedAudioPath);
+        // Lite (100% online): transcreve via OpenAI cloud. Full: whisper-cli local.
+        const audioText = edition.isLite()
+          ? await cloudTranscribeAudio(convertedAudioPath, configService.getOpenIaToken())
+          : await transcribeAudio(convertedAudioPath);
 
         try { await fs.unlink(audioFilePath); } catch (_) {}
         try { await fs.unlink(convertedAudioPath); } catch (_) {}
@@ -2247,7 +2268,7 @@ async function toggleRecording() {
           return;
         }
 
-        const aiModel = configService.getAiModel();
+        const aiModel = getEffectiveAiModel();
         if (isOsIntegration) {
           await processOsQuestion(audioText);
         } else if (aiModel === 'llama-stream') {
@@ -2451,7 +2472,7 @@ async function getIaResponse(text) {
 
   let resposta;
   try {
-    const aiModel = configService.getAiModel();
+    const aiModel = getEffectiveAiModel();
     console.log("Current AI Model:", aiModel);
 
     if (aiModel === 'openIa') {
@@ -2948,7 +2969,7 @@ async function bringWindowToFocus() {
 
 ipcMain.on("send-to-gemini", async (event, text) => {
   try {
-    const aiModel = configService.getAiModel();
+    const aiModel = getEffectiveAiModel();
     let resposta;
 
     if (aiModel === 'openIa') {
@@ -3678,6 +3699,10 @@ ipcMain.on("request-translation-resize", () => {
 // IPC Handlers for AI Model
 ipcMain.handle("get-ai-model", () => {
   return configService.getAiModel();
+});
+
+ipcMain.handle("get-edition", () => {
+  return edition.getEdition();
 });
 
 ipcMain.on("set-ai-model", (event, aiModel) => {
@@ -4635,7 +4660,7 @@ async function processOsQuestion(text, image = null, opts = {}) {
   console.log(`🤖 processOsQuestion called - FORCEFULLY closing any notifications`);
 
   try {
-    const aiModel = configService.getAiModel();
+    const aiModel = getEffectiveAiModel();
     let resposta;
 
     // === ROTEAMENTO INTELIGENTE: TEXTO vs VISÃO ===
