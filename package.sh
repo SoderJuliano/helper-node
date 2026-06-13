@@ -13,14 +13,12 @@ NC='\033[0m' # No Color
 
 # Configuration
 APP_NAME="helper-node"
-VERSION="0.3.5"
+VERSION="0.4.0"
 BUILD_DIR="$(pwd)/build"
 DIST_DIR="$(pwd)/dist"
 PROJECT_ROOT="$(pwd)"
-APP_CONFIG_CANDIDATES=(
-    "$HOME/.config/meu-electron-app/config.json"
-    "$HOME/.config/helper-node/config.json"
-)
+# (Removido APP_CONFIG_CANDIDATES — o build NÃO empacota config do usuário:
+#  continha a API key e vazava nos pacotes. Cada user configura a própria chave.)
 
 echo -e "${GREEN}╔════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║  Helper Node Package Builder v${VERSION}  ║${NC}"
@@ -104,14 +102,11 @@ build_deb() {
         cp helper-node.sh helper-node.desktop setup-hotkey.sh capture-screenshot.sh install-deps.sh "${APP_ROOT}/" 2>/dev/null || true
         cp README.markdown ROADMAP.md "${APP_ROOT}/" 2>/dev/null || true
 
-        # Bundle user's local app config (optional) as default config for first run
-        for cfg in "${APP_CONFIG_CANDIDATES[@]}"; do
-            if [ -f "$cfg" ]; then
-                echo -e "${YELLOW}→${NC} Packing local config from: $cfg"
-                cp "$cfg" "${APP_ROOT}/config-default.json"
-                break
-            fi
-        done
+        # ⚠️ NUNCA empacotar config do usuário. O config.json contém a API KEY e
+        # estava sendo embutido como config-default.json → vazava a chave em TODO
+        # pacote gerado. Removido de propósito. Cada usuário configura a própria
+        # key no primeiro uso (o app usa os defaults internos do configService,
+        # sem token e com osIntegration:false).
 
         # Install Node dependencies directly in package root (includes Electron runtime)
         echo -e "${YELLOW}→${NC} Installing packaged Node dependencies..."
