@@ -3424,9 +3424,10 @@ ipcMain.on("save-os-integration-status", (event, status) => {
   notifyShortcutsChanged();
   
   if (status) {
-    // Automatically enable print mode when OS integration is enabled
-    configService.setPrintModeStatus(true);
-    
+    // NÃO forçamos mais o print mode aqui: "Integrar com SO" e "enviar print
+    // direto" são independentes. O monitoramento abaixo roda, mas os watchers
+    // já checam getPrintModeStatus() e não enviam nada se estiver desligado.
+
     // Notificação de ativação
     if (appConfig.notificationsEnabled && Notification.isSupported()) {
       new Notification({
@@ -5068,11 +5069,10 @@ app.whenReady().then(async () => {
       switchToOsIntegrationMode();
     }, 1000);
     
-    // Ensure clipboard monitoring is started for OS integration mode
+    // Ensure clipboard monitoring is started for OS integration mode.
+    // NÃO forçamos print mode: respeitamos a escolha do usuário. Os watchers
+    // checam getPrintModeStatus() e não enviam imagens se estiver desligado.
     if (!initialPrintMode) {
-      // If print mode wasn't already active, we need to start clipboard monitoring
-      // since OS integration automatically enables print mode
-      configService.setPrintModeStatus(true);
       startClipboardMonitoring();
     }
     // Start capture tool monitoring for OS integration
