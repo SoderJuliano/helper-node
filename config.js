@@ -43,13 +43,8 @@ function updatePrintModeStatus(isPrintMode) {
 // Helper function to update the OS integration status text
 function updateOsIntegrationStatus(isOsIntegration) {
   osIntegrationStatus.textContent = isOsIntegration ? "ON" : "OFF";
-  
-  // When OS integration is enabled, automatically enable print mode
-  if (isOsIntegration && !printModeToggle.checked) {
-    printModeToggle.checked = true;
-    updatePrintModeStatus(true);
-    ipcRenderer.send("save-print-mode-status", true);
-  }
+  // "Integrar com SO" e "Capturar e enviar print direto" são independentes:
+  // ligar a integração não deve reativar o envio automático de print.
 }
 
 function updateRealtimeAssistantStatus(isRealtimeAssistant) {
