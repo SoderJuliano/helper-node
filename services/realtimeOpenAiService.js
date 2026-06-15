@@ -94,16 +94,15 @@ class RealtimeOpenAiService {
       return;
     }
 
-    // O vadEngine abre DOIS streams (mic + monitor do sistema). Se processarmos
-    // ambos, o mesmo som — que toca no alto-falante e vaza pro microfone — é
-    // transcrito e respondido 2x. Por padrão processamos só o áudio do SISTEMA
-    // ('monitor'/'sys'): é o do interlocutor/vídeo/reunião, que é o que o
-    // copiloto precisa responder. audioCaptureMode permite trocar:
-    //   'monitor' (default) → só 'sys' | 'mic' → só microfone | 'both' → ambos.
-    const mode = this.configService.getAudioCaptureMode
-      ? this.configService.getAudioCaptureMode()
-      : 'monitor';
-    const wanted = mode === 'mic' ? 'mic' : (mode === 'both' ? null : 'sys');
+    // O vadEngine abre DOIS streams: 'mic' (você) e 'sys' (áudio do sistema —
+    // interlocutor/vídeo/reunião). Com parec separando as fontes corretamente,
+    // são conteúdos DIFERENTES (sem duplicação), então por padrão ouvimos OS
+    // DOIS — o copiloto responde tanto ao que o outro fala quanto ao que você
+    // fala. Override opcional via config.json "realtimeAudioMode":
+    //   'both' (default) → ambos | 'system' → só sistema | 'mic' → só você.
+    const cfg = this.configService.getConfig ? this.configService.getConfig() : {};
+    const mode = cfg.realtimeAudioMode || 'both';
+    const wanted = mode === 'mic' ? 'mic' : (mode === 'system' ? 'sys' : null);
     if (wanted && source !== wanted) {
       try { if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath); } catch (_) {}
       return;
