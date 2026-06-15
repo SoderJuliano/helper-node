@@ -64,8 +64,18 @@ class RealtimeOpenAiService {
     // estado limpo antes de iniciar — senão startVAD faz early-return e nosso
     // onSpeechEnd nunca é religado.
     await stopVAD().catch(() => {});
+
+    // Overrides manuais opcionais (config.json) caso o auto-detect de áudio erre:
+    //   "systemAudioSink": "<nome do sink>"  → captura <sink>.monitor
+    //   "micSource": "<nome do source>"
+    const cfg = this.configService.getConfig ? this.configService.getConfig() : {};
+    const sysTarget = cfg.systemAudioSink ? (cfg.systemAudioSink.endsWith('.monitor') ? cfg.systemAudioSink : cfg.systemAudioSink + '.monitor') : undefined;
+    const micTarget = cfg.micSource || undefined;
+
     await startVAD({
       onSpeechEnd: (audioPath, source) => this._handleSegment(audioPath, source),
+      sysTarget,
+      micTarget,
     });
     return true;
   }

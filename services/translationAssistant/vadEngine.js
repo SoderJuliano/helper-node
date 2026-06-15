@@ -2,10 +2,52 @@
 // energia RMS. Substitui @ricky0123/vad-web (browser-only) por implementação
 // Node.js pura, compatível com o processo main do Electron.
 
-const { spawn } = require('child_process');
+const { spawn, exec } = require('child_process');
+const util = require('util');
+const execPromise = util.promisify(exec);
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+
+// Detecta o monitor do sink que está TOCANDO agora (estado RUNNING) — é a saída
+// realmente em uso (Meet/Brave), mesmo que não seja o default. Retorna o nome do
+// monitor (<sink>.monitor) ou null se nada estiver tocando no momento.
+async function detectRunningSinkMonitor() {
+  try {
+    const { stdout } = await execPromise('pactl list short sinks');
+    const rows = stdout.split('\n').filter(Boolean).map((l) => l.split('\t'));
+    const running = rows.find((c) => (c[c.length - 1] || '').trim().toUpperCase() === 'RUNNING');
+    if (running && running[1]) return running[1] + '.monitor';
+  } catch (_) {}
+  return null;
+}
+
+// Monitor do sink padrão resolvido na hora (fallback quando nada está tocando).
+async function defaultSinkMonitor() {
+  try {
+    const { stdout } = await execPromise('pactl get-default-sink');
+    const sink = stdout.trim();
+    if (sink) return sink + '.monitor';
+  } catch (_) {}
+  return '@DEFAULT_MONITOR@';
+}
+
+// Resolve o alvo de captura do ÁUDIO DO SISTEMA em runtime. NÃO usar o token
+// literal '@DEFAULT_SINK_MONITOR@' — pw-record não o entende e cai no microfone.
+async function resolveSysTarget() {
+  return (await detectRunningSinkMonitor()) || (await defaultSinkMonitor());
+}
+
+// Microfone: nome real do default source (evita tokens não-expandidos).
+async function resolveMicTarget() {
+  try {
+    const { stdout } = await execPromise('pactl get-default-source');
+    const name = stdout.trim();
+    // Se o "source" padrão for um .monitor, não serve como mic.
+    if (name && !name.endsWith('.monitor')) return name;
+  } catch (_) {}
+  return '@DEFAULT_SOURCE@';
+}
 
 const SAMPLE_RATE = 16000;
 const BYTES_PER_SAMPLE = 2;             // s16le
@@ -28,6 +70,28 @@ const MAX_SEGMENT_MS = 60000;
 const pwProcs = { mic: null, sys: null };
 let active = false;
 let onSpeechEndCb = null;
+
+// Follower da saída ativa: re-checa a cada SYS_FOLLOW_MS qual sink está tocando
+// e migra a captura do áudio do sistema pra ele (ex: trocou monitor → fone com
+// o app já aberto). Fica null quando o chamador fixa um sysTarget manual.
+let sysFollowInterval = null;
+let currentSysTarget = null;
+let sysStateRef = null;
+const SYS_FOLLOW_MS = 2000;
+
+async function followActiveSink() {
+  if (!active || !sysStateRef) return;
+  const running = await detectRunningSinkMonitor();
+  // Só migra quando há uma saída TOCANDO e é diferente da atual — evita ficar
+  // oscilando pro default nos silêncios entre falas.
+  if (!running || running === currentSysTarget) return;
+  if (pwProcs.sys) { try { pwProcs.sys.kill('SIGTERM'); } catch (_) {} }
+  resetState(sysStateRef);
+  sysStateRef.pcmRemainder = Buffer.alloc(0);
+  currentSysTarget = running;
+  pwProcs.sys = startStream(running, 'sys', sysStateRef);
+  console.log(`[TranslationAssistant] saída ativa mudou → capturando ${running}`);
+}
 
 // Estado independente por stream
 function makeStreamState() {
@@ -156,7 +220,7 @@ function startStream(target, source, st) {
  * @param {object} opts
  * @param {function} opts.onSpeechEnd - callback(filePath: string, source: 'mic'|'sys')
  */
-async function startVAD({ onSpeechEnd }) {
+async function startVAD({ onSpeechEnd, micTarget, sysTarget } = {}) {
   if (active) return;
   active = true;
   onSpeechEndCb = onSpeechEnd;
@@ -164,13 +228,24 @@ async function startVAD({ onSpeechEnd }) {
   const micSt = makeStreamState();
   const sysSt = makeStreamState();
 
-  // Microfone: candidato
-  pwProcs.mic = startStream('@DEFAULT_SOURCE@', 'mic', micSt);
+  // Resolve alvos reais em runtime (override do chamador tem prioridade).
+  const micT = micTarget || await resolveMicTarget();
+  const sysT = sysTarget || await resolveSysTarget();
+  currentSysTarget = sysT;
+  sysStateRef = sysSt;
 
-  // Monitor do sistema: entrevistador (áudio do Teams, browser, HDMI)
-  pwProcs.sys = startStream('@DEFAULT_SINK_MONITOR@', 'sys', sysSt);
+  // Microfone: candidato/usuário
+  pwProcs.mic = startStream(micT, 'mic', micSt);
 
-  console.log('[TranslationAssistant] VAD iniciado — mic (candidato) + sys monitor (entrevistador)');
+  // Monitor do sistema: interlocutor (áudio do Meet/Teams/browser)
+  pwProcs.sys = startStream(sysT, 'sys', sysSt);
+
+  console.log(`[TranslationAssistant] VAD iniciado — mic: ${micT} | sys: ${sysT}`);
+
+  // Segue a saída ativa automaticamente — exceto quando o chamador FIXOU o sink.
+  if (!sysTarget) {
+    sysFollowInterval = setInterval(() => { followActiveSink().catch(() => {}); }, SYS_FOLLOW_MS);
+  }
 }
 
 /**
@@ -178,6 +253,9 @@ async function startVAD({ onSpeechEnd }) {
  */
 async function stopVAD() {
   active = false;
+  if (sysFollowInterval) { clearInterval(sysFollowInterval); sysFollowInterval = null; }
+  currentSysTarget = null;
+  sysStateRef = null;
   for (const key of ['mic', 'sys']) {
     if (pwProcs[key]) {
       try { pwProcs[key].kill('SIGTERM'); } catch (_) {}
