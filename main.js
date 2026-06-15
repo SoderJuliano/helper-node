@@ -58,6 +58,7 @@ const BackendService = require("./services/backendService.js");
 const TesseractService = require("./services/tesseractService.js");
 const OpenAIService = require("./services/openAIService.js");
 const RealtimeAssistantService = require("./services/realtimeAssistantService.js");
+const RealtimeOpenAiService = require("./services/realtimeOpenAiService.js");
 const ipcService = require("./services/ipcService.js");
 const configService = require("./services/configService.js");
 const edition = require("./services/edition.js");
@@ -369,10 +370,35 @@ function clearOsVoskSilenceTimer() {
 
 const VoskStreamService = require("./services/voskStreamService.js");
 
+// Responder do realtime OFFLINE (Vosk live + correção Whisper). A transcrição é
+// local, mas a RESPOSTA vai pro provider SELECIONADO (backend/Ollama) — nunca
+// OpenAI. Respeita "sem fallback automático entre providers". Só é usado na Full
+// com backend (llama/llama-stream) ou ollamaLocal selecionado.
+async function realtimeProviderResponder(transcript) {
+  const aiModel = configService.getAiModel();
+  if (aiModel === "ollamaLocal") {
+    const OllamaLocalService = require("./services/ollamaLocalService");
+    return await OllamaLocalService.responder(transcript);
+  }
+  // backend remoto (llama / llama-stream)
+  return await BackendService.responder(transcript, {
+    sessionId: "realtime-assistant",
+    instruction: REALTIME_COPILOT_INSTRUCTION,
+  });
+}
+
+const REALTIME_COPILOT_INSTRUCTION = [
+  "Você é um COPILOTO DISCRETO em tempo real durante reuniões, ligações, entrevistas e estudos.",
+  "Recebe uma TRANSCRIÇÃO do que está sendo falado. AJUDE o usuário a responder, entender ou agir — não resuma.",
+  "Pergunta técnica → responda direto (cálculo/código/definição). Pergunta feita ao usuário → 'Sugestão:' com resposta pronta, específica e completa. Termo obscuro → defina em 1 linha. Conversa casual/ruído → responda só '(trecho sem conteúdo relevante)'.",
+  "Seja direto, sem preâmbulos ('a fala menciona...'). Não repita o que foi dito. Entregue o valor.",
+].join("\n");
+
 const realtimeAssistantService = new RealtimeAssistantService({
   configService,
   getMainWindow: () => mainWindow,
   historyService,
+  aiResponder: realtimeProviderResponder,
   onFatalStop: () => {
     // Called when the service stops itself due to a fatal error (e.g. quota exceeded)
     isRecording = false;
@@ -381,6 +407,35 @@ const realtimeAssistantService = new RealtimeAssistantService({
     }
   },
 });
+
+// Realtime ONLINE (100% OpenAI): transcrição + resposta na OpenAI, sem Vosk/Whisper.
+// Usado quando o provider selecionado é ChatGPT (openIa) ou na edição Lite.
+const realtimeOpenAiService = new RealtimeOpenAiService({
+  configService,
+  getMainWindow: () => mainWindow,
+  historyService,
+  onFatalStop: () => {
+    isRecording = false;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("toggle-recording", { isRecording, audioFilePath });
+    }
+  },
+});
+
+// Seleciona o serviço de realtime conforme o provider efetivo:
+//   ChatGPT/Lite → online (OpenAI)   |   backend/Ollama (Full) → offline (Vosk+Whisper).
+function pickRealtimeService() {
+  return getEffectiveAiModel() === "openIa" ? realtimeOpenAiService : realtimeAssistantService;
+}
+function anyRealtimeActive() {
+  return realtimeOpenAiService.isActive() || realtimeAssistantService.isActive();
+}
+function stopAllRealtime() {
+  const tasks = [];
+  if (realtimeOpenAiService.isActive()) tasks.push(realtimeOpenAiService.stop().catch(() => {}));
+  if (realtimeAssistantService.isActive()) tasks.push(realtimeAssistantService.stop().catch(() => {}));
+  return Promise.all(tasks);
+}
 
 // Entrega resultados do Assistente de Tradução.
 // Em OS Integration: usa a janela DEDICADA (translation-overlay.html), persistente
@@ -2115,10 +2170,8 @@ async function getAudioSources() {
 }
 
 async function toggleRealtimeAssistantRecording() {
-  const isRealtimeActive = realtimeAssistantService.isActive();
-
-  if (isRealtimeActive) {
-    await realtimeAssistantService.stop();
+  if (anyRealtimeActive()) {
+    await stopAllRealtime();
     isRecording = false;
 
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -2138,8 +2191,11 @@ async function toggleRealtimeAssistantRecording() {
     return;
   }
 
-  const token = configService.getOpenIaToken();
-  if (!token) {
+  const service = pickRealtimeService();
+  const isOnline = service === realtimeOpenAiService;
+
+  // Só o caminho ONLINE (OpenAI) precisa do token. backend/Ollama não usa OpenAI.
+  if (isOnline && !configService.getOpenIaToken()) {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send("transcription-error", "Token da OpenAI não configurado.");
     }
@@ -2153,7 +2209,13 @@ async function toggleRealtimeAssistantRecording() {
     return;
   }
 
-  await realtimeAssistantService.start();
+  // O caminho online compartilha o vadEngine com o Assistente de Tradução —
+  // garante exclusividade parando a tradução antes de iniciar.
+  if (isOnline && translationAssistant.isActive()) {
+    await translationAssistant.stop().catch(() => {});
+  }
+
+  await service.start();
   isRecording = true;
 
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -2180,8 +2242,9 @@ function getEffectiveAiModel() {
 
 async function toggleRecording() {
   try {
-    // Na Lite, o Realtime Assistant (Vosk+Whisper local) não existe — nunca entra.
-    const isRealtimeAssistantEnabled = !edition.isLite() && configService.getRealtimeAssistantStatus();
+    // Realtime existe em todas as edições: na Lite/ChatGPT é 100% online (OpenAI),
+    // na Full com backend/Ollama é o pipeline local (Vosk+Whisper). pickRealtimeService decide.
+    const isRealtimeAssistantEnabled = configService.getRealtimeAssistantStatus();
     if (isRealtimeAssistantEnabled) {
       await toggleRealtimeAssistantRecording();
       return;
@@ -3224,7 +3287,7 @@ ipcMain.handle("get-debug-mode-status", () => {
 ipcMain.on("save-debug-mode-status", (event, status) => {
   if (status && configService.getRealtimeAssistantStatus()) {
     configService.setRealtimeAssistantStatus(false);
-    realtimeAssistantService.stop().catch(() => {});
+    stopAllRealtime();
   }
 
   configService.setDebugModeStatus(status);
@@ -3245,7 +3308,7 @@ ipcMain.handle("get-print-mode-status", () => {
 ipcMain.on("save-print-mode-status", (event, status) => {
   if (status && configService.getRealtimeAssistantStatus()) {
     configService.setRealtimeAssistantStatus(false);
-    realtimeAssistantService.stop().catch(() => {});
+    stopAllRealtime();
   }
 
   configService.setPrintModeStatus(status);
@@ -3416,7 +3479,7 @@ ipcMain.on("save-os-integration-status", (event, status) => {
   }
   if (status && configService.getRealtimeAssistantStatus()) {
     configService.setRealtimeAssistantStatus(false);
-    realtimeAssistantService.stop().catch(() => {});
+    stopAllRealtime();
   }
 
   configService.setOsIntegrationStatus(status);
@@ -3482,7 +3545,7 @@ ipcMain.on("save-realtime-assistant-status", async (event, status) => {
       }).show();
     }
   } else {
-    await realtimeAssistantService.stop().catch(() => {});
+    await stopAllRealtime();
     isRecording = false;
 
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -3626,8 +3689,8 @@ ipcMain.handle("translation-start", async () => {
   const cfg = configService.getConfig();
   if (!cfg.openIaToken) return { error: 'API key não configurada' };
   // Para o assistente em tempo real se estiver ativo (evita conflito de mic)
-  if (realtimeAssistantService.isActive()) {
-    await realtimeAssistantService.stop().catch(() => {});
+  if (anyRealtimeActive()) {
+    await stopAllRealtime();
   }
   const ta = cfg.translationAssistant || {};
   await translationAssistant.start({
@@ -4248,8 +4311,8 @@ ipcMain.on('region-selected', async (event, rect) => {
 ipcMain.on("cancel-recording", () => {
   console.log('Cancel recording requested from OS notification');
 
-  if (realtimeAssistantService.isActive()) {
-    realtimeAssistantService.stop().catch(() => {});
+  if (anyRealtimeActive()) {
+    stopAllRealtime();
     isRecording = false;
     return;
   }
@@ -5095,7 +5158,7 @@ app.on("window-all-closed", () => {
   if (recordingProcess) {
     recordingProcess.kill("SIGTERM");
   }
-  realtimeAssistantService.stop().catch(() => {});
+  stopAllRealtime();
   if (process.platform !== "darwin" && !mainWindow) {
     app.quit();
   }
@@ -5104,6 +5167,6 @@ app.on("window-all-closed", () => {
 app.on("will-quit", () => {
   globalShortcut.unregisterAll();
   stopClipboardMonitoring();
-  realtimeAssistantService.stop().catch(() => {});
+  stopAllRealtime();
 });
 

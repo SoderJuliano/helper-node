@@ -5,10 +5,13 @@ const fs = require('fs');
 const path = require('path');
 
 /**
- * Transcreve um arquivo de audio usando gpt-4o-mini-transcribe.
- * Detecção automática de idioma para entrevistas multilíngues.
+ * Transcreve um arquivo de audio usando um modelo de transcrição da OpenAI.
+ * Detecção automática de idioma para conversas multilíngues.
+ * @param {string} audioPath
+ * @param {string} apiKey
+ * @param {string} [model='gpt-4o-mini-transcribe'] - ex: 'gpt-4o-transcribe' (mais preciso).
  */
-async function transcribeAudio(audioPath, apiKey) {
+async function transcribeAudio(audioPath, apiKey, model = 'gpt-4o-mini-transcribe') {
   // Lê o arquivo em Buffer e cria um Blob (Web API, disponível no Node 18+).
   // Necessário porque global fetch não aceita streams do Node — aceita Blob/Buffer.
   const fileBuffer = fs.readFileSync(audioPath);
@@ -18,7 +21,7 @@ async function transcribeAudio(audioPath, apiKey) {
   // FormData global (Node 18+): fetch seta o Content-Type multipart/boundary automaticamente
   const form = new FormData();
   form.append('file', blob, fileName);
-  form.append('model', 'gpt-4o-mini-transcribe');
+  form.append('model', model || 'gpt-4o-mini-transcribe');
 
   const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',

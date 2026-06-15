@@ -28,7 +28,7 @@ O Helper Node é distribuído em **duas edições** — escolha no download:
 | Transcrição (Ctrl+D) | OpenAI cloud (`gpt-4o-mini-transcribe`) | Whisper.cpp local |
 | OCR de tela (integrado) | Visão `gpt-4o` (online) | Tesseract local |
 | Provedores de IA | Só OpenAI | OpenAI + LLaMA/Ollama local + backend |
-| Realtime Assistant (Vosk) | — (não incluso) | ✅ Vosk + correção Whisper |
+| Realtime Assistant | ✅ 100% online (OpenAI) | ✅ online (OpenAI) **ou** Vosk + correção Whisper (offline, com backend/Ollama) |
 | Funciona offline | Não (sempre online) | Sim (modelos locais) |
 | Requer API key OpenAI | **Sim** | Opcional |
 
@@ -115,7 +115,18 @@ conversas, reuniões e estudos.
 > **Ligar/desligar:** com o modo Realtime Assistant ativo nas configurações,
 > use **`Ctrl+D`** para iniciar e parar a escuta contínua.
 
-**Pipeline híbrido Vosk-rápido + Whisper-lento:**
+### Dois modos, escolhidos pelo provedor de IA selecionado
+
+| Provedor selecionado (Configurações) | Como funciona |
+|---|---|
+| **ChatGPT** (sempre na edição Lite) | **100% online via OpenAI**: transcrição (`gpt-4o-transcribe`) **e** resposta na OpenAI. **Sem Vosk, sem Whisper.** Mais rápido e respostas mais completas. |
+| **Backend (LLaMA/Ollama)** ou **Ollama Local** (só Full) | **Pipeline offline**: transcrição local Vosk + correção Whisper, e a **resposta vai pro provedor selecionado** (backend/Ollama), nunca OpenAI. |
+
+> Sem fallback automático entre provedores: o agente respeita o que você
+> escolheu. Selecionou Ollama → a resposta vem do Ollama. Selecionou ChatGPT →
+> tudo (áudio + resposta) fica na OpenAI.
+
+**Pipeline offline (backend/Ollama) — híbrido Vosk-rápido + Whisper-lento:**
 
 1. Captura `parec` em duas fontes (mic `@DEFAULT_SOURCE@` + `<sink>.monitor`)
 2. Mixer PCM s16le 16kHz → stream para `vosk-stream.py` (transcrição instantânea)

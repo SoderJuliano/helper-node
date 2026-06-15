@@ -2,6 +2,20 @@
 
 Este documento descreve a arquitetura atual para funcionalidades que dependem do sistema e o plano para melhorias futuras, visando uma experiência de usuário mais integrada.
 
+## ✅ Lançado em v0.4.0: Realtime Assistant online (OpenAI)
+
+O Assistente em tempo real agora tem **dois caminhos, escolhidos pelo provedor de IA**:
+
+- **ChatGPT (e toda a edição Lite)** → `services/realtimeOpenAiService.js`: VAD
+  (`pw-record` + RMS, reaproveitando `translationAssistant/vadEngine`) →
+  transcrição `gpt-4o-transcribe` → resposta na OpenAI (respeita o modelo do
+  dropdown; default sobe de `gpt-4.1-nano` → `gpt-4.1`). **Sem Vosk/Whisper.**
+- **Backend (LLaMA/Ollama) ou Ollama Local (só Full)** → `realtimeAssistantService.js`
+  (Vosk live + correção Whisper), mas a **resposta agora vai pro provedor
+  selecionado** (via `aiResponder` injetado no `main.js`), não mais OpenAI.
+
+Sem fallback automático entre provedores. Emojis removidos da tela de Configurações.
+
 ## ✅ Lançado em v0.2.0: Helper Tools — IA com acesso ao sistema
 
 Módulo opcional que dá à IA **ferramentas read-only** pra inspecionar o sistema
