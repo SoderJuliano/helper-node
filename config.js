@@ -73,15 +73,13 @@ function applyWorkspaceAccessVisibility(model) {
 }
 
 // Edição Lite (100% online): esconde tudo que é local/backend e força OpenAI.
+// O Assistente em tempo real CONTINUA visível — na Lite ele roda 100% online
+// (transcrição + resposta na OpenAI), sem Vosk/Whisper.
 function applyLiteUi() {
   try {
     aiModelSelect.value = 'openIa';
     aiModelSelect.dispatchEvent(new Event('change'));
     const si = aiModelSelect.closest('.setting-item');
-    if (si) si.style.display = 'none';
-  } catch (_) {}
-  try {
-    const si = realtimeAssistantToggle.closest('.setting-item');
     if (si) si.style.display = 'none';
   } catch (_) {}
   ['backend-url', 'backend-api-key-container', 'ollama-local-model-container', 'ollama-local-info'].forEach((id) => {
@@ -388,24 +386,24 @@ if (ollamaLocalModelSelect) {
 
 if (checkOllamaBtn) {
     checkOllamaBtn.addEventListener('click', async () => {
-        ollamaStatusResult.textContent = '⏳ Verificando...';
+        ollamaStatusResult.textContent = 'Verificando...';
         ollamaStatusResult.style.color = '#888';
         try {
             const res = await ipcRenderer.invoke('check-ollama-local-status');
             if (!res || !res.running) {
-                ollamaStatusResult.innerHTML = '❌ <span style="color:#ff6b6b">Ollama não está rodando.</span> Rode <code style="background:#0d0d0d;padding:2px 5px;border-radius:3px;color:#9ef0a8;">ollama serve</code> no terminal.';
+                ollamaStatusResult.innerHTML = '<span style="color:#ff6b6b">Ollama não está rodando.</span> Rode <code style="background:#0d0d0d;padding:2px 5px;border-radius:3px;color:#9ef0a8;">ollama serve</code> no terminal.';
                 return;
             }
             const selected = ollamaLocalModelSelect.value;
             const installed = res.models || [];
             const hasIt = installed.some(m => m === selected || m.startsWith(selected.split(':')[0] + ':'));
             if (hasIt) {
-                ollamaStatusResult.innerHTML = `✅ <span style="color:#9ef0a8">Ollama rodando.</span> Modelo <code style="color:#9ef0a8">${selected}</code> está baixado. Pronto pra uso!`;
+                ollamaStatusResult.innerHTML = `<span style="color:#9ef0a8">Ollama rodando.</span> Modelo <code style="color:#9ef0a8">${selected}</code> está baixado. Pronto pra uso!`;
             } else {
-                ollamaStatusResult.innerHTML = `⚠️ <span style="color:#ffb74d">Ollama rodando, mas modelo <code>${selected}</code> não está baixado.</span><br>Modelos disponíveis: ${installed.length ? installed.join(', ') : '(nenhum)'}<br>Rode: <code style="background:#0d0d0d;padding:2px 5px;border-radius:3px;color:#9ef0a8;">ollama pull ${selected}</code>`;
+                ollamaStatusResult.innerHTML = `<span style="color:#ffb74d">Ollama rodando, mas modelo <code>${selected}</code> não está baixado.</span><br>Modelos disponíveis: ${installed.length ? installed.join(', ') : '(nenhum)'}<br>Rode: <code style="background:#0d0d0d;padding:2px 5px;border-radius:3px;color:#9ef0a8;">ollama pull ${selected}</code>`;
             }
         } catch (e) {
-            ollamaStatusResult.innerHTML = `❌ Erro ao verificar: ${e.message}`;
+            ollamaStatusResult.innerHTML = `Erro ao verificar: ${e.message}`;
             ollamaStatusResult.style.color = '#ff6b6b';
         }
     });
