@@ -1,6 +1,8 @@
-// vadEngine.js — Captura microfone via pw-record e detecta fim de fala por
-// energia RMS. Substitui @ricky0123/vad-web (browser-only) por implementação
-// Node.js pura, compatível com o processo main do Electron.
+// vadEngine.js — Captura mic + áudio do sistema (monitor) via parec e detecta
+// fim de fala por energia RMS. Substitui @ricky0123/vad-web (browser-only) por
+// implementação Node.js pura, compatível com o processo main do Electron.
+// Usa parec (camada PulseAudio) — mesmo método do voskStreamService — porque
+// captura de monitor via `pw-record --target` é instável no PipeWire.
 
 const { spawn, exec } = require('child_process');
 const util = require('util');
@@ -77,7 +79,21 @@ let onSpeechEndCb = null;
 let sysFollowInterval = null;
 let currentSysTarget = null;
 let sysStateRef = null;
+let micStateRef = null;
+let diagInterval = null;
 const SYS_FOLLOW_MS = 2000;
+const DIAG_MS = 3000;
+
+// Loga o pico de nível de cada stream a cada DIAG_MS. Serve pra ver nos logs se
+// o 'sys' (áudio do sistema) está REALMENTE recebendo sinal. SILENCE_RMS=300.
+function logLevels() {
+  if (!active) return;
+  const m = micStateRef ? Math.round(micStateRef.peakRms || 0) : 0;
+  const s = sysStateRef ? Math.round(sysStateRef.peakRms || 0) : 0;
+  console.log(`[TranslationAssistant] nível — mic: ${m} | sys: ${s} (silêncio < ${SILENCE_RMS})`);
+  if (micStateRef) micStateRef.peakRms = 0;
+  if (sysStateRef) sysStateRef.peakRms = 0;
+}
 
 async function followActiveSink() {
   if (!active || !sysStateRef) return;
@@ -158,6 +174,7 @@ function flushSegment(st, source) {
 
 function processChunk(pcm, st, source) {
   const rms = calcRms(pcm);
+  if (rms > (st.peakRms || 0)) st.peakRms = rms; // diagnóstico de nível
   const chunkMs = (pcm.length / BYTES_PER_SEC) * 1000;
   const silenceLimit = SILENCE_DURATION[source] || 1200;
 
@@ -177,13 +194,17 @@ function processChunk(pcm, st, source) {
 }
 
 function startStream(target, source, st) {
-  const proc = spawn('pw-record', [
-    '--target', target,
-    '--format=s16',
+  // Usa parec (camada PulseAudio), NÃO pw-record. Captura de MONITOR via
+  // `pw-record --target` é instável no PipeWire (cai no mic / capta picotado);
+  // parec --device=<monitor> capta o áudio do sistema de forma confiável — é o
+  // mesmo método do voskStreamService (pipeline que sempre funcionou).
+  const proc = spawn('parec', [
+    '--device=' + target,
     '--rate=16000',
     '--channels=1',
-    '-',
-  ]);
+    '--format=s16le',
+    '--raw',
+  ], { stdio: ['ignore', 'pipe', 'pipe'] });
 
   proc.stdout.on('data', (chunk) => {
     if (!active) return;
@@ -196,17 +217,15 @@ function startStream(target, source, st) {
 
   proc.stderr.on('data', (d) => {
     const msg = d.toString().trim();
-    if (msg && !msg.includes('pw.conf')) {
-      console.log(`[TranslationAssistant] pw-record (${source}):`, msg);
-    }
+    if (msg) console.log(`[TranslationAssistant] parec (${source}):`, msg);
   });
 
   proc.on('error', (err) => {
-    console.error(`[TranslationAssistant] pw-record (${source}) falhou:`, err.message);
+    console.error(`[TranslationAssistant] parec (${source}) falhou:`, err.message);
   });
 
   proc.on('exit', (code) => {
-    if (active) console.warn(`[TranslationAssistant] pw-record (${source}) saiu (code=${code})`);
+    if (active) console.warn(`[TranslationAssistant] parec (${source}) saiu (code=${code})`);
   });
 
   return proc;
@@ -233,6 +252,7 @@ async function startVAD({ onSpeechEnd, micTarget, sysTarget } = {}) {
   const sysT = sysTarget || await resolveSysTarget();
   currentSysTarget = sysT;
   sysStateRef = sysSt;
+  micStateRef = micSt;
 
   // Microfone: candidato/usuário
   pwProcs.mic = startStream(micT, 'mic', micSt);
@@ -246,6 +266,7 @@ async function startVAD({ onSpeechEnd, micTarget, sysTarget } = {}) {
   if (!sysTarget) {
     sysFollowInterval = setInterval(() => { followActiveSink().catch(() => {}); }, SYS_FOLLOW_MS);
   }
+  diagInterval = setInterval(logLevels, DIAG_MS);
 }
 
 /**
@@ -254,8 +275,10 @@ async function startVAD({ onSpeechEnd, micTarget, sysTarget } = {}) {
 async function stopVAD() {
   active = false;
   if (sysFollowInterval) { clearInterval(sysFollowInterval); sysFollowInterval = null; }
+  if (diagInterval) { clearInterval(diagInterval); diagInterval = null; }
   currentSysTarget = null;
   sysStateRef = null;
+  micStateRef = null;
   for (const key of ['mic', 'sys']) {
     if (pwProcs[key]) {
       try { pwProcs[key].kill('SIGTERM'); } catch (_) {}
