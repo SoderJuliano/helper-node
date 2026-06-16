@@ -282,8 +282,17 @@ Acesse com `Ctrl+Shift+C`:
 - **Idioma**: pt-br / en-us
 - **Modo Print**: OCR automático
 - **Integração OS**: ativa atalhos globais e janelas flutuantes (sem notificações nativas — modo stealth sempre)
+- **Assistente de Tradução** (entrevistas): nome/background, idioma alvo e **seletor de microfone** — escolha qual mic é o seu; o áudio do sistema (entrevistador: Meet/Teams/YouTube no navegador) é capturado **automaticamente**.
 
 Config salvo em `~/.config/meu-electron-app/config.json`.
+
+### 🌐 Assistente de Tradução (entrevistas em outro idioma)
+
+Traduz a fala do **entrevistador** (áudio do sistema) e sugere sua resposta; **mostra
+também a transcrição do que VOCÊ falou** (seu mic) — sem traduzir a sua voz. Feedback
+visual no canto superior direito: bolinha ao vivo, **barra de volume mic/sys** (verde
+quando capta) e um **loading** enquanto a IA responde. A captura do áudio do sistema é
+automática e **segue a saída ativa** (troca monitor → fone com o app aberto).
 
 ---
 
