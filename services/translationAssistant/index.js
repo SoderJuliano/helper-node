@@ -1,7 +1,11 @@
 // index.js — Orquestrador do Assistente de Tradução.
 // Fluxo: VAD (pw-record + RMS) detecta fim de fala → salva WAV → transcrição → tradução + sugestão → callback.
 
-const { startVAD, stopVAD } = require('./vadEngine');
+// Modo AO VIVO usa o motor de captura confiável (parec + sink real). O vadEngine
+// (pw-record) só é usado pelo modo TESTE (captureOneAnswer), via testMode.js.
+// Motivo: `pw-record --target <monitor>` é instável no PipeWire e cai no mic —
+// por isso o tradutor ao vivo só pegava o microfone. parec resolve.
+const { startCapture, stopCapture } = require('../realtimeAudioCapture');
 const { transcribeAudio, getTranslationAndSuggestion } = require('./openaiClient');
 const fs = require('fs');
 
@@ -35,7 +39,8 @@ async function start(cfg) {
 
   console.log('[TranslationAssistant] iniciando...');
 
-  await startVAD({
+  await stopCapture().catch(() => {}); // garante estado limpo (motor compartilhado, modos exclusivos)
+  await startCapture({
     // source: 'mic' = microfone do candidato, 'sys' = monitor do sistema (entrevistador)
     onSpeechEnd: async (audioPath, source) => {
       try {
@@ -80,7 +85,7 @@ async function start(cfg) {
  */
 async function stop() {
   running = false;
-  await stopVAD();
+  await stopCapture();
   console.log('[TranslationAssistant] parado.');
 }
 
