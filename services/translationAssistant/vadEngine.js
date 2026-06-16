@@ -72,6 +72,7 @@ const MAX_SEGMENT_MS = 60000;
 const pwProcs = { mic: null, sys: null };
 let active = false;
 let onSpeechEndCb = null;
+let onLevelCb = null; // callback(source, rms) — alimenta a barra de volume na UI
 
 // Follower da saída ativa: re-checa a cada SYS_FOLLOW_MS qual sink está tocando
 // e migra a captura do áudio do sistema pra ele (ex: trocou monitor → fone com
@@ -79,21 +80,7 @@ let onSpeechEndCb = null;
 let sysFollowInterval = null;
 let currentSysTarget = null;
 let sysStateRef = null;
-let micStateRef = null;
-let diagInterval = null;
 const SYS_FOLLOW_MS = 2000;
-const DIAG_MS = 3000;
-
-// Loga o pico de nível de cada stream a cada DIAG_MS. Serve pra ver nos logs se
-// o 'sys' (áudio do sistema) está REALMENTE recebendo sinal. SILENCE_RMS=300.
-function logLevels() {
-  if (!active) return;
-  const m = micStateRef ? Math.round(micStateRef.peakRms || 0) : 0;
-  const s = sysStateRef ? Math.round(sysStateRef.peakRms || 0) : 0;
-  console.log(`[TranslationAssistant] nível — mic: ${m} | sys: ${s} (silêncio < ${SILENCE_RMS})`);
-  if (micStateRef) micStateRef.peakRms = 0;
-  if (sysStateRef) sysStateRef.peakRms = 0;
-}
 
 async function followActiveSink() {
   if (!active || !sysStateRef) return;
@@ -174,7 +161,7 @@ function flushSegment(st, source) {
 
 function processChunk(pcm, st, source) {
   const rms = calcRms(pcm);
-  if (rms > (st.peakRms || 0)) st.peakRms = rms; // diagnóstico de nível
+  if (onLevelCb) onLevelCb(source, rms); // barra de volume em tempo real (~10x/s)
   const chunkMs = (pcm.length / BYTES_PER_SEC) * 1000;
   const silenceLimit = SILENCE_DURATION[source] || 1200;
 
@@ -239,10 +226,11 @@ function startStream(target, source, st) {
  * @param {object} opts
  * @param {function} opts.onSpeechEnd - callback(filePath: string, source: 'mic'|'sys')
  */
-async function startVAD({ onSpeechEnd, micTarget, sysTarget } = {}) {
+async function startVAD({ onSpeechEnd, onLevel, micTarget, sysTarget } = {}) {
   if (active) return;
   active = true;
   onSpeechEndCb = onSpeechEnd;
+  onLevelCb = onLevel || null;
 
   const micSt = makeStreamState();
   const sysSt = makeStreamState();
@@ -252,7 +240,6 @@ async function startVAD({ onSpeechEnd, micTarget, sysTarget } = {}) {
   const sysT = sysTarget || await resolveSysTarget();
   currentSysTarget = sysT;
   sysStateRef = sysSt;
-  micStateRef = micSt;
 
   // Microfone: candidato/usuário
   pwProcs.mic = startStream(micT, 'mic', micSt);
@@ -266,7 +253,6 @@ async function startVAD({ onSpeechEnd, micTarget, sysTarget } = {}) {
   if (!sysTarget) {
     sysFollowInterval = setInterval(() => { followActiveSink().catch(() => {}); }, SYS_FOLLOW_MS);
   }
-  diagInterval = setInterval(logLevels, DIAG_MS);
 }
 
 /**
@@ -274,11 +260,10 @@ async function startVAD({ onSpeechEnd, micTarget, sysTarget } = {}) {
  */
 async function stopVAD() {
   active = false;
+  onLevelCb = null;
   if (sysFollowInterval) { clearInterval(sysFollowInterval); sysFollowInterval = null; }
-  if (diagInterval) { clearInterval(diagInterval); diagInterval = null; }
   currentSysTarget = null;
   sysStateRef = null;
-  micStateRef = null;
   for (const key of ['mic', 'sys']) {
     if (pwProcs[key]) {
       try { pwProcs[key].kill('SIGTERM'); } catch (_) {}

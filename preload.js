@@ -119,10 +119,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("translation-result", (event, data) => cb(data)),
   onTranslationStatus: (cb) =>
     ipcRenderer.on("translation-status", (_e, status) => cb(status)),
+  onTranslationLevel: (cb) =>
+    ipcRenderer.on("translation-level", (_e, data) => cb(data)),
+  onTranslationLoading: (cb) =>
+    ipcRenderer.on("translation-loading", (_e, loading) => cb(loading)),
   onTranslationClear: (cb) =>
     ipcRenderer.on("translation-clear", () => cb()),
   translationStart: () => ipcRenderer.invoke("translation-start"),
   translationStop: () => ipcRenderer.invoke("translation-stop"),
+  getAudioInputDevices: () => ipcRenderer.invoke("get-audio-input-devices"),
   // Overlay dedicado (translation-overlay.html)
   requestTranslationResize: () =>
     ipcRenderer.send("request-translation-resize"),

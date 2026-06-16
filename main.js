@@ -453,12 +453,38 @@ translationAssistant.onResult(({ transcript, response, mode }) => {
       sendToTranslationOverlay('translation-status', 'mic_open');
     } else if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('translation-status', 'processing');
-      mainWindow.webContents.send('translation-result', { transcript, response });
+      mainWindow.webContents.send('translation-result', { transcript, response, mode: mode || 'interviewer' });
       mainWindow.webContents.send('translation-status', 'mic_open');
     }
   } catch (e) {
     console.error('[TranslationAssistant] erro ao entregar resultado:', e.message);
   }
+});
+
+// Nível de áudio em tempo real (barra de volume embaixo da bolinha do live).
+// Enviado ~10x/s por fonte; o renderer normaliza e desenha a barra.
+translationAssistant.onLevel((source, rms) => {
+  try {
+    const payload = { source, rms };
+    const cfg = configService.getConfig();
+    if (cfg.osIntegration) {
+      sendToTranslationOverlay('translation-level', payload);
+    } else if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('translation-level', payload);
+    }
+  } catch (_) {}
+});
+
+// "Processando" — loading enquanto a IA transcreve/traduz aquele trecho.
+translationAssistant.onLoading((loading) => {
+  try {
+    const cfg = configService.getConfig();
+    if (cfg.osIntegration) {
+      sendToTranslationOverlay('translation-loading', loading);
+    } else if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('translation-loading', loading);
+    }
+  } catch (_) {}
 });
 
 // === Translation Assistant Overlay ===
@@ -3571,6 +3597,36 @@ ipcMain.handle("get-translation-assistant-config", () => {
   return configService.getTranslationAssistantConfig();
 });
 
+// Lista os microfones (sources) conectados AGORA — exclui monitores de saída.
+// Usado pelo seletor de mic do Assistente de Tradução nas Configurações.
+ipcMain.handle("get-audio-input-devices", async () => {
+  try {
+    const { stdout } = await execPromise("LANG=C pactl list sources");
+    const devices = [];
+    let cur = null;
+    for (const line of stdout.split("\n")) {
+      const mName = line.match(/^\s*Name:\s*(.+)$/);
+      const mDesc = line.match(/^\s*Description:\s*(.+)$/);
+      if (line.match(/^Source #/)) { cur = { name: "", description: "" }; }
+      else if (mName && cur) { cur.name = mName[1].trim();
+        // fecha o device anterior quando acha o Name (Name vem antes de Description)
+      }
+      else if (mDesc && cur) {
+        cur.description = mDesc[1].trim();
+        // monitores de saída terminam em .monitor → não são microfones
+        if (cur.name && !cur.name.endsWith(".monitor")) {
+          devices.push({ name: cur.name, description: cur.description || cur.name });
+        }
+        cur = null;
+      }
+    }
+    return devices;
+  } catch (e) {
+    console.error("[config] get-audio-input-devices falhou:", e.message);
+    return [];
+  }
+});
+
 ipcMain.on("set-translation-assistant-config", (event, partial) => {
   configService.setTranslationAssistantConfig(partial || {});
 
@@ -3594,6 +3650,7 @@ ipcMain.on("set-translation-assistant-config", (event, partial) => {
           userName: ta.userName || '',
           userBackground: ta.userBackground || '',
           targetLanguage: ta.targetLanguage || 'pt-br',
+          micDevice: ta.micDevice || '',
         }).then(() => {
           // Em OS Integration, parar tudo o que não é o TA (clipboard, screenshot watch,
           // capture tool) — só o overlay de tradução fica ativo.
@@ -3698,6 +3755,7 @@ ipcMain.handle("translation-start", async () => {
     userName: ta.userName || '',
     userBackground: ta.userBackground || '',
     targetLanguage: ta.targetLanguage || 'pt-br',
+    micDevice: ta.micDevice || '',
   });
   if (cfg.osIntegration) {
     createTranslationOverlay();
@@ -5105,6 +5163,7 @@ app.whenReady().then(async () => {
             userName: ta.userName || '',
             userBackground: ta.userBackground || '',
             targetLanguage: ta.targetLanguage || 'pt-br',
+            micDevice: ta.micDevice || '',
           }).then(() => {
             // Mutex: se OS Integration ativo, suprime monitorings que possam ter subido
             if (configService.getOsIntegrationStatus()) {

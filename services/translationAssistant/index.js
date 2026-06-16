@@ -7,6 +7,9 @@ const fs = require('fs');
 
 let running = false;
 let resultCallback = null;
+let levelCallback = null;
+let loadingCallback = null;
+let inFlight = 0;
 let config = {};
 
 /**
@@ -15,6 +18,22 @@ let config = {};
  */
 function onResult(cb) {
   resultCallback = cb;
+}
+
+/**
+ * Registra o callback que recebe o nível de áudio em tempo real (barra de volume).
+ * @param {function} cb - cb(source: 'mic'|'sys', rms: number)
+ */
+function onLevel(cb) {
+  levelCallback = cb;
+}
+
+/**
+ * Registra o callback de "processando" (loading): cb(true) quando há requisição
+ * em voo pra IA, cb(false) quando todas terminaram.
+ */
+function onLoading(cb) {
+  loadingCallback = cb;
 }
 
 /**
@@ -36,12 +55,25 @@ async function start(cfg) {
   console.log('[TranslationAssistant] iniciando...');
 
   await startVAD({
+    // Mic escolhido pelo usuário nas Configurações (vazio = auto). O sys (áudio
+    // do sistema) continua automático (sink ativo).
+    micTarget: config.micDevice || undefined,
+    // Nível de áudio em tempo real → barra de volume na UI.
+    onLevel: (source, rms) => { if (levelCallback) levelCallback(source, rms); },
     // source: 'mic' = microfone do candidato, 'sys' = monitor do sistema (entrevistador)
     onSpeechEnd: async (audioPath, source) => {
+      // "Processando" = tem requisição em voo (transcrição/tradução na OpenAI).
+      // Liga o loading na UI enquanto a resposta daquele trecho não chega.
+      inFlight++;
+      if (loadingCallback) loadingCallback(inFlight > 0);
       try {
-        // Áudio do microfone = candidato — não processa
+        // MIC = você: transcreve e MOSTRA na tela (feedback do que você falou),
+        // mas NÃO traduz/sugere — tradução é só pro entrevistador (design).
         if (source === 'mic') {
-          console.log('[TranslationAssistant] mic (candidato) — sem output.');
+          const myText = await transcribeAudio(audioPath, config.apiKey);
+          if (myText && myText.trim().length >= 3 && resultCallback) {
+            resultCallback({ transcript: myText, response: '', mode: 'candidate' });
+          }
           return;
         }
 
@@ -68,6 +100,8 @@ async function start(cfg) {
       } catch (err) {
         console.error('[TranslationAssistant] erro no processamento:', err.message);
       } finally {
+        inFlight = Math.max(0, inFlight - 1);
+        if (loadingCallback) loadingCallback(inFlight > 0);
         // Limpa o WAV temporário criado pelo VAD
         try { if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath); } catch (_) {}
       }
@@ -80,6 +114,8 @@ async function start(cfg) {
  */
 async function stop() {
   running = false;
+  inFlight = 0;
+  if (loadingCallback) loadingCallback(false);
   await stopVAD();
   console.log('[TranslationAssistant] parado.');
 }
@@ -88,4 +124,4 @@ function isActive() {
   return running;
 }
 
-module.exports = { start, stop, onResult, isActive };
+module.exports = { start, stop, onResult, onLevel, onLoading, isActive };
