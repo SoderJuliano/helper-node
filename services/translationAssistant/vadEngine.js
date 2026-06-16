@@ -1,55 +1,11 @@
-// vadEngine.js — Captura mic + áudio do sistema (monitor) via parec e detecta
-// fim de fala por energia RMS. Substitui @ricky0123/vad-web (browser-only) por
-// implementação Node.js pura, compatível com o processo main do Electron.
-// Usa parec (camada PulseAudio) — mesmo método do voskStreamService — porque
-// captura de monitor via `pw-record --target` é instável no PipeWire.
+// vadEngine.js — Captura microfone via pw-record e detecta fim de fala por
+// energia RMS. Substitui @ricky0123/vad-web (browser-only) por implementação
+// Node.js pura, compatível com o processo main do Electron.
 
-const { spawn, exec } = require('child_process');
-const util = require('util');
-const execPromise = util.promisify(exec);
+const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-
-// Detecta o monitor do sink que está TOCANDO agora (estado RUNNING) — é a saída
-// realmente em uso (Meet/Brave), mesmo que não seja o default. Retorna o nome do
-// monitor (<sink>.monitor) ou null se nada estiver tocando no momento.
-async function detectRunningSinkMonitor() {
-  try {
-    const { stdout } = await execPromise('pactl list short sinks');
-    const rows = stdout.split('\n').filter(Boolean).map((l) => l.split('\t'));
-    const running = rows.find((c) => (c[c.length - 1] || '').trim().toUpperCase() === 'RUNNING');
-    if (running && running[1]) return running[1] + '.monitor';
-  } catch (_) {}
-  return null;
-}
-
-// Monitor do sink padrão resolvido na hora (fallback quando nada está tocando).
-async function defaultSinkMonitor() {
-  try {
-    const { stdout } = await execPromise('pactl get-default-sink');
-    const sink = stdout.trim();
-    if (sink) return sink + '.monitor';
-  } catch (_) {}
-  return '@DEFAULT_MONITOR@';
-}
-
-// Resolve o alvo de captura do ÁUDIO DO SISTEMA em runtime. NÃO usar o token
-// literal '@DEFAULT_SINK_MONITOR@' — pw-record não o entende e cai no microfone.
-async function resolveSysTarget() {
-  return (await detectRunningSinkMonitor()) || (await defaultSinkMonitor());
-}
-
-// Microfone: nome real do default source (evita tokens não-expandidos).
-async function resolveMicTarget() {
-  try {
-    const { stdout } = await execPromise('pactl get-default-source');
-    const name = stdout.trim();
-    // Se o "source" padrão for um .monitor, não serve como mic.
-    if (name && !name.endsWith('.monitor')) return name;
-  } catch (_) {}
-  return '@DEFAULT_SOURCE@';
-}
 
 const SAMPLE_RATE = 16000;
 const BYTES_PER_SAMPLE = 2;             // s16le
@@ -72,42 +28,6 @@ const MAX_SEGMENT_MS = 60000;
 const pwProcs = { mic: null, sys: null };
 let active = false;
 let onSpeechEndCb = null;
-
-// Follower da saída ativa: re-checa a cada SYS_FOLLOW_MS qual sink está tocando
-// e migra a captura do áudio do sistema pra ele (ex: trocou monitor → fone com
-// o app já aberto). Fica null quando o chamador fixa um sysTarget manual.
-let sysFollowInterval = null;
-let currentSysTarget = null;
-let sysStateRef = null;
-let micStateRef = null;
-let diagInterval = null;
-const SYS_FOLLOW_MS = 2000;
-const DIAG_MS = 3000;
-
-// Loga o pico de nível de cada stream a cada DIAG_MS. Serve pra ver nos logs se
-// o 'sys' (áudio do sistema) está REALMENTE recebendo sinal. SILENCE_RMS=300.
-function logLevels() {
-  if (!active) return;
-  const m = micStateRef ? Math.round(micStateRef.peakRms || 0) : 0;
-  const s = sysStateRef ? Math.round(sysStateRef.peakRms || 0) : 0;
-  console.log(`[TranslationAssistant] nível — mic: ${m} | sys: ${s} (silêncio < ${SILENCE_RMS})`);
-  if (micStateRef) micStateRef.peakRms = 0;
-  if (sysStateRef) sysStateRef.peakRms = 0;
-}
-
-async function followActiveSink() {
-  if (!active || !sysStateRef) return;
-  const running = await detectRunningSinkMonitor();
-  // Só migra quando há uma saída TOCANDO e é diferente da atual — evita ficar
-  // oscilando pro default nos silêncios entre falas.
-  if (!running || running === currentSysTarget) return;
-  if (pwProcs.sys) { try { pwProcs.sys.kill('SIGTERM'); } catch (_) {} }
-  resetState(sysStateRef);
-  sysStateRef.pcmRemainder = Buffer.alloc(0);
-  currentSysTarget = running;
-  pwProcs.sys = startStream(running, 'sys', sysStateRef);
-  console.log(`[TranslationAssistant] saída ativa mudou → capturando ${running}`);
-}
 
 // Estado independente por stream
 function makeStreamState() {
@@ -174,7 +94,6 @@ function flushSegment(st, source) {
 
 function processChunk(pcm, st, source) {
   const rms = calcRms(pcm);
-  if (rms > (st.peakRms || 0)) st.peakRms = rms; // diagnóstico de nível
   const chunkMs = (pcm.length / BYTES_PER_SEC) * 1000;
   const silenceLimit = SILENCE_DURATION[source] || 1200;
 
@@ -194,17 +113,13 @@ function processChunk(pcm, st, source) {
 }
 
 function startStream(target, source, st) {
-  // Usa parec (camada PulseAudio), NÃO pw-record. Captura de MONITOR via
-  // `pw-record --target` é instável no PipeWire (cai no mic / capta picotado);
-  // parec --device=<monitor> capta o áudio do sistema de forma confiável — é o
-  // mesmo método do voskStreamService (pipeline que sempre funcionou).
-  const proc = spawn('parec', [
-    '--device=' + target,
+  const proc = spawn('pw-record', [
+    '--target', target,
+    '--format=s16',
     '--rate=16000',
     '--channels=1',
-    '--format=s16le',
-    '--raw',
-  ], { stdio: ['ignore', 'pipe', 'pipe'] });
+    '-',
+  ]);
 
   proc.stdout.on('data', (chunk) => {
     if (!active) return;
@@ -217,15 +132,17 @@ function startStream(target, source, st) {
 
   proc.stderr.on('data', (d) => {
     const msg = d.toString().trim();
-    if (msg) console.log(`[TranslationAssistant] parec (${source}):`, msg);
+    if (msg && !msg.includes('pw.conf')) {
+      console.log(`[TranslationAssistant] pw-record (${source}):`, msg);
+    }
   });
 
   proc.on('error', (err) => {
-    console.error(`[TranslationAssistant] parec (${source}) falhou:`, err.message);
+    console.error(`[TranslationAssistant] pw-record (${source}) falhou:`, err.message);
   });
 
   proc.on('exit', (code) => {
-    if (active) console.warn(`[TranslationAssistant] parec (${source}) saiu (code=${code})`);
+    if (active) console.warn(`[TranslationAssistant] pw-record (${source}) saiu (code=${code})`);
   });
 
   return proc;
@@ -239,7 +156,7 @@ function startStream(target, source, st) {
  * @param {object} opts
  * @param {function} opts.onSpeechEnd - callback(filePath: string, source: 'mic'|'sys')
  */
-async function startVAD({ onSpeechEnd, micTarget, sysTarget } = {}) {
+async function startVAD({ onSpeechEnd }) {
   if (active) return;
   active = true;
   onSpeechEndCb = onSpeechEnd;
@@ -247,26 +164,13 @@ async function startVAD({ onSpeechEnd, micTarget, sysTarget } = {}) {
   const micSt = makeStreamState();
   const sysSt = makeStreamState();
 
-  // Resolve alvos reais em runtime (override do chamador tem prioridade).
-  const micT = micTarget || await resolveMicTarget();
-  const sysT = sysTarget || await resolveSysTarget();
-  currentSysTarget = sysT;
-  sysStateRef = sysSt;
-  micStateRef = micSt;
+  // Microfone: candidato
+  pwProcs.mic = startStream('@DEFAULT_SOURCE@', 'mic', micSt);
 
-  // Microfone: candidato/usuário
-  pwProcs.mic = startStream(micT, 'mic', micSt);
+  // Monitor do sistema: entrevistador (áudio do Teams, browser, HDMI)
+  pwProcs.sys = startStream('@DEFAULT_SINK_MONITOR@', 'sys', sysSt);
 
-  // Monitor do sistema: interlocutor (áudio do Meet/Teams/browser)
-  pwProcs.sys = startStream(sysT, 'sys', sysSt);
-
-  console.log(`[TranslationAssistant] VAD iniciado — mic: ${micT} | sys: ${sysT}`);
-
-  // Segue a saída ativa automaticamente — exceto quando o chamador FIXOU o sink.
-  if (!sysTarget) {
-    sysFollowInterval = setInterval(() => { followActiveSink().catch(() => {}); }, SYS_FOLLOW_MS);
-  }
-  diagInterval = setInterval(logLevels, DIAG_MS);
+  console.log('[TranslationAssistant] VAD iniciado — mic (candidato) + sys monitor (entrevistador)');
 }
 
 /**
@@ -274,11 +178,6 @@ async function startVAD({ onSpeechEnd, micTarget, sysTarget } = {}) {
  */
 async function stopVAD() {
   active = false;
-  if (sysFollowInterval) { clearInterval(sysFollowInterval); sysFollowInterval = null; }
-  if (diagInterval) { clearInterval(diagInterval); diagInterval = null; }
-  currentSysTarget = null;
-  sysStateRef = null;
-  micStateRef = null;
   for (const key of ['mic', 'sys']) {
     if (pwProcs[key]) {
       try { pwProcs[key].kill('SIGTERM'); } catch (_) {}

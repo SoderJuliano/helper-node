@@ -5,7 +5,7 @@
 // transcrição quanto a resposta vão para a OpenAI.
 //
 // Pipeline por segmento de fala:
-//   1. vadEngine (pw-record + RMS) captura mic + monitor do sistema e detecta
+//   1. realtimeAudioCapture (parec + RMS) captura mic + monitor do sistema e detecta
 //      fim de fala → entrega um WAV.
 //   2. Transcrição via /audio/transcriptions (gpt-4o-transcribe).
 //   3. Resposta via /chat/completions com o system prompt de copiloto.
@@ -17,7 +17,7 @@
 // (sem Vosk não há preview/partial nem etapa intermediária de correção.)
 
 const fs = require('fs');
-const { startVAD, stopVAD } = require('./translationAssistant/vadEngine');
+const { startCapture, stopCapture } = require('./realtimeAudioCapture');
 const { transcribeAudio } = require('./translationAssistant/openaiClient');
 
 const TRANSCRIBE_MODEL = 'gpt-4o-transcribe';
@@ -60,10 +60,9 @@ class RealtimeOpenAiService {
 
     this.emitUpdate({ type: 'state', state: 'started', message: 'Assistente em tempo real (online) iniciado.', timestamp: new Date().toISOString() });
 
-    // vadEngine é singleton (compartilhado com o Assistente de Tradução). Garante
-    // estado limpo antes de iniciar — senão startVAD faz early-return e nosso
-    // onSpeechEnd nunca é religado.
-    await stopVAD().catch(() => {});
+    // Motor de captura PRÓPRIO (não compartilha com a tradução). Garante estado
+    // limpo antes de iniciar — senão startCapture faz early-return.
+    await stopCapture().catch(() => {});
 
     // Overrides manuais opcionais (config.json) caso o auto-detect de áudio erre:
     //   "systemAudioSink": "<nome do sink>"  → captura <sink>.monitor
@@ -72,7 +71,7 @@ class RealtimeOpenAiService {
     const sysTarget = cfg.systemAudioSink ? (cfg.systemAudioSink.endsWith('.monitor') ? cfg.systemAudioSink : cfg.systemAudioSink + '.monitor') : undefined;
     const micTarget = cfg.micSource || undefined;
 
-    await startVAD({
+    await startCapture({
       onSpeechEnd: (audioPath, source) => this._handleSegment(audioPath, source),
       sysTarget,
       micTarget,
@@ -83,7 +82,7 @@ class RealtimeOpenAiService {
   async stop() {
     if (!this.active) return;
     this.active = false;
-    await stopVAD();
+    await stopCapture();
     this.emitUpdate({ type: 'state', state: 'stopped', message: 'Assistente em tempo real parado.', timestamp: new Date().toISOString() });
   }
 
@@ -94,7 +93,7 @@ class RealtimeOpenAiService {
       return;
     }
 
-    // O vadEngine abre DOIS streams: 'mic' (você) e 'sys' (áudio do sistema —
+    // O motor de captura abre DOIS streams: 'mic' (você) e 'sys' (áudio do sistema —
     // interlocutor/vídeo/reunião). Com parec separando as fontes corretamente,
     // são conteúdos DIFERENTES (sem duplicação), então por padrão ouvimos OS
     // DOIS — o copiloto responde tanto ao que o outro fala quanto ao que você
@@ -226,7 +225,7 @@ class RealtimeOpenAiService {
   _handleError(error, id, iteration) {
     if (this._isQuotaError(error)) {
       this.active = false;
-      stopVAD().catch(() => {});
+      stopCapture().catch(() => {});
       this.emitUpdate({ type: 'fatal_error', message: '⚠️ Limite de créditos da API atingido.', timestamp: new Date().toISOString() });
       if (this.onFatalStop) try { this.onFatalStop(); } catch (_) {}
       return;

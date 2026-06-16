@@ -2209,8 +2209,8 @@ async function toggleRealtimeAssistantRecording() {
     return;
   }
 
-  // O caminho online compartilha o vadEngine com o Assistente de Tradução —
-  // garante exclusividade parando a tradução antes de iniciar.
+  // Realtime e Assistente de Tradução são modos exclusivos — para a tradução
+  // antes de iniciar o realtime (cada um tem seu próprio motor de áudio agora).
   if (isOnline && translationAssistant.isActive()) {
     await translationAssistant.stop().catch(() => {});
   }
