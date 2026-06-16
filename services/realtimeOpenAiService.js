@@ -17,8 +17,30 @@
 // (sem Vosk não há preview/partial nem etapa intermediária de correção.)
 
 const fs = require('fs');
+const path = require('path');
 const { startCapture, stopCapture } = require('./realtimeAudioCapture');
-const { transcribeAudio } = require('./translationAssistant/openaiClient');
+
+// Transcrição própria (NÃO importa nada do Assistente de Tradução — totalmente
+// independente). Envia o WAV pro endpoint de transcrição da OpenAI.
+async function transcribeAudio(audioPath, apiKey, model) {
+  const fileBuffer = fs.readFileSync(audioPath);
+  const blob = new Blob([fileBuffer]);
+  const form = new FormData();
+  form.append('file', blob, path.basename(audioPath));
+  form.append('model', model || 'gpt-4o-transcribe');
+  const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + apiKey },
+    body: form,
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    const e = new Error(data.error?.message || 'Transcription failed');
+    e.response = { status: res.status, data };
+    throw e;
+  }
+  return data.text;
+}
 
 const TRANSCRIBE_MODEL = 'gpt-4o-transcribe';
 // nano é fraco demais pra copiloto em tempo real (respostas simplistas). Quando
