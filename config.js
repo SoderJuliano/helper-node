@@ -514,6 +514,45 @@ if (translationTestModeInput) {
   });
 }
 
+// === Seletor de microfone do Assistente de Tradução ===
+const translationMicSelect = document.getElementById('translation-mic-device');
+const translationMicRefresh = document.getElementById('translation-mic-refresh');
+
+async function populateMicDevices(selected) {
+  if (!translationMicSelect) return;
+  let devices = [];
+  try { devices = await ipcRenderer.invoke('get-audio-input-devices'); } catch (_) {}
+  // Mantém só a opção "Automático" e reconstrói a lista.
+  translationMicSelect.innerHTML = '<option value="">Automático (padrão do sistema)</option>';
+  for (const d of (devices || [])) {
+    const opt = document.createElement('option');
+    opt.value = d.name;
+    opt.textContent = d.description || d.name;
+    translationMicSelect.appendChild(opt);
+  }
+  // Restaura a escolha salva (mesmo se o device não estiver na lista agora).
+  if (selected) {
+    if (![...translationMicSelect.options].some(o => o.value === selected)) {
+      const opt = document.createElement('option');
+      opt.value = selected;
+      opt.textContent = selected + ' (desconectado?)';
+      translationMicSelect.appendChild(opt);
+    }
+    translationMicSelect.value = selected;
+  }
+}
+
+if (translationMicSelect) {
+  translationMicSelect.addEventListener('change', () => {
+    ipcRenderer.send('set-translation-assistant-config', { micDevice: translationMicSelect.value });
+  });
+}
+if (translationMicRefresh) {
+  translationMicRefresh.addEventListener('click', () => {
+    populateMicDevices(translationMicSelect ? translationMicSelect.value : '');
+  });
+}
+
 // Carrega valores salvos do Assistente de Tradução ao abrir config
 (async () => {
   try {
@@ -527,6 +566,7 @@ if (translationTestModeInput) {
     if (translationBackgroundInput) translationBackgroundInput.value = ta.userBackground || '';
     if (translationTargetLangSelect) translationTargetLangSelect.value = ta.targetLanguage || 'pt-br';
     if (translationTestModeInput) translationTestModeInput.checked = !!ta.testMode;
+    await populateMicDevices(ta.micDevice || '');
   } catch (e) {
     console.warn('[TranslationAssistant] load config failed:', e.message);
   }

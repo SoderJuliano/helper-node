@@ -88,6 +88,8 @@ const defaultConfig = {
     userBackground: "",
     targetLanguage: "pt-br",
     testMode: false,
+    // Microfone escolhido pelo usuário (nome do source pactl). Vazio = automático.
+    micDevice: "",
   },
 };
 
