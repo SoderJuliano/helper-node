@@ -13,7 +13,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 APP_NAME="helper-node"
-VERSION="0.4.0"
+VERSION="0.4.2"
 BUILD_DIR="$(pwd)/build"
 DIST_DIR="$(pwd)/dist"
 PROJECT_ROOT="$(pwd)"
@@ -119,7 +119,29 @@ build_deb() {
             fi
         )
 
-        if [ ! -x "${APP_ROOT}/node_modules/.bin/electron" ]; then
+        # O `npm ci` isolado às vezes NÃO baixa o binário real do Electron
+        # (sobra só node_modules/electron/dist/libvulkan.so.1, sem o executável
+        # dist/electron + path.txt). Sem isso o app instalado morre com
+        # "Electron failed to install correctly". Garantimos o binário aqui:
+        # se faltar no pacote, copiamos da árvore de dev (mesma versão do lock).
+        PKG_ELECTRON_BIN="${APP_ROOT}/node_modules/electron/dist/electron"
+        if [ ! -x "${PKG_ELECTRON_BIN}" ]; then
+            echo -e "${YELLOW}→${NC} Electron binary ausente no pacote — copiando da árvore de dev..."
+            DEV_ELECTRON_DIST="${PROJECT_ROOT}/node_modules/electron/dist"
+            DEV_ELECTRON_PATHTXT="${PROJECT_ROOT}/node_modules/electron/path.txt"
+            if [ -x "${DEV_ELECTRON_DIST}/electron" ]; then
+                rm -rf "${APP_ROOT}/node_modules/electron/dist"
+                cp -a "${DEV_ELECTRON_DIST}" "${APP_ROOT}/node_modules/electron/dist"
+                [ -f "${DEV_ELECTRON_PATHTXT}" ] && cp -a "${DEV_ELECTRON_PATHTXT}" "${APP_ROOT}/node_modules/electron/path.txt"
+            else
+                echo -e "${RED}Error: binário do Electron não encontrado nem no pacote nem em ${DEV_ELECTRON_DIST}.${NC}"
+                echo -e "${RED}Rode 'npm install' na raiz do projeto (que baixa o binário) e tente de novo.${NC}"
+                exit 1
+            fi
+        fi
+
+        # Valida o binário REAL (não o cli.js do .bin) antes de fechar o pacote.
+        if [ ! -x "${APP_ROOT}/node_modules/electron/dist/electron" ]; then
             echo -e "${RED}Error: electron binary not found inside package tree.${NC}"
             exit 1
         fi
@@ -174,15 +196,20 @@ CONTROL_EOF
     rm -rf "${BUILD_DIR}/deb-root"
 
     # Generate graphical installer (bypasses cosmic-store bugs with large local .deb)
-    cat > "${DIST_DIR}/instalar.sh" << 'INSTALLER_EOF'
+    # A edição (full/lite) é CRAVADA aqui: o instalador aponta para o .deb desta
+    # build específica, e não mais um glob que escorregava pro pacote errado quando
+    # lite e full coexistiam em dist/.
+    cat > "${DIST_DIR}/instalar.sh" << INSTALLER_HEAD
 #!/usr/bin/env bash
-# Instalador do Helper Node. Acha o .deb ao lado deste script, REMOVE a versão
-# anterior (se houver) e instala — funciona mesmo reinstalando a mesma versão.
+# Instalador do Helper Node (edição: ${EDITION}). Aponta para o .deb desta build,
+# REMOVE qualquer edição anterior e instala — funciona mesmo reinstalando a mesma versão.
+SCRIPT_DIR="\$(cd "\$(dirname "\$(readlink -f "\$0")")" && pwd)"
+DEB="\$SCRIPT_DIR/$(basename "${DEB_OUTPUT}")"
+INSTALLER_HEAD
+    cat >> "${DIST_DIR}/instalar.sh" << 'INSTALLER_EOF'
 # Em terminal usa sudo (PAM/tty, senha de login normal); sem terminal cai pro pkexec.
-SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
-DEB="$(ls "$SCRIPT_DIR"/helper-node*.deb 2>/dev/null | sort -V | tail -1)"
-if [ -z "$DEB" ]; then
-    echo "ERRO: arquivo .deb não encontrado em $SCRIPT_DIR"
+if [ ! -f "$DEB" ]; then
+    echo "ERRO: arquivo .deb não encontrado: $DEB"
     read -rp "Pressione Enter..."; exit 1
 fi
 
@@ -193,7 +220,8 @@ else
 fi
 
 echo "Removendo versão anterior (se houver)..."
-$SUDO apt-get remove -y helper-node 2>/dev/null
+# Remove qualquer edição (legado sem sufixo + full + lite) pra não coexistirem.
+$SUDO apt-get remove -y helper-node helper-node-full helper-node-lite 2>/dev/null
 
 echo "Instalando $(basename "$DEB")..."
 $SUDO apt-get install -y "$DEB"; EXIT=$?

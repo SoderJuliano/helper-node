@@ -58,9 +58,11 @@ const BackendService = require("./services/backendService.js");
 const TesseractService = require("./services/tesseractService.js");
 const OpenAIService = require("./services/openAIService.js");
 const RealtimeAssistantService = require("./services/realtimeAssistantService.js");
+const RealtimeOpenAiService = require("./services/realtimeOpenAiService.js");
 const ipcService = require("./services/ipcService.js");
 const configService = require("./services/configService.js");
 const edition = require("./services/edition.js");
+const knowledgeBase = require("./services/knowledgeBase.js");
 const historyService = require("./services/historyService.js");
 const helperTools = require("./services/helperTools");
 const workspace = require("./services/workspace");
@@ -369,10 +371,72 @@ function clearOsVoskSilenceTimer() {
 
 const VoskStreamService = require("./services/voskStreamService.js");
 
+// Responder do realtime OFFLINE (Vosk live + correção Whisper). A transcrição é
+// local, mas a RESPOSTA vai pro provider SELECIONADO (backend/Ollama) — nunca
+// OpenAI. Respeita "sem fallback automático entre providers". Só é usado na Full
+// com backend (llama/llama-stream) ou ollamaLocal selecionado.
+// Decide, via chamada EXTRA ao llama3 (thread separada, sem o contexto), se a
+// pergunta precisa da base de conhecimento atualizada. Evita poluir/confundir
+// modelos pequenos com contexto irrelevante. Só pro caminho Ollama/backend.
+async function ollamaNeedsKnowledge(query) {
+  try {
+    const r = await BackendService.responder(
+      `Pergunta do candidato/interlocutor: "${String(query).slice(0, 400)}"\n\n` +
+      `Responda APENAS com SIM ou NAO: essa fala precisa de informação ATUALIZADA ` +
+      `sobre tecnologias, versões de libs/frameworks ou mercado recente pra ser bem respondida?`,
+      { sessionId: "kb-classifier", instruction: "Você é um classificador binário. Responda SOMENTE com SIM ou NAO, nada mais." }
+    );
+    return /\bsim\b/i.test(r || "");
+  } catch (_) { return false; }
+}
+
+// Bloco da base de conhecimento pro caminho Ollama (keyword retrieval + classificador).
+async function knowledgeBlockForOllama(query) {
+  try {
+    if (!configService.getKnowledgeBaseConfig().enabled) return "";
+    if (!(await ollamaNeedsKnowledge(query))) return "";
+    return await knowledgeBase.augment(query, { topK: 5 }); // sem token → keyword
+  } catch (_) { return ""; }
+}
+
+// Bloco da base de conhecimento pro caminho OpenAI/ChatGPT (embeddings, sem classificador).
+async function knowledgeBlockForOpenAI(query) {
+  try {
+    if (!configService.getKnowledgeBaseConfig().enabled) return "";
+    return await knowledgeBase.augment(query, { token: configService.getOpenIaToken(), topK: 5 });
+  } catch (_) { return ""; }
+}
+
+async function realtimeProviderResponder(transcript) {
+  const aiModel = configService.getAiModel();
+  const kb = await knowledgeBlockForOllama(transcript);
+  const text = kb ? `${kb}\n\n---\n\nFALA: ${transcript}` : transcript;
+  if (aiModel === "ollamaLocal") {
+    const OllamaLocalService = require("./services/ollamaLocalService");
+    return await OllamaLocalService.responder(text);
+  }
+  // backend remoto (llama / llama-stream)
+  return await BackendService.responder(text, {
+    sessionId: "realtime-assistant",
+    instruction: REALTIME_COPILOT_INSTRUCTION,
+  });
+}
+
+const REALTIME_COPILOT_INSTRUCTION = [
+  "Você é um COPILOTO DISCRETO em tempo real durante entrevistas, reuniões e ligações.",
+  "Recebe uma TRANSCRIÇÃO do que está sendo falado. Dê ao usuário o que ele precisa pra responder COM AS PRÓPRIAS PALAVRAS.",
+  "LINGUAGEM: português falado BR, simples e natural (padrão SP/SC). PROIBIDO formalês e clichê de RH ('soluções escaláveis', 'agregar valor', 'sinergia').",
+  "Pergunta aberta/comportamental ('me fala os desafios') → NÃO dê resposta pronta; dê 3-5 bullets curtos com os PONTOS-CHAVE em **negrito** pro usuário montar a fala.",
+  "Pergunta técnica de profundidade ('como você implementa X') → resposta completa, termos-chave em **negrito**, exemplo de código só aqui se ajudar.",
+  "Pergunta objetiva → curto e direto. Conversa casual/ruído/sem pergunta → responda só '(trecho sem conteúdo relevante)'.",
+  "SEMPRE destaque os termos/tecnologias-chave em **negrito**. Sem preâmbulo, não repita a pergunta.",
+].join("\n");
+
 const realtimeAssistantService = new RealtimeAssistantService({
   configService,
   getMainWindow: () => mainWindow,
   historyService,
+  aiResponder: realtimeProviderResponder,
   onFatalStop: () => {
     // Called when the service stops itself due to a fatal error (e.g. quota exceeded)
     isRecording = false;
@@ -381,6 +445,35 @@ const realtimeAssistantService = new RealtimeAssistantService({
     }
   },
 });
+
+// Realtime ONLINE (100% OpenAI): transcrição + resposta na OpenAI, sem Vosk/Whisper.
+// Usado quando o provider selecionado é ChatGPT (openIa) ou na edição Lite.
+const realtimeOpenAiService = new RealtimeOpenAiService({
+  configService,
+  getMainWindow: () => mainWindow,
+  historyService,
+  onFatalStop: () => {
+    isRecording = false;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("toggle-recording", { isRecording, audioFilePath });
+    }
+  },
+});
+
+// Seleciona o serviço de realtime conforme o provider efetivo:
+//   ChatGPT/Lite → online (OpenAI)   |   backend/Ollama (Full) → offline (Vosk+Whisper).
+function pickRealtimeService() {
+  return getEffectiveAiModel() === "openIa" ? realtimeOpenAiService : realtimeAssistantService;
+}
+function anyRealtimeActive() {
+  return realtimeOpenAiService.isActive() || realtimeAssistantService.isActive();
+}
+function stopAllRealtime() {
+  const tasks = [];
+  if (realtimeOpenAiService.isActive()) tasks.push(realtimeOpenAiService.stop().catch(() => {}));
+  if (realtimeAssistantService.isActive()) tasks.push(realtimeAssistantService.stop().catch(() => {}));
+  return Promise.all(tasks);
+}
 
 // Entrega resultados do Assistente de Tradução.
 // Em OS Integration: usa a janela DEDICADA (translation-overlay.html), persistente
@@ -398,12 +491,38 @@ translationAssistant.onResult(({ transcript, response, mode }) => {
       sendToTranslationOverlay('translation-status', 'mic_open');
     } else if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('translation-status', 'processing');
-      mainWindow.webContents.send('translation-result', { transcript, response });
+      mainWindow.webContents.send('translation-result', { transcript, response, mode: mode || 'interviewer' });
       mainWindow.webContents.send('translation-status', 'mic_open');
     }
   } catch (e) {
     console.error('[TranslationAssistant] erro ao entregar resultado:', e.message);
   }
+});
+
+// Nível de áudio em tempo real (barra de volume embaixo da bolinha do live).
+// Enviado ~10x/s por fonte; o renderer normaliza e desenha a barra.
+translationAssistant.onLevel((source, rms) => {
+  try {
+    const payload = { source, rms };
+    const cfg = configService.getConfig();
+    if (cfg.osIntegration) {
+      sendToTranslationOverlay('translation-level', payload);
+    } else if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('translation-level', payload);
+    }
+  } catch (_) {}
+});
+
+// "Processando" — loading enquanto a IA transcreve/traduz aquele trecho.
+translationAssistant.onLoading((loading) => {
+  try {
+    const cfg = configService.getConfig();
+    if (cfg.osIntegration) {
+      sendToTranslationOverlay('translation-loading', loading);
+    } else if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('translation-loading', loading);
+    }
+  } catch (_) {}
 });
 
 // === Translation Assistant Overlay ===
@@ -2115,10 +2234,8 @@ async function getAudioSources() {
 }
 
 async function toggleRealtimeAssistantRecording() {
-  const isRealtimeActive = realtimeAssistantService.isActive();
-
-  if (isRealtimeActive) {
-    await realtimeAssistantService.stop();
+  if (anyRealtimeActive()) {
+    await stopAllRealtime();
     isRecording = false;
 
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -2138,8 +2255,11 @@ async function toggleRealtimeAssistantRecording() {
     return;
   }
 
-  const token = configService.getOpenIaToken();
-  if (!token) {
+  const service = pickRealtimeService();
+  const isOnline = service === realtimeOpenAiService;
+
+  // Só o caminho ONLINE (OpenAI) precisa do token. backend/Ollama não usa OpenAI.
+  if (isOnline && !configService.getOpenIaToken()) {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send("transcription-error", "Token da OpenAI não configurado.");
     }
@@ -2153,7 +2273,13 @@ async function toggleRealtimeAssistantRecording() {
     return;
   }
 
-  await realtimeAssistantService.start();
+  // Realtime e Assistente de Tradução são modos exclusivos — para a tradução
+  // antes de iniciar o realtime (cada um tem seu próprio motor de áudio agora).
+  if (isOnline && translationAssistant.isActive()) {
+    await translationAssistant.stop().catch(() => {});
+  }
+
+  await service.start();
   isRecording = true;
 
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -2180,8 +2306,9 @@ function getEffectiveAiModel() {
 
 async function toggleRecording() {
   try {
-    // Na Lite, o Realtime Assistant (Vosk+Whisper local) não existe — nunca entra.
-    const isRealtimeAssistantEnabled = !edition.isLite() && configService.getRealtimeAssistantStatus();
+    // Realtime existe em todas as edições: na Lite/ChatGPT é 100% online (OpenAI),
+    // na Full com backend/Ollama é o pipeline local (Vosk+Whisper). pickRealtimeService decide.
+    const isRealtimeAssistantEnabled = configService.getRealtimeAssistantStatus();
     if (isRealtimeAssistantEnabled) {
       await toggleRealtimeAssistantRecording();
       return;
@@ -2471,6 +2598,7 @@ async function getIaResponse(text) {
   }, 10000);
 
   let resposta;
+  let usedKnowledge = false; // base de conhecimento foi injetada nesta resposta?
   try {
     const aiModel = getEffectiveAiModel();
     console.log("Current AI Model:", aiModel);
@@ -2514,9 +2642,12 @@ async function getIaResponse(text) {
               resposta = `[Agentic Workflow] Interrompido ou falhou: ${err.message}`;
             }
         } else {
-            const ht = buildHelperToolsOpenAIOpts(_wsText1, instruction, openAiModel);
+            const _kb1 = await knowledgeBlockForOpenAI(text);
+            if (_kb1) usedKnowledge = true;
+            const _augText1 = _kb1 ? _kb1 + "\n\n---\n\n" + _wsText1 : _wsText1;
+            const ht = buildHelperToolsOpenAIOpts(_augText1, instruction, openAiModel);
             resposta = await OpenAIService.makeOpenAIRequest(
-              _wsText1,
+              _augText1,
               token,
               ht.instruction || instruction,
               ht.model || openAiModel,
@@ -2529,7 +2660,9 @@ async function getIaResponse(text) {
         // em configService). Erros de Ollama-down / modelo-ausente vem como
         // texto markdown amigavel direto pra UI.
         const OllamaLocalService = require('./services/ollamaLocalService');
-        resposta = await OllamaLocalService.responder(text);
+        const _kbL = await knowledgeBlockForOllama(text);
+        if (_kbL) usedKnowledge = true;
+        resposta = await OllamaLocalService.responder(_kbL ? _kbL + "\n\n---\n\n" + text : text);
     } else {
         // Ollama/Backend e' o unico provider nao-OpenAI suportado.
         // Helper tools agora funcionam tambem no Ollama (via structured prompt + parser).
@@ -2554,8 +2687,11 @@ async function getIaResponse(text) {
                 resposta = `[Ollama Agentic] Interrompido ou falhou: ${err.message}`;
               }
           } else {
-              const _htO = buildHelperToolsOpenAIOpts(_wsTxtO, instructionO, configService.getOpenAiModel());
-              resposta = await BackendService.responder(_wsTxtO, _htO.opts);
+              const _kbO = await knowledgeBlockForOllama(text);
+              if (_kbO) usedKnowledge = true;
+              const _augTxtO = _kbO ? _kbO + "\n\n---\n\n" + _wsTxtO : _wsTxtO;
+              const _htO = buildHelperToolsOpenAIOpts(_augTxtO, instructionO, configService.getOpenAiModel());
+              resposta = await BackendService.responder(_augTxtO, _htO.opts);
           }
           backendIsOnline = true;
         } catch (backendError) {
@@ -2572,7 +2708,7 @@ async function getIaResponse(text) {
 
     // Formata a resposta para exibição na UI
     const formattedResposta = formatToHTML(resposta);
-    mainWindow.webContents.send("gemini-response", { resposta: formattedResposta });
+    mainWindow.webContents.send("gemini-response", { resposta: formattedResposta, usedKnowledge });
 
     // Usa a resposta crua para a notificação de texto simples
     if (appConfig.notificationsEnabled && Notification.isSupported()) {
@@ -2971,6 +3107,7 @@ ipcMain.on("send-to-gemini", async (event, text) => {
   try {
     const aiModel = getEffectiveAiModel();
     let resposta;
+    let usedKnowledge = false; // base de conhecimento injetada nesta resposta?
 
     if (aiModel === 'openIa') {
         const token = configService.getOpenIaToken();
@@ -3007,9 +3144,12 @@ ipcMain.on("send-to-gemini", async (event, text) => {
               resposta = `[Agentic Workflow] Interrompido ou falhou: ${err.message}`;
             }
         } else {
-            const ht = buildHelperToolsOpenAIOpts(_wsText2, instruction, openAiModel);
+            const _kb2 = await knowledgeBlockForOpenAI(text);
+            if (_kb2) usedKnowledge = true;
+            const _augText2 = _kb2 ? _kb2 + "\n\n---\n\n" + _wsText2 : _wsText2;
+            const ht = buildHelperToolsOpenAIOpts(_augText2, instruction, openAiModel);
             resposta = await OpenAIService.makeOpenAIRequest(
-              _wsText2,
+              _augText2,
               token,
               ht.instruction || instruction,
               ht.model || openAiModel,
@@ -3017,8 +3157,8 @@ ipcMain.on("send-to-gemini", async (event, text) => {
               ht.opts
             );
         }
-        event.sender.send("openai-final-response", { resposta });
-        return; 
+        event.sender.send("openai-final-response", { resposta, usedKnowledge });
+        return;
     } else {
         // Ollama/Backend e' o unico provider nao-OpenAI suportado.
         try {
@@ -3042,8 +3182,11 @@ ipcMain.on("send-to-gemini", async (event, text) => {
                 resposta = `[Ollama Agentic] Interrompido ou falhou: ${err.message}`;
               }
           } else {
-              const _htO2 = buildHelperToolsOpenAIOpts(_wsTxtO2, instructionO2, configService.getOpenAiModel());
-              resposta = await BackendService.responder(_wsTxtO2, _htO2.opts);
+              const _kbO2 = await knowledgeBlockForOllama(text);
+              if (_kbO2) usedKnowledge = true;
+              const _augTxtO2 = _kbO2 ? _kbO2 + "\n\n---\n\n" + _wsTxtO2 : _wsTxtO2;
+              const _htO2 = buildHelperToolsOpenAIOpts(_augTxtO2, instructionO2, configService.getOpenAiModel());
+              resposta = await BackendService.responder(_augTxtO2, _htO2.opts);
           }
           backendIsOnline = true;
         } catch (backendError) {
@@ -3054,7 +3197,7 @@ ipcMain.on("send-to-gemini", async (event, text) => {
           );
         }
     }
-    event.sender.send("gemini-response", { resposta });
+    event.sender.send("gemini-response", { resposta, usedKnowledge });
   } catch (error) {
     console.error("IPC: IA service error:", error);
     event.sender.send(
@@ -3224,7 +3367,7 @@ ipcMain.handle("get-debug-mode-status", () => {
 ipcMain.on("save-debug-mode-status", (event, status) => {
   if (status && configService.getRealtimeAssistantStatus()) {
     configService.setRealtimeAssistantStatus(false);
-    realtimeAssistantService.stop().catch(() => {});
+    stopAllRealtime();
   }
 
   configService.setDebugModeStatus(status);
@@ -3245,7 +3388,7 @@ ipcMain.handle("get-print-mode-status", () => {
 ipcMain.on("save-print-mode-status", (event, status) => {
   if (status && configService.getRealtimeAssistantStatus()) {
     configService.setRealtimeAssistantStatus(false);
-    realtimeAssistantService.stop().catch(() => {});
+    stopAllRealtime();
   }
 
   configService.setPrintModeStatus(status);
@@ -3416,7 +3559,7 @@ ipcMain.on("save-os-integration-status", (event, status) => {
   }
   if (status && configService.getRealtimeAssistantStatus()) {
     configService.setRealtimeAssistantStatus(false);
-    realtimeAssistantService.stop().catch(() => {});
+    stopAllRealtime();
   }
 
   configService.setOsIntegrationStatus(status);
@@ -3424,9 +3567,10 @@ ipcMain.on("save-os-integration-status", (event, status) => {
   notifyShortcutsChanged();
   
   if (status) {
-    // Automatically enable print mode when OS integration is enabled
-    configService.setPrintModeStatus(true);
-    
+    // NÃO forçamos mais o print mode aqui: "Integrar com SO" e "enviar print
+    // direto" são independentes. O monitoramento abaixo roda, mas os watchers
+    // já checam getPrintModeStatus() e não enviam nada se estiver desligado.
+
     // Notificação de ativação
     if (appConfig.notificationsEnabled && Notification.isSupported()) {
       new Notification({
@@ -3481,7 +3625,7 @@ ipcMain.on("save-realtime-assistant-status", async (event, status) => {
       }).show();
     }
   } else {
-    await realtimeAssistantService.stop().catch(() => {});
+    await stopAllRealtime();
     isRecording = false;
 
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -3503,8 +3647,64 @@ ipcMain.on("set-language", (event, language) => {
 });
 
 // === Assistente de Tradução ===
+// ===== Base de Conhecimento (mini-RAG) =====
+ipcMain.handle("kb-get", () => {
+  const cfg = configService.getKnowledgeBaseConfig();
+  return {
+    source: knowledgeBase.getSource(),
+    enabled: cfg.enabled,
+    aiRewrite: cfg.aiRewrite,
+    chunks: knowledgeBase.chunkCount(),
+  };
+});
+
+ipcMain.handle("kb-save", async (event, payload) => {
+  const { text = "", aiRewrite = true, enabled = true } = payload || {};
+  configService.setKnowledgeBaseConfig({ aiRewrite: !!aiRewrite, enabled: !!enabled });
+  // ChatGPT/Lite → token (embeddings + reescrita nano). Ollama/Full → backend (keyword + reescrita Ollama).
+  const useOpenAI = getEffectiveAiModel() === "openIa";
+  const token = useOpenAI ? configService.getOpenIaToken() : "";
+  const backendResponder = useOpenAI ? null : (t, opts) => BackendService.responder(t, opts);
+  try {
+    const res = await knowledgeBase.save(text, { aiRewrite: !!aiRewrite, token, backendResponder });
+    return { ok: true, chunks: res.chunks, text: res.text, rewritten: res.rewritten };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
 ipcMain.handle("get-translation-assistant-config", () => {
   return configService.getTranslationAssistantConfig();
+});
+
+// Lista os microfones (sources) conectados AGORA — exclui monitores de saída.
+// Usado pelo seletor de mic do Assistente de Tradução nas Configurações.
+ipcMain.handle("get-audio-input-devices", async () => {
+  try {
+    const { stdout } = await execPromise("LANG=C pactl list sources");
+    const devices = [];
+    let cur = null;
+    for (const line of stdout.split("\n")) {
+      const mName = line.match(/^\s*Name:\s*(.+)$/);
+      const mDesc = line.match(/^\s*Description:\s*(.+)$/);
+      if (line.match(/^Source #/)) { cur = { name: "", description: "" }; }
+      else if (mName && cur) { cur.name = mName[1].trim();
+        // fecha o device anterior quando acha o Name (Name vem antes de Description)
+      }
+      else if (mDesc && cur) {
+        cur.description = mDesc[1].trim();
+        // monitores de saída terminam em .monitor → não são microfones
+        if (cur.name && !cur.name.endsWith(".monitor")) {
+          devices.push({ name: cur.name, description: cur.description || cur.name });
+        }
+        cur = null;
+      }
+    }
+    return devices;
+  } catch (e) {
+    console.error("[config] get-audio-input-devices falhou:", e.message);
+    return [];
+  }
 });
 
 ipcMain.on("set-translation-assistant-config", (event, partial) => {
@@ -3530,6 +3730,7 @@ ipcMain.on("set-translation-assistant-config", (event, partial) => {
           userName: ta.userName || '',
           userBackground: ta.userBackground || '',
           targetLanguage: ta.targetLanguage || 'pt-br',
+          micDevice: ta.micDevice || '',
         }).then(() => {
           // Em OS Integration, parar tudo o que não é o TA (clipboard, screenshot watch,
           // capture tool) — só o overlay de tradução fica ativo.
@@ -3625,8 +3826,8 @@ ipcMain.handle("translation-start", async () => {
   const cfg = configService.getConfig();
   if (!cfg.openIaToken) return { error: 'API key não configurada' };
   // Para o assistente em tempo real se estiver ativo (evita conflito de mic)
-  if (realtimeAssistantService.isActive()) {
-    await realtimeAssistantService.stop().catch(() => {});
+  if (anyRealtimeActive()) {
+    await stopAllRealtime();
   }
   const ta = cfg.translationAssistant || {};
   await translationAssistant.start({
@@ -3634,6 +3835,7 @@ ipcMain.handle("translation-start", async () => {
     userName: ta.userName || '',
     userBackground: ta.userBackground || '',
     targetLanguage: ta.targetLanguage || 'pt-br',
+    micDevice: ta.micDevice || '',
   });
   if (cfg.osIntegration) {
     createTranslationOverlay();
@@ -4247,8 +4449,8 @@ ipcMain.on('region-selected', async (event, rect) => {
 ipcMain.on("cancel-recording", () => {
   console.log('Cancel recording requested from OS notification');
 
-  if (realtimeAssistantService.isActive()) {
-    realtimeAssistantService.stop().catch(() => {});
+  if (anyRealtimeActive()) {
+    stopAllRealtime();
     isRecording = false;
     return;
   }
@@ -4973,6 +5175,8 @@ ipcMain.handle('delete-session', async (event, sessionId) => {
 
 app.whenReady().then(async () => {
   configService.initialize();
+  // Modo de Teste do Tradutor é só por sessão — nunca persiste entre aberturas.
+  try { configService.setTranslationAssistantConfig({ testMode: false }); } catch (_) {}
   helperTools.initialize(configService.getHelperToolsConfig());
   // Registra confirmer para tools mutantes (systemPowerAction etc.)
   try {
@@ -5041,6 +5245,7 @@ app.whenReady().then(async () => {
             userName: ta.userName || '',
             userBackground: ta.userBackground || '',
             targetLanguage: ta.targetLanguage || 'pt-br',
+            micDevice: ta.micDevice || '',
           }).then(() => {
             // Mutex: se OS Integration ativo, suprime monitorings que possam ter subido
             if (configService.getOsIntegrationStatus()) {
@@ -5068,11 +5273,10 @@ app.whenReady().then(async () => {
       switchToOsIntegrationMode();
     }, 1000);
     
-    // Ensure clipboard monitoring is started for OS integration mode
+    // Ensure clipboard monitoring is started for OS integration mode.
+    // NÃO forçamos print mode: respeitamos a escolha do usuário. Os watchers
+    // checam getPrintModeStatus() e não enviam imagens se estiver desligado.
     if (!initialPrintMode) {
-      // If print mode wasn't already active, we need to start clipboard monitoring
-      // since OS integration automatically enables print mode
-      configService.setPrintModeStatus(true);
       startClipboardMonitoring();
     }
     // Start capture tool monitoring for OS integration
@@ -5095,7 +5299,7 @@ app.on("window-all-closed", () => {
   if (recordingProcess) {
     recordingProcess.kill("SIGTERM");
   }
-  realtimeAssistantService.stop().catch(() => {});
+  stopAllRealtime();
   if (process.platform !== "darwin" && !mainWindow) {
     app.quit();
   }
@@ -5104,6 +5308,6 @@ app.on("window-all-closed", () => {
 app.on("will-quit", () => {
   globalShortcut.unregisterAll();
   stopClipboardMonitoring();
-  realtimeAssistantService.stop().catch(() => {});
+  stopAllRealtime();
 });
 

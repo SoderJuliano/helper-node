@@ -268,6 +268,10 @@
             border-color: #00aaff;
         }
 
+        #prompt-instruction-header:hover #prompt-edit-toggle { opacity: 1 !important; }
+        #prompt-edit-toggle.editing { color: #ff6b6b; opacity: 1 !important; }
+        textarea[readonly] { opacity: 0.65; cursor: default; }
+
         .custom-input {
             width: 100%;
             padding: 8px 12px;
@@ -285,10 +289,12 @@
 <body>
     <h1>Configurações</h1>
     <div class="container">
-        <div class="setting-item">
+        <div class="setting-item" id="prompt-instruction-header">
             <label for="prompt-instruction">Instrução para IA:</label>
+            <span id="prompt-edit-toggle" title="Liberar edição (área sensível)" style="cursor:pointer; font-size:12px; color:#888; opacity:0.35; transition:opacity 0.2s; -webkit-app-region:no-drag;">editar</span>
         </div>
-        <textarea id="prompt-instruction" placeholder="Digite a instrução que será usada antes de cada pergunta para a IA."></textarea>
+        <textarea id="prompt-instruction" readonly placeholder="Instrução usada antes de cada pergunta para a IA."></textarea>
+        <p id="prompt-edit-warn" style="display:none; font-size:11.5px; color:#ffb74d; margin:6px 0 0 0; -webkit-app-region:no-drag;">Área sensível: editar a instrução sem cuidado pode fazer a IA alucinar em algumas funcionalidades. Por sua conta e risco.</p>
 
         <div class="setting-item">
             <label for="debug-mode-toggle">Modo Debug</label>
@@ -407,7 +413,7 @@
 
         <!-- Painel de instruções: aparece SÓ quando ollamaLocal está selecionado -->
         <div id="ollama-local-info" style="display: none; margin-top: 12px; padding: 14px; background-color: rgba(0,0,0,0.5); border-radius: 5px; font-size: 12.5px; line-height: 1.5; color: #ddd; -webkit-app-region: no-drag;">
-            <div style="font-weight: bold; color: #00d68f; margin-bottom: 8px;">📦 Ollama Local — instalação manual</div>
+            <div style="font-weight: bold; color: #00d68f; margin-bottom: 8px;">Ollama Local — instalação manual</div>
             <div style="margin-bottom: 10px;">
                 O app <strong>não instala o Ollama pra você</strong>. Siga o passo-a-passo abaixo (uma vez só) e depois é só usar.
             </div>
@@ -421,12 +427,12 @@
             <div style="margin: 12px 0 6px 0;"><strong>3. Verificar se está rodando</strong>:</div>
             <pre style="background:#0d0d0d; padding:8px 10px; border-radius:4px; margin:0 0 10px 0; overflow-x:auto; font-size:12px; color:#9ef0a8; user-select:text;">ollama serve     # opcional — o instalador já deixa rodando como serviço</pre>
             <button id="check-ollama-btn" style="margin-top: 4px; padding: 6px 12px; background:#2a6c45; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; -webkit-app-region: no-drag;">
-                🔍 Verificar status agora
+                Verificar status agora
             </button>
             <div id="ollama-status-result" style="margin-top: 8px; font-size: 12px;"></div>
 
             <div style="margin-top: 14px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.08);">
-                <div style="font-weight: bold; color: #ffb74d; margin-bottom: 6px;">⚙️ Requisitos mínimos por modelo</div>
+                <div style="font-weight: bold; color: #ffb74d; margin-bottom: 6px;">Requisitos mínimos por modelo</div>
                 <table style="width:100%; font-size:11.5px; color:#ccc; border-collapse: collapse;">
                     <tr style="color:#888;">
                         <th style="text-align:left; padding:3px 6px;">Modelo</th>
@@ -444,14 +450,46 @@
             </div>
 
             <div style="margin-top: 12px; padding: 8px 10px; background: rgba(255,180,77,0.08); border-radius: 4px; font-size: 11.5px; color: #ffb74d;">
-                ⚠️ <strong>Ferramentas avançadas</strong> e <strong>Acesso a diretórios</strong> são desativados ao usar Ollama Local nesta versão (mantém simples e estável). Use ChatGPT se precisar dessas features.
+                <strong>Ferramentas avançadas</strong> e <strong>Acesso a diretórios</strong> são desativados ao usar Ollama Local nesta versão (mantém simples e estável). Use ChatGPT se precisar dessas features.
+            </div>
+        </div>
+
+        <!-- Base de Conhecimento (RAG) — compartilhada por Assistente + Tradutor -->
+        <div id="knowledge-base-section" style="margin-top: 14px; padding: 14px; background-color: rgba(0,0,0,0.35); border-radius: 5px; -webkit-app-region: no-drag;">
+            <div style="font-weight: bold; color: #00aaff; margin-bottom: 8px;">Base de Conhecimento (atualizações de tecnologia)</div>
+            <p style="font-size: 12px; color: #aaa; margin: 0 0 10px 0;">Cole novidades/docs de tecnologias recentes (versões de libs, frameworks novos). O app injeta trechos relevantes nas respostas técnicas — usado pelo Assistente e pelo Tradutor.</p>
+
+            <div class="setting-item" style="margin-bottom: 8px;">
+                <label for="kb-enabled">Habilitar base de conhecimento</label>
+                <span id="kb-enabled-status" style="font-weight: bold; margin-left: 10px; min-width: 30px; text-align: center; -webkit-app-region: no-drag;">ON</span>
+                <label class="switch">
+                    <input type="checkbox" id="kb-enabled" hidden>
+                    <div class="switch__wrapper"><div class="switch__toggle"></div></div>
+                </label>
+            </div>
+
+            <div class="setting-item" style="margin-bottom: 6px;">
+                <label for="kb-airewrite">IA reorganiza o texto ao salvar</label>
+                <span id="kb-airewrite-status" style="font-weight: bold; margin-left: 10px; min-width: 30px; text-align: center; -webkit-app-region: no-drag;">ON</span>
+                <label class="switch">
+                    <input type="checkbox" id="kb-airewrite" hidden>
+                    <div class="switch__wrapper"><div class="switch__toggle"></div></div>
+                </label>
+            </div>
+            <p id="kb-airewrite-warn" style="font-size: 11.5px; color: #ffb74d; margin: 0 0 8px 0;">Atenção: com isso ligado, uma IA reescreve/reorganiza o texto antes de salvar (ChatGPT no Lite, Ollama no Full). Desligue se quiser controlar o conteúdo você mesmo.</p>
+
+            <textarea id="kb-text" style="width:100%; min-height:120px; padding:8px 12px; border-radius:5px; border:1px solid #555; background-color:#252525; color:white; font-size:13px; box-sizing:border-box; -webkit-app-region:no-drag; resize:vertical;" placeholder="Ex: Spring Boot 3.4 mudou X... Java 26 trouxe Y... a lib Z agora usa W em vez de V..."></textarea>
+
+            <div style="display:flex; align-items:center; gap:12px; margin-top:8px;">
+                <button id="kb-save-btn" style="margin:0; padding:8px 14px; align-self:auto;">Salvar base</button>
+                <span id="kb-status" style="font-size:12px; color:#888;"></span>
             </div>
         </div>
 
         <!-- Assistente de Tradução (entrevistas) -->
         <div id="translation-assistant-section" style="margin-top: 14px; padding: 14px; background-color: rgba(0,0,0,0.35); border-radius: 5px; -webkit-app-region: no-drag;">
-            <div style="font-weight: bold; color: #00aaff; margin-bottom: 8px;">🌐 Assistente de Tradução (Entrevistas)</div>
-            <p style="font-size: 12px; color: #ffb74d; margin: 0 0 10px 0;">⚠️ Esta opção consome créditos da API OpenAI. A chave de API deve estar configurada acima.</p>
+            <div style="font-weight: bold; color: #00aaff; margin-bottom: 8px;">Assistente de Tradução (Entrevistas)</div>
+            <p style="font-size: 12px; color: #ffb74d; margin: 0 0 10px 0;">Esta opção consome créditos da API OpenAI. A chave de API deve estar configurada acima.</p>
 
             <div class="setting-item" style="margin-bottom: 10px;">
                 <label for="translation-enabled">Habilitar Assistente de Tradução</label>
@@ -482,6 +520,17 @@
                     <option value="es">Español</option>
                 </select>
             </div>
+
+            <div class="setting-item" style="margin-bottom: 0; margin-top: 10px;">
+                <label for="translation-mic-device">Seu microfone</label>
+                <select id="translation-mic-device" class="custom-select">
+                    <option value="">Automático (padrão do sistema)</option>
+                </select>
+                <span id="translation-mic-refresh" style="cursor: pointer; color: #00aaff; margin-left: 10px; font-size: 12px;">Atualizar</span>
+            </div>
+            <p style="font-size: 11.5px; color: #888; margin: 6px 0 0 0;">
+                Microfone usado para a SUA voz. O áudio do sistema (entrevistador — Meet/Teams/YouTube) é capturado automaticamente.
+            </p>
 
             <hr style="margin: 16px 0; opacity: 0.3; border-color: #555;">
             <div style="-webkit-app-region: no-drag;">

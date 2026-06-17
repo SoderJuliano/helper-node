@@ -3,6 +3,8 @@
 
 const fs = require('fs');
 const path = require('path');
+const configService = require('../configService');
+const knowledgeBase = require('../knowledgeBase');
 
 /**
  * Transcreve um arquivo de audio usando gpt-4o-mini-transcribe.
@@ -48,6 +50,15 @@ const CODE_REQUEST_RE = /\b(write (a |an |the )?(function|method|class|snippet|c
 
 async function getTranslationAndSuggestion(transcript, { userName, userBackground, targetLanguage }, apiKey, opts = {}) {
   const isCodeRequest = CODE_REQUEST_RE.test(transcript);
+
+  // Base de conhecimento atualizável (RAG) — injeta trechos relevantes (ChatGPT).
+  let kbBlock = '';
+  try {
+    if (configService.getKnowledgeBaseConfig().enabled) {
+      kbBlock = await knowledgeBase.augment(transcript, { token: apiKey, topK: 5 });
+    }
+  } catch (_) {}
+  const userContent = kbBlock ? `${kbBlock}\n\n---\n\n${transcript}` : transcript;
   // opts.forceModel é usado pelo fallback — sem ele a recursão re-detectaria
   // codeRequest e voltaria pro mesmo modelo quebrado, criando loop infinito.
   const model = opts.forceModel || (isCodeRequest ? 'gpt-4.1' : 'gpt-4o-mini');
@@ -69,6 +80,7 @@ Regras para a sugestão de resposta:
 - Quando o pedido for de código: 1 bloco curto (2-6 linhas) no formato \`\`\`<linguagem>\n<código>\n\`\`\` e máximo 1 frase de contexto antes.
 - Quando NÃO houver pedido de código: 2-3 frases curtas em texto puro, sem código.
 - Não comece com "Certainly!" ou "Of course!".
+- Destaque em **negrito** os termos técnicos-chave (tecnologias, conceitos) na RESPOSTA — facilita o candidato bater o olho.
 - Formato obrigatório:
 TRADUÇÃO: <texto traduzido>
 RESPOSTA: <resposta em inglês — texto puro, OU texto + código apenas se pedido>`;
@@ -83,7 +95,7 @@ RESPOSTA: <resposta em inglês — texto puro, OU texto + código apenas se pedi
       model,
       messages: [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: transcript },
+        { role: 'user', content: userContent },
       ],
       max_tokens: 400,
     }),
