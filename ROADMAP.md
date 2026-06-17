@@ -2,6 +2,30 @@
 
 Este documento descreve a arquitetura atual para funcionalidades que dependem do sistema e o plano para melhorias futuras, visando uma experiência de usuário mais integrada.
 
+## ✅ Lançado em v0.4.x: Realtime online (OpenAI) + Tradutor ao vivo robusto
+
+Roteado por `pickRealtimeService()`; `getEffectiveAiModel() = isLite() ? 'openIa' : aiModel`.
+
+**Realtime — dois caminhos, escolhidos pelo provedor de IA:**
+- **ChatGPT (e SEMPRE na edição Lite)** → `services/realtimeOpenAiService.js` + motor
+  próprio `services/realtimeAudioCapture.js` (**`parec`** + VAD + segue sink ativo).
+  Transcrição `gpt-4o-transcribe` + resposta OpenAI. **Sem Vosk/Whisper.** Default
+  sobe `gpt-4.1-nano` → `gpt-4.1`. Transcrição própria (NÃO importa nada do tradutor).
+- **Full + Backend (LLaMA/Ollama) ou Ollama Local** → `realtimeAssistantService.js`
+  (Vosk live + correção Whisper), com a **resposta no provedor selecionado** (via
+  `aiResponder` injetado no main.js), nunca OpenAI. Sem fallback entre providers.
+
+**Áudio (causa-raiz de muito bug):** captura de monitor é **`parec --device=<sink>.monitor`**;
+`pw-record --target` cai no mic no PipeWire. Resolve o sink REAL (RUNNING → default) e
+segue troca de dispositivo (monitor→fone) com o app aberto.
+
+**Assistente de Tradução (ao vivo):** barra de volume mic/sys, **transcrição da fala do
+usuário na tela** (sem traduzir — só o entrevistador é traduzido), loading (robot.gif)
+enquanto a IA responde, e **seletor de microfone** nas Configurações (áudio do sistema
+continua automático: pega Meet/Teams/YouTube no navegador).
+
+Emojis removidos da tela de Configurações. Agora em **modo manutenção/melhorias**.
+
 ## ✅ Lançado em v0.2.0: Helper Tools — IA com acesso ao sistema
 
 Módulo opcional que dá à IA **ferramentas read-only** pra inspecionar o sistema
@@ -152,7 +176,11 @@ notificação visível na tela quebra a discrição.
     *   **Zero dependência** de daemon de notificação (`mako`, `dunst`, GNOME Shell, KDE).
     *   **Comportamento idêntico** em qualquer DE/WM/Wayland/X11.
 
-## Arquitetura Atual: Realtime Copilot (Vosk-fast + Whisper-slow)
+## Arquitetura Atual: Realtime Copilot OFFLINE (Vosk-fast + Whisper-slow)
+
+> Este é o caminho **OFFLINE** (Full + backend/Ollama). Para ChatGPT/Lite, o realtime
+> é **100% online** (`realtimeOpenAiService` + `realtimeAudioCapture`, parec) — ver a
+> seção "Lançado em v0.4.x" no topo. A resposta aqui vai pro provider selecionado.
 
 Pipeline híbrido implementado no `services/realtimeAssistantService.js`:
 
@@ -172,7 +200,13 @@ A IA opera em modo **copiloto**, não resumidor: responde perguntas técnicas,
 sugere respostas (`💬 Sugestão:`), aponta trade-offs, define termos obscuros e
 ignora ruído/conversa casual com `(trecho sem conteúdo relevante)`.
 
-## Arquitetura Atual: Lógica de Serviço de IA com Fallback
+## ~~Arquitetura Atual: Lógica de Serviço de IA com Fallback~~ (OBSOLETO)
+
+> ⚠️ **OBSOLETO desde v0.4.x.** A regra atual é **SEM fallback automático entre
+> providers** (ver `.github/copilot-instructions.md`): o usuário escolhe o provider e
+> o agente respeita. OpenAI ↔ Ollama/backend NÃO se substituem sozinhos. O texto
+> abaixo descreve o comportamento ANTIGO (backend → Gemini) e é mantido só como
+> histórico — não implementar nem reativar.
 
 Para oferecer flexibilidade e robustez na geração de respostas de IA, o aplicativo agora implementa uma lógica de seleção de serviço com fallback automático. O objetivo é priorizar um backend customizado (remoto) quando disponível, e usar um modelo local como alternativa segura.
 

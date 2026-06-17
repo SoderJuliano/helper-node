@@ -46,8 +46,11 @@ services/
   openAIService.js         # GPT chat + visão + tool calling LOOP
   geminiService.js         # Google Gemini (alternativa)
   llamaService.js          # Ollama local
-  realtimeAssistantService.js  # Vosk live + Whisper async correction
-  voskStreamService.js     # mic → PCM → vosk-stream.py
+  realtimeAssistantService.js  # Realtime OFFLINE (Full + backend/Ollama): Vosk live + Whisper correction; resposta via aiResponder (provider selecionado)
+  realtimeOpenAiService.js     # Realtime ONLINE (ChatGPT / toda a Lite): transcrição gpt-4o-transcribe + chat OpenAI; transcrição própria, SEM Vosk/Whisper
+  realtimeAudioCapture.js      # Motor de áudio do realtime ONLINE (parec + VAD + segue sink ativo). INDEPENDENTE do tradutor — não compartilha com vadEngine
+  translationAssistant/    # Assistente de Tradução (entrevistas): vadEngine (parec) + openaiClient + testMode
+  voskStreamService.js     # mic → PCM (parec) → vosk-stream.py
   tesseractService.js      # OCR de screenshots
   historyService.js        # sessões persistidas em ~/.config/helper-node/history.json
   configService.js         # leitura/escrita config (modelos, ativações)
@@ -65,15 +68,27 @@ package.sh                 # build .deb e .pkg.tar.zst
 
 ### Fluxos críticos
 
-**Áudio (não quebrar!):**
-- Captura: `pw-record` (PipeWire, SEM flags `--raw`/`--format`) → PCM s16le 16kHz mono.
-- ffmpeg precisa `-f s16le -ar 16000 -ac 1` (input format raw EXPLÍCITO).
-- ❌ NÃO usar `parec --raw` — perde áudio na conversão s32le→s16le.
+**Áudio — LIÇÕES DURAS (não quebrar! validado em sessão real com o dono testando):**
+- **Captura do ÁUDIO DO SISTEMA (monitor) = `parec --device=<sink>.monitor --rate=16000 --channels=1 --format=s16le --raw`.** É o método CONFIÁVEL (voskStreamService sempre usou; vadEngine e realtimeAudioCapture usam). NÃO trocar por `pw-record`.
+- ❌ **`pw-record --target <monitor>` é INSTÁVEL no PipeWire** — não captura o monitor e **cai no microfone** (sintoma: "só pega meu mic, nunca o entrevistador"). Foi a causa-raiz de horas de bug.
+- ❌ NÃO usar o token literal `@DEFAULT_SINK_MONITOR@` no `--target` — pw-record não expande, cai no mic. Resolver o sink REAL em runtime: sink em estado `RUNNING` (saída tocando agora) → `pactl get-default-sink`+`.monitor`.
+- **Seguir a saída ativa:** re-checar a cada ~2s qual sink está `RUNNING` e migrar a captura (ex: trocou monitor→fone com app aberto). Implementado em `realtimeAudioCapture` e `vadEngine`.
+- ffmpeg, quando usado, precisa `-f s16le -ar 16000 -ac 1` (input raw EXPLÍCITO).
 
-**Realtime assistant:**
-- Vosk transcreve em tempo real (rápido, impreciso).
-- Whisper roda assíncrono em background pra corrigir.
-- Resultado: `segment_whisper_correction` IPC event atualiza UI.
+**Realtime assistant — DOIS caminhos (roteado por `pickRealtimeService()` em main.js):**
+- `getEffectiveAiModel()` = `edition.isLite() ? 'openIa' : configService.getAiModel()`.
+- **ONLINE** (`getEffectiveAiModel()==='openIa'` → ChatGPT, e SEMPRE na Lite): `realtimeOpenAiService` + `realtimeAudioCapture` (parec). Transcrição `gpt-4o-transcribe` + chat OpenAI. Sem Vosk/Whisper. Default sobe `gpt-4.1-nano`→`gpt-4.1`.
+- **OFFLINE** (Full + backend `llama`/`llama-stream` ou `ollamaLocal`): `realtimeAssistantService` (Vosk live + Whisper correction). A **resposta vai pro provider selecionado** (não OpenAI) via `aiResponder` injetado no main.js. Regra do projeto: sem fallback entre providers.
+- UI: ambos emitem `realtime-assistant-update` (`segment_start`/`segment_whisper_correction`/`segment_response`...). O online NÃO emite `segment_partial` (sem preview ao vivo — OpenAI é batch).
+
+**Assistente de Tradução (entrevistas) — `services/translationAssistant/`:**
+- `vadEngine` (parec) captura `mic` (você) + `sys` (entrevistador, monitor do sink ativo). `index.js` orquestra.
+- **`sys` (entrevistador):** transcreve → traduz + sugere resposta.
+- **`mic` (você):** transcreve e **MOSTRA na tela** (`mode:'candidate'`, rótulo "👤 Você:"), mas **NÃO traduz** (design — confirmado pelo dono: "nunca pedi pra traduzir eu mesmo"). NÃO remover esse `if`.
+- Feedback visual no canto sup. direito: bolinha live, **barra de volume mic/sys** (`translation-level`, verde quando capta), **loading robot.gif** (`translation-loading`) enquanto a IA responde.
+- **Seletor de microfone** nas Configurações (`get-audio-input-devices` via `pactl list sources`, exclui `.monitor`); o áudio do sistema continua AUTOMÁTICO. Mic salvo em `translationAssistant.micDevice`.
+- **Modo teste (5 perguntas):** `testMode.js` usa `captureOneAnswer` (mic) — fluxo separado, não mexer junto com o ao vivo.
+- ⚠️ `realtimeAudioCapture` (realtime) e `vadEngine` (tradutor) são DOIS motores SEPARADOS de propósito — mexer num NÃO pode afetar o outro.
 
 **Agentic Workflow (Multi-fase):**
 - Implementado para **OpenAI** e **Ollama (Backend MCP)**.
@@ -190,3 +205,24 @@ flatpak-spawn --host dpkg-deb --contents dist/helper-node_*.deb | grep -E "whisp
 - Refactor interno que não muda comportamento.
 - Adicionar logs/audit.
 - Atualizar README/ROADMAP quando feature já aprovada.
+
+---
+
+## 🤝 Como trabalhamos (memória entre sessões)
+
+O dono (julianosoder) **testa e critica enquanto o agente escreve** — ciclo rápido de
+implementar → ele roda `npm start` e cola os logs → ajustar. Lições da v0.4.x:
+
+1. **Áudio é o calcanhar de Aquiles.** Antes de mexer, releia a seção "Áudio — LIÇÕES
+   DURAS". `parec` p/ monitor, nunca `pw-record --target`. Diagnostique com **logs**
+   (níveis mic/sys) e **evidência** (git blame, `pactl list sink-inputs`), NÃO com
+   hipóteses — ele se irrita (com razão) com tentativa-e-erro às cegas.
+2. **NÃO toque em features que estão funcionando.** O `vadEngine` do tradutor e o
+   `realtimeAudioCapture` do realtime são separados de propósito. Mudar um arquivo
+   compartilhado (ex: `vadEngine`) afeta o tradutor — já quebrou e gerou retrabalho.
+3. **Tradutor: design fixo** — traduz só o entrevistador (`sys`); a fala do usuário
+   (`mic`) é transcrita e exibida, mas NUNCA traduzida. Não "conserte" isso.
+4. **Antes de reverter "pro original", confirme QUE original** (data de criação vs
+   ontem vs último bom). Reverter pro estado errado reintroduz bugs.
+5. Entregue **plano + decisões** antes de implementações grandes; ele gosta de aprovar
+   o caminho. Para dúvidas reais, pergunte UMA coisa objetiva — não enrole.

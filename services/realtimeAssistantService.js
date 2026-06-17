@@ -52,11 +52,16 @@ const CONNECTORS = new Set([
 ]);
 
 class RealtimeAssistantService {
-  constructor({ configService, getMainWindow, onFatalStop, historyService }) {
+  constructor({ configService, getMainWindow, onFatalStop, historyService, aiResponder }) {
     this.configService = configService;
     this.getMainWindow = getMainWindow;
     this.onFatalStop = onFatalStop || null;
     this.historyService = historyService || null;
+    // Responder injetado: quando presente, a resposta da IA é gerada pelo
+    // provider SELECIONADO (backend/Ollama), não por OpenAI. Mantém a regra do
+    // projeto "sem fallback automático entre providers". Recebe a transcrição
+    // final (string) e retorna a resposta (string).
+    this.aiResponder = typeof aiResponder === 'function' ? aiResponder : null;
 
     this.active = false;
     this.contextMessages = [];
@@ -402,6 +407,13 @@ class RealtimeAssistantService {
 
   // ---------- AI ----------
   async _askAI(transcript) {
+    // Provider injetado (backend/Ollama): a transcrição é local (Vosk+Whisper),
+    // mas a RESPOSTA vai pro provider selecionado, não pra OpenAI.
+    if (this.aiResponder) {
+      const r = await this.aiResponder(transcript);
+      return (r || "").trim() || "(sem resposta)";
+    }
+
     const token = this.configService.getOpenIaToken();
     if (!token) throw new Error("Token da OpenAI não configurado.");
     const model = this.configService.getOpenAiModel();

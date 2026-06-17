@@ -73,6 +73,8 @@ function applyWorkspaceAccessVisibility(model) {
 }
 
 // Edição Lite (100% online): esconde tudo que é local/backend e força OpenAI.
+// O Assistente em tempo real CONTINUA visível — na Lite ele roda 100% online
+// (transcrição + resposta na OpenAI), sem Vosk/Whisper.
 function applyLiteUi() {
   try {
     aiModelSelect.value = 'openIa';
@@ -80,16 +82,26 @@ function applyLiteUi() {
     const si = aiModelSelect.closest('.setting-item');
     if (si) si.style.display = 'none';
   } catch (_) {}
-  try {
-    const si = realtimeAssistantToggle.closest('.setting-item');
-    if (si) si.style.display = 'none';
-  } catch (_) {}
-  ['backend-url', 'backend-api-key-container', 'ollama-local-model-container', 'ollama-local-info'].forEach((id) => {
+  ['backend-api-key-container', 'ollama-local-model-container', 'ollama-local-info'].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
   });
   if (openIaTokenContainer) openIaTokenContainer.style.display = 'flex';
   if (openAiModelContainer) openAiModelContainer.style.display = 'flex';
+}
+
+// Edição do app (full/lite), preenchida no load. Controla a visibilidade da URL do backend.
+let _appEdition = 'full';
+
+// URL do backend só aparece quando faz sentido: Modo Debug ON, OU usando o backend
+// remoto (llama / llama-stream) na edição Full. Em ChatGPT/Lite/Ollama local → escondida.
+function applyBackendUrlVisibility() {
+  const el = document.getElementById('backend-url');
+  if (!el) return;
+  const debugOn = !!(debugModeToggle && debugModeToggle.checked);
+  const m = aiModelSelect ? aiModelSelect.value : '';
+  const isRemoteBackend = (m === 'llama' || m === 'llama-stream');
+  el.style.display = (debugOn || (isRemoteBackend && _appEdition === 'full')) ? '' : 'none';
 }
 
 // Mutex: helperTools desativa modo integrado + assistente em tempo real.
@@ -124,6 +136,15 @@ function applyRealtimeAssistantExclusivity() {
   updateDebugModeStatus(false);
   updatePrintModeStatus(false);
   updateOsIntegrationStatus(false);
+
+  // Assistente em tempo real e Tradutor são EXCLUSIVOS (ambos capturam áudio e
+  // respondem) — ligar o assistente desliga o tradutor.
+  const _ta = document.getElementById('translation-enabled');
+  if (_ta && _ta.checked) {
+    _ta.checked = false;
+    if (typeof updateTranslationEnabledStatus === 'function') updateTranslationEnabledStatus(false);
+    ipcRenderer.send('set-translation-assistant-config', { enabled: false });
+  }
 }
 
 function disableRealtimeIfOtherEnabled(toggle) {
@@ -300,8 +321,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Edição Lite: ajusta a UI (100% online) depois que tudo carregou.
   try {
     const _edition = await ipcRenderer.invoke('get-edition');
+    _appEdition = _edition || 'full';
     if (_edition === 'lite') applyLiteUi();
   } catch (_) {}
+  applyBackendUrlVisibility();
 });
 
 // Handle debug toggle live update
@@ -309,6 +332,7 @@ debugModeToggle.addEventListener("change", () => {
   disableRealtimeIfOtherEnabled(debugModeToggle);
   disableHelperToolsIfOtherEnabled(debugModeToggle);
   updateDebugModeStatus(debugModeToggle.checked);
+  applyBackendUrlVisibility();
 });
 
 // Handle print mode toggle live update
@@ -380,6 +404,7 @@ aiModelSelect.addEventListener('change', () => {
     applyWorkspaceAccessVisibility(v);
     if (v === 'ollamaLocal') applyOllamaLocalExclusivity();
     else releaseOllamaLocalExclusivity();
+    applyBackendUrlVisibility();
 });
 
 if (ollamaLocalModelSelect) {
@@ -388,24 +413,24 @@ if (ollamaLocalModelSelect) {
 
 if (checkOllamaBtn) {
     checkOllamaBtn.addEventListener('click', async () => {
-        ollamaStatusResult.textContent = '⏳ Verificando...';
+        ollamaStatusResult.textContent = 'Verificando...';
         ollamaStatusResult.style.color = '#888';
         try {
             const res = await ipcRenderer.invoke('check-ollama-local-status');
             if (!res || !res.running) {
-                ollamaStatusResult.innerHTML = '❌ <span style="color:#ff6b6b">Ollama não está rodando.</span> Rode <code style="background:#0d0d0d;padding:2px 5px;border-radius:3px;color:#9ef0a8;">ollama serve</code> no terminal.';
+                ollamaStatusResult.innerHTML = '<span style="color:#ff6b6b">Ollama não está rodando.</span> Rode <code style="background:#0d0d0d;padding:2px 5px;border-radius:3px;color:#9ef0a8;">ollama serve</code> no terminal.';
                 return;
             }
             const selected = ollamaLocalModelSelect.value;
             const installed = res.models || [];
             const hasIt = installed.some(m => m === selected || m.startsWith(selected.split(':')[0] + ':'));
             if (hasIt) {
-                ollamaStatusResult.innerHTML = `✅ <span style="color:#9ef0a8">Ollama rodando.</span> Modelo <code style="color:#9ef0a8">${selected}</code> está baixado. Pronto pra uso!`;
+                ollamaStatusResult.innerHTML = `<span style="color:#9ef0a8">Ollama rodando.</span> Modelo <code style="color:#9ef0a8">${selected}</code> está baixado. Pronto pra uso!`;
             } else {
-                ollamaStatusResult.innerHTML = `⚠️ <span style="color:#ffb74d">Ollama rodando, mas modelo <code>${selected}</code> não está baixado.</span><br>Modelos disponíveis: ${installed.length ? installed.join(', ') : '(nenhum)'}<br>Rode: <code style="background:#0d0d0d;padding:2px 5px;border-radius:3px;color:#9ef0a8;">ollama pull ${selected}</code>`;
+                ollamaStatusResult.innerHTML = `<span style="color:#ffb74d">Ollama rodando, mas modelo <code>${selected}</code> não está baixado.</span><br>Modelos disponíveis: ${installed.length ? installed.join(', ') : '(nenhum)'}<br>Rode: <code style="background:#0d0d0d;padding:2px 5px;border-radius:3px;color:#9ef0a8;">ollama pull ${selected}</code>`;
             }
         } catch (e) {
-            ollamaStatusResult.innerHTML = `❌ Erro ao verificar: ${e.message}`;
+            ollamaStatusResult.innerHTML = `Erro ao verificar: ${e.message}`;
             ollamaStatusResult.style.color = '#ff6b6b';
         }
     });
@@ -486,6 +511,11 @@ function updateTranslationEnabledStatus(v) {
 if (translationEnabledToggle) {
   translationEnabledToggle.addEventListener('change', () => {
     updateTranslationEnabledStatus(translationEnabledToggle.checked);
+    // Exclusivo com o Assistente em tempo real — ligar o tradutor desliga o assistente.
+    if (translationEnabledToggle.checked && realtimeAssistantToggle && realtimeAssistantToggle.checked) {
+      realtimeAssistantToggle.checked = false;
+      updateRealtimeAssistantStatus(false);
+    }
     ipcRenderer.send('set-translation-assistant-config', { enabled: translationEnabledToggle.checked });
   });
 }
@@ -516,6 +546,45 @@ if (translationTestModeInput) {
   });
 }
 
+// === Seletor de microfone do Assistente de Tradução ===
+const translationMicSelect = document.getElementById('translation-mic-device');
+const translationMicRefresh = document.getElementById('translation-mic-refresh');
+
+async function populateMicDevices(selected) {
+  if (!translationMicSelect) return;
+  let devices = [];
+  try { devices = await ipcRenderer.invoke('get-audio-input-devices'); } catch (_) {}
+  // Mantém só a opção "Automático" e reconstrói a lista.
+  translationMicSelect.innerHTML = '<option value="">Automático (padrão do sistema)</option>';
+  for (const d of (devices || [])) {
+    const opt = document.createElement('option');
+    opt.value = d.name;
+    opt.textContent = d.description || d.name;
+    translationMicSelect.appendChild(opt);
+  }
+  // Restaura a escolha salva (mesmo se o device não estiver na lista agora).
+  if (selected) {
+    if (![...translationMicSelect.options].some(o => o.value === selected)) {
+      const opt = document.createElement('option');
+      opt.value = selected;
+      opt.textContent = selected + ' (desconectado?)';
+      translationMicSelect.appendChild(opt);
+    }
+    translationMicSelect.value = selected;
+  }
+}
+
+if (translationMicSelect) {
+  translationMicSelect.addEventListener('change', () => {
+    ipcRenderer.send('set-translation-assistant-config', { micDevice: translationMicSelect.value });
+  });
+}
+if (translationMicRefresh) {
+  translationMicRefresh.addEventListener('click', () => {
+    populateMicDevices(translationMicSelect ? translationMicSelect.value : '');
+  });
+}
+
 // Carrega valores salvos do Assistente de Tradução ao abrir config
 (async () => {
   try {
@@ -528,8 +597,97 @@ if (translationTestModeInput) {
     if (translationUsernameInput) translationUsernameInput.value = ta.userName || '';
     if (translationBackgroundInput) translationBackgroundInput.value = ta.userBackground || '';
     if (translationTargetLangSelect) translationTargetLangSelect.value = ta.targetLanguage || 'pt-br';
-    if (translationTestModeInput) translationTestModeInput.checked = !!ta.testMode;
+    // Modo de Teste é só por sessão — sempre começa desmarcado ao abrir o config.
+    if (translationTestModeInput) translationTestModeInput.checked = false;
+    await populateMicDevices(ta.micDevice || '');
   } catch (e) {
     console.warn('[TranslationAssistant] load config failed:', e.message);
   }
 })();
+
+// === Base de Conhecimento (RAG) ===
+const kbEnabledToggle = document.getElementById('kb-enabled');
+const kbEnabledStatus = document.getElementById('kb-enabled-status');
+const kbRewriteToggle = document.getElementById('kb-airewrite');
+const kbRewriteStatus = document.getElementById('kb-airewrite-status');
+const kbRewriteWarn = document.getElementById('kb-airewrite-warn');
+const kbText = document.getElementById('kb-text');
+const kbSaveBtn = document.getElementById('kb-save-btn');
+const kbStatus = document.getElementById('kb-status');
+
+function updateKbEnabledStatus(v) { if (kbEnabledStatus) kbEnabledStatus.textContent = v ? 'ON' : 'OFF'; }
+function updateKbRewriteStatus(v) {
+  if (kbRewriteStatus) kbRewriteStatus.textContent = v ? 'ON' : 'OFF';
+  if (kbRewriteWarn) kbRewriteWarn.style.display = v ? 'block' : 'none';
+}
+
+if (kbEnabledToggle) kbEnabledToggle.addEventListener('change', () => updateKbEnabledStatus(kbEnabledToggle.checked));
+if (kbRewriteToggle) kbRewriteToggle.addEventListener('change', () => updateKbRewriteStatus(kbRewriteToggle.checked));
+
+if (kbSaveBtn) {
+  kbSaveBtn.addEventListener('click', async () => {
+    const aiRewrite = kbRewriteToggle ? kbRewriteToggle.checked : true;
+    if (kbStatus) { kbStatus.style.color = '#888'; kbStatus.textContent = aiRewrite ? 'Reorganizando com IA e salvando…' : 'Salvando…'; }
+    kbSaveBtn.disabled = true;
+    try {
+      const res = await ipcRenderer.invoke('kb-save', {
+        text: kbText ? kbText.value : '',
+        aiRewrite,
+        enabled: kbEnabledToggle ? kbEnabledToggle.checked : true,
+      });
+      if (res && res.ok) {
+        if (res.rewritten && kbText && typeof res.text === 'string') kbText.value = res.text;
+        if (kbStatus) {
+          if (res.shrunk) {
+            kbStatus.style.color = '#ffb74d';
+            kbStatus.textContent = `Salvo — ${res.chunks} trecho(s) (a IA encurtou demais; mantive o ORIGINAL)`;
+          } else if (res.codeSkipped) {
+            kbStatus.style.color = '#9ef0a8';
+            kbStatus.textContent = `Salvo — ${res.chunks} trecho(s) (continha código; salvo sem reorganizar)`;
+          } else {
+            kbStatus.style.color = '#9ef0a8';
+            kbStatus.textContent = `Salvo — ${res.chunks} trecho(s)` + (res.rewritten ? ' (reorganizado pela IA)' : '');
+          }
+        }
+      } else if (kbStatus) {
+        kbStatus.style.color = '#ff6b6b'; kbStatus.textContent = 'Erro: ' + ((res && res.error) || 'falha ao salvar');
+      }
+    } catch (e) {
+      if (kbStatus) { kbStatus.style.color = '#ff6b6b'; kbStatus.textContent = 'Erro: ' + e.message; }
+    } finally {
+      kbSaveBtn.disabled = false;
+    }
+  });
+}
+
+(async () => {
+  try {
+    const kb = await ipcRenderer.invoke('kb-get');
+    if (!kb) return;
+    if (kbEnabledToggle) { kbEnabledToggle.checked = kb.enabled !== false; updateKbEnabledStatus(kbEnabledToggle.checked); }
+    if (kbRewriteToggle) { kbRewriteToggle.checked = kb.aiRewrite !== false; updateKbRewriteStatus(kbRewriteToggle.checked); }
+    if (kbText) kbText.value = kb.source || '';
+    if (kbStatus && kb.chunks != null) kbStatus.textContent = kb.chunks ? `${kb.chunks} trecho(s) indexado(s)` : 'vazio';
+  } catch (e) { console.warn('[kb] load failed:', e.message); }
+})();
+
+// === "Instrução para IA": read-only por padrão + cadeado (área sensível) ===
+const promptEditToggle = document.getElementById('prompt-edit-toggle');
+const promptEditWarn = document.getElementById('prompt-edit-warn');
+if (promptEditToggle && instructionTextarea) {
+  promptEditToggle.addEventListener('click', () => {
+    const locked = instructionTextarea.hasAttribute('readonly');
+    if (locked) {
+      instructionTextarea.removeAttribute('readonly');
+      instructionTextarea.focus();
+      promptEditToggle.textContent = 'bloquear';
+      promptEditToggle.classList.add('editing');
+      if (promptEditWarn) promptEditWarn.style.display = 'block';
+    } else {
+      instructionTextarea.setAttribute('readonly', '');
+      promptEditToggle.textContent = 'editar';
+      promptEditToggle.classList.remove('editing');
+      if (promptEditWarn) promptEditWarn.style.display = 'none';
+    }
+  });
+}

@@ -1295,6 +1295,55 @@
         #ta-live-indicator.visible { display: flex; }
         #ta-live-indicator.hidden-by-loader { opacity: 0; }
 
+        /* Barra de volume (mic/sys) — embaixo da bolinha do live. Mostra se está
+           captando áudio: verde quando acima do limiar de silêncio. */
+        #ta-volume {
+            display: none;
+            position: fixed;
+            top: 62px;
+            right: 10px;
+            z-index: 9991;
+            width: 78px;
+            pointer-events: none;
+            font-family: monospace;
+        }
+        #ta-volume .ta-vol-row { display: flex; align-items: center; gap: 4px; margin-top: 3px; }
+        #ta-volume .ta-vol-tag { font-size: 9px; color: #8a8a8a; width: 20px; text-align: right; }
+        #ta-volume .ta-vol-track { flex: 1; height: 6px; background: rgba(255,255,255,0.12); border-radius: 3px; overflow: hidden; }
+        #ta-volume .ta-vol-fill { width: 0%; height: 100%; background: #4a4a4a; border-radius: 3px; transition: width 80ms linear, background 120ms; }
+        #ta-volume .ta-vol-fill.active { background: #00e676; }
+
+        /* Palavras-chave (negrito) em destaque: maiores + cor de realce. Vale pro
+           Realtime (.rt-assistant-text) e pro Tradutor (.ia-response) — pra bater o
+           olho nos termos que o recrutador quer ouvir. */
+        .rt-assistant-text strong, .ia-response strong {
+            font-size: 1.18em;
+            font-weight: 700;
+            color: #7CFFB0;
+            letter-spacing: 0.2px;
+        }
+
+        /* Selo pequeno: resposta usou a base de conhecimento */
+        .kb-used-badge {
+            font-size: 10px;
+            color: #7CFFB0;
+            opacity: 0.85;
+            margin-bottom: 5px;
+            font-style: italic;
+        }
+
+        /* Loading "processando" — robôzinho pulando (robot.gif), pequeno, embaixo das barras */
+        #ta-loading {
+            display: none;
+            position: fixed;
+            top: 96px;
+            right: 29px;
+            z-index: 9991;
+            width: 40px;
+            height: 40px;
+            pointer-events: none;
+        }
+
         /* Pulsating circle (mic aberto) — 15×15, animação lenta */
         #ta-live-pulse { display: none; position: relative; width: 15px; height: 15px; }
         #ta-live-indicator.state-mic #ta-live-pulse { display: block; }
@@ -1449,6 +1498,15 @@
     <div id="ta-live-indicator">
         <div id="ta-live-pulse"></div>
     </div>
+
+    <!-- Barra de volume: nível do mic (e sys) enquanto o tradutor escuta -->
+    <div id="ta-volume">
+        <div class="ta-vol-row"><span class="ta-vol-tag">mic</span><div class="ta-vol-track"><div class="ta-vol-fill" id="ta-vol-mic"></div></div></div>
+        <div class="ta-vol-row"><span class="ta-vol-tag">sys</span><div class="ta-vol-track"><div class="ta-vol-fill" id="ta-vol-sys"></div></div></div>
+    </div>
+
+    <!-- Loading: robôzinho pulando enquanto a IA processa/responde o trecho -->
+    <img id="ta-loading" src="./assets/robot.gif" alt="" />
 
     <!-- Agentic Workflow Status -->
     <div id="agentic-status-container" style="display: none;">
@@ -2057,6 +2115,7 @@
                 assistantBadge.textContent = '🤖 pensando…';
 
                 const assistantText = document.createElement('div');
+                assistantText.className = 'rt-assistant-text';
                 assistantText.style.cssText = 'font-size:13px;white-space:pre-wrap;line-height:1.55;';
                 assistantText.textContent = '';
 
@@ -2129,7 +2188,7 @@
                     case 'segment_response': {
                         // Resposta unica e final
                         const seg = rtSegments.get(payload.id) || ensureSegmentBubbles(payload.id, payload.iteration);
-                        seg.assistantText.textContent = payload.response || '';
+                        seg.assistantText.innerHTML = formatOpenAIResponse(payload.response || '');
                         seg.assistantBadge.textContent = '🤖 resposta';
                         seg.assistantBadge.style.color = 'rgba(180,255,180,0.9)';
                         scrollFeed();
@@ -2140,7 +2199,7 @@
                         // Compat: nao deveria mais ser emitido, mas se vier, sobrescreve.
                         const seg = rtSegments.get(payload.id);
                         if (!seg) return;
-                        seg.assistantText.textContent = payload.response || '';
+                        seg.assistantText.innerHTML = formatOpenAIResponse(payload.response || '');
                         seg.assistantBadge.textContent = '🤖 resposta';
                         seg.assistantBadge.style.color = 'rgba(180,255,180,0.9)';
                         return;
@@ -2548,8 +2607,8 @@
                 }
             });
 
-            window.electronAPI.onIaResponse((response) => {
-                console.log('IA respondeu:', response);
+            window.electronAPI.onIaResponse((response, usedKnowledge) => {
+                console.log('IA respondeu:', response, '| base de conhecimento:', !!usedKnowledge);
                 if (!response) {
                     document.getElementById('robot').style.display = 'none';
                     console.error('Resposta é undefined ou vazia');
@@ -2574,6 +2633,14 @@
                     newResponse.innerHTML = formattedResponse;
                 }
 
+                // Span pequeno indicando que a base de conhecimento foi consultada.
+                if (usedKnowledge) {
+                    const kbBadge = document.createElement('div');
+                    kbBadge.className = 'kb-used-badge';
+                    kbBadge.textContent = '• base de conhecimento usada';
+                    newResponse.insertBefore(kbBadge, newResponse.firstChild);
+                }
+
                 // Adiciona dentro do interaction-block da pergunta atual (se existir)
                 const lastBlock = transcriptionElement.querySelector('.interaction-block:last-child');
                 if (lastBlock) {
@@ -2590,8 +2657,8 @@
 
             });
 
-            window.electronAPI.onOpenAIResponse((response) => {
-                console.log('OpenAI respondeu:', response);
+            window.electronAPI.onOpenAIResponse((response, usedKnowledge) => {
+                console.log('OpenAI respondeu:', response, '| base de conhecimento:', !!usedKnowledge);
                 if (!response) {
                     document.getElementById('robot').style.display = 'none';
                     console.error('Resposta da OpenAI é undefined ou vazia');
@@ -2605,9 +2672,16 @@
                 const transcriptionElement = document.getElementById('transcription');
                 const newResponse = document.createElement('div');
                 newResponse.classList.add('ia-response');
-                
+
                 const formattedResponse = formatOpenAIResponse(response);
                 newResponse.innerHTML = formattedResponse;
+
+                if (usedKnowledge) {
+                    const kbBadge = document.createElement('div');
+                    kbBadge.className = 'kb-used-badge';
+                    kbBadge.textContent = '• base de conhecimento usada';
+                    newResponse.insertBefore(kbBadge, newResponse.firstChild);
+                }
 
                 const lastBlockOAI = transcriptionElement.querySelector('.interaction-block:last-child');
                 if (lastBlockOAI) {
@@ -3533,6 +3607,35 @@
                 if (_animCont) _obs.observe(_animCont, { attributes: true, attributeFilter: ['style'] });
             }
 
+            // === Barra de volume (mic/sys) — feedback visual de captação de áudio ===
+            if (window.electronAPI.onTranslationLevel) {
+                const _volBox = document.getElementById('ta-volume');
+                const _volMic = document.getElementById('ta-vol-mic');
+                const _volSys = document.getElementById('ta-vol-sys');
+                const _SIL = 300;       // limiar de silêncio (mesmo do vadEngine)
+                const _FULL = 2500;     // rms que enche a barra
+                window.electronAPI.onTranslationLevel(({ source, rms }) => {
+                    if (_volBox && _volBox.style.display !== 'block') _volBox.style.display = 'block';
+                    const el = source === 'mic' ? _volMic : _volSys;
+                    if (!el) return;
+                    el.style.width = Math.max(0, Math.min(100, (rms / _FULL) * 100)) + '%';
+                    el.classList.toggle('active', rms > _SIL);
+                });
+                if (window.electronAPI.onTranslationStatus) {
+                    window.electronAPI.onTranslationStatus((status) => {
+                        if (status === 'idle' && _volBox) _volBox.style.display = 'none';
+                    });
+                }
+            }
+
+            // === Loading "processando" — robôzinho pulando (robot.gif) ===
+            if (window.electronAPI.onTranslationLoading) {
+                const _taLoadBox = document.getElementById('ta-loading');
+                window.electronAPI.onTranslationLoading((loading) => {
+                    if (_taLoadBox) _taLoadBox.style.display = loading ? 'block' : 'none';
+                });
+            }
+
             const _taMeta = (text) => {
                 const d = document.createElement('div');
                 d.className = 'ta-meta';
@@ -3558,7 +3661,9 @@
                     if (data.transcript && data.transcript.trim()) {
                         const orig = document.createElement('div');
                         orig.className = 'ta-original';
-                        orig.textContent = data.transcript;
+                        // mic (você) vs sys (entrevistador) — rótulo pra você saber quem falou
+                        const who = data.mode === 'candidate' ? '👤 Você: ' : '🎧 Entrevistador: ';
+                        orig.textContent = who + data.transcript;
                         block.appendChild(orig);
                     }
                     if (data.response && data.response.trim()) {
