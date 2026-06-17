@@ -1313,6 +1313,16 @@
         #ta-volume .ta-vol-fill { width: 0%; height: 100%; background: #4a4a4a; border-radius: 3px; transition: width 80ms linear, background 120ms; }
         #ta-volume .ta-vol-fill.active { background: #00e676; }
 
+        /* Palavras-chave (negrito) em destaque: maiores + cor de realce. Vale pro
+           Realtime (.rt-assistant-text) e pro Tradutor (.ia-response) — pra bater o
+           olho nos termos que o recrutador quer ouvir. */
+        .rt-assistant-text strong, .ia-response strong {
+            font-size: 1.18em;
+            font-weight: 700;
+            color: #7CFFB0;
+            letter-spacing: 0.2px;
+        }
+
         /* Loading "processando" — robôzinho pulando (robot.gif), pequeno, embaixo das barras */
         #ta-loading {
             display: none;
@@ -2096,6 +2106,7 @@
                 assistantBadge.textContent = '🤖 pensando…';
 
                 const assistantText = document.createElement('div');
+                assistantText.className = 'rt-assistant-text';
                 assistantText.style.cssText = 'font-size:13px;white-space:pre-wrap;line-height:1.55;';
                 assistantText.textContent = '';
 
@@ -2168,7 +2179,7 @@
                     case 'segment_response': {
                         // Resposta unica e final
                         const seg = rtSegments.get(payload.id) || ensureSegmentBubbles(payload.id, payload.iteration);
-                        seg.assistantText.textContent = payload.response || '';
+                        seg.assistantText.innerHTML = formatOpenAIResponse(payload.response || '');
                         seg.assistantBadge.textContent = '🤖 resposta';
                         seg.assistantBadge.style.color = 'rgba(180,255,180,0.9)';
                         scrollFeed();
@@ -2179,7 +2190,7 @@
                         // Compat: nao deveria mais ser emitido, mas se vier, sobrescreve.
                         const seg = rtSegments.get(payload.id);
                         if (!seg) return;
-                        seg.assistantText.textContent = payload.response || '';
+                        seg.assistantText.innerHTML = formatOpenAIResponse(payload.response || '');
                         seg.assistantBadge.textContent = '🤖 resposta';
                         seg.assistantBadge.style.color = 'rgba(180,255,180,0.9)';
                         return;

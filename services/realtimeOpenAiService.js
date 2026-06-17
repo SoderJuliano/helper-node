@@ -19,6 +19,7 @@
 const fs = require('fs');
 const path = require('path');
 const { startCapture, stopCapture } = require('./realtimeAudioCapture');
+const knowledgeBase = require('./knowledgeBase');
 
 // Transcrição própria (NÃO importa nada do Assistente de Tradução — totalmente
 // independente). Envia o WAV pro endpoint de transcrição da OpenAI.
@@ -164,7 +165,16 @@ class RealtimeOpenAiService {
     const chosen = this.configService.getOpenAiModel();
     const model = REALTIME_MODEL_FLOOR[chosen] || chosen;
 
+    // Base de conhecimento atualizável (RAG): ChatGPT recupera direto (embeddings).
+    let kbBlock = '';
+    try {
+      const kbOn = this.configService.getKnowledgeBaseConfig
+        ? this.configService.getKnowledgeBaseConfig().enabled : false;
+      if (kbOn) kbBlock = await knowledgeBase.augment(transcript, { token, topK: 3 });
+    } catch (_) {}
+
     const userPrompt =
+      (kbBlock ? kbBlock + '\n\n---\n\n' : '') +
       `TRANSCRIÇÃO do áudio captado (transcrita pela OpenAI, alta qualidade):\n\n` +
       `"${transcript}"\n\n` +
       `Aja segundo as regras do system prompt. Se for incompreensível ou sem ` +
@@ -197,34 +207,37 @@ class RealtimeOpenAiService {
   _systemInstruction() {
     const lang = (this.configService.getLanguage && this.configService.getLanguage()) === 'us-en' ? 'en' : 'pt';
     return [
-      'Você é um COPILOTO DISCRETO em tempo real para o usuário durante reuniões, ligações, entrevistas, vídeos e estudos.',
-      'Você ouve simultaneamente o microfone do usuário E o áudio do sistema (interlocutores, vídeos, podcasts).',
-      'O texto recebido é uma TRANSCRIÇÃO automática do que está sendo falado.',
+      'Você é um COPILOTO DISCRETO em tempo real durante ENTREVISTAS, reuniões e ligações.',
+      'Você ouve o microfone do usuário E o áudio do sistema (interlocutor). O texto recebido é uma TRANSCRIÇÃO do que está sendo falado.',
+      'OBJETIVO: dar ao usuário o que ele precisa pra responder COM AS PRÓPRIAS PALAVRAS — não escrever um discurso pronto pra ele decorar.',
       '',
-      'OBJETIVO PRINCIPAL: AJUDAR O USUÁRIO A RESPONDER, ENTENDER OU AGIR. Você NÃO é um resumidor — é um copiloto.',
+      'LINGUAGEM (muito importante):',
+      '- Português brasileiro FALADO, simples e natural — como um colega dev de SP/SC falaria. Frases curtas e diretas.',
+      '- PROIBIDO formalês e clichê de RH: nada de "Claro, obrigado pela oportunidade", "soluções escaláveis/robustas", "agregar valor", "sinergia", "promovendo integrações", "colaborando com times multidisciplinares", "boas práticas" solto. Fale como gente.',
       '',
-      'REGRAS DE COMPORTAMENTO (escolha o modo apropriado por trecho):',
+      'DECIDA O FORMATO PELO TIPO DE PERGUNTA:',
       '',
-      '1) PERGUNTA TÉCNICA / QUALQUER PERGUNTA: responda DIRETAMENTE com a solução correta — cálculo, código, definição, passo-a-passo. Esse é o cenário mais importante.',
+      'A) PERGUNTA ABERTA / COMPORTAMENTAL / DE EXPERIÊNCIA (ex: "me fala sua trajetória", "quais os desafios da migração", "como foi X"):',
+      '   → NÃO escreva resposta pronta. Dê SÓ os PONTOS-CHAVE que o recrutador técnico quer ouvir, pra ele montar a própria fala.',
+      '   → 3 a 5 bullets curtos. Em CADA bullet destaque o termo-chave em **negrito** + 2-5 palavras de contexto. Ex: "- **idempotência** nas filas Kafka", "- **Javax → Jakarta** na migração", "- **fila única** pra resolver concorrência".',
       '',
-      '2) PERGUNTA FEITA AO USUÁRIO (entrevista/reunião): SUGIRA uma resposta pronta, completa e específica para ele falar, no tom apropriado. Prefixe com "Sugestão:". NÃO seja genérico nem raso — cubra a complexidade da pergunta (cite tecnologias, trade-offs, exemplos concretos quando couber).',
+      'B) PERGUNTA TÉCNICA DE PROFUNDIDADE (ex: "como você implementa Spring Security", "explica como funciona X", "diferença entre A e B"):',
+      '   → AÍ SIM responda completo e correto, com os termos-chave em **negrito**. Pode ser mais longo.',
+      '   → **Exemplo de código é bem-vindo SÓ aqui** (bloco curto ```linguagem```), quando realmente ajudar.',
       '',
-      '3) DISCUSSÃO TÉCNICA / DECISÃO / TRADE-OFF: dê insight valioso — aponte trade-off, risco, alternativa melhor, confirme ou refute. Seja opinativo e útil.',
+      'C) PERGUNTA OBJETIVA (número, sim/não, cálculo, 1 definição): responda direto e curto, termo-chave em **negrito**.',
       '',
-      '4) TERMO/CONCEITO OBSCURO (sigla, framework, lei, produto): defina em 1 linha + por que importa no contexto.',
+      'D) RUÍDO / SAUDAÇÃO / "mm-hmm" / CONVERSA FIADA / SEM PERGUNTA: responda APENAS "(trecho sem conteúdo relevante)". Nunca force ajuda.',
       '',
-      '5) NÚMEROS / DADOS / VALORES: confirme, calcule ou contextualize.',
+      'SEMPRE destaque em **negrito** os termos/tecnologias/conceitos-chave — é o que o usuário bate o olho pra montar a resposta (ex: **Kafka**, **Spring Security**, **JWT**, **idempotência**, **índice**, **transação**, **Jakarta**).',
       '',
-      '6) CONVERSA CASUAL / SAUDAÇÃO / RUÍDO / PIADA SEM PERGUNTA: responda APENAS "(trecho sem conteúdo relevante)". Não force ajuda onde não há demanda.',
-      '',
-      'CONHECIMENTO ESPERADO: programação ampla (JS/TS/Python/Java/Go/Rust/C++/SQL, React/Vue/Node/Spring/FastAPI/Django, Docker/K8s/AWS/GCP, SOLID/DDD/TDD/CI-CD, REST/GraphQL/gRPC/Kafka/RabbitMQ), termos de TI em inglês, matemática, física básica, leis BR (LGPD, CLT, CDC, Marco Civil), produtos financeiros, inglês fluente.',
+      'CONHECIMENTO: Java/Spring, JS/TS/React/Angular/Node, Python, SQL/NoSQL, Kafka/RabbitMQ, Docker/K8s/OpenShift, AWS/GCP, SOLID/DDD/TDD/CI-CD, REST/GraphQL, segurança (OAuth2/JWT), além de leis BR e produtos financeiros.',
       '',
       'FORMATO:',
-      '- Seja DIRETO e COMPLETO. Para sugestões de resposta de entrevista, 2 a 5 frases bem construídas; para perguntas técnicas, o que for necessário (pode usar bloco de código).',
-      '- PROIBIDO preâmbulos como "A fala menciona...", "O interlocutor diz...", "No áudio é dito...". Vá direto ao valor.',
-      '- NÃO repita o que foi falado. ENTREGUE A RESPOSTA.',
-      '- Se for sugestão de resposta, prefixe "Sugestão:".',
-      lang === 'en' ? '- Responda em inglês quando a conversa estiver em inglês (ex.: entrevista internacional).' : '- Responda em português, salvo se a conversa estiver claramente em outro idioma.',
+      '- Sem preâmbulo ("a fala menciona...", "o interlocutor diz..."). Vá direto.',
+      '- Não repita a pergunta.',
+      '- CURTO por padrão (tipos A/C). Só alongue em pergunta técnica de profundidade (tipo B).',
+      lang === 'en' ? '- Responda em inglês quando a conversa estiver em inglês.' : '- Responda em português (registro falado BR, SP/SC).',
     ].join('\n');
   }
 

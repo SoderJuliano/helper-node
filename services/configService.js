@@ -44,6 +44,43 @@ const PROMPT_EN = [
   "- For fractions write 'a/b' in plain text.",
 ].join("\n");
 
+// Variantes LITE (edição 100% online / ChatGPT): enxutas, sem a moldura híbrida
+// (decisão de ferramenta local). Mantêm a palavra 'LaTeX' p/ a migração não tratar
+// como legado. Selecionadas por getDefaultPromptInstruction quando edição = lite.
+const PROMPT_PT_LITE = [
+  "Você é um copiloto técnico ONLINE (ChatGPT) que ASSISTE o usuário em tempo real.",
+  "",
+  "REGRAS DE RESPOSTA:",
+  "1. CONTA / EXPRESSÃO MATEMÁTICA → resolva passo a passo; resultado final em **negrito**.",
+  "2. PERGUNTA OBJETIVA (múltipla escolha, V/F, definição) → alternativa correta + 1 linha de justificativa.",
+  "3. CONCEITO TÉCNICO → explique direto + exemplo curto.",
+  "4. PEDIDO DE CÓDIGO → entregue código funcional, sem encher de comentário.",
+  "5. Entrada com ruído (imagem/áudio) → reconstrua a intenção e responda mesmo assim. Nunca diga 'não consegui ler'.",
+  "",
+  "FORMATO:",
+  "- Texto explicativo: máximo 65 palavras. Código/fórmulas/contas: sem limite.",
+  "- PT-BR, direto, sem floreio ('Claro!', 'Posso ajudar', 'Espero ter ajudado').",
+  "- **Negrito** no resultado final e nos termos-chave.",
+  "- NUNCA use LaTeX nem barras invertidas. Use UNICODE: × ÷ ² ³ √ π ≈ ≤ ≥ → ∞. Frações 'a/b' em texto.",
+].join("\n");
+
+const PROMPT_EN_LITE = [
+  "You are an ONLINE technical copilot (ChatGPT) that ASSISTS the user in real time.",
+  "",
+  "RESPONSE RULES:",
+  "1. MATH EXPRESSION / CALCULATION → solve step by step; final result in **bold**.",
+  "2. OBJECTIVE QUESTION (multiple choice, true/false, definition) → correct option + 1-line justification.",
+  "3. TECHNICAL CONCEPT → explain directly + short example.",
+  "4. CODE REQUEST → deliver working code, no fluff comments.",
+  "5. Noisy input (image/audio) → reconstruct intent and answer anyway. Never say 'I cannot read'.",
+  "",
+  "FORMAT:",
+  "- Explanatory text: max 65 words. Code/formulas/calculations: no limit.",
+  "- Direct, no fluff ('Sure!', 'Hope this helps').",
+  "- **Bold** for the final result and key terms.",
+  "- NEVER use LaTeX or backslashes. Use UNICODE: × ÷ ² ³ √ π ≈ ≤ ≥ → ∞. Fractions 'a/b' in plain text.",
+].join("\n");
+
 const defaultConfig = {
   promptInstruction: PROMPT_PT,
   debugMode: false,
@@ -91,6 +128,12 @@ const defaultConfig = {
     // Microfone escolhido pelo usuário (nome do source pactl). Vazio = automático.
     micDevice: "",
   },
+  // Base de conhecimento atualizável (mini-RAG). O texto fica em arquivo separado
+  // (<userData>/knowledge/), aqui só os flags. Compartilhada por Assistente + Tradutor.
+  knowledgeBase: {
+    enabled: true,
+    aiRewrite: true, // IA reorganiza o texto antes de salvar (default ON)
+  },
 };
 
 let configPath;
@@ -104,6 +147,9 @@ function getConfigPath() {
 }
 
 function getDefaultPromptInstruction(lang) {
+  let lite = false;
+  try { lite = require("./edition").isLite(); } catch (_) {}
+  if (lite) return lang === "pt-br" ? PROMPT_PT_LITE : PROMPT_EN_LITE;
   return lang === "pt-br" ? PROMPT_PT : PROMPT_EN;
 }
 
@@ -471,6 +517,21 @@ function setBackendApiKey(key) {
   currentConfig = null;
 }
 
+function getKnowledgeBaseConfig() {
+  if (!currentConfig) currentConfig = loadConfig();
+  return { ...defaultConfig.knowledgeBase, ...(currentConfig.knowledgeBase || {}) };
+}
+
+function setKnowledgeBaseConfig(partial) {
+  if (!currentConfig) currentConfig = loadConfig();
+  currentConfig.knowledgeBase = {
+    ...(currentConfig.knowledgeBase || defaultConfig.knowledgeBase),
+    ...(partial || {}),
+  };
+  saveConfig(currentConfig);
+  currentConfig = null;
+}
+
 function getTranslationAssistantConfig() {
   if (!currentConfig) currentConfig = loadConfig();
   return { ...defaultConfig.translationAssistant, ...(currentConfig.translationAssistant || {}) };
@@ -547,6 +608,8 @@ module.exports = {
   setBackendApiKey,
   getTranslationAssistantConfig,
   setTranslationAssistantConfig,
+  getKnowledgeBaseConfig,
+  setKnowledgeBaseConfig,
   getConfig,
   setConfigValue,
   getIp,

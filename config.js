@@ -82,12 +82,26 @@ function applyLiteUi() {
     const si = aiModelSelect.closest('.setting-item');
     if (si) si.style.display = 'none';
   } catch (_) {}
-  ['backend-url', 'backend-api-key-container', 'ollama-local-model-container', 'ollama-local-info'].forEach((id) => {
+  ['backend-api-key-container', 'ollama-local-model-container', 'ollama-local-info'].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
   });
   if (openIaTokenContainer) openIaTokenContainer.style.display = 'flex';
   if (openAiModelContainer) openAiModelContainer.style.display = 'flex';
+}
+
+// Edição do app (full/lite), preenchida no load. Controla a visibilidade da URL do backend.
+let _appEdition = 'full';
+
+// URL do backend só aparece quando faz sentido: Modo Debug ON, OU usando o backend
+// remoto (llama / llama-stream) na edição Full. Em ChatGPT/Lite/Ollama local → escondida.
+function applyBackendUrlVisibility() {
+  const el = document.getElementById('backend-url');
+  if (!el) return;
+  const debugOn = !!(debugModeToggle && debugModeToggle.checked);
+  const m = aiModelSelect ? aiModelSelect.value : '';
+  const isRemoteBackend = (m === 'llama' || m === 'llama-stream');
+  el.style.display = (debugOn || (isRemoteBackend && _appEdition === 'full')) ? '' : 'none';
 }
 
 // Mutex: helperTools desativa modo integrado + assistente em tempo real.
@@ -122,6 +136,15 @@ function applyRealtimeAssistantExclusivity() {
   updateDebugModeStatus(false);
   updatePrintModeStatus(false);
   updateOsIntegrationStatus(false);
+
+  // Assistente em tempo real e Tradutor são EXCLUSIVOS (ambos capturam áudio e
+  // respondem) — ligar o assistente desliga o tradutor.
+  const _ta = document.getElementById('translation-enabled');
+  if (_ta && _ta.checked) {
+    _ta.checked = false;
+    if (typeof updateTranslationEnabledStatus === 'function') updateTranslationEnabledStatus(false);
+    ipcRenderer.send('set-translation-assistant-config', { enabled: false });
+  }
 }
 
 function disableRealtimeIfOtherEnabled(toggle) {
@@ -298,8 +321,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Edição Lite: ajusta a UI (100% online) depois que tudo carregou.
   try {
     const _edition = await ipcRenderer.invoke('get-edition');
+    _appEdition = _edition || 'full';
     if (_edition === 'lite') applyLiteUi();
   } catch (_) {}
+  applyBackendUrlVisibility();
 });
 
 // Handle debug toggle live update
@@ -307,6 +332,7 @@ debugModeToggle.addEventListener("change", () => {
   disableRealtimeIfOtherEnabled(debugModeToggle);
   disableHelperToolsIfOtherEnabled(debugModeToggle);
   updateDebugModeStatus(debugModeToggle.checked);
+  applyBackendUrlVisibility();
 });
 
 // Handle print mode toggle live update
@@ -378,6 +404,7 @@ aiModelSelect.addEventListener('change', () => {
     applyWorkspaceAccessVisibility(v);
     if (v === 'ollamaLocal') applyOllamaLocalExclusivity();
     else releaseOllamaLocalExclusivity();
+    applyBackendUrlVisibility();
 });
 
 if (ollamaLocalModelSelect) {
@@ -484,6 +511,11 @@ function updateTranslationEnabledStatus(v) {
 if (translationEnabledToggle) {
   translationEnabledToggle.addEventListener('change', () => {
     updateTranslationEnabledStatus(translationEnabledToggle.checked);
+    // Exclusivo com o Assistente em tempo real — ligar o tradutor desliga o assistente.
+    if (translationEnabledToggle.checked && realtimeAssistantToggle && realtimeAssistantToggle.checked) {
+      realtimeAssistantToggle.checked = false;
+      updateRealtimeAssistantStatus(false);
+    }
     ipcRenderer.send('set-translation-assistant-config', { enabled: translationEnabledToggle.checked });
   });
 }
@@ -565,9 +597,86 @@ if (translationMicRefresh) {
     if (translationUsernameInput) translationUsernameInput.value = ta.userName || '';
     if (translationBackgroundInput) translationBackgroundInput.value = ta.userBackground || '';
     if (translationTargetLangSelect) translationTargetLangSelect.value = ta.targetLanguage || 'pt-br';
-    if (translationTestModeInput) translationTestModeInput.checked = !!ta.testMode;
+    // Modo de Teste é só por sessão — sempre começa desmarcado ao abrir o config.
+    if (translationTestModeInput) translationTestModeInput.checked = false;
     await populateMicDevices(ta.micDevice || '');
   } catch (e) {
     console.warn('[TranslationAssistant] load config failed:', e.message);
   }
 })();
+
+// === Base de Conhecimento (RAG) ===
+const kbEnabledToggle = document.getElementById('kb-enabled');
+const kbEnabledStatus = document.getElementById('kb-enabled-status');
+const kbRewriteToggle = document.getElementById('kb-airewrite');
+const kbRewriteStatus = document.getElementById('kb-airewrite-status');
+const kbRewriteWarn = document.getElementById('kb-airewrite-warn');
+const kbText = document.getElementById('kb-text');
+const kbSaveBtn = document.getElementById('kb-save-btn');
+const kbStatus = document.getElementById('kb-status');
+
+function updateKbEnabledStatus(v) { if (kbEnabledStatus) kbEnabledStatus.textContent = v ? 'ON' : 'OFF'; }
+function updateKbRewriteStatus(v) {
+  if (kbRewriteStatus) kbRewriteStatus.textContent = v ? 'ON' : 'OFF';
+  if (kbRewriteWarn) kbRewriteWarn.style.display = v ? 'block' : 'none';
+}
+
+if (kbEnabledToggle) kbEnabledToggle.addEventListener('change', () => updateKbEnabledStatus(kbEnabledToggle.checked));
+if (kbRewriteToggle) kbRewriteToggle.addEventListener('change', () => updateKbRewriteStatus(kbRewriteToggle.checked));
+
+if (kbSaveBtn) {
+  kbSaveBtn.addEventListener('click', async () => {
+    const aiRewrite = kbRewriteToggle ? kbRewriteToggle.checked : true;
+    if (kbStatus) { kbStatus.style.color = '#888'; kbStatus.textContent = aiRewrite ? 'Reorganizando com IA e salvando…' : 'Salvando…'; }
+    kbSaveBtn.disabled = true;
+    try {
+      const res = await ipcRenderer.invoke('kb-save', {
+        text: kbText ? kbText.value : '',
+        aiRewrite,
+        enabled: kbEnabledToggle ? kbEnabledToggle.checked : true,
+      });
+      if (res && res.ok) {
+        if (res.rewritten && kbText && typeof res.text === 'string') kbText.value = res.text;
+        if (kbStatus) { kbStatus.style.color = '#9ef0a8'; kbStatus.textContent = `Salvo — ${res.chunks} trecho(s)` + (res.rewritten ? ' (reorganizado pela IA)' : ''); }
+      } else if (kbStatus) {
+        kbStatus.style.color = '#ff6b6b'; kbStatus.textContent = 'Erro: ' + ((res && res.error) || 'falha ao salvar');
+      }
+    } catch (e) {
+      if (kbStatus) { kbStatus.style.color = '#ff6b6b'; kbStatus.textContent = 'Erro: ' + e.message; }
+    } finally {
+      kbSaveBtn.disabled = false;
+    }
+  });
+}
+
+(async () => {
+  try {
+    const kb = await ipcRenderer.invoke('kb-get');
+    if (!kb) return;
+    if (kbEnabledToggle) { kbEnabledToggle.checked = kb.enabled !== false; updateKbEnabledStatus(kbEnabledToggle.checked); }
+    if (kbRewriteToggle) { kbRewriteToggle.checked = kb.aiRewrite !== false; updateKbRewriteStatus(kbRewriteToggle.checked); }
+    if (kbText) kbText.value = kb.source || '';
+    if (kbStatus && kb.chunks != null) kbStatus.textContent = kb.chunks ? `${kb.chunks} trecho(s) indexado(s)` : 'vazio';
+  } catch (e) { console.warn('[kb] load failed:', e.message); }
+})();
+
+// === "Instrução para IA": read-only por padrão + cadeado (área sensível) ===
+const promptEditToggle = document.getElementById('prompt-edit-toggle');
+const promptEditWarn = document.getElementById('prompt-edit-warn');
+if (promptEditToggle && instructionTextarea) {
+  promptEditToggle.addEventListener('click', () => {
+    const locked = instructionTextarea.hasAttribute('readonly');
+    if (locked) {
+      instructionTextarea.removeAttribute('readonly');
+      instructionTextarea.focus();
+      promptEditToggle.textContent = 'bloquear';
+      promptEditToggle.classList.add('editing');
+      if (promptEditWarn) promptEditWarn.style.display = 'block';
+    } else {
+      instructionTextarea.setAttribute('readonly', '');
+      promptEditToggle.textContent = 'editar';
+      promptEditToggle.classList.remove('editing');
+      if (promptEditWarn) promptEditWarn.style.display = 'none';
+    }
+  });
+}

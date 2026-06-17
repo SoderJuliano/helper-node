@@ -62,6 +62,7 @@ const RealtimeOpenAiService = require("./services/realtimeOpenAiService.js");
 const ipcService = require("./services/ipcService.js");
 const configService = require("./services/configService.js");
 const edition = require("./services/edition.js");
+const knowledgeBase = require("./services/knowledgeBase.js");
 const historyService = require("./services/historyService.js");
 const helperTools = require("./services/helperTools");
 const workspace = require("./services/workspace");
@@ -374,24 +375,53 @@ const VoskStreamService = require("./services/voskStreamService.js");
 // local, mas a RESPOSTA vai pro provider SELECIONADO (backend/Ollama) — nunca
 // OpenAI. Respeita "sem fallback automático entre providers". Só é usado na Full
 // com backend (llama/llama-stream) ou ollamaLocal selecionado.
+// Decide, via chamada EXTRA ao llama3 (thread separada, sem o contexto), se a
+// pergunta precisa da base de conhecimento atualizada. Evita poluir/confundir
+// modelos pequenos com contexto irrelevante. Só pro caminho Ollama/backend.
+async function ollamaNeedsKnowledge(query) {
+  try {
+    const r = await BackendService.responder(
+      `Pergunta do candidato/interlocutor: "${String(query).slice(0, 400)}"\n\n` +
+      `Responda APENAS com SIM ou NAO: essa fala precisa de informação ATUALIZADA ` +
+      `sobre tecnologias, versões de libs/frameworks ou mercado recente pra ser bem respondida?`,
+      { sessionId: "kb-classifier", instruction: "Você é um classificador binário. Responda SOMENTE com SIM ou NAO, nada mais." }
+    );
+    return /\bsim\b/i.test(r || "");
+  } catch (_) { return false; }
+}
+
+// Bloco da base de conhecimento pro caminho Ollama (keyword retrieval + classificador).
+async function knowledgeBlockForOllama(query) {
+  try {
+    if (!configService.getKnowledgeBaseConfig().enabled) return "";
+    if (!(await ollamaNeedsKnowledge(query))) return "";
+    return await knowledgeBase.augment(query, { topK: 3 }); // sem token → keyword
+  } catch (_) { return ""; }
+}
+
 async function realtimeProviderResponder(transcript) {
   const aiModel = configService.getAiModel();
+  const kb = await knowledgeBlockForOllama(transcript);
+  const text = kb ? `${kb}\n\n---\n\nFALA: ${transcript}` : transcript;
   if (aiModel === "ollamaLocal") {
     const OllamaLocalService = require("./services/ollamaLocalService");
-    return await OllamaLocalService.responder(transcript);
+    return await OllamaLocalService.responder(text);
   }
   // backend remoto (llama / llama-stream)
-  return await BackendService.responder(transcript, {
+  return await BackendService.responder(text, {
     sessionId: "realtime-assistant",
     instruction: REALTIME_COPILOT_INSTRUCTION,
   });
 }
 
 const REALTIME_COPILOT_INSTRUCTION = [
-  "Você é um COPILOTO DISCRETO em tempo real durante reuniões, ligações, entrevistas e estudos.",
-  "Recebe uma TRANSCRIÇÃO do que está sendo falado. AJUDE o usuário a responder, entender ou agir — não resuma.",
-  "Pergunta técnica → responda direto (cálculo/código/definição). Pergunta feita ao usuário → 'Sugestão:' com resposta pronta, específica e completa. Termo obscuro → defina em 1 linha. Conversa casual/ruído → responda só '(trecho sem conteúdo relevante)'.",
-  "Seja direto, sem preâmbulos ('a fala menciona...'). Não repita o que foi dito. Entregue o valor.",
+  "Você é um COPILOTO DISCRETO em tempo real durante entrevistas, reuniões e ligações.",
+  "Recebe uma TRANSCRIÇÃO do que está sendo falado. Dê ao usuário o que ele precisa pra responder COM AS PRÓPRIAS PALAVRAS.",
+  "LINGUAGEM: português falado BR, simples e natural (padrão SP/SC). PROIBIDO formalês e clichê de RH ('soluções escaláveis', 'agregar valor', 'sinergia').",
+  "Pergunta aberta/comportamental ('me fala os desafios') → NÃO dê resposta pronta; dê 3-5 bullets curtos com os PONTOS-CHAVE em **negrito** pro usuário montar a fala.",
+  "Pergunta técnica de profundidade ('como você implementa X') → resposta completa, termos-chave em **negrito**, exemplo de código só aqui se ajudar.",
+  "Pergunta objetiva → curto e direto. Conversa casual/ruído/sem pergunta → responda só '(trecho sem conteúdo relevante)'.",
+  "SEMPRE destaque os termos/tecnologias-chave em **negrito**. Sem preâmbulo, não repita a pergunta.",
 ].join("\n");
 
 const realtimeAssistantService = new RealtimeAssistantService({
@@ -3593,6 +3623,32 @@ ipcMain.on("set-language", (event, language) => {
 });
 
 // === Assistente de Tradução ===
+// ===== Base de Conhecimento (mini-RAG) =====
+ipcMain.handle("kb-get", () => {
+  const cfg = configService.getKnowledgeBaseConfig();
+  return {
+    source: knowledgeBase.getSource(),
+    enabled: cfg.enabled,
+    aiRewrite: cfg.aiRewrite,
+    chunks: knowledgeBase.chunkCount(),
+  };
+});
+
+ipcMain.handle("kb-save", async (event, payload) => {
+  const { text = "", aiRewrite = true, enabled = true } = payload || {};
+  configService.setKnowledgeBaseConfig({ aiRewrite: !!aiRewrite, enabled: !!enabled });
+  // ChatGPT/Lite → token (embeddings + reescrita nano). Ollama/Full → backend (keyword + reescrita Ollama).
+  const useOpenAI = getEffectiveAiModel() === "openIa";
+  const token = useOpenAI ? configService.getOpenIaToken() : "";
+  const backendResponder = useOpenAI ? null : (t, opts) => BackendService.responder(t, opts);
+  try {
+    const res = await knowledgeBase.save(text, { aiRewrite: !!aiRewrite, token, backendResponder });
+    return { ok: true, chunks: res.chunks, text: res.text, rewritten: res.rewritten };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
 ipcMain.handle("get-translation-assistant-config", () => {
   return configService.getTranslationAssistantConfig();
 });
@@ -5095,6 +5151,8 @@ ipcMain.handle('delete-session', async (event, sessionId) => {
 
 app.whenReady().then(async () => {
   configService.initialize();
+  // Modo de Teste do Tradutor é só por sessão — nunca persiste entre aberturas.
+  try { configService.setTranslationAssistantConfig({ testMode: false }); } catch (_) {}
   helperTools.initialize(configService.getHelperToolsConfig());
   // Registra confirmer para tools mutantes (systemPowerAction etc.)
   try {
