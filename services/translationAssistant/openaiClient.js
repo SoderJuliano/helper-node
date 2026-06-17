@@ -110,8 +110,18 @@ RESPOSTA: <resposta em inglês — texto puro, OU texto + código apenas se pedi
     }
     throw new Error(data.error?.message || 'GPT failed');
   }
+  const content = data.choices?.[0]?.message?.content || '';
+  // Filtro anti-filler: em fragmentos/ruído ([Música], frases cortadas) o modelo às
+  // vezes "quebra o personagem" e responde algo como "Por favor, forneça a fala
+  // transcrita..." ou "Entendido. Posso ajudar com..." em vez do formato
+  // TRADUÇÃO/RESPOSTA. Quem decide quando responder é o usuário — então descartamos
+  // qualquer saída fora do formato (sem marcador RESPOSTA:) pra não poluir o chat.
+  if (!/\bresposta\s*:/i.test(content)) {
+    console.log('[TranslationAssistant] resposta fora do formato (filler) — descartada');
+    return null;
+  }
   console.log(`[TranslationAssistant] modelo usado: ${model} (codeRequest=${isCodeRequest})`);
-  return data.choices[0].message.content;
+  return content;
 }
 
 /**

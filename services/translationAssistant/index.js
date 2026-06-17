@@ -94,7 +94,9 @@ async function start(cfg) {
           config.apiKey
         );
 
-        if (resultCallback) {
+        // response === null → saída de filler já descartada no openaiClient. Não
+        // renderiza nada: o usuário decide quando responder, sem poluir o chat.
+        if (response && resultCallback) {
           resultCallback({ transcript, response, mode: 'interviewer' });
         }
       } catch (err) {

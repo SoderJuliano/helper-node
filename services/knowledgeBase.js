@@ -216,7 +216,11 @@ function buildContextBlock(chunks) {
     "  ('foi lançado', 'a versão atual é'), NUNCA no futuro ('será lançado').",
     "- A 'última/atual versão' é a MAIOR/MAIS NOVA que aparecer na base, não a do seu treino.",
     "- Use SOMENTE se for relevante à pergunta. Se NÃO for relevante, IGNORE e responda",
-    "  normalmente. NUNCA comente nem cite a existência desta base na resposta.",
+    "  normalmente.",
+    "- Responda como se VOCÊ soubesse o fato. É PROIBIDO mencionar esta base ou de onde",
+    "  veio a informação: nada de 'com base na sua base de conhecimento', 'segundo a base',",
+    "  'conforme os dados fornecidos', 'de acordo com as notas' ou equivalentes. Apenas",
+    "  afirme o fato direto (ex.: 'A versão mais recente do Java é o JDK 26...').",
     "",
     ...chunks.map((t, i) => `[${i + 1}] ${t}`),
   ].join("\n");
