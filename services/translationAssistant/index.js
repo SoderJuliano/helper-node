@@ -2,7 +2,9 @@
 // Fluxo: VAD (pw-record + RMS) detecta fim de fala → salva WAV → transcrição → tradução + sugestão → callback.
 
 const { startVAD, stopVAD } = require('./vadEngine');
-const { transcribeAudio, getTranslationAndSuggestion } = require('./openaiClient');
+const { transcribeAudio, getTranslationAndSuggestion, evaluateUserResponse } = require('./openaiClient');
+const configService = require('../configService');
+const answerBank = require('../answerBank');
 const fs = require('fs');
 
 let running = false;
@@ -11,6 +13,31 @@ let levelCallback = null;
 let loadingCallback = null;
 let inFlight = 0;
 let config = {};
+// Última pergunta do entrevistador (sys), pra parear com a SUA resposta (mic) e
+// alimentar o banco de respostas em background.
+let lastInterviewerQuestion = '';
+
+// Avalia a SUA resposta em background (sem travar a sessão) e, se a nota for boa,
+// guarda o par pergunta→resposta no banco. Silencioso: nada vai pra tela.
+async function scoreAndStore(question, answer) {
+  try {
+    const abCfg = configService.getAnswerBankConfig();
+    if (!abCfg.enabled || !question || !answer) return;
+    const evalText = await evaluateUserResponse(
+      question, answer,
+      { userName: config.userName, userBackground: config.userBackground },
+      config.apiKey
+    );
+    const m = String(evalText).match(/(\d)\s*\/\s*5/) || String(evalText).match(/⭐\s*(\d)/);
+    const score = m ? parseInt(m[1], 10) : 0;
+    await answerBank.record({
+      question, answer, score, lang: config.targetLanguage,
+      token: config.apiKey, minScore: abCfg.minScore,
+    });
+  } catch (e) {
+    console.warn('[TranslationAssistant] score/store (banco) falhou:', e.message);
+  }
+}
 
 /**
  * Registra o callback que recebe os resultados.
@@ -71,8 +98,14 @@ async function start(cfg) {
         // mas NÃO traduz/sugere — tradução é só pro entrevistador (design).
         if (source === 'mic') {
           const myText = await transcribeAudio(audioPath, config.apiKey);
-          if (myText && myText.trim().length >= 3 && resultCallback) {
-            resultCallback({ transcript: myText, response: '', mode: 'candidate' });
+          if (myText && myText.trim().length >= 3) {
+            if (resultCallback) resultCallback({ transcript: myText, response: '', mode: 'candidate' });
+            // Banco de respostas: pareia a SUA resposta com a última pergunta do
+            // entrevistador e avalia/guarda em background (fire-and-forget, não trava).
+            if (lastInterviewerQuestion) {
+              scoreAndStore(lastInterviewerQuestion, myText.trim());
+              lastInterviewerQuestion = '';
+            }
           }
           return;
         }
@@ -81,9 +114,13 @@ async function start(cfg) {
 
         // Ignora transcrições vazias ou ruído
         if (!transcript || transcript.trim().length < 3) return;
+        lastInterviewerQuestion = transcript.trim();
 
         console.log(`[TranslationAssistant] sys (entrevistador): ${transcript.substring(0, 80)}...`);
 
+        // id estável do turno: o streaming manda vários resultados com o MESMO id
+        // (texto acumulado) e a UI atualiza o bloco no lugar em vez de criar outro.
+        const turnId = `ta-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
         const response = await getTranslationAndSuggestion(
           transcript,
           {
@@ -91,13 +128,19 @@ async function start(cfg) {
             userBackground: config.userBackground,
             targetLanguage: config.targetLanguage,
           },
-          config.apiKey
+          config.apiKey,
+          {
+            // Streaming: emite o texto acumulado a cada pedaço (sensação "bate pronto").
+            onDelta: (partial) => {
+              if (resultCallback) resultCallback({ id: turnId, transcript, response: partial, mode: 'interviewer', streaming: true });
+            },
+          }
         );
 
-        // response === null → saída de filler já descartada no openaiClient. Não
-        // renderiza nada: o usuário decide quando responder, sem poluir o chat.
+        // response === null → filler já descartado no openaiClient (nada renderizado).
+        // Senão, manda o resultado FINAL (streaming:false) pra fechar o bloco.
         if (response && resultCallback) {
-          resultCallback({ transcript, response, mode: 'interviewer' });
+          resultCallback({ id: turnId, transcript, response, mode: 'interviewer', streaming: false });
         }
       } catch (err) {
         console.error('[TranslationAssistant] erro no processamento:', err.message);

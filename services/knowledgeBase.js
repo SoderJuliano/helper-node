@@ -164,7 +164,7 @@ function keywordRank(query, chunks) {
 //   Isso resgata trechos que a busca semântica perde por terminologia (ex.: a query
 //   diz "java" mas o trecho diz "JDK 26") — onde o keyword acerta.
 //   Sem embeddings → só keyword.
-async function retrieve(query, { token, topK = 5 } = {}) {
+async function retrieve(query, { token, topK = 5, queryEmbedding = null } = {}) {
   const idx = loadIndex();
   const chunks = idx.chunks || [];
   if (!chunks.length || !query) return [];
@@ -172,9 +172,11 @@ async function retrieve(query, { token, topK = 5 } = {}) {
   const kwRank = keywordRank(query, chunks);
 
   let embRank = [];
-  if (token && chunks[0].embedding) {
+  if (chunks[0].embedding && (queryEmbedding || token)) {
     try {
-      const [qe] = await embedOpenAI([query], token);
+      // Reusa o embedding já calculado (queryEmbedding) quando disponível — evita
+      // uma chamada de rede a mais quando KB e banco de respostas buscam a mesma query.
+      const qe = queryEmbedding || (await embedOpenAI([query], token))[0];
       embRank = chunks
         .map((c, i) => ({ i, s: cosine(qe, c.embedding) }))
         .filter((x) => x.s > 0.25)
@@ -226,6 +228,19 @@ function buildContextBlock(chunks) {
   ].join("\n");
 }
 
+// Embeda uma query (texto único). Devolve o vetor ou null em falha. Exposto pra que
+// o caller embede UMA vez e compartilhe entre KB e banco de respostas (0-latência).
+async function embed(query, token) {
+  if (!query || !token) return null;
+  try {
+    const [e] = await embedOpenAI([query], token);
+    return e || null;
+  } catch (e) {
+    console.warn("[knowledgeBase] embed falhou:", e.message);
+    return null;
+  }
+}
+
 /**
  * Atalho: recupera e já devolve o bloco pronto (ou '' se nada relevante).
  */
@@ -246,4 +261,5 @@ async function augment(query, opts = {}) {
 
 module.exports = {
   getSource, save, retrieve, augment, buildContextBlock, chunkCount, chunkText,
+  embed, cosine, baseDir,
 };

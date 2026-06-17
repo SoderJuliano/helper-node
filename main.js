@@ -478,22 +478,23 @@ function stopAllRealtime() {
 // Entrega resultados do Assistente de Tradução.
 // Em OS Integration: usa a janela DEDICADA (translation-overlay.html), persistente
 // no canto direito, sem auto-close. Não toca em osNotificationWindow (que é do Vosk).
-translationAssistant.onResult(({ transcript, response, mode }) => {
+translationAssistant.onResult(({ transcript, response, mode, id, streaming }) => {
   try {
+    // streaming===true → é um delta (texto parcial acumulado): só atualiza o bloco,
+    // sem piscar o status processing/mic_open a cada pedaço.
+    const isDelta = streaming === true;
     const cfg = configService.getConfig();
-    if (cfg.osIntegration) {
-      // Garante que o overlay existe (recria se foi fechado)
-      if (!translationOverlayWindow || translationOverlayWindow.isDestroyed()) {
-        createTranslationOverlay();
+    const send = (channel, data) => {
+      if (cfg.osIntegration) {
+        if (!translationOverlayWindow || translationOverlayWindow.isDestroyed()) createTranslationOverlay();
+        sendToTranslationOverlay(channel, data);
+      } else if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(channel, data);
       }
-      sendToTranslationOverlay('translation-status', 'processing');
-      sendToTranslationOverlay('translation-result', { transcript, response, mode: mode || 'interviewer' });
-      sendToTranslationOverlay('translation-status', 'mic_open');
-    } else if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('translation-status', 'processing');
-      mainWindow.webContents.send('translation-result', { transcript, response, mode: mode || 'interviewer' });
-      mainWindow.webContents.send('translation-status', 'mic_open');
-    }
+    };
+    if (!isDelta) send('translation-status', 'processing');
+    send('translation-result', { transcript, response, mode: mode || 'interviewer', id, streaming });
+    if (!isDelta) send('translation-status', 'mic_open');
   } catch (e) {
     console.error('[TranslationAssistant] erro ao entregar resultado:', e.message);
   }

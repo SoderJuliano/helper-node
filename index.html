@@ -2180,7 +2180,13 @@
                             seg.userBadge.textContent = '✅ transcrito';
                             seg.userBadge.style.color = 'rgba(180,255,180,0.9)';
                         }
-                        seg.assistantBadge.textContent = '🤖 pensando…';
+                        if (payload.noSuggestion) {
+                            // Sua própria fala (modo both): só transcrição, sem sugestão repetida.
+                            seg.userBadge.textContent = '✅ você falou';
+                            seg.assistantBubble.style.display = 'none';
+                        } else {
+                            seg.assistantBadge.textContent = '🤖 pensando…';
+                        }
                         scrollFeed();
                         return;
                     }
@@ -3656,24 +3662,33 @@
                 // Tradução + sugestão
                 } else if (status === 'done' || !status) {
                     _taShow(`🎤 Fale agora — até 40s`, false);
-                    const block = document.createElement('div');
-                    block.className = 'interaction-block';
-                    if (data.transcript && data.transcript.trim()) {
-                        const orig = document.createElement('div');
-                        orig.className = 'ta-original';
-                        // mic (você) vs sys (entrevistador) — rótulo pra você saber quem falou
-                        const who = data.mode === 'candidate' ? '👤 Você: ' : '🎧 Entrevistador: ';
-                        orig.textContent = who + data.transcript;
-                        block.appendChild(orig);
+                    // Streaming: resultados do mesmo turno trazem o mesmo data.id e o texto
+                    // acumulado. Atualiza o bloco existente NO LUGAR em vez de criar outro.
+                    let block = data.id ? el.querySelector(`[data-ta-id="${data.id}"]`) : null;
+                    if (!block) {
+                        block = document.createElement('div');
+                        block.className = 'interaction-block';
+                        if (data.id) block.dataset.taId = data.id;
+                        if (data.transcript && data.transcript.trim()) {
+                            const orig = document.createElement('div');
+                            orig.className = 'ta-original';
+                            // mic (você) vs sys (entrevistador) — rótulo pra você saber quem falou
+                            const who = data.mode === 'candidate' ? '👤 Você: ' : '🎧 Entrevistador: ';
+                            orig.textContent = who + data.transcript;
+                            block.appendChild(orig);
+                        }
+                        el.appendChild(block);
                     }
                     if (data.response && data.response.trim()) {
-                        const resp = document.createElement('div');
-                        resp.className = 'ia-response';
-                        resp.style.cssText = 'white-space: pre-wrap;';
+                        let resp = block.querySelector('.ia-response');
+                        if (!resp) {
+                            resp = document.createElement('div');
+                            resp.className = 'ia-response';
+                            resp.style.cssText = 'white-space: pre-wrap;';
+                            block.appendChild(resp);
+                        }
                         resp.innerHTML = formatOpenAIResponse(data.response);
-                        block.appendChild(resp);
                     }
-                    el.appendChild(block);
 
                 // Ouvindo resposta — badge já foi atualizado no status 'done'
                 } else if (status === 'listening') {
