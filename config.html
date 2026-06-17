@@ -468,20 +468,12 @@
                 </label>
             </div>
 
-            <div class="setting-item" style="margin-bottom: 6px;">
-                <label for="kb-airewrite">IA reorganiza o texto ao salvar</label>
-                <span id="kb-airewrite-status" style="font-weight: bold; margin-left: 10px; min-width: 30px; text-align: center; -webkit-app-region: no-drag;">ON</span>
-                <label class="switch">
-                    <input type="checkbox" id="kb-airewrite" hidden>
-                    <div class="switch__wrapper"><div class="switch__toggle"></div></div>
-                </label>
-            </div>
-            <p id="kb-airewrite-warn" style="font-size: 11.5px; color: #ffb74d; margin: 0 0 8px 0;">Atenção: com isso ligado, uma IA reescreve/reorganiza o texto antes de salvar (ChatGPT no Lite, Ollama no Full). Desligue se quiser controlar o conteúdo você mesmo.</p>
+            <p style="font-size: 11.5px; color: #888; margin: 0 0 8px 0;">Dica: cole o texto e use <b>Resumir e organizar com IA</b> pra deixar mais limpo (opcional). Salvar é no botão <b>Salvar e Fechar</b> lá embaixo.</p>
 
             <textarea id="kb-text" style="width:100%; min-height:120px; padding:8px 12px; border-radius:5px; border:1px solid #555; background-color:#252525; color:white; font-size:13px; box-sizing:border-box; -webkit-app-region:no-drag; resize:vertical;" placeholder="Ex: Spring Boot 3.4 mudou X... Java 26 trouxe Y... a lib Z agora usa W em vez de V..."></textarea>
 
             <div style="display:flex; align-items:center; gap:12px; margin-top:8px;">
-                <button id="kb-save-btn" style="margin:0; padding:8px 14px; align-self:auto;">Salvar base</button>
+                <button id="kb-rewrite-btn" style="margin:0; padding:8px 14px; align-self:auto;">Resumir e organizar com IA</button>
                 <span id="kb-status" style="font-size:12px; color:#888;"></span>
             </div>
         </div>

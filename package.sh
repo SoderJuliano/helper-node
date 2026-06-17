@@ -208,9 +208,14 @@ DEB="\$SCRIPT_DIR/$(basename "${DEB_OUTPUT}")"
 INSTALLER_HEAD
     cat >> "${DIST_DIR}/instalar.sh" << 'INSTALLER_EOF'
 # Em terminal usa sudo (PAM/tty, senha de login normal); sem terminal cai pro pkexec.
+# Feedback gráfico via notify-send: essencial no COSMIC/Wayland, onde Terminal=true NÃO
+# abre terminal e o script roda headless (senão o usuário não vê NADA acontecendo).
+notify() { command -v notify-send >/dev/null 2>&1 && notify-send "Helper Node" "$1" 2>/dev/null || true; }
+
 if [ ! -f "$DEB" ]; then
     echo "ERRO: arquivo .deb não encontrado: $DEB"
-    read -rp "Pressione Enter..."; exit 1
+    notify "✗ .deb não encontrado em $(dirname "$DEB")"
+    [ -t 0 ] && read -rp "Pressione Enter..."; exit 1
 fi
 
 if [ -t 0 ] && command -v sudo >/dev/null 2>&1; then
@@ -219,6 +224,7 @@ else
     SUDO="pkexec"
 fi
 
+notify "Instalando… confirme a senha se aparecer."
 echo "Removendo versão anterior (se houver)..."
 # Remove qualquer edição (legado sem sufixo + full + lite) pra não coexistirem.
 $SUDO apt-get remove -y helper-node helper-node-full helper-node-lite 2>/dev/null
@@ -229,9 +235,11 @@ $SUDO apt-get install -y "$DEB"; EXIT=$?
 echo ""
 if [ "$EXIT" -eq 0 ]; then
     echo "✓ Instalado! Execute: helper-node"
+    notify "✓ Instalado! Procure 'Helper Node' no menu, ou rode: helper-node"
 else
     echo "✗ Falhou (código $EXIT)"
     echo "  Tente manualmente:  sudo apt install \"$DEB\""
+    notify "✗ Falhou (código $EXIT). No terminal: sudo apt install o arquivo .deb"
 fi
 [ -t 0 ] && read -rp "Pressione Enter..."
 INSTALLER_EOF

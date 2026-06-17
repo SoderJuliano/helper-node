@@ -143,6 +143,33 @@ async function save(text, { aiRewrite = true, token, backendResponder } = {}) {
   return { chunks: chunks.length, text: finalText, rewritten, shrunk, codeSkipped };
 }
 
+/**
+ * Reorganiza/limpa o texto com IA SEM salvar — pra um botão "Resumir e organizar".
+ * Mesmas travas do save: pula se tiver código (verbatim) e descarta se encurtar < 60%.
+ * @returns {Promise<{text:string, rewritten:boolean, shrunk:boolean, codeSkipped:boolean}>}
+ */
+async function rewrite(text, { token, backendResponder } = {}) {
+  const original = (text || "").trim();
+  if (!original) return { text: "", rewritten: false, shrunk: false, codeSkipped: false };
+  const hasCode = /```|^\s{4,}\S/m.test(original);
+  if (hasCode) {
+    console.log("[knowledgeBase] rewrite: contém código — mantém verbatim");
+    return { text: original, rewritten: false, shrunk: false, codeSkipped: true };
+  }
+  try {
+    const out = ((await rewriteWithAI(original, { token, backendResponder })) || "").trim();
+    if (out && out.length >= original.length * 0.6) {
+      console.log(`[knowledgeBase] rewrite aplicado (${original.length} → ${out.length} chars)`);
+      return { text: out, rewritten: true, shrunk: false, codeSkipped: false };
+    }
+    console.warn(`[knowledgeBase] rewrite encurtou demais (${original.length} → ${out.length}) — mantém original`);
+    return { text: original, rewritten: false, shrunk: true, codeSkipped: false };
+  } catch (e) {
+    console.warn("[knowledgeBase] rewrite falhou:", e.message);
+    return { text: original, rewritten: false, shrunk: false, codeSkipped: false, error: e.message };
+  }
+}
+
 // Ranking por palavra-chave: devolve os índices dos chunks que casam, do melhor p/ pior.
 function keywordRank(query, chunks) {
   const terms = query.toLowerCase().match(/[\wáéíóúâêôãõàç.+#-]{3,}/g) || [];
@@ -260,6 +287,6 @@ async function augment(query, opts = {}) {
 }
 
 module.exports = {
-  getSource, save, retrieve, augment, buildContextBlock, chunkCount, chunkText,
+  getSource, save, rewrite, retrieve, augment, buildContextBlock, chunkCount, chunkText,
   embed, cosine, baseDir,
 };

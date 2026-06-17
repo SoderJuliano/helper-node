@@ -3668,7 +3668,21 @@ ipcMain.handle("kb-save", async (event, payload) => {
   const backendResponder = useOpenAI ? null : (t, opts) => BackendService.responder(t, opts);
   try {
     const res = await knowledgeBase.save(text, { aiRewrite: !!aiRewrite, token, backendResponder });
-    return { ok: true, chunks: res.chunks, text: res.text, rewritten: res.rewritten };
+    return { ok: true, chunks: res.chunks, text: res.text, rewritten: res.rewritten, shrunk: res.shrunk, codeSkipped: res.codeSkipped };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+// Reorganiza o texto da base com IA SEM salvar (botão "Resumir e organizar com IA").
+ipcMain.handle("kb-rewrite", async (event, payload) => {
+  const { text = "" } = payload || {};
+  const useOpenAI = getEffectiveAiModel() === "openIa";
+  const token = useOpenAI ? configService.getOpenIaToken() : "";
+  const backendResponder = useOpenAI ? null : (t, opts) => BackendService.responder(t, opts);
+  try {
+    const res = await knowledgeBase.rewrite(text, { token, backendResponder });
+    return { ok: true, ...res };
   } catch (e) {
     return { ok: false, error: e.message };
   }
