@@ -27,8 +27,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     // ipcRenderer.on('llama-response', (event, { resposta }) => {
     //     callback(resposta);
     // });
-    ipcRenderer.on("gemini-response", (event, { resposta }) => {
-      callback(resposta);
+    ipcRenderer.on("gemini-response", (event, { resposta, usedKnowledge }) => {
+      callback(resposta, usedKnowledge);
     });
   },
   onOpenAIResponse: (callback) => {

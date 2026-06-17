@@ -1323,6 +1323,15 @@
             letter-spacing: 0.2px;
         }
 
+        /* Selo pequeno: resposta usou a base de conhecimento */
+        .kb-used-badge {
+            font-size: 10px;
+            color: #7CFFB0;
+            opacity: 0.85;
+            margin-bottom: 5px;
+            font-style: italic;
+        }
+
         /* Loading "processando" — robôzinho pulando (robot.gif), pequeno, embaixo das barras */
         #ta-loading {
             display: none;
@@ -2598,8 +2607,8 @@
                 }
             });
 
-            window.electronAPI.onIaResponse((response) => {
-                console.log('IA respondeu:', response);
+            window.electronAPI.onIaResponse((response, usedKnowledge) => {
+                console.log('IA respondeu:', response, '| base de conhecimento:', !!usedKnowledge);
                 if (!response) {
                     document.getElementById('robot').style.display = 'none';
                     console.error('Resposta é undefined ou vazia');
@@ -2622,6 +2631,14 @@
                 } else {
                     const formattedResponse = formatOpenAIResponse(response);
                     newResponse.innerHTML = formattedResponse;
+                }
+
+                // Span pequeno indicando que a base de conhecimento foi consultada.
+                if (usedKnowledge) {
+                    const kbBadge = document.createElement('div');
+                    kbBadge.className = 'kb-used-badge';
+                    kbBadge.textContent = '• base de conhecimento usada';
+                    newResponse.insertBefore(kbBadge, newResponse.firstChild);
                 }
 
                 // Adiciona dentro do interaction-block da pergunta atual (se existir)

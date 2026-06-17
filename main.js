@@ -399,6 +399,14 @@ async function knowledgeBlockForOllama(query) {
   } catch (_) { return ""; }
 }
 
+// Bloco da base de conhecimento pro caminho OpenAI/ChatGPT (embeddings, sem classificador).
+async function knowledgeBlockForOpenAI(query) {
+  try {
+    if (!configService.getKnowledgeBaseConfig().enabled) return "";
+    return await knowledgeBase.augment(query, { token: configService.getOpenIaToken(), topK: 3 });
+  } catch (_) { return ""; }
+}
+
 async function realtimeProviderResponder(transcript) {
   const aiModel = configService.getAiModel();
   const kb = await knowledgeBlockForOllama(transcript);
@@ -2590,6 +2598,7 @@ async function getIaResponse(text) {
   }, 10000);
 
   let resposta;
+  let usedKnowledge = false; // base de conhecimento foi injetada nesta resposta?
   try {
     const aiModel = getEffectiveAiModel();
     console.log("Current AI Model:", aiModel);
@@ -2633,9 +2642,12 @@ async function getIaResponse(text) {
               resposta = `[Agentic Workflow] Interrompido ou falhou: ${err.message}`;
             }
         } else {
-            const ht = buildHelperToolsOpenAIOpts(_wsText1, instruction, openAiModel);
+            const _kb1 = await knowledgeBlockForOpenAI(text);
+            if (_kb1) usedKnowledge = true;
+            const _augText1 = _kb1 ? _kb1 + "\n\n---\n\n" + _wsText1 : _wsText1;
+            const ht = buildHelperToolsOpenAIOpts(_augText1, instruction, openAiModel);
             resposta = await OpenAIService.makeOpenAIRequest(
-              _wsText1,
+              _augText1,
               token,
               ht.instruction || instruction,
               ht.model || openAiModel,
@@ -2648,7 +2660,9 @@ async function getIaResponse(text) {
         // em configService). Erros de Ollama-down / modelo-ausente vem como
         // texto markdown amigavel direto pra UI.
         const OllamaLocalService = require('./services/ollamaLocalService');
-        resposta = await OllamaLocalService.responder(text);
+        const _kbL = await knowledgeBlockForOllama(text);
+        if (_kbL) usedKnowledge = true;
+        resposta = await OllamaLocalService.responder(_kbL ? _kbL + "\n\n---\n\n" + text : text);
     } else {
         // Ollama/Backend e' o unico provider nao-OpenAI suportado.
         // Helper tools agora funcionam tambem no Ollama (via structured prompt + parser).
@@ -2673,8 +2687,11 @@ async function getIaResponse(text) {
                 resposta = `[Ollama Agentic] Interrompido ou falhou: ${err.message}`;
               }
           } else {
-              const _htO = buildHelperToolsOpenAIOpts(_wsTxtO, instructionO, configService.getOpenAiModel());
-              resposta = await BackendService.responder(_wsTxtO, _htO.opts);
+              const _kbO = await knowledgeBlockForOllama(text);
+              if (_kbO) usedKnowledge = true;
+              const _augTxtO = _kbO ? _kbO + "\n\n---\n\n" + _wsTxtO : _wsTxtO;
+              const _htO = buildHelperToolsOpenAIOpts(_augTxtO, instructionO, configService.getOpenAiModel());
+              resposta = await BackendService.responder(_augTxtO, _htO.opts);
           }
           backendIsOnline = true;
         } catch (backendError) {
@@ -2691,7 +2708,7 @@ async function getIaResponse(text) {
 
     // Formata a resposta para exibição na UI
     const formattedResposta = formatToHTML(resposta);
-    mainWindow.webContents.send("gemini-response", { resposta: formattedResposta });
+    mainWindow.webContents.send("gemini-response", { resposta: formattedResposta, usedKnowledge });
 
     // Usa a resposta crua para a notificação de texto simples
     if (appConfig.notificationsEnabled && Notification.isSupported()) {

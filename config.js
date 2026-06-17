@@ -637,7 +637,15 @@ if (kbSaveBtn) {
       });
       if (res && res.ok) {
         if (res.rewritten && kbText && typeof res.text === 'string') kbText.value = res.text;
-        if (kbStatus) { kbStatus.style.color = '#9ef0a8'; kbStatus.textContent = `Salvo — ${res.chunks} trecho(s)` + (res.rewritten ? ' (reorganizado pela IA)' : ''); }
+        if (kbStatus) {
+          if (res.shrunk) {
+            kbStatus.style.color = '#ffb74d';
+            kbStatus.textContent = `Salvo — ${res.chunks} trecho(s) (a IA encurtou demais; mantive o ORIGINAL)`;
+          } else {
+            kbStatus.style.color = '#9ef0a8';
+            kbStatus.textContent = `Salvo — ${res.chunks} trecho(s)` + (res.rewritten ? ' (reorganizado pela IA)' : '');
+          }
+        }
       } else if (kbStatus) {
         kbStatus.style.color = '#ff6b6b'; kbStatus.textContent = 'Erro: ' + ((res && res.error) || 'falha ao salvar');
       }

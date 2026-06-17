@@ -74,17 +74,18 @@ async function embedOpenAI(texts, token) {
 //   ChatGPT → gpt-4.1-nano. Ollama/backend → backendResponder(texto, {instruction}).
 async function rewriteWithAI(text, { token, backendResponder } = {}) {
   const instruction =
-    "Você organiza NOTAS TÉCNICAS de referência. Reescreva o texto a seguir de forma " +
-    "limpa e organizada (títulos curtos, bullets, sem duplicação), MANTENDO TODA a " +
-    "informação técnica, versões, nomes de libs e exemplos. Responda APENAS com o texto " +
-    "reescrito, sem comentários, sem explicações, sem preâmbulo.";
+    "Você LIMPA E ORGANIZA notas técnicas de referência. REGRA CRÍTICA: NÃO RESUMA, " +
+    "NÃO REMOVA conteúdo, NÃO ENCURTE. Mantenha TODOS os fatos, versões, nomes de libs, " +
+    "trechos de código e exemplos — sem exceção. Apenas: melhore a estrutura (títulos/bullets), " +
+    "corrija formatação e remova DUPLICAÇÃO LITERAL. O resultado deve ter tamanho SIMILAR ou MAIOR " +
+    "que o original. Responda APENAS com o texto reescrito, sem comentários nem explicações.";
   if (token) {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
       body: JSON.stringify({
         model: "gpt-4.1-nano",
-        max_tokens: 2000,
+        max_tokens: 16000, // grande o suficiente pra não truncar textos longos
         messages: [{ role: "system", content: instruction }, { role: "user", content: text }],
       }),
     });
@@ -105,11 +106,23 @@ async function rewriteWithAI(text, { token, backendResponder } = {}) {
  */
 async function save(text, { aiRewrite = true, token, backendResponder } = {}) {
   ensureDir();
-  let finalText = (text || "").trim();
+  const original = (text || "").trim();
+  let finalText = original;
   let rewritten = false;
-  if (aiRewrite && finalText) {
-    try { finalText = await rewriteWithAI(finalText, { token, backendResponder }); rewritten = true; }
-    catch (e) { console.warn("[knowledgeBase] reescrita IA falhou, salvando cru:", e.message); }
+  let shrunk = false;
+  if (aiRewrite && original) {
+    try {
+      const out = ((await rewriteWithAI(original, { token, backendResponder })) || "").trim();
+      // TRAVA ANTI-PERDA: se a IA encurtou demais (< 60% do original), descarta a
+      // reescrita e mantém o ORIGINAL. Modelos pequenos (nano) tendem a resumir.
+      if (out && out.length >= original.length * 0.6) {
+        finalText = out; rewritten = true;
+        console.log(`[knowledgeBase] reescrita aplicada (${original.length} → ${out.length} chars)`);
+      } else {
+        shrunk = true;
+        console.warn(`[knowledgeBase] reescrita ENCURTOU demais (${original.length} → ${out.length} chars) — mantendo o ORIGINAL`);
+      }
+    } catch (e) { console.warn("[knowledgeBase] reescrita IA falhou, salvando cru:", e.message); }
   }
   fs.writeFileSync(srcPath(), finalText, "utf8");
 
@@ -121,7 +134,8 @@ async function save(text, { aiRewrite = true, token, backendResponder } = {}) {
     } catch (e) { console.warn("[knowledgeBase] embeddings falharam, usando keyword:", e.message); }
   }
   fs.writeFileSync(idxPath(), JSON.stringify({ chunks, updatedAt: Date.now() }), "utf8");
-  return { chunks: chunks.length, text: finalText, rewritten };
+  console.log(`[knowledgeBase] base salva: ${chunks.length} chunk(s), embeddings=${token && chunks[0] && chunks[0].embedding ? "sim" : "não (keyword)"}`);
+  return { chunks: chunks.length, text: finalText, rewritten, shrunk };
 }
 
 // Recupera os top-K trechos relevantes pra query. Embeddings se houver; senão keyword.
@@ -177,6 +191,11 @@ function buildContextBlock(chunks) {
 async function augment(query, opts = {}) {
   try {
     const hits = await retrieve(query, opts);
+    if (hits.length) {
+      console.log(`[knowledgeBase] ✓ injetando ${hits.length} trecho(s) na resposta — query: "${String(query).slice(0, 60)}"`);
+    } else {
+      console.log(`[knowledgeBase] nenhum trecho relevante p/: "${String(query).slice(0, 60)}"`);
+    }
     return buildContextBlock(hits);
   } catch (e) {
     console.warn("[knowledgeBase] augment falhou:", e.message);
