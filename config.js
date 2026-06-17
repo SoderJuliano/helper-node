@@ -641,6 +641,9 @@ if (kbSaveBtn) {
           if (res.shrunk) {
             kbStatus.style.color = '#ffb74d';
             kbStatus.textContent = `Salvo — ${res.chunks} trecho(s) (a IA encurtou demais; mantive o ORIGINAL)`;
+          } else if (res.codeSkipped) {
+            kbStatus.style.color = '#9ef0a8';
+            kbStatus.textContent = `Salvo — ${res.chunks} trecho(s) (continha código; salvo sem reorganizar)`;
           } else {
             kbStatus.style.color = '#9ef0a8';
             kbStatus.textContent = `Salvo — ${res.chunks} trecho(s)` + (res.rewritten ? ' (reorganizado pela IA)' : '');

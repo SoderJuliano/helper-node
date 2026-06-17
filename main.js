@@ -3107,6 +3107,7 @@ ipcMain.on("send-to-gemini", async (event, text) => {
   try {
     const aiModel = getEffectiveAiModel();
     let resposta;
+    let usedKnowledge = false; // base de conhecimento injetada nesta resposta?
 
     if (aiModel === 'openIa') {
         const token = configService.getOpenIaToken();
@@ -3143,9 +3144,12 @@ ipcMain.on("send-to-gemini", async (event, text) => {
               resposta = `[Agentic Workflow] Interrompido ou falhou: ${err.message}`;
             }
         } else {
-            const ht = buildHelperToolsOpenAIOpts(_wsText2, instruction, openAiModel);
+            const _kb2 = await knowledgeBlockForOpenAI(text);
+            if (_kb2) usedKnowledge = true;
+            const _augText2 = _kb2 ? _kb2 + "\n\n---\n\n" + _wsText2 : _wsText2;
+            const ht = buildHelperToolsOpenAIOpts(_augText2, instruction, openAiModel);
             resposta = await OpenAIService.makeOpenAIRequest(
-              _wsText2,
+              _augText2,
               token,
               ht.instruction || instruction,
               ht.model || openAiModel,
@@ -3153,8 +3157,8 @@ ipcMain.on("send-to-gemini", async (event, text) => {
               ht.opts
             );
         }
-        event.sender.send("openai-final-response", { resposta });
-        return; 
+        event.sender.send("openai-final-response", { resposta, usedKnowledge });
+        return;
     } else {
         // Ollama/Backend e' o unico provider nao-OpenAI suportado.
         try {
@@ -3178,8 +3182,11 @@ ipcMain.on("send-to-gemini", async (event, text) => {
                 resposta = `[Ollama Agentic] Interrompido ou falhou: ${err.message}`;
               }
           } else {
-              const _htO2 = buildHelperToolsOpenAIOpts(_wsTxtO2, instructionO2, configService.getOpenAiModel());
-              resposta = await BackendService.responder(_wsTxtO2, _htO2.opts);
+              const _kbO2 = await knowledgeBlockForOllama(text);
+              if (_kbO2) usedKnowledge = true;
+              const _augTxtO2 = _kbO2 ? _kbO2 + "\n\n---\n\n" + _wsTxtO2 : _wsTxtO2;
+              const _htO2 = buildHelperToolsOpenAIOpts(_augTxtO2, instructionO2, configService.getOpenAiModel());
+              resposta = await BackendService.responder(_augTxtO2, _htO2.opts);
           }
           backendIsOnline = true;
         } catch (backendError) {
@@ -3190,7 +3197,7 @@ ipcMain.on("send-to-gemini", async (event, text) => {
           );
         }
     }
-    event.sender.send("gemini-response", { resposta });
+    event.sender.send("gemini-response", { resposta, usedKnowledge });
   } catch (error) {
     console.error("IPC: IA service error:", error);
     event.sender.send(

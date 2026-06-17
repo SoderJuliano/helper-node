@@ -110,7 +110,12 @@ async function save(text, { aiRewrite = true, token, backendResponder } = {}) {
   let finalText = original;
   let rewritten = false;
   let shrunk = false;
-  if (aiRewrite && original) {
+  let codeSkipped = false;
+  const hasCode = /```|^\s{4,}\S/m.test(original); // blocos ``` ou indentação de código
+  if (aiRewrite && original && hasCode) {
+    codeSkipped = true;
+    console.log("[knowledgeBase] base contém código — pulando reescrita IA (preserva verbatim)");
+  } else if (aiRewrite && original) {
     try {
       const out = ((await rewriteWithAI(original, { token, backendResponder })) || "").trim();
       // TRAVA ANTI-PERDA: se a IA encurtou demais (< 60% do original), descarta a
@@ -135,7 +140,7 @@ async function save(text, { aiRewrite = true, token, backendResponder } = {}) {
   }
   fs.writeFileSync(idxPath(), JSON.stringify({ chunks, updatedAt: Date.now() }), "utf8");
   console.log(`[knowledgeBase] base salva: ${chunks.length} chunk(s), embeddings=${token && chunks[0] && chunks[0].embedding ? "sim" : "não (keyword)"}`);
-  return { chunks: chunks.length, text: finalText, rewritten, shrunk };
+  return { chunks: chunks.length, text: finalText, rewritten, shrunk, codeSkipped };
 }
 
 // Recupera os top-K trechos relevantes pra query. Embeddings se houver; senão keyword.

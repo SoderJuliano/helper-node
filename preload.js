@@ -32,8 +32,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     });
   },
   onOpenAIResponse: (callback) => {
-    ipcRenderer.on("openai-final-response", (event, { resposta }) => {
-      callback(resposta);
+    ipcRenderer.on("openai-final-response", (event, { resposta, usedKnowledge }) => {
+      callback(resposta, usedKnowledge);
     });
   },
   onStreamChunk: (callback) => 

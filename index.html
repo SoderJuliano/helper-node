@@ -2657,8 +2657,8 @@
 
             });
 
-            window.electronAPI.onOpenAIResponse((response) => {
-                console.log('OpenAI respondeu:', response);
+            window.electronAPI.onOpenAIResponse((response, usedKnowledge) => {
+                console.log('OpenAI respondeu:', response, '| base de conhecimento:', !!usedKnowledge);
                 if (!response) {
                     document.getElementById('robot').style.display = 'none';
                     console.error('Resposta da OpenAI é undefined ou vazia');
@@ -2672,9 +2672,16 @@
                 const transcriptionElement = document.getElementById('transcription');
                 const newResponse = document.createElement('div');
                 newResponse.classList.add('ia-response');
-                
+
                 const formattedResponse = formatOpenAIResponse(response);
                 newResponse.innerHTML = formattedResponse;
+
+                if (usedKnowledge) {
+                    const kbBadge = document.createElement('div');
+                    kbBadge.className = 'kb-used-badge';
+                    kbBadge.textContent = '• base de conhecimento usada';
+                    newResponse.insertBefore(kbBadge, newResponse.firstChild);
+                }
 
                 const lastBlockOAI = transcriptionElement.querySelector('.interaction-block:last-child');
                 if (lastBlockOAI) {
