@@ -170,7 +170,7 @@ class RealtimeOpenAiService {
     try {
       const kbOn = this.configService.getKnowledgeBaseConfig
         ? this.configService.getKnowledgeBaseConfig().enabled : false;
-      if (kbOn) kbBlock = await knowledgeBase.augment(transcript, { token, topK: 3 });
+      if (kbOn) kbBlock = await knowledgeBase.augment(transcript, { token, topK: 5 });
     } catch (_) {}
 
     const userPrompt =

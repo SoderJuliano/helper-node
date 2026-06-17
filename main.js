@@ -395,7 +395,7 @@ async function knowledgeBlockForOllama(query) {
   try {
     if (!configService.getKnowledgeBaseConfig().enabled) return "";
     if (!(await ollamaNeedsKnowledge(query))) return "";
-    return await knowledgeBase.augment(query, { topK: 3 }); // sem token → keyword
+    return await knowledgeBase.augment(query, { topK: 5 }); // sem token → keyword
   } catch (_) { return ""; }
 }
 
@@ -403,7 +403,7 @@ async function knowledgeBlockForOllama(query) {
 async function knowledgeBlockForOpenAI(query) {
   try {
     if (!configService.getKnowledgeBaseConfig().enabled) return "";
-    return await knowledgeBase.augment(query, { token: configService.getOpenIaToken(), topK: 3 });
+    return await knowledgeBase.augment(query, { token: configService.getOpenIaToken(), topK: 5 });
   } catch (_) { return ""; }
 }
 

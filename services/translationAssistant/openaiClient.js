@@ -55,7 +55,7 @@ async function getTranslationAndSuggestion(transcript, { userName, userBackgroun
   let kbBlock = '';
   try {
     if (configService.getKnowledgeBaseConfig().enabled) {
-      kbBlock = await knowledgeBase.augment(transcript, { token: apiKey, topK: 3 });
+      kbBlock = await knowledgeBase.augment(transcript, { token: apiKey, topK: 5 });
     }
   } catch (_) {}
   const userContent = kbBlock ? `${kbBlock}\n\n---\n\n${transcript}` : transcript;

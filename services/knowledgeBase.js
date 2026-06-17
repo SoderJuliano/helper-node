@@ -143,48 +143,80 @@ async function save(text, { aiRewrite = true, token, backendResponder } = {}) {
   return { chunks: chunks.length, text: finalText, rewritten, shrunk, codeSkipped };
 }
 
-// Recupera os top-K trechos relevantes pra query. Embeddings se houver; senão keyword.
-async function retrieve(query, { token, topK = 3 } = {}) {
+// Ranking por palavra-chave: devolve os índices dos chunks que casam, do melhor p/ pior.
+function keywordRank(query, chunks) {
+  const terms = query.toLowerCase().match(/[\wáéíóúâêôãõàç.+#-]{3,}/g) || [];
+  if (!terms.length) return [];
+  return chunks
+    .map((c, i) => {
+      const lc = c.text.toLowerCase();
+      let s = 0;
+      for (const t of terms) if (lc.includes(t)) s += 1;
+      return { i, s };
+    })
+    .filter((x) => x.s > 0)
+    .sort((a, b) => b.s - a.s)
+    .map((x) => x.i);
+}
+
+// Recupera os top-K trechos relevantes pra query.
+//   Com embeddings → HÍBRIDO: intercala ranking semântico + keyword (dedupe).
+//   Isso resgata trechos que a busca semântica perde por terminologia (ex.: a query
+//   diz "java" mas o trecho diz "JDK 26") — onde o keyword acerta.
+//   Sem embeddings → só keyword.
+async function retrieve(query, { token, topK = 5 } = {}) {
   const idx = loadIndex();
   const chunks = idx.chunks || [];
   if (!chunks.length || !query) return [];
 
+  const kwRank = keywordRank(query, chunks);
+
+  let embRank = [];
   if (token && chunks[0].embedding) {
     try {
       const [qe] = await embedOpenAI([query], token);
-      return chunks
-        .map((c) => ({ t: c.text, s: cosine(qe, c.embedding) }))
-        .sort((a, b) => b.s - a.s)
+      embRank = chunks
+        .map((c, i) => ({ i, s: cosine(qe, c.embedding) }))
         .filter((x) => x.s > 0.25)
-        .slice(0, topK)
-        .map((x) => x.t);
-    } catch (e) { console.warn("[knowledgeBase] retrieve embeddings falhou, keyword:", e.message); }
+        .sort((a, b) => b.s - a.s)
+        .map((x) => x.i);
+    } catch (e) { console.warn("[knowledgeBase] retrieve embeddings falhou, só keyword:", e.message); }
   }
 
-  // Keyword/BM25 simplificado
-  const terms = query.toLowerCase().match(/[\wáéíóúâêôãõàç.+#-]{3,}/g) || [];
-  if (!terms.length) return [];
-  return chunks
-    .map((c) => {
-      const lc = c.text.toLowerCase();
-      let score = 0;
-      for (const t of terms) if (lc.includes(t)) score += 1;
-      return { t: c.text, s: score };
-    })
-    .filter((x) => x.s > 0)
-    .sort((a, b) => b.s - a.s)
-    .slice(0, topK)
-    .map((x) => x.t);
+  // Sem sinal semântico → keyword puro.
+  if (!embRank.length) return kwRank.slice(0, topK).map((i) => chunks[i].text);
+
+  // Intercala os dois rankings (semântico tem leve prioridade por vir primeiro), dedupe.
+  const order = [];
+  const seen = new Set();
+  const maxLen = Math.max(embRank.length, kwRank.length);
+  for (let r = 0; r < maxLen && order.length < topK; r++) {
+    for (const list of [embRank, kwRank]) {
+      const id = list[r];
+      if (id != null && !seen.has(id)) { seen.add(id); order.push(id); }
+    }
+  }
+  return order.slice(0, topK).map((i) => chunks[i].text);
 }
 
 // Monta o bloco a ser injetado no contexto, com rótulo anti-alucinação (importante
 // pra modelos pequenos não "inventarem tarefa").
 function buildContextBlock(chunks) {
   if (!chunks || !chunks.length) return "";
+  const hoje = new Date().toISOString().slice(0, 10);
   return [
-    "BASE DE CONHECIMENTO ATUALIZADA (notas recentes fornecidas pelo usuário sobre",
-    "tecnologias/versões atuais). Use SOMENTE se for relevante à pergunta. Se NÃO for",
-    "relevante, IGNORE totalmente e responda normalmente. NÃO comente sobre esta base.",
+    `BASE DE CONHECIMENTO ATUALIZADA — notas recentes fornecidas pelo usuário sobre`,
+    `tecnologias/versões atuais. DATA DE HOJE: ${hoje}.`,
+    "",
+    "COMO USAR (crítico):",
+    "- Esta base é MAIS RECENTE que o seu conhecimento de treino. Em QUALQUER conflito",
+    "  (versões, datas, o que já foi lançado), a BASE é a verdade — ignore o que você",
+    "  'lembra' do treino e NÃO corrija a base com seu conhecimento antigo.",
+    "- Lançamentos com data IGUAL ou ANTERIOR a hoje JÁ ACONTECERAM: fale no passado/presente",
+    "  ('foi lançado', 'a versão atual é'), NUNCA no futuro ('será lançado').",
+    "- A 'última/atual versão' é a MAIOR/MAIS NOVA que aparecer na base, não a do seu treino.",
+    "- Use SOMENTE se for relevante à pergunta. Se NÃO for relevante, IGNORE e responda",
+    "  normalmente. NUNCA comente nem cite a existência desta base na resposta.",
     "",
     ...chunks.map((t, i) => `[${i + 1}] ${t}`),
   ].join("\n");
