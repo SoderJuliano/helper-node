@@ -199,14 +199,18 @@ CONTROL_EOF
     # A edição (full/lite) é CRAVADA aqui: o instalador aponta para o .deb desta
     # build específica, e não mais um glob que escorregava pro pacote errado quando
     # lite e full coexistiam em dist/.
-    cat > "${DIST_DIR}/instalar.sh" << INSTALLER_HEAD
+    # IMPORTANTE: um instalador POR PACOTE (instalar-<edição>-deb.sh). Antes era um
+    # único instalar.sh que o build `all` sobrescrevia — sobrava só o da última
+    # edição e os pacotes Arch ficavam sem instalador nenhum.
+    INSTALLER_SH="${DIST_DIR}/instalar-${EDITION}-deb.sh"
+    cat > "${INSTALLER_SH}" << INSTALLER_HEAD
 #!/usr/bin/env bash
-# Instalador do Helper Node (edição: ${EDITION}). Aponta para o .deb desta build,
-# REMOVE qualquer edição anterior e instala — funciona mesmo reinstalando a mesma versão.
+# Instalador do Helper Node (edição: ${EDITION}, formato: deb). Aponta para o .deb
+# desta build, REMOVE qualquer edição anterior e instala — funciona mesmo reinstalando a mesma versão.
 SCRIPT_DIR="\$(cd "\$(dirname "\$(readlink -f "\$0")")" && pwd)"
 DEB="\$SCRIPT_DIR/$(basename "${DEB_OUTPUT}")"
 INSTALLER_HEAD
-    cat >> "${DIST_DIR}/instalar.sh" << 'INSTALLER_EOF'
+    cat >> "${INSTALLER_SH}" << 'INSTALLER_EOF'
 # Em terminal usa sudo (PAM/tty, senha de login normal); sem terminal cai pro pkexec.
 # Feedback gráfico via notify-send: essencial no COSMIC/Wayland, onde Terminal=true NÃO
 # abre terminal e o script roda headless (senão o usuário não vê NADA acontecendo).
@@ -243,23 +247,89 @@ else
 fi
 [ -t 0 ] && read -rp "Pressione Enter..."
 INSTALLER_EOF
-    chmod +x "${DIST_DIR}/instalar.sh"
+    chmod +x "${INSTALLER_SH}"
 
-    cat > "${DIST_DIR}/Instalar Helper Node.desktop" << 'DESKTOP_EOF'
+    # Lançador gráfico por edição (cada um chama o seu próprio instalar-*.sh).
+    DESKTOP_FILE="${DIST_DIR}/Instalar Helper Node (${EDITION}-deb).desktop"
+    cat > "${DESKTOP_FILE}" << DESKTOP_EOF
 [Desktop Entry]
 Version=1.0
-Name=Instalar Helper Node
-Comment=Instala o Helper Node no sistema
-Exec=bash -c 'p="%k"; p="${p#file://}"; d="$(dirname "$p")"; [ -d "$d" ] && cd "$d"; exec bash ./instalar.sh'
+Name=Instalar Helper Node (${EDITION} · deb)
+Comment=Instala o Helper Node (edição ${EDITION}, .deb) no sistema
+Exec=bash -c 'p="%k"; p="\${p#file://}"; d="\$(dirname "\$p")"; [ -d "\$d" ] && cd "\$d"; exec bash ./$(basename "${INSTALLER_SH}")'
 Terminal=true
 Type=Application
 Icon=system-software-install
 Categories=System;
 DESKTOP_EOF
-    chmod +x "${DIST_DIR}/Instalar Helper Node.desktop"
+    chmod +x "${DESKTOP_FILE}"
 
     echo -e "${GREEN}✓${NC} DEB package created: ${DEB_OUTPUT}"
-    echo -e "${GREEN}✓${NC} Instalador gráfico: ${DIST_DIR}/instalar.sh"
+    echo -e "${GREEN}✓${NC} Instalador gráfico: ${INSTALLER_SH}"
+}
+
+# Gera o instalador gráfico (pacman -U) do pacote Arch desta edição.
+# Um por pacote: instalar-<edição>-arch.sh — espelha o instalador .deb.
+gen_arch_installer() {
+    local ZST_NAME="${PKG_NAME}-${VERSION}-1-x86_64.pkg.tar.zst"
+    local INST="${DIST_DIR}/instalar-${EDITION}-arch.sh"
+    cat > "${INST}" << ARCH_INST_HEAD
+#!/usr/bin/env bash
+# Instalador do Helper Node (edição: ${EDITION}, formato: Arch/pacman). Aponta para
+# o .pkg.tar.zst desta build, remove edição anterior e instala (pacman -U).
+SCRIPT_DIR="\$(cd "\$(dirname "\$(readlink -f "\$0")")" && pwd)"
+ZST="\$SCRIPT_DIR/${ZST_NAME}"
+ARCH_INST_HEAD
+    cat >> "${INST}" << 'ARCH_INST_EOF'
+notify() { command -v notify-send >/dev/null 2>&1 && notify-send "Helper Node" "$1" 2>/dev/null || true; }
+
+if [ ! -f "$ZST" ]; then
+    echo "ERRO: pacote não encontrado: $ZST"
+    notify "✗ pacote .pkg.tar.zst não encontrado em $(dirname "$ZST")"
+    [ -t 0 ] && read -rp "Pressione Enter..."; exit 1
+fi
+
+if [ -t 0 ] && command -v sudo >/dev/null 2>&1; then
+    SUDO="sudo"; echo "(será pedida sua senha de sudo)"
+else
+    SUDO="pkexec"
+fi
+
+notify "Instalando… confirme a senha se aparecer."
+echo "Removendo versão anterior (se houver)..."
+# Remove qualquer edição (legado + full + lite) pra não coexistirem.
+$SUDO pacman -Rns --noconfirm helper-node helper-node-full helper-node-lite 2>/dev/null
+
+echo "Instalando $(basename "$ZST")..."
+$SUDO pacman -U --noconfirm "$ZST"; EXIT=$?
+
+echo ""
+if [ "$EXIT" -eq 0 ]; then
+    echo "✓ Instalado! Execute: helper-node"
+    notify "✓ Instalado! Procure 'Helper Node' no menu, ou rode: helper-node"
+else
+    echo "✗ Falhou (código $EXIT)"
+    echo "  Tente manualmente:  sudo pacman -U \"$ZST\""
+    notify "✗ Falhou (código $EXIT). No terminal: sudo pacman -U o arquivo .zst"
+fi
+[ -t 0 ] && read -rp "Pressione Enter..."
+ARCH_INST_EOF
+    chmod +x "${INST}"
+
+    local DSK="${DIST_DIR}/Instalar Helper Node (${EDITION}-arch).desktop"
+    cat > "${DSK}" << ARCH_DESKTOP_EOF
+[Desktop Entry]
+Version=1.0
+Name=Instalar Helper Node (${EDITION} · arch)
+Comment=Instala o Helper Node (edição ${EDITION}, .pkg.tar.zst) no sistema
+Exec=bash -c 'p="%k"; p="\${p#file://}"; d="\$(dirname "\$p")"; [ -d "\$d" ] && cd "\$d"; exec bash ./$(basename "${INST}")'
+Terminal=true
+Type=Application
+Icon=system-software-install
+Categories=System;
+ARCH_DESKTOP_EOF
+    chmod +x "${DSK}"
+    echo -e "${GREEN}✓${NC} Instalador gráfico: ${INST}"
 }
 
 # Function to build Arch package
@@ -352,6 +422,7 @@ PKGBUILD_EOF
         cd "${PROJECT_ROOT}"
         mv "${ARCH_BUILD}"/*.pkg.tar.zst "${DIST_DIR}/" 2>/dev/null || true
         echo -e "${GREEN}✓${NC} Arch package created: ${DIST_DIR}/${PKG_NAME}-${VERSION}-1-x86_64.pkg.tar.zst"
+        gen_arch_installer
     elif command -v docker &> /dev/null || command -v podman &> /dev/null; then
         CONTAINER_CMD="docker"
         command -v docker &> /dev/null || CONTAINER_CMD="podman"
@@ -371,6 +442,7 @@ PKGBUILD_EOF
         if ls "${ARCH_BUILD}"/${PKG_NAME}-${VERSION}-*-x86_64.pkg.tar.zst &>/dev/null; then
             mv "${ARCH_BUILD}"/${PKG_NAME}-${VERSION}-*-x86_64.pkg.tar.zst "${DIST_DIR}/"
             echo -e "${GREEN}✓${NC} Arch package created: ${DIST_DIR}/${PKG_NAME}-${VERSION}-1-x86_64.pkg.tar.zst"
+            gen_arch_installer
             # Limpa pasta arch-build completamente (tarball, debug pkg, pkg/, src/, etc)
             rm -rf "${ARCH_BUILD}" 2>/dev/null || true
         else

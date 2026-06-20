@@ -20,13 +20,17 @@ fi
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 DEB_PATH="${1:-}"
 
-# Sem argumento: pega o .deb mais recente em dist/
+# Sem argumento: pega o .deb mais recente em dist/.
+# Glob cobre os nomes reais: helper-node-lite_*, helper-node-full_* e o legado
+# helper-node_* (sem sufixo). O antigo 'helper-node_*' NAO casava com -lite/-full
+# e o script achava "nenhum .deb" mesmo com pacotes presentes.
 if [[ -z "$DEB_PATH" ]]; then
-    DEB_PATH=$(ls -t "$PROJECT_ROOT/dist"/helper-node_*_amd64.deb 2>/dev/null | head -n1 || true)
+    DEB_PATH=$(ls -t "$PROJECT_ROOT/dist"/helper-node*_amd64.deb 2>/dev/null | head -n1 || true)
     if [[ -z "$DEB_PATH" ]]; then
         echo -e "${RED}Nenhum .deb encontrado em dist/.${NC} Rode ./package.sh deb primeiro."
         exit 1
     fi
+    echo -e "${YELLOW}i${NC} Varios .deb podem coexistir (lite/full). Passe um caminho pra escolher: sudo ./install.sh dist/helper-node-lite_${VERSION:-0.4.2}_amd64.deb"
 fi
 
 if [[ ! -f "$DEB_PATH" ]]; then
