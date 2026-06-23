@@ -143,6 +143,33 @@ async function save(text, { aiRewrite = true, token, backendResponder } = {}) {
   return { chunks: chunks.length, text: finalText, rewritten, shrunk, codeSkipped };
 }
 
+/**
+ * Reorganiza/limpa o texto com IA SEM salvar — pra um botão "Resumir e organizar".
+ * Mesmas travas do save: pula se tiver código (verbatim) e descarta se encurtar < 60%.
+ * @returns {Promise<{text:string, rewritten:boolean, shrunk:boolean, codeSkipped:boolean}>}
+ */
+async function rewrite(text, { token, backendResponder } = {}) {
+  const original = (text || "").trim();
+  if (!original) return { text: "", rewritten: false, shrunk: false, codeSkipped: false };
+  const hasCode = /```|^\s{4,}\S/m.test(original);
+  if (hasCode) {
+    console.log("[knowledgeBase] rewrite: contém código — mantém verbatim");
+    return { text: original, rewritten: false, shrunk: false, codeSkipped: true };
+  }
+  try {
+    const out = ((await rewriteWithAI(original, { token, backendResponder })) || "").trim();
+    if (out && out.length >= original.length * 0.6) {
+      console.log(`[knowledgeBase] rewrite aplicado (${original.length} → ${out.length} chars)`);
+      return { text: out, rewritten: true, shrunk: false, codeSkipped: false };
+    }
+    console.warn(`[knowledgeBase] rewrite encurtou demais (${original.length} → ${out.length}) — mantém original`);
+    return { text: original, rewritten: false, shrunk: true, codeSkipped: false };
+  } catch (e) {
+    console.warn("[knowledgeBase] rewrite falhou:", e.message);
+    return { text: original, rewritten: false, shrunk: false, codeSkipped: false, error: e.message };
+  }
+}
+
 // Ranking por palavra-chave: devolve os índices dos chunks que casam, do melhor p/ pior.
 function keywordRank(query, chunks) {
   const terms = query.toLowerCase().match(/[\wáéíóúâêôãõàç.+#-]{3,}/g) || [];
@@ -164,7 +191,7 @@ function keywordRank(query, chunks) {
 //   Isso resgata trechos que a busca semântica perde por terminologia (ex.: a query
 //   diz "java" mas o trecho diz "JDK 26") — onde o keyword acerta.
 //   Sem embeddings → só keyword.
-async function retrieve(query, { token, topK = 5 } = {}) {
+async function retrieve(query, { token, topK = 5, queryEmbedding = null } = {}) {
   const idx = loadIndex();
   const chunks = idx.chunks || [];
   if (!chunks.length || !query) return [];
@@ -172,9 +199,11 @@ async function retrieve(query, { token, topK = 5 } = {}) {
   const kwRank = keywordRank(query, chunks);
 
   let embRank = [];
-  if (token && chunks[0].embedding) {
+  if (chunks[0].embedding && (queryEmbedding || token)) {
     try {
-      const [qe] = await embedOpenAI([query], token);
+      // Reusa o embedding já calculado (queryEmbedding) quando disponível — evita
+      // uma chamada de rede a mais quando KB e banco de respostas buscam a mesma query.
+      const qe = queryEmbedding || (await embedOpenAI([query], token))[0];
       embRank = chunks
         .map((c, i) => ({ i, s: cosine(qe, c.embedding) }))
         .filter((x) => x.s > 0.25)
@@ -216,10 +245,27 @@ function buildContextBlock(chunks) {
     "  ('foi lançado', 'a versão atual é'), NUNCA no futuro ('será lançado').",
     "- A 'última/atual versão' é a MAIOR/MAIS NOVA que aparecer na base, não a do seu treino.",
     "- Use SOMENTE se for relevante à pergunta. Se NÃO for relevante, IGNORE e responda",
-    "  normalmente. NUNCA comente nem cite a existência desta base na resposta.",
+    "  normalmente.",
+    "- Responda como se VOCÊ soubesse o fato. É PROIBIDO mencionar esta base ou de onde",
+    "  veio a informação: nada de 'com base na sua base de conhecimento', 'segundo a base',",
+    "  'conforme os dados fornecidos', 'de acordo com as notas' ou equivalentes. Apenas",
+    "  afirme o fato direto (ex.: 'A versão mais recente do Java é o JDK 26...').",
     "",
     ...chunks.map((t, i) => `[${i + 1}] ${t}`),
   ].join("\n");
+}
+
+// Embeda uma query (texto único). Devolve o vetor ou null em falha. Exposto pra que
+// o caller embede UMA vez e compartilhe entre KB e banco de respostas (0-latência).
+async function embed(query, token) {
+  if (!query || !token) return null;
+  try {
+    const [e] = await embedOpenAI([query], token);
+    return e || null;
+  } catch (e) {
+    console.warn("[knowledgeBase] embed falhou:", e.message);
+    return null;
+  }
 }
 
 /**
@@ -241,5 +287,6 @@ async function augment(query, opts = {}) {
 }
 
 module.exports = {
-  getSource, save, retrieve, augment, buildContextBlock, chunkCount, chunkText,
+  getSource, save, rewrite, retrieve, augment, buildContextBlock, chunkCount, chunkText,
+  embed, cosine, baseDir,
 };

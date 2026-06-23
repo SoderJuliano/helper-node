@@ -342,7 +342,7 @@
     }
 
     function addMessage(data) {
-      const { transcript, response, mode, type } = data || {};
+      const { transcript, response, mode, type, id } = data || {};
       if (!transcript && !response) return;
 
       const empty = document.getElementById('empty');
@@ -363,27 +363,35 @@
         return;
       }
 
-      const block = document.createElement('div');
-      block.className = 'message-block ' + (mode || 'interviewer');
+      // Streaming: mesmo turno traz o mesmo id + texto acumulado. Reaproveita o bloco.
+      let block = id ? container.querySelector(`[data-ta-id="${id}"]`) : null;
+      if (!block) {
+        block = document.createElement('div');
+        block.className = 'message-block ' + (mode || 'interviewer');
+        if (id) block.dataset.taId = id;
 
-      // Timestamp curto
-      const now = new Date();
-      const hh = String(now.getHours()).padStart(2,'0');
-      const mm = String(now.getMinutes()).padStart(2,'0');
-      const ts = document.createElement('div');
-      ts.className = 'timestamp';
-      ts.textContent = (mode === 'candidate' ? 'Você' : 'Entrevistador') + ' · ' + hh + ':' + mm;
-      block.appendChild(ts);
+        // Timestamp curto
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2,'0');
+        const mm = String(now.getMinutes()).padStart(2,'0');
+        const ts = document.createElement('div');
+        ts.className = 'timestamp';
+        ts.textContent = (mode === 'candidate' ? 'Você' : 'Entrevistador') + ' · ' + hh + ':' + mm;
+        block.appendChild(ts);
 
-      if (transcript) {
-        const t = document.createElement('div');
-        t.className = 'transcript';
-        t.textContent = transcript;
-        block.appendChild(t);
+        if (transcript) {
+          const t = document.createElement('div');
+          t.className = 'transcript';
+          t.textContent = transcript;
+          block.appendChild(t);
+        }
+        container.appendChild(block);
       }
 
+      // (Re)renderiza a parte dinâmica (tradução + resposta). No update, limpa a anterior.
       // Parse "TRADUÇÃO: ...\nRESPOSTA: ..."
       if (response) {
+        block.querySelectorAll('.translation, .response-label, .response').forEach(n => n.remove());
         const traduMatch = response.match(/TRADU[ÇC][ÃA]O:\s*([\s\S]*?)(?=\n*RESPOSTA:|$)/i);
         const respMatch  = response.match(/RESPOSTA:\s*([\s\S]*)$/i);
         const trad = traduMatch ? traduMatch[1].trim() : '';
@@ -407,7 +415,6 @@
         }
       }
 
-      container.appendChild(block);
       container.scrollTop = container.scrollHeight;
 
       // Após render, checa se precisa esticar janela

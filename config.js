@@ -487,6 +487,16 @@ saveButton.addEventListener("click", async () => {
     ipcRenderer.send("save-backend-api-key", backendApiKeyInput.value);
   }
 
+  // Salvar a base de conhecimento (texto + habilitado). Sem reescrita automática: a
+  // reorganização é manual, pelo botão "Resumir e organizar com IA".
+  try {
+    await ipcRenderer.invoke('kb-save', {
+      text: kbText ? kbText.value : '',
+      aiRewrite: false,
+      enabled: kbEnabledToggle ? kbEnabledToggle.checked : true,
+    });
+  } catch (e) { console.warn('[kb] save on close failed:', e.message); }
+
   // Close window
   window.close();
 });
@@ -608,54 +618,41 @@ if (translationMicRefresh) {
 // === Base de Conhecimento (RAG) ===
 const kbEnabledToggle = document.getElementById('kb-enabled');
 const kbEnabledStatus = document.getElementById('kb-enabled-status');
-const kbRewriteToggle = document.getElementById('kb-airewrite');
-const kbRewriteStatus = document.getElementById('kb-airewrite-status');
-const kbRewriteWarn = document.getElementById('kb-airewrite-warn');
 const kbText = document.getElementById('kb-text');
-const kbSaveBtn = document.getElementById('kb-save-btn');
+const kbRewriteBtn = document.getElementById('kb-rewrite-btn');
 const kbStatus = document.getElementById('kb-status');
 
 function updateKbEnabledStatus(v) { if (kbEnabledStatus) kbEnabledStatus.textContent = v ? 'ON' : 'OFF'; }
-function updateKbRewriteStatus(v) {
-  if (kbRewriteStatus) kbRewriteStatus.textContent = v ? 'ON' : 'OFF';
-  if (kbRewriteWarn) kbRewriteWarn.style.display = v ? 'block' : 'none';
-}
 
 if (kbEnabledToggle) kbEnabledToggle.addEventListener('change', () => updateKbEnabledStatus(kbEnabledToggle.checked));
-if (kbRewriteToggle) kbRewriteToggle.addEventListener('change', () => updateKbRewriteStatus(kbRewriteToggle.checked));
 
-if (kbSaveBtn) {
-  kbSaveBtn.addEventListener('click', async () => {
-    const aiRewrite = kbRewriteToggle ? kbRewriteToggle.checked : true;
-    if (kbStatus) { kbStatus.style.color = '#888'; kbStatus.textContent = aiRewrite ? 'Reorganizando com IA e salvando…' : 'Salvando…'; }
-    kbSaveBtn.disabled = true;
+// "Resumir e organizar com IA": reescreve o texto da base e devolve NO CAMPO (não salva —
+// salvar é no "Salvar e Fechar"). Mantém as travas (pula código, descarta se encurtar).
+if (kbRewriteBtn) {
+  kbRewriteBtn.addEventListener('click', async () => {
+    if (!kbText || !kbText.value.trim()) {
+      if (kbStatus) { kbStatus.style.color = '#ffb74d'; kbStatus.textContent = 'Cole algum texto primeiro.'; }
+      return;
+    }
+    if (kbStatus) { kbStatus.style.color = '#888'; kbStatus.textContent = 'Reorganizando com IA…'; }
+    kbRewriteBtn.disabled = true;
     try {
-      const res = await ipcRenderer.invoke('kb-save', {
-        text: kbText ? kbText.value : '',
-        aiRewrite,
-        enabled: kbEnabledToggle ? kbEnabledToggle.checked : true,
-      });
+      const res = await ipcRenderer.invoke('kb-rewrite', { text: kbText.value });
       if (res && res.ok) {
-        if (res.rewritten && kbText && typeof res.text === 'string') kbText.value = res.text;
+        if (typeof res.text === 'string') kbText.value = res.text;
         if (kbStatus) {
-          if (res.shrunk) {
-            kbStatus.style.color = '#ffb74d';
-            kbStatus.textContent = `Salvo — ${res.chunks} trecho(s) (a IA encurtou demais; mantive o ORIGINAL)`;
-          } else if (res.codeSkipped) {
-            kbStatus.style.color = '#9ef0a8';
-            kbStatus.textContent = `Salvo — ${res.chunks} trecho(s) (continha código; salvo sem reorganizar)`;
-          } else {
-            kbStatus.style.color = '#9ef0a8';
-            kbStatus.textContent = `Salvo — ${res.chunks} trecho(s)` + (res.rewritten ? ' (reorganizado pela IA)' : '');
-          }
+          if (res.codeSkipped) { kbStatus.style.color = '#9ef0a8'; kbStatus.textContent = 'Contém código — mantido sem reorganizar.'; }
+          else if (res.shrunk) { kbStatus.style.color = '#ffb74d'; kbStatus.textContent = 'A IA encurtou demais — mantive o original.'; }
+          else if (res.rewritten) { kbStatus.style.color = '#9ef0a8'; kbStatus.textContent = 'Reorganizado ✓ — lembre de Salvar e Fechar.'; }
+          else { kbStatus.style.color = '#888'; kbStatus.textContent = 'Sem alterações.'; }
         }
       } else if (kbStatus) {
-        kbStatus.style.color = '#ff6b6b'; kbStatus.textContent = 'Erro: ' + ((res && res.error) || 'falha ao salvar');
+        kbStatus.style.color = '#ff6b6b'; kbStatus.textContent = 'Erro: ' + ((res && res.error) || 'falha ao reorganizar');
       }
     } catch (e) {
       if (kbStatus) { kbStatus.style.color = '#ff6b6b'; kbStatus.textContent = 'Erro: ' + e.message; }
     } finally {
-      kbSaveBtn.disabled = false;
+      kbRewriteBtn.disabled = false;
     }
   });
 }
@@ -665,7 +662,6 @@ if (kbSaveBtn) {
     const kb = await ipcRenderer.invoke('kb-get');
     if (!kb) return;
     if (kbEnabledToggle) { kbEnabledToggle.checked = kb.enabled !== false; updateKbEnabledStatus(kbEnabledToggle.checked); }
-    if (kbRewriteToggle) { kbRewriteToggle.checked = kb.aiRewrite !== false; updateKbRewriteStatus(kbRewriteToggle.checked); }
     if (kbText) kbText.value = kb.source || '';
     if (kbStatus && kb.chunks != null) kbStatus.textContent = kb.chunks ? `${kb.chunks} trecho(s) indexado(s)` : 'vazio';
   } catch (e) { console.warn('[kb] load failed:', e.message); }

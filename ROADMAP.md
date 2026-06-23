@@ -26,6 +26,46 @@ continua automático: pega Meet/Teams/YouTube no navegador).
 
 Emojis removidos da tela de Configurações. Agora em **modo manutenção/melhorias**.
 
+## ✅ Lançado em v0.4.2: Streaming + Banco de respostas (RAG de conversas)
+
+**Streaming (OpenAI):** tradutor e assistente em tempo real exibem a resposta token a
+token (sensação "bate pronto" — latência percebida cai, a real não muda). Mantém o
+anti-filler: só renderiza após o marcador `TRADUÇÃO:`. Tradutor atualiza o bloco no
+lugar por `id`; realtime reusa `segment_response` com o mesmo `id`.
+
+**Banco de respostas (`services/answerBank.js`):** guarda `{pergunta do entrevistador,
+SUA resposta}` quando a resposta pontua bem numa avaliação feita em BACKGROUND
+(`evaluateUserResponse`, nota ≥ `minScore`=4) — silenciosa, nada vai pra tela. Quando
+uma pergunta quase igual reaparece (cosseno ≥ 0.85), injeta sua resposta anterior como
+DICA (adapta, não copia, não menciona). **0-latência:** a query é embedada UMA vez
+(`knowledgeBase.embed`) e compartilhada entre base de conhecimento e banco; o save é
+async (fire-and-forget). Config `answerBank { enabled, minScore }`. Ligado no tradutor
+e no realtime. Persistência em `<userData>/knowledge/answers.json` (teto 200, poda por
+nota/recência).
+
+**Copiloto realtime:** explica siglas/jargão de negócios (IPO, M&A, EBITDA…) de forma
+discreta (ℹ️ itálico, sem negrito — palavras-chave em negrito seguem o foco); reconhece
+uso multifunção (entrevista PT-BR, reuniões, vídeos); e **não responde à própria fala
+do usuário (mic) no modo `both`** — evita o loop de ler a sugestão em voz alta e a IA
+repetir. Sua fala segue transcrita e alimentando o banco.
+
+### Decisão: o banco salva a resposta CRUA (sem polir)
+Polir com IA arrisca "corrigir" o fato com base de treino mais antiga; e o usuário pode
+salvar info errada de qualquer jeito. Salvar cru preserva a voz autêntica e evita
+contaminação. O ganho real não está no polimento por turno, e sim na **consolidação
+periódica** (abaixo).
+
+### Melhorias futuras (banco de respostas)
+- **Desativar / apagar a base** pela UI — toggle + botão "limpar banco", como já existe
+  pro knowledge base.
+- **Consolidar conhecimento de tempos em tempos** — rotina (manual ou agendada) que
+  passa o banco ACUMULADO por uma IA pra deduplicar, mesclar respostas parecidas e
+  refinar, COM o contexto inteiro à vista (não turno a turno). É a hipótese principal de
+  trabalho nesse sentido — diferente de polir cada resposta na hora.
+- **Scorer mais barato** — avaliar a nota com modelo mais leve pra reduzir custo do
+  processo em background.
+- Possível UI pra revisar/editar/remover entradas específicas do banco.
+
 ## ✅ Lançado em v0.2.0: Helper Tools — IA com acesso ao sistema
 
 Módulo opcional que dá à IA **ferramentas read-only** pra inspecionar o sistema

@@ -134,6 +134,14 @@ const defaultConfig = {
     enabled: true,
     aiRewrite: true, // IA reorganiza o texto antes de salvar (default ON)
   },
+  // Banco de respostas (RAG de conversas): guarda perguntas do entrevistador + as
+  // SUAS respostas que pontuaram bem (nota >= minScore, avaliada em background), e
+  // reaproveita como dica quando uma pergunta quase igual aparece. Arquivo separado
+  // (<userData>/knowledge/answers.json). Compartilhado por Assistente + Tradutor.
+  answerBank: {
+    enabled: true,
+    minScore: 4, // só salva respostas com nota >= 4 (de 5)
+  },
 };
 
 let configPath;
@@ -532,6 +540,21 @@ function setKnowledgeBaseConfig(partial) {
   currentConfig = null;
 }
 
+function getAnswerBankConfig() {
+  if (!currentConfig) currentConfig = loadConfig();
+  return { ...defaultConfig.answerBank, ...(currentConfig.answerBank || {}) };
+}
+
+function setAnswerBankConfig(partial) {
+  if (!currentConfig) currentConfig = loadConfig();
+  currentConfig.answerBank = {
+    ...(currentConfig.answerBank || defaultConfig.answerBank),
+    ...(partial || {}),
+  };
+  saveConfig(currentConfig);
+  currentConfig = null;
+}
+
 function getTranslationAssistantConfig() {
   if (!currentConfig) currentConfig = loadConfig();
   return { ...defaultConfig.translationAssistant, ...(currentConfig.translationAssistant || {}) };
@@ -610,6 +633,8 @@ module.exports = {
   setTranslationAssistantConfig,
   getKnowledgeBaseConfig,
   setKnowledgeBaseConfig,
+  getAnswerBankConfig,
+  setAnswerBankConfig,
   getConfig,
   setConfigValue,
   getIp,

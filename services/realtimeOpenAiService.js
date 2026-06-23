@@ -20,6 +20,8 @@ const fs = require('fs');
 const path = require('path');
 const { startCapture, stopCapture } = require('./realtimeAudioCapture');
 const knowledgeBase = require('./knowledgeBase');
+const answerBank = require('./answerBank');
+const { evaluateUserResponse } = require('./translationAssistant/openaiClient');
 
 // Transcrição própria (NÃO importa nada do Assistente de Tradução — totalmente
 // independente). Envia o WAV pro endpoint de transcrição da OpenAI.
@@ -61,6 +63,8 @@ class RealtimeOpenAiService {
     this.currentSessionId = null;
     this.contextMessages = [];
     this.maxIterationsInContext = 10;
+    // Última pergunta do interlocutor (sys) — pareada com a SUA resposta (mic) p/ o banco.
+    this._lastInterviewerQuestion = '';
   }
 
   isActive() { return this.active; }
@@ -71,6 +75,7 @@ class RealtimeOpenAiService {
     this.iterationCount = 0;
     this.contextMessages = [];
     this.currentSessionId = null;
+    this._lastInterviewerQuestion = '';
 
     if (this.historyService) {
       try {
@@ -130,6 +135,12 @@ class RealtimeOpenAiService {
       return;
     }
 
+    // No modo 'both', a SUA fala (mic) serve só pra transcrição + banco de respostas —
+    // NÃO gera sugestão. Senão, quando você LÊ a sugestão em voz alta, o mic re-dispara
+    // a IA e ela repete a mesma coisa (loop). A sugestão é pro que o OUTRO (sys) fala.
+    // No modo 'mic' (você é a fonte do conteúdo), aí sim respondemos ao mic.
+    const respondToSegment = (source === 'sys') || (mode === 'mic');
+
     const token = this.configService.getOpenIaToken();
     const id = 'seg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
     this.iterationCount += 1;
@@ -147,10 +158,30 @@ class RealtimeOpenAiService {
         return;
       }
 
-      // Texto definitivo (UI mostra "transcrito" + "pensando…").
-      this.emitUpdate({ type: 'segment_whisper_correction', id, iteration, text: transcript, source: 'openai', timestamp: new Date().toISOString() });
+      // Texto definitivo (UI mostra "transcrito" + "pensando…"). noSuggestion=true
+      // quando é a sua fala em modo both → a UI esconde a bolha do assistente.
+      this.emitUpdate({ type: 'segment_whisper_correction', id, iteration, text: transcript, source: 'openai', noSuggestion: !respondToSegment, timestamp: new Date().toISOString() });
 
-      const response = await this._askAI(transcript, token);
+      // Banco de respostas: rastreia a pergunta do interlocutor (sys) e, quando VOCÊ
+      // (mic) responde, avalia/guarda o par em background (não trava o pipeline).
+      if (source === 'mic') {
+        if (this._lastInterviewerQuestion) {
+          this._scoreAndStore(this._lastInterviewerQuestion, transcript, token);
+          this._lastInterviewerQuestion = '';
+        }
+      } else {
+        this._lastInterviewerQuestion = transcript;
+      }
+
+      // Sua fala em modo both: já transcreveu e alimentou o banco — não gera sugestão.
+      if (!respondToSegment) return;
+
+      // Streaming: emite segment_response parcial com o MESMO id; a UI atualiza a
+      // bolha no lugar (rtSegments.get(payload.id)). Throttle já é feito no _askAI.
+      const response = await this._askAI(transcript, token, (partial) => {
+        this.emitUpdate({ type: 'segment_response', id, iteration, response: partial, source: 'openai', timestamp: new Date().toISOString() });
+      });
+      // Emite o texto final completo (garante o conteúdo inteiro mesmo se o último delta foi throttled).
       this.emitUpdate({ type: 'segment_response', id, iteration, response, source: 'openai', timestamp: new Date().toISOString() });
       await this._writeHistory(transcript, response);
     } catch (err) {
@@ -160,29 +191,60 @@ class RealtimeOpenAiService {
     }
   }
 
+  // Avalia a SUA resposta (mic) contra a última pergunta do interlocutor, em BACKGROUND,
+  // e guarda no banco de respostas se a nota for boa. Silencioso — nada vai pra UI.
+  async _scoreAndStore(question, answer, token) {
+    try {
+      const abCfg = this.configService.getAnswerBankConfig ? this.configService.getAnswerBankConfig() : null;
+      if (!abCfg || !abCfg.enabled || !question || !answer || !token) return;
+      const ta = this.configService.getTranslationAssistantConfig ? this.configService.getTranslationAssistantConfig() : {};
+      const evalText = await evaluateUserResponse(
+        question, answer,
+        { userName: ta.userName, userBackground: ta.userBackground },
+        token
+      );
+      const m = String(evalText).match(/(\d)\s*\/\s*5/) || String(evalText).match(/⭐\s*(\d)/);
+      const score = m ? parseInt(m[1], 10) : 0;
+      await answerBank.record({ question, answer, score, lang: ta.targetLanguage, token, minScore: abCfg.minScore });
+    } catch (e) {
+      console.warn('[realtime-openai] score/store (banco) falhou:', e.message);
+    }
+  }
+
   // ---------- OpenAI chat ----------
-  async _askAI(transcript, token) {
+  // onDelta(textoAcumulado): se passado, streama a resposta (sensação "bate pronto").
+  async _askAI(transcript, token, onDelta) {
     const chosen = this.configService.getOpenAiModel();
     const model = REALTIME_MODEL_FLOOR[chosen] || chosen;
 
-    // Base de conhecimento atualizável (RAG): ChatGPT recupera direto (embeddings).
-    let kbBlock = '';
+    // RAG: base de conhecimento (fatos atuais) + banco de respostas (suas respostas boas).
+    // Embeda a query UMA vez e compartilha entre os dois → 0 chamada de rede a mais.
+    let kbBlock = '', bankHint = '';
     try {
       const kbOn = this.configService.getKnowledgeBaseConfig
         ? this.configService.getKnowledgeBaseConfig().enabled : false;
-      if (kbOn) kbBlock = await knowledgeBase.augment(transcript, { token, topK: 5 });
+      const abOn = this.configService.getAnswerBankConfig
+        ? this.configService.getAnswerBankConfig().enabled : false;
+      if (kbOn || abOn) {
+        const qEmb = await knowledgeBase.embed(transcript, token);
+        if (kbOn) kbBlock = await knowledgeBase.augment(transcript, { token, topK: 5, queryEmbedding: qEmb });
+        if (abOn) bankHint = await answerBank.augment(transcript, { token, queryEmbedding: qEmb });
+      }
     } catch (_) {}
+    const ragBlock = [bankHint, kbBlock].filter(Boolean).join('\n\n');
 
     const userPrompt =
-      (kbBlock ? kbBlock + '\n\n---\n\n' : '') +
+      (ragBlock ? ragBlock + '\n\n---\n\n' : '') +
       `TRANSCRIÇÃO do áudio captado (transcrita pela OpenAI, alta qualidade):\n\n` +
       `"${transcript}"\n\n` +
       `Aja segundo as regras do system prompt. Se for incompreensível ou sem ` +
       `conteúdo útil, responda APENAS '(trecho sem conteúdo relevante)'.`;
 
+    const stream = typeof onDelta === 'function';
     const payload = {
       model,
       max_tokens: CHAT_MAX_TOKENS,
+      stream,
       messages: [
         { role: 'system', content: this._systemInstruction() },
         ...this.contextMessages.slice(-(this.maxIterationsInContext * 2)),
@@ -195,13 +257,45 @@ class RealtimeOpenAiService {
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    const data = await res.json();
     if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
       const e = new Error(data.error?.message || 'OpenAI chat failed');
       e.response = { status: res.status, data };
       throw e;
     }
-    return (data.choices?.[0]?.message?.content || '').trim() || '(sem resposta)';
+
+    // Modo não-streaming (compat).
+    if (!stream) {
+      const data = await res.json();
+      return (data.choices?.[0]?.message?.content || '').trim() || '(sem resposta)';
+    }
+
+    // Modo streaming (SSE): acumula tokens e emite o texto parcial (throttle ~60ms).
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '', content = '', lastEmit = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let nl;
+      while ((nl = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, nl).trim();
+        buffer = buffer.slice(nl + 1);
+        if (!line.startsWith('data:')) continue;
+        const p = line.slice(5).trim();
+        if (p === '[DONE]') continue;
+        try {
+          const delta = JSON.parse(p).choices?.[0]?.delta?.content || '';
+          if (delta) {
+            content += delta;
+            const now = Date.now();
+            if (now - lastEmit > 60) { lastEmit = now; onDelta(content.trim()); }
+          }
+        } catch (_) {}
+      }
+    }
+    return content.trim() || '(sem resposta)';
   }
 
   _systemInstruction() {
@@ -210,6 +304,7 @@ class RealtimeOpenAiService {
       'Você é um COPILOTO DISCRETO em tempo real durante ENTREVISTAS, reuniões e ligações.',
       'Você ouve o microfone do usuário E o áudio do sistema (interlocutor). O texto recebido é uma TRANSCRIÇÃO do que está sendo falado.',
       'OBJETIVO: dar ao usuário o que ele precisa pra responder COM AS PRÓPRIAS PALAVRAS — não escrever um discurso pronto pra ele decorar.',
+      'MULTIFUNÇÃO: serve pra entrevistas em PT-BR, mas TAMBÉM pra acompanhar reuniões, bate-papos e vídeos (YouTube etc.). Nem todo trecho é uma pergunta. Quando for só conversa/exposição (não uma pergunta a responder), mostre os TERMOS/TÓPICOS-CHAVE do que está sendo falado — NÃO force uma sugestão de resposta.',
       '',
       'LINGUAGEM (muito importante):',
       '- Português brasileiro FALADO, simples e natural — como um colega dev de SP/SC falaria. Frases curtas e diretas.',
@@ -227,9 +322,13 @@ class RealtimeOpenAiService {
       '',
       'C) PERGUNTA OBJETIVA (número, sim/não, cálculo, 1 definição): responda direto e curto, termo-chave em **negrito**.',
       '',
-      'D) RUÍDO / SAUDAÇÃO / "mm-hmm" / CONVERSA FIADA / SEM PERGUNTA: responda APENAS "(trecho sem conteúdo relevante)". Nunca force ajuda.',
+      'D) RUÍDO / SAUDAÇÃO / "mm-hmm" / backchannel SEM conteúdo: responda APENAS "(trecho sem conteúdo relevante)". (Atenção: conversa ou exposição COM conteúdo NÃO se enquadra aqui — nesse caso siga a regra de MULTIFUNÇÃO e dê os termos-chave do que foi dito.)',
       '',
-      'SEMPRE destaque em **negrito** os termos/tecnologias/conceitos-chave — é o que o usuário bate o olho pra montar a resposta (ex: **Kafka**, **Spring Security**, **JWT**, **idempotência**, **índice**, **transação**, **Jakarta**).',
+      'SEMPRE destaque em **negrito** os termos/tecnologias/conceitos-chave — é o que o usuário bate o olho pra montar a resposta (ex: **Kafka**, **Spring Security**, **JWT**, **idempotência**, **índice**, **transação**, **Jakarta**, **IPO**).',
+      '',
+      'SIGLAS E JARGÃO (negócios/finanças/tech): quando aparecer uma sigla ou termo que valha explicar (ex: IPO, M&A, ARR, SLA, churn, valuation, EBITDA), acrescente uma EXPLICAÇÃO CURTA do que significa NAQUELE contexto. Formato DISCRETO: linha separada em itálico começando com "ℹ️", SEM negrito — ex: "*ℹ️ IPO = abertura de capital, quando a empresa passa a vender ações na bolsa*". Só quando ajuda; no máximo 1-2 por trecho.',
+      '',
+      'HIERARQUIA (destaque x apoio): as PALAVRAS-CHAVE em **negrito** são o FOCO — é o que o usuário lê pra responder. As notas de sigla (ℹ️ itálico) e a sugestão de resposta são APOIO SECUNDÁRIO, discretas — nunca roubam o destaque das palavras-chave nem confundem o que importa. Em tempo real, palavras-chave primeiro; resposta sugerida só quando faz sentido (entrevista), e nunca como foco principal.',
       '',
       'CONHECIMENTO: Java/Spring, JS/TS/React/Angular/Node, Python, SQL/NoSQL, Kafka/RabbitMQ, Docker/K8s/OpenShift, AWS/GCP, SOLID/DDD/TDD/CI-CD, REST/GraphQL, segurança (OAuth2/JWT), além de leis BR e produtos financeiros.',
       '',

@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const configService = require('../configService');
 const knowledgeBase = require('../knowledgeBase');
+const answerBank = require('../answerBank');
 
 /**
  * Transcreve um arquivo de audio usando gpt-4o-mini-transcribe.
@@ -51,14 +52,20 @@ const CODE_REQUEST_RE = /\b(write (a |an |the )?(function|method|class|snippet|c
 async function getTranslationAndSuggestion(transcript, { userName, userBackground, targetLanguage }, apiKey, opts = {}) {
   const isCodeRequest = CODE_REQUEST_RE.test(transcript);
 
-  // Base de conhecimento atualizável (RAG) — injeta trechos relevantes (ChatGPT).
-  let kbBlock = '';
+  // RAG: base de conhecimento (fatos atuais) + banco de respostas (suas respostas boas).
+  // Embeda a query UMA vez e compartilha entre os dois → 0 chamada de rede a mais.
+  let kbBlock = '', bankHint = '';
   try {
-    if (configService.getKnowledgeBaseConfig().enabled) {
-      kbBlock = await knowledgeBase.augment(transcript, { token: apiKey, topK: 5 });
+    const kbOn = configService.getKnowledgeBaseConfig().enabled;
+    const abOn = configService.getAnswerBankConfig().enabled;
+    if (kbOn || abOn) {
+      const qEmb = await knowledgeBase.embed(transcript, apiKey);
+      if (kbOn) kbBlock = await knowledgeBase.augment(transcript, { token: apiKey, topK: 5, queryEmbedding: qEmb });
+      if (abOn) bankHint = await answerBank.augment(transcript, { token: apiKey, queryEmbedding: qEmb });
     }
   } catch (_) {}
-  const userContent = kbBlock ? `${kbBlock}\n\n---\n\n${transcript}` : transcript;
+  const ragBlock = [bankHint, kbBlock].filter(Boolean).join('\n\n');
+  const userContent = ragBlock ? `${ragBlock}\n\n---\n\n${transcript}` : transcript;
   // opts.forceModel é usado pelo fallback — sem ele a recursão re-detectaria
   // codeRequest e voltaria pro mesmo modelo quebrado, criando loop infinito.
   const model = opts.forceModel || (isCodeRequest ? 'gpt-4.1' : 'gpt-4o-mini');
@@ -85,6 +92,14 @@ Regras para a sugestão de resposta:
 TRADUÇÃO: <texto traduzido>
 RESPOSTA: <resposta em inglês — texto puro, OU texto + código apenas se pedido>`;
 
+  // Marcador do formato válido. Filtro anti-filler: em fragmentos/ruído ([Música],
+  // frases cortadas) o modelo às vezes "quebra o personagem" e responde "Por favor,
+  // forneça a fala transcrita..." / "Entendido. Posso ajudar com..." em vez do formato
+  // TRADUÇÃO/RESPOSTA. Quem decide quando responder é o usuário — descartamos qualquer
+  // saída sem o marcador do formato (vale nos dois modos, streaming ou não).
+  const FORMAT_RE = /TRADU[ÇC][ÃA]O\s*:/i;
+  const onDelta = typeof opts.onDelta === 'function' ? opts.onDelta : null;
+
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -98,20 +113,73 @@ RESPOSTA: <resposta em inglês — texto puro, OU texto + código apenas se pedi
         { role: 'user', content: userContent },
       ],
       max_tokens: 400,
+      stream: !!onDelta,
     }),
   });
 
-  const data = await res.json();
   if (!res.ok) {
-    // Fallback para gpt-4o-mini se o modelo escolhido não estiver disponível
+    const data = await res.json().catch(() => ({}));
+    // Fallback para gpt-4o-mini se o modelo escolhido não estiver disponível.
     if (model !== 'gpt-4o-mini') {
       console.warn(`[TranslationAssistant] ${model} indisponível (${data.error?.message || 'erro'}), fallback para gpt-4o-mini`);
-      return getTranslationAndSuggestion(transcript, { userName, userBackground, targetLanguage }, apiKey, { forceModel: 'gpt-4o-mini' });
+      return getTranslationAndSuggestion(transcript, { userName, userBackground, targetLanguage }, apiKey, { ...opts, forceModel: 'gpt-4o-mini' });
     }
     throw new Error(data.error?.message || 'GPT failed');
   }
-  console.log(`[TranslationAssistant] modelo usado: ${model} (codeRequest=${isCodeRequest})`);
-  return data.choices[0].message.content;
+
+  // --- modo NÃO-streaming (compatível) ---
+  if (!onDelta) {
+    const data = await res.json();
+    const content = data.choices?.[0]?.message?.content || '';
+    if (!FORMAT_RE.test(content)) {
+      console.log('[TranslationAssistant] resposta fora do formato (filler) — descartada');
+      return null;
+    }
+    console.log(`[TranslationAssistant] modelo usado: ${model} (codeRequest=${isCodeRequest}, stream=off)`);
+    return content;
+  }
+
+  // --- modo STREAMING (SSE) ---
+  // Acumula tokens e só começa a emitir DEPOIS que o marcador TRADUÇÃO: aparece —
+  // assim filler nunca chega a renderizar. Emissão throttled (~60ms) pra não floodar IPC.
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let content = '';
+  let started = false;
+  let lastEmit = 0;
+  const emit = (force) => {
+    if (!started) {
+      if (!FORMAT_RE.test(content)) return;
+      started = true;
+    }
+    const now = Date.now();
+    if (force || now - lastEmit > 60) { lastEmit = now; onDelta(content); }
+  };
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let nl;
+    while ((nl = buffer.indexOf('\n')) >= 0) {
+      const line = buffer.slice(0, nl).trim();
+      buffer = buffer.slice(nl + 1);
+      if (!line.startsWith('data:')) continue;
+      const payload = line.slice(5).trim();
+      if (payload === '[DONE]') continue;
+      try {
+        const delta = JSON.parse(payload).choices?.[0]?.delta?.content || '';
+        if (delta) { content += delta; emit(false); }
+      } catch (_) {}
+    }
+  }
+  if (!started) {
+    console.log('[TranslationAssistant] resposta fora do formato (filler) — descartada (stream)');
+    return null;
+  }
+  emit(true); // flush final
+  console.log(`[TranslationAssistant] modelo usado: ${model} (codeRequest=${isCodeRequest}, stream=on)`);
+  return content;
 }
 
 /**

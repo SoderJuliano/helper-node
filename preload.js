@@ -46,9 +46,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("realtime-assistant-update", (event, data) => callback(data)),
   // sendTextToLlama: (text) => ipcRenderer.send('send-to-llama', text),
   sendTextToGemini: (text) => ipcRenderer.send("send-to-gemini", text),
+  // Manda a IMAGEM (data URL base64) + enunciado pro modelo de visão (gpt-4o).
+  // Usado quando o usuário cola/captura uma imagem no chat e o backend é OpenAI.
+  sendVisionToGemini: (text, image) =>
+    ipcRenderer.send("send-to-gemini-vision", { text, image }),
   sendTextToGeminiStream: (text) => ipcRenderer.send("send-to-gemini-stream", text),
   onAutoStream: (callback) =>
     ipcRenderer.on("send-to-gemini-stream-auto", (event, text) => callback(text)),
+  // Estado do auto-close da janela 'response', decidido pelo main (cursor por
+  // posição global). { state: 'paused' } | { state: 'running', ms }
+  onAutoCloseState: (callback) =>
+    ipcRenderer.on("autoclose-state", (event, data) => callback(data)),
   getAiModel: () => ipcRenderer.invoke("get-ai-model"),
   getEdition: () => ipcRenderer.invoke("get-edition"),
   stopNotifications: () => ipcRenderer.send("stop-notifications"),

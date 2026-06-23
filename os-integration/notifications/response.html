@@ -220,68 +220,44 @@
             }
         }
 
-        // === AUTO-CLOSE com barra de progresso reversa ===
-        // Comportamento:
-        //  - 10s após a janela aparecer, fecha automaticamente.
-        //  - Mouse sobre a janela: pausa o timer e esconde a barra.
-        //  - Mouse sai: reinicia o timer do zero (10s de novo).
+        // === AUTO-CLOSE: barra cosmética controlada pelo MAIN ===
+        // ANTES: o timer ficava aqui e dependia de mouseover/mouseout. Em
+        // COSMIC/Wayland a janela stealth só recebe esses eventos com foco —
+        // por isso o hover-pause "às vezes" funcionava (precisava sair/voltar o
+        // foco). AGORA quem decide pausar/fechar é o processo principal, que lê
+        // a posição GLOBAL do cursor (independe de foco/eventos). Aqui só
+        // animamos a barrinha conforme o estado recebido por IPC.
         const AUTO_CLOSE_MS = 10000;
         const bar = document.getElementById('autoclose-bar');
-        let closeTimer = null;
 
-        function startAutoClose() {
-            cancelAutoClose();
-            // Reset visual: barra cheia, sem transicao
+        function runBar(ms) {
             bar.classList.remove('paused');
             bar.style.transition = 'none';
             bar.style.transform = 'scaleX(1)';
-            // Força reflow para a transição pegar o novo valor
-            // (senão navegador agrupa as duas mudanças)
-            void bar.offsetWidth;
-            bar.style.transition = `transform ${AUTO_CLOSE_MS}ms linear`;
+            void bar.offsetWidth; // força reflow pra transição pegar o novo valor
+            bar.style.transition = `transform ${ms}ms linear`;
             bar.style.transform = 'scaleX(0)';
-            closeTimer = setTimeout(() => {
-                try { window.close(); } catch (_) {}
-            }, AUTO_CLOSE_MS);
         }
 
-        function cancelAutoClose() {
-            if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
+        function pauseBar() {
             bar.classList.add('paused');
-            // Para a animação no estado atual sem reset
             const computed = getComputedStyle(bar).transform;
             bar.style.transition = 'none';
-            bar.style.transform = computed;
+            bar.style.transform = computed; // congela onde está
         }
 
-        // Mouse dentro/fora da JANELA inteira.
-        // BUG anterior: usava mouseenter/mouseleave em `document` com
-        // capture=true. Esses eventos não fazem bubble, mas em capture
-        // disparavam pra todo descendente — então mexer o mouse atravessava
-        // <p>, <code> etc. e a cada `mouseleave` de filho o timer reiniciava.
-        // Resultado: mouse parado fechava, mouse mexendo "pausava".
-        //
-        // Fix: usar mouseover/mouseout no documentElement com checagem de
-        // relatedTarget pra detectar saída REAL da janela. Eles fazem bubble
-        // mas a checagem evita o disparo entre filhos.
-        let mouseInside = false;
-        function onMouseOver(e) {
-            if (mouseInside) return;
-            mouseInside = true;
-            cancelAutoClose();
+        if (window.electronAPI && window.electronAPI.onAutoCloseState) {
+            window.electronAPI.onAutoCloseState((data) => {
+                if (!data) return;
+                if (data.state === 'paused') pauseBar();
+                else if (data.state === 'running') runBar(data.ms || AUTO_CLOSE_MS);
+            });
         }
-        function onMouseOut(e) {
-            // relatedTarget = pra onde o mouse foi. null = saiu da janela.
-            if (e.relatedTarget) return;
-            mouseInside = false;
-            startAutoClose();
-        }
-        document.documentElement.addEventListener('mouseover', onMouseOver);
-        document.documentElement.addEventListener('mouseout', onMouseOut);
-        // Inicia ao carregar
+
+        // Barra inicial (cosmética) até o main mandar o 1º estado. O fechamento
+        // de fato é sempre decidido no main.
         window.addEventListener('load', () => {
-            // Pequeno atraso para o usuário ver a barra cheia antes de começar a encolher
-            setTimeout(startAutoClose, 150);
+            setTimeout(() => runBar(AUTO_CLOSE_MS), 150);
         });
         // Function to set response content from main process
         window.setResponseContent = function(content) {

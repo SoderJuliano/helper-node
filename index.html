@@ -2180,7 +2180,13 @@
                             seg.userBadge.textContent = '✅ transcrito';
                             seg.userBadge.style.color = 'rgba(180,255,180,0.9)';
                         }
-                        seg.assistantBadge.textContent = '🤖 pensando…';
+                        if (payload.noSuggestion) {
+                            // Sua própria fala (modo both): só transcrição, sem sugestão repetida.
+                            seg.userBadge.textContent = '✅ você falou';
+                            seg.assistantBubble.style.display = 'none';
+                        } else {
+                            seg.assistantBadge.textContent = '🤖 pensando…';
+                        }
                         scrollFeed();
                         return;
                     }
@@ -2495,6 +2501,10 @@
                         reader.onload = (e) => {
                             const base64Image = e.target.result;
 
+                            // Guarda o data URL real da imagem pra mandar pro modelo
+                            // de visão (o OCR/ocr-result não carrega o base64 de volta).
+                            window.pendingChatImage = base64Image;
+
                             if (manualInputActive) {
                                 // NOVO FLUXO: Input manual está aberto
                                 console.log('Input manual ativo, mostrando preview e iniciando OCR da imagem.');
@@ -2697,7 +2707,7 @@
 
             });
 
-            window.electronAPI.onOcrResult(({ text, screenshotPath, base64Image, error }) => {
+            window.electronAPI.onOcrResult(async ({ text, screenshotPath, base64Image, error }) => {
                 const preview = document.getElementById('screenshot-preview');
                 const robot = document.getElementById('robot');
                 const animationContainer = document.getElementById('animation-container');
@@ -2728,6 +2738,9 @@
 
                 // Mostra a miniatura (use base64 if provided)
                 if (base64Image) {
+                    // Captura (Ctrl+Shift+S) traz o base64 aqui; paste já setou antes.
+                    // Só sobrescreve quando vier base64 real (não apaga o do paste).
+                    window.pendingChatImage = base64Image;
                     preview.src = base64Image;
                 } else if (screenshotPath) {
                     preview.src = `file://${screenshotPath}`;
@@ -2764,12 +2777,19 @@
                     editIcon.className = 'edit-icon';
                     editIcon.innerHTML = EDIT_ICON_SVG;
 
-                    sentToAI(text || 'Processo texto da imagem');
-                    
+                    // Se há imagem colada e o backend tem visão, manda a IMAGEM
+                    // (não o OCR). É o que faz a captura realmente chegar no modelo.
+                    if (window.pendingChatImage && await backendSupportsVision()) {
+                        sentImageToAI('', window.pendingChatImage);
+                        window.pendingChatImage = null;
+                    } else {
+                        sentToAI(text || 'Processo texto da imagem');
+                    }
+
                     setTimeout(() => {
                         preview.style.display = 'none';
                     }, 8000);
-                    
+
                     return;
                 }
 
@@ -2794,6 +2814,15 @@
                 } else {
                     // Texto simples ou vazio
                     ocrContainer.textContent = text || 'Nenhum texto encontrado na imagem';
+                }
+
+                // Captura via Ctrl+Shift+S em modo normal: se há imagem e o backend
+                // tem visão, manda a IMAGEM pro modelo (independe do OCR ter texto).
+                if (window.pendingChatImage && await backendSupportsVision()) {
+                    sentImageToAI('', window.pendingChatImage);
+                    window.pendingChatImage = null;
+                    setTimeout(() => { preview.style.display = 'none'; }, 8000);
+                    return;
                 }
 
                 transcriptionElement.appendChild(ocrContainer);
@@ -2986,6 +3015,24 @@
                 // Usa o método normal
                 window.electronAPI.sendTextToGemini(text);
             }
+        }
+
+        // Manda a IMAGEM (data URL) pro modelo de visão, com o enunciado digitado
+        // (se houver). Usado no chat quando o backend é OpenAI — antes a imagem
+        // era jogada fora e só o OCR ia pro modelo.
+        async function sentImageToAI(text, image) {
+            const q = (text && text.trim()) ? text.trim() : 'Image in context';
+            if (window.historySession) {
+                await window.historySession.ensureSessionForFirstQuestion(q);
+                await window.historySession.addMessageToCurrentSession('user', q);
+            }
+            window.electronAPI.sendVisionToGemini(text || '', image);
+        }
+
+        // True quando o backend ativo suporta visão (OpenAI). Na Lite é sempre true.
+        async function backendSupportsVision() {
+            try { return (await window.electronAPI.getAiModel()) === 'openIa'; }
+            catch (_) { return false; }
         }
 
         function formatStreamedText(text) {
@@ -3505,16 +3552,22 @@
 
                 startProcessing();
 
-                // Fetch promptInstruction and send combined
-                const promptInstruction = await window.electronAPI.getPromptInstruction();
-                const combined = `${promptInstruction}${text}`; // OCR text will be appended by backend flow or renderer when received
-                // If we kept OCR text locally, append it
-                if (typeof window.lastOcrText === 'string' && window.lastOcrText.length > 0) {
-                    sentToAI(`${promptInstruction}${text}\n${window.lastOcrText}`);
+                // Se o backend tem visão (OpenAI/Lite), manda a IMAGEM real + o
+                // enunciado digitado. O OCR local não basta: quiz/código/canvas
+                // viram OCR vazio e o modelo respondia "envie as opções".
+                if (window.pendingChatImage && await backendSupportsVision()) {
+                    sentImageToAI(text, window.pendingChatImage);
                 } else {
-                    sentToAI(combined);
+                    // Backends sem visão: mantém o fluxo antigo de OCR + texto.
+                    const promptInstruction = await window.electronAPI.getPromptInstruction();
+                    if (typeof window.lastOcrText === 'string' && window.lastOcrText.length > 0) {
+                        sentToAI(`${promptInstruction}${text}\n${window.lastOcrText}`);
+                    } else {
+                        sentToAI(`${promptInstruction}${text}`);
+                    }
                 }
                 pastedImageForManualInput = null;
+                window.pendingChatImage = null;
                 document.getElementById('screenshot-preview').style.display = 'none';
                 return;
             }
@@ -3656,24 +3709,33 @@
                 // Tradução + sugestão
                 } else if (status === 'done' || !status) {
                     _taShow(`🎤 Fale agora — até 40s`, false);
-                    const block = document.createElement('div');
-                    block.className = 'interaction-block';
-                    if (data.transcript && data.transcript.trim()) {
-                        const orig = document.createElement('div');
-                        orig.className = 'ta-original';
-                        // mic (você) vs sys (entrevistador) — rótulo pra você saber quem falou
-                        const who = data.mode === 'candidate' ? '👤 Você: ' : '🎧 Entrevistador: ';
-                        orig.textContent = who + data.transcript;
-                        block.appendChild(orig);
+                    // Streaming: resultados do mesmo turno trazem o mesmo data.id e o texto
+                    // acumulado. Atualiza o bloco existente NO LUGAR em vez de criar outro.
+                    let block = data.id ? el.querySelector(`[data-ta-id="${data.id}"]`) : null;
+                    if (!block) {
+                        block = document.createElement('div');
+                        block.className = 'interaction-block';
+                        if (data.id) block.dataset.taId = data.id;
+                        if (data.transcript && data.transcript.trim()) {
+                            const orig = document.createElement('div');
+                            orig.className = 'ta-original';
+                            // mic (você) vs sys (entrevistador) — rótulo pra você saber quem falou
+                            const who = data.mode === 'candidate' ? '👤 Você: ' : '🎧 Entrevistador: ';
+                            orig.textContent = who + data.transcript;
+                            block.appendChild(orig);
+                        }
+                        el.appendChild(block);
                     }
                     if (data.response && data.response.trim()) {
-                        const resp = document.createElement('div');
-                        resp.className = 'ia-response';
-                        resp.style.cssText = 'white-space: pre-wrap;';
+                        let resp = block.querySelector('.ia-response');
+                        if (!resp) {
+                            resp = document.createElement('div');
+                            resp.className = 'ia-response';
+                            resp.style.cssText = 'white-space: pre-wrap;';
+                            block.appendChild(resp);
+                        }
                         resp.innerHTML = formatOpenAIResponse(data.response);
-                        block.appendChild(resp);
                     }
-                    el.appendChild(block);
 
                 // Ouvindo resposta — badge já foi atualizado no status 'done'
                 } else if (status === 'listening') {

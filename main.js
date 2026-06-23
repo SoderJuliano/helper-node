@@ -333,6 +333,7 @@ let screenshotFolderWatcherPath = null;
 // OS Integration windows
 let osInputWindow = null;
 let osNotificationWindow = null;
+let osNotifAutoCloseTimer = null; // poller do auto-close da janela 'response'
 // Janela SECUND\u00c1RIA pra mostrar resposta de imagem quando recording-live
 // est\u00e1 ativa \u2014 sen\u00e3o destruir\u00edamos a bolha de conversa pra mostrar a img.
 let osImageResponseWindow = null;
@@ -478,22 +479,23 @@ function stopAllRealtime() {
 // Entrega resultados do Assistente de Tradução.
 // Em OS Integration: usa a janela DEDICADA (translation-overlay.html), persistente
 // no canto direito, sem auto-close. Não toca em osNotificationWindow (que é do Vosk).
-translationAssistant.onResult(({ transcript, response, mode }) => {
+translationAssistant.onResult(({ transcript, response, mode, id, streaming }) => {
   try {
+    // streaming===true → é um delta (texto parcial acumulado): só atualiza o bloco,
+    // sem piscar o status processing/mic_open a cada pedaço.
+    const isDelta = streaming === true;
     const cfg = configService.getConfig();
-    if (cfg.osIntegration) {
-      // Garante que o overlay existe (recria se foi fechado)
-      if (!translationOverlayWindow || translationOverlayWindow.isDestroyed()) {
-        createTranslationOverlay();
+    const send = (channel, data) => {
+      if (cfg.osIntegration) {
+        if (!translationOverlayWindow || translationOverlayWindow.isDestroyed()) createTranslationOverlay();
+        sendToTranslationOverlay(channel, data);
+      } else if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(channel, data);
       }
-      sendToTranslationOverlay('translation-status', 'processing');
-      sendToTranslationOverlay('translation-result', { transcript, response, mode: mode || 'interviewer' });
-      sendToTranslationOverlay('translation-status', 'mic_open');
-    } else if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('translation-status', 'processing');
-      mainWindow.webContents.send('translation-result', { transcript, response, mode: mode || 'interviewer' });
-      mainWindow.webContents.send('translation-status', 'mic_open');
-    }
+    };
+    if (!isDelta) send('translation-status', 'processing');
+    send('translation-result', { transcript, response, mode: mode || 'interviewer', id, streaming });
+    if (!isDelta) send('translation-status', 'mic_open');
   } catch (e) {
     console.error('[TranslationAssistant] erro ao entregar resultado:', e.message);
   }
@@ -793,8 +795,65 @@ function applyStealthProtection(win) {
   }
 }
 
+// === Auto-close da janela 'response' (controlado pelo MAIN) ===
+// O timer ficava no renderer (response.html) reagindo a mouseover/mouseout.
+// Em COSMIC/Wayland a janela stealth só recebe esses eventos de forma confiável
+// quando tem foco — daí o hover-pause "às vezes funcionava, às vezes só depois
+// de sair/voltar o foco". Aqui detectamos o cursor por posição GLOBAL
+// (screen.getCursorScreenPoint) vs. os bounds da janela: independe de foco e
+// de eventos do DOM. O renderer só anima a barrinha conforme o estado que
+// mandamos. O fechamento é decidido SEMPRE aqui.
+function clearOsNotifAutoClose() {
+  if (osNotifAutoCloseTimer) { clearInterval(osNotifAutoCloseTimer); osNotifAutoCloseTimer = null; }
+}
+
+function startResponseAutoClose() {
+  clearOsNotifAutoClose();
+  const AUTO_CLOSE_MS = 10000;
+  const POLL_MS = 200;
+  let remaining = AUTO_CLOSE_MS;
+  let last = Date.now();
+  let prevInside = null; // null = ainda não decidido; força envio do 1º estado
+  osNotifAutoCloseTimer = setInterval(() => {
+    const win = osNotificationWindow;
+    if (!win || win.isDestroyed()) { clearOsNotifAutoClose(); return; }
+
+    const now = Date.now();
+    const dt = now - last; last = now;
+
+    let inside = false;
+    try {
+      const p = screen.getCursorScreenPoint();
+      const b = win.getBounds();
+      inside = p.x >= b.x && p.x < b.x + b.width && p.y >= b.y && p.y < b.y + b.height;
+    } catch (_) {}
+
+    if (inside) {
+      remaining = AUTO_CLOSE_MS; // mouse em cima: mantém aberta (contador cheio)
+      if (prevInside !== true) {
+        prevInside = true;
+        try { win.webContents.send('autoclose-state', { state: 'paused' }); } catch (_) {}
+      }
+    } else {
+      if (prevInside !== false) {
+        // Acabou de sair (ou primeira leitura fora): reinicia 10s do zero.
+        prevInside = false;
+        remaining = AUTO_CLOSE_MS;
+        try { win.webContents.send('autoclose-state', { state: 'running', ms: AUTO_CLOSE_MS }); } catch (_) {}
+      } else {
+        remaining -= dt;
+      }
+      if (remaining <= 0) {
+        clearOsNotifAutoClose();
+        try { win.close(); } catch (_) {}
+      }
+    }
+  }, POLL_MS);
+}
+
 // Helper function to completely destroy the notification window
 function destroyNotificationWindow() {
+  clearOsNotifAutoClose();
   if (osNotificationWindow && !osNotificationWindow.isDestroyed()) {
     console.log(`🔔 DESTROYING notification window completely`);
     try {
@@ -892,6 +951,13 @@ function createOsNotificationWindow(type, content) {
   osNotificationWindow.once('ready-to-show', () => {
     try { osNotificationWindow.setBounds({ x: posX, y: posY, width: windowWidth, height: windowHeight }); } catch (_) {}
     try { osNotificationWindow.show(); } catch (_) {}
+    // Auto-close controlado pelo main (cursor por posição global, não por foco).
+    // Pequeno atraso pra garantir que o listener de IPC do renderer já registrou.
+    if (type === 'response') {
+      setTimeout(() => {
+        if (osNotificationWindow && !osNotificationWindow.isDestroyed()) startResponseAutoClose();
+      }, 300);
+    }
   });
   // COSMIC/Hyprland às vezes movem/centralizam a janela DEPOIS do mapping —
   // reaplica a posição uma vez após o delay (mesma técnica da translation-overlay).
@@ -3207,6 +3273,59 @@ ipcMain.on("send-to-gemini", async (event, text) => {
   }
 });
 
+// Chat com IMAGEM → visão (gpt-4o). O fluxo antigo de paste/captura no chat só
+// rodava OCR local (Tesseract) e mandava o TEXTO — a imagem nunca chegava no
+// modelo. Na Lite isso quebrava tudo (quiz/código/canvas geram OCR vazio ou
+// lixo). Aqui a imagem é a FONTE: manda direto pra visão, one-shot/stateless,
+// sem injeção de base de conhecimento (a imagem fala por si).
+ipcMain.on("send-to-gemini-vision", async (event, { text, image }) => {
+  try {
+    if (!image) {
+      event.sender.send("transcription-error", "Imagem ausente para análise visual.");
+      return;
+    }
+    const aiModel = getEffectiveAiModel();
+    if (aiModel !== 'openIa') {
+      // Backends sem visão (Ollama/full offline): cai no OCR + texto.
+      const ocr = await TesseractService.getTextFromImage(image).catch(() => '');
+      const instructionO = configService.getPromptInstruction();
+      const baseTxt = (text && text.trim() ? `${text}\n\n` : '')
+        + (ocr && ocr.trim() ? `Conteúdo extraído da imagem:\n${ocr}` : '');
+      const _wsTxt = await prependWorkspaceContextIfNeeded(baseTxt, 'ollama');
+      const _ht = buildHelperToolsOpenAIOpts(_wsTxt, instructionO, configService.getOpenAiModel());
+      const resposta = await BackendService.responder(_wsTxt, _ht.opts);
+      event.sender.send("gemini-response", { resposta, usedKnowledge: false });
+      return;
+    }
+
+    const token = configService.getOpenIaToken();
+    const instruction = configService.getPromptInstruction();
+    if (!token) {
+      event.sender.send("transcription-error", "Token da OpenAI não configurado.");
+      return;
+    }
+    const visionModel = configService.getOpenAiVisionModel();
+    const visionPrompt = (text && text.trim() ? `${text}\n\n` : '')
+      + 'Analise a IMAGEM com atenção. Responda conforme as regras do sistema.\n\n'
+      + 'IMPORTANTE: na imagem, "x" entre dois números significa MULTIPLICAÇÃO '
+      + '(ex.: "11x2" = 11 × 2 = 22, NÃO é 11 ao quadrado). '
+      + 'Notação de potência seria "11²" ou "11^2".';
+    console.log(`🤖 IPC visão: OpenAI ${visionModel} [VISÃO high] (chat)...`);
+    const resposta = await OpenAIService.makeOpenAIRequest(
+      visionPrompt,
+      token,
+      instruction,
+      visionModel,
+      image,
+      { stateless: true }
+    );
+    event.sender.send("openai-final-response", { resposta, usedKnowledge: false });
+  } catch (error) {
+    console.error("IPC visão: erro ao analisar imagem:", error && error.message);
+    event.sender.send("transcription-error", "Falha ao analisar a imagem com a IA.");
+  }
+});
+
 ipcMain.on("stop-agentic-workflow", (event, sessionId) => {
   agenticWorkflow.stop(sessionId);
   if (typeof ollamaAgenticWorkflow !== 'undefined') {
@@ -3667,7 +3786,21 @@ ipcMain.handle("kb-save", async (event, payload) => {
   const backendResponder = useOpenAI ? null : (t, opts) => BackendService.responder(t, opts);
   try {
     const res = await knowledgeBase.save(text, { aiRewrite: !!aiRewrite, token, backendResponder });
-    return { ok: true, chunks: res.chunks, text: res.text, rewritten: res.rewritten };
+    return { ok: true, chunks: res.chunks, text: res.text, rewritten: res.rewritten, shrunk: res.shrunk, codeSkipped: res.codeSkipped };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+// Reorganiza o texto da base com IA SEM salvar (botão "Resumir e organizar com IA").
+ipcMain.handle("kb-rewrite", async (event, payload) => {
+  const { text = "" } = payload || {};
+  const useOpenAI = getEffectiveAiModel() === "openIa";
+  const token = useOpenAI ? configService.getOpenIaToken() : "";
+  const backendResponder = useOpenAI ? null : (t, opts) => BackendService.responder(t, opts);
+  try {
+    const res = await knowledgeBase.rewrite(text, { token, backendResponder });
+    return { ok: true, ...res };
   } catch (e) {
     return { ok: false, error: e.message };
   }
@@ -3975,8 +4108,10 @@ ipcMain.on("send-os-question", async (event, data) => {
   createOsNotificationWindow('loading', 'Processando pergunta...');
   
   try {
-    // Process the question using existing getIaResponse logic but with OS notifications
-    await processOsQuestion(text, image);
+    // Imagem colada no input integrado = a imagem É a fonte da pergunta. Força
+    // visão (não deixa o roteador OCR decidir mandar só texto e descartar a
+    // imagem). Sem imagem, segue o fluxo de texto normal.
+    await processOsQuestion(text, image, image ? { forceVision: true } : {});
   } catch (error) {
     console.error('Error processing OS question:', error);
     createOsNotificationWindow('response', 'Erro ao processar pergunta.');
@@ -4171,10 +4306,15 @@ async function captureFullScreenAuto() {
         // STEALTH NÃO É POSSÍVEL EM COSMIC SEM ESTA FERRAMENTA.
         // O Electron desktopCapturer abriria o diálogo "Compartilhar tela",
         // que é justamente o que queremos evitar. Falhamos com instrução clara.
-        createOsNotificationWindow('response',
-          '<b>cosmic-screenshot</b> não está instalado.<br>' +
-          'É necessário para captura silenciosa no COSMIC.<br><br>' +
-          'Instale com:<br><code>sudo apt install cosmic-screenshot</code>');
+        if (osOn) {
+          createOsNotificationWindow('response',
+            '<b>cosmic-screenshot</b> não está instalado.<br>' +
+            'É necessário para captura silenciosa no COSMIC.<br><br>' +
+            'Instale com:<br><code>sudo apt install cosmic-screenshot</code>');
+        } else if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('transcription-error',
+            'cosmic-screenshot não está instalado. Instale: sudo apt install cosmic-screenshot');
+        }
         return;
       }
     }
@@ -4215,13 +4355,21 @@ async function captureFullScreenAuto() {
         : isWayland
           ? 'Instale: <code>sudo apt install grim</code>'
           : 'Instale: <code>sudo apt install gnome-screenshot</code>';
-      createOsNotificationWindow('response',
-        `Não foi possível capturar a tela silenciosamente.<br>${hint}`);
+      if (osOn) {
+        createOsNotificationWindow('response',
+          `Não foi possível capturar a tela silenciosamente.<br>${hint}`);
+      } else if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('transcription-error',
+          `Não foi possível capturar a tela. ${hint.replace(/<[^>]+>/g, '')}`);
+      }
       return;
     }
 
-    // Mostra loading discreto
-    createOsNotificationWindow('loading', 'Analisando captura...');
+    // Loading: a overlay flutuante é EXCLUSIVA do modo integrado (OS Integration).
+    // No modo janela (print mode) o indicador de carregamento é o robot da própria
+    // janela principal — criar a overlay aqui deixava o gif girando pra sempre,
+    // pois nada a fechava fora do fluxo integrado.
+    if (osOn) createOsNotificationWindow('loading', 'Analisando captura...');
 
     const imgBuffer = await fs.readFile(capturedPath);
     // limpeza
@@ -4308,17 +4456,24 @@ async function captureFullScreenAuto() {
     if (isOsIntegration) {
       await processOsQuestion('', base64, { forceVision: true });
     } else if (mainWindow && !mainWindow.isDestroyed()) {
-      // Modo janela: roda OCR só pra exibir
+      // Modo janela: roda OCR só pra exibir; manda a IMAGEM pro renderer (que
+      // decide visão vs texto). `base64` já é um data URL completo — não
+      // re-prefixar, e a chave é `base64Image` (o que o handler ocr-result lê).
       let ocrText = '';
       try { ocrText = await TesseractService.getTextFromImage(base64); } catch (_) {}
       mainWindow.webContents.send('ocr-result', {
         text: ocrText,
-        image: `data:image/png;base64,${base64}`,
+        base64Image: base64,
       });
     }
   } catch (e) {
     console.error('captureFullScreenAuto failed:', e);
-    createOsNotificationWindow('response', 'Erro ao capturar a tela.');
+    // Erro: overlay só no modo integrado; no modo janela avisa a janela principal.
+    if (osOn) {
+      createOsNotificationWindow('response', 'Erro ao capturar a tela.');
+    } else if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('transcription-error', 'Erro ao capturar a tela.');
+    }
   }
 }
 
@@ -4434,7 +4589,8 @@ ipcMain.on('region-selected', async (event, rect) => {
       } else if (mainWindow && !mainWindow.isDestroyed()) {
         let ocrText = '';
         try { ocrText = await TesseractService.getTextFromImage(base64); } catch (_) {}
-        mainWindow.webContents.send('ocr-result', { text: ocrText, image: `data:image/png;base64,${base64}` });
+        // `base64` já é data URL completo; chave `base64Image` (lida pelo renderer).
+        mainWindow.webContents.send('ocr-result', { text: ocrText, base64Image: base64 });
       }
     } catch (e) {
       console.error('Erro OCR/IA na captura nativa:', e);
