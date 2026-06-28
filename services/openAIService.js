@@ -206,6 +206,28 @@ class OpenAIService {
             throw new Error('Failed to get a response from OpenAI.');
         }
     }
+
+    /**
+     * Pré-carrega o histórico de uma conversa restaurada na sessão em memória,
+     * para que os próximos turnos tenham o contexto anterior. Preserva o system
+     * prompt existente (se houver) e injeta os pares user/assistant.
+     */
+    seedSession(messages, opts = {}) {
+        const sessionId = opts.sessionId || 'default';
+        const existing = this.sessions[sessionId];
+        const sysMsg = existing && existing.messages
+            ? existing.messages.find(m => m.role === 'system')
+            : null;
+        const seeded = sysMsg ? [sysMsg] : [{ role: 'system', content: 'You are a helpful assistant.' }];
+        for (const m of (messages || [])) {
+            if (!m || !m.content) continue;
+            if (m.role === 'user' || m.role === 'assistant') {
+                seeded.push({ role: m.role, content: String(m.content) });
+            }
+        }
+        this.sessions[sessionId] = { messages: seeded, lastActivity: Date.now() };
+        return seeded.length;
+    }
 }
 
 module.exports = new OpenAIService();

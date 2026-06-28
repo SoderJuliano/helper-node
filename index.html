@@ -201,14 +201,19 @@
             transition: background .14s var(--ease), color .14s var(--ease);
         }
         .panel-item:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+        .panel-item.active { background: var(--accent-soft); color: var(--text); }
+        .panel-item.active .panel-item-title { color: var(--text); }
         .panel-item-title { flex: 1; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
-        .panel-item-delete {
+        .panel-item-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+        .panel-item-action {
             flex-shrink: 0; background: transparent; border: none;
-            color: var(--text-4); cursor: pointer; font-size: 11px; padding: 0;
-            width: 16px; height: 16px; display: flex; align-items: center; justify-content: center;
+            color: var(--text-4); cursor: pointer; padding: 0;
+            width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;
             border-radius: 4px; opacity: 0; transition: opacity .15s, color .15s, background .15s;
         }
-        .panel-item:hover .panel-item-delete { opacity: .8; }
+        .panel-item-action svg { width: 13px; height: 13px; }
+        .panel-item:hover .panel-item-action { opacity: .7; }
+        .panel-item-action:hover { color: var(--text); background: rgba(255,255,255,0.10); opacity: 1; }
         .panel-item-delete:hover { color: var(--danger); background: rgba(248,113,113,0.12); opacity: 1; }
 
         .commands-content {
@@ -218,6 +223,13 @@
             padding: 2px 0;
         }
         .panel.collapsed .commands-content { max-height: 0; opacity: 0; overflow: hidden; }
+
+        /* Histórico: lista TODAS as conversas e rola internamente, sem barra
+           visível, aproveitando o espaço da sidebar. */
+        #history-panel { max-height: none; }
+        #history-content { max-height: 46vh; overflow-y: auto; scrollbar-width: none; }
+        #history-content::-webkit-scrollbar { width: 0; height: 0; }
+        #history-panel.collapsed #history-content { max-height: 0; overflow: hidden; }
 
         .commands-toggle {
             display: inline-flex; align-items: center; justify-content: center;
@@ -490,15 +502,22 @@
         @keyframes blink { 0%,49%{opacity:1;} 50%,100%{opacity:0;} }
 
         /* Botão Copiar dentro de cada interaction-block */
+        /* Copiar a RESPOSTA — ícone discreto no canto inferior do bloco, vira ✓
+           ao copiar (estilo ChatGPT). Fica embaixo p/ ficar claro que é da
+           resposta, não da pergunta. */
         .copy-interaction-btn {
-            position: absolute; top: 10px; right: 10px;
-            background: rgba(255,255,255,0.05); border: 1px solid var(--border);
-            border-radius: 5px; padding: 3px 8px; cursor: pointer; font-size: 10.5px;
-            color: rgba(255,255,255,0); font-family: var(--font-ui);
-            transition: all .15s var(--ease); z-index: 3; pointer-events: none;
+            position: absolute; bottom: 8px; right: 8px;
+            width: 26px; height: 26px; padding: 0;
+            display: inline-flex; align-items: center; justify-content: center;
+            background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+            border-radius: 6px; cursor: pointer; color: var(--text-3);
+            opacity: 0; transition: opacity .15s var(--ease), background .15s var(--ease), color .15s var(--ease), border-color .15s var(--ease);
+            z-index: 3; pointer-events: none;
         }
-        .interaction-block:hover .copy-interaction-btn { color: var(--text-3); pointer-events: auto; }
-        .interaction-block:hover .copy-interaction-btn:hover { background: rgba(255,255,255,0.10); color: var(--text); }
+        .copy-interaction-btn svg { width: 14px; height: 14px; pointer-events: none; }
+        .interaction-block:hover .copy-interaction-btn { opacity: .55; pointer-events: auto; }
+        .interaction-block:hover .copy-interaction-btn:hover { opacity: 1; background: rgba(255,255,255,0.10); color: var(--text); }
+        .copy-interaction-btn.copied { opacity: 1; color: var(--accent-2); border-color: var(--accent-border); background: var(--accent-soft); }
 
         /* Botão copiar de blocos de código (pre > button.copy-button) */
         .copy-button {
@@ -1469,23 +1488,41 @@
                 sessions.forEach(session => {
                     const item = document.createElement('div');
                     item.className = 'panel-item';
-                    
+                    if (session.id === historyState.currentSessionId) item.classList.add('active');
+
                     const titleSpan = document.createElement('span');
                     titleSpan.className = 'panel-item-title';
                     titleSpan.textContent = session.title;
-                    titleSpan.addEventListener('click', () => viewConversation(session.id));
-                    
+                    // Clicar restaura a conversa DENTRO do chat (não em modal) e
+                    // continua a sessão, com o contexto recarregado na IA.
+                    titleSpan.addEventListener('click', () => loadSessionIntoChat(session.id));
+
+                    // Ações: baixar (.txt) + deletar, lado a lado.
+                    const actions = document.createElement('div');
+                    actions.className = 'panel-item-actions';
+
+                    const downloadBtn = document.createElement('button');
+                    downloadBtn.className = 'panel-item-action';
+                    downloadBtn.title = 'Baixar conversa (.txt)';
+                    downloadBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+                    downloadBtn.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        try {
+                            const res = await window.electronAPI.downloadConversationTxt(session.id);
+                            if (res && res.ok) showToast(`Conversa salva em:\n${res.path}`);
+                            else showToast(`Falha ao baixar: ${(res && res.error) || 'erro'}`, 'error');
+                        } catch (err) { showToast(`Falha ao baixar: ${err.message}`, 'error'); }
+                    });
+
                     const deleteBtn = document.createElement('button');
-                    deleteBtn.className = 'panel-item-delete';
-                    deleteBtn.textContent = '✕';
+                    deleteBtn.className = 'panel-item-action panel-item-delete';
                     deleteBtn.title = 'Deletar conversa';
+                    deleteBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
                     deleteBtn.addEventListener('click', async (e) => {
                         e.stopPropagation();
                         try {
                             const result = await window.electronAPI.deleteSession(session.id);
                             if (result.success) {
-                                console.log(`✓ Conversa deletada: ${session.id}`);
-                                // Remove from UI
                                 historyState.loadedSessions = historyState.loadedSessions.filter(s => s.id !== session.id);
                                 renderHistoryList(historyState.loadedSessions);
                             }
@@ -1493,9 +1530,11 @@
                             console.error('Erro ao deletar conversa:', error);
                         }
                     });
-                    
+
+                    actions.appendChild(downloadBtn);
+                    actions.appendChild(deleteBtn);
                     item.appendChild(titleSpan);
-                    item.appendChild(deleteBtn);
+                    item.appendChild(actions);
                     historyContent.appendChild(item);
                 });
             }
@@ -1504,10 +1543,11 @@
                 if (!session) return;
 
                 const withoutCurrent = historyState.loadedSessions.filter(s => s.id !== session.id);
+                // Sem limite de 3: a sidebar mostra todas as conversas (com rolagem).
                 historyState.loadedSessions = [
                     { id: session.id, title: session.title, created: session.created },
                     ...withoutCurrent
-                ].slice(0, 3);
+                ];
 
                 renderHistoryList(historyState.loadedSessions);
             }
@@ -1545,14 +1585,76 @@
                 }
             };
 
-            // Carregar histórico do backend
+            // Carregar histórico do backend (TODAS as conversas)
             async function loadHistory() {
                 try {
-                    const sessions = await window.electronAPI.getLastThreeSessions();
+                    const sessions = window.electronAPI.getAllSessions
+                        ? await window.electronAPI.getAllSessions()
+                        : await window.electronAPI.getLastThreeSessions();
                     historyState.loadedSessions = Array.isArray(sessions) ? sessions : [];
                     renderHistoryList(historyState.loadedSessions);
                 } catch (error) {
                     console.error('Erro ao carregar histórico:', error);
+                }
+            }
+
+            // Restaura uma conversa DENTRO do chat (recupera a sessão) e recarrega
+            // o contexto na IA, pra continuar de onde parou.
+            async function loadSessionIntoChat(sessionId) {
+                try {
+                    const session = await window.electronAPI.getSessionById(sessionId);
+                    if (!session || !Array.isArray(session.conversations)) return;
+
+                    const transcriptionElement = document.getElementById('transcription');
+                    manualInputActive = false;
+                    removeManualInputContainer();
+                    transcriptionElement.innerHTML = '';
+                    const hero = document.getElementById('welcome-hero');
+                    if (hero) hero.classList.add('hidden');
+
+                    let currentBlock = null;
+                    session.conversations.forEach(msg => {
+                        if (!msg || !msg.content) return;
+                        if (msg.role === 'user') {
+                            currentBlock = document.createElement('div');
+                            currentBlock.className = 'interaction-block';
+                            const q = document.createElement('span');
+                            q.className = 'question-text';
+                            q.textContent = msg.content;
+                            q.addEventListener('click', () => handleQuestionEdit(q));
+                            currentBlock.appendChild(q);
+                            currentBlock.appendChild(createBlockActions(transcriptionElement));
+                            transcriptionElement.appendChild(currentBlock);
+                        } else {
+                            if (!currentBlock) {
+                                currentBlock = document.createElement('div');
+                                currentBlock.className = 'interaction-block';
+                                currentBlock.appendChild(createBlockActions(transcriptionElement));
+                                transcriptionElement.appendChild(currentBlock);
+                            }
+                            let resp = currentBlock.querySelector('.ia-response');
+                            if (!resp) {
+                                resp = document.createElement('div');
+                                resp.className = 'ia-response';
+                                currentBlock.appendChild(resp);
+                            }
+                            resp.innerText = (resp.innerText ? resp.innerText + '\n' : '') + msg.content;
+                        }
+                    });
+
+                    historyState.currentSessionId = sessionId;
+                    renderHistoryList(historyState.loadedSessions); // re-marca o item ativo
+                    const cab = document.getElementById('copy-all-btn');
+                    if (cab) cab.style.display = '';
+
+                    // Recarrega o contexto na IA pra continuar a conversa
+                    if (window.electronAPI.seedAiSession) {
+                        try { await window.electronAPI.seedAiSession(session.conversations); } catch (_) {}
+                    }
+                    scrollTranscriptionToBottom('auto');
+                    showToast('Conversa restaurada — pode continuar daqui.');
+                } catch (error) {
+                    console.error('Erro ao restaurar conversa:', error);
                 }
             }
 
@@ -1985,22 +2087,26 @@
             undockComposer();
         }
 
+        const COPY_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+        const CHECK_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+
         function createBlockActions(transcriptionElement) {
-            // Botão simples "Copiar" dentro do bloco
+            // Ícone de copiar a RESPOSTA (vira ✓ ao copiar, estilo ChatGPT).
             const copyBtn = document.createElement('button');
             copyBtn.className = 'copy-interaction-btn';
-            copyBtn.textContent = 'Copiar';
+            copyBtn.title = 'Copiar resposta';
+            copyBtn.setAttribute('aria-label', 'Copiar resposta');
+            copyBtn.innerHTML = COPY_ICON_SVG;
             copyBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const block = copyBtn.closest('.interaction-block');
-                const qEl = block.querySelector('.question-text');
-                const qText = qEl ? getQuestionText(qEl) : '';
-                const aEl = block.querySelector('.ia-response');
-                const aText = aEl ? (aEl.innerText || aEl.textContent) : '';
-                const full = (qText ? `Pergunta: ${qText}\n\n` : '') + (aText ? `Resposta: ${aText}` : '');
-                navigator.clipboard.writeText(full).then(() => {
-                    copyBtn.textContent = 'Copiado ✓';
-                    setTimeout(() => { copyBtn.textContent = 'Copiar'; }, 1500);
+                const aEl = block.querySelector('.ia-response') || block.querySelector('.streaming-response');
+                const aText = aEl ? (aEl.innerText || aEl.textContent || '').trim() : '';
+                if (!aText) return;
+                navigator.clipboard.writeText(aText).then(() => {
+                    copyBtn.innerHTML = CHECK_ICON_SVG;
+                    copyBtn.classList.add('copied');
+                    setTimeout(() => { copyBtn.innerHTML = COPY_ICON_SVG; copyBtn.classList.remove('copied'); }, 1500);
                 });
             });
             return copyBtn;

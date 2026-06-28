@@ -5239,6 +5239,27 @@ ipcMain.handle('get-last-three-sessions', async () => {
   }
 });
 
+ipcMain.handle('get-all-sessions', async () => {
+  try {
+    return historyService.getAllSessions();
+  } catch (error) {
+    console.error('Erro ao obter todas as sessões:', error);
+    return [];
+  }
+});
+
+// Restaura o contexto de uma conversa na sessão da IA (OpenAI), pra continuar
+// de onde parou. Recebe os pares {role, content} da conversa restaurada.
+ipcMain.handle('seed-ai-session', async (event, messages) => {
+  try {
+    const n = OpenAIService.seedSession(Array.isArray(messages) ? messages : []);
+    return { ok: true, seeded: n };
+  } catch (error) {
+    console.error('Erro ao restaurar contexto da IA:', error);
+    return { ok: false, error: error.message };
+  }
+});
+
 ipcMain.handle('get-session-by-id', async (event, sessionId) => {
   try {
     return historyService.getSessionById(sessionId);

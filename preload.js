@@ -92,6 +92,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   addMessage: (sessionId, role, content) => ipcRenderer.invoke("add-message", sessionId, role, content),
   createNewSession: (title) => ipcRenderer.invoke("create-new-session", title),
   getLastThreeSessions: () => ipcRenderer.invoke("get-last-three-sessions"),
+  getAllSessions: () => ipcRenderer.invoke("get-all-sessions"),
+  seedAiSession: (messages) => ipcRenderer.invoke("seed-ai-session", messages),
   getSessionById: (id) => ipcRenderer.invoke("get-session-by-id", id),
   downloadConversationTxt: (sessionId) => ipcRenderer.invoke("download-conversation-txt", sessionId),
   newChat: () => ipcRenderer.invoke("new-chat"),
