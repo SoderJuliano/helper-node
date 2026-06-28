@@ -273,7 +273,11 @@ function calculateImageHash(imageBuffer) {
 // --- SINGLE INSTANCE LOCK ---
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
-  app.quit();
+  // Outra instância já está rodando: encerra imediatamente para não tentar
+  // criar/carregar a janela (o que abortava o loadFile e gerava o erro
+  // enganoso "index.html not found / ERR_FAILED"). A instância original
+  // recebe o evento 'second-instance' e foca a janela existente.
+  app.exit(0);
 } else {
   app.on('second-instance', (event, argv, workingDirectory) => {
     // Focus existing window if a second instance is started
@@ -3628,6 +3632,33 @@ ipcMain.handle("workspace:pick-dir", async () => {
 
 ipcMain.handle("workspace:list", () => workspace.list());
 
+// Contexto ativo do projeto (pasta anexada + branch git) — exibido como pills
+// discretos acima do composer, ao estilo de uma IDE. Retorna null quando não há
+// pasta no workspace (modo chat puro).
+ipcMain.handle("get-project-context", async () => {
+  try {
+    const dir = (workspace.list() || []).find((a) => a.type === "dir");
+    if (!dir) return null;
+    const name = path.basename(dir.path);
+    let branch = null;
+    try {
+      const { execFile } = require("child_process");
+      branch = await new Promise((resolve) => {
+        execFile(
+          "git",
+          ["-C", dir.path, "rev-parse", "--abbrev-ref", "HEAD"],
+          { timeout: 2500 },
+          (err, stdout) => resolve(err ? null : (stdout || "").trim() || null)
+        );
+      });
+    } catch (_) { /* sem git: mostra só o projeto */ }
+    return { id: dir.id, name, path: dir.path, branch };
+  } catch (e) {
+    console.warn("[project-context] falhou:", e.message);
+    return null;
+  }
+});
+
 ipcMain.handle("workspace:remove", (event, id) => {
   workspace.removePath(id);
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -4038,6 +4069,10 @@ ipcMain.handle("get-ai-model", () => {
 
 ipcMain.handle("get-edition", () => {
   return edition.getEdition();
+});
+
+ipcMain.on("open-config-ui", () => {
+  createConfigWindow();
 });
 
 ipcMain.on("set-ai-model", (event, aiModel) => {
