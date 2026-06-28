@@ -583,6 +583,20 @@
         }
         @keyframes ai-spin { to { transform: rotate(360deg); } }
 
+        /* Fase do agentic INLINE na conversa (nada de balão flutuante) */
+        .ai-phase { display: flex; align-items: center; gap: 8px; margin: 8px 0 2px; font-size: 12px; font-family: var(--font-ui); }
+        .ai-phase-spin { width: 12px; height: 12px; border: 2px solid rgba(255,255,255,0.18); border-top-color: var(--accent-2); border-radius: 50%; animation: ai-spin .7s linear infinite; flex-shrink: 0; }
+        .ai-phase-tag { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; font-weight: 700; color: var(--accent-2); background: var(--accent-soft); padding: 2px 7px; border-radius: 5px; flex-shrink: 0; }
+        .ai-phase-text { color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ai-phase-stop { margin-left: auto; flex-shrink: 0; width: 20px; height: 20px; border: 1px solid rgba(248,113,113,0.4); background: rgba(248,113,113,0.1); color: var(--danger); border-radius: 5px; cursor: pointer; font-size: 13px; line-height: 1; display: flex; align-items: center; justify-content: center; padding: 0; }
+        .ai-phase-stop:hover { background: rgba(248,113,113,0.25); color: #fff; }
+        .ai-phase.done .ai-phase-tag { color: var(--text-3); background: rgba(255,255,255,0.06); }
+        .ai-phase.done .ai-phase-text { color: var(--text-4); }
+        .ai-phase.error .ai-phase-tag { color: var(--danger); background: rgba(248,113,113,0.15); }
+
+        /* Balão flutuante de status do agentic: aposentado (tudo é inline agora). */
+        #agentic-status-container { display: none !important; }
+
         /* Botão copiar de blocos de código (pre > button.copy-button) */
         .copy-button {
             position: absolute; top: 8px; right: 8px;
@@ -1459,26 +1473,50 @@
 
 
             // === Agentic Workflow Listeners ===
-            const agenticContainer = document.getElementById('agentic-status-container');
-            const agenticPhaseTag = document.getElementById('agentic-phase-tag');
-            const agenticStatusText = document.getElementById('agentic-status-text');
-            const agenticStopBtn = document.getElementById('agentic-stop-btn');
             let activeAgenticSession = null;
+            const PHASE_LABELS = {
+                discovery: 'Explorando', planning: 'Planejando',
+                implementation: 'Implementando', review: 'Revisando',
+                completed: 'Concluído', error: 'Erro',
+            };
 
+            // Fase do agentic renderizada INLINE no bloco da pergunta atual,
+            // com botão de interromper — sem balão flutuante.
             window.electronAPI.onAgenticPhaseUpdate(({ phase, status, sessionId }) => {
-                activeAgenticSession = sessionId;
-                agenticContainer.style.display = 'flex';
-                agenticPhaseTag.textContent = phase;
-                agenticStatusText.textContent = status;
-
-                if (phase === 'completed' || phase === 'error') {
-                    setTimeout(() => {
-                        if (activeAgenticSession === sessionId) {
-                            agenticContainer.style.display = 'none';
-                            activeAgenticSession = null;
+                const done = (phase === 'completed' || phase === 'error');
+                if (!done) activeAgenticSession = sessionId;
+                const block = transcriptionElement
+                    ? transcriptionElement.querySelector('.interaction-block:last-child')
+                    : null;
+                if (!block) { if (done) activeAgenticSession = null; return; }
+                let ph = block.querySelector('.ai-phase');
+                if (!ph) {
+                    ph = document.createElement('div');
+                    ph.className = 'ai-phase';
+                    ph.innerHTML = '<span class="ai-phase-spin"></span><span class="ai-phase-tag"></span><span class="ai-phase-text"></span><button class="ai-phase-stop" title="Interromper">×</button>';
+                    const q = block.querySelector('.question-text');
+                    if (q && q.nextSibling) block.insertBefore(ph, q.nextSibling);
+                    else block.insertBefore(ph, block.firstChild);
+                    const stop = ph.querySelector('.ai-phase-stop');
+                    if (stop) stop.addEventListener('click', () => {
+                        if (activeAgenticSession) {
+                            window.electronAPI.stopAgenticWorkflow(activeAgenticSession);
+                            const txt = ph.querySelector('.ai-phase-text');
+                            if (txt) txt.textContent = 'Interrompendo…';
                         }
-                    }, 5000);
+                    });
                 }
+                const tag = ph.querySelector('.ai-phase-tag');
+                const txt = ph.querySelector('.ai-phase-text');
+                if (tag) tag.textContent = PHASE_LABELS[phase] || phase;
+                if (txt) txt.textContent = status || '';
+                if (done) {
+                    ph.classList.add(phase === 'error' ? 'error' : 'done');
+                    const spin = ph.querySelector('.ai-phase-spin'); if (spin) spin.remove();
+                    const stop = ph.querySelector('.ai-phase-stop'); if (stop) stop.remove();
+                    activeAgenticSession = null;
+                }
+                scrollTranscriptionToBottom('auto');
             });
 
             window.electronAPI.onAgenticDebugInfo(({ type, data, sessionId }) => {
@@ -1503,12 +1541,7 @@
                 scrollTranscriptionToBottom();
             });
 
-            agenticStopBtn.addEventListener('click', () => {
-                if (activeAgenticSession) {
-                    window.electronAPI.stopAgenticWorkflow(activeAgenticSession);
-                    agenticStatusText.textContent = 'Interrompendo...';
-                }
-            });
+            // (O botão de interromper agora vive inline no .ai-phase.)
 
             // === Workspace bar (anexos pra contexto da IA) ===
             const wsPanel = document.getElementById('workspace-panel');
@@ -1745,8 +1778,9 @@
                         if (!feed) {
                             feed = document.createElement('div');
                             feed.className = 'ai-activity';
-                            const q = block.querySelector('.question-text');
-                            if (q && q.nextSibling) block.insertBefore(feed, q.nextSibling);
+                            // Abaixo da fase (se houver), senão logo após a pergunta.
+                            const anchor = block.querySelector('.ai-phase') || block.querySelector('.question-text');
+                            if (anchor && anchor.nextSibling) block.insertBefore(feed, anchor.nextSibling);
                             else block.appendChild(feed);
                         }
                         if (data.phase === 'start') {
