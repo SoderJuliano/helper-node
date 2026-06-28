@@ -356,6 +356,9 @@
             align-items: center;
         }
         #main.is-empty #transcription { display: none; }
+        /* Sem conversa, a topbar (gradiente + "Copiar tudo") não tem função e
+           aparecia como uma "barra fantasma" sobre o título do hero. */
+        #main.is-empty .chat-topbar { display: none; }
         #main.is-empty #welcome-hero {
             position: static;
             inset: auto;
