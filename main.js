@@ -264,6 +264,22 @@ function buildHelperToolsOpenAIOpts(userText, baseInstruction, baseModel) {
   }
 }
 
+// Decide se uma mensagem deve usar o Agentic Workflow (multi-fase) ou só o
+// caminho normal de tool-calling. Comando DIRETO (git/npm/commit/push/rode/
+// test/build…) NUNCA planeja — só executa. Receba SEMPRE o texto cru do
+// usuário (não a versão com contexto do projeto, que tem ruído).
+function shouldUseAgentic(rawText) {
+  if (!configService.getHelperToolsEnabled || !configService.getHelperToolsEnabled()) return false;
+  if (!configService.getWorkspaceAccessEnabled || !configService.getWorkspaceAccessEnabled()) return false;
+  if (!(helperTools.shouldForceHeavyModel && helperTools.shouldForceHeavyModel(rawText || ""))) return false;
+  const t = (rawText || "").toLowerCase();
+  const isDirectCommand =
+    /\b(git|npm|yarn|pnpm|cargo|docker|kubectl|systemctl|make)\b/.test(t) ||
+    /\b(commit|push|pull|rebase|merge|clone|checkout|stash)\b/.test(t) ||
+    /\b(rode|roda|rodar|execut|\brun\b|test|build|deploy|lint|instal)\b/.test(t);
+  return !isDirectCommand;
+}
+
 // === Workspace context injection ===
 // Se workspaceAccess + helperTools estao ON e ha anexos, prepend o bloco
 // de contexto (listagem + conteudo de arquivos pequenos) na primeira
@@ -2729,27 +2745,33 @@ async function getIaResponse(text) {
             return;
         }
         const openAiModel = configService.getOpenAiModel();
-        const _wsText1 = await prependWorkspaceContextIfNeeded(text, openAiModel);
 
-        // Decide se usa o Agentic Workflow (multi-fases) ou single-shot.
-        // Requisitos: OpenAI + Advanced Tools ON + Workspace Access ON + Intent de escrita/complexa.
-        const useAgentic = configService.getHelperToolsEnabled() && 
-                          configService.getWorkspaceAccessEnabled() && 
-                          helperTools.shouldForceHeavyModel(text);
+        // Comando direto não planeja (só executa); tarefa complexa → agentic.
+        const useAgentic = shouldUseAgentic(text);
+
+        // O agentic limpa as sessões da IA; sem re-injetar o contexto do
+        // workspace a IA "esquece" o projeto. Reseta a flag ANTES de montar o
+        // contexto pra garantir que a estrutura do projeto entre neste turno.
+        if (useAgentic) { try { workspace.resetContextSent(); } catch (_) {} }
+
+        const _wsText1 = await prependWorkspaceContextIfNeeded(text, openAiModel);
 
         if (useAgentic) {
             console.log('🤖 Iniciando AGENTIC WORKFLOW (multi-fase)...');
-            // Limpa qualquer sessão anterior pra evitar contaminação de contexto (ex: Pikachu vs Helper-Node)
+            // Limpa a sessão anterior pra evitar contaminação entre tarefas distintas.
             if (OpenAIService.sessions) OpenAIService.sessions = {};
-            
+
             try {
               resposta = await agenticWorkflow.run(
-                  _wsText1, 
+                  _wsText1,
                   { token, model: openAiModel, baseInstruction: instruction },
                   mainWindow.webContents
               );
             } catch (err) {
               resposta = `[Agentic Workflow] Interrompido ou falhou: ${err.message}`;
+            } finally {
+              // Próximo turno re-injeta o contexto do projeto (a sessão foi limpa).
+              try { workspace.resetContextSent(); } catch (_) {}
             }
         } else {
             const _kb1 = await knowledgeBlockForOpenAI(text);
@@ -2778,11 +2800,9 @@ async function getIaResponse(text) {
         // Helper tools agora funcionam tambem no Ollama (via structured prompt + parser).
         try {
           const instructionO = configService.getPromptInstruction();
+          const useAgentic = shouldUseAgentic(text);
+          if (useAgentic) { try { workspace.resetContextSent(); } catch (_) {} }
           const _wsTxtO = await prependWorkspaceContextIfNeeded(text, 'ollama');
-
-          const useAgentic = configService.getHelperToolsEnabled() && 
-                            configService.getWorkspaceAccessEnabled() && 
-                            helperTools.shouldForceHeavyModel(_wsTxtO);
 
           if (useAgentic) {
               console.log('🤖 Iniciando AGENTIC WORKFLOW OLLAMA (multi-fase)...');
@@ -3233,25 +3253,28 @@ ipcMain.on("send-to-gemini", async (event, text) => {
             return;
         }
         const openAiModel = configService.getOpenAiModel();
-        const _wsText2 = await prependWorkspaceContextIfNeeded(text, openAiModel);
 
-        const useAgentic = configService.getHelperToolsEnabled() && 
-                          configService.getWorkspaceAccessEnabled() && 
-                          helperTools.shouldForceHeavyModel(text);
+        // Comando direto não planeja (só executa); tarefa complexa → agentic.
+        const useAgentic = shouldUseAgentic(text);
+        if (useAgentic) { try { workspace.resetContextSent(); } catch (_) {} }
+
+        const _wsText2 = await prependWorkspaceContextIfNeeded(text, openAiModel);
 
         if (useAgentic) {
             console.log('🤖 IPC: Iniciando AGENTIC WORKFLOW (multi-fase)...');
             // Limpa qualquer sessão anterior pra evitar contaminação
             if (OpenAIService.sessions) OpenAIService.sessions = {};
-            
+
             try {
               resposta = await agenticWorkflow.run(
-                  _wsText2, 
+                  _wsText2,
                   { token, model: openAiModel, baseInstruction: instruction },
                   event.sender
               );
             } catch (err) {
               resposta = `[Agentic Workflow] Interrompido ou falhou: ${err.message}`;
+            } finally {
+              try { workspace.resetContextSent(); } catch (_) {}
             }
         } else {
             const _kb2 = await knowledgeBlockForOpenAI(text);
@@ -3273,11 +3296,9 @@ ipcMain.on("send-to-gemini", async (event, text) => {
         // Ollama/Backend e' o unico provider nao-OpenAI suportado.
         try {
           const instructionO2 = configService.getPromptInstruction();
+          const useAgentic = shouldUseAgentic(text);
+          if (useAgentic) { try { workspace.resetContextSent(); } catch (_) {} }
           const _wsTxtO2 = await prependWorkspaceContextIfNeeded(text, 'ollama');
-
-          const useAgentic = configService.getHelperToolsEnabled() && 
-                            configService.getWorkspaceAccessEnabled() && 
-                            helperTools.shouldForceHeavyModel(_wsTxtO2);
 
           if (useAgentic) {
               console.log('🤖 IPC: Iniciando AGENTIC WORKFLOW OLLAMA (multi-fase)...');
@@ -5227,10 +5248,7 @@ async function processOsQuestion(text, image = null, opts = {}) {
       console.log(`🤖 OpenAI ${openAiModel}${sendImage ? ' [VISÃO high]' : ' [TEXTO]'}...`);
       const _wsText3 = sendImage ? text : await prependWorkspaceContextIfNeeded(text, openAiModel);
 
-      const useAgentic = !sendImage && 
-                        configService.getHelperToolsEnabled() && 
-                        configService.getWorkspaceAccessEnabled() && 
-                        helperTools.shouldForceHeavyModel(_wsText3);
+      const useAgentic = !sendImage && shouldUseAgentic(text);
 
       if (useAgentic) {
           console.log('🤖 OCR: Iniciando AGENTIC WORKFLOW (multi-fase)...');
@@ -5269,11 +5287,9 @@ async function processOsQuestion(text, image = null, opts = {}) {
       // Backends sem visão (Ollama): só TEXTO. Mas com tool calling agora.
       try {
         const instructionO3 = configService.getPromptInstruction();
+        const useAgentic = shouldUseAgentic(text);
+        if (useAgentic) { try { workspace.resetContextSent(); } catch (_) {} }
         const _wsTxtO3 = await prependWorkspaceContextIfNeeded(text, 'ollama');
-
-        const useAgentic = configService.getHelperToolsEnabled() && 
-                          configService.getWorkspaceAccessEnabled() && 
-                          helperTools.shouldForceHeavyModel(text || _wsTxtO3);
 
         if (useAgentic) {
             console.log('🤖 OCR: Iniciando AGENTIC WORKFLOW OLLAMA (multi-fase)...');
