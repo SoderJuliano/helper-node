@@ -340,4 +340,4 @@ async function buildContextBlock(opts = {}) {
   return header + sections.join("\n") + footer;
 }
 
-module.exports = { buildContextBlock, budgetFor };
+module.exports = { buildContextBlock, budgetFor, generateTreeStructure };

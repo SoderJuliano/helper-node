@@ -269,6 +269,41 @@
         .ws-action svg { width: 15px; height: 15px; opacity: .8; flex-shrink: 0; }
         .ws-action-primary { color: var(--text); }
         .ws-action-primary svg { opacity: .95; }
+
+        /* Projeto aberto (modelo IDE): header discreto + dropdown da árvore */
+        .ws-project-row { display: flex; align-items: center; gap: 2px; }
+        .ws-project-main {
+            flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
+            padding: 7px 9px; background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border); border-radius: var(--radius-sm);
+            color: var(--text); font-size: 12px; font-family: var(--font-ui);
+            font-weight: 500; cursor: pointer; text-align: left;
+            transition: background .15s var(--ease), border-color .15s var(--ease);
+        }
+        .ws-project-main:hover { background: rgba(255,255,255,0.06); border-color: var(--border-strong); }
+        .ws-project-main .ws-folder-ic { width: 15px; height: 15px; opacity: .85; flex-shrink: 0; }
+        .ws-project-main span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ws-tree-toggle {
+            flex-shrink: 0; width: 28px; height: 30px; padding: 0;
+            display: inline-flex; align-items: center; justify-content: center;
+            background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+            border-radius: var(--radius-sm); color: var(--text-3); cursor: pointer;
+            transition: background .15s, color .15s, border-color .15s;
+        }
+        .ws-tree-toggle:hover { background: rgba(255,255,255,0.06); color: var(--text); border-color: var(--border-strong); }
+        .ws-tree-toggle svg { width: 13px; height: 13px; transition: transform .2s var(--ease); }
+        .ws-tree-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+        .ws-tree {
+            margin-top: 5px; padding: 7px 9px;
+            background: rgba(0,0,0,0.22); border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            font-family: var(--font-mono); font-size: 10.5px; line-height: 1.55;
+            color: var(--text-3); white-space: pre; overflow: auto;
+            max-height: 34vh; scrollbar-width: none;
+        }
+        .ws-tree::-webkit-scrollbar { width: 0; height: 0; }
+        .ws-tree .ws-tree-empty { color: var(--text-4); font-style: italic; white-space: normal; }
+
         .ws-chips { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; margin-top: 6px; }
         .ws-chips:empty { display: none; }
         .ws-chip {
@@ -279,6 +314,8 @@
             cursor: pointer; transition: background .15s, border-color .15s;
         }
         .ws-chip:hover { background: rgba(255,255,255,0.08); border-color: var(--border-strong); }
+        .ws-chip-ic { display: inline-flex; align-items: center; flex-shrink: 0; }
+        .ws-chip-ic svg { width: 12px; height: 12px; opacity: .75; }
         .ws-chip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .ws-chip-x {
             display: inline-flex; align-items: center; justify-content: center;
@@ -852,9 +889,10 @@
                     </div>
                 </div>
 
-                <!-- Workspace / Projeto -->
+                <!-- Workspace / Projeto (modelo IDE: 1 projeto por vez) -->
                 <div class="ws-section" id="workspace-panel" style="display:none;">
-                    <div class="ws-actions">
+                    <!-- Sem projeto aberto: ações -->
+                    <div class="ws-actions" id="ws-actions">
                         <button id="workspace-open-project" class="ws-action ws-action-primary" type="button" title="Abrir uma pasta de projeto">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
                             <span>Abrir projeto</span>
@@ -863,6 +901,19 @@
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
                             <span>Anexar arquivo</span>
                         </button>
+                    </div>
+                    <!-- Com projeto aberto: header (pasta + dropdown da árvore) -->
+                    <div class="ws-project" id="ws-project" style="display:none;">
+                        <div class="ws-project-row">
+                            <button class="ws-project-main" id="ws-project-main" type="button" title="Trocar / fechar projeto">
+                                <svg class="ws-folder-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                                <span id="ws-project-name">projeto</span>
+                            </button>
+                            <button class="ws-tree-toggle" id="ws-tree-toggle" type="button" title="Ver estrutura do projeto" aria-expanded="false">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                        </div>
+                        <div class="ws-tree" id="ws-tree" style="display:none;"></div>
                     </div>
                     <div class="ws-chips" id="workspace-content"></div>
                 </div>
@@ -1281,21 +1332,56 @@
             const wsPanel = document.getElementById('workspace-panel');
             const wsContent = document.getElementById('workspace-content');
             const wsAddBtn = document.getElementById('workspace-add');
+            const wsActions = document.getElementById('ws-actions');
+            const wsProject = document.getElementById('ws-project');
+            const wsProjectName = document.getElementById('ws-project-name');
+            const wsProjectMain = document.getElementById('ws-project-main');
+            const wsTreeToggle = document.getElementById('ws-tree-toggle');
+            const wsTree = document.getElementById('ws-tree');
 
+            const FILE_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+
+            function collapseProjectTree() {
+                if (wsTree) { wsTree.style.display = 'none'; wsTree.innerHTML = ''; }
+                if (wsTreeToggle) wsTreeToggle.setAttribute('aria-expanded', 'false');
+            }
+
+            // Modelo IDE: 1 projeto (pasta) por vez como "header"; arquivos avulsos
+            // viram chips discretos com ícone monocromático.
             function renderWorkspacePanel(attachments) {
+                const list = attachments || [];
+                const dir = list.find(a => a.type === 'dir');
+                const files = list.filter(a => a.type === 'file');
+
+                if (dir) {
+                    const name = dir.path.split('/').filter(Boolean).slice(-1)[0] || dir.path;
+                    if (wsProjectMain && wsProjectMain.dataset.path !== dir.path) collapseProjectTree();
+                    if (wsActions) wsActions.style.display = 'none';
+                    if (wsProject) wsProject.style.display = '';
+                    if (wsProjectName) wsProjectName.textContent = name;
+                    if (wsProjectMain) { wsProjectMain.dataset.path = dir.path; wsProjectMain.title = dir.path; }
+                } else {
+                    if (wsActions) wsActions.style.display = '';
+                    if (wsProject) wsProject.style.display = 'none';
+                    if (wsProjectMain) wsProjectMain.dataset.path = '';
+                    collapseProjectTree();
+                }
+
                 if (!wsContent) return;
                 wsContent.innerHTML = '';
-                const list = attachments || [];
-                if (!list.length) return; // vazio: so' aparece o clipe
-                for (const a of list) {
+                for (const a of files) {
                     const chip = document.createElement('div');
                     chip.className = 'ws-chip';
                     chip.title = a.path;
 
+                    const ic = document.createElement('span');
+                    ic.className = 'ws-chip-ic';
+                    ic.innerHTML = FILE_ICON_SVG;
+
                     const label = document.createElement('span');
                     label.className = 'ws-chip-label';
-                    const icon = a.type === 'dir' ? '📁' : '📄';
-                    label.textContent = `${icon} ${a.path.split('/').slice(-1)[0]}`;
+                    label.textContent = a.path.split('/').slice(-1)[0];
+
                     chip.addEventListener('click', (e) => {
                         if (e.target.closest('.ws-chip-x')) return;
                         if (window.electronAPI && window.electronAPI.workspaceOpenExternal) {
@@ -1315,10 +1401,38 @@
                         }
                     });
 
+                    chip.appendChild(ic);
                     chip.appendChild(label);
                     chip.appendChild(xBtn);
                     wsContent.appendChild(chip);
                 }
+            }
+
+            // Clicar no projeto → menu Trocar/Fechar (reusa o do composer).
+            if (wsProjectMain) {
+                wsProjectMain.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    showProjectMenu(wsProjectMain);
+                });
+            }
+            // Dropdown da árvore (blueprint) — reusa o tree enviado pra IA.
+            async function toggleProjectTree() {
+                if (!wsTree || !wsTreeToggle) return;
+                const open = wsTreeToggle.getAttribute('aria-expanded') === 'true';
+                if (open) { collapseProjectTree(); return; }
+                wsTreeToggle.setAttribute('aria-expanded', 'true');
+                wsTree.style.display = '';
+                wsTree.textContent = 'carregando…';
+                try {
+                    const res = window.electronAPI.getProjectTree ? await window.electronAPI.getProjectTree() : null;
+                    if (res && res.tree) wsTree.textContent = res.tree;
+                    else wsTree.innerHTML = '<span class="ws-tree-empty">Não foi possível ler a estrutura.</span>';
+                } catch (_) {
+                    wsTree.innerHTML = '<span class="ws-tree-empty">Erro ao ler a estrutura.</span>';
+                }
+            }
+            if (wsTreeToggle) {
+                wsTreeToggle.addEventListener('click', (e) => { e.stopPropagation(); toggleProjectTree(); });
             }
 
             async function refreshWorkspacePanel() {

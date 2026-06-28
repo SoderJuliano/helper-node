@@ -3633,9 +3633,10 @@ ipcMain.handle("workspace:pick-dir", async () => {
   });
   if (res.canceled || !res.filePaths.length) return { ok: false, canceled: true };
   const added = [];
+  // Modelo IDE: um projeto por vez — openProject substitui a pasta anterior.
   for (const p of res.filePaths) {
-    try { await workspace.addPath(p, "dir"); added.push(p); }
-    catch (e) { console.warn("[workspace] add dir falhou:", e.message); }
+    try { await workspace.openProject(p); added.push(p); }
+    catch (e) { console.warn("[workspace] open project falhou:", e.message); }
   }
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send("workspace-changed", { attachments: workspace.list() });
@@ -3668,6 +3669,19 @@ ipcMain.handle("get-project-context", async () => {
     return { id: dir.id, name, path: dir.path, branch };
   } catch (e) {
     console.warn("[project-context] falhou:", e.message);
+    return null;
+  }
+});
+
+// Árvore (blueprint) do projeto aberto — pra exibir no dropdown da sidebar.
+ipcMain.handle("get-project-tree", async () => {
+  try {
+    const dir = (workspace.list() || []).find((a) => a.type === "dir");
+    if (!dir) return null;
+    const t = workspace.tree(dir.path);
+    return { path: dir.path, tree: t || "" };
+  } catch (e) {
+    console.warn("[project-tree] falhou:", e.message);
     return null;
   }
 });
