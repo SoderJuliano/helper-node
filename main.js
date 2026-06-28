@@ -131,9 +131,22 @@ function buildHelperToolsOpenAIOpts(userText, baseInstruction, baseModel) {
       return 2; // desconhecido — assume médio
     };
     let model = baseModel;
-    const forceHeavy = helperTools.shouldForceHeavyModel
+    // Sinal de intenção pesada por palavra-chave (escrita/edição/comandos).
+    const heavyIntent = helperTools.shouldForceHeavyModel
       ? helperTools.shouldForceHeavyModel(userText || "")
       : false;
+    // Trabalhando sobre um PROJETO/arquivos anexados, qualquer pergunta (mesmo
+    // de leitura, ex.: "qual versão de node?") precisa raciocinar sobre código
+    // → o nano default dá respostas rasas/preguiçosas. Nesse contexto forçamos
+    // o upgrade também. A regra abaixo (heavyTier > userTier) garante que quem
+    // já escolheu um modelo melhor NÃO é rebaixado.
+    let hasWorkspaceCtx = false;
+    try {
+      hasWorkspaceCtx = !!(configService.getWorkspaceAccessEnabled &&
+        configService.getWorkspaceAccessEnabled() &&
+        workspace.list && workspace.list().length > 0);
+    } catch (_) {}
+    const forceHeavy = heavyIntent || hasWorkspaceCtx;
     if (forceHeavy) {
       const rawModel = cfg.modelHeavy || "";
       if (rawModel.startsWith("openai:")) {
