@@ -122,7 +122,7 @@ function buildHelperToolsOpenAIOpts(userText, baseInstruction, baseModel) {
     const modelTier = (m) => {
       const s = String(m || "").toLowerCase();
       if (!s) return 0;
-      if (/gpt-5\.[45]/.test(s)) return 5;
+      if (/gpt-5\.[45]/.test(s) && !/(mini|nano)/.test(s)) return 5;
       if (/gpt-5(\.\d)?($|[^.\d])/.test(s) && !/(mini|nano)/.test(s)) return 4;
       if (/gpt-4\.1($|[^-])/.test(s) && !/(mini|nano)/.test(s)) return 3;
       if (/gpt-4o($|[^-])/.test(s) && !/mini/.test(s)) return 3;
