@@ -835,6 +835,50 @@
 
         /* Conversation viewer (modal) */
         #conversation-viewer { position: fixed; top: 12%; left: 14%; right: 14%; max-height: 66vh; background: var(--bg-elevated); border: 1px solid var(--border-strong); box-shadow: 0 16px 50px rgba(0,0,0,0.7); border-radius: var(--radius); padding: 40px 22px 22px; overflow: visible; color: var(--text); font-size: 13px; line-height: 1.6; display: none; z-index: 5000; }
+
+        /* Painel de diff (split view): ocupa a metade direita da janela */
+        #diff-viewer {
+            position: fixed; top: 8px; right: 8px; bottom: 8px; width: 58%;
+            display: none; flex-direction: column; z-index: 6000;
+            background: var(--bg-base); border: 1px solid var(--border-strong);
+            border-radius: var(--radius); box-shadow: -12px 0 40px rgba(0,0,0,0.55);
+            overflow: hidden;
+        }
+        #diff-viewer.open { display: flex; }
+        .diff-header {
+            display: flex; align-items: center; gap: 8px;
+            padding: 10px 12px; border-bottom: 1px solid var(--border);
+            background: var(--bg-sidebar); flex-shrink: 0;
+        }
+        .diff-file-ic { width: 14px; height: 14px; opacity: .7; flex-shrink: 0; }
+        .diff-file { font-family: var(--font-mono); font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .diff-stats { font-family: var(--font-mono); font-size: 11px; margin-left: 4px; flex-shrink: 0; }
+        .diff-stats .d-add { color: var(--accent-2); }
+        .diff-stats .d-del { color: var(--danger); margin-left: 6px; }
+        .diff-close {
+            margin-left: auto; flex-shrink: 0; width: 24px; height: 24px;
+            background: transparent; border: none; color: var(--text-3); font-size: 18px;
+            cursor: pointer; border-radius: 5px; display: flex; align-items: center; justify-content: center;
+        }
+        .diff-close:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+        .diff-body {
+            flex: 1; overflow: auto; padding: 6px 0;
+            font-family: var(--font-mono); font-size: 12px; line-height: 1.5;
+            scrollbar-width: thin;
+        }
+        .diff-line { display: flex; white-space: pre; }
+        .diff-line .dl-gutter {
+            flex-shrink: 0; width: 44px; text-align: right; padding: 0 8px;
+            color: var(--text-4); user-select: none; opacity: .7;
+        }
+        .diff-line .dl-sign { flex-shrink: 0; width: 16px; text-align: center; user-select: none; }
+        .diff-line .dl-text { flex: 1; padding-right: 12px; overflow-wrap: anywhere; white-space: pre-wrap; }
+        .diff-line.add { background: rgba(76,175,80,0.12); }
+        .diff-line.add .dl-sign, .diff-line.add .dl-text { color: #c8ffd0; }
+        .diff-line.del { background: rgba(248,113,113,0.12); }
+        .diff-line.del .dl-sign, .diff-line.del .dl-text { color: #ffd2d2; }
+        .diff-line.ctx .dl-text { color: var(--text-3); }
+        .diff-empty { padding: 20px; color: var(--text-4); font-family: var(--font-ui); font-size: 13px; }
         #conversation-content { max-height: calc(66vh - 70px); overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.2) transparent; }
         .conversation-close-btn { position: absolute; top: 10px; right: 10px; background: transparent; border: none; color: var(--text-2); font-size: 20px; cursor: pointer; padding: 0; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; opacity: .6; transition: opacity .2s; z-index: 5100; border-radius: 5px; }
         .conversation-close-btn:hover { opacity: 1; background: rgba(255,255,255,0.08); }
@@ -1059,6 +1103,16 @@
         </button>
         <button class="conversation-close-btn" id="conversation-close-btn">×</button>
         <div id="conversation-content"></div>
+    </div>
+    <!-- Painel de diff (split view) — mostra o que a IA mudou no arquivo -->
+    <div id="diff-viewer">
+        <div class="diff-header">
+            <svg class="diff-file-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span class="diff-file" id="diff-file"></span>
+            <span class="diff-stats" id="diff-stats"></span>
+            <button class="diff-close" id="diff-close" title="Fechar">×</button>
+        </div>
+        <div class="diff-body" id="diff-body"></div>
     </div>
     <div id="app-toast" role="status" aria-live="polite"></div>
     <div id="ta-live-indicator"><div id="ta-live-pulse"></div></div>
@@ -1663,10 +1717,11 @@
 
                         const chip = document.createElement('span');
                         chip.className = 'tool-file-chip';
-                        chip.title = data.path;
+                        chip.title = `${data.path}\n(clique para ver o diff)`;
                         chip.textContent = `${verb} ${shortName}`;
+                        // Clicar mostra o DIFF (o que a IA mudou), não abre externo.
                         chip.addEventListener('click', () => {
-                            window.electronAPI.workspaceOpenExternal(data.path);
+                            openFileDiff(data.path, data.backupAt);
                         });
                         filesList.appendChild(chip);
 
@@ -2370,6 +2425,85 @@
             if (!el) return;
             el.scrollTo({ top: el.scrollHeight, behavior });
         }
+
+        // === Diff view: mostra o que a IA mudou num arquivo (estilo PR) ===
+        async function openFileDiff(filePath, backupAt) {
+            const viewer = document.getElementById('diff-viewer');
+            const body = document.getElementById('diff-body');
+            const fileEl = document.getElementById('diff-file');
+            const statsEl = document.getElementById('diff-stats');
+            if (!viewer || !body) return;
+            fileEl.textContent = String(filePath || '').split('/').slice(-2).join('/');
+            fileEl.title = filePath || '';
+            statsEl.innerHTML = '';
+            body.innerHTML = '<div class="diff-empty">Carregando diff…</div>';
+            viewer.classList.add('open');
+
+            let res = null;
+            try {
+                res = window.electronAPI.getFileDiff
+                    ? await window.electronAPI.getFileDiff({ path: filePath, backupAt })
+                    : null;
+            } catch (_) {}
+            if (!res) { body.innerHTML = '<div class="diff-empty">Não foi possível gerar o diff.</div>'; return; }
+            if (res.tooBig) { body.innerHTML = '<div class="diff-empty">Arquivo grande demais para exibir o diff.</div>'; return; }
+
+            statsEl.innerHTML = `<span class="d-add">+${res.adds}</span><span class="d-del">−${res.dels}</span>`;
+            const lines = res.lines || [];
+            if (!lines.length || (res.adds === 0 && res.dels === 0)) {
+                body.innerHTML = '<div class="diff-empty">Sem alterações detectadas neste arquivo.</div>';
+                return;
+            }
+            body.innerHTML = '';
+            const addLine = (l) => {
+                const div = document.createElement('div');
+                div.className = 'diff-line ' + (l.t === 'add' ? 'add' : l.t === 'del' ? 'del' : 'ctx');
+                const g = document.createElement('span'); g.className = 'dl-gutter'; g.textContent = (l.ln != null ? l.ln : '');
+                const s = document.createElement('span'); s.className = 'dl-sign'; s.textContent = (l.t === 'add' ? '+' : l.t === 'del' ? '−' : '');
+                const t = document.createElement('span'); t.className = 'dl-text'; t.textContent = l.text;
+                div.appendChild(g); div.appendChild(s); div.appendChild(t);
+                body.appendChild(div);
+            };
+            // Colapsa trechos longos sem alteração (estilo PR).
+            const COLLAPSE = 4;
+            let run = [];
+            const flushCtx = () => {
+                if (!run.length) return;
+                if (run.length > COLLAPSE * 2) {
+                    run.slice(0, COLLAPSE).forEach(addLine);
+                    const sep = document.createElement('div');
+                    sep.className = 'diff-line ctx';
+                    sep.innerHTML = '<span class="dl-gutter"></span><span class="dl-sign"></span><span class="dl-text" style="color:var(--text-4)">⋯ ' + (run.length - COLLAPSE * 2) + ' linhas inalteradas ⋯</span>';
+                    body.appendChild(sep);
+                    run.slice(-COLLAPSE).forEach(addLine);
+                } else {
+                    run.forEach(addLine);
+                }
+                run = [];
+            };
+            let count = 0;
+            for (const l of lines) {
+                if (count++ > 2000) break;
+                if (l.t === 'ctx') run.push(l);
+                else { flushCtx(); addLine(l); }
+            }
+            flushCtx();
+            body.scrollTop = 0;
+        }
+        function closeFileDiff() {
+            const v = document.getElementById('diff-viewer');
+            if (v) v.classList.remove('open');
+        }
+        (function wireDiffViewer() {
+            const closeBtn = document.getElementById('diff-close');
+            if (closeBtn) closeBtn.addEventListener('click', closeFileDiff);
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    const v = document.getElementById('diff-viewer');
+                    if (v && v.classList.contains('open')) { e.stopPropagation(); closeFileDiff(); }
+                }
+            }, true);
+        })();
 
         function removeManualInputContainer() {
             const existing = document.querySelector('.manual-input-container');

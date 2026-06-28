@@ -3700,6 +3700,53 @@ ipcMain.handle("get-project-context", async () => {
   }
 });
 
+// Diff linha-a-linha (LCS) entre dois textos — sem dependências externas.
+function computeLineDiff(oldText, newText) {
+  const a = String(oldText || "").split("\n");
+  const b = String(newText || "").split("\n");
+  const n = a.length, m = b.length;
+  if (n > 4000 || m > 4000) return null; // grande demais p/ exibir
+  const dp = [];
+  for (let i = 0; i <= n; i++) dp.push(new Int32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const lines = [];
+  let i = 0, j = 0, ln = 1;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { lines.push({ t: "ctx", text: a[i], ln: ln++ }); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { lines.push({ t: "del", text: a[i] }); i++; }
+    else { lines.push({ t: "add", text: b[j], ln: ln++ }); j++; }
+  }
+  while (i < n) { lines.push({ t: "del", text: a[i] }); i++; }
+  while (j < m) { lines.push({ t: "add", text: b[j], ln: ln++ }); j++; }
+  return lines;
+}
+
+// Diff de um arquivo editado pela IA: backup (antes) × atual (depois).
+ipcMain.handle("get-file-diff", async (event, payload) => {
+  try {
+    const filePath = payload && payload.path;
+    const backupAt = payload && payload.backupAt;
+    if (!filePath) return null;
+    let oldText = "";
+    if (backupAt && fs2.existsSync(backupAt)) {
+      try { oldText = fs2.readFileSync(backupAt, "utf8"); } catch (_) {}
+    }
+    let newText = "";
+    try { if (fs2.existsSync(filePath)) newText = fs2.readFileSync(filePath, "utf8"); } catch (_) {}
+    const lines = computeLineDiff(oldText, newText);
+    const adds = lines ? lines.filter((l) => l.t === "add").length : 0;
+    const dels = lines ? lines.filter((l) => l.t === "del").length : 0;
+    return { path: filePath, lines: lines || [], adds, dels, tooBig: !lines, isNew: !backupAt };
+  } catch (e) {
+    console.warn("[file-diff] falhou:", e.message);
+    return null;
+  }
+});
+
 // Árvore (blueprint) do projeto aberto — pra exibir no dropdown da sidebar.
 ipcMain.handle("get-project-tree", async () => {
   try {
