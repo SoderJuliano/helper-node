@@ -206,11 +206,37 @@ function buildHelperToolsOpenAIOpts(userText, baseInstruction, baseModel) {
             } catch (_) {}
             return null;
           };
+          // Resumo legível da ação pra mostrar o "thinking"/ações na UI.
+          const baseName = (p) => String(p || "").split("/").filter(Boolean).slice(-1)[0] || String(p || "");
+          const summarizeTool = (name, a = {}) => {
+            switch (name) {
+              case "readFile": return `Lendo ${baseName(a.path)}`;
+              case "findFiles": return `Procurando ${a.glob || a.pattern || "arquivos"}`;
+              case "listDir": case "readDir": return `Listando ${baseName(a.path) || "diretório"}`;
+              case "writeFile": return `Escrevendo ${baseName(a.path)}`;
+              case "appendToFile": return `Anexando em ${baseName(a.path)}`;
+              case "patchFile": return `Editando ${baseName(a.path)}`;
+              case "deleteFile": return `Removendo ${baseName(a.path)}`;
+              case "runCommand": case "runTerminal": return `Rodando: ${String(a.command || a.cmd || "").slice(0, 70)}`;
+              case "grep": case "searchInFiles": return `Buscando "${String(a.query || a.pattern || "").slice(0, 50)}"`;
+              default: return name;
+            }
+          };
+          const emitActivity = (payload) => {
+            try {
+              if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send("ai-tool-activity", payload);
+              }
+            } catch (_) {}
+          };
           return async (name, args /*, meta */) => {
+            const callId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+            emitActivity({ id: callId, name, label: summarizeTool(name, args), phase: "start" });
             const key = hashKey(name, args);
             if (key && seen.has(key)) {
               console.log(`🚫 anti-dup: ${name} já executado neste turno (key=${key}); retornando resultado anterior sem reexecutar.`);
               const prev = seen.get(key);
+              emitActivity({ id: callId, name, phase: "done", ok: true });
               return {
                 ok: true,
                 result: {
@@ -224,6 +250,7 @@ function buildHelperToolsOpenAIOpts(userText, baseInstruction, baseModel) {
               source: "openai-tool-call",
             });
             if (key && res && res.ok !== false) seen.set(key, res);
+            emitActivity({ id: callId, name, phase: "done", ok: res && res.ok !== false });
             return res;
           };
         })(),

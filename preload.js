@@ -58,6 +58,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onAutoCloseState: (callback) =>
     ipcRenderer.on("autoclose-state", (event, data) => callback(data)),
   getAiModel: () => ipcRenderer.invoke("get-ai-model"),
+  getOpenaiModel: () => ipcRenderer.invoke("get-openai-model"),
+  setOpenaiModel: (model) => ipcRenderer.send("set-openai-model", model),
   getEdition: () => ipcRenderer.invoke("get-edition"),
   openConfig: () => ipcRenderer.send("open-config-ui"),
   stopNotifications: () => ipcRenderer.send("stop-notifications"),
@@ -117,6 +119,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("workspace-changed", (event, data) => cb(data)),
   onWorkspaceFileWritten: (cb) =>
     ipcRenderer.on("workspace-file-written", (event, data) => cb(data)),
+  onAiToolActivity: (cb) =>
+    ipcRenderer.on("ai-tool-activity", (event, data) => cb(data)),
 
   // === Agentic Workflow (multi-phase) ===
   onAgenticPhaseUpdate: (cb) =>

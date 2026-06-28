@@ -559,6 +559,30 @@
         .interaction-block:hover .copy-interaction-btn:hover { opacity: 1; background: rgba(255,255,255,0.10); color: var(--text); }
         .copy-interaction-btn.copied { opacity: 1; color: var(--accent-2); border-color: var(--accent-border); background: var(--accent-soft); }
 
+        /* "Thinking"/ações da IA ao vivo (estilo IDE): lista discreta do que a
+           IA está fazendo — ler arquivo, buscar, rodar comando… */
+        .ai-activity {
+            display: flex; flex-direction: column; gap: 3px;
+            margin: 8px 0 4px; padding: 8px 10px;
+            background: rgba(255,255,255,0.025); border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+        }
+        .ai-activity-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-3); font-family: var(--font-mono); }
+        .ai-activity-ic { width: 13px; height: 13px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
+        .ai-activity-ic svg { width: 13px; height: 13px; }
+        .ai-activity-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ai-activity-item.running .ai-activity-label { color: var(--text-2); }
+        .ai-activity-item.done .ai-activity-label { color: var(--text-3); }
+        .ai-activity-item.fail .ai-activity-label { color: var(--text-3); text-decoration: line-through; opacity: .8; }
+        .ai-activity-check { color: var(--accent-2); }
+        .ai-activity-fail { color: var(--danger); }
+        .ai-activity-spinner {
+            width: 11px; height: 11px; border: 2px solid rgba(255,255,255,0.18);
+            border-top-color: var(--accent-2); border-radius: 50%;
+            animation: ai-spin .7s linear infinite;
+        }
+        @keyframes ai-spin { to { transform: rotate(360deg); } }
+
         /* Botão copiar de blocos de código (pre > button.copy-button) */
         .copy-button {
             position: absolute; top: 8px; right: 8px;
@@ -656,6 +680,24 @@
         .composer-send:hover { background: var(--accent-2); }
         .composer-send:active { transform: translateY(1px); }
         .composer-send svg { width: 15px; height: 15px; }
+        /* Barra inferior do composer: seletor de modelo (estilo ZCode) */
+        .composer-toolbar {
+            display: flex; align-items: center; gap: 8px;
+            margin-top: 8px; padding: 0 2px;
+        }
+        .composer-model {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 4px 9px; background: transparent;
+            border: 1px solid var(--border); border-radius: 7px;
+            color: var(--text-3); font-size: 11.5px; font-family: var(--font-ui);
+            cursor: pointer; max-width: 240px; line-height: 1.2;
+            transition: background .15s var(--ease), border-color .15s var(--ease), color .15s var(--ease);
+        }
+        .composer-model:hover { background: var(--bg-surface); border-color: var(--border-strong); color: var(--text-2); }
+        .composer-model > svg:first-child { width: 13px; height: 13px; opacity: .7; flex-shrink: 0; }
+        .composer-model .cm-caret { width: 11px; height: 11px; opacity: .55; flex-shrink: 0; }
+        .composer-model span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
         .composer-hint {
             margin-top: 8px; text-align: center; font-size: 10.5px; color: var(--text-4);
             font-family: var(--font-mono);
@@ -987,6 +1029,13 @@
                         Enviar
                     </button>
                 </div>
+                <div class="composer-toolbar">
+                    <button class="composer-model" id="composer-model" type="button" title="Trocar modelo">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3 3 3 0 0 0-3 3 3 3 0 0 0 0 6 3 3 0 0 0 3 3 3 3 0 0 0 6 0 3 3 0 0 0 3-3 3 3 0 0 0 0-6 3 3 0 0 0-3-3 3 3 0 0 0-3-3z"/><path d="M12 8v8M9 12h6"/></svg>
+                        <span id="composer-model-name">modelo</span>
+                        <svg class="cm-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                </div>
                 <div class="composer-hint"><span class="h-kbd">Enter</span> quebra linha · <span class="h-kbd">Shift+Enter</span> envia · <span class="h-kbd">Esc</span> fecha</div>
             </div>
         </main>
@@ -1236,6 +1285,85 @@
                 ctxProjectBtn.addEventListener('click', (e) => { e.stopPropagation(); showProjectMenu(ctxProjectBtn); });
             }
             refreshProjectContext();
+
+            // === Seletor de modelo no composer (estilo ZCode) ===
+            // Provider = ChatGPT → troca o modelo gpt inline; outros providers
+            // → abre Configurações (não há lista de endpoints inline ainda).
+            const OPENAI_MODELS = [
+                { value: 'gpt-4.1-nano', label: 'GPT-4.1 Nano' },
+                { value: 'gpt-4.1', label: 'GPT-4.1' },
+                { value: 'gpt-5.1', label: 'GPT-5.1' },
+                { value: 'gpt-5.4-mini', label: 'GPT-5.4 Mini' },
+                { value: 'gpt-5.4', label: 'GPT-5.4' },
+            ];
+            const PROVIDER_LABELS = {
+                openIa: 'ChatGPT', llama: 'Backend (Llama)',
+                'llama-stream': 'Backend (stream)', ollamaLocal: 'Ollama Local',
+            };
+            const composerModelBtn = document.getElementById('composer-model');
+            const composerModelName = document.getElementById('composer-model-name');
+
+            async function refreshComposerModel() {
+                if (!composerModelBtn || !composerModelName) return;
+                let provider = 'openIa';
+                try { provider = (await window.electronAPI.getAiModel()) || 'openIa'; } catch (_) {}
+                composerModelBtn.dataset.provider = provider;
+                if (provider === 'openIa') {
+                    let m = 'gpt-4.1-nano';
+                    try { m = (await window.electronAPI.getOpenaiModel()) || m; } catch (_) {}
+                    const found = OPENAI_MODELS.find(x => x.value === m);
+                    composerModelName.textContent = found ? found.label : m;
+                } else {
+                    composerModelName.textContent = PROVIDER_LABELS[provider] || provider;
+                }
+            }
+
+            function showModelMenu(anchor) {
+                const provider = anchor.dataset.provider || 'openIa';
+                if (provider !== 'openIa') {
+                    // Backend/Ollama: troca pelo painel de Configurações.
+                    if (window.electronAPI.openConfig) window.electronAPI.openConfig();
+                    return;
+                }
+                document.querySelectorAll('.composer-model-menu').forEach(m => m.remove());
+                const current = composerModelName.textContent;
+                const menu = document.createElement('div');
+                menu.className = 'composer-model-menu';
+                menu.style.cssText = 'position:absolute; z-index:9999; background:var(--bg-elevated); border:1px solid var(--border-strong); border-radius:8px; padding:4px; box-shadow:0 10px 30px rgba(0,0,0,0.55); min-width:180px;';
+                OPENAI_MODELS.forEach(opt => {
+                    const b = document.createElement('button');
+                    b.type = 'button';
+                    const active = opt.label === current;
+                    b.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; text-align:left; background:transparent; border:none; color:' + (active ? 'var(--accent-2)' : 'var(--text-2)') + '; font-size:12px; padding:7px 10px; cursor:pointer; border-radius:5px; font-family:var(--font-ui);';
+                    b.innerHTML = '<span>' + opt.label + '</span>' + (active ? '<span>✓</span>' : '');
+                    b.addEventListener('mouseenter', () => b.style.background = 'rgba(255,255,255,0.06)');
+                    b.addEventListener('mouseleave', () => b.style.background = 'transparent');
+                    b.addEventListener('click', () => {
+                        menu.remove();
+                        try { window.electronAPI.setOpenaiModel(opt.value); } catch (_) {}
+                        composerModelName.textContent = opt.label;
+                        if (typeof showToast === 'function') showToast('Modelo: ' + opt.label);
+                    });
+                    menu.appendChild(b);
+                });
+                document.body.appendChild(menu);
+                const r = anchor.getBoundingClientRect();
+                menu.style.left = r.left + 'px';
+                menu.style.top = (r.top - menu.offsetHeight - 6) + 'px';
+                const closer = (ev) => {
+                    if (!menu.contains(ev.target) && ev.target !== anchor && !anchor.contains(ev.target)) {
+                        menu.remove();
+                        document.removeEventListener('click', closer, true);
+                    }
+                };
+                setTimeout(() => document.addEventListener('click', closer, true), 0);
+            }
+            if (composerModelBtn) {
+                composerModelBtn.addEventListener('click', (e) => { e.stopPropagation(); showModelMenu(composerModelBtn); });
+            }
+            refreshComposerModel();
+            // Reflete mudanças feitas na janela de Configurações ao voltar o foco.
+            window.addEventListener('focus', () => { refreshComposerModel(); });
 
             // Workspace empty note: mostra quando workspace desativado
             const wsEmptyNote = document.getElementById('ws-empty-note');
@@ -1546,6 +1674,51 @@
                             transcriptionElement.scrollTo({ top: transcriptionElement.scrollHeight, behavior: 'smooth' });
                         }
                     } catch (e) { console.warn('file-written render failed:', e); }
+                });
+            }
+
+            // === "Thinking"/ações da IA ao vivo (ler, buscar, rodar comando…) ===
+            if (window.electronAPI && window.electronAPI.onAiToolActivity) {
+                const ACT_CHECK = '<svg class="ai-activity-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+                const ACT_FAIL = '<svg class="ai-activity-fail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+                window.electronAPI.onAiToolActivity((data) => {
+                    try {
+                        if (!data || !data.id || !transcriptionElement) return;
+                        const block = transcriptionElement.querySelector('.interaction-block:last-child');
+                        if (!block) return;
+                        let feed = block.querySelector('.ai-activity');
+                        if (!feed) {
+                            feed = document.createElement('div');
+                            feed.className = 'ai-activity';
+                            const q = block.querySelector('.question-text');
+                            if (q && q.nextSibling) block.insertBefore(feed, q.nextSibling);
+                            else block.appendChild(feed);
+                        }
+                        if (data.phase === 'start') {
+                            if (feed.querySelector(`[data-id="${data.id}"]`)) return;
+                            const item = document.createElement('div');
+                            item.className = 'ai-activity-item running';
+                            item.dataset.id = data.id;
+                            const ic = document.createElement('span');
+                            ic.className = 'ai-activity-ic';
+                            ic.innerHTML = '<span class="ai-activity-spinner"></span>';
+                            const lbl = document.createElement('span');
+                            lbl.className = 'ai-activity-label';
+                            lbl.textContent = data.label || data.name || 'trabalhando…';
+                            item.appendChild(ic);
+                            item.appendChild(lbl);
+                            feed.appendChild(item);
+                            transcriptionElement.scrollTo({ top: transcriptionElement.scrollHeight, behavior: 'smooth' });
+                        } else if (data.phase === 'done') {
+                            const item = feed.querySelector(`[data-id="${data.id}"]`);
+                            if (!item) return;
+                            const ok = data.ok !== false;
+                            item.classList.remove('running');
+                            item.classList.add(ok ? 'done' : 'fail');
+                            const ic = item.querySelector('.ai-activity-ic');
+                            if (ic) ic.innerHTML = ok ? ACT_CHECK : ACT_FAIL;
+                        }
+                    } catch (e) { console.warn('ai-activity render failed:', e); }
                 });
             }
             // Inicial
