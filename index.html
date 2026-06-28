@@ -3593,6 +3593,13 @@
             manualInputActive = false;
             undockComposer(); // restaura o ghost do composer após envio
 
+            // Enviar = conversa começou: esconde o hero (→ #main perde .is-empty,
+            // o composer doca embaixo e o #transcription fica visível). Antes isso
+            // dependia do clique no body, que removi pra parar o "pulo" — sem este
+            // hide a pergunta/resposta caíam num #transcription display:none.
+            const _heroSubmit = document.getElementById('welcome-hero');
+            if (_heroSubmit) _heroSubmit.classList.add('hidden');
+
             const isDebug = await window.electronAPI.getDebugModeStatus();
 
             if (pastedImageForManualInput) {
