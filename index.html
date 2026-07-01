@@ -798,8 +798,9 @@
             background: transparent; border: none; outline: none; color: var(--text);
             font: inherit; line-height: 1.5; padding: 0; margin: 0; text-align: left;
             white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word;
-            caret-color: var(--accent-2); scrollbar-width: thin;
+            caret-color: var(--accent-2); scrollbar-width: none;
         }
+        .terminal-input::-webkit-scrollbar { display: none; }
         .terminal-input::selection { background: rgba(95,215,95,0.3); }
         /* Cursor falso desativado: usamos o caret nativo (caret-color acima).
            Manipular um <span> cursor no DOM a cada tecla embaralhava as letras
