@@ -73,6 +73,17 @@ class GeminiCliProvider {
     // Emit "busy" to UI
     this._emitStatus(sender, { state: 'busy', projectPath: cwd });
 
+    // Reseta estado de turno anterior que pode ter ficado preso por abort
+    this._thinkingEmitted = false;
+
+    const safeClose = (isError) => {
+      if (this._thinkingEmitted) {
+        this._thinkingEmitted = false;
+        try { sender.send('agentic-phase-update', { phase: 'completed', status: isError ? 'Erro' : 'Concluído' }); } catch (_) {}
+      }
+      try { sender.send('gemini-stream-complete'); } catch (_) {}
+    };
+
     return new Promise((resolve, reject) => {
       let accumulated = '';
       let thinkingAccumulated = '';
@@ -105,19 +116,15 @@ class GeminiCliProvider {
         },
 
         onDone: ({ text, thinking }) => {
-          // Fecha o indicador de thinking se foi aberto
-          if (this._thinkingEmitted) {
-            this._thinkingEmitted = false;
-            sender.send('agentic-phase-update', { phase: 'completed', status: 'Concluído' });
-          }
-          sender.send('gemini-stream-complete');
+          safeClose(false);
           this._emitStatus(sender, { state: 'waiting', projectPath: cwd });
           resolve({ text: text || accumulated, thinking: thinking || thinkingAccumulated });
         },
 
         onError: (err) => {
+          safeClose(true);
           const msg = friendlyError(err);
-          sender.send('transcription-error', msg);
+          try { sender.send('transcription-error', msg); } catch (_) {}
           this._emitStatus(sender, { state: 'error', error: msg });
           reject(new Error(msg));
         },

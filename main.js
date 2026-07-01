@@ -3279,6 +3279,8 @@ ipcMain.on("send-to-gemini", async (event, text) => {
         await ClaudeCliProvider.send(text, projectPath, event.sender);
       } catch (ccliErr) {
         console.error('[claude-cli] send error:', ccliErr.message);
+        // Garante que o loading fecha mesmo que o provider não tenha emitido gemini-stream-complete
+        try { event.sender.send('gemini-stream-complete'); } catch (_) {}
       }
       return;
     }

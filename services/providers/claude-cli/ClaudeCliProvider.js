@@ -62,7 +62,20 @@ class ClaudeCliProvider {
 
     this._emitStatus(sender, { state: 'busy', projectPath: cwd });
 
+    // Reseta estado de turno anterior que pode ter ficado preso por abort
+    this._thinkingEmitted = false;
+    this._activityIds = new Map();
+
     let activityId = 0;
+
+    const safeClose = (isError) => {
+      // Garante que o loading sempre fecha, mesmo em erros inesperados
+      if (this._thinkingEmitted) {
+        this._thinkingEmitted = false;
+        try { sender.send('agentic-phase-update', { phase: 'completed', status: isError ? 'Erro' : 'Concluído' }); } catch (_) {}
+      }
+      try { sender.send('gemini-stream-complete'); } catch (_) {}
+    };
 
     return new Promise((resolve, reject) => {
       session.send(prompt, {
@@ -129,20 +142,16 @@ class ClaudeCliProvider {
         },
 
         onDone: ({ text, cost }) => {
-          // Fecha o indicador de thinking se foi aberto
-          if (this._thinkingEmitted) {
-            this._thinkingEmitted = false;
-            sender.send('agentic-phase-update', { phase: 'completed', status: 'Concluído' });
-          }
-          sender.send('gemini-stream-complete');
+          safeClose(false);
           this._emitStatus(sender, { state: 'done', projectPath: cwd });
           if (cost > 0) console.log(`[claude-cli] custo: $${cost.toFixed(6)}`);
           resolve({ text });
         },
 
         onError: (err) => {
+          safeClose(true);
           const msg = friendlyError(err);
-          sender.send('transcription-error', msg);
+          try { sender.send('transcription-error', msg); } catch (_) {}
           this._emitStatus(sender, { state: 'error', error: msg });
           reject(new Error(msg));
         },
