@@ -96,6 +96,23 @@ class ClaudeCliParser {
         }
         break;
 
+      // Deltas em tempo real (--include-partial-messages): thinking e texto
+      // chegam aqui conforme o modelo gera, não só no fim do bloco.
+      case 'stream_event': {
+        const se = ev.event || {};
+        if (se.type === 'content_block_delta' && se.delta) {
+          if (se.delta.type === 'thinking_delta' && se.delta.thinking) {
+            this._sawThinkingDelta = true;
+            this._emit('onThinking', se.delta.thinking);
+          } else if (se.delta.type === 'text_delta' && se.delta.text) {
+            this._sawTextDelta = true;
+            this._text += se.delta.text;
+            this._emit('onChunk', se.delta.text);
+          }
+        }
+        break;
+      }
+
       case 'assistant': {
         const msg = ev.message || {};
         const content = Array.isArray(msg.content) ? msg.content : [];
@@ -103,12 +120,16 @@ class ClaudeCliParser {
           if (!block || !block.type) continue;
 
           if (block.type === 'thinking') {
+            // Já foi emitido via thinking_delta em tempo real — não duplica
+            if (this._sawThinkingDelta) continue;
             const text = block.thinking || block.text || '';
             if (text) this._emit('onThinking', text);
             continue;
           }
 
           if (block.type === 'text') {
+            // Já foi emitido via text_delta em tempo real — não duplica
+            if (this._sawTextDelta) continue;
             const chunk = block.text || '';
             if (chunk) {
               this._text += chunk;
@@ -154,6 +175,8 @@ class ClaudeCliParser {
           if (ev.session_id) this._emit('onSessionId', ev.session_id);
           this._emit('onDone', { text: this._text, cost: ev.cost_usd || 0, sessionId: ev.session_id });
           this._text = '';
+          this._sawTextDelta = false;
+          this._sawThinkingDelta = false;
           this._toolMap.clear();
         } else if (ev.subtype === 'error' || ev.is_error) {
           const msg = (ev.error && ev.error.message) || ev.error || 'Erro no Claude CLI';
@@ -166,6 +189,8 @@ class ClaudeCliParser {
   reset() {
     this._buf  = '';
     this._text = '';
+    this._sawTextDelta = false;
+    this._sawThinkingDelta = false;
     this._toolMap.clear();
   }
 }

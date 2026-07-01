@@ -64,6 +64,8 @@ class ClaudeCliProvider {
 
     // Reseta estado de turno anterior que pode ter ficado preso por abort
     this._thinkingEmitted = false;
+    this._thinkingBuf = '';
+    this._lastThinkingUpdate = 0;
     this._activityIds = new Map();
 
     let activityId = 0;
@@ -87,10 +89,17 @@ class ClaudeCliProvider {
         },
 
         onThinking: (text) => {
-          if (!this._thinkingEmitted) {
-            this._thinkingEmitted = true;
-            // UI espera { phase, status } — emite só uma vez como indicador
-            sender.send('agentic-phase-update', { phase: 'thinking', status: '🧠 Pensando…' });
+          this._thinkingEmitted = true;
+          this._thinkingBuf = (this._thinkingBuf || '') + text;
+          // Atualiza a UI em tempo real (throttle 400ms) com o trecho mais
+          // recente do raciocínio — o user vê o que está acontecendo.
+          const now = Date.now();
+          if (!this._lastThinkingUpdate || now - this._lastThinkingUpdate > 400) {
+            this._lastThinkingUpdate = now;
+            const snippet = this._thinkingBuf.replace(/\s+/g, ' ').trim().slice(-140);
+            try {
+              sender.send('agentic-phase-update', { phase: 'thinking', status: snippet || 'Pensando…' });
+            } catch (_) {}
           }
         },
 

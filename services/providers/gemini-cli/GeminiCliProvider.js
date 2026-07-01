@@ -98,10 +98,15 @@ class GeminiCliProvider {
 
         onThinking: (text) => {
           thinkingAccumulated += text + '\n';
-          if (!this._thinkingEmitted) {
-            this._thinkingEmitted = true;
-            // Mostra indicador de thinking — UI espera { phase, status }
-            sender.send('agentic-phase-update', { phase: 'thinking', status: '🧠 Pensando…' });
+          this._thinkingEmitted = true;
+          // Atualiza em tempo real com o trecho mais recente (throttle 400ms)
+          const now = Date.now();
+          if (!this._lastThinkingUpdate || now - this._lastThinkingUpdate > 400) {
+            this._lastThinkingUpdate = now;
+            const snippet = thinkingAccumulated.replace(/\s+/g, ' ').trim().slice(-140);
+            try {
+              sender.send('agentic-phase-update', { phase: 'thinking', status: snippet || 'Pensando…' });
+            } catch (_) {}
           }
         },
 
