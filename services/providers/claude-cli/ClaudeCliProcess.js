@@ -52,7 +52,9 @@ class ClaudeCliProcess {
       '--output-format', 'stream-json',
       '--include-partial-messages',
       '--verbose',
-      '--permission-mode', 'auto',
+      // bypassPermissions: aprova automaticamente todas as ferramentas (Bash, Read, Write, etc.)
+      // sem bloquear esperando confirmação em stdin.
+      '--permission-mode', 'bypassPermissions',
       '--no-chrome',
     ];
 
@@ -71,7 +73,9 @@ class ClaudeCliProcess {
     const env = { ...process.env, HOME: process.env.HOME || require('os').homedir() };
     this._proc = spawn(bin, args, {
       cwd,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      // stdin como pipe para poder enviar SIGTERM limpo e responder a qualquer
+      // prompt residual que o CLI emita antes de reconhecer o bypassPermissions.
+      stdio: ['pipe', 'pipe', 'pipe'],
       env,
     });
 
@@ -85,8 +89,13 @@ class ClaudeCliProcess {
     });
 
     this._proc.stderr.on('data', (chunk) => {
-      // Stderr often contains progress/spinner noise from Claude Code. Log but don't crash.
-      if (chunk && chunk.trim()) console.warn('[claude-cli] stderr:', chunk.trim().slice(0, 200));
+      const line = chunk && chunk.trim();
+      if (!line) return;
+      console.warn('[claude-cli] stderr:', line.slice(0, 200));
+      // Se por algum motivo o CLI pedir confirmação via stderr, envia 'y'
+      if (/\?\s*$|\(y\/n\)|\[Y\/n\]/i.test(line)) {
+        try { this._proc.stdin.write('y\n'); } catch (_) {}
+      }
     });
 
     this._proc.on('close', (code, signal) => {

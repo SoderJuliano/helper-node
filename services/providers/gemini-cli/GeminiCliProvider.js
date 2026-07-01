@@ -125,6 +125,15 @@ class GeminiCliProvider {
     });
   }
 
+  // Aborta o processo em curso para um projeto (chamado pelo botão interromper).
+  async abortCurrent(projectPath) {
+    const session = this._sessions.get(projectPath);
+    if (session) {
+      await session.stop().catch(() => {});
+      console.log(`[gemini-cli] abortado: ${projectPath}`);
+    }
+  }
+
   // Change active project: stop old session and prepare for new one.
   async changeProject(oldPath, newPath) {
     if (oldPath && this._sessions.has(oldPath)) {

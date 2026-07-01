@@ -150,6 +150,15 @@ class ClaudeCliProvider {
     });
   }
 
+  // Aborta o processo em curso para um projeto (chamado pelo botão interromper).
+  async abortCurrent(projectPath) {
+    const session = this._sessions.get(projectPath);
+    if (session) {
+      await session.abort().catch(() => {});
+      console.log(`[claude-cli] abortado: ${projectPath}`);
+    }
+  }
+
   // Called when the user changes project.
   async changeProject(oldPath, newPath) {
     if (oldPath && this._sessions.has(oldPath)) {

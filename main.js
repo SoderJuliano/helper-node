@@ -3440,6 +3440,10 @@ ipcMain.on("stop-agentic-workflow", (event, sessionId) => {
   if (typeof ollamaAgenticWorkflow !== 'undefined') {
     ollamaAgenticWorkflow.stop(sessionId);
   }
+  // Para CLIs: aborta o processo em curso para o projeto ativo.
+  const projectPath = (workspace.list()[0] || {}).path || process.cwd();
+  ClaudeCliProvider.abortCurrent(projectPath).catch(() => {});
+  GeminiCliProvider.abortCurrent && GeminiCliProvider.abortCurrent(projectPath).catch(() => {});
 });
 
 ipcMain.on("clear-ai-sessions", () => {

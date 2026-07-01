@@ -63,9 +63,15 @@ class ClaudeCliSession {
       proc.onData((chunk) => parser.feed(chunk));
       proc.onClose((code) => {
         parser.flush();
-        // If process closed without emitting result (e.g. crash/auth error)
         if (proc.alive === false && this._activeProc === proc) {
           this._activeProc = null;
+          // Abort do usuário (SIGTERM=143, SIGKILL=137): resolve silenciosamente.
+          if (this._aborted) {
+            this._aborted = false;
+            opts.onDone && opts.onDone({ text: '', cost: 0 });
+            resolve({ text: '' });
+            return;
+          }
           const errMsg = code !== 0
             ? `Claude CLI encerrou com código ${code}. Se não estiver autenticado: claude auth login`
             : 'Claude CLI encerrou sem resposta.';
@@ -89,9 +95,10 @@ class ClaudeCliSession {
     });
   }
 
-  // Abort any in-progress send.
+  // Abort any in-progress send (user-initiated — won't show error in UI).
   async abort() {
     if (this._activeProc) {
+      this._aborted = true;
       await this._activeProc.kill().catch(() => {});
       this._activeProc = null;
     }
