@@ -302,14 +302,28 @@ async function prependWorkspaceContextIfNeeded(text, modelKey) {
       console.log(`[workspace] SKIP: nenhum anexo no painel`);
       return text;
     }
+    // Âncora CURTA do projeto ativo — vai em TODO turno (barato). Sem isso o
+    // modelo esquece a raiz do projeto após a 1ª msg e começa a varrer ~ ("achei
+    // 3 projetos, qual o caminho?"). O blueprint completo (árvore) vai só 1x.
+    const dirs = workspace.list().filter((a) => a.type === "dir");
+    let anchor = "";
+    if (dirs.length) {
+      const root = dirs[0].path;
+      anchor =
+        `[PROJETO ATIVO: ${root}]\n` +
+        `Esta é a RAIZ do projeto em que estamos trabalhando. Faça TODAS as operações ` +
+        `de arquivo/busca/comando DENTRO deste diretório (use-o como cwd). ` +
+        `NÃO procure em ~ nem em outros projetos. Caminho relativo = relativo a esta raiz.`;
+    }
+
     const ctx = await workspace.buildContextIfNeeded(modelKey || "", { userText: text });
     if (!ctx) {
-      console.log(`[workspace] SKIP: contexto ja injetado nesta sessao (anexos=${attCount}). Use 'Novo Chat' pra reinjetar.`);
-      return text;
+      console.log(`[workspace] contexto ja injetado; mandando só a âncora do projeto (anexos=${attCount}).`);
+      return anchor ? anchor + "\n\n---\n\n" + (text || "") : text;
     }
     workspace.markContextSent();
     console.log(`[workspace] ✅ contexto injetado (${ctx.length} chars, ${attCount} anexos, model=${modelKey})`);
-    return ctx + "\n\n---\n\n" + (text || "");
+    return (anchor ? anchor + "\n\n" : "") + ctx + "\n\n---\n\n" + (text || "");
   } catch (e) {
     console.warn("[workspace] prependContext falhou:", e.message);
     return text;
