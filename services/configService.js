@@ -113,6 +113,8 @@ const defaultConfig = {
   workspaceAccess: {
     enabled: false,
   },
+  // Gemini CLI provider — modelo escolhido pelo usuário dentro da lista do CLI.
+  geminiCliModel: "gemini-2.5-flash",
   // API Key do backend remoto. Necessário para endpoints pesados (ex: qwen3.6-17b).
   // Endpoints leves (llama3, qwen25) usam o Bearer token fixo hardcoded.
   backendApiKey: "",
@@ -318,8 +320,21 @@ function setAiModel(aiModel) {
     currentConfig = loadConfig();
   }
   currentConfig.aiModel = aiModel;
-  // Mutex: ollamaLocal NAO suporta helperTools/workspaceAccess nesta versao
-  // (decisao do user pra manter simples). Desliga automaticamente.
+  // Mutex: geminiCli e ollamaLocal não usam helperTools (o CLI gerencia suas ferramentas).
+  if (aiModel === 'geminiCli' || aiModel === 'ollamaLocal') {
+    if (currentConfig.helperTools && currentConfig.helperTools.enabled) {
+      currentConfig.helperTools.enabled = false;
+      console.log(`[config] ${aiModel} selecionado → helperTools desligado (CLI gerencia ferramentas)`);
+    }
+    if (currentConfig.workspaceAccess && currentConfig.workspaceAccess.enabled) {
+      currentConfig.workspaceAccess.enabled = false;
+    }
+    if (aiModel === 'geminiCli') {
+      saveConfig(currentConfig);
+      currentConfig = null;
+      return;
+    }
+  }
   if (aiModel === 'ollamaLocal') {
     if (currentConfig.helperTools && currentConfig.helperTools.enabled) {
       currentConfig.helperTools.enabled = false;
@@ -361,6 +376,18 @@ function setOpenAiVisionModel(model) {
     currentConfig = loadConfig();
   }
   currentConfig.openAiVisionModel = model;
+  saveConfig(currentConfig);
+  currentConfig = null;
+}
+
+function getGeminiCliModel() {
+  if (!currentConfig) currentConfig = loadConfig();
+  return currentConfig.geminiCliModel || defaultConfig.geminiCliModel;
+}
+
+function setGeminiCliModel(model) {
+  if (!currentConfig) currentConfig = loadConfig();
+  currentConfig.geminiCliModel = model || defaultConfig.geminiCliModel;
   saveConfig(currentConfig);
   currentConfig = null;
 }
@@ -615,6 +642,8 @@ module.exports = {
   setOpenAiModel,
   getOpenAiVisionModel,
   setOpenAiVisionModel,
+  getGeminiCliModel,
+  setGeminiCliModel,
   getOllamaLocalModel,
   setOllamaLocalModel,
   getOllamaLocalHost,

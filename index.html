@@ -1417,7 +1417,17 @@
             const PROVIDER_LABELS = {
                 openIa: 'ChatGPT', llama: 'Backend (Llama)',
                 'llama-stream': 'Backend (stream)', ollamaLocal: 'Ollama Local',
+                geminiCli: 'Gemini CLI',
             };
+            // Gemini CLI model list (mirrored from GeminiCliModels.js)
+            const GEMINI_CLI_MODELS = [
+                { value: 'gemini-2.5-pro',        label: 'Gemini 2.5 Pro' },
+                { value: 'gemini-2.5-flash',      label: 'Gemini 2.5 Flash' },
+                { value: 'gemini-2.0-flash',      label: 'Gemini 2.0 Flash' },
+                { value: 'gemini-2.0-flash-lite', label: 'Gemini 2.0 Flash Lite' },
+                { value: 'gemini-1.5-pro',        label: 'Gemini 1.5 Pro' },
+                { value: 'gemini-1.5-flash',      label: 'Gemini 1.5 Flash' },
+            ];
             const composerModelBtn = document.getElementById('composer-model');
             const composerModelName = document.getElementById('composer-model-name');
 
@@ -1431,36 +1441,33 @@
                     try { m = (await window.electronAPI.getOpenaiModel()) || m; } catch (_) {}
                     const found = OPENAI_MODELS.find(x => x.value === m);
                     composerModelName.textContent = found ? found.label : m;
+                } else if (provider === 'geminiCli') {
+                    let m = 'gemini-2.5-flash';
+                    try { m = (await window.electronAPI.getGeminiCliModel()) || m; } catch (_) {}
+                    const found = GEMINI_CLI_MODELS.find(x => x.value === m);
+                    composerModelName.textContent = found ? found.label : m;
                 } else {
                     composerModelName.textContent = PROVIDER_LABELS[provider] || provider;
                 }
             }
 
-            function showModelMenu(anchor) {
-                const provider = anchor.dataset.provider || 'openIa';
-                if (provider !== 'openIa') {
-                    // Backend/Ollama: troca pelo painel de Configurações.
-                    if (window.electronAPI.openConfig) window.electronAPI.openConfig();
-                    return;
-                }
+            function _buildModelMenu(anchor, models, getCurrentValue, onSelect) {
                 document.querySelectorAll('.composer-model-menu').forEach(m => m.remove());
-                const current = composerModelName.textContent;
                 const menu = document.createElement('div');
                 menu.className = 'composer-model-menu';
-                menu.style.cssText = 'position:absolute; z-index:9999; background:var(--bg-elevated); border:1px solid var(--border-strong); border-radius:8px; padding:4px; box-shadow:0 10px 30px rgba(0,0,0,0.55); min-width:180px;';
-                OPENAI_MODELS.forEach(opt => {
+                menu.style.cssText = 'position:absolute; z-index:9999; background:var(--bg-elevated); border:1px solid var(--border-strong); border-radius:8px; padding:4px; box-shadow:0 10px 30px rgba(0,0,0,0.55); min-width:200px;';
+                const current = composerModelName.textContent;
+                models.forEach(opt => {
                     const b = document.createElement('button');
                     b.type = 'button';
-                    const active = opt.label === current;
+                    const active = opt.label === current || opt.value === getCurrentValue();
                     b.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; text-align:left; background:transparent; border:none; color:' + (active ? 'var(--accent-2)' : 'var(--text-2)') + '; font-size:12px; padding:7px 10px; cursor:pointer; border-radius:5px; font-family:var(--font-ui);';
                     b.innerHTML = '<span>' + opt.label + '</span>' + (active ? '<span>✓</span>' : '');
                     b.addEventListener('mouseenter', () => b.style.background = 'rgba(255,255,255,0.06)');
                     b.addEventListener('mouseleave', () => b.style.background = 'transparent');
                     b.addEventListener('click', () => {
                         menu.remove();
-                        try { window.electronAPI.setOpenaiModel(opt.value); } catch (_) {}
-                        composerModelName.textContent = opt.label;
-                        if (typeof showToast === 'function') showToast('Modelo: ' + opt.label);
+                        onSelect(opt);
                     });
                     menu.appendChild(b);
                 });
@@ -1475,6 +1482,30 @@
                     }
                 };
                 setTimeout(() => document.addEventListener('click', closer, true), 0);
+            }
+
+            function showModelMenu(anchor) {
+                const provider = anchor.dataset.provider || 'openIa';
+                if (provider === 'openIa') {
+                    let currentVal = '';
+                    _buildModelMenu(anchor, OPENAI_MODELS, () => currentVal, (opt) => {
+                        currentVal = opt.value;
+                        try { window.electronAPI.setOpenaiModel(opt.value); } catch (_) {}
+                        composerModelName.textContent = opt.label;
+                        if (typeof showToast === 'function') showToast('Modelo: ' + opt.label);
+                    });
+                } else if (provider === 'geminiCli') {
+                    let currentVal = '';
+                    _buildModelMenu(anchor, GEMINI_CLI_MODELS, () => currentVal, (opt) => {
+                        currentVal = opt.value;
+                        try { window.electronAPI.setGeminiCliModel(opt.value); } catch (_) {}
+                        composerModelName.textContent = opt.label;
+                        if (typeof showToast === 'function') showToast('Modelo: ' + opt.label);
+                    });
+                } else {
+                    // Backend/Ollama: abre Configurações.
+                    if (window.electronAPI.openConfig) window.electronAPI.openConfig();
+                }
             }
             if (composerModelBtn) {
                 composerModelBtn.addEventListener('click', (e) => { e.stopPropagation(); showModelMenu(composerModelBtn); });

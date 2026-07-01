@@ -55,6 +55,8 @@ const fs2 = require("fs");
 // const LlamaService = require('./services/llamaService.js');
 // GeminiService removido em 0.2.4: dependia do binario `gemini` CLI que nao\n// existe no sistema. Backend Ollama + OpenAI cobrem todos os casos.
 const BackendService = require("./services/backendService.js");
+// Gemini CLI provider — processo persistente por projeto, isolado dos outros providers.
+const GeminiCliProvider = require("./services/providers/gemini-cli/GeminiCliProvider");
 const TesseractService = require("./services/tesseractService.js");
 const OpenAIService = require("./services/openAIService.js");
 const RealtimeAssistantService = require("./services/realtimeAssistantService.js");
@@ -3253,6 +3255,20 @@ ipcMain.on("send-to-gemini", async (event, text) => {
     let resposta;
     let usedKnowledge = false; // base de conhecimento injetada nesta resposta?
 
+    // ── Gemini CLI provider ──────────────────────────────────────────────────
+    if (aiModel === 'geminiCli') {
+      const projectPath = (workspace.list()[0] || {}).path || process.cwd();
+      const geminiModel = configService.getGeminiCliModel();
+      GeminiCliProvider.setModel(geminiModel);
+      try {
+        await GeminiCliProvider.send(text, projectPath, event.sender);
+        // Stream events were already emitted inside GeminiCliProvider.send()
+      } catch (gcliErr) {
+        console.error('[gemini-cli] send error:', gcliErr.message);
+      }
+      return;
+    }
+
     if (aiModel === 'openIa') {
         const token = configService.getOpenIaToken();
         const instruction = configService.getPromptInstruction();
@@ -3696,9 +3712,19 @@ ipcMain.handle("workspace:pick-dir", async () => {
   if (res.canceled || !res.filePaths.length) return { ok: false, canceled: true };
   const added = [];
   // Modelo IDE: um projeto por vez — openProject substitui a pasta anterior.
+  const prevDirs = workspace.list().filter(a => a.type === 'dir').map(a => a.path);
   for (const p of res.filePaths) {
     try { await workspace.openProject(p); added.push(p); }
     catch (e) { console.warn("[workspace] open project falhou:", e.message); }
+  }
+  // Gemini CLI: reinicia sessão quando o projeto muda.
+  const newDirs = workspace.list().filter(a => a.type === 'dir').map(a => a.path);
+  const oldPath = prevDirs[0] || null;
+  const newPath = newDirs[0] || null;
+  if (oldPath !== newPath && configService.getAiModel() === 'geminiCli') {
+    GeminiCliProvider.changeProject(oldPath, newPath).catch(e =>
+      console.warn('[gemini-cli] changeProject error:', e.message)
+    );
   }
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send("workspace-changed", { attachments: workspace.list() });
@@ -4273,6 +4299,33 @@ ipcMain.on("set-ollama-local-model", (event, model) => {
 
 ipcMain.handle("get-ollama-local-host", () => {
   return configService.getOllamaLocalHost();
+});
+
+// ── Gemini CLI IPC handlers ──────────────────────────────────────────────────
+
+ipcMain.handle("get-gemini-cli-model", () => configService.getGeminiCliModel());
+
+ipcMain.on("set-gemini-cli-model", (event, model) => {
+  configService.setGeminiCliModel(model);
+  GeminiCliProvider.setModel(model);
+});
+
+ipcMain.handle("get-gemini-cli-models", () => GeminiCliProvider.getModels());
+
+ipcMain.handle("check-gemini-cli-installed", async () => {
+  try {
+    const ok = await GeminiCliProvider.checkInstalled();
+    return { installed: ok };
+  } catch (e) {
+    return { installed: false, error: String(e && e.message) };
+  }
+});
+
+// Force session restart (e.g. user clicks "Reconectar" in UI).
+ipcMain.handle("gemini-cli-restart-session", async () => {
+  const projectPath = (workspace.list()[0] || {}).path || process.cwd();
+  await GeminiCliProvider.changeProject(projectPath, projectPath).catch(() => {});
+  return { ok: true };
 });
 
 // Status check: o user clica "verificar" no painel pra ver se Ollama tá up.
@@ -5690,5 +5743,7 @@ app.on("will-quit", () => {
   globalShortcut.unregisterAll();
   stopClipboardMonitoring();
   stopAllRealtime();
+  // Gemini CLI: encerra todos os processos de forma limpa.
+  GeminiCliProvider.shutdown().catch(e => console.warn('[gemini-cli] shutdown error:', e.message));
 });
 

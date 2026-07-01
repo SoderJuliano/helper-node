@@ -29,6 +29,12 @@ const ollamaLocalInfo = document.getElementById("ollama-local-info");
 const ollamaPullCmd = document.getElementById("ollama-local-pull-cmd");
 const checkOllamaBtn = document.getElementById("check-ollama-btn");
 const ollamaStatusResult = document.getElementById("ollama-status-result");
+// Gemini CLI elements
+const geminiCliModelContainer = document.getElementById("gemini-cli-model-container");
+const geminiCliModelSelect = document.getElementById("gemini-cli-model-select");
+const geminiCliInfo = document.getElementById("gemini-cli-info");
+const checkGeminiCliBtn = document.getElementById("check-gemini-cli-btn");
+const geminiCliStatusResult = document.getElementById("gemini-cli-status-result");
 
 // Helper function to update the debug mode status text
 function updateDebugModeStatus(isDebugging) {
@@ -82,7 +88,8 @@ function applyLiteUi() {
     const si = aiModelSelect.closest('.setting-item');
     if (si) si.style.display = 'none';
   } catch (_) {}
-  ['backend-api-key-container', 'ollama-local-model-container', 'ollama-local-info'].forEach((id) => {
+  ['backend-api-key-container', 'ollama-local-model-container', 'ollama-local-info',
+   'gemini-cli-model-container', 'gemini-cli-info'].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
   });
@@ -280,7 +287,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   } catch (e) { console.warn("ollama local model load failed:", e); }
 
-  // Show/hide OpenAI fields based on saved model
+  // Load saved Gemini CLI model
+  try {
+    const savedGeminiCliModel = await ipcRenderer.invoke("get-gemini-cli-model");
+    if (savedGeminiCliModel && geminiCliModelSelect) {
+      geminiCliModelSelect.value = savedGeminiCliModel;
+    }
+  } catch (e) { console.warn("gemini-cli model load failed:", e); }
+
+  // Show/hide provider fields based on saved model
   if (aiModelSelect.value === 'openIa') {
     openIaTokenContainer.style.display = 'flex';
     openAiModelContainer.style.display = 'flex';
@@ -288,6 +303,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (ollamaLocalModelContainer) ollamaLocalModelContainer.style.display = 'flex';
     if (ollamaLocalInfo) ollamaLocalInfo.style.display = 'block';
     applyOllamaLocalExclusivity();
+  } else if (aiModelSelect.value === 'geminiCli') {
+    if (geminiCliModelContainer) geminiCliModelContainer.style.display = 'flex';
+    if (geminiCliInfo) geminiCliInfo.style.display = 'block';
   }
 
   // -------------------------
@@ -391,7 +409,7 @@ function releaseOllamaLocalExclusivity() {
   // nada a fazer — visibilidade do workspaceAccess já é controlada por applyWorkspaceAccessVisibility
 }
 
-// Show/hide OpenAI/Ollama fields based on AI model selection
+// Show/hide OpenAI/Ollama/GeminiCli fields based on AI model selection
 aiModelSelect.addEventListener('change', () => {
     const v = aiModelSelect.value;
     const isOllama = (v === 'llama' || v === 'ollamaLocal');
@@ -399,6 +417,8 @@ aiModelSelect.addEventListener('change', () => {
     openAiModelContainer.style.display = (v === 'openIa') ? 'flex' : 'none';
     if (ollamaLocalModelContainer) ollamaLocalModelContainer.style.display = (v === 'ollamaLocal') ? 'flex' : 'none';
     if (ollamaLocalInfo) ollamaLocalInfo.style.display = (v === 'ollamaLocal') ? 'block' : 'none';
+    if (geminiCliModelContainer) geminiCliModelContainer.style.display = (v === 'geminiCli') ? 'flex' : 'none';
+    if (geminiCliInfo) geminiCliInfo.style.display = (v === 'geminiCli') ? 'block' : 'none';
     const backendApiKeyContainer = document.getElementById('backend-api-key-container');
     if (backendApiKeyContainer) backendApiKeyContainer.style.display = isOllama ? 'flex' : 'none';
     applyWorkspaceAccessVisibility(v);
@@ -434,6 +454,24 @@ if (checkOllamaBtn) {
             ollamaStatusResult.style.color = '#ff6b6b';
         }
     });
+}
+
+if (checkGeminiCliBtn) {
+  checkGeminiCliBtn.addEventListener('click', async () => {
+    if (!geminiCliStatusResult) return;
+    geminiCliStatusResult.textContent = 'Verificando...';
+    geminiCliStatusResult.style.color = '#888';
+    try {
+      const res = await ipcRenderer.invoke('check-gemini-cli-installed');
+      if (res && res.installed) {
+        geminiCliStatusResult.innerHTML = '<span style="color:#9ef0a8">✓ Gemini CLI instalado e pronto.</span>';
+      } else {
+        geminiCliStatusResult.innerHTML = '<span style="color:#ff6b6b">✗ Não encontrado.</span> Instale com <code style="background:#0d0d0d;padding:2px 5px;border-radius:3px;color:#9ef0a8;">npm install -g @google/gemini-cli</code>';
+      }
+    } catch (e) {
+      geminiCliStatusResult.innerHTML = `<span style="color:#ff6b6b">Erro: ${e.message}</span>`;
+    }
+  });
 }
 
 // Save everything
@@ -475,6 +513,11 @@ saveButton.addEventListener("click", async () => {
   // Save Ollama Local model
   if (ollamaLocalModelSelect) {
     ipcRenderer.send("set-ollama-local-model", ollamaLocalModelSelect.value);
+  }
+
+  // Save Gemini CLI model
+  if (geminiCliModelSelect) {
+    ipcRenderer.send("set-gemini-cli-model", geminiCliModelSelect.value);
   }
 
   // Always save OpenAI token, regardless of current model
