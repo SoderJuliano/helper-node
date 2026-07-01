@@ -3481,6 +3481,12 @@ ipcMain.on("cancel-ia-request", () => {
   console.log("IA request cancelled");
 });
 
+// Fallback Wayland: global shortcuts falham no Wayland, então o renderer envia
+// este IPC quando Ctrl+D é pressionado enquanto a janela está focada.
+ipcMain.on("renderer-toggle-recording", async () => {
+  try { await toggleRecording(); } catch (e) { console.error("[renderer-toggle-recording]", e.message); }
+});
+
 ipcMain.handle("is-hyprland", () => {
   return isHyprland();
 });

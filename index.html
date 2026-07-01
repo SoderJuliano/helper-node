@@ -2250,6 +2250,9 @@
                     feed.id = 'rt-assistant-feed';
                     feed.className = 'rt-assistant-feed';
                     transcriptionElement.appendChild(feed);
+                    // Garante que #transcription fique visível: remove is-empty escondendo o hero.
+                    const hero = document.getElementById('welcome-hero');
+                    if (hero) hero.classList.add('hidden');
                 }
                 return feed;
             }
@@ -3353,6 +3356,20 @@
             });
 
             window.addEventListener('keydown', (e) => {
+                // Ctrl+D: fallback pra Wayland onde global shortcuts falham.
+                // Aciona gravação/realtime via IPC quando a janela está focada.
+                if (e.key === 'd' && e.ctrlKey && !e.shiftKey && !e.altKey) {
+                    const active = document.activeElement;
+                    const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
+                    if (!isInput) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (window.electronAPI && window.electronAPI.triggerToggleRecording) {
+                            window.electronAPI.triggerToggleRecording();
+                        }
+                        return;
+                    }
+                }
                 if (e.key === 'Escape' && manualInputActive) {
                     manualInputActive = false;
                     removeManualInputContainer();
