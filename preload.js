@@ -111,6 +111,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   workspaceList: () => ipcRenderer.invoke("workspace:list"),
   getProjectContext: () => ipcRenderer.invoke("get-project-context"),
   getProjectTree: () => ipcRenderer.invoke("get-project-tree"),
+  readFileContent: (p) => ipcRenderer.invoke("read-file-content", p),
   getFileDiff: (payload) => ipcRenderer.invoke("get-file-diff", payload),
   workspaceRemove: (id) => ipcRenderer.invoke("workspace:remove", id),
   workspaceClear: () => ipcRenderer.invoke("workspace:clear"),

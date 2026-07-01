@@ -6,7 +6,10 @@
     <title>Helper Node</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Source+Code+Pro:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&family=Source+Code+Pro:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+    <!-- Syntax highlight (visualizador de arquivos da IDE) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <style>
         /* =====================================================================
            HELPER NODE — Design System
@@ -893,6 +896,42 @@
         .diff-line.del .dl-sign, .diff-line.del .dl-text { color: #ffd2d2; }
         .diff-line.ctx .dl-text { color: var(--text-3); }
         .diff-empty { padding: 20px; color: var(--text-4); font-family: var(--font-ui); font-size: 13px; }
+
+        /* ===== Visualizador de arquivo (IDE) — cobre a área principal ===== */
+        #file-viewer {
+            position: absolute; inset: 0; z-index: 40;
+            display: none; flex-direction: column;
+            background: var(--bg-base);
+        }
+        #file-viewer.open { display: flex; }
+        .fv-header {
+            display: flex; align-items: center; gap: 8px;
+            padding: 9px 12px; border-bottom: 1px solid var(--border);
+            background: var(--bg-sidebar); flex-shrink: 0;
+        }
+        .fv-ic { width: 14px; height: 14px; opacity: .7; flex-shrink: 0; }
+        .fv-path { font-family: var(--font-mono); font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .fv-lang { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-4); background: rgba(255,255,255,0.05); padding: 2px 7px; border-radius: 5px; flex-shrink: 0; }
+        .fv-close { margin-left: auto; flex-shrink: 0; width: 26px; height: 26px; background: transparent; border: none; color: var(--text-3); font-size: 19px; cursor: pointer; border-radius: 5px; display: flex; align-items: center; justify-content: center; }
+        .fv-close:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+        .fv-body { flex: 1; overflow: auto; scrollbar-width: thin; }
+        .fv-body pre { margin: 0; padding: 14px 16px; }
+        .fv-body code {
+            font-family: 'JetBrains Mono', var(--font-mono); font-size: 13px;
+            line-height: 1.6; font-variant-ligatures: contextual; background: transparent !important;
+            white-space: pre; tab-size: 2;
+        }
+
+        /* Entradas clicáveis da árvore do projeto (dropdown do workspace) */
+        .ws-tree-node {
+            display: flex; align-items: center; gap: 6px;
+            padding: 2px 4px; border-radius: 4px; cursor: default;
+            white-space: nowrap; color: var(--text-3);
+        }
+        .ws-tree-node.file { cursor: pointer; }
+        .ws-tree-node.file:hover { background: rgba(255,255,255,0.06); color: var(--text); }
+        .ws-tree-node .ws-tree-ic { width: 12px; height: 12px; opacity: .65; flex-shrink: 0; }
+        .ws-tree-node.dir { color: var(--text-2); }
         #conversation-content { max-height: calc(66vh - 70px); overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.2) transparent; }
         .conversation-close-btn { position: absolute; top: 10px; right: 10px; background: transparent; border: none; color: var(--text-2); font-size: 20px; cursor: pointer; padding: 0; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; opacity: .6; transition: opacity .2s; z-index: 5100; border-radius: 5px; }
         .conversation-close-btn:hover { opacity: 1; background: rgba(255,255,255,0.08); }
@@ -1095,6 +1134,17 @@
                     </button>
                 </div>
                 <div class="composer-hint"><span class="h-kbd">Enter</span> quebra linha · <span class="h-kbd">Shift+Enter</span> envia · <span class="h-kbd">Esc</span> fecha</div>
+            </div>
+
+            <!-- Visualizador de arquivo (IDE): cobre a área principal; fecha volta pro chat -->
+            <div id="file-viewer">
+                <div class="fv-header">
+                    <svg class="fv-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    <span class="fv-path" id="fv-path"></span>
+                    <span class="fv-lang" id="fv-lang"></span>
+                    <button class="fv-close" id="fv-close" title="Fechar (Esc)">×</button>
+                </div>
+                <div class="fv-body" id="fv-body"><pre><code id="fv-code"></code></pre></div>
             </div>
         </main>
     </div>
@@ -1631,6 +1681,8 @@
                 });
             }
             // Dropdown da árvore (blueprint) — reusa o tree enviado pra IA.
+            const TREE_FILE_IC = '<svg class="ws-tree-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+            const TREE_DIR_IC = '<svg class="ws-tree-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
             async function toggleProjectTree() {
                 if (!wsTree || !wsTreeToggle) return;
                 const open = wsTreeToggle.getAttribute('aria-expanded') === 'true';
@@ -1638,12 +1690,26 @@
                 wsTreeToggle.setAttribute('aria-expanded', 'true');
                 wsTree.style.display = '';
                 wsTree.textContent = 'carregando…';
-                try {
-                    const res = window.electronAPI.getProjectTree ? await window.electronAPI.getProjectTree() : null;
-                    if (res && res.tree) wsTree.textContent = res.tree;
-                    else wsTree.innerHTML = '<span class="ws-tree-empty">Não foi possível ler a estrutura.</span>';
-                } catch (_) {
-                    wsTree.innerHTML = '<span class="ws-tree-empty">Erro ao ler a estrutura.</span>';
+                let res = null;
+                try { res = window.electronAPI.getProjectTree ? await window.electronAPI.getProjectTree() : null; } catch (_) {}
+                if (!res || !res.entries || !res.entries.length) {
+                    wsTree.innerHTML = '<span class="ws-tree-empty">Não foi possível ler a estrutura.</span>';
+                    return;
+                }
+                wsTree.innerHTML = '';
+                for (const e of res.entries) {
+                    const node = document.createElement('div');
+                    node.className = 'ws-tree-node ' + (e.isDir ? 'dir' : 'file');
+                    node.style.paddingLeft = (4 + e.depth * 12) + 'px';
+                    node.innerHTML = (e.isDir ? TREE_DIR_IC : TREE_FILE_IC);
+                    const label = document.createElement('span');
+                    label.textContent = e.name;
+                    node.appendChild(label);
+                    if (!e.isDir) {
+                        node.title = e.path + '  (clique para abrir)';
+                        node.addEventListener('click', () => openFileViewer(e.path));
+                    }
+                    wsTree.appendChild(node);
                 }
             }
             if (wsTreeToggle) {
@@ -2535,6 +2601,58 @@
                 if (e.key === 'Escape') {
                     const v = document.getElementById('diff-viewer');
                     if (v && v.classList.contains('open')) { e.stopPropagation(); closeFileDiff(); }
+                }
+            }, true);
+        })();
+
+        // ===== Visualizador de arquivo (IDE): abre no lugar do chat =====
+        const FV_EXT_LANG = {
+            js:'javascript', jsx:'javascript', mjs:'javascript', cjs:'javascript',
+            ts:'typescript', tsx:'typescript', java:'java', cs:'csharp', py:'python',
+            html:'xml', htm:'xml', css:'css', scss:'scss', json:'json', md:'markdown',
+            sh:'bash', bash:'bash', yml:'yaml', yaml:'yaml', xml:'xml', sql:'sql',
+            go:'go', rs:'rust', c:'c', h:'c', cpp:'cpp', hpp:'cpp', php:'php', rb:'ruby',
+        };
+        async function openFileViewer(filePath) {
+            const viewer = document.getElementById('file-viewer');
+            const codeEl = document.getElementById('fv-code');
+            const pathEl = document.getElementById('fv-path');
+            const langEl = document.getElementById('fv-lang');
+            if (!viewer || !codeEl) return;
+            pathEl.textContent = String(filePath || '').split('/').slice(-3).join('/');
+            pathEl.title = filePath || '';
+            langEl.textContent = '';
+            codeEl.removeAttribute('data-highlighted');
+            codeEl.className = '';
+            codeEl.textContent = 'Carregando…';
+            viewer.classList.add('open');
+
+            let res = null;
+            try { res = window.electronAPI.readFileContent ? await window.electronAPI.readFileContent(filePath) : null; } catch (_) {}
+            if (!res || !res.ok) {
+                codeEl.textContent = (res && res.error) ? ('Não foi possível abrir: ' + res.error) : 'Não foi possível abrir o arquivo.';
+                return;
+            }
+            const lang = FV_EXT_LANG[res.ext] || '';
+            langEl.textContent = (lang || res.ext || 'texto').toUpperCase();
+            codeEl.removeAttribute('data-highlighted');
+            codeEl.className = lang ? ('language-' + lang) : '';
+            codeEl.textContent = res.content;
+            try { if (window.hljs) window.hljs.highlightElement(codeEl); } catch (_) {}
+            const body = document.getElementById('fv-body');
+            if (body) body.scrollTop = 0;
+        }
+        function closeFileViewer() {
+            const v = document.getElementById('file-viewer');
+            if (v) v.classList.remove('open');
+        }
+        (function wireFileViewer() {
+            const closeBtn = document.getElementById('fv-close');
+            if (closeBtn) closeBtn.addEventListener('click', closeFileViewer);
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    const v = document.getElementById('file-viewer');
+                    if (v && v.classList.contains('open')) { e.stopPropagation(); closeFileViewer(); }
                 }
             }, true);
         })();

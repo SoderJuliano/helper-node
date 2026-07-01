@@ -3787,11 +3787,49 @@ ipcMain.handle("get-project-tree", async () => {
   try {
     const dir = (workspace.list() || []).find((a) => a.type === "dir");
     if (!dir) return null;
-    const t = workspace.tree(dir.path);
-    return { path: dir.path, tree: t || "" };
+    const root = dir.path;
+    // Lista estruturada (clicável) — usa -printf pra saber tipo (d/f) direto.
+    let entries = [];
+    try {
+      const { execSync } = require("child_process");
+      // path PRIMEIRO (%p) pra ordenar por caminho com `sort` simples; tipo (%y)
+      // depois. -printf interpreta \t/\n; o sort -t com tab literal quebrava.
+      const cmd =
+        `find "${root}" \\( -name '.git' -o -name 'node_modules' -o -name 'target' ` +
+        `-o -name 'build' -o -name '.idea' -o -name '__pycache__' -o -name '.venv' ` +
+        `-o -name 'dist' \\) -prune -o \\( -type f -o -type d \\) -printf '%p\\t%y\\n' ` +
+        `2>/dev/null | sort | head -400`;
+      const out = execSync(cmd, { encoding: "utf8" }).trim();
+      entries = out.split("\n").filter(Boolean).map((line) => {
+        const tab = line.lastIndexOf("\t");
+        const p = tab >= 0 ? line.slice(0, tab) : line;
+        const type = tab >= 0 ? line.slice(tab + 1) : "f";
+        const rel = path.relative(root, p);
+        return { path: p, name: path.basename(p), depth: rel ? rel.split(path.sep).length - 1 : 0, isDir: type === "d" };
+      }).filter((e) => e.path !== root);
+    } catch (_) {}
+    return { root, path: root, entries, tree: workspace.tree(root) || "" };
   } catch (e) {
     console.warn("[project-tree] falhou:", e.message);
     return null;
+  }
+});
+
+// Lê o conteúdo de um arquivo do projeto pra exibir no visualizador da IDE.
+ipcMain.handle("read-file-content", async (event, filePath) => {
+  try {
+    if (!filePath) return { ok: false, error: "path vazio" };
+    if (workspace.isPathAllowed && !workspace.isPathAllowed(filePath)) {
+      return { ok: false, error: "arquivo fora do projeto/workspace" };
+    }
+    if (!fs2.existsSync(filePath)) return { ok: false, error: "arquivo não existe" };
+    const st = fs2.statSync(filePath);
+    if (!st.isFile()) return { ok: false, error: "não é um arquivo" };
+    if (st.size > 2 * 1024 * 1024) return { ok: false, error: "arquivo grande demais (>2MB)" };
+    const content = fs2.readFileSync(filePath, "utf8");
+    return { ok: true, path: filePath, content, ext: path.extname(filePath).slice(1).toLowerCase(), bytes: st.size };
+  } catch (e) {
+    return { ok: false, error: e.message };
   }
 });
 
