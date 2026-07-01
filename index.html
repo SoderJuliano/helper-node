@@ -2449,11 +2449,22 @@
                 return entry;
             }
 
+            const composerEl = document.getElementById('composer');
+            let _realtimeComposerHidden = false;
+
+            function setComposerVisibility(show) {
+                if (!composerEl) return;
+                composerEl.style.display = show ? '' : 'none';
+                _realtimeComposerHidden = !show;
+            }
+
             window.electronAPI.onRealtimeAssistantUpdate((payload) => {
                 if (!payload || !payload.type) return;
 
                 switch (payload.type) {
                     case 'state':
+                        if (payload.state === 'started') setComposerVisibility(false);
+                        else if (payload.state === 'stopped') setComposerVisibility(true);
                         appendRealtimeBubble('system', payload.message || 'Atualização do modo em tempo real');
                         return;
 
@@ -3446,7 +3457,6 @@
 
             window.addEventListener('keydown', (e) => {
                 // Ctrl+D: fallback pra Wayland onde global shortcuts falham.
-                // Aciona gravação/realtime via IPC quando a janela está focada.
                 if (e.key === 'd' && e.ctrlKey && !e.shiftKey && !e.altKey) {
                     const active = document.activeElement;
                     const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
@@ -3456,6 +3466,17 @@
                         if (window.electronAPI && window.electronAPI.triggerToggleRecording) {
                             window.electronAPI.triggerToggleRecording();
                         }
+                        return;
+                    }
+                }
+                // Ctrl+I: mostra/esconde o composer no modo assistente em tempo real.
+                if (e.key === 'i' && e.ctrlKey && !e.shiftKey && !e.altKey) {
+                    const active = document.activeElement;
+                    const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
+                    if (!isInput && _realtimeComposerHidden !== undefined) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setComposerVisibility(composerEl && composerEl.style.display === 'none');
                         return;
                     }
                 }
