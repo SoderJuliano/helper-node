@@ -675,14 +675,15 @@
         }
         .composer-shell:focus-within { border-color: var(--accent-border); box-shadow: 0 0 0 3px rgba(76,175,80,0.14); }
         .composer-ghost {
-            flex: 1; min-height: 26px; padding: 3px 2px;
+            flex: 1; min-height: 26px; max-height: 220px; padding: 3px 2px;
             color: var(--text-3); font-size: 14px; font-family: var(--font-mono);
             cursor: text; white-space: pre-wrap; overflow-wrap: break-word; line-height: 1.5;
+            overflow-y: auto; overflow-x: hidden;
+            scrollbar-width: none;
             -webkit-app-region: no-drag;
-            outline: none;   /* o foco é indicado pelo glow verde do .composer-shell:focus-within;
-                                sem isto o Chromium desenha o anel de foco do SO (laranja no COSMIC)
-                                em volta do ghost, parecendo um "input dentro do input". */
+            outline: none;
         }
+        .composer-ghost::-webkit-scrollbar { display: none; }
         .composer-ghost:focus, .composer-ghost:focus-visible { outline: none; }
         .composer-ghost::before { content: '>'; color: var(--accent-2); font-weight: 700; margin-right: 8px; }
         .composer-ghost.idle::after { content: '_'; color: var(--accent-2); animation: blink 1.05s steps(2,start) infinite; margin-left: 1px; }
