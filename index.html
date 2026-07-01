@@ -698,6 +698,19 @@
         .composer-send:active { transform: translateY(1px); }
         .composer-send svg { width: 15px; height: 15px; }
         /* Barra inferior do composer: seletor de modelo (estilo ZCode) */
+        .composer-token-count {
+            margin-left: auto;
+            font-size: 11px;
+            color: var(--text-3);
+            opacity: .7;
+            font-family: var(--font-code, monospace);
+            white-space: nowrap;
+            padding: 2px 4px;
+            letter-spacing: .02em;
+            transition: color .2s, opacity .2s;
+        }
+        .composer-token-count.warn { color: #ffb74d; opacity: 1; }
+        .composer-token-count.danger { color: #ef5350; opacity: 1; }
         .composer-toolbar {
             display: flex; align-items: center; gap: 8px;
             margin-top: 8px; padding: 0 2px;
@@ -1132,6 +1145,7 @@
                         <span id="composer-model-name">modelo</span>
                         <svg class="cm-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                     </button>
+                    <span class="composer-token-count" id="composer-token-count" title="Tokens estimados do input"></span>
                 </div>
                 <div class="composer-hint"><span class="h-kbd">Enter</span> quebra linha · <span class="h-kbd">Shift+Enter</span> envia · <span class="h-kbd">Esc</span> fecha</div>
             </div>
@@ -1417,8 +1431,18 @@
             const PROVIDER_LABELS = {
                 openIa: 'ChatGPT', llama: 'Backend (Llama)',
                 'llama-stream': 'Backend (stream)', ollamaLocal: 'Ollama Local',
-                geminiCli: 'Gemini CLI',
+                geminiCli: 'Gemini CLI', claudeCli: 'Claude CLI',
             };
+            // Claude Code CLI model list (mirrored from ClaudeCliModels.js)
+            const CLAUDE_CLI_MODELS = [
+                { value: 'claude-fable-5',            label: 'Fable 5'          },
+                { value: 'claude-opus-4-8',           label: 'Opus 4.8'         },
+                { value: 'claude-sonnet-4-6',         label: 'Sonnet 4.6'       },
+                { value: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5'        },
+                { value: 'sonnet',                    label: 'Sonnet (latest)'  },
+                { value: 'opus',                      label: 'Opus (latest)'    },
+                { value: 'haiku',                     label: 'Haiku (latest)'   },
+            ];
             // Gemini CLI model list (mirrored from GeminiCliModels.js)
             const GEMINI_CLI_MODELS = [
                 { value: 'gemini-2.5-pro',        label: 'Gemini 2.5 Pro' },
@@ -1445,6 +1469,11 @@
                     let m = 'gemini-2.5-flash';
                     try { m = (await window.electronAPI.getGeminiCliModel()) || m; } catch (_) {}
                     const found = GEMINI_CLI_MODELS.find(x => x.value === m);
+                    composerModelName.textContent = found ? found.label : m;
+                } else if (provider === 'claudeCli') {
+                    let m = 'claude-sonnet-4-6';
+                    try { m = (await window.electronAPI.getClaudeCliModel()) || m; } catch (_) {}
+                    const found = CLAUDE_CLI_MODELS.find(x => x.value === m);
                     composerModelName.textContent = found ? found.label : m;
                 } else {
                     composerModelName.textContent = PROVIDER_LABELS[provider] || provider;
@@ -1502,6 +1531,14 @@
                         composerModelName.textContent = opt.label;
                         if (typeof showToast === 'function') showToast('Modelo: ' + opt.label);
                     });
+                } else if (provider === 'claudeCli') {
+                    let currentVal = '';
+                    _buildModelMenu(anchor, CLAUDE_CLI_MODELS, () => currentVal, (opt) => {
+                        currentVal = opt.value;
+                        try { window.electronAPI.setClaudeCliModel(opt.value); } catch (_) {}
+                        composerModelName.textContent = opt.label;
+                        if (typeof showToast === 'function') showToast('Modelo: ' + opt.label);
+                    });
                 } else {
                     // Backend/Ollama: abre Configurações.
                     if (window.electronAPI.openConfig) window.electronAPI.openConfig();
@@ -1513,6 +1550,55 @@
             refreshComposerModel();
             // Reflete mudanças feitas na janela de Configurações ao voltar o foco.
             window.addEventListener('focus', () => { refreshComposerModel(); });
+
+            // ── Token counter ─────────────────────────────────────────────────────
+            // Estima tokens do input atual (~4 chars por token) e exibe na toolbar.
+            (function initTokenCounter() {
+                const tokenLabel = document.getElementById('composer-token-count');
+                const ghost = document.getElementById('composer-ghost');
+                if (!tokenLabel || !ghost) return;
+
+                function estimateTokens(text) {
+                    if (!text) return 0;
+                    // ~4 chars per token (rough GPT/Claude estimate)
+                    return Math.ceil(text.length / 4);
+                }
+
+                function formatCount(n) {
+                    if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+                    return String(n);
+                }
+
+                function updateTokenLabel(text) {
+                    const t = estimateTokens(text);
+                    if (t === 0) {
+                        tokenLabel.textContent = '';
+                        tokenLabel.className = 'composer-token-count';
+                        return;
+                    }
+                    tokenLabel.textContent = formatCount(t) + ' tok';
+                    tokenLabel.className = 'composer-token-count' +
+                        (t > 4000 ? ' danger' : t > 2000 ? ' warn' : '');
+                }
+
+                // MutationObserver watches for text changes in the contenteditable ghost
+                const obs = new MutationObserver(() => {
+                    updateTokenLabel(ghost.innerText || '');
+                });
+                obs.observe(ghost, { childList: true, subtree: true, characterData: true });
+
+                // Also listen to direct input events
+                ghost.addEventListener('input', () => updateTokenLabel(ghost.innerText || ''));
+
+                // Clear on send
+                const sendBtn = document.getElementById('composer-send');
+                if (sendBtn) {
+                    sendBtn.addEventListener('click', () => {
+                        tokenLabel.textContent = '';
+                        tokenLabel.className = 'composer-token-count';
+                    });
+                }
+            })();
 
             // Workspace empty note: mostra quando workspace desativado
             const wsEmptyNote = document.getElementById('ws-empty-note');

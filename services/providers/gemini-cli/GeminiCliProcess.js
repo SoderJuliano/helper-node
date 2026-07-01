@@ -59,10 +59,13 @@ class GeminiCliProcess {
     // --no-color to minimise ANSI noise; --debug off
     args.push('--no-color');
 
+    // HOME explícito garante que o CLI encontra ~/.gemini/ com as credenciais
+    // do usuário da máquina, mesmo que o Electron tenha modificado o env.
+    const env = { ...process.env, HOME: process.env.HOME || require('os').homedir() };
     this._proc = spawn(this._binary, args, {
       cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env },
+      env,
     });
 
     this.alive = true;

@@ -35,6 +35,12 @@ const geminiCliModelSelect = document.getElementById("gemini-cli-model-select");
 const geminiCliInfo = document.getElementById("gemini-cli-info");
 const checkGeminiCliBtn = document.getElementById("check-gemini-cli-btn");
 const geminiCliStatusResult = document.getElementById("gemini-cli-status-result");
+// Claude Code CLI elements
+const claudeCliModelContainer = document.getElementById("claude-cli-model-container");
+const claudeCliModelSelect = document.getElementById("claude-cli-model-select");
+const claudeCliInfo = document.getElementById("claude-cli-info");
+const checkClaudeCliBtn = document.getElementById("check-claude-cli-btn");
+const claudeCliStatusResult = document.getElementById("claude-cli-status-result");
 
 // Helper function to update the debug mode status text
 function updateDebugModeStatus(isDebugging) {
@@ -67,12 +73,15 @@ function updateWorkspaceAccessStatus(isEnabled) {
   workspaceAccessStatus.textContent = isEnabled ? "ON" : "OFF";
 }
 
-// Mostra/oculta workspaceAccess dependendo do modelo: só disponível pro OpenAI.
+// Mostra/oculta workspaceAccess.
+// Disponível para OpenAI (helperTools lê o projeto) e para os CLIs (define o
+// diretório de trabalho que o CLI usa como cwd e contexto de repositório).
+// Backends genéricos e Ollama não suportam — esconde e desliga.
 function applyWorkspaceAccessVisibility(model) {
   if (!workspaceAccessItem) return;
-  const isOpenAI = model === 'openIa';
-  workspaceAccessItem.style.display = isOpenAI ? '' : 'none';
-  if (!isOpenAI && workspaceAccessToggle) {
+  const supportsWorkspace = model === 'openIa' || model === 'geminiCli' || model === 'claudeCli';
+  workspaceAccessItem.style.display = supportsWorkspace ? '' : 'none';
+  if (!supportsWorkspace && workspaceAccessToggle) {
     workspaceAccessToggle.checked = false;
     updateWorkspaceAccessStatus(false);
   }
@@ -89,7 +98,8 @@ function applyLiteUi() {
     if (si) si.style.display = 'none';
   } catch (_) {}
   ['backend-api-key-container', 'ollama-local-model-container', 'ollama-local-info',
-   'gemini-cli-model-container', 'gemini-cli-info'].forEach((id) => {
+   'gemini-cli-model-container', 'gemini-cli-info',
+   'claude-cli-model-container', 'claude-cli-info'].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
   });
@@ -241,6 +251,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     aiModelSelect.value = savedAiModel;
   }
   applyWorkspaceAccessVisibility(aiModelSelect.value);
+  // Se já está num provider CLI, desabilita helperTools visualmente.
+  const _isCliInit = (aiModelSelect.value === 'geminiCli' || aiModelSelect.value === 'claudeCli');
+  if (_isCliInit && helperToolsToggle) {
+    helperToolsToggle.disabled = true;
+    helperToolsToggle.checked = false;
+    updateHelperToolsStatus(false);
+    const si = helperToolsToggle.closest && helperToolsToggle.closest('.setting-item');
+    if (si) si.style.opacity = '0.4';
+  }
   const _isOllamaInit = (aiModelSelect.value === 'llama' || aiModelSelect.value === 'ollamaLocal');
   const backendApiKeyContainerInit = document.getElementById('backend-api-key-container');
   if (backendApiKeyContainerInit) backendApiKeyContainerInit.style.display = _isOllamaInit ? 'flex' : 'none';
@@ -287,6 +306,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   } catch (e) { console.warn("ollama local model load failed:", e); }
 
+  // Load saved Claude Code CLI model
+  try {
+    const savedClaudeCliModel = await ipcRenderer.invoke("get-claude-cli-model");
+    if (savedClaudeCliModel && claudeCliModelSelect) {
+      claudeCliModelSelect.value = savedClaudeCliModel;
+    }
+  } catch (e) { console.warn("claude-cli model load failed:", e); }
+
   // Load saved Gemini CLI model
   try {
     const savedGeminiCliModel = await ipcRenderer.invoke("get-gemini-cli-model");
@@ -306,6 +333,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   } else if (aiModelSelect.value === 'geminiCli') {
     if (geminiCliModelContainer) geminiCliModelContainer.style.display = 'flex';
     if (geminiCliInfo) geminiCliInfo.style.display = 'block';
+  } else if (aiModelSelect.value === 'claudeCli') {
+    if (claudeCliModelContainer) claudeCliModelContainer.style.display = 'flex';
+    if (claudeCliInfo) claudeCliInfo.style.display = 'block';
   }
 
   // -------------------------
@@ -413,14 +443,27 @@ function releaseOllamaLocalExclusivity() {
 aiModelSelect.addEventListener('change', () => {
     const v = aiModelSelect.value;
     const isOllama = (v === 'llama' || v === 'ollamaLocal');
+    const isCli = (v === 'geminiCli' || v === 'claudeCli');
     openIaTokenContainer.style.display = (v === 'openIa') ? 'flex' : 'none';
     openAiModelContainer.style.display = (v === 'openIa') ? 'flex' : 'none';
     if (ollamaLocalModelContainer) ollamaLocalModelContainer.style.display = (v === 'ollamaLocal') ? 'flex' : 'none';
     if (ollamaLocalInfo) ollamaLocalInfo.style.display = (v === 'ollamaLocal') ? 'block' : 'none';
     if (geminiCliModelContainer) geminiCliModelContainer.style.display = (v === 'geminiCli') ? 'flex' : 'none';
     if (geminiCliInfo) geminiCliInfo.style.display = (v === 'geminiCli') ? 'block' : 'none';
+    if (claudeCliModelContainer) claudeCliModelContainer.style.display = (v === 'claudeCli') ? 'flex' : 'none';
+    if (claudeCliInfo) claudeCliInfo.style.display = (v === 'claudeCli') ? 'block' : 'none';
     const backendApiKeyContainer = document.getElementById('backend-api-key-container');
     if (backendApiKeyContainer) backendApiKeyContainer.style.display = isOllama ? 'flex' : 'none';
+    // CLI providers gerenciam suas próprias ferramentas — helperTools fica desabilitado.
+    if (helperToolsToggle) {
+      helperToolsToggle.disabled = isCli;
+      helperToolsToggle.closest && helperToolsToggle.closest('.setting-item') &&
+        (helperToolsToggle.closest('.setting-item').style.opacity = isCli ? '0.4' : '');
+      if (isCli && helperToolsToggle.checked) {
+        helperToolsToggle.checked = false;
+        updateHelperToolsStatus(false);
+      }
+    }
     applyWorkspaceAccessVisibility(v);
     if (v === 'ollamaLocal') applyOllamaLocalExclusivity();
     else releaseOllamaLocalExclusivity();
@@ -454,6 +497,24 @@ if (checkOllamaBtn) {
             ollamaStatusResult.style.color = '#ff6b6b';
         }
     });
+}
+
+if (checkClaudeCliBtn) {
+  checkClaudeCliBtn.addEventListener('click', async () => {
+    if (!claudeCliStatusResult) return;
+    claudeCliStatusResult.textContent = 'Verificando...';
+    claudeCliStatusResult.style.color = '#888';
+    try {
+      const res = await ipcRenderer.invoke('check-claude-cli-installed');
+      if (res && res.installed) {
+        claudeCliStatusResult.innerHTML = '<span style="color:#9ef0a8">✓ Claude Code CLI instalado.</span>';
+      } else {
+        claudeCliStatusResult.innerHTML = '<span style="color:#ff6b6b">✗ Não encontrado.</span> Instale com <code style="background:#0d0d0d;padding:2px 5px;border-radius:3px;color:#9ef0a8;">npm install -g @anthropic-ai/claude-code</code>';
+      }
+    } catch (e) {
+      claudeCliStatusResult.innerHTML = `<span style="color:#ff6b6b">Erro: ${e.message}</span>`;
+    }
+  });
 }
 
 if (checkGeminiCliBtn) {
@@ -513,6 +574,11 @@ saveButton.addEventListener("click", async () => {
   // Save Ollama Local model
   if (ollamaLocalModelSelect) {
     ipcRenderer.send("set-ollama-local-model", ollamaLocalModelSelect.value);
+  }
+
+  // Save Claude Code CLI model
+  if (claudeCliModelSelect) {
+    ipcRenderer.send("set-claude-cli-model", claudeCliModelSelect.value);
   }
 
   // Save Gemini CLI model

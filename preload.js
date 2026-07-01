@@ -60,6 +60,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getAiModel: () => ipcRenderer.invoke("get-ai-model"),
   getOpenaiModel: () => ipcRenderer.invoke("get-openai-model"),
   setOpenaiModel: (model) => ipcRenderer.send("set-openai-model", model),
+  // Claude Code CLI provider
+  getClaudeCliModel: () => ipcRenderer.invoke("get-claude-cli-model"),
+  setClaudeCliModel: (model) => ipcRenderer.send("set-claude-cli-model", model),
+  getClaudeCliModels: () => ipcRenderer.invoke("get-claude-cli-models"),
+  checkClaudeCliInstalled: () => ipcRenderer.invoke("check-claude-cli-installed"),
+  claudeCliRestartSession: () => ipcRenderer.invoke("claude-cli-restart-session"),
+  onClaudeCliStatus: (cb) => ipcRenderer.on("claude-cli-status", (event, data) => cb(data)),
   // Gemini CLI provider
   getGeminiCliModel: () => ipcRenderer.invoke("get-gemini-cli-model"),
   setGeminiCliModel: (model) => ipcRenderer.send("set-gemini-cli-model", model),

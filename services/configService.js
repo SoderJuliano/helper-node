@@ -115,6 +115,8 @@ const defaultConfig = {
   },
   // Gemini CLI provider — modelo escolhido pelo usuário dentro da lista do CLI.
   geminiCliModel: "gemini-2.5-flash",
+  // Claude Code CLI provider.
+  claudeCliModel: "claude-sonnet-4-6",
   // API Key do backend remoto. Necessário para endpoints pesados (ex: qwen3.6-17b).
   // Endpoints leves (llama3, qwen25) usam o Bearer token fixo hardcoded.
   backendApiKey: "",
@@ -320,20 +322,17 @@ function setAiModel(aiModel) {
     currentConfig = loadConfig();
   }
   currentConfig.aiModel = aiModel;
-  // Mutex: geminiCli e ollamaLocal não usam helperTools (o CLI gerencia suas ferramentas).
-  if (aiModel === 'geminiCli' || aiModel === 'ollamaLocal') {
+  // CLIs externos: desliga helperTools (o CLI gerencia suas próprias ferramentas),
+  // mas mantém workspaceAccess — ele controla o painel de projeto/diretório, que
+  // os CLIs usam como cwd e contexto de qual repositório trabalhar.
+  if (aiModel === 'geminiCli' || aiModel === 'claudeCli') {
     if (currentConfig.helperTools && currentConfig.helperTools.enabled) {
       currentConfig.helperTools.enabled = false;
       console.log(`[config] ${aiModel} selecionado → helperTools desligado (CLI gerencia ferramentas)`);
     }
-    if (currentConfig.workspaceAccess && currentConfig.workspaceAccess.enabled) {
-      currentConfig.workspaceAccess.enabled = false;
-    }
-    if (aiModel === 'geminiCli') {
-      saveConfig(currentConfig);
-      currentConfig = null;
-      return;
-    }
+    saveConfig(currentConfig);
+    currentConfig = null;
+    return;
   }
   if (aiModel === 'ollamaLocal') {
     if (currentConfig.helperTools && currentConfig.helperTools.enabled) {
@@ -376,6 +375,18 @@ function setOpenAiVisionModel(model) {
     currentConfig = loadConfig();
   }
   currentConfig.openAiVisionModel = model;
+  saveConfig(currentConfig);
+  currentConfig = null;
+}
+
+function getClaudeCliModel() {
+  if (!currentConfig) currentConfig = loadConfig();
+  return currentConfig.claudeCliModel || defaultConfig.claudeCliModel;
+}
+
+function setClaudeCliModel(model) {
+  if (!currentConfig) currentConfig = loadConfig();
+  currentConfig.claudeCliModel = model || defaultConfig.claudeCliModel;
   saveConfig(currentConfig);
   currentConfig = null;
 }
@@ -642,6 +653,8 @@ module.exports = {
   setOpenAiModel,
   getOpenAiVisionModel,
   setOpenAiVisionModel,
+  getClaudeCliModel,
+  setClaudeCliModel,
   getGeminiCliModel,
   setGeminiCliModel,
   getOllamaLocalModel,

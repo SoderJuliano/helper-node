@@ -378,6 +378,7 @@
                 <option value="openIa">ChatGPT</option>
                 <option value="ollamaLocal">Ollama Local (offline)</option>
                 <option value="geminiCli">Gemini CLI</option>
+                <option value="claudeCli">Claude Code CLI</option>
             </select>
         </div>
 
@@ -492,6 +493,42 @@
             </div>
             <div style="margin-top: 8px; padding: 8px 10px; background: rgba(255,180,77,0.08); border-radius: 4px; font-size: 11.5px; color: #ffb74d;">
                 <strong>Ferramentas avançadas</strong> e <strong>Acesso a diretórios</strong> são desativados neste modo — o CLI gerencia tudo.
+            </div>
+        </div>
+
+        <!-- Claude Code CLI: select de modelo + aviso de instalação manual -->
+        <div class="setting-item" id="claude-cli-model-container" style="display: none;">
+            <label for="claude-cli-model-select">Modelo Claude CLI</label>
+            <select id="claude-cli-model-select" class="custom-select">
+                <option value="claude-fable-5">Fable 5</option>
+                <option value="claude-opus-4-8">Opus 4.8</option>
+                <option value="claude-sonnet-4-6" selected>Sonnet 4.6 (padrão)</option>
+                <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
+                <option value="sonnet">Sonnet (latest alias)</option>
+                <option value="opus">Opus (latest alias)</option>
+                <option value="haiku">Haiku (latest alias)</option>
+            </select>
+        </div>
+
+        <div id="claude-cli-info" style="display: none; margin-top: 12px; padding: 14px; background-color: rgba(0,0,0,0.5); border-radius: 5px; font-size: 12.5px; line-height: 1.5; color: #ddd; -webkit-app-region: no-drag;">
+            <div style="font-weight: bold; color: #cc785c; margin-bottom: 8px;">Claude Code CLI — instalação manual</div>
+            <div style="margin-bottom: 10px; color: #aaa; font-size: 12px;">O app <strong>não instala o Claude Code</strong>. Configure antes de usar:</div>
+            <div style="margin-bottom: 6px;"><strong>1. Instalar</strong>:</div>
+            <pre style="background:#0d0d0d; padding:8px 10px; border-radius:4px; margin:0 0 10px 0; overflow-x:auto; font-size:12px; color:#9ef0a8; user-select:text;">npm install -g @anthropic-ai/claude-code</pre>
+            <div style="margin-bottom: 6px;"><strong>2. Autenticar</strong> (abre browser):</div>
+            <pre style="background:#0d0d0d; padding:8px 10px; border-radius:4px; margin:0 0 10px 0; overflow-x:auto; font-size:12px; color:#9ef0a8; user-select:text;">claude</pre>
+            <div style="margin-bottom: 6px;"><strong>3. Verificar</strong>:</div>
+            <div style="display:flex; align-items:center; gap:10px;">
+                <button id="check-claude-cli-btn" style="padding: 6px 12px; background:#3a2a1a; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; -webkit-app-region: no-drag;">
+                    Verificar instalação
+                </button>
+                <span id="claude-cli-status-result" style="font-size: 12px;"></span>
+            </div>
+            <div style="margin-top: 12px; padding: 8px 10px; background: rgba(204,120,92,0.07); border-radius: 4px; font-size: 11.5px; color: #cc785c;">
+                O Claude Code CLI gerencia leitura, edição, bash e ferramentas de forma nativa. O Helper Node envia prompts e exibe os resultados em tempo real, incluindo diffs dos arquivos editados.
+            </div>
+            <div style="margin-top: 8px; padding: 8px 10px; background: rgba(255,180,77,0.08); border-radius: 4px; font-size: 11.5px; color: #ffb74d;">
+                <strong>Ferramentas avançadas</strong> desativadas neste modo — o CLI gerencia tudo internamente.
             </div>
         </div>
 

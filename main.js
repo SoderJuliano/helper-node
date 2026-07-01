@@ -57,6 +57,8 @@ const fs2 = require("fs");
 const BackendService = require("./services/backendService.js");
 // Gemini CLI provider — processo persistente por projeto, isolado dos outros providers.
 const GeminiCliProvider = require("./services/providers/gemini-cli/GeminiCliProvider");
+// Claude Code CLI provider — spawn por mensagem + --resume para continuidade.
+const ClaudeCliProvider = require("./services/providers/claude-cli/ClaudeCliProvider");
 const TesseractService = require("./services/tesseractService.js");
 const OpenAIService = require("./services/openAIService.js");
 const RealtimeAssistantService = require("./services/realtimeAssistantService.js");
@@ -3262,9 +3264,21 @@ ipcMain.on("send-to-gemini", async (event, text) => {
       GeminiCliProvider.setModel(geminiModel);
       try {
         await GeminiCliProvider.send(text, projectPath, event.sender);
-        // Stream events were already emitted inside GeminiCliProvider.send()
       } catch (gcliErr) {
         console.error('[gemini-cli] send error:', gcliErr.message);
+      }
+      return;
+    }
+
+    // ── Claude Code CLI provider ─────────────────────────────────────────────
+    if (aiModel === 'claudeCli') {
+      const projectPath = (workspace.list()[0] || {}).path || process.cwd();
+      const claudeModel = configService.getClaudeCliModel();
+      ClaudeCliProvider.setModel(claudeModel);
+      try {
+        await ClaudeCliProvider.send(text, projectPath, event.sender);
+      } catch (ccliErr) {
+        console.error('[claude-cli] send error:', ccliErr.message);
       }
       return;
     }
@@ -3727,9 +3741,15 @@ ipcMain.handle("workspace:pick-dir", async () => {
   const newDirs = workspace.list().filter(a => a.type === 'dir').map(a => a.path);
   const oldPath = prevDirs[0] || null;
   const newPath = newDirs[0] || null;
-  if (oldPath !== newPath && configService.getAiModel() === 'geminiCli') {
+  const activeProvider = configService.getAiModel();
+  if (oldPath !== newPath && activeProvider === 'geminiCli') {
     GeminiCliProvider.changeProject(oldPath, newPath).catch(e =>
       console.warn('[gemini-cli] changeProject error:', e.message)
+    );
+  }
+  if (oldPath !== newPath && activeProvider === 'claudeCli') {
+    ClaudeCliProvider.changeProject(oldPath, newPath).catch(e =>
+      console.warn('[claude-cli] changeProject error:', e.message)
     );
   }
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -4331,6 +4351,32 @@ ipcMain.handle("check-gemini-cli-installed", async () => {
 ipcMain.handle("gemini-cli-restart-session", async () => {
   const projectPath = (workspace.list()[0] || {}).path || process.cwd();
   await GeminiCliProvider.changeProject(projectPath, projectPath).catch(() => {});
+  return { ok: true };
+});
+
+// ── Claude Code CLI IPC handlers ─────────────────────────────────────────────
+
+ipcMain.handle("get-claude-cli-model", () => configService.getClaudeCliModel());
+
+ipcMain.on("set-claude-cli-model", (event, model) => {
+  configService.setClaudeCliModel(model);
+  ClaudeCliProvider.setModel(model);
+});
+
+ipcMain.handle("get-claude-cli-models", () => ClaudeCliProvider.getModels());
+
+ipcMain.handle("check-claude-cli-installed", async () => {
+  try {
+    const ok = await ClaudeCliProvider.checkInstalled();
+    return { installed: ok };
+  } catch (e) {
+    return { installed: false, error: String(e && e.message) };
+  }
+});
+
+ipcMain.handle("claude-cli-restart-session", async () => {
+  const projectPath = (workspace.list()[0] || {}).path || process.cwd();
+  await ClaudeCliProvider.changeProject(projectPath, projectPath).catch(() => {});
   return { ok: true };
 });
 
@@ -5749,7 +5795,8 @@ app.on("will-quit", () => {
   globalShortcut.unregisterAll();
   stopClipboardMonitoring();
   stopAllRealtime();
-  // Gemini CLI: encerra todos os processos de forma limpa.
+  // CLI providers: encerra processos de forma limpa.
   GeminiCliProvider.shutdown().catch(e => console.warn('[gemini-cli] shutdown error:', e.message));
+  ClaudeCliProvider.shutdown().catch(e => console.warn('[claude-cli] shutdown error:', e.message));
 });
 
