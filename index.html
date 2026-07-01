@@ -1642,7 +1642,7 @@
             // === Agentic Workflow Listeners ===
             let activeAgenticSession = null;
             const PHASE_LABELS = {
-                discovery: 'Explorando', planning: 'Planejando',
+                thinking: 'Pensando', discovery: 'Explorando', planning: 'Planejando',
                 implementation: 'Implementando', review: 'Revisando',
                 completed: 'Concluído', error: 'Erro',
             };
@@ -1966,7 +1966,9 @@
                             if (anchor && anchor.nextSibling) block.insertBefore(feed, anchor.nextSibling);
                             else block.appendChild(feed);
                         }
-                        if (data.phase === 'start') {
+                        // Aceita tanto data.phase quanto data.state (compatibilidade CLI + agentic)
+                        const evPhase = data.phase || data.state;
+                        if (evPhase === 'start') {
                             if (feed.querySelector(`[data-id="${data.id}"]`)) return;
                             const item = document.createElement('div');
                             item.className = 'ai-activity-item running';
@@ -1981,10 +1983,10 @@
                             item.appendChild(lbl);
                             feed.appendChild(item);
                             transcriptionElement.scrollTo({ top: transcriptionElement.scrollHeight, behavior: 'smooth' });
-                        } else if (data.phase === 'done') {
+                        } else if (evPhase === 'done' || evPhase === 'error') {
                             const item = feed.querySelector(`[data-id="${data.id}"]`);
                             if (!item) return;
-                            const ok = data.ok !== false;
+                            const ok = evPhase !== 'error' && data.ok !== false;
                             item.classList.remove('running');
                             item.classList.add(ok ? 'done' : 'fail');
                             const ic = item.querySelector('.ai-activity-ic');

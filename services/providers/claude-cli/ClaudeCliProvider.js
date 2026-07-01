@@ -74,26 +74,26 @@ class ClaudeCliProvider {
         },
 
         onThinking: (text) => {
-          sender.send('agentic-phase-update', {
-            phase: 'thinking',
-            label: '🧠 Pensando…',
-            text,
-          });
+          if (!this._thinkingEmitted) {
+            this._thinkingEmitted = true;
+            // UI espera { phase, status } — emite só uma vez como indicador
+            sender.send('agentic-phase-update', { phase: 'thinking', status: '🧠 Pensando…' });
+          }
         },
 
         onToolStart: ({ id, name, label }) => {
           activityId++;
           const actId = `ccli-${activityId}`;
-          // Store mapping id → actId for onToolDone
           if (!this._activityIds) this._activityIds = new Map();
           this._activityIds.set(id, actId);
-          sender.send('ai-tool-activity', { id: actId, state: 'start', label });
+          // UI verifica data.phase (não data.state)
+          sender.send('ai-tool-activity', { id: actId, phase: 'start', label });
         },
 
         onToolDone: ({ id, label, isError }) => {
           const actId = this._activityIds && this._activityIds.get(id);
           if (actId) {
-            sender.send('ai-tool-activity', { id: actId, state: isError ? 'error' : 'done', label });
+            sender.send('ai-tool-activity', { id: actId, phase: isError ? 'error' : 'done', label });
             this._activityIds.delete(id);
           }
         },
@@ -129,6 +129,11 @@ class ClaudeCliProvider {
         },
 
         onDone: ({ text, cost }) => {
+          // Fecha o indicador de thinking se foi aberto
+          if (this._thinkingEmitted) {
+            this._thinkingEmitted = false;
+            sender.send('agentic-phase-update', { phase: 'completed', status: 'Concluído' });
+          }
           sender.send('gemini-stream-complete');
           this._emitStatus(sender, { state: 'done', projectPath: cwd });
           if (cost > 0) console.log(`[claude-cli] custo: $${cost.toFixed(6)}`);

@@ -541,8 +541,11 @@ function getWorkspaceAccessEnabled() {
 function setWorkspaceAccessEnabled(enabled) {
   if (!currentConfig) currentConfig = loadConfig();
   if (!currentConfig.workspaceAccess) currentConfig.workspaceAccess = {};
-  // Só permite ligar se helperTools estiver ligado.
-  if (enabled && !(currentConfig.helperTools && currentConfig.helperTools.enabled)) {
+  // Para OpenAI, requer helperTools ligado (quem faz a leitura de arquivos).
+  // Para CLIs (geminiCli, claudeCli), o CLI usa o diretório diretamente — sem restrição.
+  const model = currentConfig.aiModel || 'openIa';
+  const isCli = model === 'geminiCli' || model === 'claudeCli';
+  if (enabled && !isCli && !(currentConfig.helperTools && currentConfig.helperTools.enabled)) {
     console.warn("[config] workspaceAccess requer helperTools ligado — ignorando");
     return;
   }

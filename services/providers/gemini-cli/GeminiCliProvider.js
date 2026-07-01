@@ -87,24 +87,29 @@ class GeminiCliProvider {
 
         onThinking: (text) => {
           thinkingAccumulated += text + '\n';
-          // Show thinking as a phase update (reuses the existing agentic-phase UI)
-          sender.send('agentic-phase-update', {
-            phase: 'thinking',
-            label: '🧠 Pensando…',
-            text,
-          });
+          if (!this._thinkingEmitted) {
+            this._thinkingEmitted = true;
+            // Mostra indicador de thinking — UI espera { phase, status }
+            sender.send('agentic-phase-update', { phase: 'thinking', status: '🧠 Pensando…' });
+          }
         },
 
         onToolStart: (toolInfo) => {
           activityId++;
+          // UI verifica data.phase (não data.state)
           sender.send('ai-tool-activity', {
             id: `gcli-${activityId}`,
-            state: 'start',
+            phase: 'start',
             label: summarizeTool(toolInfo),
           });
         },
 
         onDone: ({ text, thinking }) => {
+          // Fecha o indicador de thinking se foi aberto
+          if (this._thinkingEmitted) {
+            this._thinkingEmitted = false;
+            sender.send('agentic-phase-update', { phase: 'completed', status: 'Concluído' });
+          }
           sender.send('gemini-stream-complete');
           this._emitStatus(sender, { state: 'waiting', projectPath: cwd });
           resolve({ text: text || accumulated, thinking: thinking || thinkingAccumulated });
