@@ -508,6 +508,13 @@
             margin-bottom: 10px; cursor: pointer; word-break: break-word;
             transition: background .2s var(--ease);
         }
+        /* Elementos de markdown dentro da pergunta do usuário */
+        .question-text p { margin: 4px 0; font-weight: inherit; }
+        .question-text p:first-child { margin-top: 0; }
+        .question-text p:last-of-type { margin-bottom: 0; }
+        .question-text pre { margin: 8px 0; font-weight: 400; }
+        .question-text ul, .question-text ol { margin: 4px 0; padding-left: 20px; font-weight: 400; }
+        .question-text h1, .question-text h2, .question-text h3 { font-weight: 700; margin: 6px 0 3px; }
         .question-text:hover { background: linear-gradient(135deg, rgba(96,165,250,0.16), rgba(96,165,250,0.07)); }
         .question-text:hover .edit-icon { display: inline-block; }
         .edit-icon { display: none; margin-left: 8px; font-size: 13px; opacity: .6; color: var(--text-3); }
@@ -2206,7 +2213,7 @@
                             currentBlock.className = 'interaction-block';
                             const q = document.createElement('span');
                             q.className = 'question-text';
-                            q.textContent = msg.content;
+                            setQuestionText(q, msg.content);
                             q.addEventListener('click', () => handleQuestionEdit(q));
                             currentBlock.appendChild(q);
                             currentBlock.appendChild(createBlockActions(transcriptionElement));
@@ -2856,12 +2863,7 @@
 
             const questionSpan = document.createElement('span');
             questionSpan.className = 'question-text';
-            questionSpan.textContent = text;
-
-            const editIcon = document.createElement('span');
-            editIcon.className = 'edit-icon';
-            editIcon.innerHTML = EDIT_ICON_SVG;
-            questionSpan.appendChild(editIcon);
+            setQuestionText(questionSpan, text);
 
             questionSpan.addEventListener('click', () => handleQuestionEdit(questionSpan));
 
@@ -3645,11 +3647,21 @@
         
         const EDIT_ICON_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 21H21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path fill-rule="evenodd" clip-rule="evenodd" d="M18.0235 10.4646L7.58554 20.9026H2.76801L2.76489 16.0819L13.2029 5.64392L18.0235 10.4646Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.2029 5.64388L15.0004 3.84641C15.7814 3.06536 17.0477 3.06536 17.8288 3.84641L19.821 5.83863C20.6021 6.61968 20.6021 7.88601 19.821 8.66706L18.0235 10.4645V10.4645" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
+        // Renderiza o texto da pergunta com markdown e guarda o original em data-raw
+        // para que edição e reenvio sempre usem o texto puro.
+        function setQuestionText(el, text) {
+            el.dataset.raw = text;
+            el.innerHTML = renderMarkdown(text, 'q');
+            // Re-injeta o edit-icon (renderMarkdown sobrescreve innerHTML)
+            const ic = document.createElement('span');
+            ic.className = 'edit-icon';
+            ic.innerHTML = EDIT_ICON_SVG;
+            el.appendChild(ic);
+        }
+
         function getQuestionText(questionSpan) {
-            // Pega só o texto puro, ignorando o span do edit-icon (SVG não tem texto)
-            return (questionSpan.firstChild && questionSpan.firstChild.nodeType === Node.TEXT_NODE
-                ? questionSpan.firstChild.nodeValue
-                : questionSpan.textContent).trim();
+            // Usa o texto original guardado em data-raw; fallback para textContent
+            return (questionSpan.dataset.raw || questionSpan.textContent).trim();
         }
 
         function handleQuestionEdit(questionSpan) {
@@ -3756,13 +3768,7 @@
             // Recria o span com o novo texto dentro de um interaction-block
             const questionSpan = document.createElement('span');
             questionSpan.className = 'question-text';
-            questionSpan.textContent = newText;
-            
-            const editIcon = document.createElement('span');
-            editIcon.className = 'edit-icon';
-            editIcon.innerHTML = EDIT_ICON_SVG;
-            questionSpan.appendChild(editIcon);
-            
+            setQuestionText(questionSpan, newText);
             questionSpan.addEventListener('click', () => handleQuestionEdit(questionSpan));
 
             // Se o container está dentro de um interaction-block, substitui o bloco inteiro
@@ -4021,7 +4027,7 @@
                 // Show the question in UI
                 const questionSpan = document.createElement('span');
                 questionSpan.className = 'question-text';
-                questionSpan.textContent = `${text} (Image in context)`;
+                setQuestionText(questionSpan, `${text} (Image in context)`);
                 const ib1 = document.createElement('div');
                 ib1.className = 'interaction-block';
                 ib1.appendChild(questionSpan);
@@ -4079,13 +4085,7 @@
             } else {
                 const questionSpan = document.createElement('span');
                 questionSpan.className = 'question-text';
-                questionSpan.textContent = text;
-                
-                const editIcon = document.createElement('span');
-                editIcon.className = 'edit-icon';
-                editIcon.innerHTML = EDIT_ICON_SVG;
-                questionSpan.appendChild(editIcon);
-                
+                setQuestionText(questionSpan, text);
                 questionSpan.addEventListener('click', () => handleQuestionEdit(questionSpan));
 
                 const ib2 = document.createElement('div');
