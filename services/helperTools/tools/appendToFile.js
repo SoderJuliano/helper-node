@@ -3,6 +3,7 @@ const fs = require("fs").promises;
 const fss = require("fs");
 const path = require("path");
 const workspace = require("../../workspace");
+const policy = require("../policy");
 
 let _confirmer = null;
 function setConfirmer(fn) { _confirmer = fn; }
@@ -28,7 +29,7 @@ module.exports = {
   setOnFileWritten,
 
   async run(args, ctx) {
-    const target = args && args.path ? path.resolve(args.path) : "";
+    const target = args && args.path ? policy.resolveAbs(args.path) : "";
     if (!target) return { ok: false, error: "path obrigatório" };
     if (!workspace.isPathAllowed(target)) {
       return { ok: false, error: `path "${target}" fora do workspace` };

@@ -189,6 +189,21 @@ function getLastThreeSessions() {
 }
 
 /**
+ * Retorna TODAS as sessões (metadados), mais recentes primeiro.
+ * Usado pela sidebar para listar o histórico completo com rolagem.
+ */
+function getAllSessions() {
+  return currentSessions
+    .slice()
+    .sort((a, b) => new Date(b.created) - new Date(a.created))
+    .map(s => ({
+      id: s.id,
+      title: s.title,
+      created: s.created
+    }));
+}
+
+/**
  * Retorna uma sessão completa com histórico
  */
 function getSessionById(sessionId) {
@@ -237,6 +252,7 @@ module.exports = {
   addMessage,
   replaceMessage,
   getLastThreeSessions,
+  getAllSessions,
   getSessionById,
   getCurrentSession,
   clearCurrentSessionFromMemory,
