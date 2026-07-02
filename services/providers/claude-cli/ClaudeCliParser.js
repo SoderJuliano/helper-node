@@ -47,12 +47,14 @@ function labelForTool(name, input) {
 }
 
 class ClaudeCliParser {
-  // callbacks: { onSessionId, onChunk, onThinking, onToolStart, onToolDone, onFileTool, onDone, onError }
+  // callbacks: { onSessionId, onChunk, onThinking, onToolStart, onToolDone,
+  //              onFileTool, onTokenUpdate, onRateLimit, onDone, onError }
   constructor(callbacks = {}) {
     this._cb      = callbacks;
     this._buf     = '';        // incomplete JSON line buffer
     this._text    = '';        // accumulated full response text
     this._toolMap = new Map(); // tool_use_id → { name, input, label }
+    this._thinkingTokens = 0;  // contagem real (não estimada por char) que o CLI reporta
   }
 
   // Feed a raw stdout chunk (may contain multiple partial / complete lines).
@@ -93,7 +95,19 @@ class ClaudeCliParser {
         if (ev.subtype === 'init' && ev.session_id) {
           this._emit('onSessionId', ev.session_id);
           this._emit('onConnected', { model: ev.model });
+        } else if (ev.subtype === 'thinking_tokens') {
+          // Contagem real e cumulativa que o próprio CLI reporta durante o
+          // raciocínio — melhor que estimar por caractere.
+          this._thinkingTokens = ev.estimated_tokens || this._thinkingTokens;
+          this._emit('onTokenUpdate', { thinking: this._thinkingTokens, outputChars: this._text.length });
         }
+        break;
+
+      // Status de limite de uso (créditos/rate limit). status !== 'allowed'
+      // é a causa real do "travou do nada" — a API para de responder sem
+      // erro nenhum enquanto o limite não libera.
+      case 'rate_limit_event':
+        this._emit('onRateLimit', ev.rate_limit_info || {});
         break;
 
       // Deltas em tempo real (--include-partial-messages): thinking e texto
@@ -108,6 +122,7 @@ class ClaudeCliParser {
             this._sawTextDelta = true;
             this._text += se.delta.text;
             this._emit('onChunk', se.delta.text);
+            this._emit('onTokenUpdate', { thinking: this._thinkingTokens, outputChars: this._text.length });
           }
         }
         break;
@@ -173,10 +188,12 @@ class ClaudeCliParser {
       case 'result':
         if (ev.subtype === 'success') {
           if (ev.session_id) this._emit('onSessionId', ev.session_id);
-          this._emit('onDone', { text: this._text, cost: ev.cost_usd || 0, sessionId: ev.session_id });
+          // Campo correto do evento é total_cost_usd (cost_usd nunca existiu — bug antigo).
+          this._emit('onDone', { text: this._text, cost: ev.total_cost_usd || 0, sessionId: ev.session_id, usage: ev.usage || null });
           this._text = '';
           this._sawTextDelta = false;
           this._sawThinkingDelta = false;
+          this._thinkingTokens = 0;
           this._toolMap.clear();
         } else if (ev.subtype === 'error' || ev.is_error) {
           const msg = (ev.error && ev.error.message) || ev.error || 'Erro no Claude CLI';
@@ -191,6 +208,7 @@ class ClaudeCliParser {
     this._text = '';
     this._sawTextDelta = false;
     this._sawThinkingDelta = false;
+    this._thinkingTokens = 0;
     this._toolMap.clear();
   }
 }

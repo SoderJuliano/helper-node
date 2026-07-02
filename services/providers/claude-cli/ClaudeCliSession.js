@@ -19,7 +19,7 @@ class ClaudeCliSession {
 
   // Send a prompt and stream the response.
   // opts: { model, onChunk, onThinking, onToolStart, onToolDone, onFileTool,
-  //         onStatus, onDone, onError }
+  //         onStatus, onTokenUpdate, onRateLimit, onDone, onError }
   async send(prompt, opts = {}) {
     // Nunca deixa dois processos disputarem a sessão: se um envio anterior
     // ficou preso (API retry, hang), mata antes de começar o novo.
@@ -76,12 +76,14 @@ class ClaudeCliSession {
         onToolStart: (info) => opts.onToolStart && opts.onToolStart(info),
         onToolDone:  (info) => opts.onToolDone && opts.onToolDone(info),
         onFileTool:  (info) => opts.onFileTool && opts.onFileTool(info),
-        onDone: ({ text, cost, sessionId }) => {
+        onTokenUpdate: (info) => { lastActivity = Date.now(); opts.onTokenUpdate && opts.onTokenUpdate(info); },
+        onRateLimit:   (info) => { lastActivity = Date.now(); opts.onRateLimit   && opts.onRateLimit(info); },
+        onDone: ({ text, cost, sessionId, usage }) => {
           if (sessionId) this._sessionId = sessionId;
           finish();
           this._activeProc = null;
-          opts.onDone && opts.onDone({ text, cost });
-          resolve({ text, cost });
+          opts.onDone && opts.onDone({ text, cost, usage });
+          resolve({ text, cost, usage });
         },
         onError: (err) => {
           finish();

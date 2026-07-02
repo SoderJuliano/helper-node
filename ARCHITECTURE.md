@@ -225,6 +225,9 @@ Janelas `BrowserWindow` posicionadas na tela: recording, loading, response, capt
 | API 529/retry silencioso → tela estática por minutos | Watchdog em `ClaudeCliSession`: stderr com retry vira status na UI (`onStatus` → `agentic-phase-update`), aviso após 45s mudo, kill+erro após 10min. |
 | Clique na pergunta abria edição sem querer | Edição só abre pelo lápis (`wireQuestionEdit` checa `.edit-icon`). Editor tem botão "Cancelar (Esc)"; Esc funciona via handler capture global; Enter envia, Shift+Enter quebra linha. Abrir o editor NÃO cancela mais a request em curso (só o envio cancela). |
 | Botões de copiar "não faziam nada" | `navigator.clipboard` rejeita sem foco na janela (overlay). Tudo copia via `copyTextReliable()` → `electronAPI.copyToClipboard` (IPC/Electron). "Copiar tudo" agora inclui `.streaming-response` (respostas CLI). |
+| Tela "morre" sem erro (créditos/rate limit) | CLI emite `rate_limit_event` top-level (`{status, rateLimitType, ...}`). `status !== 'allowed'` = causa real do travamento silencioso — a API pausa sem imprimir nada. Parser emite `onRateLimit`; provider mostra na hora, sem esperar o watchdog de 45s. |
+| Sem prova de que o Claude CLI está trabalhando | CLI já manda `system/thinking_tokens` (contagem real cumulativa, frequente durante raciocínio) + `usage` real no evento `result`. Parser emite `onTokenUpdate({thinking, outputChars})` a cada delta; Provider unifica com o snippet de thinking num único `emitProgress()` throttled (400ms) → status mostra `~N tokens` mesmo sem thinking visível (fase de geração pura de texto). |
+| Custo sempre `$0.000000` no log | Bug antigo: parser lia `ev.cost_usd`, mas o campo real do evento `result` é `total_cost_usd`. Corrigido — custo real aparece no log e no status final ("Concluído · N tokens gerados · $X"). |
 
 ---
 

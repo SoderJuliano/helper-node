@@ -65,18 +65,37 @@ class ClaudeCliProvider {
     // Reseta estado de turno anterior que pode ter ficado preso por abort
     this._thinkingEmitted = false;
     this._thinkingBuf = '';
-    this._lastThinkingUpdate = 0;
+    this._lastProgressUpdate = 0;
+    this._tokenInfo = { thinking: 0, outputChars: 0 };
     this._activityIds = new Map();
 
     let activityId = 0;
 
-    const safeClose = (isError) => {
+    const safeClose = (isError, extraStatus) => {
       // Garante que o loading sempre fecha, mesmo em erros inesperados
       if (this._thinkingEmitted) {
         this._thinkingEmitted = false;
-        try { sender.send('agentic-phase-update', { phase: 'completed', status: isError ? 'Erro' : 'Concluído' }); } catch (_) {}
+        const status = isError ? 'Erro' : (extraStatus || 'Concluído');
+        try { sender.send('agentic-phase-update', { phase: 'completed', status }); } catch (_) {}
       }
       try { sender.send('gemini-stream-complete'); } catch (_) {}
+    };
+
+    // Emissor único (throttle 400ms) que combina o trecho de raciocínio (se
+    // houver) com a contagem de tokens ao vivo — assim a tela nunca fica
+    // estática: mesmo sem thinking visível, o contador de tokens sobe durante
+    // a geração de texto, provando que o processo está vivo.
+    const emitProgress = (force) => {
+      const now = Date.now();
+      if (!force && this._lastProgressUpdate && now - this._lastProgressUpdate < 400) return;
+      this._lastProgressUpdate = now;
+      this._thinkingEmitted = true;
+      const outputEstimate = Math.round((this._tokenInfo.outputChars || 0) / 4);
+      const totalTok = (this._tokenInfo.thinking || 0) + outputEstimate;
+      const snippet = this._thinkingBuf ? this._thinkingBuf.replace(/\s+/g, ' ').trim().slice(-140) : '';
+      const tokenPart = totalTok > 0 ? ` (~${totalTok} tokens)` : '';
+      const status = (snippet || 'Gerando resposta…') + tokenPart;
+      try { sender.send('agentic-phase-update', { phase: 'thinking', status }); } catch (_) {}
     };
 
     return new Promise((resolve, reject) => {
@@ -95,19 +114,35 @@ class ClaudeCliProvider {
           try { sender.send('agentic-phase-update', { phase: 'thinking', status: msg }); } catch (_) {}
         },
 
-        onThinking: (text) => {
-          this._thinkingEmitted = true;
-          this._thinkingBuf = (this._thinkingBuf || '') + text;
-          // Atualiza a UI em tempo real (throttle 400ms) com o trecho mais
-          // recente do raciocínio — o user vê o que está acontecendo.
-          const now = Date.now();
-          if (!this._lastThinkingUpdate || now - this._lastThinkingUpdate > 400) {
-            this._lastThinkingUpdate = now;
-            const snippet = this._thinkingBuf.replace(/\s+/g, ' ').trim().slice(-140);
+        // Limite de uso/créditos (rate_limit_event do CLI). status !== 'allowed'
+        // é a causa real de travamentos silenciosos "sem erro nenhum" — a API
+        // simplesmente pausa até o limite liberar. Mostra isso na hora, sem
+        // esperar o watchdog de 45s do stall detector.
+        onRateLimit: (info) => {
+          if (info && info.status && info.status !== 'allowed') {
+            const kind = info.rateLimitType ? ` (${info.rateLimitType})` : '';
+            emitProgress(true);
+            this._thinkingEmitted = true;
             try {
-              sender.send('agentic-phase-update', { phase: 'thinking', status: snippet || 'Pensando…' });
+              sender.send('agentic-phase-update', {
+                phase: 'thinking',
+                status: `Limite de uso atingido${kind}: ${info.status} — aguardando liberação…`,
+              });
             } catch (_) {}
           }
+        },
+
+        // Contagem de tokens ao vivo: thinking = número real reportado pelo
+        // CLI; outputChars = tamanho acumulado do texto de resposta (estimado
+        // em tokens ~chars/4). Não é token a token, mas dá amostras visíveis.
+        onTokenUpdate: ({ thinking, outputChars }) => {
+          this._tokenInfo = { thinking, outputChars };
+          emitProgress();
+        },
+
+        onThinking: (text) => {
+          this._thinkingBuf = (this._thinkingBuf || '') + text;
+          emitProgress();
         },
 
         onToolStart: ({ id, name, label }) => {
@@ -157,8 +192,14 @@ class ClaudeCliProvider {
           }
         },
 
-        onDone: ({ text, cost }) => {
-          safeClose(false);
+        onDone: ({ text, cost, usage }) => {
+          let extra;
+          if (usage) {
+            const outTok = usage.output_tokens || 0;
+            extra = outTok > 0 ? `Concluído · ${outTok} tokens gerados` : undefined;
+            if (extra && cost > 0) extra += ` · $${cost.toFixed(4)}`;
+          }
+          safeClose(false, extra);
           this._emitStatus(sender, { state: 'done', projectPath: cwd });
           if (cost > 0) console.log(`[claude-cli] custo: $${cost.toFixed(6)}`);
           resolve({ text });
