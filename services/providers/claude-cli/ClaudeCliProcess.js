@@ -22,11 +22,12 @@ async function resolveBinary() {
 
 class ClaudeCliProcess {
   constructor() {
-    this._proc   = null;
-    this._onData  = null;
-    this._onError = null;
-    this._onClose = null;
-    this.alive   = false;
+    this._proc     = null;
+    this._onData   = null;
+    this._onError  = null;
+    this._onClose  = null;
+    this._onStderr = null;
+    this.alive     = false;
   }
 
   get pid() { return this._proc ? this._proc.pid : null; }
@@ -73,13 +74,16 @@ class ClaudeCliProcess {
     const env = { ...process.env, HOME: process.env.HOME || require('os').homedir() };
     this._proc = spawn(bin, args, {
       cwd,
-      // stdin como pipe para poder enviar SIGTERM limpo e responder a qualquer
-      // prompt residual que o CLI emita antes de reconhecer o bypassPermissions.
       stdio: ['pipe', 'pipe', 'pipe'],
       env,
     });
 
     this.alive = true;
+
+    // stdin PRECISA ser fechado: com o pipe aberto o CLI espera dados de stdin
+    // antes de processar (3s de atraso por mensagem nas versões atuais; hang
+    // indefinido em versões antigas — era a causa do travamento no 2º envio).
+    try { this._proc.stdin.end(); } catch (_) {}
 
     this._proc.stdout.setEncoding('utf8');
     this._proc.stderr.setEncoding('utf8');
@@ -92,10 +96,7 @@ class ClaudeCliProcess {
       const line = chunk && chunk.trim();
       if (!line) return;
       console.warn('[claude-cli] stderr:', line.slice(0, 200));
-      // Se por algum motivo o CLI pedir confirmação via stderr, envia 'y'
-      if (/\?\s*$|\(y\/n\)|\[Y\/n\]/i.test(line)) {
-        try { this._proc.stdin.write('y\n'); } catch (_) {}
-      }
+      if (this._onStderr) this._onStderr(line);
     });
 
     this._proc.on('close', (code, signal) => {
@@ -123,9 +124,10 @@ class ClaudeCliProcess {
     this._proc = null;
   }
 
-  onData(fn)  { this._onData  = fn; }
-  onError(fn) { this._onError = fn; }
-  onClose(fn) { this._onClose = fn; }
+  onData(fn)   { this._onData   = fn; }
+  onError(fn)  { this._onError  = fn; }
+  onClose(fn)  { this._onClose  = fn; }
+  onStderr(fn) { this._onStderr = fn; }
 
   static async checkInstalled() {
     return (await resolveBinary()) !== null;

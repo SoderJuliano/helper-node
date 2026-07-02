@@ -220,6 +220,11 @@ Janelas `BrowserWindow` posicionadas na tela: recording, loading, response, capt
 | Scrollbar branco no textarea | `scrollbar-width:none` + `::-webkit-scrollbar { display:none }`. |
 | Inline code ocupava linha inteira | `.streaming-response code:not(pre code) { display:inline }`. |
 | Texto do usuário sem markdown | `setQuestionText()` com `innerHTML = renderMarkdown()` + `data-raw` para edição. |
+| 2º envio no Claude CLI travava/atrasava | stdin ficava aberto → CLI espera dados (3s+ ou hang). Corrigido: `stdin.end()` logo após o spawn em `ClaudeCliProcess`. |
+| Reenvio com processo anterior ainda vivo | `ClaudeCliSession.send()` agora aborta o processo anterior antes de iniciar o novo (nunca dois disputando a sessão). |
+| API 529/retry silencioso → tela estática por minutos | Watchdog em `ClaudeCliSession`: stderr com retry vira status na UI (`onStatus` → `agentic-phase-update`), aviso após 45s mudo, kill+erro após 10min. |
+| Clique na pergunta abria edição sem querer | Edição só abre pelo lápis (`wireQuestionEdit` checa `.edit-icon`). Editor tem botão "Cancelar (Esc)"; Esc funciona via handler capture global; Enter envia, Shift+Enter quebra linha. Abrir o editor NÃO cancela mais a request em curso (só o envio cancela). |
+| Botões de copiar "não faziam nada" | `navigator.clipboard` rejeita sem foco na janela (overlay). Tudo copia via `copyTextReliable()` → `electronAPI.copyToClipboard` (IPC/Electron). "Copiar tudo" agora inclui `.streaming-response` (respostas CLI). |
 
 ---
 

@@ -505,7 +505,7 @@
             background: linear-gradient(135deg, rgba(96,165,250,0.10), rgba(96,165,250,0.04));
             border: 1px solid rgba(96,165,250,0.18);
             color: var(--text); font-weight: 600; font-size: 14px; line-height: 1.5;
-            margin-bottom: 10px; cursor: pointer; word-break: break-word;
+            margin-bottom: 10px; cursor: default; word-break: break-word;
             transition: background .2s var(--ease);
         }
         /* Elementos de markdown dentro da pergunta do usuário */
@@ -517,7 +517,10 @@
         .question-text h1, .question-text h2, .question-text h3 { font-weight: 700; margin: 6px 0 3px; }
         .question-text:hover { background: linear-gradient(135deg, rgba(96,165,250,0.16), rgba(96,165,250,0.07)); }
         .question-text:hover .edit-icon { display: inline-block; }
-        .edit-icon { display: none; margin-left: 8px; font-size: 13px; opacity: .6; color: var(--text-3); }
+        .edit-icon { display: none; margin-left: 8px; font-size: 13px; opacity: .6; color: var(--text-3); cursor: pointer; }
+        .edit-icon:hover { opacity: 1; color: var(--text); }
+        .edit-cancel-btn { background: transparent; border: 1px solid var(--border-strong); color: var(--text-2); }
+        .edit-cancel-btn:hover { color: var(--text); border-color: var(--text-3); }
 
         .ia-response {
             font-family: var(--font-mono);
@@ -1655,15 +1658,16 @@
                     let allText = '';
                     blocks.forEach(block => {
                         const q = block.querySelector('.question-text');
-                        const a = block.querySelector('.ia-response');
+                        // .streaming-response = respostas dos providers CLI
+                        const a = block.querySelector('.ia-response, .streaming-response');
                         if (q) allText += `Pergunta: ${getQuestionText(q)}\n\n`;
                         if (a) allText += `Resposta: ${a.innerText || a.textContent}\n\n---\n\n`;
                     });
-                    navigator.clipboard.writeText(allText.trim()).then(() => {
-                        copyAllFixedBtn.textContent = 'Copiado ✓';
-                        copyAllFixedBtn.classList.add('copied');
-                        setTimeout(() => { copyAllFixedBtn.textContent = 'Copy All'; copyAllFixedBtn.classList.remove('copied'); }, 1500);
-                    });
+                    if (!allText.trim()) return;
+                    copyTextReliable(allText.trim());
+                    copyAllFixedBtn.textContent = 'Copiado ✓';
+                    copyAllFixedBtn.classList.add('copied');
+                    setTimeout(() => { copyAllFixedBtn.textContent = 'Copiar tudo'; copyAllFixedBtn.classList.remove('copied'); }, 1500);
                 });
             }
 
@@ -2214,7 +2218,7 @@
                             const q = document.createElement('span');
                             q.className = 'question-text';
                             setQuestionText(q, msg.content);
-                            q.addEventListener('click', () => handleQuestionEdit(q));
+                            wireQuestionEdit(q);
                             currentBlock.appendChild(q);
                             currentBlock.appendChild(createBlockActions(transcriptionElement));
                             transcriptionElement.appendChild(currentBlock);
@@ -2598,19 +2602,11 @@
                     if (btnClone) clonePre.removeChild(btnClone);
 
                     const textToCopy = clonePre.innerText.trim();
-                    navigator.clipboard.writeText(textToCopy)
-                        .then(() => {
-                            showCopyToast();
-                            button.classList.remove('copy-error');
-                            button.classList.add('copied');
-                            setTimeout(() => { button.classList.remove('copied'); }, 1200);
-                        })
-                        .catch(err => {
-                            console.error('Erro ao copiar:', err);
-                            button.classList.remove('copied');
-                            button.classList.add('copy-error');
-                            setTimeout(() => { button.classList.remove('copy-error'); }, 1200);
-                        });
+                    copyTextReliable(textToCopy);
+                    showCopyToast();
+                    button.classList.remove('copy-error');
+                    button.classList.add('copied');
+                    setTimeout(() => { button.classList.remove('copied'); }, 1200);
                     return; // Stop further processing
                 }
             });
@@ -2825,6 +2821,20 @@
             undockComposer();
         }
 
+        // Copia SEMPRE via clipboard do Electron (IPC). navigator.clipboard
+        // rejeita com "Document is not focused" quando a janela overlay não
+        // tem foco — era por isso que os botões de copiar "não faziam nada".
+        function copyTextReliable(text) {
+            try {
+                if (window.electronAPI && window.electronAPI.copyToClipboard) {
+                    window.electronAPI.copyToClipboard(text);
+                    return true;
+                }
+            } catch (_) {}
+            try { navigator.clipboard.writeText(text).catch(() => {}); } catch (_) {}
+            return true;
+        }
+
         const COPY_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
         const CHECK_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
 
@@ -2838,14 +2848,20 @@
             copyBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const block = copyBtn.closest('.interaction-block');
-                const aEl = block.querySelector('.ia-response') || block.querySelector('.streaming-response');
+                let aEl = block.querySelector('.ia-response, .streaming-response');
+                // Fallback: resposta pode ter caído fora do bloco (fluxos antigos)
+                if (!aEl && block.nextElementSibling &&
+                    block.nextElementSibling.matches('.ia-response, .streaming-response')) {
+                    aEl = block.nextElementSibling;
+                }
                 const aText = aEl ? (aEl.innerText || aEl.textContent || '').trim() : '';
-                if (!aText) return;
-                navigator.clipboard.writeText(aText).then(() => {
-                    copyBtn.innerHTML = CHECK_ICON_SVG;
-                    copyBtn.classList.add('copied');
-                    setTimeout(() => { copyBtn.innerHTML = COPY_ICON_SVG; copyBtn.classList.remove('copied'); }, 1500);
-                });
+                if (!aText) { if (typeof showToast === 'function') showToast('Nada para copiar ainda'); return; }
+                // Clipboard do Electron via IPC: navigator.clipboard falha
+                // silenciosamente quando a janela não está focada (overlay).
+                copyTextReliable(aText);
+                copyBtn.innerHTML = CHECK_ICON_SVG;
+                copyBtn.classList.add('copied');
+                setTimeout(() => { copyBtn.innerHTML = COPY_ICON_SVG; copyBtn.classList.remove('copied'); }, 1500);
             });
             return copyBtn;
         }
@@ -2865,7 +2881,7 @@
             questionSpan.className = 'question-text';
             setQuestionText(questionSpan, text);
 
-            questionSpan.addEventListener('click', () => handleQuestionEdit(questionSpan));
+            wireQuestionEdit(questionSpan);
 
             // === Bloco de ações ⌬ ===
             const blockActions = createBlockActions(transcriptionElement);
@@ -2913,14 +2929,9 @@
             if (codeElement && e.target.tagName !== 'BUTTON') {
                 // Pega apenas o texto do código, sem o botão
                 const codeText = codeElement.textContent.replace(/^(Copy|Copied!|✓|✗)/, '').trim();
-                
-                try {
-                    await navigator.clipboard.writeText(codeText);
-                    showCopyToast();
-                    console.log('Código copiado:', codeText.substring(0, 50) + '...');
-                } catch (err) {
-                    console.error('Erro ao copiar código:', err);
-                }
+
+                copyTextReliable(codeText);
+                showCopyToast();
                 
                 e.stopPropagation();
                 e.preventDefault();
@@ -2935,14 +2946,9 @@
                 const isInsidePre = clickedCode.closest('pre') !== null;
                 if (!isInsidePre) {
                     const codeText = clickedCode.textContent.trim();
-                    
-                    try {
-                        await navigator.clipboard.writeText(codeText);
-                        showCopyToast();
-                        console.log('Código inline copiado:', codeText);
-                    } catch (err) {
-                        console.error('Erro ao copiar código inline:', err);
-                    }
+
+                    copyTextReliable(codeText);
+                    showCopyToast();
                     
                     e.stopPropagation();
                     e.preventDefault();
@@ -3655,6 +3661,7 @@
             // Re-injeta o edit-icon (renderMarkdown sobrescreve innerHTML)
             const ic = document.createElement('span');
             ic.className = 'edit-icon';
+            ic.title = 'Editar e reenviar';
             ic.innerHTML = EDIT_ICON_SVG;
             el.appendChild(ic);
         }
@@ -3664,24 +3671,38 @@
             return (questionSpan.dataset.raw || questionSpan.textContent).trim();
         }
 
+        // Liga a edição SOMENTE ao clique no lápis — clicar no texto da
+        // pergunta não abre mais o editor (abria sem querer o tempo todo).
+        function wireQuestionEdit(span) {
+            span.addEventListener('click', (e) => {
+                if (!e.target.closest('.edit-icon')) return;
+                e.stopPropagation();
+                handleQuestionEdit(span);
+            });
+        }
+
+        // Handler global de Esc enquanto edita (capture: funciona mesmo se o
+        // foco saiu do textarea). Registrado em handleQuestionEdit, removido
+        // ao cancelar/enviar.
+        let _editEscHandler = null;
+        function _removeEditEscHandler() {
+            if (_editEscHandler) {
+                document.removeEventListener('keydown', _editEscHandler, true);
+                _editEscHandler = null;
+            }
+        }
+
         function handleQuestionEdit(questionSpan) {
             if (isEditingQuestion) return;
-            
+
             isEditingQuestion = true;
             console.log('Iniciando edição da pergunta');
-            
-            // Cancela a requisição da IA se estiver em andamento
-            window.electronAPI.cancelIaRequest();
-            
-            // Para as animações e notificações
-            stopProcessing();
-            
+
             const currentText = getQuestionText(questionSpan);
-            console.log('Texto atual:', currentText);
-            
+
             const container = document.createElement('div');
             container.className = 'edit-container';
-            
+
             // Sempre usa textarea para edição
             const editField = document.createElement('textarea');
             editField.className = 'edit-textarea';
@@ -3689,71 +3710,83 @@
             editField.value = currentText;
             editField.style.width = '100%';
             editField.style.marginBottom = '10px';
-            
+
             const sendButton = document.createElement('button');
             sendButton.className = 'send-button';
             sendButton.textContent = 'Enviar';
             sendButton.style.marginRight = '10px';
-            
+
+            const cancelButton = document.createElement('button');
+            cancelButton.className = 'send-button edit-cancel-btn';
+            cancelButton.textContent = 'Cancelar (Esc)';
+
+            const controls = document.createElement('div');
+            controls.className = 'edit-controls';
+            controls.appendChild(sendButton);
+            controls.appendChild(cancelButton);
+
             container.appendChild(editField);
-            container.appendChild(sendButton);
-            
-            // Event listener para o botão
-            sendButton.addEventListener('click', function() {
-                console.log('Botão enviar clicado');
+            container.appendChild(controls);
+
+            const doCancel = () => cancelEditSimple(questionSpan, container, currentText);
+            const doSend = () => {
                 const newText = editField.value.trim();
-                if (newText) {
-                    finishEdit(newText, container);
-                }
-            });
-            
-            // Event listener para as teclas
+                if (newText) finishEdit(newText, container);
+                else doCancel(); // vazio = cancelar, nunca reenviar em branco
+            };
+
+            sendButton.addEventListener('click', doSend);
+            cancelButton.addEventListener('click', doCancel);
+
+            // Enter envia, Shift+Enter quebra linha, Esc cancela.
             editField.addEventListener('keydown', function(e) {
-                console.log('Tecla pressionada:', e.key, 'Shift:', e.shiftKey);
                 if (e.key === 'Escape') {
                     e.preventDefault();
-                    console.log('Cancelando edição');
-                    cancelEditSimple(questionSpan, container, currentText);
-                } else if (e.key === 'Enter' && e.shiftKey) {
+                    doCancel();
+                } else if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
-                    console.log('Shift+Enter pressionado');
-                    const newText = editField.value.trim();
-                    if (newText) {
-                        finishEdit(newText, container);
-                    }
+                    doSend();
                 }
             });
+
+            // Esc cancela mesmo com o foco fora do textarea.
+            _editEscHandler = (e) => {
+                if (e.key === 'Escape' && isEditingQuestion) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    doCancel();
+                }
+            };
+            document.addEventListener('keydown', _editEscHandler, true);
 
             // Substitui o span pelo campo de edição
             questionSpan.replaceWith(container);
             editField.focus();
-            console.log('Campo de edição criado e focado');
         }
 
         function cancelEditSimple(originalSpan, container, originalText) {
-            console.log('Cancelando edição, texto original:', originalText);
+            console.log('Cancelando edição — nada é reenviado');
             isEditingQuestion = false;
-            
-            // Recria o span original
-            originalSpan.textContent = originalText;
-            const editIcon = document.createElement('span');
-            editIcon.className = 'edit-icon';
-            editIcon.innerHTML = EDIT_ICON_SVG;
-            originalSpan.appendChild(editIcon);
-            
-            // Reativa o evento de clique
-            originalSpan.addEventListener('click', () => handleQuestionEdit(originalSpan));
-            
-            // Substitui de volta
+            _removeEditEscHandler();
+
+            // Recria o span original com markdown e lápis (setQuestionText faz os dois)
+            setQuestionText(originalSpan, originalText);
+
+            // Substitui de volta (listener de clique original do span continua vivo)
             container.replaceWith(originalSpan);
-            console.log('Edição cancelada, span restaurado');
         }
 
         function finishEdit(newText, container) {
             console.log('Finalizando edição com texto:', newText);
-            
+
             isEditingQuestion = false;
-            
+            _removeEditEscHandler();
+
+            // Só aqui (envio confirmado) cancela a requisição em andamento —
+            // abrir o editor por engano não pode matar uma resposta em curso.
+            window.electronAPI.cancelIaRequest();
+            stopProcessing();
+
             // Limpa qualquer elemento de streaming anterior
             const transcriptionElement = document.getElementById('transcription');
             const existingStreamingElements = transcriptionElement.querySelectorAll('.streaming-response, .response-text');
@@ -3769,7 +3802,7 @@
             const questionSpan = document.createElement('span');
             questionSpan.className = 'question-text';
             setQuestionText(questionSpan, newText);
-            questionSpan.addEventListener('click', () => handleQuestionEdit(questionSpan));
+            wireQuestionEdit(questionSpan);
 
             // Se o container está dentro de um interaction-block, substitui o bloco inteiro
             const parentBlock = container.closest('.interaction-block');
@@ -4086,7 +4119,7 @@
                 const questionSpan = document.createElement('span');
                 questionSpan.className = 'question-text';
                 setQuestionText(questionSpan, text);
-                questionSpan.addEventListener('click', () => handleQuestionEdit(questionSpan));
+                wireQuestionEdit(questionSpan);
 
                 const ib2 = document.createElement('div');
                 ib2.className = 'interaction-block';

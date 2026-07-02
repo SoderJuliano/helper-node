@@ -88,6 +88,13 @@ class ClaudeCliProvider {
           this._emitStatus(sender, { state: 'streaming' });
         },
 
+        // Status de espera/retry (API sobrecarregada, watchdog) → visível na UI
+        // no mesmo canal do thinking, pra tela nunca ficar estática sem explicação.
+        onStatus: (msg) => {
+          this._thinkingEmitted = true;
+          try { sender.send('agentic-phase-update', { phase: 'thinking', status: msg }); } catch (_) {}
+        },
+
         onThinking: (text) => {
           this._thinkingEmitted = true;
           this._thinkingBuf = (this._thinkingBuf || '') + text;
