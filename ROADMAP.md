@@ -1,6 +1,32 @@
 # Roadmap do Aplicativo Helper
 
-Este documento descreve a arquitetura atual para funcionalidades que dependem do sistema e o plano para melhorias futuras, visando uma experiência de usuário mais integrada.
+> **Arquitetura detalhada em `ARCHITECTURE.md`.**
+
+## ✅ Lançado em v0.5.0 / v0.5.1: Claude Code CLI + Redesign IDE + UX
+
+**Novo provider: Claude Code CLI** — mesmo padrão do Gemini CLI, selecionável em Configurações.
+- Processo `claude --print --output-format stream-json --include-partial-messages --verbose --permission-mode bypassPermissions --no-chrome`
+- Continuidade de sessão via `--resume <session_id>` (event `system/init`)
+- Auth pela máquina (`~/.claude/`), sem API key no app
+- Thinking e texto ao vivo via `stream_event` / `thinking_delta` / `text_delta`
+- Tool activity (`Lendo arquivo`, `Executando comando`, etc.) com diff ao clicar em edits de arquivo
+- Abort limpo via SIGTERM (flag `_aborted` → resolve silencioso, sem erro na UI)
+- `safeClose()` garante que o loading sempre fecha mesmo em erros inesperados
+
+**Redesign UI estilo IDE de IA:**
+- Layout chat × IDE com painel de atividade de ferramentas
+- Markdown completo nas respostas: blocos de código com copy, headings, listas, inline code
+- **Markdown na pergunta do usuário:** `setQuestionText()` renderiza com `renderMarkdown()`, guarda original em `data-raw`
+- Token counter no composer (warn ≥ 2k, danger ≥ 4k)
+- Scrollbar invisível no textarea e terminal-input
+- Realtime mode: composer some ao iniciar (`Ctrl+I` para mostrar)
+- Thinking ao vivo: status mostra últimos 140 chars do raciocínio (throttle 400ms) em vez de emoji estático
+
+**Fixes de provider:**
+- `workspaceAccess` liberado para CLIs independente de helperTools
+- helperTools desabilitado (disabled + opaco) quando CLI ativo
+- Botão × (interromper) agora aborta Claude CLI e Gemini CLI
+- Loading nunca fica preso graças ao padrão `safeClose()`
 
 ## ✅ Lançado em v0.4.x: Realtime online (OpenAI) + Tradutor ao vivo robusto
 
