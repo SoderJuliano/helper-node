@@ -4033,26 +4033,51 @@ ipcMain.on("set-language", (event, language) => {
 ipcMain.handle("kb-get", () => {
   const cfg = configService.getKnowledgeBaseConfig();
   return {
-    source: knowledgeBase.getSource(),
+    // Não manda mais o texto consolidado inteiro pro renderer — o input de
+    // Configurações é só pra ADICIONAR, não edita/recarrega o arquivo. O link
+    // "ver base completa" abre o arquivo real via sourcePath.
+    sourcePath: knowledgeBase.getSourcePath(),
     enabled: cfg.enabled,
     aiRewrite: cfg.aiRewrite,
     chunks: knowledgeBase.chunkCount(),
   };
 });
 
-ipcMain.handle("kb-save", async (event, payload) => {
+// Anexa conteúdo NOVO ao final da base já consolidada (não recarrega/reprocessa o
+// arquivo inteiro). É o que resolve o "Salvar e Fechar" demorado: antes, salvar
+// SEMPRE re-embedava a base INTEIRA de novo, mesmo se o usuário não tivesse mexido
+// na base de conhecimento (o campo vinha pré-carregado com tudo). Agora, texto
+// vazio = no-op instantâneo; texto novo = só ELE é resumido/embedado.
+ipcMain.handle("kb-append", async (event, payload) => {
   const { text = "", aiRewrite = true, enabled = true } = payload || {};
   configService.setKnowledgeBaseConfig({ aiRewrite: !!aiRewrite, enabled: !!enabled });
+  if (!(text || "").trim()) {
+    return { ok: true, appended: false, chunks: knowledgeBase.chunkCount() };
+  }
   // ChatGPT/Lite → token (embeddings + reescrita nano). Ollama/Full → backend (keyword + reescrita Ollama).
   const useOpenAI = getEffectiveAiModel() === "openIa";
   const token = useOpenAI ? configService.getOpenIaToken() : "";
   const backendResponder = useOpenAI ? null : (t, opts) => BackendService.responder(t, opts);
   try {
-    const res = await knowledgeBase.save(text, { aiRewrite: !!aiRewrite, token, backendResponder });
-    return { ok: true, chunks: res.chunks, text: res.text, rewritten: res.rewritten, shrunk: res.shrunk, codeSkipped: res.codeSkipped };
+    const res = await knowledgeBase.appendSource(text, { aiRewrite: !!aiRewrite, token, backendResponder });
+    return { ok: true, chunks: res.chunks, rewritten: res.rewritten, shrunk: res.shrunk, codeSkipped: res.codeSkipped, appended: res.appended };
   } catch (e) {
     return { ok: false, error: e.message };
   }
+});
+
+// Abre o arquivo consolidado da base de conhecimento no visualizador de arquivos
+// da janela principal (não um editor externo) — a janela de Configurações é uma
+// BrowserWindow separada, sem acesso direto ao viewer do index.html.
+ipcMain.on("kb-open-source-file", () => {
+  try {
+    const p = knowledgeBase.getSourcePath();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+      mainWindow.focus();
+      mainWindow.webContents.send("open-file-in-viewer", p);
+    }
+  } catch (_) {}
 });
 
 // Reorganiza o texto da base com IA SEM salvar (botão "Resumir e organizar com IA").

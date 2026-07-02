@@ -167,7 +167,9 @@ Sessões em `userData/history/`. A UI carrega e exibe via `load-history-list` / 
 
 ## RAG / Knowledge base (`services/knowledgeBase.js`)
 
-Busca híbrida: embeddings cosseno + BM25 keyword. Base do usuário vence o treino do modelo. Configurável via config. Persistência em `userData/knowledge/`.
+Busca híbrida: embeddings cosseno + BM25 keyword. Base do usuário vence o treino do modelo. Configurável via config. Persistência em `userData/knowledge/` (`source.md` consolidado + `index.json` com chunks/embeddings).
+
+**Fluxo de edição em Configurações (v0.5.2+):** o campo de texto é só para ADICIONAR — não carrega o arquivo consolidado ao abrir (`kb-get` não manda mais `source`, só `sourcePath` + `chunks`). Ao "Salvar e Fechar", `appendSource()` (não `save()`) processa SÓ o trecho novo (reescreve com IA se a base estiver habilitada, chunka, embeda) e empilha no índice existente + anexa ao final do `source.md`. Texto vazio → no-op instantâneo, sem chamada de rede. Link "Ver base completa" abre `sourcePath` no visualizador de arquivos da janela principal via IPC (`kb-open-source-file` → main → `open-file-in-viewer` → `openFileViewer()`), já que Configurações é uma `BrowserWindow` separada. `save()` (full replace) continua existindo mas não é mais chamado pela UI.
 
 Answer bank (`services/answerBank.js`): salva boas respostas (nota ≥ 4), injeta como dica quando pergunta similar reaparece (cosseno ≥ 0.85).
 
@@ -228,6 +230,10 @@ Janelas `BrowserWindow` posicionadas na tela: recording, loading, response, capt
 | Tela "morre" sem erro (créditos/rate limit) | CLI emite `rate_limit_event` top-level (`{status, rateLimitType, ...}`). `status !== 'allowed'` = causa real do travamento silencioso — a API pausa sem imprimir nada. Parser emite `onRateLimit`; provider mostra na hora, sem esperar o watchdog de 45s. |
 | Sem prova de que o Claude CLI está trabalhando | CLI já manda `system/thinking_tokens` (contagem real cumulativa, frequente durante raciocínio) + `usage` real no evento `result`. Parser emite `onTokenUpdate({thinking, outputChars})` a cada delta; Provider unifica com o snippet de thinking num único `emitProgress()` throttled (400ms) → status mostra `~N tokens` mesmo sem thinking visível (fase de geração pura de texto). |
 | Custo sempre `$0.000000` no log | Bug antigo: parser lia `ev.cost_usd`, mas o campo real do evento `result` é `total_cost_usd`. Corrigido — custo real aparece no log e no status final ("Concluído · N tokens gerados · $X"). |
+| Diff da IA mostrava tudo como "adicionado" (nada vermelho/branco) | `ClaudeCliProvider` mandava o campo `backupPath` no `workspace-file-written`, mas o handler `get-file-diff` (main.js) e todo o resto do código (writeFile.js/patchFile.js) usa `backupAt`. Sem bater o nome, `backupAt` chegava `undefined` → diff comparava contra `""` → tudo virava "add". O algoritmo de diff (`computeLineDiff`, LCS linha a linha) sempre esteve correto; só faltava o campo certo chegar até ele. |
+| Dropdown da árvore de arquivos (sidebar) curto | `.ws-tree` tinha `max-height: 34vh` fixo. Trocado para `calc(100vh - 260px)` — estica quase até o rodapé da sidebar. |
+| Scrollbar branco aparecendo na sidebar | `.sb-scroll` (container pai da árvore) nunca precisou rolar antes; ao esticar `.ws-tree`, o pai passou a rolar também e usava o scrollbar nativo (branco). Adicionado `scrollbar-width:none` + `::-webkit-scrollbar{width:0}`, igual padrão já usado em `.ws-tree`/`#history-content`. |
+| "Salvar e Fechar" (Configurações) demorava às vezes | Causa: `kb-save` sempre re-embedava a base de conhecimento INTEIRA via API a cada fechamento — mesmo sem o usuário ter mexido nela — porque o campo vinha pré-carregado com o `source.md` completo. Corrigido: campo começa vazio, `kb-append`/`appendSource()` processa só o texto novo (ou não faz nenhuma chamada se vazio) e empilha no índice existente em vez de recomputar tudo. |
 
 ---
 

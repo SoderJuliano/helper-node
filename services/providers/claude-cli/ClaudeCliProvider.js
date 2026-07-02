@@ -172,9 +172,10 @@ class ClaudeCliProvider {
             // Read current file content as backup
             try {
               const backupPath = makeBackupPath(absPath);
-              const content = fs.existsSync(absPath) ? fs.readFileSync(absPath, 'utf8') : '';
+              const existed = fs.existsSync(absPath);
+              const content = existed ? fs.readFileSync(absPath, 'utf8') : '';
               fs.writeFileSync(backupPath, content, 'utf8');
-              this._pendingBackups.set(id, { filePath: absPath, backupPath });
+              this._pendingBackups.set(id, { filePath: absPath, backupPath, existed });
             } catch (e) {
               console.warn('[claude-cli] backup falhou para', absPath, e.message);
             }
@@ -182,11 +183,13 @@ class ClaudeCliProvider {
             const backup = this._pendingBackups.get(id);
             if (backup) {
               this._pendingBackups.delete(id);
-              // Emit workspace-file-written so the diff viewer in index.html opens on click
+              // Emit workspace-file-written so the diff viewer in index.html opens on click.
+              // Campo é `backupAt` (convenção usada em writeFile.js/patchFile.js) — chamar
+              // de `backupPath` aqui fazia o diff comparar contra "" (tudo virava "add").
               sender.send('workspace-file-written', {
-                path:       backup.filePath,
-                backupPath: backup.backupPath,
-                backup:     true,
+                action:   backup.existed ? 'edit' : 'create',
+                path:     backup.filePath,
+                backupAt: backup.backupPath,
               });
             }
           }

@@ -137,6 +137,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("workspace-changed", (event, data) => cb(data)),
   onWorkspaceFileWritten: (cb) =>
     ipcRenderer.on("workspace-file-written", (event, data) => cb(data)),
+  // Configurações (janela separada) pede pra abrir um arquivo (ex.: base de
+  // conhecimento) no visualizador desta janela.
+  onOpenFileInViewer: (cb) =>
+    ipcRenderer.on("open-file-in-viewer", (event, filePath) => cb(filePath)),
   onAiToolActivity: (cb) =>
     ipcRenderer.on("ai-tool-activity", (event, data) => cb(data)),
 

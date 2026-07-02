@@ -596,15 +596,18 @@ saveButton.addEventListener("click", async () => {
     ipcRenderer.send("save-backend-api-key", backendApiKeyInput.value);
   }
 
-  // Salvar a base de conhecimento (texto + habilitado). Sem reescrita automática: a
-  // reorganização é manual, pelo botão "Resumir e organizar com IA".
+  // Anexa SÓ o que o usuário digitou agora (o campo não carrega mais a base
+  // inteira). Texto vazio = no-op instantâneo — não reprocessa a base a toa,
+  // que era o motivo do "Salvar e Fechar" ficar lento. Com a base habilitada,
+  // a IA resume/organiza apenas esse trecho novo antes de anexar ao arquivo.
   try {
-    await ipcRenderer.invoke('kb-save', {
+    const kbEnabled = kbEnabledToggle ? kbEnabledToggle.checked : true;
+    await ipcRenderer.invoke('kb-append', {
       text: kbText ? kbText.value : '',
-      aiRewrite: false,
-      enabled: kbEnabledToggle ? kbEnabledToggle.checked : true,
+      aiRewrite: kbEnabled,
+      enabled: kbEnabled,
     });
-  } catch (e) { console.warn('[kb] save on close failed:', e.message); }
+  } catch (e) { console.warn('[kb] append on close failed:', e.message); }
 
   // Close window
   window.close();
@@ -730,6 +733,11 @@ const kbEnabledStatus = document.getElementById('kb-enabled-status');
 const kbText = document.getElementById('kb-text');
 const kbRewriteBtn = document.getElementById('kb-rewrite-btn');
 const kbStatus = document.getElementById('kb-status');
+const kbSourceLink = document.getElementById('kb-source-link');
+
+if (kbSourceLink) {
+  kbSourceLink.addEventListener('click', () => ipcRenderer.send('kb-open-source-file'));
+}
 
 function updateKbEnabledStatus(v) { if (kbEnabledStatus) kbEnabledStatus.textContent = v ? 'ON' : 'OFF'; }
 
@@ -771,8 +779,11 @@ if (kbRewriteBtn) {
     const kb = await ipcRenderer.invoke('kb-get');
     if (!kb) return;
     if (kbEnabledToggle) { kbEnabledToggle.checked = kb.enabled !== false; updateKbEnabledStatus(kbEnabledToggle.checked); }
-    if (kbText) kbText.value = kb.source || '';
-    if (kbStatus && kb.chunks != null) kbStatus.textContent = kb.chunks ? `${kb.chunks} trecho(s) indexado(s)` : 'vazio';
+    // O campo começa SEMPRE vazio — é só pra adicionar conteúdo novo, não carrega
+    // (nem edita) o arquivo consolidado. Ver a base completa é pelo link abaixo.
+    if (kbText) kbText.value = '';
+    if (kbStatus) kbStatus.textContent = kb.chunks ? `${kb.chunks} trecho(s) na base` : 'base vazia — nada salvo ainda';
+    if (kbSourceLink) kbSourceLink.style.display = kb.chunks ? '' : 'none';
   } catch (e) { console.warn('[kb] load failed:', e.message); }
 })();
 
