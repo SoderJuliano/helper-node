@@ -109,20 +109,60 @@
             border-radius: var(--radius-lg);
             box-shadow: var(--shadow-card);
             overflow: hidden;
+            transition: grid-template-columns .22s var(--ease);
         }
+        /* Sidebar recolhida: chat ocupa a tela inteira. .no-anim suprime a
+           transição só no carregamento inicial (restaurar estado salvo sem "piscar"). */
+        body.sidebar-collapsed #app-shell { grid-template-columns: 0px 1fr; }
+        #app-shell.no-anim { transition: none; }
 
         /* =====================================================================
            SIDEBAR
            ===================================================================== */
         #sidebar {
+            position: relative;
             grid-row: 1;
             background: var(--bg-sidebar);
             border-right: 1px solid var(--border);
             display: flex;
             flex-direction: column;
+            transition: opacity .15s var(--ease);
             min-height: 0;
             -webkit-app-region: no-drag;
         }
+        body.sidebar-collapsed #sidebar { opacity: 0; pointer-events: none; }
+
+        /* Botão "<" — recolhe o sidebar. Pequeno, sobre a borda direita,
+           centralizado verticalmente. */
+        .sidebar-collapse-btn {
+            position: absolute; top: 50%; right: -9px; transform: translateY(-50%);
+            width: 18px; height: 34px; padding: 0;
+            background: var(--bg-sidebar); border: 1px solid var(--border);
+            border-radius: 0 6px 6px 0; color: var(--text-4); cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            opacity: .5; z-index: 50; -webkit-app-region: no-drag;
+            transition: opacity .15s var(--ease), background .15s var(--ease), color .15s var(--ease);
+        }
+        .sidebar-collapse-btn:hover { opacity: 1; background: rgba(255,255,255,0.08); color: var(--text); }
+        .sidebar-collapse-btn svg { width: 10px; height: 10px; }
+
+        /* Zona de hover na borda esquerda, só existe (via display) quando a
+           sidebar está recolhida — passar o mouse revela o botão ">". */
+        #sidebar-reveal-zone {
+            display: none; position: fixed; left: 8px; top: 8px; bottom: 8px;
+            width: 18px; z-index: 200; -webkit-app-region: no-drag;
+        }
+        body.sidebar-collapsed #sidebar-reveal-zone { display: block; }
+        #sidebar-expand-btn {
+            position: absolute; top: 50%; left: 0; transform: translateY(-50%);
+            width: 18px; height: 34px; padding: 0;
+            background: var(--bg-sidebar); border: 1px solid var(--border-strong);
+            border-radius: 0 6px 6px 0; color: var(--text-3); cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            opacity: 0; transition: opacity .15s var(--ease), background .15s var(--ease), color .15s var(--ease);
+        }
+        #sidebar-reveal-zone:hover #sidebar-expand-btn { opacity: 1; background: rgba(255,255,255,0.08); color: var(--text); }
+        #sidebar-expand-btn svg { width: 10px; height: 10px; }
 
         .sb-brand {
             display: flex;
@@ -1114,6 +1154,9 @@
     <div id="app-shell">
         <!-- ===================== SIDEBAR ===================== -->
         <aside id="sidebar">
+            <button class="sidebar-collapse-btn" id="sidebar-collapse-btn" title="Esconder sidebar (Ctrl+B)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
             <div class="sb-brand">
                 <span class="sb-logo">H</span>
                 <span>Helper Node</span>
@@ -1283,6 +1326,13 @@
 
     <!-- Elementos preservados (contrato do &lt;script&gt;) -->
     <div class="drag-area"></div>
+    <!-- Aparece só quando a sidebar está recolhida (body.sidebar-collapsed) —
+         passar o mouse na borda esquerda revela o botão de reabrir. -->
+    <div id="sidebar-reveal-zone" title="Mostrar sidebar (Ctrl+B)">
+        <button id="sidebar-expand-btn" title="Mostrar sidebar (Ctrl+B)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+    </div>
     <button id="panels-toggle-btn" title="Mostrar/esconder painéis"></button>
     <div class="commands">
         <div class="panel" id="shortcut-panel-legacy"></div>
@@ -2999,13 +3049,44 @@
             }
         })();
 
-        // Ctrl+F global — capture-phase no document (mesmo padrão do Esc acima),
-        // não bubble-phase no window: é o que garante que nada no caminho (foco
-        // em contenteditable, outros listeners) engula a tecla antes de chegar aqui.
-        // Editor aberto → busca dentro do arquivo (CodeMirror). Editor fechado →
-        // busca flutuante de arquivos, de qualquer lugar do app.
+        // === Sidebar recolhível (< recolhe, > reaparece no hover da borda,
+        // Ctrl+B alterna) — estado persiste entre sessões via localStorage. ===
+        function isSidebarCollapsed() { return document.body.classList.contains('sidebar-collapsed'); }
+        function setSidebarCollapsed(collapsed) {
+            document.body.classList.toggle('sidebar-collapsed', collapsed);
+            try { localStorage.setItem('hn-sidebar-collapsed', collapsed ? '1' : '0'); } catch (_) {}
+        }
+        (function initSidebarCollapse() {
+            const shell = document.getElementById('app-shell');
+            // Restaura o estado salvo SEM animar (evita "piscar" ao carregar a janela).
+            if (shell) shell.classList.add('no-anim');
+            let saved = false;
+            try { saved = localStorage.getItem('hn-sidebar-collapsed') === '1'; } catch (_) {}
+            if (saved) setSidebarCollapsed(true);
+            requestAnimationFrame(() => { if (shell) shell.classList.remove('no-anim'); });
+
+            const collapseBtn = document.getElementById('sidebar-collapse-btn');
+            if (collapseBtn) collapseBtn.addEventListener('click', (e) => { e.stopPropagation(); setSidebarCollapsed(true); });
+            const expandBtn = document.getElementById('sidebar-expand-btn');
+            if (expandBtn) expandBtn.addEventListener('click', (e) => { e.stopPropagation(); setSidebarCollapsed(false); });
+        })();
+
+        // Ctrl+F/Ctrl+B global — capture-phase no document (mesmo padrão do Esc
+        // acima), não bubble-phase no window: é o que garante que nada no caminho
+        // (foco em contenteditable, outros listeners) engula a tecla antes de
+        // chegar aqui.
         document.addEventListener('keydown', (e) => {
+            // Ctrl+B: alterna a sidebar — funciona igual no chat e no editor.
+            if (e.key.toLowerCase() === 'b' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
+                e.preventDefault(); e.stopPropagation();
+                setSidebarCollapsed(!isSidebarCollapsed());
+                return;
+            }
             if (e.key.toLowerCase() !== 'f' || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
+            // Editor aberto → busca dentro do arquivo (CodeMirror). Editor fechado →
+            // busca flutuante de arquivos, de qualquer lugar do app — reabre a
+            // sidebar primeiro se ela estiver escondida (precisa dela visível
+            // pra sublinhar o resultado no tree).
             const fv = document.getElementById('file-viewer');
             if (fv && fv.classList.contains('open')) {
                 e.preventDefault(); e.stopPropagation();
@@ -3013,6 +3094,7 @@
                 return;
             }
             e.preventDefault(); e.stopPropagation();
+            if (isSidebarCollapsed()) setSidebarCollapsed(false);
             if (window.openTreeFilter) window.openTreeFilter();
         }, true);
 
