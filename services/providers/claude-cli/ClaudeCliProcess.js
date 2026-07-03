@@ -112,10 +112,14 @@ class ClaudeCliProcess {
     return this;
   }
 
-  // Force-kill if still running (e.g. on session change).
+  // Force-kill if still running (e.g. on abort / session change).
+  // SIGINT (não SIGTERM) — mesmo sinal que Ctrl+C manda no terminal; é o que o
+  // CLI já sabe tratar como "cancela o turno atual" (SIGTERM é mais brusco e
+  // não é o caminho que o próprio CLI espera pra uma interrupção pedida pelo
+  // usuário). SIGKILL continua como último recurso se não morrer em 800ms.
   async kill() {
     if (!this.alive || !this._proc) return;
-    try { this._proc.kill('SIGTERM'); } catch (_) {}
+    try { this._proc.kill('SIGINT'); } catch (_) {}
     await new Promise(resolve => setTimeout(resolve, 800));
     if (this.alive) {
       try { this._proc.kill('SIGKILL'); } catch (_) {}

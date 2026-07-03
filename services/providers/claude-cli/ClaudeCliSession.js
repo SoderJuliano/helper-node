@@ -88,6 +88,16 @@ class ClaudeCliSession {
         onError: (err) => {
           finish();
           this._activeProc = null;
+          // SIGINT (Ctrl+C) faz o próprio CLI reportar um result/error gracioso
+          // pelo protocolo dele — chega aqui ANTES do processo fechar de fato,
+          // sem passar pelo onClose. Se foi abort pedido pelo usuário, trata
+          // igual: silencioso, sem mostrar "erro" pra quem só queria parar.
+          if (this._aborted) {
+            this._aborted = false;
+            opts.onDone && opts.onDone({ text: '', cost: 0 });
+            resolve({ text: '' });
+            return;
+          }
           opts.onError && opts.onError(err);
           reject(err);
         },

@@ -76,10 +76,14 @@ class GeminiCliProvider {
     // Reseta estado de turno anterior que pode ter ficado preso por abort
     this._thinkingEmitted = false;
 
+    // Toda emissão de agentic-phase-update carrega sessionId:cwd — o botão
+    // "Interromper" da UI só chama stopAgenticWorkflow se `activeAgenticSession`
+    // (setado a partir desse campo) for truthy. Sem ele, o clique não fazia
+    // NADA (o handler nem chegava a mandar o abort pro processo do CLI).
     const safeClose = (isError) => {
       if (this._thinkingEmitted) {
         this._thinkingEmitted = false;
-        try { sender.send('agentic-phase-update', { phase: 'completed', status: isError ? 'Erro' : 'Concluído' }); } catch (_) {}
+        try { sender.send('agentic-phase-update', { phase: 'completed', status: isError ? 'Erro' : 'Concluído', sessionId: cwd }); } catch (_) {}
       }
       try { sender.send('gemini-stream-complete'); } catch (_) {}
     };
@@ -105,7 +109,7 @@ class GeminiCliProvider {
             this._lastThinkingUpdate = now;
             const snippet = thinkingAccumulated.replace(/\s+/g, ' ').trim().slice(-140);
             try {
-              sender.send('agentic-phase-update', { phase: 'thinking', status: snippet || 'Pensando…' });
+              sender.send('agentic-phase-update', { phase: 'thinking', status: snippet || 'Pensando…', sessionId: cwd });
             } catch (_) {}
           }
         },

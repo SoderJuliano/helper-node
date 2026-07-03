@@ -71,12 +71,16 @@ class ClaudeCliProvider {
 
     let activityId = 0;
 
+    // Toda emissão de agentic-phase-update carrega sessionId:cwd — o botão
+    // "Interromper" da UI só chama stopAgenticWorkflow se `activeAgenticSession`
+    // (setado a partir desse campo) for truthy. Sem ele, o clique não fazia
+    // NADA (o handler nem chegava a mandar o abort pro processo do CLI).
     const safeClose = (isError, extraStatus) => {
       // Garante que o loading sempre fecha, mesmo em erros inesperados
       if (this._thinkingEmitted) {
         this._thinkingEmitted = false;
         const status = isError ? 'Erro' : (extraStatus || 'Concluído');
-        try { sender.send('agentic-phase-update', { phase: 'completed', status }); } catch (_) {}
+        try { sender.send('agentic-phase-update', { phase: 'completed', status, sessionId: cwd }); } catch (_) {}
       }
       try { sender.send('gemini-stream-complete'); } catch (_) {}
     };
@@ -95,7 +99,7 @@ class ClaudeCliProvider {
       const snippet = this._thinkingBuf ? this._thinkingBuf.replace(/\s+/g, ' ').trim().slice(-140) : '';
       const tokenPart = totalTok > 0 ? ` (~${totalTok} tokens)` : '';
       const status = (snippet || 'Gerando resposta…') + tokenPart;
-      try { sender.send('agentic-phase-update', { phase: 'thinking', status }); } catch (_) {}
+      try { sender.send('agentic-phase-update', { phase: 'thinking', status, sessionId: cwd }); } catch (_) {}
     };
 
     return new Promise((resolve, reject) => {
@@ -111,7 +115,7 @@ class ClaudeCliProvider {
         // no mesmo canal do thinking, pra tela nunca ficar estática sem explicação.
         onStatus: (msg) => {
           this._thinkingEmitted = true;
-          try { sender.send('agentic-phase-update', { phase: 'thinking', status: msg }); } catch (_) {}
+          try { sender.send('agentic-phase-update', { phase: 'thinking', status: msg, sessionId: cwd }); } catch (_) {}
         },
 
         // Limite de uso/créditos (rate_limit_event do CLI). status !== 'allowed'
@@ -127,6 +131,7 @@ class ClaudeCliProvider {
               sender.send('agentic-phase-update', {
                 phase: 'thinking',
                 status: `Limite de uso atingido${kind}: ${info.status} — aguardando liberação…`,
+                sessionId: cwd,
               });
             } catch (_) {}
           }

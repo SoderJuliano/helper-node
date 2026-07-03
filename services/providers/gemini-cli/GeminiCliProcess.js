@@ -100,7 +100,9 @@ class GeminiCliProcess {
     this._proc.stdin.write(text + '\n');
   }
 
-  // Graceful shutdown: send /exit then SIGTERM after 2s.
+  // Graceful shutdown: send /exit, depois SIGINT (mesmo sinal do Ctrl+C no
+  // terminal — é o que o CLI espera pra uma interrupção pedida pelo usuário,
+  // diferente de SIGTERM), SIGKILL como último recurso.
   async kill() {
     if (!this.alive || !this._proc) return;
     try {
@@ -108,7 +110,7 @@ class GeminiCliProcess {
     } catch (_) { /* stdin may already be closed */ }
     await new Promise(resolve => setTimeout(resolve, 400));
     if (this.alive) {
-      try { this._proc.kill('SIGTERM'); } catch (_) {}
+      try { this._proc.kill('SIGINT'); } catch (_) {}
     }
     await new Promise(resolve => setTimeout(resolve, 1600));
     if (this.alive) {
