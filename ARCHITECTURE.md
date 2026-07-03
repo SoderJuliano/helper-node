@@ -237,15 +237,57 @@ Janelas `BrowserWindow` posicionadas na tela: recording, loading, response, capt
 
 ---
 
+## Editor de código (`#file-viewer`)
+
+Editor de verdade (CodeMirror 5), não só visualizador. **Contextual, não é modo permanente**: cobre `#main` (chat+composer), sidebar fica visível, fecha e volta pro chat instantaneamente — igual o overlay antigo de leitura, só que agora editável. Fechar com o chat coberto é aceitável (decisão do usuário): thinking/tool activity continuam atualizando por baixo, só não ficam visíveis até fechar o editor.
+
+**Um arquivo por vez, mas modelado pra abas no futuro sem refactor:** `editorController.js` guarda `Map<path, doc>` mesmo mostrando só 1 na tela — trocar por abas é mudar a UI que lê esse Map, não o modelo de dados.
+
+### Pontos de entrada (todos chamam `openFileViewer(path)` → `EditorController.openFile`)
+- Árvore do projeto na sidebar (`ws-tree-node.file` click)
+- Chip de arquivo alterado pela IA no chat (`.tool-file-chip` click) — **antes** abria `#diff-viewer` (só leitura); agora abre o editor. `#diff-viewer`/`openFileDiff()` continuam existindo e funcionais, só não são mais o destino deste clique.
+- Link "Ver base completa" da Base de Conhecimento (Configurações → `kb-open-source-file` → `open-file-in-viewer`)
+
+### Arquivos
+```
+editorController.js                        ← renderer: estado do editor (CodeMirror, Map de docs, dirty, save)
+services/fileEditService.js                ← main: único gateway de ESCRITA do editor humano (backup + conflito)
+```
+
+### Fluxo de salvar
+`Ctrl+S` (ou botão "Salvar" no header) → `EditorController.saveActive()` → IPC `editor-save-file` → `workspace.isPathAllowed()` (mesmo sandbox do resto) → `fileEditService.writeFile()` (backup em `~/.config/helper-node/backups/`, mesma convenção de `writeFile.js`/`patchFile.js`) → emite `file-mutated` (`origin:'user'`).
+
+Fechar o editor **não descarta** o buffer — fica vivo em `openFiles` (memória, na sessão) até salvar ou fechar o app; reabrir o mesmo arquivo restaura a edição não salva.
+
+### `file-mutated` — bus genérico de mutação (base pra "fonte única")
+
+Hoje só o editor humano ESCREVE por um gateway central (`fileEditService`). OpenAI (helperTools), Claude Code CLI e Gemini CLI ainda escrevem por conta própria (Claude/Gemini são processos externos — não dá pra interceptar antes da escrita sem hooks tipo `PreToolUse`, não confirmado se funcionam no modo `--print`). O que já existe: todo mundo que MUTA um arquivo emite `file-mutated { path, origin }` pra `mainWindow` — `origin: 'user'` (save do editor), `'openai'` (helperTools `_writeNotifier`), `'claude-cli'` (`ClaudeCliProvider.onFileTool` fase `after`). Gemini CLI ainda não emite (não notifica hoje, fora de escopo por ora).
+
+`EditorController` escuta esse bus: se o arquivo mutado é o que está aberto agora E a origem não é `'user'`, mostra um aviso não-bloqueante no header ("⚠ Claude Code está mexendo neste arquivo agora"). É só sinalização — nunca recarrega nem bloqueia sozinho.
+
+### Conflito ao salvar (detecção, não resolução)
+`editorController` guarda o `mtimeMs` do momento em que abriu/salvou o arquivo. `fileEditService.writeFile()` compara esse valor contra o mtime real em disco no momento do save; se divergir, `conflict:true` no retorno — hoje só mostra aviso ("arquivo foi alterado por fora — salvo mesmo assim") e salva por cima. Ponto de extensão pronto pra virar prompt/merge de verdade depois, sem mexer em quem chama.
+
+### Deliberadamente NÃO implementado nesta etapa (ver conversa de arquitetura)
+- Múltiplas abas (Map já suporta, falta UI)
+- Ctrl+P (quick open), busca no arquivo, goto line
+- Diff-per-file dentro do editor / comparação "minha versão vs. proposta da IA" (reaproveitaria `computeLineDiff`, já existente)
+- OpenAI/Claude Code CLI/Gemini CLI escrevendo através do `fileEditService` (hoje só observados via `file-mutated`, não gateados)
+- Resolução de conflito de verdade (merge, escolher versão) — hoje só detecta e avisa
+
+---
+
 ## Estrutura de arquivos principais
 
 ```
 main.js                          ← processo principal, IPC, roteamento de providers
 preload.js                       ← bridge contextBridge → window.electronAPI
 index.html                       ← UI principal (chat, composer, history)
+editorController.js              ← estado do editor de código (#file-viewer)
 config.html / config.js          ← configurações
 services/
   configService.js               ← config persistida, getters/setters
+  fileEditService.js              ← gateway de escrita do editor humano (backup + conflito)
   providers/
     claude-cli/
       ClaudeCliProcess.js        ← spawn do processo claude

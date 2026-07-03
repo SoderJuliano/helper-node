@@ -67,6 +67,7 @@ const ipcService = require("./services/ipcService.js");
 const configService = require("./services/configService.js");
 const edition = require("./services/edition.js");
 const knowledgeBase = require("./services/knowledgeBase.js");
+const fileEditService = require("./services/fileEditService.js");
 const historyService = require("./services/historyService.js");
 const helperTools = require("./services/helperTools");
 const workspace = require("./services/workspace");
@@ -3873,7 +3874,8 @@ ipcMain.handle("get-project-tree", async () => {
   }
 });
 
-// Lê o conteúdo de um arquivo do projeto pra exibir no visualizador da IDE.
+// Lê o conteúdo de um arquivo do projeto — usado pelo visualizador/editor da IDE
+// (editorController.js chama isso pra abrir um arquivo pra edição).
 ipcMain.handle("read-file-content", async (event, filePath) => {
   try {
     if (!filePath) return { ok: false, error: "path vazio" };
@@ -3885,7 +3887,38 @@ ipcMain.handle("read-file-content", async (event, filePath) => {
     if (!st.isFile()) return { ok: false, error: "não é um arquivo" };
     if (st.size > 2 * 1024 * 1024) return { ok: false, error: "arquivo grande demais (>2MB)" };
     const content = fs2.readFileSync(filePath, "utf8");
-    return { ok: true, path: filePath, content, ext: path.extname(filePath).slice(1).toLowerCase(), bytes: st.size };
+    // mtimeMs: o editor guarda esse valor como "baseline" pra detectar conflito
+    // (arquivo mudou por fora entre abrir e salvar) — ver fileEditService.writeFile.
+    return { ok: true, path: filePath, content, ext: path.extname(filePath).slice(1).toLowerCase(), bytes: st.size, mtimeMs: st.mtimeMs };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+// Notifica a janela principal que um arquivo mudou, seja por quem for
+// (humano no editor, OpenAI, Claude Code CLI, Gemini CLI). O editor, se tiver
+// esse arquivo aberto, usa isso só pra SINALIZAR concorrência — não recarrega
+// nem bloqueia nada sozinho. Ver ARCHITECTURE.md > Editor de código.
+function emitFileMutated(payload) {
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("file-mutated", payload);
+    }
+  } catch (_) {}
+}
+
+// Salva o conteúdo do editor humano (Ctrl+S / botão Salvar em #file-viewer).
+// Único caminho de ESCRITA do editor — ver fileEditService.js.
+ipcMain.handle("editor-save-file", async (event, payload) => {
+  try {
+    const { path: filePath, content, expectedMtimeMs } = payload || {};
+    if (!filePath) return { ok: false, error: "path vazio" };
+    if (workspace.isPathAllowed && !workspace.isPathAllowed(filePath)) {
+      return { ok: false, error: "arquivo fora do projeto/workspace" };
+    }
+    const res = fileEditService.writeFile(filePath, content || "", { expectedMtimeMs });
+    emitFileMutated({ path: filePath, origin: "user" });
+    return res;
   } catch (e) {
     return { ok: false, error: e.message };
   }
@@ -5708,6 +5741,9 @@ app.whenReady().then(async () => {
           mainWindow.webContents.send('workspace-file-written', data);
         }
       } catch (_) {}
+      // Também emite no canal genérico do editor (file-mutated) — se o humano
+      // tiver esse arquivo aberto, vê o indicativo de concorrência em tempo real.
+      emitFileMutated({ path: data && data.path, origin: 'openai' });
     };
     for (const toolName of ['writeFile', 'appendToFile', 'deleteFile', 'patchFile', 'runShellAdvanced']) {
       try {

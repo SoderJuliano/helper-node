@@ -191,6 +191,9 @@ class ClaudeCliProvider {
                 path:     backup.filePath,
                 backupAt: backup.backupPath,
               });
+              // Canal genérico do editor: se o humano tiver esse arquivo aberto
+              // agora, vê o indicativo de concorrência em tempo real.
+              try { sender.send('file-mutated', { path: backup.filePath, origin: 'claude-cli' }); } catch (_) {}
             }
           }
         },

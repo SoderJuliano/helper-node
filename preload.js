@@ -129,6 +129,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getProjectTree: () => ipcRenderer.invoke("get-project-tree"),
   readFileContent: (p) => ipcRenderer.invoke("read-file-content", p),
   getFileDiff: (payload) => ipcRenderer.invoke("get-file-diff", payload),
+  // === Editor de código (#file-viewer) ===
+  editorSaveFile: (payload) => ipcRenderer.invoke("editor-save-file", payload),
+  // Notifica o editor de qualquer mutação de arquivo (humano, OpenAI, Claude
+  // Code CLI, Gemini CLI) — usado só pro indicativo de concorrência em tempo
+  // real, nunca pra bloquear nada.
+  onFileMutated: (cb) => ipcRenderer.on("file-mutated", (event, data) => cb(data)),
   workspaceRemove: (id) => ipcRenderer.invoke("workspace:remove", id),
   workspaceClear: () => ipcRenderer.invoke("workspace:clear"),
   workspaceOpenExternal: (p) => ipcRenderer.invoke("workspace:open-external", p),

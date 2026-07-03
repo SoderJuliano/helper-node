@@ -10,6 +10,30 @@
     <!-- Syntax highlight (visualizador de arquivos da IDE) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <!-- Editor de código (CodeMirror 5) — humano e IA usam o mesmo #file-viewer
+         pra editar arquivos do projeto. Ver editorController.js. -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/xml/xml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/css/css.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/clike/clike.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/shell/shell.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/yaml/yaml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/markdown/markdown.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/sql/sql.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/go/go.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/rust/rust.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/php/php.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/ruby/ruby.min.js"></script>
+    <!-- Busca (Ctrl+F) dentro do editor -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/dialog/dialog.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/dialog/dialog.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/search/searchcursor.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/search/search.min.js"></script>
     <style>
         /* =====================================================================
            HELPER NODE — Design System
@@ -951,7 +975,10 @@
 
         /* ===== Visualizador de arquivo (IDE) — cobre a área principal ===== */
         #file-viewer {
-            position: absolute; inset: 0; z-index: 40;
+            /* top/right recuados 8px (mesmo valor do #diff-viewer) — encostado
+               no canto (inset:0) o × do editor ficava colado no × nativo da
+               janela (titleBarOverlay), quase sobreposto. */
+            position: absolute; top: 8px; right: 8px; left: 0; bottom: 0; z-index: 40;
             display: none; flex-direction: column;
             background: var(--bg-base);
         }
@@ -962,16 +989,28 @@
             background: var(--bg-sidebar); flex-shrink: 0;
         }
         .fv-ic { width: 14px; height: 14px; opacity: .7; flex-shrink: 0; }
-        .fv-path { font-family: var(--font-mono); font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .fv-lang { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-4); background: rgba(255,255,255,0.05); padding: 2px 7px; border-radius: 5px; flex-shrink: 0; }
-        .fv-close { margin-left: auto; flex-shrink: 0; width: 26px; height: 26px; background: transparent; border: none; color: var(--text-3); font-size: 19px; cursor: pointer; border-radius: 5px; display: flex; align-items: center; justify-content: center; }
+        /* Sem flex:1 de propósito — o nome fica do tamanho do conteúdo (até um
+           teto, com "…" se passar disso), igual aba de IDE, pra o × ficar logo
+           depois do nome em vez de esticado lá longe na ponta do header. */
+        .fv-path { max-width: 260px; font-family: var(--font-mono); font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 1; }
+        /* Indicador de alteração não salva (dot laranja) — Ctrl+S salva, sem
+           botão explícito: nenhuma IDE tem "botão Salvar" visível o tempo todo. */
+        .fv-dirty { display: none; color: #ffb74d; font-size: 10px; flex-shrink: 0; }
+        .fv-close { flex-shrink: 0; width: 24px; height: 24px; background: transparent; border: none; color: var(--text-3); font-size: 17px; cursor: pointer; border-radius: 5px; display: flex; align-items: center; justify-content: center; }
         .fv-close:hover { background: rgba(255,255,255,0.08); color: var(--text); }
-        .fv-body { flex: 1; overflow: auto; scrollbar-width: thin; }
-        .fv-body pre { margin: 0; padding: 14px 16px; }
-        .fv-body code {
-            font-family: 'JetBrains Mono', var(--font-mono); font-size: 13px;
-            line-height: 1.6; font-variant-ligatures: contextual; background: transparent !important;
-            white-space: pre; tab-size: 2;
+        /* Info auxiliar (idioma, conflito, status do save) empurrada pro canto
+           direito — separada do grupo nome+×, que fica junto à esquerda. */
+        .fv-lang { margin-left: auto; font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-4); background: rgba(255,255,255,0.05); padding: 2px 7px; border-radius: 5px; flex-shrink: 0; }
+        /* Aviso de concorrência: IA mexeu no mesmo arquivo aberto agora, ou
+           conflito detectado ao salvar (arquivo mudou por fora). Só sinaliza —
+           não bloqueia nada (ver ARCHITECTURE.md > Editor de código). */
+        .fv-conflict { display: none; max-width: 220px; font-size: 11px; color: #ffb74d; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .fv-save-status { font-size: 11px; color: var(--text-4); flex-shrink: 0; white-space: nowrap; }
+        /* Corpo do editor: CodeMirror ocupa 100% da área (troca o antigo <pre><code> read-only) */
+        .fv-body { flex: 1; overflow: hidden; min-height: 0; }
+        .fv-body .CodeMirror {
+            height: 100%; font-family: 'JetBrains Mono', var(--font-mono);
+            font-size: 13px; line-height: 1.6;
         }
 
         /* Entradas clicáveis da árvore do projeto (dropdown do workspace) */
@@ -983,7 +1022,37 @@
         .ws-tree-node.file { cursor: pointer; }
         .ws-tree-node.file:hover { background: rgba(255,255,255,0.06); color: var(--text); }
         .ws-tree-node .ws-tree-ic { width: 12px; height: 12px; opacity: .65; flex-shrink: 0; }
-        .ws-tree-node.dir { color: var(--text-2); }
+        .ws-tree-node.dir { color: var(--text-2); cursor: pointer; }
+        .ws-tree-node.dir:hover { background: rgba(255,255,255,0.05); }
+        .ws-tree-chevron { width: 9px; height: 9px; flex-shrink: 0; opacity: .6; transition: transform .15s var(--ease); }
+        .ws-tree-node.dir.collapsed .ws-tree-chevron { transform: rotate(-90deg); }
+        /* Filtro (Ctrl+F) da árvore: some entradas viram "match" (sublinhadas,
+           destacadas); as demais só ficam um pouco apagadas — não escondemos
+           nada, só sinalizamos, igual pedido pelo usuário. */
+        .ws-tree-node.dim { opacity: .35; }
+        .ws-tree-node.match { color: var(--text); }
+        .ws-tree-node.match span { text-decoration: underline; text-decoration-color: var(--accent-2); text-underline-offset: 2px; }
+        /* Busca flutuante de arquivos (Ctrl+F com o editor FECHADO, de qualquer
+           lugar do app) — abre a árvore do projeto sozinha e sublinha o que
+           bate; Enter abre o arquivo. Ver openTreeFilter() em index.html. */
+        .ws-tree-filter {
+            display: none; position: fixed; top: 50px; left: 12px; width: 260px;
+            padding: 8px 10px; background: var(--bg-elevated, #1b1e24);
+            border: 1px solid var(--accent-border); border-radius: var(--radius-sm);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.55); color: var(--text); font-size: 12.5px;
+            font-family: var(--font-ui); box-sizing: border-box; -webkit-app-region: no-drag;
+            z-index: 6500;
+        }
+        .ws-tree-filter:focus { outline: none; border-color: var(--accent-2); }
+        .ws-tree-filter-hint {
+            display: none; position: fixed; top: 82px; left: 12px; width: 260px;
+            box-sizing: border-box; padding: 4px 10px; font-size: 10.5px; color: var(--text-4);
+            font-family: var(--font-ui); z-index: 6500;
+        }
+        /* Tema do dialog de busca do CodeMirror (Ctrl+F no editor) — combina com o resto da UI */
+        .CodeMirror-dialog { background: var(--bg-sidebar); border-bottom: 1px solid var(--border); color: var(--text); padding: 6px 10px; }
+        .CodeMirror-dialog input { background: rgba(0,0,0,0.3); border: 1px solid var(--border-strong); color: var(--text); border-radius: 4px; padding: 3px 6px; }
+        .CodeMirror-search-hint { color: var(--text-4); }
         #conversation-content { max-height: calc(66vh - 70px); overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.2) transparent; }
         .conversation-close-btn { position: absolute; top: 10px; right: 10px; background: transparent; border: none; color: var(--text-2); font-size: 20px; cursor: pointer; padding: 0; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; opacity: .6; transition: opacity .2s; z-index: 5100; border-radius: 5px; }
         .conversation-close-btn:hover { opacity: 1; background: rgba(255,255,255,0.08); }
@@ -1104,6 +1173,11 @@
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                             </button>
                         </div>
+                        <!-- Busca flutuante de arquivos: Ctrl+F com o editor FECHADO, de
+                             qualquer lugar do app — abre a árvore sozinha, sublinha o que
+                             bate o nome digitado, Enter abre o primeiro resultado. -->
+                        <input type="text" class="ws-tree-filter" id="ws-tree-filter" placeholder="Buscar arquivo… (Enter abre, Esc fecha)">
+                        <div class="ws-tree-filter-hint" id="ws-tree-filter-hint"></div>
                         <div class="ws-tree" id="ws-tree" style="display:none;"></div>
                     </div>
                     <div class="ws-chips" id="workspace-content"></div>
@@ -1189,15 +1263,20 @@
                 <div class="composer-hint"><span class="h-kbd">Enter</span> quebra linha · <span class="h-kbd">Shift+Enter</span> envia · <span class="h-kbd">Esc</span> fecha</div>
             </div>
 
-            <!-- Visualizador de arquivo (IDE): cobre a área principal; fecha volta pro chat -->
+            <!-- Editor de arquivo (IDE): cobre a área principal; fecha volta pro chat.
+                 Fonte única de edição — humano (tree/clique manual) e IA (chip de
+                 arquivo alterado) abrem pelo mesmo caminho. Ver editorController.js. -->
             <div id="file-viewer">
                 <div class="fv-header">
                     <svg class="fv-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                     <span class="fv-path" id="fv-path"></span>
-                    <span class="fv-lang" id="fv-lang"></span>
+                    <span class="fv-dirty" id="fv-dirty" title="Alterações não salvas (Ctrl+S salva)">●</span>
                     <button class="fv-close" id="fv-close" title="Fechar (Esc)">×</button>
+                    <span class="fv-lang" id="fv-lang"></span>
+                    <span class="fv-conflict" id="fv-conflict"></span>
+                    <span class="fv-save-status" id="fv-save-status"></span>
                 </div>
-                <div class="fv-body" id="fv-body"><pre><code id="fv-code"></code></pre></div>
+                <div class="fv-body" id="fv-body"></div>
             </div>
         </main>
     </div>
@@ -1243,6 +1322,13 @@
         <div id="agentic-status-text">Iniciando...</div>
         <button id="agentic-stop-btn" class="agentic-stop-btn" title="Interromper processo">×</button>
     </div>
+
+    <!-- Controller do editor de código (#file-viewer). Script separado (não
+         inline) pra manter o estado de edição isolado do resto da UI — ver
+         ARCHITECTURE.md > Editor de código. Precisa carregar antes do script
+         principal (abaixo), que referencia window.EditorController nos
+         handlers de clique (tree, chip da IA). -->
+    <script src="editorController.js"></script>
 
     <script>
 
@@ -1766,6 +1852,9 @@
             function collapseProjectTree() {
                 if (wsTree) { wsTree.style.display = 'none'; wsTree.innerHTML = ''; }
                 if (wsTreeToggle) wsTreeToggle.setAttribute('aria-expanded', 'false');
+                const filterEl = document.getElementById('ws-tree-filter');
+                if (filterEl) { filterEl.style.display = 'none'; filterEl.value = ''; }
+                treeEntries = [];
             }
 
             // Modelo IDE: 1 projeto (pasta) por vez como "header"; arquivos avulsos
@@ -1840,6 +1929,118 @@
             // Dropdown da árvore (blueprint) — reusa o tree enviado pra IA.
             const TREE_FILE_IC = '<svg class="ws-tree-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
             const TREE_DIR_IC = '<svg class="ws-tree-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+            const TREE_CHEVRON_IC = '<svg class="ws-tree-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+            let treeEntries = []; // cache da última busca — pastas colapsam sem refetch
+            const wsTreeFilterInput = document.getElementById('ws-tree-filter');
+
+            // Renderiza a lista (flat, ordenada por caminho) respeitando colapso de
+            // pastas: qualquer entrada com depth > que uma pasta colapsada some da
+            // tela até a próxima entrada no mesmo nível ou mais raso.
+            function renderTree() {
+                if (!wsTree) return;
+                wsTree.innerHTML = '';
+                const filter = (wsTreeFilterInput && wsTreeFilterInput.value.trim().toLowerCase()) || '';
+                let skipDepth = null;
+                for (const e of treeEntries) {
+                    if (skipDepth !== null) {
+                        if (e.depth > skipDepth) continue;
+                        skipDepth = null;
+                    }
+                    const isMatch = filter && e.name.toLowerCase().includes(filter);
+                    const node = document.createElement('div');
+                    node.className = 'ws-tree-node ' + (e.isDir ? 'dir' : 'file') +
+                        (e.collapsed ? ' collapsed' : '') +
+                        (filter ? (isMatch ? ' match' : ' dim') : '');
+                    node.style.paddingLeft = (4 + e.depth * 12) + 'px';
+                    node.innerHTML = e.isDir ? (TREE_CHEVRON_IC + TREE_DIR_IC) : TREE_FILE_IC;
+                    const label = document.createElement('span');
+                    label.textContent = e.name;
+                    node.appendChild(label);
+                    if (e.isDir) {
+                        node.title = (e.collapsed ? 'Expandir' : 'Colapsar') + ' pasta';
+                        node.addEventListener('click', () => { e.collapsed = !e.collapsed; renderTree(); });
+                    } else {
+                        node.title = e.path + '  (clique para abrir)';
+                        node.addEventListener('click', () => openFileViewer(e.path));
+                    }
+                    wsTree.appendChild(node);
+                    if (e.isDir && e.collapsed) skipDepth = e.depth;
+                }
+            }
+
+            // Filtrar (Ctrl+F) precisa que os matches fiquem visíveis mesmo dentro
+            // de pastas colapsadas — expande na hora, sem mexer no estado depois.
+            function expandAncestorsForFilter() {
+                const filter = (wsTreeFilterInput && wsTreeFilterInput.value.trim().toLowerCase()) || '';
+                if (!filter) return;
+                // Pilha de pastas por profundidade — se uma entrada bate o filtro,
+                // expande todas as pastas ancestrais dela (profundidade menor, antes dela na lista).
+                const dirStack = [];
+                for (const e of treeEntries) {
+                    while (dirStack.length && dirStack[dirStack.length - 1].depth >= e.depth) dirStack.pop();
+                    const isMatch = e.name.toLowerCase().includes(filter);
+                    if (isMatch) dirStack.forEach(d => { d.collapsed = false; });
+                    if (e.isDir) dirStack.push(e);
+                }
+            }
+
+            // Busca flutuante (Ctrl+F, editor fechado, de qualquer lugar do app).
+            // Abre a árvore do projeto sozinha (se ainda fechada) pra mostrar os
+            // matches sublinhados; não depende da árvore já estar aberta.
+            const wsTreeFilterHint = document.getElementById('ws-tree-filter-hint');
+            async function openTreeFilter() {
+                if (!wsTreeFilterInput || !wsProjectMain || !wsProjectMain.dataset.path) return; // sem projeto aberto
+                if (!wsTreeToggle || wsTreeToggle.getAttribute('aria-expanded') !== 'true') {
+                    await toggleProjectTree();
+                }
+                wsTreeFilterInput.style.display = 'block';
+                if (wsTreeFilterHint) wsTreeFilterHint.style.display = 'block';
+                wsTreeFilterInput.value = '';
+                wsTreeFilterInput.focus();
+                updateTreeFilterHint();
+            }
+            // Exposto em window: o listener global de Ctrl+F vive num escopo
+            // (IIFE) diferente deste bloco e não enxerga esta função por closure.
+            window.openTreeFilter = openTreeFilter;
+            function closeTreeFilter() {
+                if (!wsTreeFilterInput) return;
+                wsTreeFilterInput.style.display = 'none';
+                if (wsTreeFilterHint) wsTreeFilterHint.style.display = 'none';
+                wsTreeFilterInput.value = '';
+                renderTree();
+            }
+            function updateTreeFilterHint() {
+                if (!wsTreeFilterHint) return;
+                const filter = wsTreeFilterInput.value.trim().toLowerCase();
+                if (!filter) { wsTreeFilterHint.textContent = ''; return; }
+                const n = treeEntries.filter(e => !e.isDir && e.name.toLowerCase().includes(filter)).length;
+                wsTreeFilterHint.textContent = n ? `${n} arquivo(s) — Enter abre o primeiro` : 'nenhum arquivo encontrado';
+            }
+            // Primeiro arquivo (não pasta) que bate o filtro, na ordem da árvore.
+            function firstMatchingFile(filter) {
+                return treeEntries.find(e => !e.isDir && e.name.toLowerCase().includes(filter));
+            }
+            if (wsTreeFilterInput) {
+                wsTreeFilterInput.addEventListener('input', () => {
+                    expandAncestorsForFilter();
+                    renderTree();
+                    updateTreeFilterHint();
+                });
+                wsTreeFilterInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape') {
+                        e.stopPropagation(); e.preventDefault(); closeTreeFilter();
+                    } else if (e.key === 'Enter') {
+                        e.stopPropagation(); e.preventDefault();
+                        const filter = wsTreeFilterInput.value.trim().toLowerCase();
+                        const match = filter && firstMatchingFile(filter);
+                        if (match) {
+                            closeTreeFilter();
+                            openFileViewer(match.path);
+                        }
+                    }
+                });
+            }
+
             async function toggleProjectTree() {
                 if (!wsTree || !wsTreeToggle) return;
                 const open = wsTreeToggle.getAttribute('aria-expanded') === 'true';
@@ -1851,23 +2052,11 @@
                 try { res = window.electronAPI.getProjectTree ? await window.electronAPI.getProjectTree() : null; } catch (_) {}
                 if (!res || !res.entries || !res.entries.length) {
                     wsTree.innerHTML = '<span class="ws-tree-empty">Não foi possível ler a estrutura.</span>';
+                    treeEntries = [];
                     return;
                 }
-                wsTree.innerHTML = '';
-                for (const e of res.entries) {
-                    const node = document.createElement('div');
-                    node.className = 'ws-tree-node ' + (e.isDir ? 'dir' : 'file');
-                    node.style.paddingLeft = (4 + e.depth * 12) + 'px';
-                    node.innerHTML = (e.isDir ? TREE_DIR_IC : TREE_FILE_IC);
-                    const label = document.createElement('span');
-                    label.textContent = e.name;
-                    node.appendChild(label);
-                    if (!e.isDir) {
-                        node.title = e.path + '  (clique para abrir)';
-                        node.addEventListener('click', () => openFileViewer(e.path));
-                    }
-                    wsTree.appendChild(node);
-                }
+                treeEntries = res.entries; // cada entry ganha .collapsed sob demanda (undefined = expandida)
+                renderTree();
             }
             if (wsTreeToggle) {
                 wsTreeToggle.addEventListener('click', (e) => { e.stopPropagation(); toggleProjectTree(); });
@@ -1975,7 +2164,9 @@
                         chip.className = 'tool-file-chip';
                         chip.title = `${data.path}\n(clique para ver o diff)`;
                         chip.textContent = `${verb} ${shortName}`;
-                        // Clicar mostra o DIFF (o que a IA mudou), não abre externo.
+                        // Clicar mostra o DIFF (antes/depois, vermelho/verde — o que a IA
+                        // mudou), estilo code review do GitHub. Editar manualmente continua
+                        // acessível pela árvore do projeto ou pela busca (Ctrl+F).
                         chip.addEventListener('click', () => {
                             openFileDiff(data.path, data.backupAt);
                         });
@@ -2770,54 +2961,35 @@
             }, true);
         })();
 
-        // ===== Visualizador de arquivo (IDE): abre no lugar do chat =====
-        const FV_EXT_LANG = {
-            js:'javascript', jsx:'javascript', mjs:'javascript', cjs:'javascript',
-            ts:'typescript', tsx:'typescript', java:'java', cs:'csharp', py:'python',
-            html:'xml', htm:'xml', css:'css', scss:'scss', json:'json', md:'markdown',
-            sh:'bash', bash:'bash', yml:'yaml', yaml:'yaml', xml:'xml', sql:'sql',
-            go:'go', rs:'rust', c:'c', h:'c', cpp:'cpp', hpp:'cpp', php:'php', rb:'ruby',
-        };
+        // ===== Editor de arquivo (IDE): abre no lugar do chat =====
+        // Implementação real (CodeMirror, save, estado) vive em editorController.js
+        // (window.EditorController) — este wrapper só existe pra manter o nome/assinatura
+        // que os call sites já usam (tree, chip da IA, link do RAG).
         async function openFileViewer(filePath) {
-            const viewer = document.getElementById('file-viewer');
-            const codeEl = document.getElementById('fv-code');
-            const pathEl = document.getElementById('fv-path');
-            const langEl = document.getElementById('fv-lang');
-            if (!viewer || !codeEl) return;
-            pathEl.textContent = String(filePath || '').split('/').slice(-3).join('/');
-            pathEl.title = filePath || '';
-            langEl.textContent = '';
-            codeEl.removeAttribute('data-highlighted');
-            codeEl.className = '';
-            codeEl.textContent = 'Carregando…';
-            viewer.classList.add('open');
-
-            let res = null;
-            try { res = window.electronAPI.readFileContent ? await window.electronAPI.readFileContent(filePath) : null; } catch (_) {}
-            if (!res || !res.ok) {
-                codeEl.textContent = (res && res.error) ? ('Não foi possível abrir: ' + res.error) : 'Não foi possível abrir o arquivo.';
-                return;
-            }
-            const lang = FV_EXT_LANG[res.ext] || '';
-            langEl.textContent = (lang || res.ext || 'texto').toUpperCase();
-            codeEl.removeAttribute('data-highlighted');
-            codeEl.className = lang ? ('language-' + lang) : '';
-            codeEl.textContent = res.content;
-            try { if (window.hljs) window.hljs.highlightElement(codeEl); } catch (_) {}
-            const body = document.getElementById('fv-body');
-            if (body) body.scrollTop = 0;
+            if (window.EditorController) await window.EditorController.openFile(filePath);
         }
         function closeFileViewer() {
             const v = document.getElementById('file-viewer');
             if (v) v.classList.remove('open');
+            if (window.EditorController) window.EditorController.closeEditor();
         }
         (function wireFileViewer() {
             const closeBtn = document.getElementById('fv-close');
             if (closeBtn) closeBtn.addEventListener('click', closeFileViewer);
             document.addEventListener('keydown', (e) => {
+                const v = document.getElementById('file-viewer');
+                const isOpen = !!(v && v.classList.contains('open'));
+                if (!isOpen) return;
                 if (e.key === 'Escape') {
-                    const v = document.getElementById('file-viewer');
-                    if (v && v.classList.contains('open')) { e.stopPropagation(); closeFileViewer(); }
+                    // Se o diálogo de busca do CodeMirror (Ctrl+F) estiver aberto,
+                    // deixa ELE tratar o Esc (fecha só a busca) — não fecha o editor
+                    // inteiro por baixo do usuário.
+                    if (document.querySelector('.CodeMirror-dialog')) return;
+                    e.stopPropagation(); closeFileViewer();
+                } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+                    // Ctrl+S salva o arquivo aberto no editor em vez do "Salvar" do SO.
+                    e.preventDefault(); e.stopPropagation();
+                    if (window.EditorController) window.EditorController.saveActive();
                 }
             }, true);
             // Configurações (janela separada) pede pra abrir um arquivo aqui —
@@ -2826,6 +2998,23 @@
                 window.electronAPI.onOpenFileInViewer((filePath) => openFileViewer(filePath));
             }
         })();
+
+        // Ctrl+F global — capture-phase no document (mesmo padrão do Esc acima),
+        // não bubble-phase no window: é o que garante que nada no caminho (foco
+        // em contenteditable, outros listeners) engula a tecla antes de chegar aqui.
+        // Editor aberto → busca dentro do arquivo (CodeMirror). Editor fechado →
+        // busca flutuante de arquivos, de qualquer lugar do app.
+        document.addEventListener('keydown', (e) => {
+            if (e.key.toLowerCase() !== 'f' || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
+            const fv = document.getElementById('file-viewer');
+            if (fv && fv.classList.contains('open')) {
+                e.preventDefault(); e.stopPropagation();
+                if (window.EditorController) window.EditorController.focusSearch();
+                return;
+            }
+            e.preventDefault(); e.stopPropagation();
+            if (window.openTreeFilter) window.openTreeFilter();
+        }, true);
 
         function removeManualInputContainer() {
             const existing = document.querySelector('.manual-input-container');
@@ -3497,6 +3686,8 @@
             });
 
             window.addEventListener('keydown', (e) => {
+                // Ctrl+F é tratado em capture-phase no document (ver logo após
+                // wireFileViewer) — não duplica aqui.
                 // Ctrl+D: fallback pra Wayland onde global shortcuts falham.
                 if (e.key === 'd' && e.ctrlKey && !e.shiftKey && !e.altKey) {
                     const active = document.activeElement;
