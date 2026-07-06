@@ -102,7 +102,7 @@
             position: fixed;
             inset: 8px;
             display: grid;
-            grid-template-columns: 252px 1fr;
+            grid-template-columns: var(--sidebar-w, 268px) 1fr;
             grid-template-rows: 1fr;
             background: var(--bg-base);
             border: 1px solid var(--border-strong);
@@ -115,6 +115,10 @@
            transição só no carregamento inicial (restaurar estado salvo sem "piscar"). */
         body.sidebar-collapsed #app-shell { grid-template-columns: 0px 1fr; }
         #app-shell.no-anim { transition: none; }
+        /* Enquanto arrasta o resizer, sem transição (senão o redimensionamento
+           fica "atrasado" em relação ao mouse). */
+        #app-shell.resizing { transition: none; }
+        #app-shell.resizing #sidebar { pointer-events: none; }
 
         /* =====================================================================
            SIDEBAR
@@ -145,6 +149,24 @@
         }
         .sidebar-collapse-btn:hover { opacity: 1; background: rgba(255,255,255,0.08); color: var(--text); }
         .sidebar-collapse-btn svg { width: 10px; height: 10px; }
+
+        /* Alça de redimensionar a sidebar: faixa fina sobre a borda direita,
+           mostra cursor de resize e engrossa a linha no hover pra sinalizar
+           que é arrastável (some junto com a sidebar quando recolhida). */
+        .sidebar-resizer {
+            position: absolute; top: 0; right: -3px; bottom: 0; width: 7px;
+            cursor: col-resize; z-index: 45; -webkit-app-region: no-drag;
+        }
+        .sidebar-resizer::before {
+            content: ''; position: absolute; top: 0; bottom: 0; left: 50%;
+            width: 1px; background: transparent; transform: translateX(-50%);
+            transition: background .12s var(--ease), width .12s var(--ease);
+        }
+        .sidebar-resizer:hover::before, .sidebar-resizer.dragging::before {
+            width: 3px; background: var(--accent-2);
+        }
+        body.sidebar-collapsed .sidebar-resizer { display: none; }
+        body.resizing-sidebar { cursor: col-resize; user-select: none; }
 
         /* Zona de hover na borda esquerda, só existe (via display) quando a
            sidebar está recolhida — passar o mouse revela o botão ">". */
@@ -366,7 +388,7 @@
             margin-top: 5px; padding: 7px 9px;
             background: rgba(0,0,0,0.22); border: 1px solid var(--border);
             border-radius: var(--radius-sm);
-            font-family: var(--font-mono); font-size: 10.5px; line-height: 1.55;
+            font-family: var(--font-mono); font-size: 12.5px; line-height: 1.65;
             color: var(--text-3); white-space: pre; overflow: auto;
             /* Estica até quase o fim da janela — só desconta o que fica acima
                (marca, novo chat, histórico/atalhos colapsados, header do projeto)
@@ -1056,15 +1078,16 @@
         /* Entradas clicáveis da árvore do projeto (dropdown do workspace) */
         .ws-tree-node {
             display: flex; align-items: center; gap: 6px;
-            padding: 2px 4px; border-radius: 4px; cursor: default;
+            padding: 3px 4px; border-radius: 4px; cursor: default;
             white-space: nowrap; color: var(--text-3);
         }
         .ws-tree-node.file { cursor: pointer; }
         .ws-tree-node.file:hover { background: rgba(255,255,255,0.06); color: var(--text); }
-        .ws-tree-node .ws-tree-ic { width: 12px; height: 12px; opacity: .65; flex-shrink: 0; }
+        .ws-tree-node:focus-visible { outline: 1px solid var(--accent-2); outline-offset: -1px; background: rgba(255,255,255,0.06); }
+        .ws-tree-node .ws-tree-ic { width: 13px; height: 13px; opacity: .65; flex-shrink: 0; }
         .ws-tree-node.dir { color: var(--text-2); cursor: pointer; }
         .ws-tree-node.dir:hover { background: rgba(255,255,255,0.05); }
-        .ws-tree-chevron { width: 9px; height: 9px; flex-shrink: 0; opacity: .6; transition: transform .15s var(--ease); }
+        .ws-tree-chevron { width: 10px; height: 10px; flex-shrink: 0; opacity: .6; transition: transform .15s var(--ease); }
         .ws-tree-node.dir.collapsed .ws-tree-chevron { transform: rotate(-90deg); }
         /* Filtro (Ctrl+F) da árvore: some entradas viram "match" (sublinhadas,
            destacadas); as demais só ficam um pouco apagadas — não escondemos
@@ -1157,6 +1180,7 @@
             <button class="sidebar-collapse-btn" id="sidebar-collapse-btn" title="Esconder sidebar (Ctrl+B)">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
             </button>
+            <div class="sidebar-resizer" id="sidebar-resizer" title="Arraste para redimensionar"></div>
             <div class="sb-brand">
                 <span class="sb-logo">H</span>
                 <span>Helper Node</span>
@@ -1602,6 +1626,7 @@
                 { value: 'gpt-5.1', label: 'GPT-5.1' },
                 { value: 'gpt-5.4-mini', label: 'GPT-5.4 Mini' },
                 { value: 'gpt-5.4', label: 'GPT-5.4' },
+                { value: 'gpt-5.5', label: 'GPT-5.5' },
             ];
             const PROVIDER_LABELS = {
                 openIa: 'ChatGPT', llama: 'Backend (Llama)',
@@ -2006,13 +2031,20 @@
                     const label = document.createElement('span');
                     label.textContent = e.name;
                     node.appendChild(label);
+                    node.tabIndex = 0; // navegável via Tab; Enter/Espaço abrem ou colapsam, igual ao clique
                     if (e.isDir) {
                         node.title = (e.collapsed ? 'Expandir' : 'Colapsar') + ' pasta';
                         node.addEventListener('click', () => { e.collapsed = !e.collapsed; renderTree(); });
                     } else {
-                        node.title = e.path + '  (clique para abrir)';
+                        node.title = e.path + '  (clique ou Enter para abrir)';
                         node.addEventListener('click', () => openFileViewer(e.path));
                     }
+                    node.addEventListener('keydown', (ev) => {
+                        if (ev.key !== 'Enter' && ev.key !== ' ') return;
+                        ev.preventDefault(); ev.stopPropagation();
+                        if (e.isDir) { e.collapsed = !e.collapsed; renderTree(); }
+                        else openFileViewer(e.path);
+                    });
                     wsTree.appendChild(node);
                     if (e.isDir && e.collapsed) skipDepth = e.depth;
                 }
@@ -2925,6 +2957,10 @@
         let isEditingQuestion = false;
         let manualInputActive = false;
         let pastedImageForManualInput = null;
+        // Histórico de prompts enviados (navegação com ArrowUp/ArrowDown, estilo CLI).
+        const promptHistory = [];
+        let promptHistoryIndex = -1;
+        let promptHistoryDraft = '';
 
         function scrollTranscriptionToBottom(behavior = 'smooth') {
             const el = document.getElementById('transcription');
@@ -3069,6 +3105,53 @@
             if (collapseBtn) collapseBtn.addEventListener('click', (e) => { e.stopPropagation(); setSidebarCollapsed(true); });
             const expandBtn = document.getElementById('sidebar-expand-btn');
             if (expandBtn) expandBtn.addEventListener('click', (e) => { e.stopPropagation(); setSidebarCollapsed(false); });
+        })();
+
+        // === Sidebar redimensionável (arraste a borda direita) — largura
+        // persiste entre sessões via localStorage, independente do estado de
+        // recolhido/expandido (que continua controlado por setSidebarCollapsed). ===
+        (function initSidebarResize() {
+            const shell = document.getElementById('app-shell');
+            const resizer = document.getElementById('sidebar-resizer');
+            if (!shell || !resizer) return;
+            const MIN_W = 200, MAX_W = 480;
+
+            let saved = null;
+            try { saved = parseInt(localStorage.getItem('hn-sidebar-w'), 10); } catch (_) {}
+            if (saved && saved >= MIN_W && saved <= MAX_W) {
+                shell.style.setProperty('--sidebar-w', saved + 'px');
+            }
+
+            let dragging = false, startX = 0, startW = 0;
+
+            function onMove(e) {
+                if (!dragging) return;
+                const w = Math.min(MAX_W, Math.max(MIN_W, startW + (e.clientX - startX)));
+                shell.style.setProperty('--sidebar-w', w + 'px');
+            }
+            function onUp() {
+                if (!dragging) return;
+                dragging = false;
+                shell.classList.remove('resizing');
+                resizer.classList.remove('dragging');
+                document.body.classList.remove('resizing-sidebar');
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+                const w = parseInt(getComputedStyle(shell).gridTemplateColumns, 10);
+                if (w) { try { localStorage.setItem('hn-sidebar-w', String(w)); } catch (_) {} }
+            }
+            resizer.addEventListener('mousedown', (e) => {
+                if (isSidebarCollapsed()) return;
+                e.preventDefault(); e.stopPropagation();
+                dragging = true;
+                startX = e.clientX;
+                startW = parseInt(getComputedStyle(shell).gridTemplateColumns, 10) || 268;
+                shell.classList.add('resizing');
+                resizer.classList.add('dragging');
+                document.body.classList.add('resizing-sidebar');
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+            });
         })();
 
         // Ctrl+F/Ctrl+B global — capture-phase no document (mesmo padrão do Esc
@@ -4306,6 +4389,22 @@
                 syncCursorWithCaretPosition();
             }, 100);
             
+            // Detecta se o caret está na primeira/última linha visual do contenteditable,
+            // pra so' navegar o historico quando a seta nao serve pra mover entre linhas.
+            const isCaretAtEdgeLine = (edge) => {
+                const sel = window.getSelection();
+                if (!sel || !sel.rangeCount) return true;
+                const range = sel.getRangeAt(0).cloneRange();
+                range.collapse(true);
+                let rect = range.getClientRects()[0];
+                if (!rect) rect = range.getBoundingClientRect();
+                const elRect = inputField.getBoundingClientRect();
+                if (!rect || (rect.top === 0 && rect.bottom === 0)) return true; // vazio
+                return edge === 'top'
+                    ? (rect.top - elRect.top) < 4
+                    : (elRect.bottom - rect.bottom) < 4;
+            };
+
             // Enter quebra linha, Shift+Enter envia
             inputField.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape') {
@@ -4322,6 +4421,30 @@
                     if (question || pastedImageForManualInput) {
                         submitManualQuestion(question, container);
                     }
+                } else if (e.key === 'ArrowUp' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
+                    if (promptHistory.length && isCaretAtEdgeLine('top')) {
+                        e.preventDefault();
+                        if (promptHistoryIndex === -1) {
+                            promptHistoryDraft = inputField.value;
+                            promptHistoryIndex = promptHistory.length - 1;
+                        } else if (promptHistoryIndex > 0) {
+                            promptHistoryIndex--;
+                        }
+                        inputField.value = promptHistory[promptHistoryIndex];
+                        placeCaretEnd();
+                    }
+                } else if (e.key === 'ArrowDown' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
+                    if (promptHistoryIndex !== -1 && isCaretAtEdgeLine('bottom')) {
+                        e.preventDefault();
+                        if (promptHistoryIndex < promptHistory.length - 1) {
+                            promptHistoryIndex++;
+                            inputField.value = promptHistory[promptHistoryIndex];
+                        } else {
+                            promptHistoryIndex = -1;
+                            inputField.value = promptHistoryDraft;
+                        }
+                        placeCaretEnd();
+                    }
                 }
                 // Enter sozinho não precisa de handler, deixa o comportamento padrão (quebra linha)
             });
@@ -4330,6 +4453,13 @@
         async function submitManualQuestion(text, container) {
             manualInputActive = false;
             undockComposer(); // restaura o ghost do composer após envio
+
+            // Registra no histórico de prompts (navegação ArrowUp/ArrowDown, estilo CLI).
+            if (text && promptHistory[promptHistory.length - 1] !== text) {
+                promptHistory.push(text);
+            }
+            promptHistoryIndex = -1;
+            promptHistoryDraft = '';
 
             // Enviar = conversa começou: esconde o hero (→ #main perde .is-empty,
             // o composer doca embaixo e o #transcription fica visível). Antes isso
