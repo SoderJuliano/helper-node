@@ -8,7 +8,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@300;400;600&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        html, body { background: transparent; overflow: hidden; }
+        html, body { background: transparent; overflow: hidden; height: 100%; }
         body {
             color: white;
             font-family: "Source Code Pro", monospace;
@@ -21,6 +21,9 @@
             border-radius: 10px;
             padding: 14px 18px;
             box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+            height: 100%;
+            display: flex;
+            flex-direction: column;
         }
         .title {
             color: #ff6464;
@@ -29,6 +32,7 @@
             letter-spacing: 1px;
             text-transform: uppercase;
             margin-bottom: 8px;
+            flex-shrink: 0;
         }
         .message {
             color: #fff;
@@ -36,6 +40,7 @@
             font-weight: 600;
             margin-bottom: 6px;
             line-height: 1.4;
+            flex-shrink: 0;
         }
         .detail {
             color: #aaa;
@@ -43,11 +48,32 @@
             margin-bottom: 14px;
             line-height: 1.4;
             font-style: italic;
+            flex: 1;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            padding-right: 6px;
+        }
+        /* Custom scrollbar for detail text */
+        .detail::-webkit-scrollbar {
+            width: 6px;
+        }
+        .detail::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 3px;
+        }
+        .detail::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 3px;
+        }
+        .detail::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.25);
         }
         .actions {
             display: flex;
             gap: 8px;
             justify-content: flex-end;
+            flex-shrink: 0;
         }
         button {
             font-family: inherit;
@@ -75,6 +101,7 @@
             font-size: 11px;
             margin-top: 8px;
             text-align: right;
+            flex-shrink: 0;
         }
     </style>
 </head>

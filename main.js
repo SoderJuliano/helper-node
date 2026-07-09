@@ -4618,7 +4618,7 @@ function showConfirmActionOverlay(opts) {
     const json = Buffer.from(JSON.stringify(payload)).toString('base64');
 
     const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
-    const w = 420, h = 200;
+    const w = 480, h = 250;
     const win = new BrowserWindow({
       width: w, height: h,
       x: Math.floor((sw - w) / 2),
