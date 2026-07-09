@@ -1,11 +1,9 @@
-// Thin wrapper around the `gemini` child process.
-// Handles spawn, kill, stdin write, stdout/stderr piping.
-// Does NOT contain business logic — that lives in GeminiCliSession.
+// Spawns a single `agy --print` invocation.
+// One instance per send() call — not a persistent REPL process.
 
 const { spawn } = require('child_process');
 const { execFile } = require('child_process');
 
-// Searches common locations for the `agy` or `gemini` binary.
 const CANDIDATE_COMMANDS = ['agy', 'gemini', 'gemini-cli'];
 
 async function resolveBinary() {
@@ -38,8 +36,8 @@ class GeminiCliProcess {
   get pid() { return this._proc ? this._proc.pid : null; }
 
   // Start the process in the given working directory.
-  // model: Gemini model id (e.g. 'gemini-2.5-flash')
-  async start(cwd, model) {
+  // opts: { cwd, model, prompt, isContinue }
+  async start({ cwd, model, prompt, isContinue }) {
     if (this.alive) throw new Error('GeminiCliProcess already running');
 
     if (!this._binary) {
@@ -56,13 +54,17 @@ class GeminiCliProcess {
 
     const args = [];
     if (model) args.push('--model', model);
-    // --no-color is only supported by legacy gemini CLI, not by agy CLI
-    if (this._binary && !this._binary.endsWith('agy')) {
-      args.push('--no-color');
+    
+    // Automatically approve tool use in print mode
+    args.push('--dangerously-skip-permissions');
+
+    if (isContinue) {
+      args.push('--continue');
     }
 
-    // HOME explícito garante que o CLI encontra ~/.gemini/ com as credenciais
-    // do usuário da máquina, mesmo que o Electron tenha modificado o env.
+    // Pass prompt via print mode
+    args.push('--print', prompt);
+
     const env = { ...process.env, HOME: process.env.HOME || require('os').homedir() };
     this._proc = spawn(this._binary, args, {
       cwd,
@@ -71,6 +73,9 @@ class GeminiCliProcess {
     });
 
     this.alive = true;
+
+    // Close stdin since we are running in non-interactive print mode
+    try { this._proc.stdin.end(); } catch (_) {}
 
     this._proc.stdout.setEncoding('utf8');
     this._proc.stderr.setEncoding('utf8');
@@ -96,27 +101,22 @@ class GeminiCliProcess {
     return this;
   }
 
-  // Send text to the process stdin (appends a newline).
+  // Send is no longer used since we write to command line args, but we keep a stub
   send(text) {
-    if (!this.alive || !this._proc) throw new Error('Process not running');
-    this._proc.stdin.write(text + '\n');
+    throw new Error('Send is not supported in print mode');
   }
 
-  // Graceful shutdown: send /exit, depois SIGINT (mesmo sinal do Ctrl+C no
-  // terminal — é o que o CLI espera pra uma interrupção pedida pelo usuário,
-  // diferente de SIGTERM), SIGKILL como último recurso.
+  // Force kill the process
   async kill() {
     if (!this.alive || !this._proc) return;
     try {
-      this._proc.stdin.write('/exit\n');
-    } catch (_) { /* stdin may already be closed */ }
-    await new Promise(resolve => setTimeout(resolve, 400));
+      this._proc.kill('SIGINT');
+    } catch (_) {}
+    await new Promise(resolve => setTimeout(resolve, 800));
     if (this.alive) {
-      try { this._proc.kill('SIGINT'); } catch (_) {}
-    }
-    await new Promise(resolve => setTimeout(resolve, 1600));
-    if (this.alive) {
-      try { this._proc.kill('SIGKILL'); } catch (_) {}
+      try {
+        this._proc.kill('SIGKILL');
+      } catch (_) {}
     }
     this.alive = false;
     this._proc = null;
