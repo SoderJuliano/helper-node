@@ -56,8 +56,10 @@ class GeminiCliProcess {
 
     const args = [];
     if (model) args.push('--model', model);
-    // --no-color to minimise ANSI noise; --debug off
-    args.push('--no-color');
+    // --no-color is only supported by legacy gemini CLI, not by agy CLI
+    if (this._binary && !this._binary.endsWith('agy')) {
+      args.push('--no-color');
+    }
 
     // HOME explícito garante que o CLI encontra ~/.gemini/ com as credenciais
     // do usuário da máquina, mesmo que o Electron tenha modificado o env.
