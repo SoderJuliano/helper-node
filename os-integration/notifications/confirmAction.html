@@ -123,8 +123,15 @@
         try {
             const qs = new URLSearchParams(window.location.search);
             const raw = qs.get("json");
-            if (raw) payload = JSON.parse(atob(raw));
-        } catch (e) { console.error(e); }
+            if (raw) {
+                const binString = atob(raw);
+                const bytes = Uint8Array.from(binString, (c) => c.charCodeAt(0));
+                const decoded = new TextDecoder().decode(bytes);
+                payload = JSON.parse(decoded);
+            }
+        } catch (e) {
+            console.error("Erro ao decodificar payload base64:", e);
+        }
 
         document.getElementById("msg").textContent = payload.message || "Confirmar ação?";
         if (payload.detail) {
