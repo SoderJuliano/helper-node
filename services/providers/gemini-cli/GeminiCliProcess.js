@@ -29,6 +29,7 @@ class GeminiCliProcess {
     this._binary = null;
     this._onData = null;
     this._onError = null;
+    this._onStderr = null;
     this._onClose = null;
     this.alive = false;
   }
@@ -57,16 +58,25 @@ class GeminiCliProcess {
     
     // Automatically approve tool use in print mode
     args.push('--dangerously-skip-permissions');
+    args.push('--log-file', '/dev/stderr');
 
     if (isContinue) {
       args.push('--continue');
     }
 
-    // Pass prompt via print mode
-    args.push('--print', prompt);
-
+    // Prompt is sent via stdin instead of argument list to prevent E2BIG
     const env = { ...process.env, HOME: process.env.HOME || require('os').homedir() };
-    this._proc = spawn(this._binary, args, {
+
+    let spawnBin = this._binary;
+    let spawnArgs = [...args];
+
+    // On Linux, use stdbuf to force line buffering for stdout/stderr in real-time
+    if (process.platform === 'linux') {
+      spawnBin = 'stdbuf';
+      spawnArgs = ['-oL', '-eL', this._binary, ...args];
+    }
+
+    this._proc = spawn(spawnBin, spawnArgs, {
       cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
       env,
@@ -74,8 +84,13 @@ class GeminiCliProcess {
 
     this.alive = true;
 
-    // Close stdin since we are running in non-interactive print mode
-    try { this._proc.stdin.end(); } catch (_) {}
+    // Write prompt to stdin and close it
+    try {
+      this._proc.stdin.write(prompt + '\n');
+      this._proc.stdin.end();
+    } catch (stdinErr) {
+      console.error('[gemini-cli] failed to write prompt to stdin:', stdinErr.message);
+    }
 
     this._proc.stdout.setEncoding('utf8');
     this._proc.stderr.setEncoding('utf8');
@@ -84,8 +99,12 @@ class GeminiCliProcess {
       if (this._onData) this._onData(chunk);
     });
 
+    this._proc.stdout.on('end', () => {
+      if (this._onStdoutEnd) this._onStdoutEnd();
+    });
+
     this._proc.stderr.on('data', (chunk) => {
-      if (this._onError) this._onError(chunk);
+      if (this._onStderr) this._onStderr(chunk);
     });
 
     this._proc.on('close', (code, signal) => {
@@ -122,9 +141,11 @@ class GeminiCliProcess {
     this._proc = null;
   }
 
-  onData(fn)  { this._onData  = fn; }
-  onError(fn) { this._onError = fn; }
-  onClose(fn) { this._onClose = fn; }
+  onData(fn)   { this._onData   = fn; }
+  onError(fn)  { this._onError  = fn; }
+  onStderr(fn) { this._onStderr = fn; }
+  onClose(fn)  { this._onClose  = fn; }
+  onStdoutEnd(fn) { this._onStdoutEnd = fn; }
 
   static async checkInstalled() {
     const bin = await resolveBinary();

@@ -3265,11 +3265,30 @@ async function bringWindowToFocus() {
   mainWindow.webContents.send("manual-input");
 }
 
-ipcMain.on("send-to-gemini", async (event, text) => {
+ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
   try {
     const aiModel = getEffectiveAiModel();
     let resposta;
     let usedKnowledge = false; // base de conhecimento injetada nesta resposta?
+
+    let promptWithHistory = text;
+    let pastMessages = [];
+    if (sessionId) {
+      const session = historyService.getSessionById(Number(sessionId)) || historyService.getSessionById(sessionId);
+      if (session && session.conversations && session.conversations.length > 1) {
+        // Exclui a última mensagem, que é o prompt atual que já foi adicionado
+        pastMessages = session.conversations.slice(0, -1);
+        if (pastMessages.length > 0) {
+          let historyContext = "=== HISTÓRICO DA CONVERSA ANTERIOR ===\n";
+          for (const msg of pastMessages) {
+            const roleName = msg.role === 'user' ? 'Usuário' : 'IA';
+            historyContext += `[${roleName}]: ${msg.content}\n\n`;
+          }
+          historyContext += "=== FIM DO HISTÓRICO ===\n\nUse o histórico acima como contexto para responder à pergunta atual.\n\nPergunta atual: ";
+          promptWithHistory = historyContext + text;
+        }
+      }
+    }
 
     // ── Gemini CLI provider ──────────────────────────────────────────────────
     if (aiModel === 'geminiCli') {
@@ -3277,7 +3296,7 @@ ipcMain.on("send-to-gemini", async (event, text) => {
       const geminiModel = configService.getGeminiCliModel();
       GeminiCliProvider.setModel(geminiModel);
       try {
-        await GeminiCliProvider.send(text, projectPath, event.sender);
+        await GeminiCliProvider.send(text, projectPath, event.sender, sessionId, pastMessages);
       } catch (gcliErr) {
         console.error('[gemini-cli] send error:', gcliErr.message);
       }
@@ -3290,7 +3309,7 @@ ipcMain.on("send-to-gemini", async (event, text) => {
       const claudeModel = configService.getClaudeCliModel();
       ClaudeCliProvider.setModel(claudeModel);
       try {
-        await ClaudeCliProvider.send(text, projectPath, event.sender);
+        await ClaudeCliProvider.send(promptWithHistory, projectPath, event.sender);
       } catch (ccliErr) {
         console.error('[claude-cli] send error:', ccliErr.message);
         // Garante que o loading fecha mesmo que o provider não tenha emitido gemini-stream-complete
@@ -3318,7 +3337,7 @@ ipcMain.on("send-to-gemini", async (event, text) => {
         const useAgentic = shouldUseAgentic(text);
         if (useAgentic) { try { workspace.resetContextSent(); } catch (_) {} }
 
-        const _wsText2 = await prependWorkspaceContextIfNeeded(text, openAiModel);
+        const _wsText2 = await prependWorkspaceContextIfNeeded(promptWithHistory, openAiModel);
 
         if (useAgentic) {
             console.log('🤖 IPC: Iniciando AGENTIC WORKFLOW (multi-fase)...');
@@ -3358,7 +3377,7 @@ ipcMain.on("send-to-gemini", async (event, text) => {
           const instructionO2 = configService.getPromptInstruction();
           const useAgentic = shouldUseAgentic(text);
           if (useAgentic) { try { workspace.resetContextSent(); } catch (_) {} }
-          const _wsTxtO2 = await prependWorkspaceContextIfNeeded(text, 'ollama');
+          const _wsTxtO2 = await prependWorkspaceContextIfNeeded(promptWithHistory, 'ollama');
 
           if (useAgentic) {
               console.log('🤖 IPC: Iniciando AGENTIC WORKFLOW OLLAMA (multi-fase)...');
@@ -3463,9 +3482,12 @@ ipcMain.on("stop-agentic-workflow", (event, sessionId) => {
 });
 
 ipcMain.on("clear-ai-sessions", () => {
-  console.log("🧹 Limpando sessões de IA (OpenAI + Backend)...");
+  console.log("🧹 Limpando sessões de IA (OpenAI + Backend + Gemini)...");
   if (OpenAIService.sessions) OpenAIService.sessions = {};
   BackendService.clearSessions();
+  GeminiCliProvider.shutdown().catch((e) => {
+    console.warn('[gemini-cli] clear-ai-sessions shutdown error:', e.message);
+  });
 });
 
 ipcMain.on("send-to-gemini-stream", async (event, text) => {

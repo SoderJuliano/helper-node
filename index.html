@@ -538,6 +538,8 @@
             text-align: left;
             scrollbar-width: thin;
             scrollbar-color: rgba(255,255,255,0.14) transparent;
+            user-select: text;
+            -webkit-user-select: text;
         }
         #transcription::-webkit-scrollbar { width: 10px; }
         #transcription::-webkit-scrollbar-track { background: transparent; }
@@ -710,10 +712,15 @@
         @keyframes ai-spin { to { transform: rotate(360deg); } }
 
         /* Fase do agentic INLINE na conversa (nada de balão flutuante) */
-        .ai-phase { display: flex; align-items: center; gap: 8px; margin: 8px 0 2px; font-size: 12px; font-family: var(--font-ui); }
+        .ai-phase { display: flex; flex-direction: column; align-items: flex-start; margin: 8px 0 2px; font-size: 12px; font-family: var(--font-ui); width: 100%; }
+        .ai-phase-header { display: flex; align-items: center; gap: 8px; width: 100%; cursor: pointer; user-select: none; }
         .ai-phase-spin { width: 12px; height: 12px; border: 2px solid rgba(255,255,255,0.18); border-top-color: var(--accent-2); border-radius: 50%; animation: ai-spin .7s linear infinite; flex-shrink: 0; }
         .ai-phase-tag { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; font-weight: 700; color: var(--accent-2); background: var(--accent-soft); padding: 2px 7px; border-radius: 5px; flex-shrink: 0; }
         .ai-phase-text { color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ai-phase-toggle-icon { font-size: 8px; transition: transform .2s ease; margin-left: 4px; color: var(--text-4); }
+        .ai-phase.expanded .ai-phase-toggle-icon { transform: rotate(90deg); color: var(--accent-2); }
+        .ai-thinking-box { display: none; width: 100%; margin-top: 8px; padding: 10px 12px; background: rgba(0, 0, 0, 0.25); border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.05); font-family: monospace; white-space: pre-wrap; font-size: 11px; color: var(--text-3); max-height: 220px; overflow-y: auto; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2); }
+        .ai-phase.expanded .ai-thinking-box { display: block; }
         .ai-phase-stop { margin-left: auto; flex-shrink: 0; width: 20px; height: 20px; border: 1px solid rgba(248,113,113,0.4); background: rgba(248,113,113,0.1); color: var(--danger); border-radius: 5px; cursor: pointer; font-size: 13px; line-height: 1; display: flex; align-items: center; justify-content: center; padding: 0; }
         .ai-phase-stop:hover { background: rgba(248,113,113,0.25); color: #fff; }
         .ai-phase.done .ai-phase-tag { color: var(--text-3); background: rgba(255,255,255,0.06); }
@@ -1930,7 +1937,7 @@
 
             // Fase do agentic renderizada INLINE no bloco da pergunta atual,
             // com botão de interromper — sem balão flutuante.
-            window.electronAPI.onAgenticPhaseUpdate(({ phase, status, sessionId }) => {
+            window.electronAPI.onAgenticPhaseUpdate(({ phase, status, sessionId, thinking }) => {
                 const done = (phase === 'completed' || phase === 'error');
                 if (!done) activeAgenticSession = sessionId;
                 const block = transcriptionElement
@@ -1941,10 +1948,26 @@
                 if (!ph) {
                     ph = document.createElement('div');
                     ph.className = 'ai-phase';
-                    ph.innerHTML = '<span class="ai-phase-spin"></span><span class="ai-phase-tag"></span><span class="ai-phase-text"></span><button class="ai-phase-stop" title="Interromper">×</button>';
+                    ph.innerHTML = `
+                        <div class="ai-phase-header">
+                            <span class="ai-phase-spin"></span>
+                            <span class="ai-phase-tag"></span>
+                            <span class="ai-phase-text"></span>
+                            <span class="ai-phase-toggle-icon">▶</span>
+                            <button class="ai-phase-stop" title="Interromper">×</button>
+                        </div>
+                        <div class="ai-thinking-box"></div>
+                    `;
                     const q = block.querySelector('.question-text');
                     if (q && q.nextSibling) block.insertBefore(ph, q.nextSibling);
                     else block.insertBefore(ph, block.firstChild);
+
+                    const header = ph.querySelector('.ai-phase-header');
+                    header.addEventListener('click', (e) => {
+                        if (e.target.closest('.ai-phase-stop')) return;
+                        ph.classList.toggle('expanded');
+                    });
+
                     const stop = ph.querySelector('.ai-phase-stop');
                     if (stop) stop.addEventListener('click', () => {
                         if (activeAgenticSession) {
@@ -1958,6 +1981,17 @@
                 const txt = ph.querySelector('.ai-phase-text');
                 if (tag) tag.textContent = PHASE_LABELS[phase] || phase;
                 if (txt) txt.textContent = status || '';
+
+                const toggleIcon = ph.querySelector('.ai-phase-toggle-icon');
+                if (toggleIcon) {
+                    toggleIcon.style.display = thinking ? '' : 'none';
+                }
+
+                const box = ph.querySelector('.ai-thinking-box');
+                if (box && thinking) {
+                    box.textContent = thinking;
+                }
+
                 if (done) {
                     ph.classList.add(phase === 'error' ? 'error' : 'done');
                     const spin = ph.querySelector('.ai-phase-spin'); if (spin) spin.remove();
@@ -4082,11 +4116,12 @@
             // Listener para auto-stream após transcrição de áudio
             window.electronAPI.onAutoStream(async (text) => {
                 console.log('Auto-streaming after transcription:', text);
+                let activeSessionId = null;
                 if (window.historySession) {
-                    await window.historySession.ensureSessionForFirstQuestion(text);
+                    activeSessionId = await window.historySession.ensureSessionForFirstQuestion(text);
                     await window.historySession.addMessageToCurrentSession('user', text);
                 }
-                window.electronAPI.sendTextToGeminiStream(text);
+                window.electronAPI.sendTextToGeminiStream(text, activeSessionId);
             });
 
             window.addEventListener('keydown', (e) => {
@@ -4138,8 +4173,9 @@
         });
 
         async function sentToAI(text) {
+            let activeSessionId = null;
             if (window.historySession) {
-                await window.historySession.ensureSessionForFirstQuestion(text);
+                activeSessionId = await window.historySession.ensureSessionForFirstQuestion(text);
                 await window.historySession.addMessageToCurrentSession('user', text);
             }
 
@@ -4147,10 +4183,10 @@
             
             if (aiModel === 'llama-stream') {
                 // Usa streaming
-                window.electronAPI.sendTextToGeminiStream(text);
+                window.electronAPI.sendTextToGeminiStream(text, activeSessionId);
             } else {
                 // Usa o método normal
-                window.electronAPI.sendTextToGemini(text);
+                window.electronAPI.sendTextToGemini(text, activeSessionId);
             }
         }
 
