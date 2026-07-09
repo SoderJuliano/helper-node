@@ -164,6 +164,15 @@ class GeminiCliParser {
     // Last element may be an incomplete line — keep it in buffer
     this._buf = parts.pop();
 
+    // Check if the incomplete line in _buf is actually a prompt!
+    if (this._buf) {
+      const line = stripAnsi(this._buf).trimEnd();
+      if (isPrompt(line)) {
+        this._buf = '';
+        this._processLine(line);
+      }
+    }
+
     for (const part of parts) {
       this._processLine(part);
     }
