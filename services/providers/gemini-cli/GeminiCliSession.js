@@ -132,6 +132,9 @@ class GeminiCliSession extends EventEmitter {
   _onConnected() {
     this._clearConnectTimer();
     this._restartCount = 0;
+    if (this._parser) {
+      this._parser._exitInitPhase();
+    }
     this._transition('waiting');
     this._resolveConnect();
   }

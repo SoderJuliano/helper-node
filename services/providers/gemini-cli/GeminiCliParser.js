@@ -15,12 +15,12 @@ const ANSI_RE = /[](?:[@-Z\\-_]|\[[0-9;]*[ -/]*[@-~]|\][^]*(?:|\\)|[()][0-
 // Patterns that indicate the CLI is ready for the next input (response is done).
 // Matched against ANSI-stripped lines.
 const PROMPT_PATTERNS = [
-  /^>\s/,          // "> " — standard
-  /^❯\s/,          // "❯ " — fancy unicode
-  /^\$\s/,         // "$ " — shell-style
-  /^gemini>\s/i,   // "gemini> "
-  /^agy>\s/i,      // "agy> "
-  /^\(\d+\)\s*>\s/, // "(1) > " — numbered prompts
+  /^>\s*$/,          // ">" or "> " — standard
+  /^❯\s*$/,          // "❯" or "❯ " — fancy unicode
+  /^\$\s*$/,         // "$" or "$ " — shell-style
+  /^gemini>\s*$/i,   // "gemini>" or "gemini> "
+  /^agy>\s*$/i,      // "agy>" or "agy> "
+  /^\(\d+\)\s*>\s*$/, // "(1) >" or "(1) > " — numbered prompts
 ];
 
 // Patterns that signal the start of a thinking/planning block.
