@@ -1325,6 +1325,8 @@
                              bate o nome digitado, Enter abre o primeiro resultado. -->
                         <input type="text" class="ws-tree-filter" id="ws-tree-filter" placeholder="Buscar arquivo… (Enter abre, Esc fecha)">
                         <div class="ws-tree-filter-hint" id="ws-tree-filter-hint"></div>
+                        <input type="text" class="ws-tree-filter" id="ws-tree-content-filter" placeholder="Buscar texto nos arquivos… (mín. 4 letras, Enter abre tudo, Esc fecha)" style="display:none;">
+                        <div class="ws-tree-filter-hint" id="ws-tree-content-filter-hint" style="display:none;"></div>
                         <div class="ws-tree" id="ws-tree" style="display:none;"></div>
                     </div>
                     <div class="ws-chips" id="workspace-content"></div>
@@ -2007,6 +2009,14 @@
                 if (wsTreeToggle) wsTreeToggle.setAttribute('aria-expanded', 'false');
                 const filterEl = document.getElementById('ws-tree-filter');
                 if (filterEl) { filterEl.style.display = 'none'; filterEl.value = ''; }
+                const contentFilterEl = document.getElementById('ws-tree-content-filter');
+                if (contentFilterEl) { contentFilterEl.style.display = 'none'; contentFilterEl.value = ''; }
+                const filterHintEl = document.getElementById('ws-tree-filter-hint');
+                if (filterHintEl) filterHintEl.style.display = 'none';
+                const contentFilterHintEl = document.getElementById('ws-tree-content-filter-hint');
+                if (contentFilterHintEl) contentFilterHintEl.style.display = 'none';
+                activeTreeFilterMode = null;
+                clearContentSearchState();
                 treeEntries = [];
             }
 
@@ -2085,6 +2095,33 @@
             const TREE_CHEVRON_IC = '<svg class="ws-tree-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
             let treeEntries = []; // cache da última busca — pastas colapsam sem refetch
             const wsTreeFilterInput = document.getElementById('ws-tree-filter');
+            const wsTreeContentFilterInput = document.getElementById('ws-tree-content-filter');
+            const wsTreeFilterHint = document.getElementById('ws-tree-filter-hint');
+            const wsTreeContentFilterHint = document.getElementById('ws-tree-content-filter-hint');
+            let activeTreeFilterMode = null;
+            let contentSearchMatches = [];
+            let contentSearchMatchSet = new Set();
+            let contentSearchDebounce = null;
+            let contentSearchSeq = 0;
+
+            function currentTreeNameFilter() {
+                return (wsTreeFilterInput && wsTreeFilterInput.value.trim().toLowerCase()) || '';
+            }
+            function currentTreeContentFilter() {
+                return (wsTreeContentFilterInput && wsTreeContentFilterInput.value.trim().toLowerCase()) || '';
+            }
+            function clearContentSearchState() {
+                contentSearchMatches = [];
+                contentSearchMatchSet = new Set();
+                if (contentSearchDebounce) {
+                    clearTimeout(contentSearchDebounce);
+                    contentSearchDebounce = null;
+                }
+            }
+            function openMatchingFiles(paths) {
+                const unique = [...new Set((paths || []).filter(Boolean))];
+                unique.forEach((filePath) => openFileViewer(filePath));
+            }
 
             // Renderiza a lista (flat, ordenada por caminho) respeitando colapso de
             // pastas: qualquer entrada com depth > que uma pasta colapsada some da
@@ -2092,18 +2129,24 @@
             function renderTree() {
                 if (!wsTree) return;
                 wsTree.innerHTML = '';
-                const filter = (wsTreeFilterInput && wsTreeFilterInput.value.trim().toLowerCase()) || '';
+                const nameFilter = currentTreeNameFilter();
+                const contentFilter = currentTreeContentFilter();
+                const hasNameFilter = activeTreeFilterMode === 'name' && !!nameFilter;
+                const hasContentFilter = activeTreeFilterMode === 'content' && !!contentFilter;
                 let skipDepth = null;
                 for (const e of treeEntries) {
                     if (skipDepth !== null) {
                         if (e.depth > skipDepth) continue;
                         skipDepth = null;
                     }
-                    const isMatch = filter && e.name.toLowerCase().includes(filter);
+                    const isNameMatch = hasNameFilter && e.name.toLowerCase().includes(nameFilter);
+                    const isContentMatch = hasContentFilter && !e.isDir && contentSearchMatchSet.has(e.path);
+                    const shouldDim = hasNameFilter || (hasContentFilter && contentFilter.length >= 4);
+                    const isMatch = isNameMatch || isContentMatch;
                     const node = document.createElement('div');
                     node.className = 'ws-tree-node ' + (e.isDir ? 'dir' : 'file') +
                         (e.collapsed ? ' collapsed' : '') +
-                        (filter ? (isMatch ? ' match' : ' dim') : '');
+                        (shouldDim ? (isMatch ? ' match' : ' dim') : '');
                     node.style.paddingLeft = (4 + e.depth * 12) + 'px';
                     node.innerHTML = e.isDir ? (TREE_CHEVRON_IC + TREE_DIR_IC) : TREE_FILE_IC;
                     const label = document.createElement('span');
@@ -2128,58 +2171,152 @@
                 }
             }
 
-            // Filtrar (Ctrl+F) precisa que os matches fiquem visíveis mesmo dentro
-            // de pastas colapsadas — expande na hora, sem mexer no estado depois.
-            function expandAncestorsForFilter() {
-                const filter = (wsTreeFilterInput && wsTreeFilterInput.value.trim().toLowerCase()) || '';
-                if (!filter) return;
-                // Pilha de pastas por profundidade — se uma entrada bate o filtro,
-                // expande todas as pastas ancestrais dela (profundidade menor, antes dela na lista).
+            function expandAncestorsMatching(predicate) {
                 const dirStack = [];
                 for (const e of treeEntries) {
                     while (dirStack.length && dirStack[dirStack.length - 1].depth >= e.depth) dirStack.pop();
-                    const isMatch = e.name.toLowerCase().includes(filter);
-                    if (isMatch) dirStack.forEach(d => { d.collapsed = false; });
+                    if (predicate(e)) dirStack.forEach(d => { d.collapsed = false; });
                     if (e.isDir) dirStack.push(e);
                 }
             }
 
-            // Busca flutuante (Ctrl+F, editor fechado, de qualquer lugar do app).
-            // Abre a árvore do projeto sozinha (se ainda fechada) pra mostrar os
-            // matches sublinhados; não depende da árvore já estar aberta.
-            const wsTreeFilterHint = document.getElementById('ws-tree-filter-hint');
-            async function openTreeFilter() {
-                if (!wsTreeFilterInput || !wsProjectMain || !wsProjectMain.dataset.path) return; // sem projeto aberto
+            // Filtrar (Ctrl+F / Ctrl+Shift+F) precisa que os matches fiquem visíveis mesmo dentro
+            // de pastas colapsadas — expande na hora, sem mexer no estado depois.
+            function expandAncestorsForFilter() {
+                const nameFilter = currentTreeNameFilter();
+                const contentFilter = currentTreeContentFilter();
+                if (activeTreeFilterMode === 'name' && nameFilter) {
+                    expandAncestorsMatching((e) => e.name.toLowerCase().includes(nameFilter));
+                } else if (activeTreeFilterMode === 'content' && contentFilter.length >= 4) {
+                    expandAncestorsMatching((e) => !e.isDir && contentSearchMatchSet.has(e.path));
+                }
+            }
+
+            async function ensureProjectTreeOpen() {
+                if (!wsProjectMain || !wsProjectMain.dataset.path) return false;
                 if (!wsTreeToggle || wsTreeToggle.getAttribute('aria-expanded') !== 'true') {
                     await toggleProjectTree();
                 }
-                wsTreeFilterInput.style.display = 'block';
-                if (wsTreeFilterHint) wsTreeFilterHint.style.display = 'block';
-                wsTreeFilterInput.value = '';
-                wsTreeFilterInput.focus();
-                updateTreeFilterHint();
+                return true;
             }
-            // Exposto em window: o listener global de Ctrl+F vive num escopo
-            // (IIFE) diferente deste bloco e não enxerga esta função por closure.
-            window.openTreeFilter = openTreeFilter;
+
+            function closeTreeContentFilter() {
+                if (!wsTreeContentFilterInput) return;
+                wsTreeContentFilterInput.style.display = 'none';
+                if (wsTreeContentFilterHint) wsTreeContentFilterHint.style.display = 'none';
+                wsTreeContentFilterInput.value = '';
+                clearContentSearchState();
+                if (activeTreeFilterMode === 'content') activeTreeFilterMode = null;
+                renderTree();
+            }
             function closeTreeFilter() {
                 if (!wsTreeFilterInput) return;
                 wsTreeFilterInput.style.display = 'none';
                 if (wsTreeFilterHint) wsTreeFilterHint.style.display = 'none';
                 wsTreeFilterInput.value = '';
+                if (activeTreeFilterMode === 'name') activeTreeFilterMode = null;
                 renderTree();
             }
             function updateTreeFilterHint() {
                 if (!wsTreeFilterHint) return;
-                const filter = wsTreeFilterInput.value.trim().toLowerCase();
+                const filter = currentTreeNameFilter();
                 if (!filter) { wsTreeFilterHint.textContent = ''; return; }
                 const n = treeEntries.filter(e => !e.isDir && e.name.toLowerCase().includes(filter)).length;
                 wsTreeFilterHint.textContent = n ? `${n} arquivo(s) — Enter abre o primeiro` : 'nenhum arquivo encontrado';
+            }
+            function updateTreeContentFilterHint(message) {
+                if (!wsTreeContentFilterHint) return;
+                if (typeof message === 'string') {
+                    wsTreeContentFilterHint.textContent = message;
+                    return;
+                }
+                const filter = currentTreeContentFilter();
+                if (!filter) {
+                    wsTreeContentFilterHint.textContent = '';
+                } else if (filter.length < 4) {
+                    wsTreeContentFilterHint.textContent = 'digite pelo menos 4 letras';
+                } else {
+                    wsTreeContentFilterHint.textContent = contentSearchMatches.length
+                        ? `${contentSearchMatches.length} arquivo(s) — Enter abre todos`
+                        : 'nenhum arquivo encontrado';
+                }
             }
             // Primeiro arquivo (não pasta) que bate o filtro, na ordem da árvore.
             function firstMatchingFile(filter) {
                 return treeEntries.find(e => !e.isDir && e.name.toLowerCase().includes(filter));
             }
+            async function runContentSearchNow() {
+                const filter = currentTreeContentFilter();
+                const searchSeq = ++contentSearchSeq;
+                if (!filter) {
+                    clearContentSearchState();
+                    updateTreeContentFilterHint('');
+                    renderTree();
+                    return;
+                }
+                if (filter.length < 4) {
+                    clearContentSearchState();
+                    updateTreeContentFilterHint();
+                    renderTree();
+                    return;
+                }
+                updateTreeContentFilterHint('procurando…');
+                let res = null;
+                try {
+                    res = window.electronAPI && window.electronAPI.searchProjectContent
+                        ? await window.electronAPI.searchProjectContent(filter)
+                        : null;
+                } catch (_) {}
+                if (searchSeq !== contentSearchSeq) return;
+                contentSearchMatches = Array.isArray(res && res.matches) ? res.matches : [];
+                contentSearchMatchSet = new Set(contentSearchMatches);
+                expandAncestorsForFilter();
+                renderTree();
+                if (res && res.ok === false) updateTreeContentFilterHint('erro ao buscar conteúdo');
+                else if (res && res.limited) updateTreeContentFilterHint(`${contentSearchMatches.length} arquivo(s) — limite atingido, Enter abre os listados`);
+                else updateTreeContentFilterHint();
+            }
+            function scheduleContentSearch() {
+                if (contentSearchDebounce) clearTimeout(contentSearchDebounce);
+                contentSearchDebounce = setTimeout(() => {
+                    contentSearchDebounce = null;
+                    runContentSearchNow();
+                }, 180);
+            }
+
+            // Busca flutuante (Ctrl+F, editor fechado, de qualquer lugar do app).
+            // Abre a árvore do projeto sozinha (se ainda fechada) pra mostrar os
+            // matches sublinhados; não depende da árvore já estar aberta.
+            async function openTreeFilter() {
+                if (!wsTreeFilterInput) return;
+                const ok = await ensureProjectTreeOpen();
+                if (!ok) return;
+                closeTreeContentFilter();
+                activeTreeFilterMode = 'name';
+                wsTreeFilterInput.style.display = 'block';
+                if (wsTreeFilterHint) wsTreeFilterHint.style.display = 'block';
+                wsTreeFilterInput.value = '';
+                wsTreeFilterInput.focus();
+                updateTreeFilterHint();
+                renderTree();
+            }
+            async function openTreeContentFilter() {
+                if (!wsTreeContentFilterInput) return;
+                const ok = await ensureProjectTreeOpen();
+                if (!ok) return;
+                closeTreeFilter();
+                activeTreeFilterMode = 'content';
+                clearContentSearchState();
+                wsTreeContentFilterInput.style.display = 'block';
+                if (wsTreeContentFilterHint) wsTreeContentFilterHint.style.display = 'block';
+                wsTreeContentFilterInput.value = '';
+                wsTreeContentFilterInput.focus();
+                updateTreeContentFilterHint();
+                renderTree();
+            }
+            // Exposto em window: os listeners globais vivem em outro escopo.
+            window.openTreeFilter = openTreeFilter;
+            window.openTreeContentFilter = openTreeContentFilter;
             if (wsTreeFilterInput) {
                 wsTreeFilterInput.addEventListener('input', () => {
                     expandAncestorsForFilter();
@@ -2191,11 +2328,30 @@
                         e.stopPropagation(); e.preventDefault(); closeTreeFilter();
                     } else if (e.key === 'Enter') {
                         e.stopPropagation(); e.preventDefault();
-                        const filter = wsTreeFilterInput.value.trim().toLowerCase();
+                        const filter = currentTreeNameFilter();
                         const match = filter && firstMatchingFile(filter);
                         if (match) {
                             closeTreeFilter();
                             openFileViewer(match.path);
+                        }
+                    }
+                });
+            }
+            if (wsTreeContentFilterInput) {
+                wsTreeContentFilterInput.addEventListener('input', () => {
+                    scheduleContentSearch();
+                    if (currentTreeContentFilter().length < 4) renderTree();
+                    updateTreeContentFilterHint();
+                });
+                wsTreeContentFilterInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape') {
+                        e.stopPropagation(); e.preventDefault(); closeTreeContentFilter();
+                    } else if (e.key === 'Enter') {
+                        e.stopPropagation(); e.preventDefault();
+                        if (currentTreeContentFilter().length >= 4 && contentSearchMatches.length) {
+                            const paths = [...contentSearchMatches];
+                            closeTreeContentFilter();
+                            openMatchingFiles(paths);
                         }
                     }
                 });
@@ -3246,11 +3402,9 @@
                 setSidebarCollapsed(!isSidebarCollapsed());
                 return;
             }
-            if (e.key.toLowerCase() !== 'f' || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
+            if (e.key.toLowerCase() !== 'f' || !(e.ctrlKey || e.metaKey) || e.altKey) return;
             // Editor aberto → busca dentro do arquivo (CodeMirror). Editor fechado →
-            // busca flutuante de arquivos, de qualquer lugar do app — reabre a
-            // sidebar primeiro se ela estiver escondida (precisa dela visível
-            // pra sublinhar o resultado no tree).
+            // Ctrl+F busca por nome e Ctrl+Shift+F busca por conteúdo no projeto.
             const fv = document.getElementById('file-viewer');
             if (fv && fv.classList.contains('open')) {
                 e.preventDefault(); e.stopPropagation();
@@ -3259,7 +3413,11 @@
             }
             e.preventDefault(); e.stopPropagation();
             if (isSidebarCollapsed()) setSidebarCollapsed(false);
-            if (window.openTreeFilter) window.openTreeFilter();
+            if (e.shiftKey) {
+                if (window.openTreeContentFilter) window.openTreeContentFilter();
+            } else if (window.openTreeFilter) {
+                window.openTreeFilter();
+            }
         }, true);
 
         function removeManualInputContainer() {

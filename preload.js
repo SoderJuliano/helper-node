@@ -127,6 +127,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   workspaceList: () => ipcRenderer.invoke("workspace:list"),
   getProjectContext: () => ipcRenderer.invoke("get-project-context"),
   getProjectTree: () => ipcRenderer.invoke("get-project-tree"),
+  searchProjectContent: (query) => ipcRenderer.invoke("search-project-content", query),
   readFileContent: (p) => ipcRenderer.invoke("read-file-content", p),
   getFileDiff: (payload) => ipcRenderer.invoke("get-file-diff", payload),
   // === Editor de código (#file-viewer) ===

@@ -3842,35 +3842,121 @@ ipcMain.handle("get-file-diff", async (event, payload) => {
 });
 
 // Árvore (blueprint) do projeto aberto — pra exibir no dropdown da sidebar.
+const PROJECT_SEARCH_SKIP_DIRS = new Set([
+  ".git",
+  "node_modules",
+  "target",
+  "build",
+  ".idea",
+  "__pycache__",
+  ".venv",
+  "dist",
+]);
+
+function isLikelyBinaryBuffer(buffer) {
+  if (!buffer || !buffer.length) return false;
+  const limit = Math.min(buffer.length, 1024);
+  let suspicious = 0;
+  for (let i = 0; i < limit; i += 1) {
+    const byte = buffer[i];
+    if (byte === 0) return true;
+    if ((byte < 7 || (byte > 14 && byte < 32)) && byte !== 9 && byte !== 10 && byte !== 13) suspicious += 1;
+  }
+  return suspicious / limit > 0.2;
+}
+
+function collectProjectEntries(root, limit = 400) {
+  const entries = [];
+  const visit = (dirPath, depth) => {
+    let dirEntries = [];
+    try {
+      dirEntries = fs2.readdirSync(dirPath, { withFileTypes: true });
+    } catch (_) {
+      return;
+    }
+    dirEntries.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+    for (const dirent of dirEntries) {
+      if (entries.length >= limit) return;
+      if (PROJECT_SEARCH_SKIP_DIRS.has(dirent.name)) continue;
+      const absPath = path.join(dirPath, dirent.name);
+      const isDir = dirent.isDirectory();
+      entries.push({ path: absPath, name: dirent.name, depth, isDir });
+      if (isDir) visit(absPath, depth + 1);
+      if (entries.length >= limit) return;
+    }
+  };
+  visit(root, 0);
+  return entries;
+}
+
 ipcMain.handle("get-project-tree", async () => {
   try {
     const dir = (workspace.list() || []).find((a) => a.type === "dir");
     if (!dir) return null;
     const root = dir.path;
-    // Lista estruturada (clicável) — usa -printf pra saber tipo (d/f) direto.
-    let entries = [];
-    try {
-      const { execSync } = require("child_process");
-      // path PRIMEIRO (%p) pra ordenar por caminho com `sort` simples; tipo (%y)
-      // depois. -printf interpreta \t/\n; o sort -t com tab literal quebrava.
-      const cmd =
-        `find "${root}" \\( -name '.git' -o -name 'node_modules' -o -name 'target' ` +
-        `-o -name 'build' -o -name '.idea' -o -name '__pycache__' -o -name '.venv' ` +
-        `-o -name 'dist' \\) -prune -o \\( -type f -o -type d \\) -printf '%p\\t%y\\n' ` +
-        `2>/dev/null | sort | head -400`;
-      const out = execSync(cmd, { encoding: "utf8" }).trim();
-      entries = out.split("\n").filter(Boolean).map((line) => {
-        const tab = line.lastIndexOf("\t");
-        const p = tab >= 0 ? line.slice(0, tab) : line;
-        const type = tab >= 0 ? line.slice(tab + 1) : "f";
-        const rel = path.relative(root, p);
-        return { path: p, name: path.basename(p), depth: rel ? rel.split(path.sep).length - 1 : 0, isDir: type === "d" };
-      }).filter((e) => e.path !== root);
-    } catch (_) {}
+    const entries = collectProjectEntries(root, 400);
     return { root, path: root, entries, tree: workspace.tree(root) || "" };
   } catch (e) {
     console.warn("[project-tree] falhou:", e.message);
     return null;
+  }
+});
+
+ipcMain.handle("search-project-content", async (_event, query) => {
+  try {
+    const dir = (workspace.list() || []).find((a) => a.type === "dir");
+    if (!dir) return { ok: false, error: "nenhum projeto aberto", matches: [] };
+    const normalizedQuery = String(query || "").trim().toLowerCase();
+    if (normalizedQuery.length < 4) return { ok: true, query: normalizedQuery, matches: [] };
+
+    const root = dir.path;
+    const matches = [];
+    const MAX_RESULTS = 200;
+    const MAX_FILE_SIZE = 1024 * 1024;
+
+    const walk = (dirPath) => {
+      if (matches.length >= MAX_RESULTS) return;
+      let dirEntries = [];
+      try {
+        dirEntries = fs2.readdirSync(dirPath, { withFileTypes: true });
+      } catch (_) {
+        return;
+      }
+      dirEntries.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+      for (const dirent of dirEntries) {
+        if (matches.length >= MAX_RESULTS) return;
+        if (PROJECT_SEARCH_SKIP_DIRS.has(dirent.name)) continue;
+        const absPath = path.join(dirPath, dirent.name);
+        if (workspace.isPathAllowed && !workspace.isPathAllowed(absPath)) continue;
+        if (dirent.isDirectory()) {
+          walk(absPath);
+          continue;
+        }
+        if (!dirent.isFile()) continue;
+        let st;
+        try {
+          st = fs2.statSync(absPath);
+        } catch (_) {
+          continue;
+        }
+        if (!st.isFile() || st.size > MAX_FILE_SIZE) continue;
+        let buffer;
+        try {
+          buffer = fs2.readFileSync(absPath);
+        } catch (_) {
+          continue;
+        }
+        if (isLikelyBinaryBuffer(buffer)) continue;
+        const text = buffer.toString("utf8").toLowerCase();
+        if (text.includes(normalizedQuery)) matches.push(absPath);
+      }
+    };
+
+    walk(root);
+    return { ok: true, query: normalizedQuery, matches, limited: matches.length >= MAX_RESULTS };
+  } catch (e) {
+    console.warn("[search-project-content] falhou:", e.message);
+    return { ok: false, error: e.message, matches: [] };
   }
 });
 
