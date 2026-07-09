@@ -201,7 +201,10 @@ function buildHelperToolsOpenAIOpts(userText, baseInstruction, baseModel) {
               if (name === 'patchFile') {
                 const h = crypto.createHash('sha256')
                   .update(String(a.path || '')).update('\0')
-                  .update(String(a.patch || a.diff || ''))
+                  .update(String(a.oldText || '')).update('\0')
+                  .update(String(a.newText || '')).update('\0')
+                  .update(String(a.startLine || '')).update('\0')
+                  .update(String(a.endLine || ''))
                   .digest('hex').slice(0, 16);
                 return `${name}:${h}`;
               }

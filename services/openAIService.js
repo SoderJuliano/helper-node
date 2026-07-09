@@ -109,11 +109,34 @@ class OpenAIService {
         const toolsTag = tools ? ` tools=${tools.length}` : '';
         console.log(`📤 OpenAI → model=${requestPayload.model} msgs=${msgCount}${toolsTag} ${userPreview}`);
 
-        const postOnce = async () => axios.post(
-            'https://api.openai.com/v1/chat/completions',
-            requestPayload,
-            { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } }
-        );
+        const postOnce = async (retries = 3, delayMs = 1500) => {
+            for (let attempt = 1; attempt <= retries; attempt++) {
+                try {
+                    return await axios.post(
+                        'https://api.openai.com/v1/chat/completions',
+                        requestPayload,
+                        { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } }
+                    );
+                } catch (err) {
+                    const isRateLimit = err.response && err.response.status === 429;
+                    const isServerError = err.response && err.response.status >= 500;
+                    
+                    if ((isRateLimit || isServerError) && attempt < retries) {
+                        let waitMs = delayMs * Math.pow(2, attempt - 1);
+                        if (isRateLimit && err.response.headers && err.response.headers['retry-after']) {
+                            const seconds = parseFloat(err.response.headers['retry-after']);
+                            if (!isNaN(seconds)) {
+                                waitMs = (seconds * 1000) + 200;
+                            }
+                        }
+                        console.warn(`[OpenAI API] Erro ${err.response ? err.response.status : 'Rede'} (tentativa ${attempt}/${retries}). Aguardando ${Math.round(waitMs)}ms antes de tentar de novo...`);
+                        await new Promise(resolve => setTimeout(resolve, waitMs));
+                    } else {
+                        throw err;
+                    }
+                }
+            }
+        };
 
         try {
             // Caminho simples (sem tools): comportamento original preservado
