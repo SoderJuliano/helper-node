@@ -10,7 +10,7 @@
 // The parser is stateful: feed() each stdout chunk as it arrives.
 
 // Matches any ANSI/VT100 escape sequence (CSI, OSC, color codes, etc.)
-const ANSI_RE = /[](?:[@-Z\\-_]|\[[0-9;]*[ -/]*[@-~]|\][^]*(?:|\\)|[()][0-9A-Za-z])/g;
+const ANSI_RE = /[\u001b\u009b]\[[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g;
 
 // Patterns that indicate the CLI is ready for the next input (response is done).
 // Matched against ANSI-stripped lines.
