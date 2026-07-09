@@ -53,6 +53,28 @@ class AgenticWorkflowService {
             
             const discoveryTools = registry.listReadOnly();
             
+            let projectStructureText = "";
+            try {
+                const workspace = require('./workspace');
+                const activeDirs = workspace.list() || [];
+                const dir = activeDirs.find(a => a.type === 'dir');
+                if (dir && dir.path) {
+                    const root = dir.path;
+                    const { execSync } = require("child_process");
+                    const cmd =
+                      `find "${root}" \\( -name '.git' -o -name 'node_modules' -o -name 'target' ` +
+                      `-o -name 'build' -o -name '.idea' -o -name '__pycache__' -o -name '.venv' ` +
+                      `-o -name 'dist' \\) -prune -o \\( -type f -o -type d \\) -printf '%P\\n' ` +
+                      `2>/dev/null | sort | head -150`;
+                    const out = execSync(cmd, { encoding: "utf8" }).trim();
+                    if (out) {
+                        projectStructureText = `\n\n═══ ESTRUTURA DO PROJETO ANEXADO (arquivos relevantes) ═══\n${out}\n\n`;
+                    }
+                }
+            } catch (e) {
+                console.warn("[agenticWorkflow] falha ao extrair estrutura do projeto:", e.message);
+            }
+
             const scopeInstruction = workspaceEnabled 
                 ? [
                     "═══ REGRAS DE ESCOPO (Workspace Ativo) ═══",
@@ -70,7 +92,7 @@ class AgenticWorkflowService {
 
             const discoveryInstruction = [
                 baseInstruction,
-                scopeInstruction,
+                scopeInstruction + projectStructureText,
                 "═══ FASE 1: DESCOBERTA E ARQUITETURA ═══",
                 "Seu objetivo é explorar o ambiente para entender a estrutura atual.",
                 "Identifique padrões, tecnologias e dependências relevantes para o pedido do usuário.",
@@ -166,15 +188,21 @@ class AgenticWorkflowService {
             await this.updatePhase(eventSender, 'review', 'Revisando as alterações e finalizando...', sessionId);
 
             const reviewInstruction = [
-                "═══ FASE 4: REVISÃO E CONCLUSÃO ═══",
+                "═══ FASE 4: REVISÃO, VERIFICAÇÃO E CONCLUSÃO ═══",
                 "Você acabou de realizar as alterações planejadas.",
                 "Revise se seguiu os padrões detectados na Fase 1.",
                 "Se encontrar erros, CORRIJA-OS agora usando as ferramentas.",
                 "",
+                "ETAPA DE COMPILAÇÃO E VERIFICAÇÃO DE SINTAXE (OBRIGATÓRIO):",
+                "1. Identifique se o projeto possui scripts de build, linter ou testes (ex: npm run build, tsc, npm run lint, etc.) inspecionando package.json ou configurações.",
+                "2. Se o projeto tiver comandos de build, compilação ou linting, execute-os usando runCommand ou runShellAdvanced para verificar se suas alterações causaram algum erro de sintaxe, TypeScript ou quebra de build.",
+                "3. Se a compilação/teste falhar, você DEVE analisar as mensagens de erro retornadas pelo terminal, usar as ferramentas para corrigir os arquivos e compilar/testar novamente em um loop contínuo até que tudo passe sem erros.",
+                "4. Se não houver comandos de build/compilação definidos, faça uma verificação de sintaxe manual (leitura rápida) nos arquivos modificados.",
+                "",
                 "IMPORTANTE PARA O RESUMO FINAL:",
-                "1. Confirme explicitamente quais arquivos foram CRIADOS ou MODIFICADOS com sucesso.",
-                "2. Se você usou writeFile/patchFile, NÃO diga ao usuário para 'criar os arquivos'; diga que você já os criou.",
-                "3. Dê as instruções de como o usuário pode TESTAR o que você já implementou.",
+                "1. Confirme de forma explícita quais arquivos foram modificados ou criados com sucesso.",
+                "2. Se você usou writeFile/patchFile, diga ao usuário que você já realizou as edições nos arquivos (não mande o usuário criá-los).",
+                "3. Indique os comandos que o usuário pode rodar para testar a implementação.",
                 "Ao final, dê um resumo curto e direto.",
             ].join("\n\n");
 
