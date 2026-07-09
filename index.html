@@ -4563,6 +4563,10 @@
             const _taLive = document.getElementById('ta-live-indicator');
             if (_taLive && window.electronAPI.onTranslationStatus) {
                 window.electronAPI.onTranslationStatus((status) => {
+                    if (status && status !== 'idle') {
+                        const hero = document.getElementById('welcome-hero');
+                        if (hero) hero.classList.add('hidden');
+                    }
                     if (status === 'mic_open') {
                         _taLive.className = 'visible state-mic';
                     } else if (status === 'processing') {
@@ -4625,6 +4629,8 @@
             window.electronAPI.onTranslationResult((data) => {
                 const el = document.getElementById('transcription');
                 if (!el) return;
+                const hero = document.getElementById('welcome-hero');
+                if (hero) hero.classList.add('hidden');
                 const { status } = data;
 
                 // Pergunta sendo reproduzida

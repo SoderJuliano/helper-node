@@ -80,8 +80,8 @@
 </head>
 <body>
     <div id="wrap">
-        <div class="title">⚠️ Confirmacao necessaria</div>
-        <div class="message" id="msg">A IA quer executar uma acao.</div>
+        <div class="title">⚠️ Confirmação necessária</div>
+        <div class="message" id="msg">A IA quer executar uma ação.</div>
         <div class="detail" id="detail" style="display:none"></div>
         <div class="actions">
             <button class="cancel" id="btn-cancel">Cancelar</button>
@@ -99,7 +99,7 @@
             if (raw) payload = JSON.parse(atob(raw));
         } catch (e) { console.error(e); }
 
-        document.getElementById("msg").textContent = payload.message || "Confirmar acao?";
+        document.getElementById("msg").textContent = payload.message || "Confirmar ação?";
         if (payload.detail) {
             const d = document.getElementById("detail");
             d.style.display = "block";
@@ -111,8 +111,9 @@
         function respond(ok) {
             if (window.electronAPI && window.electronAPI.confirmActionRespond) {
                 window.electronAPI.confirmActionRespond(payload.requestId, ok);
+            } else {
+                window.close();
             }
-            window.close();
         }
 
         document.getElementById("btn-ok").addEventListener("click", () => respond(true));
