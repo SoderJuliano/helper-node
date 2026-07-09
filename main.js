@@ -28,6 +28,15 @@ process.on("unhandledRejection", (reason) => {
   try { console.error("[unhandledRejection]", reason); } catch (_) {}
 });
 
+// Overriding emit to log all IPC messages received from the renderer
+const originalEmit = ipcMain.emit;
+ipcMain.emit = function (event, ...args) {
+  if (typeof event === 'string' && !event.startsWith('__')) {
+    console.log(`[IPC LOG] Channel: ${event}, Args:`, JSON.stringify(args.slice(1)).slice(0, 400));
+  }
+  return originalEmit.apply(ipcMain, arguments);
+};
+
 // === STEALTH MODE ===
 // Substituímos `Notification` (notificação nativa do SO) por um stub vazio.
 // Motivo: o app deve passar despercebido em reuniões/chamadas — ninguém
