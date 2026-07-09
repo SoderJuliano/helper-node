@@ -27,13 +27,23 @@ class OpenAIService {
             console.log(`OpenAI session ${sessionId} expired and was cleared.`);
         }
 
-        // Create a new session if it doesn't exist
+        // Create a new session or update system prompt in the existing session
         if (!this.sessions[sessionId]) {
             console.log(`Creating new OpenAI session: ${sessionId}`);
             this.sessions[sessionId] = {
                 messages: [{ role: 'system', content: instruction || 'You are a helpful assistant.' }],
                 lastActivity: now
             };
+        } else {
+            this.sessions[sessionId].lastActivity = now;
+            if (instruction) {
+                const sysMsg = this.sessions[sessionId].messages.find(m => m.role === 'system');
+                if (sysMsg) {
+                    sysMsg.content = instruction;
+                } else {
+                    this.sessions[sessionId].messages.unshift({ role: 'system', content: instruction });
+                }
+            }
         }
 
         // Build user message — multimodal if image fornecida
