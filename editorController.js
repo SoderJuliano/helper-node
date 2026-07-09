@@ -1,4 +1,4 @@
-// editorController.js — controla o editor de código embutido (#file-viewer).
+// editorController.js — controla o editor de código embutido (#file-viewer) com suporte a N abas.
 //
 // Fonte única de edição dos arquivos do projeto: o humano usa este caminho
 // diretamente; os agentes de IA (OpenAI/Claude Code CLI/Gemini CLI) hoje
@@ -7,14 +7,12 @@
 // primeiro passo pra eles convergirem pra cá também, sem quebrar o que já
 // funciona. Ver ARCHITECTURE.md > Editor de código.
 //
-// Modelado como Map<path, doc> mesmo mostrando 1 arquivo por vez na tela —
-// múltiplas abas no futuro é trocar a UI que lê esse Map, não o modelo de dados.
+// Modelado como Map<path, doc> suportando a renderização de abas dinâmicas
+// no #fv-tabs-container.
 (function () {
   'use strict';
 
-  // Extensão → modo do CodeMirror. Nomes diferentes do mapa hljs (FV_EXT_LANG,
-  // em index.html) porque são bibliotecas distintas — mantidos separados de
-  // propósito, sem acoplar um ao outro.
+  // Extensão → modo do CodeMirror.
   const CM_MODE_BY_EXT = {
     js: 'javascript', jsx: 'javascript', mjs: 'javascript', cjs: 'javascript',
     ts: { name: 'javascript', typescript: true }, tsx: { name: 'javascript', typescript: true },
@@ -59,8 +57,6 @@
       tabSize: 2,
       indentWithTabs: false,
       styleActiveLine: false,
-      // Ctrl+F: busca persistente (addon/search + addon/dialog, carregados no
-      // index.html). "Ir até a palavra colada/digitada" é o findPersistent nativo.
       extraKeys: {
         'Ctrl-F': 'findPersistent',
         'Cmd-F': 'findPersistent',
@@ -77,6 +73,7 @@
       doc.content = val;
       doc.dirty = (val !== doc.originalContent);
       updateDirtyIndicator();
+      renderTabs();
     });
     return cm;
   }
@@ -94,9 +91,85 @@
     el.style.display = msg ? 'inline' : 'none';
   }
 
-  function setSaveStatus(msg) {
-    const el = document.getElementById('fv-save-status');
-    if (el) el.textContent = msg || '';
+  // Renderiza as abas de arquivos abertos
+  function renderTabs() {
+    const container = document.getElementById('fv-tabs-container');
+    if (!container) return;
+    container.innerHTML = '';
+
+    openFiles.forEach((doc, filePath) => {
+      const tab = document.createElement('div');
+      tab.className = 'fv-tab';
+      if (filePath === activePath) {
+        tab.classList.add('active');
+      }
+      if (doc.dirty) {
+        tab.classList.add('dirty');
+      }
+
+      // Nome do arquivo
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'fv-tab-name';
+      nameSpan.textContent = String(filePath).split('/').pop() || filePath;
+      nameSpan.title = filePath;
+      tab.appendChild(nameSpan);
+
+      // Indicador de alteração não salva
+      const dotSpan = document.createElement('span');
+      dotSpan.className = 'fv-tab-dirty';
+      dotSpan.textContent = ' ●';
+      tab.appendChild(dotSpan);
+
+      // Botão de fechar aba
+      const closeBtn = document.createElement('button');
+      closeBtn.className = 'fv-tab-close';
+      closeBtn.innerHTML = '&times;';
+      closeBtn.title = 'Fechar aba';
+      closeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeTab(filePath);
+      });
+      tab.appendChild(closeBtn);
+
+      tab.addEventListener('click', () => {
+        if (filePath !== activePath) {
+          openFile(filePath);
+        }
+      });
+
+      container.appendChild(tab);
+    });
+  }
+
+  // Fecha uma aba específica
+  async function closeTab(filePath) {
+    const doc = openFiles.get(filePath);
+    if (!doc) return;
+
+    if (cm && filePath === activePath) {
+      doc.content = cm.getValue();
+    }
+
+    if (doc.dirty) {
+      const confirm = window.confirm(`O arquivo "${String(filePath).split('/').pop()}" possui alterações não salvas. Deseja fechar e descartar?`);
+      if (!confirm) return;
+    }
+
+    openFiles.delete(filePath);
+
+    if (filePath === activePath) {
+      if (openFiles.size > 0) {
+        const nextPath = openFiles.keys().next().value;
+        await openFile(nextPath);
+      } else {
+        const viewer = document.getElementById('file-viewer');
+        if (viewer) viewer.classList.remove('open');
+        activePath = null;
+        closeEditor();
+      }
+    } else {
+      renderTabs();
+    }
   }
 
   // Abre um arquivo no editor. Se já estava aberto nesta sessão (mesmo que o
@@ -112,8 +185,10 @@
     setConflictBanner('');
     setSaveStatus('');
     activePath = filePath;
-    pathEl.textContent = String(filePath).split('/').slice(-3).join('/');
-    pathEl.title = filePath;
+    if (pathEl) {
+      pathEl.textContent = String(filePath).split('/').slice(-3).join('/');
+      pathEl.title = filePath;
+    }
 
     let doc = openFiles.get(filePath);
     if (!doc) {
@@ -148,6 +223,7 @@
     cmInst.setValue(doc.content);
     cmInst.clearHistory(); // trocar de arquivo não deve deixar Ctrl+Z voltar pro arquivo anterior
     updateDirtyIndicator();
+    renderTabs();
     setTimeout(() => cmInst.refresh(), 0); // corrige medidas quando o painel estava fechado ao criar o CM
   }
 
@@ -171,6 +247,7 @@
         doc.dirty = false;
         doc.mtimeMs = res.mtimeMs;
         updateDirtyIndicator();
+        renderTabs();
         setConflictBanner(res.conflict ? '⚠ arquivo foi alterado por fora — salvo mesmo assim' : '');
         setSaveStatus('Salvo ✓');
         setTimeout(() => setSaveStatus(''), 1500);
@@ -180,6 +257,11 @@
     } catch (e) {
       setSaveStatus('Erro ao salvar: ' + e.message);
     }
+  }
+
+  function setSaveStatus(msg) {
+    const el = document.getElementById('fv-save-status');
+    if (el) el.textContent = msg || '';
   }
 
   // Fechar NÃO descarta o buffer (fica em openFiles) — reabrir o mesmo arquivo

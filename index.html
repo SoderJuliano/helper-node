@@ -1060,6 +1060,86 @@
         .fv-dirty { display: none; color: #ffb74d; font-size: 10px; flex-shrink: 0; }
         .fv-close { flex-shrink: 0; width: 24px; height: 24px; background: transparent; border: none; color: var(--text-3); font-size: 17px; cursor: pointer; border-radius: 5px; display: flex; align-items: center; justify-content: center; }
         .fv-close:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+        .fv-tabs-container {
+            display: flex;
+            align-items: flex-end;
+            gap: 2px;
+            overflow-x: auto;
+            flex: 1;
+            margin-right: 12px;
+            scrollbar-width: none; /* Hide scrollbar */
+            height: 100%;
+        }
+        .fv-tabs-container::-webkit-scrollbar {
+            display: none;
+        }
+        .fv-tab {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 10px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border);
+            border-bottom: none;
+            border-radius: 6px 6px 0 0;
+            font-family: var(--font-ui);
+            font-size: 12px;
+            color: var(--text-3);
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.15s ease;
+            max-width: 160px;
+            white-space: nowrap;
+            height: 22px;
+            margin-top: 4px;
+        }
+        .fv-tab:hover {
+            background: rgba(255,255,255,0.07);
+            color: var(--text-2);
+        }
+        .fv-tab.active {
+            background: var(--bg-base);
+            border-color: var(--border);
+            border-bottom: 1px solid var(--bg-base);
+            color: var(--text);
+            font-weight: 600;
+            height: 24px;
+            margin-top: 2px;
+            z-index: 2;
+        }
+        .fv-tab-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .fv-tab-dirty {
+            color: #ffb74d;
+            font-size: 8px;
+            display: none;
+        }
+        .fv-tab.dirty .fv-tab-dirty {
+            display: inline;
+        }
+        .fv-tab-close {
+            background: transparent;
+            border: none;
+            color: var(--text-4);
+            font-size: 13px;
+            cursor: pointer;
+            border-radius: 3px;
+            width: 14px;
+            height: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            margin-left: 2px;
+            transition: all 0.1s;
+        }
+        .fv-tab-close:hover {
+            background: rgba(255,255,255,0.15);
+            color: var(--text-2);
+        }
         /* Info auxiliar (idioma, conflito, status do save) empurrada pro canto
            direito — separada do grupo nome+×, que fica junto à esquerda. */
         .fv-lang { margin-left: auto; font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-4); background: rgba(255,255,255,0.05); padding: 2px 7px; border-radius: 5px; flex-shrink: 0; }
@@ -1335,13 +1415,11 @@
                  arquivo alterado) abrem pelo mesmo caminho. Ver editorController.js. -->
             <div id="file-viewer">
                 <div class="fv-header">
-                    <svg class="fv-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                    <span class="fv-path" id="fv-path"></span>
-                    <span class="fv-dirty" id="fv-dirty" title="Alterações não salvas (Ctrl+S salva)">●</span>
-                    <button class="fv-close" id="fv-close" title="Fechar (Esc)">×</button>
+                    <div class="fv-tabs-container" id="fv-tabs-container"></div>
                     <span class="fv-lang" id="fv-lang"></span>
                     <span class="fv-conflict" id="fv-conflict"></span>
                     <span class="fv-save-status" id="fv-save-status"></span>
+                    <button class="fv-close" id="fv-close" title="Fechar (Esc)">×</button>
                 </div>
                 <div class="fv-body" id="fv-body"></div>
             </div>
@@ -2137,7 +2215,10 @@
                     treeEntries = [];
                     return;
                 }
-                treeEntries = res.entries; // cada entry ganha .collapsed sob demanda (undefined = expandida)
+                treeEntries = res.entries.map((entry) => ({
+                    ...entry,
+                    collapsed: entry.isDir
+                }));
                 renderTree();
             }
             if (wsTreeToggle) {
