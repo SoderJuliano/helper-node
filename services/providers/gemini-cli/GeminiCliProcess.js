@@ -5,8 +5,8 @@
 const { spawn } = require('child_process');
 const { execFile } = require('child_process');
 
-// Searches common locations for the `gemini` binary.
-const CANDIDATE_COMMANDS = ['gemini', 'gemini-cli'];
+// Searches common locations for the `agy` or `gemini` binary.
+const CANDIDATE_COMMANDS = ['agy', 'gemini', 'gemini-cli'];
 
 async function resolveBinary() {
   for (const cmd of CANDIDATE_COMMANDS) {
@@ -47,10 +47,10 @@ class GeminiCliProcess {
     }
     if (!this._binary) {
       throw new Error(
-        'Gemini CLI não encontrado. Instale com:\n' +
-        '  npm install -g @google/gemini-cli\n' +
-        'e faça login com:\n' +
-        '  gemini auth login'
+        'Antigravity CLI (agy) não encontrado. Instale com:\n' +
+        '  npm install -g @google/antigravity-cli\n' +
+        'e faça login/configuração com:\n' +
+        '  agy install'
       );
     }
 

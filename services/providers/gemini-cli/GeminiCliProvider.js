@@ -22,21 +22,21 @@ function summarizeTool({ label, detail }) {
 function friendlyError(err) {
   const msg = err && err.message ? err.message : String(err);
   if (/not found|no such file|ENOENT/i.test(msg)) {
-    return 'Gemini CLI não está instalado. Execute: npm install -g @google/gemini-cli';
+    return 'Antigravity CLI (agy) não está instalado. Instale com: npm install -g @google/antigravity-cli';
   }
   if (/auth|login|credential|token|unauthenticated/i.test(msg)) {
-    return 'Autenticação necessária. Execute no terminal: gemini auth login';
+    return 'Autenticação/Configuração necessária. Execute no terminal: agy install';
   }
   if (/rate.?limit|quota|429/i.test(msg)) {
     return 'Limite de requisições atingido. Aguarde e tente novamente.';
   }
   if (/model.*(unavailable|not found)/i.test(msg)) {
-    return 'Modelo Gemini indisponível. Verifique o modelo nas configurações.';
+    return 'Modelo Antigravity indisponível. Verifique o modelo nas configurações.';
   }
   if (/timeout/i.test(msg)) {
-    return 'Tempo esgotado aguardando o Gemini CLI. Tente novamente.';
+    return 'Tempo esgotado aguardando o Antigravity CLI. Tente novamente.';
   }
-  return `Gemini CLI: ${msg}`;
+  return `Antigravity CLI: ${msg}`;
 }
 
 class GeminiCliProvider {

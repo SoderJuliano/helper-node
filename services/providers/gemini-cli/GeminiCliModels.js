@@ -1,16 +1,17 @@
-// Known Gemini CLI models. The CLI itself doesn't expose a --list-models flag,
-// so we maintain a curated list. Models are ordered by capability (best first).
+// Known Antigravity (agy) CLI models. Models are ordered by capability (best first).
 
 const KNOWN_MODELS = [
-  { id: 'gemini-2.5-pro',        label: 'Gemini 2.5 Pro'        },
-  { id: 'gemini-2.5-flash',      label: 'Gemini 2.5 Flash'      },
-  { id: 'gemini-2.0-flash',      label: 'Gemini 2.0 Flash'      },
-  { id: 'gemini-2.0-flash-lite', label: 'Gemini 2.0 Flash Lite' },
-  { id: 'gemini-1.5-pro',        label: 'Gemini 1.5 Pro'        },
-  { id: 'gemini-1.5-flash',      label: 'Gemini 1.5 Flash'      },
+  { id: 'Gemini 3.5 Flash (High)',      label: 'Gemini 3.5 Flash (High)'      },
+  { id: 'Gemini 3.5 Flash (Medium)',    label: 'Gemini 3.5 Flash (Medium)'    },
+  { id: 'Gemini 3.5 Flash (Low)',       label: 'Gemini 3.5 Flash (Low)'       },
+  { id: 'Gemini 3.1 Pro (High)',        label: 'Gemini 3.1 Pro (High)'        },
+  { id: 'Gemini 3.1 Pro (Low)',         label: 'Gemini 3.1 Pro (Low)'         },
+  { id: 'Claude Sonnet 4.6 (Thinking)', label: 'Claude Sonnet 4.6 (Thinking)' },
+  { id: 'Claude Opus 4.6 (Thinking)',   label: 'Claude Opus 4.6 (Thinking)'   },
+  { id: 'GPT-OSS 120B (Medium)',        label: 'GPT-OSS 120B (Medium)'        },
 ];
 
-const DEFAULT_MODEL = 'gemini-2.5-flash';
+const DEFAULT_MODEL = 'Gemini 3.5 Flash (Medium)';
 
 function getModels() {
   return KNOWN_MODELS;

@@ -19,6 +19,7 @@ const PROMPT_PATTERNS = [
   /^❯\s/,          // "❯ " — fancy unicode
   /^\$\s/,         // "$ " — shell-style
   /^gemini>\s/i,   // "gemini> "
+  /^agy>\s/i,      // "agy> "
   /^\(\d+\)\s*>\s/, // "(1) > " — numbered prompts
 ];
 
