@@ -118,8 +118,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   deleteSession: (sessionId) => ipcRenderer.invoke("delete-session", sessionId),
 
   // Confirmacao de acoes destrutivas (systemPowerAction etc.)
-  confirmActionRespond: (requestId, ok) =>
-    ipcRenderer.send("confirm-action-respond", { requestId, ok }),
+  confirmActionRespond: (requestId, ok, always) =>
+    ipcRenderer.send("confirm-action-respond", { requestId, ok, always }),
 
   // === Workspace (anexos pra contexto da IA) ===
   workspacePickFile: () => ipcRenderer.invoke("workspace:pick-file"),

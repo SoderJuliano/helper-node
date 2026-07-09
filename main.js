@@ -2734,6 +2734,7 @@ function formatToHTML(text) {
 }
 
 async function getIaResponse(text) {
+  globalBypassAllConfirmations = false;
   console.log("getIaResponse called with text:", text);
   waitingNotificationInterval = setInterval(() => {
     if (appConfig.notificationsEnabled && Notification.isSupported()) {
@@ -4610,12 +4611,17 @@ ipcMain.on("resize-overlay", (event, height) => {
 // Usado por tools mutantes (systemPowerAction etc.) pra pedir clique humano
 // antes de executar algo destrutivo. Retorna Promise<boolean>.
 const _confirmActionPending = new Map(); // requestId -> { resolve, win, timer }
+let globalBypassAllConfirmations = false;
 
 function showConfirmActionOverlay(opts) {
+  if (globalBypassAllConfirmations) {
+    console.log(`[confirm] Bypassing confirmation automatically due to active 'always approve' bypass.`);
+    return Promise.resolve(true);
+  }
   return new Promise((resolve) => {
     const requestId = `cfm_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const payload = { ...opts, requestId };
-    const json = Buffer.from(JSON.stringify(payload)).toString('base64');
+    const json = encodeURIComponent(Buffer.from(JSON.stringify(payload)).toString('base64'));
 
     const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
     const w = 480, h = 250;
@@ -4670,7 +4676,11 @@ ipcMain.on("confirm-action-respond", (event, payload) => {
   if (!payload || !payload.requestId) return;
   const entry = _confirmActionPending.get(payload.requestId);
   if (!entry) return;
-  console.log(`[confirm] ${payload.requestId} respondido: ${payload.ok}`);
+  console.log(`[confirm] ${payload.requestId} respondido: ok=${payload.ok}, always=${payload.always}`);
+  if (payload.ok && payload.always) {
+    globalBypassAllConfirmations = true;
+    console.log(`[confirm] Bypassing all subsequent confirmations for this conversation turn.`);
+  }
   entry.finalize(!!payload.ok);
 });
 

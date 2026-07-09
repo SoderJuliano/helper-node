@@ -90,6 +90,12 @@
             border-color: rgba(255,255,255,0.18);
         }
         button.cancel:hover { background: rgba(255,255,255,0.16); color: #fff; }
+        button.always {
+            background: #e67e22;
+            color: #fff;
+            font-weight: 600;
+        }
+        button.always:hover { background: #d35400; }
         button.confirm {
             background: #d33;
             color: #fff;
@@ -112,6 +118,7 @@
         <div class="detail" id="detail" style="display:none"></div>
         <div class="actions">
             <button class="cancel" id="btn-cancel">Cancelar</button>
+            <button class="always" id="btn-always" title="Aprovar todas as ações deste turno sem perguntar de novo">Sempre</button>
             <button class="confirm" id="btn-ok">Confirmar</button>
         </div>
         <div class="countdown" id="cd"></div>
@@ -142,15 +149,16 @@
         document.getElementById("btn-ok").textContent = payload.confirmText || "Confirmar";
         document.getElementById("btn-cancel").textContent = payload.cancelText || "Cancelar";
 
-        function respond(ok) {
+        function respond(ok, always) {
             if (window.electronAPI && window.electronAPI.confirmActionRespond) {
-                window.electronAPI.confirmActionRespond(payload.requestId, ok);
+                window.electronAPI.confirmActionRespond(payload.requestId, ok, always);
             } else {
                 window.close();
             }
         }
 
         document.getElementById("btn-ok").addEventListener("click", () => respond(true));
+        document.getElementById("btn-always").addEventListener("click", () => respond(true, true));
         document.getElementById("btn-cancel").addEventListener("click", () => respond(false));
 
         // Countdown visual (timeout efetivo eh feito no main)
@@ -166,9 +174,12 @@
             }
         }, 250);
 
-        // Atalhos: Enter confirma, Esc cancela
+        // Atalhos: Enter confirma, Shift+Enter confirma Sempre, Esc cancela
         window.addEventListener("keydown", (e) => {
-            if (e.key === "Enter") respond(true);
+            if (e.key === "Enter") {
+                if (e.shiftKey) respond(true, true);
+                else respond(true);
+            }
             else if (e.key === "Escape") respond(false);
         });
     </script>
