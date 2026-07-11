@@ -392,6 +392,44 @@
         .ws-tree-toggle:hover { background: rgba(255,255,255,0.06); color: var(--text); border-color: var(--border-strong); }
         .ws-tree-toggle svg { width: 13px; height: 13px; transition: transform .2s var(--ease); }
         .ws-tree-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+        .ws-tree-trash-btn {
+            display: none; align-items: center; justify-content: center;
+            background: rgba(255, 82, 82, 0.05); border: 1px solid rgba(255, 82, 82, 0.2);
+            color: #ff5252; width: 28px; height: 30px; border-radius: var(--radius-sm);
+            cursor: pointer; flex-shrink: 0; transition: background 0.15s, color 0.15s, border-color 0.15s;
+        }
+        .ws-tree-trash-btn:hover {
+            background: rgba(255, 82, 82, 0.15);
+            border-color: rgba(255, 82, 82, 0.4);
+            color: #ff1744;
+        }
+        .ws-tree-trash-btn svg {
+            width: 13px; height: 13px;
+        }
+        .ws-tree-checkbox {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 12px;
+            height: 12px;
+            border: 1px solid var(--border-strong, #3d3d4c);
+            border-radius: 2px;
+            margin-right: 6px;
+            flex-shrink: 0;
+            cursor: pointer;
+            background: rgba(0,0,0,0.25);
+            font-size: 8px;
+            font-weight: bold;
+            line-height: 1;
+        }
+        .ws-tree-checkbox.checked {
+            background: var(--accent-2, #64c8ff);
+            border-color: var(--accent-2, #64c8ff);
+            color: #000 !important;
+        }
+        .ws-tree-checkbox.checked::after {
+            content: '✓';
+        }
         .ws-tree {
             margin-top: 5px; padding: 7px 9px;
             background: rgba(0,0,0,0.22); border: 1px solid var(--border);
@@ -1362,6 +1400,9 @@
                                 <svg class="ws-folder-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
                                 <span id="ws-project-name">projeto</span>
                             </button>
+                            <button class="ws-tree-trash-btn" id="ws-tree-trash-btn" type="button" title="Excluir itens selecionados (Delete)" style="display:none;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                            </button>
                             <button class="ws-tree-toggle" id="ws-tree-toggle" type="button" title="Ver estrutura do projeto" aria-expanded="false">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                             </button>
@@ -2168,6 +2209,8 @@
             const TREE_CHEVRON_IC = '<svg class="ws-tree-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
             let treeEntries = []; // cache da última busca — pastas colapsam sem refetch
             let renamingPath = null;
+            let selectedPaths = new Set();
+            let creatingFileParent = null;
             const wsTreeFilterInput = document.getElementById('ws-tree-filter');
             const wsTreeContentFilterInput = document.getElementById('ws-tree-content-filter');
             const wsTreeFilterHint = document.getElementById('ws-tree-filter-hint');
@@ -2192,14 +2235,6 @@
                     contentSearchDebounce = null;
                 }
             }
-            function openMatchingFiles(paths) {
-                const unique = [...new Set((paths || []).filter(Boolean))];
-                unique.forEach((filePath) => openFileViewer(filePath));
-            }
-
-            // Renderiza a lista (flat, ordenada por caminho) respeitando colapso de
-            // pastas: qualquer entrada com depth > que uma pasta colapsada some da
-            // tela até a próxima entrada no mesmo nível ou mais raso.
             function renderTree() {
                 if (!wsTree) return;
                 wsTree.innerHTML = '';
@@ -2207,6 +2242,13 @@
                 const contentFilter = currentTreeContentFilter();
                 const hasNameFilter = activeTreeFilterMode === 'name' && !!nameFilter;
                 const hasContentFilter = activeTreeFilterMode === 'content' && !!contentFilter;
+                const projectPath = wsProjectMain ? wsProjectMain.dataset.path : '';
+                
+                // Se estiver criando arquivo no root (projeto), renderiza o input no início do tree
+                if (creatingFileParent === projectPath) {
+                    renderCreationInput(wsTree, projectPath, 0);
+                }
+
                 let skipDepth = null;
                 for (const e of treeEntries) {
                     if (skipDepth !== null) {
@@ -2224,6 +2266,24 @@
                         (shouldDim ? (isMatch ? ' match' : ' dim') : '');
                     node.style.paddingLeft = (4 + e.depth * 12) + 'px';
                     node.innerHTML = e.isDir ? (TREE_CHEVRON_IC + TREE_DIR_IC) : TREE_FILE_IC;
+                    
+                    // Checkbox de seleção múltipla (se houver itens selecionados)
+                    if (selectedPaths.size > 0) {
+                        const checkbox = document.createElement('span');
+                        checkbox.className = 'ws-tree-checkbox' + (selectedPaths.has(e.path) ? ' checked' : '');
+                        checkbox.addEventListener('click', (ev) => {
+                            ev.stopPropagation();
+                            ev.preventDefault();
+                            if (selectedPaths.has(e.path)) {
+                                selectedPaths.delete(e.path);
+                            } else {
+                                selectedPaths.add(e.path);
+                            }
+                            updateSelectionUi();
+                            renderTree();
+                        });
+                        node.insertBefore(checkbox, node.firstChild);
+                    }
                     
                     // Configura drag and drop
                     node.draggable = (renamingPath !== e.path);
@@ -2360,10 +2420,31 @@
                         node.tabIndex = 0; // navegável via Tab; Enter/Espaço abrem ou colapsam, igual ao clique
                         if (e.isDir) {
                             node.title = (e.collapsed ? 'Expandir' : 'Colapsar') + ' pasta';
-                            node.addEventListener('click', () => { e.collapsed = !e.collapsed; renderTree(); });
+                            node.addEventListener('click', (ev) => {
+                                if (ev.shiftKey) {
+                                    ev.preventDefault(); ev.stopPropagation();
+                                    if (selectedPaths.has(e.path)) selectedPaths.delete(e.path);
+                                    else selectedPaths.add(e.path);
+                                    updateSelectionUi();
+                                    renderTree();
+                                    return;
+                                }
+                                e.collapsed = !e.collapsed;
+                                renderTree();
+                            });
                         } else {
                             node.title = e.path + '  (clique ou Enter para abrir)';
-                            node.addEventListener('click', () => openFileViewer(e.path));
+                            node.addEventListener('click', (ev) => {
+                                if (ev.shiftKey) {
+                                    ev.preventDefault(); ev.stopPropagation();
+                                    if (selectedPaths.has(e.path)) selectedPaths.delete(e.path);
+                                    else selectedPaths.add(e.path);
+                                    updateSelectionUi();
+                                    renderTree();
+                                    return;
+                                }
+                                openFileViewer(e.path);
+                            });
                         }
                         node.addEventListener('keydown', (ev) => {
                             if (ev.key !== 'Enter' && ev.key !== ' ') return;
@@ -2373,9 +2454,152 @@
                         });
                     }
                     wsTree.appendChild(node);
+                    
+                    // Se estiver criando arquivo dentro deste diretório, renderiza o input logo após o nó
+                    if (e.isDir && e.path === creatingFileParent) {
+                        renderCreationInput(wsTree, e.path, e.depth + 1);
+                    }
+                    
                     if (e.isDir && e.collapsed) skipDepth = e.depth;
                 }
             }
+
+            function renderCreationInput(parentEl, parentDirPath, depth) {
+                const node = document.createElement('div');
+                node.className = 'ws-tree-node file temp-create';
+                node.style.paddingLeft = (4 + depth * 12) + 'px';
+                node.innerHTML = TREE_FILE_IC;
+                
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.placeholder = 'nome-do-arquivo.ext';
+                input.style.cssText = `
+                    background: #0d0d12;
+                    border: 1px solid var(--accent-2);
+                    color: var(--text);
+                    font-family: inherit;
+                    font-size: inherit;
+                    padding: 1px 4px;
+                    margin-left: 4px;
+                    border-radius: 3px;
+                    width: 100%;
+                    box-sizing: border-box;
+                    outline: none;
+                `;
+                node.appendChild(input);
+                parentEl.appendChild(node);
+                
+                setTimeout(() => input.focus(), 0);
+                
+                let saved = false;
+                const saveCreate = async () => {
+                    if (saved) return;
+                    saved = true;
+                    const name = input.value.trim();
+                    if (name) {
+                        const separator = parentDirPath.includes('\\') ? '\\' : '/';
+                        const filePath = parentDirPath + (parentDirPath.endsWith(separator) ? '' : separator) + name;
+                        const res = await window.electronAPI.createFile(filePath);
+                        if (res.ok) {
+                            creatingFileParent = null;
+                            await refreshProjectTree();
+                            openFileViewer(filePath);
+                        } else {
+                            if (typeof showToast === 'function') showToast('Erro ao criar: ' + res.error);
+                            creatingFileParent = null;
+                            renderTree();
+                        }
+                    } else {
+                        creatingFileParent = null;
+                        renderTree();
+                    }
+                };
+                
+                input.addEventListener('click', (ev) => ev.stopPropagation());
+                
+                input.addEventListener('keydown', (ev) => {
+                    if (ev.key === 'Enter') {
+                        ev.preventDefault(); ev.stopPropagation();
+                        saveCreate();
+                    } else if (ev.key === 'Escape') {
+                        ev.preventDefault(); ev.stopPropagation();
+                        creatingFileParent = null;
+                        renderTree();
+                    }
+                });
+                
+                input.addEventListener('blur', () => {
+                    saveCreate();
+                });
+            }
+
+            const wsTreeTrashBtn = document.getElementById('ws-tree-trash-btn');
+            if (wsTreeTrashBtn) {
+                wsTreeTrashBtn.addEventListener('click', () => {
+                    deleteSelectedItems();
+                });
+            }
+
+            function updateSelectionUi() {
+                if (wsTreeTrashBtn) {
+                    wsTreeTrashBtn.style.display = selectedPaths.size > 0 ? 'flex' : 'none';
+                }
+            }
+
+            async function deleteSelectedItems() {
+                if (!selectedPaths || selectedPaths.size === 0) return;
+                const list = Array.from(selectedPaths);
+                const count = list.length;
+                let confirmMsg = '';
+                if (count === 1) {
+                    const filename = list[0].split(/[/\\]/).pop();
+                    confirmMsg = `Tem certeza que deseja excluir o item "${filename}" permanentemente?`;
+                } else {
+                    confirmMsg = `Tem certeza que deseja excluir permanentemente os ${count} itens selecionados?`;
+                }
+                
+                if (window.confirm(confirmMsg)) {
+                    const res = await window.electronAPI.deleteItems(list);
+                    if (res && res.ok) {
+                        selectedPaths.clear();
+                        updateSelectionUi();
+                        await refreshProjectTree();
+                        if (typeof showToast === 'function') showToast(`${count} item(ns) excluído(s) com sucesso.`);
+                    } else {
+                        if (typeof showToast === 'function') showToast('Erro ao excluir: ' + (res ? res.error : 'erro desconhecido'));
+                    }
+                }
+            }
+
+            async function deleteSingleItem(item) {
+                const filename = item.name || item.path.split(/[/\\]/).pop();
+                if (window.confirm(`Tem certeza que deseja excluir o item "${filename}" permanentemente?`)) {
+                    const res = await window.electronAPI.deleteItems([item.path]);
+                    if (res && res.ok) {
+                        if (selectedPaths) {
+                            selectedPaths.delete(item.path);
+                            updateSelectionUi();
+                        }
+                        await refreshProjectTree();
+                        if (typeof showToast === 'function') showToast(`"${filename}" excluído com sucesso.`);
+                    } else {
+                        if (typeof showToast === 'function') showToast('Erro ao excluir: ' + (res ? res.error : 'erro desconhecido'));
+                    }
+                }
+            }
+
+            document.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Delete' || ev.key === 'Del') {
+                    const active = document.activeElement;
+                    if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) {
+                        return;
+                    }
+                    if (selectedPaths && selectedPaths.size > 0) {
+                        ev.preventDefault();
+                        deleteSelectedItems();
+                    }
+                }
+            });
 
             async function refreshProjectTree() {
                 if (!wsTree || !wsTreeToggle) return;
@@ -2415,9 +2639,15 @@
                 menu.className = 'ws-tree-context-menu';
                 menu.style.cssText = 'position:fixed; z-index:10000; background:var(--bg-elevated, #1b1e24); border:1px solid var(--border, #2d2d38); border-radius:var(--radius-sm, 4px); padding:4px; box-shadow:0 4px 12px rgba(0,0,0,0.5); min-width:170px; font-family:var(--font-ui); font-size:12px; color:var(--text, #e3e3e6);';
                 
-                const mkItem = (icon, label, fn) => {
+                const SVGI_NEW_FILE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>';
+                const SVGI_CLIPBOARD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px;"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>';
+                const SVGI_LINK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
+                const SVGI_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+                const SVGI_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; color:#ff5252;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
+
+                const mkItem = (iconHtml, label, fn) => {
                     const b = document.createElement('button');
-                    b.innerHTML = `<span style="margin-right:8px; opacity:0.8;">${icon}</span>${label}`;
+                    b.innerHTML = `<span style="margin-right:8px; opacity:0.8; display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px;">${iconHtml}</span>${label}`;
                     b.style.cssText = 'display:flex; align-items:center; width:100%; text-align:left; background:transparent; border:none; color:inherit; font-size:inherit; font-family:inherit; padding:6px 10px; cursor:pointer; border-radius:4px; transition:background .15s;';
                     b.addEventListener('mouseenter', () => b.style.background = 'rgba(255,255,255,0.06)');
                     b.addEventListener('mouseleave', () => b.style.background = 'transparent');
@@ -2425,29 +2655,49 @@
                     return b;
                 };
                 
-                menu.appendChild(mkItem('📋', 'Copiar Caminho Absoluto', () => {
-                    window.electronAPI.copyToClipboard(item.path);
-                    if (typeof showToast === 'function') showToast('Caminho absoluto copiado!');
-                }));
-                
-                menu.appendChild(mkItem('🔗', 'Copiar Caminho Relativo', () => {
-                    const projectPath = wsProjectMain ? wsProjectMain.dataset.path : '';
-                    let relPath = item.path;
-                    if (projectPath && item.path.startsWith(projectPath)) {
-                        relPath = item.path.substring(projectPath.length).replace(/^[/\\]+/, '');
-                    }
-                    window.electronAPI.copyToClipboard(relPath);
-                    if (typeof showToast === 'function') showToast('Caminho relativo copiado!');
-                }));
-                
-                const hr = document.createElement('div');
-                hr.style.cssText = 'height:1px; background:var(--border, #2d2d38); margin:4px 0;';
-                menu.appendChild(hr);
-                
-                menu.appendChild(mkItem('✏️', 'Renomear', () => {
-                    renamingPath = item.path;
-                    renderTree();
-                }));
+                if (item.isRoot || item.isDir) {
+                    menu.appendChild(mkItem(SVGI_NEW_FILE, 'Novo Arquivo', () => {
+                        creatingFileParent = item.path;
+                        if (item.isDir) {
+                            item.collapsed = false;
+                        }
+                        renderTree();
+                    }));
+                    
+                    const hr0 = document.createElement('div');
+                    hr0.style.cssText = 'height:1px; background:var(--border, #2d2d38); margin:4px 0;';
+                    menu.appendChild(hr0);
+                }
+
+                if (!item.isRoot) {
+                    menu.appendChild(mkItem(SVGI_CLIPBOARD, 'Copiar Caminho Absoluto', () => {
+                        window.electronAPI.copyToClipboard(item.path);
+                        if (typeof showToast === 'function') showToast('Caminho absoluto copiado!');
+                    }));
+                    
+                    menu.appendChild(mkItem(SVGI_LINK, 'Copiar Caminho Relativo', () => {
+                        const projectPath = wsProjectMain ? wsProjectMain.dataset.path : '';
+                        let relPath = item.path;
+                        if (projectPath && item.path.startsWith(projectPath)) {
+                            relPath = item.path.substring(projectPath.length).replace(/^[/\\]+/, '');
+                        }
+                        window.electronAPI.copyToClipboard(relPath);
+                        if (typeof showToast === 'function') showToast('Caminho relativo copiado!');
+                    }));
+                    
+                    const hr = document.createElement('div');
+                    hr.style.cssText = 'height:1px; background:var(--border, #2d2d38); margin:4px 0;';
+                    menu.appendChild(hr);
+                    
+                    menu.appendChild(mkItem(SVGI_EDIT, 'Renomear', () => {
+                        renamingPath = item.path;
+                        renderTree();
+                    }));
+                    
+                    menu.appendChild(mkItem(SVGI_TRASH, 'Excluir', () => {
+                        deleteSingleItem(item);
+                    }));
+                }
                 
                 document.body.appendChild(menu);
                 const menuWidth = menu.offsetWidth || 170;
@@ -2677,6 +2927,16 @@
             if (wsTreeToggle) {
                 wsTreeToggle.addEventListener('click', (e) => { e.stopPropagation(); toggleProjectTree(); });
             }
+            if (wsTree) {
+                wsTree.addEventListener('contextmenu', (ev) => {
+                    if (ev.target === wsTree || ev.target.classList.contains('ws-tree-empty')) {
+                        const projectPath = wsProjectMain ? wsProjectMain.dataset.path : '';
+                        if (projectPath) {
+                            showTreeContextMenu(ev, { path: projectPath, isRoot: true });
+                        }
+                    }
+                });
+            }
 
             async function refreshWorkspacePanel() {
                 if (!wsPanel) return;
@@ -2754,11 +3014,15 @@
             if (window.electronAPI && window.electronAPI.onWorkspaceFileWritten) {
                 window.electronAPI.onWorkspaceFileWritten((data) => {
                     try {
-                        const verb = data.action === 'create' ? '✨' :
-                                     data.action === 'edit'   ? '✏️' :
-                                     data.action === 'append' ? '➕' :
-                                     data.action === 'patch'  ? '🩹' :
-                                     data.action === 'delete' ? '🗑️' : '📝';
+                        const SVGI_MINI_FILE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:11px; height:11px; margin-right:4px; opacity:0.8; display:inline-block; vertical-align:middle;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+                        const SVGI_MINI_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:11px; height:11px; margin-right:4px; opacity:0.8; display:inline-block; vertical-align:middle;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+                        const SVGI_MINI_PLUS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:11px; height:11px; margin-right:4px; opacity:0.8; display:inline-block; vertical-align:middle;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
+                        const SVGI_MINI_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:11px; height:11px; margin-right:4px; opacity:0.8; color:#ff5252; display:inline-block; vertical-align:middle;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+
+                        const verbSvg = data.action === 'create' ? SVGI_MINI_FILE :
+                                        data.action === 'delete' ? SVGI_MINI_TRASH :
+                                        data.action === 'append' ? SVGI_MINI_PLUS :
+                                        SVGI_MINI_EDIT;
                         const parts = (data.path || '').split('/');
                         const shortName = parts.slice(-2).join('/');
 
@@ -2779,7 +3043,7 @@
                         const chip = document.createElement('span');
                         chip.className = 'tool-file-chip';
                         chip.title = `${data.path}\n(clique para ver o diff)`;
-                        chip.textContent = `${verb} ${shortName}`;
+                        chip.innerHTML = verbSvg + `<span style="vertical-align:middle;">${shortName}</span>`;
                         // Clicar mostra o DIFF (antes/depois, vermelho/verde — o que a IA
                         // mudou), estilo code review do GitHub. Editar manualmente continua
                         // acessível pela árvore do projeto ou pela busca (Ctrl+F).
