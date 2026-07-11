@@ -34,6 +34,14 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/dialog/dialog.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/search/searchcursor.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/search/search.min.js"></script>
+    <!-- Autocomplete (IntelliSense básico) no editor -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/javascript-hint.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/css-hint.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/xml-hint.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/html-hint.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/anyword-hint.min.js"></script>
     <style>
         /* =====================================================================
            HELPER NODE — Design System
@@ -1176,6 +1184,37 @@
         .ws-tree-node.dir:hover { background: rgba(255,255,255,0.05); }
         .ws-tree-chevron { width: 10px; height: 10px; flex-shrink: 0; opacity: .6; transition: transform .15s var(--ease); }
         .ws-tree-node.dir.collapsed .ws-tree-chevron { transform: rotate(-90deg); }
+        .ws-tree-node.drag-over {
+            background: rgba(255, 255, 255, 0.08) !important;
+            outline: 1px dashed var(--accent-2) !important;
+        }
+        /* Auto-complete (CodeMirror hints) Dracula Theme styling */
+        .CodeMirror-hints {
+            position: absolute;
+            z-index: 10000;
+            overflow: hidden;
+            overflow-y: auto;
+            background: #1e1e24 !important;
+            border: 1px solid var(--border, #2d2d38) !important;
+            border-radius: var(--radius-sm, 4px) !important;
+            padding: 4px !important;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5) !important;
+            max-height: 20em;
+            font-family: 'JetBrains Mono', var(--font-mono) !important;
+            font-size: 12.5px !important;
+            color: var(--text, #e3e3e6) !important;
+        }
+        .CodeMirror-hint {
+            padding: 4px 8px !important;
+            border-radius: 3px !important;
+            white-space: pre !important;
+            cursor: pointer !important;
+            color: #b9b9c0 !important;
+        }
+        .CodeMirror-hint-active {
+            background: var(--accent-soft, rgba(100, 200, 255, 0.12)) !important;
+            color: var(--accent-2, #64c8ff) !important;
+        }
         /* Filtro (Ctrl+F) da árvore: some entradas viram "match" (sublinhadas,
            destacadas); as demais só ficam um pouco apagadas — não escondemos
            nada, só sinalizamos, igual pedido pelo usuário. */
@@ -2128,6 +2167,7 @@
             const TREE_DIR_IC = '<svg class="ws-tree-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
             const TREE_CHEVRON_IC = '<svg class="ws-tree-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
             let treeEntries = []; // cache da última busca — pastas colapsam sem refetch
+            let renamingPath = null;
             const wsTreeFilterInput = document.getElementById('ws-tree-filter');
             const wsTreeContentFilterInput = document.getElementById('ws-tree-content-filter');
             const wsTreeFilterHint = document.getElementById('ws-tree-filter-hint');
@@ -2177,32 +2217,255 @@
                     const isContentMatch = hasContentFilter && !e.isDir && contentSearchMatchSet.has(e.path);
                     const shouldDim = hasNameFilter || (hasContentFilter && contentFilter.length >= 4);
                     const isMatch = isNameMatch || isContentMatch;
+                    
                     const node = document.createElement('div');
                     node.className = 'ws-tree-node ' + (e.isDir ? 'dir' : 'file') +
                         (e.collapsed ? ' collapsed' : '') +
                         (shouldDim ? (isMatch ? ' match' : ' dim') : '');
                     node.style.paddingLeft = (4 + e.depth * 12) + 'px';
                     node.innerHTML = e.isDir ? (TREE_CHEVRON_IC + TREE_DIR_IC) : TREE_FILE_IC;
-                    const label = document.createElement('span');
-                    label.textContent = e.name;
-                    node.appendChild(label);
-                    node.tabIndex = 0; // navegável via Tab; Enter/Espaço abrem ou colapsam, igual ao clique
-                    if (e.isDir) {
-                        node.title = (e.collapsed ? 'Expandir' : 'Colapsar') + ' pasta';
-                        node.addEventListener('click', () => { e.collapsed = !e.collapsed; renderTree(); });
-                    } else {
-                        node.title = e.path + '  (clique ou Enter para abrir)';
-                        node.addEventListener('click', () => openFileViewer(e.path));
-                    }
-                    node.addEventListener('keydown', (ev) => {
-                        if (ev.key !== 'Enter' && ev.key !== ' ') return;
-                        ev.preventDefault(); ev.stopPropagation();
-                        if (e.isDir) { e.collapsed = !e.collapsed; renderTree(); }
-                        else openFileViewer(e.path);
+                    
+                    // Configura drag and drop
+                    node.draggable = (renamingPath !== e.path);
+                    node.addEventListener('dragstart', (ev) => {
+                        ev.dataTransfer.setData('text/plain', e.path);
+                        ev.dataTransfer.effectAllowed = 'move';
+                        node.style.opacity = '0.5';
                     });
+                    node.addEventListener('dragend', () => {
+                        node.style.opacity = '';
+                        document.querySelectorAll('.ws-tree-node').forEach(n => n.classList.remove('drag-over'));
+                    });
+                    node.addEventListener('dragover', (ev) => {
+                        ev.preventDefault();
+                        ev.dataTransfer.dropEffect = 'move';
+                        if (e.isDir) {
+                            node.classList.add('drag-over');
+                        }
+                    });
+                    node.addEventListener('dragleave', () => {
+                        node.classList.remove('drag-over');
+                    });
+                    node.addEventListener('drop', async (ev) => {
+                        ev.preventDefault();
+                        node.classList.remove('drag-over');
+                        const srcPath = ev.dataTransfer.getData('text/plain');
+                        if (!srcPath || srcPath === e.path) return;
+                        
+                        let destDir = e.path;
+                        if (!e.isDir) {
+                            const lastSlash = Math.max(e.path.lastIndexOf('/'), e.path.lastIndexOf('\\'));
+                            destDir = e.path.substring(0, lastSlash);
+                        }
+                        
+                        const srcParent = srcPath.substring(0, Math.max(srcPath.lastIndexOf('/'), srcPath.lastIndexOf('\\')));
+                        if (srcParent === destDir) return;
+                        
+                        if (destDir.startsWith(srcPath + '/') || destDir.startsWith(srcPath + '\\') || destDir === srcPath) {
+                            if (typeof showToast === 'function') showToast('Não é possível mover uma pasta para dentro dela mesma.');
+                            return;
+                        }
+                        
+                        const res = await window.electronAPI.moveItem(srcPath, destDir);
+                        if (res.ok) {
+                            await refreshProjectTree();
+                        } else {
+                            if (typeof showToast === 'function') showToast('Erro ao mover: ' + res.error);
+                        }
+                    });
+
+                    // Botão direito (Context Menu)
+                    node.addEventListener('contextmenu', (ev) => {
+                        showTreeContextMenu(ev, e);
+                    });
+
+                    if (renamingPath === e.path) {
+                        const input = document.createElement('input');
+                        input.type = 'text';
+                        input.value = e.name;
+                        input.className = 'ws-tree-rename-input';
+                        input.style.cssText = `
+                            background: #0d0d12;
+                            border: 1px solid var(--accent-2);
+                            color: var(--text);
+                            font-family: inherit;
+                            font-size: inherit;
+                            padding: 1px 4px;
+                            margin-left: 4px;
+                            border-radius: 3px;
+                            width: 100%;
+                            box-sizing: border-box;
+                            outline: none;
+                        `;
+                        node.appendChild(input);
+                        
+                        input.addEventListener('click', (ev) => ev.stopPropagation());
+                        
+                        setTimeout(() => {
+                            input.focus();
+                            const dotIdx = e.isDir ? -1 : e.name.lastIndexOf('.');
+                            if (dotIdx > 0) {
+                                input.setSelectionRange(0, dotIdx);
+                            } else {
+                                input.select();
+                            }
+                        }, 0);
+                        
+                        let saved = false;
+                        const saveRename = async () => {
+                            if (saved) return;
+                            saved = true;
+                            const newName = input.value.trim();
+                            if (newName && newName !== e.name) {
+                                const idx = Math.max(e.path.lastIndexOf('/'), e.path.lastIndexOf('\\'));
+                                const dir = idx === -1 ? '' : e.path.substring(0, idx);
+                                const separator = e.path.includes('\\') ? '\\' : '/';
+                                const newPath = dir ? (dir + separator + newName) : newName;
+                                
+                                const res = await window.electronAPI.renameItem(e.path, newPath);
+                                if (res.ok) {
+                                    e.path = newPath;
+                                    e.name = newName;
+                                    renamingPath = null;
+                                    await refreshProjectTree();
+                                } else {
+                                    if (typeof showToast === 'function') showToast('Erro: ' + res.error);
+                                    renamingPath = null;
+                                    renderTree();
+                                }
+                            } else {
+                                renamingPath = null;
+                                renderTree();
+                            }
+                        };
+                        
+                        input.addEventListener('keydown', (ev) => {
+                            if (ev.key === 'Enter') {
+                                ev.preventDefault(); ev.stopPropagation();
+                                saveRename();
+                            } else if (ev.key === 'Escape') {
+                                ev.preventDefault(); ev.stopPropagation();
+                                renamingPath = null;
+                                renderTree();
+                            }
+                        });
+                        
+                        input.addEventListener('blur', () => {
+                            saveRename();
+                        });
+                    } else {
+                        const label = document.createElement('span');
+                        label.textContent = e.name;
+                        node.appendChild(label);
+                        node.tabIndex = 0; // navegável via Tab; Enter/Espaço abrem ou colapsam, igual ao clique
+                        if (e.isDir) {
+                            node.title = (e.collapsed ? 'Expandir' : 'Colapsar') + ' pasta';
+                            node.addEventListener('click', () => { e.collapsed = !e.collapsed; renderTree(); });
+                        } else {
+                            node.title = e.path + '  (clique ou Enter para abrir)';
+                            node.addEventListener('click', () => openFileViewer(e.path));
+                        }
+                        node.addEventListener('keydown', (ev) => {
+                            if (ev.key !== 'Enter' && ev.key !== ' ') return;
+                            ev.preventDefault(); ev.stopPropagation();
+                            if (e.isDir) { e.collapsed = !e.collapsed; renderTree(); }
+                            else openFileViewer(e.path);
+                        });
+                    }
                     wsTree.appendChild(node);
                     if (e.isDir && e.collapsed) skipDepth = e.depth;
                 }
+            }
+
+            async function refreshProjectTree() {
+                if (!wsTree || !wsTreeToggle) return;
+                const open = wsTreeToggle.getAttribute('aria-expanded') === 'true';
+                if (!open) return;
+                let res = null;
+                try { res = window.electronAPI.getProjectTree ? await window.electronAPI.getProjectTree() : null; } catch (_) {}
+                if (!res || !res.entries || !res.entries.length) {
+                    wsTree.innerHTML = '<span class="ws-tree-empty">Não foi possível ler a estrutura.</span>';
+                    treeEntries = [];
+                    return;
+                }
+                const collapsedMap = new Map();
+                treeEntries.forEach(e => {
+                    if (e.isDir) collapsedMap.set(e.path, e.collapsed);
+                });
+                treeEntries = res.entries.map((entry) => ({
+                    ...entry,
+                    collapsed: entry.isDir ? (collapsedMap.has(entry.path) ? collapsedMap.get(entry.path) : true) : false
+                }));
+                renderTree();
+            }
+
+            let refreshTreeTimeout = null;
+            function triggerTreeRefresh() {
+                if (refreshTreeTimeout) clearTimeout(refreshTreeTimeout);
+                refreshTreeTimeout = setTimeout(() => {
+                    refreshProjectTree();
+                }, 300);
+            }
+
+            function showTreeContextMenu(event, item) {
+                event.preventDefault();
+                event.stopPropagation();
+                document.querySelectorAll('.ws-tree-context-menu').forEach(m => m.remove());
+                const menu = document.createElement('div');
+                menu.className = 'ws-tree-context-menu';
+                menu.style.cssText = 'position:fixed; z-index:10000; background:var(--bg-elevated, #1b1e24); border:1px solid var(--border, #2d2d38); border-radius:var(--radius-sm, 4px); padding:4px; box-shadow:0 4px 12px rgba(0,0,0,0.5); min-width:170px; font-family:var(--font-ui); font-size:12px; color:var(--text, #e3e3e6);';
+                
+                const mkItem = (icon, label, fn) => {
+                    const b = document.createElement('button');
+                    b.innerHTML = `<span style="margin-right:8px; opacity:0.8;">${icon}</span>${label}`;
+                    b.style.cssText = 'display:flex; align-items:center; width:100%; text-align:left; background:transparent; border:none; color:inherit; font-size:inherit; font-family:inherit; padding:6px 10px; cursor:pointer; border-radius:4px; transition:background .15s;';
+                    b.addEventListener('mouseenter', () => b.style.background = 'rgba(255,255,255,0.06)');
+                    b.addEventListener('mouseleave', () => b.style.background = 'transparent');
+                    b.addEventListener('click', () => { menu.remove(); fn(); });
+                    return b;
+                };
+                
+                menu.appendChild(mkItem('📋', 'Copiar Caminho Absoluto', () => {
+                    window.electronAPI.copyToClipboard(item.path);
+                    if (typeof showToast === 'function') showToast('Caminho absoluto copiado!');
+                }));
+                
+                menu.appendChild(mkItem('🔗', 'Copiar Caminho Relativo', () => {
+                    const projectPath = wsProjectMain ? wsProjectMain.dataset.path : '';
+                    let relPath = item.path;
+                    if (projectPath && item.path.startsWith(projectPath)) {
+                        relPath = item.path.substring(projectPath.length).replace(/^[/\\]+/, '');
+                    }
+                    window.electronAPI.copyToClipboard(relPath);
+                    if (typeof showToast === 'function') showToast('Caminho relativo copiado!');
+                }));
+                
+                const hr = document.createElement('div');
+                hr.style.cssText = 'height:1px; background:var(--border, #2d2d38); margin:4px 0;';
+                menu.appendChild(hr);
+                
+                menu.appendChild(mkItem('✏️', 'Renomear', () => {
+                    renamingPath = item.path;
+                    renderTree();
+                }));
+                
+                document.body.appendChild(menu);
+                const menuWidth = menu.offsetWidth || 170;
+                const menuHeight = menu.offsetHeight || 120;
+                let x = event.clientX;
+                let y = event.clientY;
+                if (x + menuWidth > window.innerWidth) x = window.innerWidth - menuWidth - 8;
+                if (y + menuHeight > window.innerHeight) y = window.innerHeight - menuHeight - 8;
+                menu.style.left = x + 'px';
+                menu.style.top = y + 'px';
+                
+                const closer = (ev) => {
+                    if (!menu.contains(ev.target)) {
+                        menu.remove();
+                        document.removeEventListener('mousedown', closer, true);
+                    }
+                };
+                setTimeout(() => document.addEventListener('mousedown', closer, true), 0);
             }
 
             function expandAncestorsMatching(predicate) {
@@ -2527,6 +2790,10 @@
 
                         if (transcriptionElement) {
                             transcriptionElement.scrollTo({ top: transcriptionElement.scrollHeight, behavior: 'smooth' });
+                        }
+                        
+                        if (typeof triggerTreeRefresh === 'function') {
+                            triggerTreeRefresh();
                         }
                     } catch (e) { console.warn('file-written render failed:', e); }
                 });

@@ -42,6 +42,49 @@
     return m ? m[1].toLowerCase() : '';
   }
 
+  function customHint(editor) {
+    const mode = editor.getOption('mode');
+    let modeHint = null;
+    const cmLib = window.CodeMirror;
+    if (!cmLib) return null;
+    
+    const modeName = (mode && typeof mode === 'object') ? mode.name : mode;
+    if (modeName === 'javascript') {
+      modeHint = cmLib.hint.javascript;
+    } else if (modeName === 'css') {
+      modeHint = cmLib.hint.css;
+    } else if (modeName === 'htmlmixed' || modeName === 'html' || modeName === 'xml') {
+      modeHint = cmLib.hint.html || cmLib.hint.xml;
+    }
+    
+    const anywordHint = cmLib.hint.anyword;
+    let result = null;
+    
+    if (modeHint) {
+      try { result = modeHint(editor); } catch (_) {}
+    }
+    
+    if (!result || !result.list || !result.list.length) {
+      if (anywordHint) {
+        try { result = anywordHint(editor); } catch (_) {}
+      }
+    } else if (anywordHint) {
+      try {
+        const anyResult = anywordHint(editor);
+        if (anyResult && anyResult.list && anyResult.list.length) {
+          const listSet = new Set(result.list.map(item => typeof item === 'string' ? item : item.text));
+          anyResult.list.forEach(item => {
+            const text = typeof item === 'string' ? item : item.text;
+            if (!listSet.has(text)) {
+              result.list.push(item);
+            }
+          });
+        }
+      } catch (_) {}
+    }
+    return result;
+  }
+
   function ensureCm() {
     if (cm) return cm;
     if (!window.CodeMirror) return null;
@@ -64,8 +107,27 @@
         'Shift-Ctrl-G': 'findPrev',
         'Cmd-G': 'findNext',
         'Shift-Cmd-G': 'findPrev',
+        'Ctrl-Space': 'autocomplete',
       },
     });
+
+    cm.on('inputRead', (editor, change) => {
+      if (change.origin === '+input') {
+        const text = change.text[0];
+        if (/^[a-zA-Z_0-9\.\<]$/.test(text)) {
+          const cur = editor.getCursor();
+          const token = editor.getTokenAt(cur);
+          if (token.type && (token.type.includes('comment') || token.type.includes('string'))) {
+            return;
+          }
+          editor.showHint({
+            completeSingle: false,
+            hint: customHint
+          });
+        }
+      }
+    });
+
     cm.on('change', () => {
       const doc = openFiles.get(activePath);
       if (!doc) return;

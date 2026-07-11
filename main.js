@@ -3802,6 +3802,47 @@ ipcMain.handle("workspace:pick-dir", async () => {
 
 ipcMain.handle("workspace:list", () => workspace.list());
 
+ipcMain.handle("workspace:rename-item", async (event, { oldPath, newPath }) => {
+  try {
+    if (!fs2.existsSync(oldPath)) {
+      return { ok: false, error: "Arquivo ou pasta de origem não existe." };
+    }
+    if (fs2.existsSync(newPath)) {
+      return { ok: false, error: "Já existe um arquivo ou pasta com o novo nome." };
+    }
+    fs2.renameSync(oldPath, newPath);
+    return { ok: true };
+  } catch (e) {
+    console.error("[workspace:rename-item] erro:", e.message);
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle("workspace:move-item", async (event, { srcPath, destPath }) => {
+  try {
+    if (!fs2.existsSync(srcPath)) {
+      return { ok: false, error: "Item de origem não existe." };
+    }
+    if (!fs2.existsSync(destPath)) {
+      return { ok: false, error: "Diretório de destino não existe." };
+    }
+    const stat = fs2.statSync(destPath);
+    if (!stat.isDirectory()) {
+      return { ok: false, error: "Destino precisa ser uma pasta." };
+    }
+    const filename = path.basename(srcPath);
+    const targetPath = path.join(destPath, filename);
+    if (fs2.existsSync(targetPath)) {
+      return { ok: false, error: `Já existe um item chamado "${filename}" na pasta de destino.` };
+    }
+    fs2.renameSync(srcPath, targetPath);
+    return { ok: true };
+  } catch (e) {
+    console.error("[workspace:move-item] erro:", e.message);
+    return { ok: false, error: e.message };
+  }
+});
+
 // Contexto ativo do projeto (pasta anexada + branch git) — exibido como pills
 // discretos acima do composer, ao estilo de uma IDE. Retorna null quando não há
 // pasta no workspace (modo chat puro).
