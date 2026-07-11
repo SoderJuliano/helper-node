@@ -1735,34 +1735,70 @@
                 }
             }
 
+            async function createNewProject() {
+                if (!(window.electronAPI && window.electronAPI.pickParentDir && window.electronAPI.createAndOpenProject)) return;
+                const parentPath = await window.electronAPI.pickParentDir();
+                if (!parentPath) return; // cancelado
+                const folderName = window.prompt("Digite o nome da pasta do novo projeto:");
+                if (!folderName || !folderName.trim()) return;
+                
+                const res = await window.electronAPI.createAndOpenProject(parentPath, folderName.trim());
+                if (res && res.ok) {
+                    if (typeof renderWorkspacePanel === 'function') renderWorkspacePanel(res.attachments);
+                    await refreshProjectContext();
+                    if (typeof showToast === 'function') showToast('Novo projeto criado e aberto com sucesso!');
+                } else {
+                    if (typeof showToast === 'function') showToast('Erro ao criar projeto: ' + (res ? res.error : 'erro desconhecido'));
+                }
+            }
+
             // Menu de gerenciamento do projeto (estilo IDE) ancorado no pill
             function showProjectMenu(anchor) {
                 document.querySelectorAll('.ctx-project-menu').forEach(m => m.remove());
                 const menu = document.createElement('div');
                 menu.className = 'ctx-project-menu';
                 menu.style.cssText = 'position:absolute; z-index:9999; background:var(--bg-elevated); border:1px solid var(--border-strong); border-radius:8px; padding:4px; box-shadow:0 10px 30px rgba(0,0,0,0.55); min-width:188px;';
-                const mkItem = (label, fn, danger) => {
+                
+                const SVGI_SWITCH_PROJECT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; margin-right:8px; opacity:0.8; display:inline-block; vertical-align:middle;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+                const SVGI_NEW_PROJECT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; margin-right:8px; opacity:0.8; display:inline-block; vertical-align:middle;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>';
+                const SVGI_OPEN_EXTERNAL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; margin-right:8px; opacity:0.8; display:inline-block; vertical-align:middle;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
+                const SVGI_CLOSE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; margin-right:8px; opacity:0.8; color:#ff5252; display:inline-block; vertical-align:middle;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+
+                const mkItem = (iconHtml, label, fn, danger) => {
                     const b = document.createElement('button');
-                    b.textContent = label;
-                    b.style.cssText = 'display:block; width:100%; text-align:left; background:transparent; border:none; color:' + (danger ? 'var(--danger)' : 'var(--text-2)') + '; font-size:12px; padding:7px 10px; cursor:pointer; border-radius:5px; font-family:var(--font-ui);';
+                    b.innerHTML = `${iconHtml}${label}`;
+                    b.style.cssText = 'display:flex; align-items:center; width:100%; text-align:left; background:transparent; border:none; color:' + (danger ? 'var(--danger)' : 'var(--text-2)') + '; font-size:12px; padding:7px 10px; cursor:pointer; border-radius:5px; font-family:var(--font-ui);';
                     b.addEventListener('mouseenter', () => b.style.background = 'rgba(255,255,255,0.06)');
                     b.addEventListener('mouseleave', () => b.style.background = 'transparent');
                     b.addEventListener('click', () => { menu.remove(); fn(); });
                     return b;
                 };
-                menu.appendChild(mkItem('📂  Trocar projeto…', () => pickProjectFolder()));
-                menu.appendChild(mkItem('🗂  Abrir no sistema de arquivos', () => {
+                
+                menu.appendChild(mkItem(SVGI_SWITCH_PROJECT, 'Trocar projeto…', () => pickProjectFolder()));
+                menu.appendChild(mkItem(SVGI_NEW_PROJECT, 'Criar Novo Projeto…', () => createNewProject()));
+                
+                const hr = document.createElement('div');
+                hr.style.cssText = 'height:1px; background:var(--border, #2d2d38); margin:4px 0;';
+                menu.appendChild(hr);
+
+                menu.appendChild(mkItem(SVGI_OPEN_EXTERNAL, 'Abrir no gerenciador de arquivos', () => {
                     if (ctxProject && ctxProject.path && window.electronAPI.workspaceOpenExternal) {
                         window.electronAPI.workspaceOpenExternal(ctxProject.path);
                     }
                 }));
-                menu.appendChild(mkItem('✕  Fechar projeto', async () => {
+                
+                const hr2 = document.createElement('div');
+                hr2.style.cssText = 'height:1px; background:var(--border, #2d2d38); margin:4px 0;';
+                menu.appendChild(hr2);
+
+                menu.appendChild(mkItem(SVGI_CLOSE, 'Fechar projeto', async () => {
                     if (ctxProject && ctxProject.id != null && window.electronAPI.workspaceRemove) {
                         const updated = await window.electronAPI.workspaceRemove(ctxProject.id);
                         if (typeof renderWorkspacePanel === 'function') renderWorkspacePanel(updated);
                         await refreshProjectContext();
                     }
                 }, true));
+                
                 document.body.appendChild(menu);
                 const r = anchor.getBoundingClientRect();
                 menu.style.left = r.left + 'px';

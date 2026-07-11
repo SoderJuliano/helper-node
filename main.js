@@ -3887,6 +3887,53 @@ ipcMain.handle("workspace:delete-items", async (event, { paths }) => {
   }
 });
 
+ipcMain.handle("workspace:pick-parent-dir", async () => {
+  const { dialog } = require("electron");
+  const res = await dialog.showOpenDialog(mainWindow, {
+    title: "Selecionar pasta onde criar o projeto",
+    properties: ["openDirectory"],
+  });
+  if (res.canceled || !res.filePaths.length) return null;
+  return res.filePaths[0];
+});
+
+ipcMain.handle("workspace:create-and-open-project", async (event, { parentPath, folderName }) => {
+  try {
+    const newProjectPath = path.join(parentPath, folderName);
+    if (fs2.existsSync(newProjectPath)) {
+      return { ok: false, error: "Uma pasta com esse nome já existe neste local." };
+    }
+    fs2.mkdirSync(newProjectPath, { recursive: true });
+    
+    // Agora abre o projeto!
+    const prevDirs = workspace.list().filter(a => a.type === 'dir').map(a => a.path);
+    await workspace.openProject(newProjectPath);
+    
+    // Reinicia sessões da IA se mudou
+    const newDirs = workspace.list().filter(a => a.type === 'dir').map(a => a.path);
+    const oldPath = prevDirs[0] || null;
+    const newPath = newDirs[0] || null;
+    const activeProvider = configService.getAiModel();
+    if (oldPath !== newPath && activeProvider === 'geminiCli') {
+      GeminiCliProvider.changeProject(oldPath, newPath).catch(e =>
+        console.warn('[gemini-cli] changeProject error:', e.message)
+      );
+    }
+    if (oldPath !== newPath && activeProvider === 'claudeCli') {
+      ClaudeCliProvider.changeProject(oldPath, newPath).catch(e =>
+        console.warn('[claude-cli] changeProject error:', e.message)
+      );
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("workspace-changed", { attachments: workspace.list() });
+    }
+    return { ok: true, attachments: workspace.list() };
+  } catch (e) {
+    console.error("[workspace:create-and-open-project] erro:", e.message);
+    return { ok: false, error: e.message };
+  }
+});
+
 // Contexto ativo do projeto (pasta anexada + branch git) — exibido como pills
 // discretos acima do composer, ao estilo de uma IDE. Retorna null quando não há
 // pasta no workspace (modo chat puro).
