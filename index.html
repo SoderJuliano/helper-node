@@ -2211,6 +2211,7 @@
             let renamingPath = null;
             let selectedPaths = new Set();
             let creatingFileParent = null;
+            let creatingFolderParent = null;
             const wsTreeFilterInput = document.getElementById('ws-tree-filter');
             const wsTreeContentFilterInput = document.getElementById('ws-tree-content-filter');
             const wsTreeFilterHint = document.getElementById('ws-tree-filter-hint');
@@ -2247,6 +2248,9 @@
                 // Se estiver criando arquivo no root (projeto), renderiza o input no início do tree
                 if (creatingFileParent === projectPath) {
                     renderCreationInput(wsTree, projectPath, 0);
+                }
+                if (creatingFolderParent === projectPath) {
+                    renderCreationFolderInput(wsTree, projectPath, 0);
                 }
 
                 let skipDepth = null;
@@ -2459,6 +2463,9 @@
                     if (e.isDir && e.path === creatingFileParent) {
                         renderCreationInput(wsTree, e.path, e.depth + 1);
                     }
+                    if (e.isDir && e.path === creatingFolderParent) {
+                        renderCreationFolderInput(wsTree, e.path, e.depth + 1);
+                    }
                     
                     if (e.isDir && e.collapsed) skipDepth = e.depth;
                 }
@@ -2489,7 +2496,10 @@
                 node.appendChild(input);
                 parentEl.appendChild(node);
                 
-                setTimeout(() => input.focus(), 0);
+                setTimeout(() => {
+                    input.focus();
+                    node.scrollIntoView({ block: 'nearest' });
+                }, 50);
                 
                 let saved = false;
                 const saveCreate = async () => {
@@ -2524,6 +2534,77 @@
                     } else if (ev.key === 'Escape') {
                         ev.preventDefault(); ev.stopPropagation();
                         creatingFileParent = null;
+                        renderTree();
+                    }
+                });
+                
+                input.addEventListener('blur', () => {
+                    saveCreate();
+                });
+            }
+
+            function renderCreationFolderInput(parentEl, parentDirPath, depth) {
+                const node = document.createElement('div');
+                node.className = 'ws-tree-node dir temp-create';
+                node.style.paddingLeft = (4 + depth * 12) + 'px';
+                node.innerHTML = TREE_CHEVRON_IC + TREE_DIR_IC;
+                
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.placeholder = 'nome-da-pasta';
+                input.style.cssText = `
+                    background: #0d0d12;
+                    border: 1px solid var(--accent-2);
+                    color: var(--text);
+                    font-family: inherit;
+                    font-size: inherit;
+                    padding: 1px 4px;
+                    margin-left: 4px;
+                    border-radius: 3px;
+                    width: 100%;
+                    box-sizing: border-box;
+                    outline: none;
+                `;
+                node.appendChild(input);
+                parentEl.appendChild(node);
+                
+                setTimeout(() => {
+                    input.focus();
+                    node.scrollIntoView({ block: 'nearest' });
+                }, 50);
+                
+                let saved = false;
+                const saveCreate = async () => {
+                    if (saved) return;
+                    saved = true;
+                    const name = input.value.trim();
+                    if (name) {
+                        const separator = parentDirPath.includes('\\') ? '\\' : '/';
+                        const dirPath = parentDirPath + (parentDirPath.endsWith(separator) ? '' : separator) + name;
+                        const res = await window.electronAPI.createDir(dirPath);
+                        if (res.ok) {
+                            creatingFolderParent = null;
+                            await refreshProjectTree();
+                        } else {
+                            if (typeof showToast === 'function') showToast('Erro ao criar pasta: ' + res.error);
+                            creatingFolderParent = null;
+                            renderTree();
+                        }
+                    } else {
+                        creatingFolderParent = null;
+                        renderTree();
+                    }
+                };
+                
+                input.addEventListener('click', (ev) => ev.stopPropagation());
+                
+                input.addEventListener('keydown', (ev) => {
+                    if (ev.key === 'Enter') {
+                        ev.preventDefault(); ev.stopPropagation();
+                        saveCreate();
+                    } else if (ev.key === 'Escape') {
+                        ev.preventDefault(); ev.stopPropagation();
+                        creatingFolderParent = null;
                         renderTree();
                     }
                 });
@@ -2640,6 +2721,7 @@
                 menu.style.cssText = 'position:fixed; z-index:10000; background:var(--bg-elevated, #1b1e24); border:1px solid var(--border, #2d2d38); border-radius:var(--radius-sm, 4px); padding:4px; box-shadow:0 4px 12px rgba(0,0,0,0.5); min-width:170px; font-family:var(--font-ui); font-size:12px; color:var(--text, #e3e3e6);';
                 
                 const SVGI_NEW_FILE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>';
+                const SVGI_NEW_FOLDER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>';
                 const SVGI_CLIPBOARD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px;"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>';
                 const SVGI_LINK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
                 const SVGI_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
@@ -2658,6 +2740,14 @@
                 if (item.isRoot || item.isDir) {
                     menu.appendChild(mkItem(SVGI_NEW_FILE, 'Novo Arquivo', () => {
                         creatingFileParent = item.path;
+                        if (item.isDir) {
+                            item.collapsed = false;
+                        }
+                        renderTree();
+                    }));
+
+                    menu.appendChild(mkItem(SVGI_NEW_FOLDER, 'Nova Pasta', () => {
+                        creatingFolderParent = item.path;
                         if (item.isDir) {
                             item.collapsed = false;
                         }
@@ -2927,13 +3017,17 @@
             if (wsTreeToggle) {
                 wsTreeToggle.addEventListener('click', (e) => { e.stopPropagation(); toggleProjectTree(); });
             }
-            if (wsTree) {
-                wsTree.addEventListener('contextmenu', (ev) => {
-                    if (ev.target === wsTree || ev.target.classList.contains('ws-tree-empty')) {
-                        const projectPath = wsProjectMain ? wsProjectMain.dataset.path : '';
-                        if (projectPath) {
-                            showTreeContextMenu(ev, { path: projectPath, isRoot: true });
-                        }
+            if (wsProject) {
+                wsProject.addEventListener('contextmenu', (ev) => {
+                    const nodeEl = ev.target.closest('.ws-tree-node');
+                    if (nodeEl) return;
+                    if (ev.target.tagName === 'INPUT' || ev.target.tagName === 'TEXTAREA') return;
+
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    const projectPath = wsProjectMain ? wsProjectMain.dataset.path : '';
+                    if (projectPath) {
+                        showTreeContextMenu(ev, { path: projectPath, isRoot: true });
                     }
                 });
             }

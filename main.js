@@ -3843,6 +3843,50 @@ ipcMain.handle("workspace:move-item", async (event, { srcPath, destPath }) => {
   }
 });
 
+ipcMain.handle("workspace:create-file", async (event, { filePath }) => {
+  try {
+    if (fs2.existsSync(filePath)) {
+      return { ok: false, error: "Arquivo já existe." };
+    }
+    const dir = path.dirname(filePath);
+    if (!fs2.existsSync(dir)) {
+      fs2.mkdirSync(dir, { recursive: true });
+    }
+    fs2.writeFileSync(filePath, "", "utf8");
+    return { ok: true };
+  } catch (e) {
+    console.error("[workspace:create-file] erro:", e.message);
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle("workspace:create-dir", async (event, { dirPath }) => {
+  try {
+    if (fs2.existsSync(dirPath)) {
+      return { ok: false, error: "Diretório já existe." };
+    }
+    fs2.mkdirSync(dirPath, { recursive: true });
+    return { ok: true };
+  } catch (e) {
+    console.error("[workspace:create-dir] erro:", e.message);
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle("workspace:delete-items", async (event, { paths }) => {
+  try {
+    for (const p of paths) {
+      if (fs2.existsSync(p)) {
+        fs2.rmSync(p, { recursive: true, force: true });
+      }
+    }
+    return { ok: true };
+  } catch (e) {
+    console.error("[workspace:delete-items] erro:", e.message);
+    return { ok: false, error: e.message };
+  }
+});
+
 // Contexto ativo do projeto (pasta anexada + branch git) — exibido como pills
 // discretos acima do composer, ao estilo de uma IDE. Retorna null quando não há
 // pasta no workspace (modo chat puro).

@@ -132,6 +132,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getFileDiff: (payload) => ipcRenderer.invoke("get-file-diff", payload),
   renameItem: (oldPath, newPath) => ipcRenderer.invoke("workspace:rename-item", { oldPath, newPath }),
   moveItem: (srcPath, destPath) => ipcRenderer.invoke("workspace:move-item", { srcPath, destPath }),
+  createFile: (filePath) => ipcRenderer.invoke("workspace:create-file", { filePath }),
+  createDir: (dirPath) => ipcRenderer.invoke("workspace:create-dir", { dirPath }),
+  deleteItems: (paths) => ipcRenderer.invoke("workspace:delete-items", { paths }),
   // === Editor de código (#file-viewer) ===
   editorSaveFile: (payload) => ipcRenderer.invoke("editor-save-file", payload),
   // Notifica o editor de qualquer mutação de arquivo (humano, OpenAI, Claude
