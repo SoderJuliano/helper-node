@@ -66,9 +66,6 @@ class ClaudeCliProcess {
       args.push('--resume', sessionId);
     }
 
-    // Prompt goes as the positional argument (last)
-    args.push(prompt);
-
     // HOME explícito garante que o CLI encontra ~/.claude/ com as credenciais
     // do usuário da máquina, mesmo que o Electron tenha modificado o env.
     const env = { ...process.env, HOME: process.env.HOME || require('os').homedir() };
@@ -80,10 +77,13 @@ class ClaudeCliProcess {
 
     this.alive = true;
 
-    // stdin PRECISA ser fechado: com o pipe aberto o CLI espera dados de stdin
-    // antes de processar (3s de atraso por mensagem nas versões atuais; hang
-    // indefinido em versões antigas — era a causa do travamento no 2º envio).
-    try { this._proc.stdin.end(); } catch (_) {}
+    // Escreve o prompt no stdin e fecha o fluxo (necessário para o CLI processar sem travar ou acusar E2BIG)
+    try {
+      this._proc.stdin.write(prompt + '\n');
+      this._proc.stdin.end();
+    } catch (stdinErr) {
+      console.error('[claude-cli] failed to write prompt to stdin:', stdinErr.message);
+    }
 
     this._proc.stdout.setEncoding('utf8');
     this._proc.stderr.setEncoding('utf8');
