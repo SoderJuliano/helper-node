@@ -4017,7 +4017,19 @@ const PROJECT_SEARCH_SKIP_DIRS = new Set([
   ".idea",
   "__pycache__",
   ".venv",
+  "venv",
   "dist",
+  "vendor",
+  ".tooling",
+  ".cache",
+  ".next",
+  ".nuxt",
+  "coverage",
+  ".pytest_cache",
+  ".m2",
+  ".gradle",
+  ".terraform",
+  "out",
 ]);
 
 function isLikelyBinaryBuffer(buffer) {
@@ -4032,27 +4044,64 @@ function isLikelyBinaryBuffer(buffer) {
   return suspicious / limit > 0.2;
 }
 
-function collectProjectEntries(root, limit = 400) {
+// IMPORTANTE: o array final precisa ficar em ordem DFS pre-order (pasta
+// imediatamente seguida por todos os seus filhos) porque o renderer da
+// sidebar usa isso pra decidir o que esconder quando uma pasta está
+// colapsada. Por isso não dá pra simplesmente fazer BFS pra "priorizar"
+// pastas rasas — a solução é dar um orçamento (budget) de entradas PRÓPRIO
+// pra cada subárvore de topo, assim uma pasta gigante (ex: vendor/ criado
+// pelo composer, ou node_modules) nunca consome o budget inteiro e deixa
+// o resto do projeto sem aparecer (bug reportado: "só mostra os arquivos
+// novos depois do build").
+function collectProjectEntries(root, limit = 4000, perTopLevelBudget = 500) {
   const entries = [];
-  const visit = (dirPath, depth) => {
+  const visit = (dirPath, depth, localBudget) => {
     let dirEntries = [];
     try {
       dirEntries = fs2.readdirSync(dirPath, { withFileTypes: true });
     } catch (_) {
-      return;
+      return 0;
     }
     dirEntries.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+    let used = 0;
     for (const dirent of dirEntries) {
-      if (entries.length >= limit) return;
+      if (entries.length >= limit) return used;
+      if (used >= localBudget) return used;
       if (PROJECT_SEARCH_SKIP_DIRS.has(dirent.name)) continue;
       const absPath = path.join(dirPath, dirent.name);
       const isDir = dirent.isDirectory();
       entries.push({ path: absPath, name: dirent.name, depth, isDir });
-      if (isDir) visit(absPath, depth + 1);
-      if (entries.length >= limit) return;
+      used += 1;
+      if (isDir) {
+        // Filhos herdam o que sobrou do budget local (não o global) —
+        // garante que essa subárvore nunca ultrapasse sua cota, não
+        // importa o quão profunda ela seja.
+        used += visit(absPath, depth + 1, localBudget - used);
+      }
+      if (entries.length >= limit || used >= localBudget) return used;
     }
+    return used;
   };
-  visit(root, 0);
+
+  // Passo 1: todas as entradas de topo (raiz do projeto) SEMPRE aparecem,
+  // sem limite — é o que garante que nenhuma pasta/arquivo do nível
+  // principal "suma" depois de um build.
+  let topLevel = [];
+  try {
+    topLevel = fs2.readdirSync(root, { withFileTypes: true });
+  } catch (_) {
+    return entries;
+  }
+  topLevel.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+
+  for (const dirent of topLevel) {
+    if (PROJECT_SEARCH_SKIP_DIRS.has(dirent.name)) continue;
+    const absPath = path.join(root, dirent.name);
+    const isDir = dirent.isDirectory();
+    entries.push({ path: absPath, name: dirent.name, depth: 0, isDir });
+    if (isDir) visit(absPath, 1, perTopLevelBudget);
+    if (entries.length >= limit) break;
+  }
   return entries;
 }
 

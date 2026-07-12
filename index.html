@@ -1211,16 +1211,22 @@
         /* Entradas clicáveis da árvore do projeto (dropdown do workspace) */
         .ws-tree-node {
             display: flex; align-items: center; gap: 6px;
-            padding: 3px 4px; border-radius: 4px; cursor: default;
+            padding: 3px 6px; border-radius: 4px; cursor: default;
             white-space: nowrap; color: var(--text-3);
+            font-family: 'JetBrains Mono', var(--font-mono);
+            font-size: 12.5px; line-height: 18px;
         }
         .ws-tree-node.file { cursor: pointer; }
-        .ws-tree-node.file:hover { background: rgba(255,255,255,0.06); color: var(--text); }
+        .ws-tree-node.file:hover { background: rgba(255,255,255,0.07); color: var(--text); }
         .ws-tree-node:focus-visible { outline: 1px solid var(--accent-2); outline-offset: -1px; background: rgba(255,255,255,0.06); }
-        .ws-tree-node .ws-tree-ic { width: 13px; height: 13px; opacity: .65; flex-shrink: 0; }
-        .ws-tree-node.dir { color: var(--text-2); cursor: pointer; }
-        .ws-tree-node.dir:hover { background: rgba(255,255,255,0.05); }
+        .ws-tree-node .ws-tree-ic { width: 14px; height: 14px; opacity: .85; flex-shrink: 0; }
+        .ws-tree-node.dir { color: var(--text-2); cursor: pointer; font-weight: 500; }
+        .ws-tree-node.dir:hover { background: rgba(255,255,255,0.06); }
         .ws-tree-chevron { width: 10px; height: 10px; flex-shrink: 0; opacity: .6; transition: transform .15s var(--ease); }
+        /* Spacer com a MESMA largura+gap do chevron — garante que o nome do
+           arquivo comece exatamente na mesma coluna do nome da pasta
+           (antes ficava "puxado" 16px pra trás por faltar esse espaço). */
+        .ws-tree-chevron-spacer { width: 10px; height: 10px; flex-shrink: 0; display: inline-block; }
         .ws-tree-node.dir.collapsed .ws-tree-chevron { transform: rotate(-90deg); }
         .ws-tree-node.drag-over {
             background: rgba(255, 255, 255, 0.08) !important;
@@ -2243,6 +2249,48 @@
             const TREE_FILE_IC = '<svg class="ws-tree-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
             const TREE_DIR_IC = '<svg class="ws-tree-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
             const TREE_CHEVRON_IC = '<svg class="ws-tree-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+            // Spacer do mesmo tamanho do chevron — usado nas linhas de arquivo
+            // pra que o nome do arquivo fique alinhado com o nome das pastas
+            // (bug visual: arquivo soltos ficavam "puxados" pra trás porque
+            // não tinham o chevron ocupando espaço).
+            const TREE_CHEVRON_SPACER = '<span class="ws-tree-chevron-spacer"></span>';
+            // Ícones + cores por extensão (estilo IntelliJ) — mesmo shape base,
+            // tingido por tipo pra dar reconhecimento visual rápido na árvore.
+            const TREE_FILE_TYPE_STYLES = {
+                js: '#f5d76e', jsx: '#f5d76e', mjs: '#f5d76e', cjs: '#f5d76e',
+                ts: '#5a9fd4', tsx: '#5a9fd4',
+                json: '#e8a33d', jsonc: '#e8a33d',
+                html: '#e6714a', htm: '#e6714a',
+                css: '#5b9dd9', scss: '#c876d0', sass: '#c876d0', less: '#5b9dd9',
+                md: '#8fa8bf', markdown: '#8fa8bf',
+                py: '#6aa9d8',
+                sh: '#7fbf7f', bash: '#7fbf7f', zsh: '#7fbf7f',
+                yml: '#a9b665', yaml: '#a9b665',
+                xml: '#e6714a',
+                png: '#c876d0', jpg: '#c876d0', jpeg: '#c876d0', gif: '#c876d0', svg: '#c876d0', ico: '#c876d0', webp: '#c876d0',
+                php: '#8a94c4',
+                java: '#e6714a',
+                go: '#5ac6c6',
+                rs: '#e6714a',
+                lock: '#8a8a95', gitignore: '#8a8a95', env: '#a9b665',
+                txt: '#8a8a95', log: '#8a8a95',
+            };
+            function fileTypeColor(name) {
+                const lower = name.toLowerCase();
+                if (lower === '.gitignore' || lower === '.env' || lower.startsWith('.env.')) {
+                    return TREE_FILE_TYPE_STYLES.gitignore;
+                }
+                const dot = lower.lastIndexOf('.');
+                if (dot <= 0) return null;
+                const ext = lower.slice(dot + 1);
+                return TREE_FILE_TYPE_STYLES[ext] || null;
+            }
+            function fileIconHtml(name) {
+                const color = fileTypeColor(name);
+                return color
+                    ? `<svg class="ws-tree-ic" style="color:${color}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`
+                    : TREE_FILE_IC;
+            }
             let treeEntries = []; // cache da última busca — pastas colapsam sem refetch
             let renamingPath = null;
             let selectedPaths = new Set();
@@ -2305,8 +2353,8 @@
                         (e.collapsed ? ' collapsed' : '') +
                         (shouldDim ? (isMatch ? ' match' : ' dim') : '');
                     node.style.paddingLeft = (4 + e.depth * 12) + 'px';
-                    node.innerHTML = e.isDir ? (TREE_CHEVRON_IC + TREE_DIR_IC) : TREE_FILE_IC;
-                    
+                    node.innerHTML = e.isDir ? (TREE_CHEVRON_IC + TREE_DIR_IC) : (TREE_CHEVRON_SPACER + fileIconHtml(e.name));
+
                     // Checkbox de seleção múltipla (se houver itens selecionados)
                     if (selectedPaths.size > 0) {
                         const checkbox = document.createElement('span');
@@ -2511,8 +2559,8 @@
                 const node = document.createElement('div');
                 node.className = 'ws-tree-node file temp-create';
                 node.style.paddingLeft = (4 + depth * 12) + 'px';
-                node.innerHTML = TREE_FILE_IC;
-                
+                node.innerHTML = TREE_CHEVRON_SPACER + TREE_FILE_IC;
+
                 const input = document.createElement('input');
                 input.type = 'text';
                 input.placeholder = 'nome-do-arquivo.ext';
