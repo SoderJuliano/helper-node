@@ -135,7 +135,25 @@ class OpenAIService {
 
                 // Sem mais tool calls → resposta final
                 if (!msg.tool_calls || msg.tool_calls.length === 0) {
-                    const finalText = msg.content || '';
+                    let finalText = msg.content || '';
+                    // Resposta vazia: NÃO devolvemos tela em branco nem erro técnico.
+                    // Pedimos pro modelo formular a resposta com base no que coletou
+                    // (ou dizer claramente o que procurou e não encontrou).
+                    if (!String(finalText).trim()) {
+                        console.warn(`⚠️  resposta final vazia (model=${model}); re-perguntando ao modelo.`);
+                        requestPayload.messages.push({
+                            role: 'user',
+                            content: 'Responda agora à minha pergunta de forma completa e direta, com base nas informações que você já coletou com as ferramentas. Se não encontrou o que precisava, explique claramente o que procurou e o que não encontrou. Não responda em branco.'
+                        });
+                        try {
+                            const retry = await postOnce();
+                            const rmsg = retry.data.choices[0].message;
+                            finalText = (rmsg && rmsg.content) ? rmsg.content : '';
+                        } catch (_) {}
+                        if (!String(finalText).trim()) {
+                            finalText = 'Não consegui reunir o suficiente para responder com segurança. Pode reformular a pergunta ou dar um pouco mais de contexto?';
+                        }
+                    }
                     persistTurn(finalText);
                     console.log(`🛠️  tool-calling concluído após ${iterations} iteraç${iterations === 1 ? 'ão' : 'ões'}`);
                     return finalText;
@@ -205,6 +223,28 @@ class OpenAIService {
             }
             throw new Error('Failed to get a response from OpenAI.');
         }
+    }
+
+    /**
+     * Pré-carrega o histórico de uma conversa restaurada na sessão em memória,
+     * para que os próximos turnos tenham o contexto anterior. Preserva o system
+     * prompt existente (se houver) e injeta os pares user/assistant.
+     */
+    seedSession(messages, opts = {}) {
+        const sessionId = opts.sessionId || 'default';
+        const existing = this.sessions[sessionId];
+        const sysMsg = existing && existing.messages
+            ? existing.messages.find(m => m.role === 'system')
+            : null;
+        const seeded = sysMsg ? [sysMsg] : [{ role: 'system', content: 'You are a helpful assistant.' }];
+        for (const m of (messages || [])) {
+            if (!m || !m.content) continue;
+            if (m.role === 'user' || m.role === 'assistant') {
+                seeded.push({ role: m.role, content: String(m.content) });
+            }
+        }
+        this.sessions[sessionId] = { messages: seeded, lastActivity: Date.now() };
+        return seeded.length;
     }
 }
 

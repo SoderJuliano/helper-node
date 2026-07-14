@@ -7,6 +7,7 @@ const fss = require("fs");
 const path = require("path");
 const os = require("os");
 const workspace = require("../../workspace");
+const policy = require("../policy");
 
 const BACKUP_ROOT = path.join(os.homedir(), ".config", "helper-node", "backups");
 const MAX_BYTES = 5 * 1024 * 1024; // 5MB
@@ -46,7 +47,7 @@ module.exports = {
   setOnFileWritten,
 
   async run(args, ctx) {
-    const target = args && args.path ? path.resolve(args.path) : "";
+    const target = args && args.path ? policy.resolveAbs(args.path) : "";
     const content = String(args && args.content || "");
     if (!target) return { ok: false, error: "path obrigatório" };
     if (Buffer.byteLength(content) > MAX_BYTES) {

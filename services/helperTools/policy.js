@@ -24,6 +24,16 @@ function expandHome(p) {
 function resolveAbs(p) {
   if (typeof p === "string") p = p.trim();
   const expanded = expandHome(p);
+  // Caminho relativo (".", "src/x.js"…) deve resolver contra a RAIZ DO PROJETO
+  // ABERTO (workspace), não contra o cwd do app — senão a IA acaba lendo/
+  // escrevendo no diretório do próprio Helper Node em vez do projeto do usuário.
+  if (!path.isAbsolute(expanded)) {
+    try {
+      const workspace = require("../workspace");
+      const dirs = (workspace.list() || []).filter((a) => a.type === "dir");
+      if (dirs.length) return path.resolve(dirs[0].path, expanded);
+    } catch (_) {}
+  }
   return path.resolve(expanded);
 }
 

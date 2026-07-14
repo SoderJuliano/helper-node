@@ -5,7 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const store = require("./store");
 const pathCmd = require("./pathCommands");
-const { buildContextBlock, budgetFor } = require("./contextBuilder");
+const { buildContextBlock, budgetFor, generateTreeStructure } = require("./contextBuilder");
 const summarizer = require("./conversationSummarizer");
 
 async function addPath(absPath, type) {
@@ -41,6 +41,19 @@ function list() { return store.list(); }
 function clear() { store.clear(); }
 function isPathAllowed(p) { return store.isPathAllowed(p); }
 
+// Árvore (blueprint) de um diretório — mesma usada no contexto da IA.
+function tree(absPath) { return generateTreeStructure(absPath); }
+
+// Modelo IDE: um projeto (pasta) por vez. Remove qualquer pasta já anexada
+// antes de abrir a nova; arquivos avulsos são preservados.
+async function openProject(absPath) {
+  for (const a of store.list()) {
+    if (a.type === "dir") store.remove(a.id);
+  }
+  await addPath(absPath, "dir");
+  return store.list();
+}
+
 async function buildContextIfNeeded(modelKey, opts = {}) {
   return await buildContextBlock({ modelKey, ...opts });
 }
@@ -53,7 +66,7 @@ async function compactHistoryIfNeeded(messages, opts) {
 }
 
 module.exports = {
-  addPath, removePath, list, clear, isPathAllowed,
+  addPath, removePath, list, clear, isPathAllowed, tree, openProject,
   buildContextIfNeeded, markContextSent, resetContextSent,
   compactHistoryIfNeeded,
   budgetFor,

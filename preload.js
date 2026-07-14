@@ -58,7 +58,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onAutoCloseState: (callback) =>
     ipcRenderer.on("autoclose-state", (event, data) => callback(data)),
   getAiModel: () => ipcRenderer.invoke("get-ai-model"),
+  getOpenaiModel: () => ipcRenderer.invoke("get-openai-model"),
+  setOpenaiModel: (model) => ipcRenderer.send("set-openai-model", model),
   getEdition: () => ipcRenderer.invoke("get-edition"),
+  openConfig: () => ipcRenderer.send("open-config-ui"),
   stopNotifications: () => ipcRenderer.send("stop-notifications"),
   startNotifications: () => ipcRenderer.send("start-notifications"),
   cancelIaRequest: () => ipcRenderer.send("cancel-ia-request"),
@@ -91,6 +94,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   addMessage: (sessionId, role, content) => ipcRenderer.invoke("add-message", sessionId, role, content),
   createNewSession: (title) => ipcRenderer.invoke("create-new-session", title),
   getLastThreeSessions: () => ipcRenderer.invoke("get-last-three-sessions"),
+  getAllSessions: () => ipcRenderer.invoke("get-all-sessions"),
+  seedAiSession: (messages) => ipcRenderer.invoke("seed-ai-session", messages),
   getSessionById: (id) => ipcRenderer.invoke("get-session-by-id", id),
   downloadConversationTxt: (sessionId) => ipcRenderer.invoke("download-conversation-txt", sessionId),
   newChat: () => ipcRenderer.invoke("new-chat"),
@@ -104,6 +109,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   workspacePickFile: () => ipcRenderer.invoke("workspace:pick-file"),
   workspacePickDir: () => ipcRenderer.invoke("workspace:pick-dir"),
   workspaceList: () => ipcRenderer.invoke("workspace:list"),
+  getProjectContext: () => ipcRenderer.invoke("get-project-context"),
+  getProjectTree: () => ipcRenderer.invoke("get-project-tree"),
+  readFileContent: (p) => ipcRenderer.invoke("read-file-content", p),
+  getFileDiff: (payload) => ipcRenderer.invoke("get-file-diff", payload),
   workspaceRemove: (id) => ipcRenderer.invoke("workspace:remove", id),
   workspaceClear: () => ipcRenderer.invoke("workspace:clear"),
   workspaceOpenExternal: (p) => ipcRenderer.invoke("workspace:open-external", p),
@@ -112,6 +121,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("workspace-changed", (event, data) => cb(data)),
   onWorkspaceFileWritten: (cb) =>
     ipcRenderer.on("workspace-file-written", (event, data) => cb(data)),
+  onAiToolActivity: (cb) =>
+    ipcRenderer.on("ai-tool-activity", (event, data) => cb(data)),
 
   // === Agentic Workflow (multi-phase) ===
   onAgenticPhaseUpdate: (cb) =>

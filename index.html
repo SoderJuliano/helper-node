@@ -3,1518 +3,1193 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aplicação Electron</title>
+    <title>Helper Node</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,200..900;1,200..900&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&family=Source+Code+Pro:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+    <!-- Syntax highlight (visualizador de arquivos da IDE) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <style>
-        body {
-            background-color: rgba(30, 30, 30, 0.8);
-            color: white;
-            font-family: "Source Code Pro", monospace;
-            font-optical-sizing: auto;
-            font-weight: regular;
-            font-style: normal;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
+        /* =====================================================================
+           HELPER NODE — Design System
+           Cartão flutuante arredondado dentro de janela transparente/frameless.
+           Paleta escura premium + acento verde. Tipografia Inter (UI) +
+           Source Code Pro (código/transcrição). Preserva TODOS os IDs/classes
+           que o &lt;script&gt; referencia.
+           ===================================================================== */
+
+        :root {
+            /* Base / superfícies */
+            --bg-base:        #0e1116;
+            --bg-sidebar:     #0b0e12;
+            --bg-surface:     #161b22;
+            --bg-surface-2:   #1c2230;
+            --bg-elevated:    #21283a;
+
+            /* Bordas */
+            --border:         rgba(255, 255, 255, 0.07);
+            --border-strong:  rgba(255, 255, 255, 0.13);
+
+            /* Texto */
+            --text:           #e6edf3;
+            --text-2:         #b9c2cf;
+            --text-3:         #8b949e;
+            --text-4:         #5b6573;
+
+            /* Acento (verde identidade) */
+            --accent:         #4CAF50;
+            --accent-2:       #5fd75f;
+            --accent-soft:    rgba(76, 175, 80, 0.16);
+            --accent-border:  rgba(76, 175, 80, 0.38);
+
+            /* Auxiliares */
+            --danger:         #f87171;
+            --info:           #60a5fa;
+
+            --radius-sm: 6px;
+            --radius:    10px;
+            --radius-lg: 14px;
+
+            --shadow-card: 0 24px 70px rgba(0,0,0,0.62), 0 2px 0 rgba(255,255,255,0.03) inset;
+            --ease: cubic-bezier(.4, 0, .2, 1);
+
+            --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            --font-mono: 'Source Code Pro', 'JetBrains Mono', ui-monospace, monospace;
+        }
+
+        * { box-sizing: border-box; }
+
+        html, body {
             margin: 0;
-            border-radius: 10px;
-            text-align: center;
-            cursor: pointer;
+            padding: 0;
+            height: 100vh;
+            overflow: hidden;
+            background: transparent;            /* janela transparente do SO */
+            font-family: var(--font-ui);
+            color: var(--text);
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+            user-select: none;
         }
-        
-        h1 {
-            font-size: 3rem;
-            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
-            transition: opacity 0.5s ease;
-            animation: pulse 2s infinite;
-            position: absolute;
-            top: 10%;
-            left: 30%;
-            right: 30%;
+
+        /* === Cartão flutuante: o "app" desenhado dentro da janela transparente === */
+        #app-shell {
+            position: fixed;
+            inset: 8px;
+            display: grid;
+            grid-template-columns: 252px 1fr;
+            grid-template-rows: 1fr;
+            background: var(--bg-base);
+            border: 1px solid var(--border-strong);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-card);
+            overflow: hidden;
         }
-        
-        .commands {
-            position: absolute;
-            top: 35px;
-            left: 10px;
-            width: 260px;
-            text-align: start;
-            font-size: 10px;
+
+        /* =====================================================================
+           SIDEBAR
+           ===================================================================== */
+        #sidebar {
+            grid-row: 1;
+            background: var(--bg-sidebar);
+            border-right: 1px solid var(--border);
             display: flex;
             flex-direction: column;
-            gap: 6px;
-            z-index: 100;
-            opacity: 0;
-            pointer-events: none;
-            transform: translateX(-10px);
-            transition: opacity 0.5s ease, transform 0.5s ease;
-        }
-        .commands.open {
-            opacity: 1;
-            pointer-events: auto;
-            transform: translateX(0);
+            min-height: 0;
+            -webkit-app-region: no-drag;
         }
 
+        .sb-brand {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            padding: 13px 14px 12px;
+            font-weight: 600;
+            font-size: 13.5px;
+            letter-spacing: .1px;
+            color: var(--text);
+            border-bottom: 1px solid var(--border);
+            -webkit-app-region: drag;            /* arrasta a janela pela marca */
+        }
+        .sb-brand .sb-logo {
+            width: 22px; height: 22px;
+            border-radius: 6px;
+            background: linear-gradient(140deg, #5fd75f, #2e7d32);
+            display: inline-flex; align-items: center; justify-content: center;
+            color: #06210a; font-weight: 700; font-size: 13px;
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.10), 0 4px 10px rgba(76,175,80,0.30);
+            flex-shrink: 0;
+        }
+        .sb-brand .sb-ver {
+            margin-left: auto;
+            font-size: 10px; font-weight: 500; color: var(--text-4);
+            font-family: var(--font-mono);
+            -webkit-app-region: no-drag;
+        }
+
+        /* Botão "+ Novo Chat" em destaque */
+        .new-chat-btn {
+            margin: 12px 12px 4px;
+            padding: 9px 12px;
+            background: var(--accent);
+            border: 1px solid transparent;
+            color: #06210a;
+            font-weight: 600;
+            font-size: 12.5px;
+            font-family: var(--font-ui);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: background .15s var(--ease), transform .1s var(--ease), box-shadow .15s var(--ease);
+            display: flex; align-items: center; justify-content: center; gap: 6px;
+            -webkit-app-region: no-drag;
+            box-shadow: 0 4px 14px rgba(76,175,80,0.22);
+        }
+        .new-chat-btn:hover { background: var(--accent-2); box-shadow: 0 6px 18px rgba(76,175,80,0.34); }
+        .new-chat-btn:active { transform: translateY(1px); }
+
+        .sb-scroll {
+            flex: 1;
+            overflow-y: auto;
+            padding: 6px 8px 8px;
+            min-height: 0;
+        }
+
+        /* === Painéis colapsáveis reaproveitados (history/shortcut) === */
         .panel {
-            background-color: rgba(0, 0, 0, 0.5);
-            padding: 8px;
-            border-radius: 5px;
+            background: transparent;
+            padding: 2px 4px;
+            border-radius: var(--radius-sm);
+            margin-bottom: 6px;
             overflow: hidden;
-            max-height: 220px;
+            max-height: 320px;
             transform-origin: top;
-            transition: max-height 0.2s ease, padding-top 0.2s ease, padding-bottom 0.2s ease;
+            transition: max-height .22s var(--ease);
             position: relative;
         }
-
-        .panel.collapsed {
-            max-height: 18px;
-            padding-top: 8px;
-            padding-bottom: 4px;
-        }
+        .panel.collapsed { max-height: 28px; }
 
         .panel-header {
             display: flex;
             align-items: center;
-            gap: 4px;
-            margin-bottom: 2px;
-            min-height: 12px;
-            color: #ffffff;
-            user-select: none;
+            gap: 6px;
+            min-height: 26px;
+            padding: 5px 6px;
+            border-radius: var(--radius-sm);
+            color: var(--text-3);
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: .6px;
             cursor: pointer;
+            user-select: none;
             -webkit-app-region: no-drag;
-            padding: 2px 4px;
-            border-radius: 4px;
-            transition: background-color 0.15s ease;
+            transition: background .15s var(--ease), color .15s var(--ease);
         }
-
-        .panel-header:hover {
-            background-color: rgba(255, 255, 255, 0.06);
-        }
-
-        .panel-label {
-            white-space: nowrap;
-        }
-
-        .panel-filler {
-            flex: 1;
-            overflow: hidden;
-            white-space: nowrap;
-            color: rgba(255, 255, 255, 0.7);
-            letter-spacing: 0.5px;
-        }
+        .panel-header:hover { background: rgba(255,255,255,0.04); color: var(--text-2); }
+        .panel-label { white-space: nowrap; }
+        .panel-filler { flex: 1; }
+        .panel:not(.collapsed) .panel-header { color: var(--text-2); }
 
         .panel-item {
-            padding: 4px 0;
+            padding: 6px 8px;
             cursor: pointer;
-            color: #e0e0e0;
-            transition: color 0.2s, text-shadow 0.2s;
-            font-size: 9px;
+            color: var(--text-2);
+            font-size: 12px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            max-width: 240px;
-            display: flex;
-            align-items: center;
-            gap: 6px;
+            border-radius: var(--radius-sm);
+            display: flex; align-items: center; gap: 7px;
+            transition: background .14s var(--ease), color .14s var(--ease);
         }
-
-        .panel-item:hover {
-            color: #ffffff;
-            text-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
+        .panel-item:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+        .panel-item.active { background: var(--accent-soft); color: var(--text); }
+        .panel-item.active .panel-item-title { color: var(--text); }
+        .panel-item-title { flex: 1; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+        .panel-item-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+        .panel-item-action {
+            flex-shrink: 0; background: transparent; border: none;
+            color: var(--text-4); cursor: pointer; padding: 0;
+            width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;
+            border-radius: 4px; opacity: 0; transition: opacity .15s, color .15s, background .15s;
         }
-
-        .panel-item-title {
-            flex: 1;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            cursor: pointer;
-        }
-
-        .panel-item-delete {
-            flex-shrink: 0;
-            background: transparent;
-            border: none;
-            color: rgba(255, 255, 255, 0.5);
-            cursor: pointer;
-            font-size: 10px;
-            padding: 0;
-            width: 12px;
-            height: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            opacity: 0.6;
-            transition: opacity 0.2s, color 0.2s;
-        }
-
-        .panel-item:hover .panel-item-delete {
-            opacity: 1;
-            color: #ff6b6b;
-        }
-
-        .panel-item-delete:hover {
-            color: #ff6b6b;
-        }
-
-        .new-chat-btn {
-            padding: 4px 6px;
-            margin-top: 4px;
-            background-color: rgba(76, 175, 80, 0.7);
-            border: 1px solid rgba(76, 175, 80, 1);
-            color: #ffffff;
-            border-radius: 3px;
-            cursor: pointer;
-            font-size: 9px;
-            transition: background-color 0.2s;
-            text-align: center;
-            width: 100%;
-            box-sizing: border-box;
-        }
-
-        .new-chat-btn:hover {
-            background-color: rgba(76, 175, 80, 1);
-        }
-
-        #conversation-viewer {
-            position: fixed;
-            top: 20%;
-            left: 10%;
-            right: 10%;
-            max-height: 60vh;
-            background-color: #101418;
-            border: 1px solid rgba(255, 255, 255, 0.18);
-            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
-            border-radius: 8px;
-            padding: 36px 20px 20px;
-            overflow: visible;
-            color: #e0e0e0;
-            font-size: 11px;
-            line-height: 1.6;
-            display: none;
-            z-index: 5000;
-        }
-        #conversation-content {
-            max-height: calc(60vh - 60px);
-            overflow-y: auto;
-            scrollbar-width: thin;
-        }
-
-        #conversation-viewer::-webkit-scrollbar {
-            width: 6px;
-        }
-
-        #conversation-viewer::-webkit-scrollbar-track {
-            background: rgba(0, 0, 0, 0.5);
-        }
-
-        #conversation-viewer::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.3);
-            border-radius: 3px;
-        }
-
-        .conversation-close-btn {
-            position: absolute;
-            top: 8px;
-            right: 8px;
-            background: transparent;
-            border: none;
-            color: #ffffff;
-            font-size: 18px;
-            cursor: pointer;
-            padding: 0;
-            width: 20px;
-            height: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            opacity: 0.6;
-            transition: opacity 0.2s;
-            z-index: 5100;
-            pointer-events: auto;
-        }
-
-        .conversation-close-btn:hover {
-            opacity: 1;
-        }
-
-        .conversation-download-btn {
-            position: absolute;
-            top: 8px;
-            right: 34px;
-            background: transparent;
-            border: none;
-            color: #ffffff;
-            cursor: pointer;
-            padding: 0;
-            width: 20px;
-            height: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            opacity: 0.6;
-            transition: opacity 0.2s, color 0.2s;
-        }
-
-        .conversation-download-btn:hover {
-            opacity: 1;
-            color: #81c784;
-        }
-
-        .conversation-download-btn svg {
-            width: 14px;
-            height: 14px;
-            display: block;
-            pointer-events: none;
-        }
-
-        /* Toast in-app (modo stealth = sem notificacao do SO) */
-        #app-toast {
-            position: fixed;
-            bottom: 24px;
-            left: 50%;
-            transform: translateX(-50%) translateY(20px);
-            background: #1a2028;
-            border: 1px solid rgba(129, 199, 132, 0.5);
-            color: #e8f5e9;
-            padding: 10px 16px;
-            border-radius: 6px;
-            font-size: 11px;
-            font-family: 'Source Code Pro', monospace;
-            max-width: 70%;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.2s ease, transform 0.2s ease;
-            z-index: 99999;
-            white-space: pre-wrap;
-            word-break: break-all;
-        }
-
-        #app-toast.show {
-            opacity: 1;
-            transform: translateX(-50%) translateY(0);
-            pointer-events: auto;
-        }
-
-        #app-toast.error {
-            border-color: rgba(239, 83, 80, 0.6);
-            color: #ffebee;
-        }
-
-        .conversation-message {
-            margin-bottom: 12px;
-            padding: 8px;
-            background-color: rgba(255, 255, 255, 0.05);
-            border-left: 2px solid rgba(76, 175, 80, 0.5);
-            border-radius: 4px;
-        }
-
-        .conversation-message.user {
-            border-left-color: rgba(33, 150, 243, 0.5);
-        }
-
-        .conversation-message.assistant {
-            border-left-color: rgba(76, 175, 80, 0.5);
-        }
-
-        .conversation-message-label {
-            font-weight: bold;
-            color: #90caf9;
-            margin-bottom: 2px;
-        }
-
-        .conversation-message.assistant .conversation-message-label {
-            color: #81c784;
-        }
-
-        .conversation-message-content {
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            text-align: left;
-        }
+        .panel-item-action svg { width: 13px; height: 13px; }
+        .panel-item:hover .panel-item-action { opacity: .7; }
+        .panel-item-action:hover { color: var(--text); background: rgba(255,255,255,0.10); opacity: 1; }
+        .panel-item-delete:hover { color: var(--danger); background: rgba(248,113,113,0.12); opacity: 1; }
 
         .commands-content {
-            max-height: 190px;
+            max-height: 280px;
             opacity: 1;
-            transform: translateY(0);
-            transition: max-height 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
+            transition: max-height .22s var(--ease), opacity .18s var(--ease);
+            padding: 2px 0;
         }
+        .panel.collapsed .commands-content { max-height: 0; opacity: 0; overflow: hidden; }
 
-        .panel.collapsed .commands-content {
-            max-height: 0;
-            opacity: 0;
-            transform: translateY(-8px);
-            pointer-events: none;
-        }
+        /* Histórico: lista TODAS as conversas e rola internamente, sem barra
+           visível, aproveitando o espaço da sidebar. */
+        #history-panel { max-height: none; }
+        #history-content { max-height: 46vh; overflow-y: auto; scrollbar-width: none; }
+        #history-content::-webkit-scrollbar { width: 0; height: 0; }
+        #history-panel.collapsed #history-content { max-height: 0; overflow: hidden; }
 
         .commands-toggle {
-            position: static;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 16px;
-            height: 16px;
-            padding: 0;
-            border: none;
-            background: transparent;
-            color: rgba(255, 255, 255, 0.75);
-            cursor: pointer;
-            z-index: 2;
-            -webkit-app-region: no-drag;
-            transition: transform 0.2s ease, color 0.15s ease;
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 16px; height: 16px; padding: 0; border: none; background: transparent;
+            color: var(--text-3); cursor: pointer; -webkit-app-region: no-drag;
+            transition: transform .2s var(--ease), color .15s var(--ease);
         }
+        .commands-toggle:hover { color: var(--text); }
+        .commands-toggle svg { width: 12px; height: 12px; display: block; pointer-events: none; }
+        .panel:not(.collapsed) .commands-toggle { transform: rotate(180deg); }
 
-        .commands-toggle:hover {
-            color: #ffffff;
-        }
-
-        .commands-toggle svg {
-            width: 12px;
-            height: 12px;
-            display: block;
-            pointer-events: none;
-        }
-
-        /* Rotaciona o chevron quando expandido (panel sem 'collapsed') */
-        .panel:not(.collapsed) .commands-toggle {
-            transform: rotate(180deg);
-        }
-        
         .command-item {
-            margin: 5px 0;
-        }
-
-        .command-item strong {
-            color: #81c784;
-            font-weight: 600;
-            letter-spacing: 0.3px;
-        }
-        
-        .hidden {
-            opacity: 0;
-            pointer-events: none;
-        }
-
-        #animation-container {
-            position: fixed;
-            top: 40px;
-            right: 30px;
-            width: 60px;
-            height: 60px;
-            display: none; /* Começa escondido */
-            z-index: 9999; /* Sobre todos os outros elementos */
-            pointer-events: none; /* Não bloqueia clique no que está atrás */
-            opacity: 0.95;
-        }
-
-        .drag-area {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 30px;
-            -webkit-app-region: drag;
-            z-index: 1001;
-        }
-
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-            100% { transform: scale(1); }
-        }
-
-        #transcription {
-            max-width: 80%;
-            min-width: 500px;
-            top: calc(8% + 15px);
-            bottom: 5%;
-            left: 10%;
-            right: 10%;
-            padding: 12px 20px;
-            position: fixed;
-            color: white;
-            overflow-y: auto;
-            overflow-x: hidden;
-            scrollbar-width: none;
-            -ms-overflow-style: none;
-        }
-
-        /* Hide scrollbar visuals while allowing scroll */
-        #transcription::-webkit-scrollbar {
-            width: 0;
-            height: 0;
-            background: transparent;
-        }
-
-        #transcription:hover {
-            overflow-y: auto; /* keep consistent on hover */
-            overflow-x: hidden;
-            scrollbar-width: none; /* Firefox */
-        }
-
-        .content:hover {
-            overflow-y: auto; /* Permite rolagem vertical */
-            overflow-x: hidden; /* Impede rolagem horizontal */
-            scrollbar-width: none; /* Firefox */
-        }
-
-        #transcription:hover::-webkit-scrollbar {
-            width: 0; /* Oculta barra em navegadores WebKit */
-            height: 0;
-        }
-
-        /* Remover estilos de thumb e track, já que a barra está oculta */
-        #transcription:hover::-webkit-scrollbar-thumb {
-            display: none;
-        }
-
-        #transcription:hover::-webkit-scrollbar-track {
-            display: none;
-        }
-
-        #transcription pre {
-            text-align: left;
-            max-width: 100%;
-            overflow-x: auto;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            padding: 10px;
-            background-color: rgba(0, 0, 0, 0.4);
-            border-radius: 5px;
-            box-sizing: border-box;
-            scrollbar-width: thin;
-            scrollbar-color: #4a4a52 transparent;
-        }
-
-        .content {
-            display: block;
-            width: 100%;
-            overflow-wrap: break-word;
-        }
-
-        .rt-assistant-feed {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            width: 100%;
-            margin-top: 10px;
-            text-align: left;
-        }
-
-        .rt-bubble {
-            max-width: 88%;
-            border-radius: 14px;
-            line-height: 1.55;
-            font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
-            font-size: 13px;
-            word-break: break-word;
-        }
-
-        /* Bolha de transcrição (azul) — collapsible */
-        .rt-bubble.user {
-            align-self: flex-end;
-            background: rgba(33, 150, 243, 0.18);
-            border: 1px solid rgba(33, 150, 243, 0.40);
-            overflow: hidden;
-        }
-
-        .rt-bubble.user .rt-bubble-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 8px 12px;
-            cursor: pointer;
-            user-select: none;
-            font-size: 12px;
-            font-weight: 500;
-            color: rgba(144, 202, 249, 0.95);
-            gap: 8px;
-        }
-
-        .rt-bubble.user .rt-bubble-header:hover {
-            background: rgba(33, 150, 243, 0.12);
-        }
-
-        .rt-bubble.user .rt-bubble-toggle {
-            font-size: 10px;
-            opacity: 0.7;
-            flex-shrink: 0;
-            transition: transform 0.2s ease;
-        }
-
-        .rt-bubble.user .rt-bubble-toggle.open {
-            transform: rotate(180deg);
-        }
-
-        .rt-bubble.user .rt-bubble-body {
-            display: none;
-            padding: 0 12px 10px 12px;
-            font-size: 12.5px;
-            color: rgba(220, 235, 255, 0.88);
-            white-space: pre-wrap;
-            border-top: 1px solid rgba(33, 150, 243, 0.20);
-        }
-
-        .rt-bubble.user .rt-bubble-body.open {
-            display: block;
-        }
-
-        /* Bolha de resposta da IA (verde) */
-        .rt-bubble.assistant {
-            align-self: flex-start;
-            background: rgba(76, 175, 80, 0.16);
-            border: 1px solid rgba(76, 175, 80, 0.38);
-            padding: 10px 14px;
-            font-size: 13px;
-            color: rgba(220, 255, 220, 0.92);
-            white-space: pre-wrap;
-        }
-
-        .rt-bubble.system {
-            align-self: center;
-            background: rgba(255, 255, 255, 0.07);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            color: #aaa;
-            font-size: 11px;
-            padding: 5px 10px;
-            border-radius: 8px;
-        }
-
-        .rt-bubble.fatal-error {
-            align-self: center;
-            background: rgba(244, 67, 54, 0.20);
-            border: 1px solid rgba(244, 67, 54, 0.60);
-            color: #ff8a80;
-            font-size: 13px;
-            font-weight: 600;
-            text-align: center;
-            max-width: 95%;
-            padding: 10px 14px;
-        }
-
-        #transcription br {
-            margin-bottom: 10px;
-        }
-
-        .icon {
-            position: absolute;
-            top: 40px;
-            right: 30px;
-            width: 60px;
-            height: 60px;
-            display: none;
-            z-index: 1000;
-        }
-
-
-        .ia-response {
-            font-family: "Source Code Pro", monospace;
-            font-optical-sizing: auto;
-            font-weight: 500;
-            font-size: 16px;
-            line-height: 1.8;
-            overflow-wrap: break-word;
-            margin-top: 4px;
-        }
-
-        /* Agrupa pergunta + resposta numa unidade visual com hover elevation */
-        .interaction-block {
-            position: relative;
-            border-radius: 8px;
-            padding: 6px 8px;
-            margin-top: 30px;
-            transition: background 0.2s;
-        }
-        .interaction-block:first-child {
-            margin-top: 0;
-        }
-        .interaction-block:hover {
-            background: rgba(255,255,255,0.04);
-        }
-        /* === Botão ⌬ para esconder/mostrar painéis === */
-        #panels-toggle-btn {
-            position: absolute;
-            top: 8px;
-            left: 8px;
-            background: transparent;
-            border: none;
-            color: rgba(255,255,255,0.35);
-            font-size: 28px;
-            cursor: pointer;
-            padding: 2px 5px;
-            border-radius: 4px;
-            z-index: 1100;
-            transition: color 0.15s, background 0.15s;
-            -webkit-app-region: no-drag;
-            display: flex;
-            align-items: center;
-        }
-        #panels-toggle-btn:hover {
-            color: rgba(255,255,255,0.85);
-            background: rgba(255,255,255,0.08);
-        }
-
-        /* === Copy All fixo no topo da transcrição === */
-        #transcription-header {
-            position: fixed;
-            top: calc(8% + 15px);
-            right: 10%;
-            z-index: 50;
-            display: flex;
-            justify-content: flex-end;
-        }
-        .copy-all-fixed-btn {
-            display: none;
-            background: transparent;
-            border: none;
-            color: rgba(255,255,255,0.3);
-            font-size: 10px;
-            font-family: monospace;
-            cursor: pointer;
-            padding: 3px 8px;
-            border-radius: 4px;
-            transition: color 0.15s, background 0.15s;
-        }
-        .copy-all-fixed-btn:hover {
-            color: rgba(255,255,255,0.9);
-            background: rgba(255,255,255,0.08);
-        }
-        .copy-all-fixed-btn.copied {
-            color: #81c784;
-        }
-
-        /* === Botão Copiar dentro de cada interaction-block === */
-        .interaction-block .copy-interaction-btn {
-            position: absolute;
-            top: 8px;
-            right: 8px;
-            background: transparent;
-            border: none;
-            border-radius: 4px;
-            padding: 3px 7px;
-            cursor: pointer;
-            font-size: 10px;
-            color: rgba(255,255,255,0);
-            font-family: monospace;
-            transition: all 0.15s ease;
-            z-index: 3;
-            pointer-events: none;
-        }
-        .interaction-block:hover .copy-interaction-btn {
-            color: rgba(255,255,255,0.45);
-            pointer-events: auto;
-        }
-        .interaction-block:hover .copy-interaction-btn:hover {
-            background: rgba(255,255,255,0.08);
-            color: rgba(255,255,255,0.9);
-        }
-
-        /* Lista de arquivos editados horizontalmente */
-        .tool-files-list {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 5px;
-            margin: 6px 0 2px 0;
-        }
-        .tool-file-chip {
-            font-size: 11px;
-            background: rgba(0,200,120,0.12);
-            color: rgba(160,255,200,0.85);
-            border: 1px solid rgba(0,200,120,0.2);
-            border-radius: 4px;
-            padding: 2px 7px;
-            font-family: monospace;
-        }
-
-        .ia-response pre {
-            position: relative;
-            text-align: start;
-            color: #e0e0e0; /* Corrigido para texto claro */
-            background: #2d2d2d; /* Fundo um pouco mais escuro para contraste */
-            padding: 10px;
-            border-radius: 5px;
-            overflow-x: auto; /* Permite rolagem horizontal para código longo */
-            max-width: 100%;
-            box-sizing: border-box;
-            margin: 8px 0;
-            font-family: 'Courier New', monospace; /* Fonte específica para código */
-            scrollbar-width: thin;
-            scrollbar-color: #4a4a52 transparent;
-        }
-
-        /* Scrollbar custom dentro de blocos de codigo (substitui a branca grossa do Chromium). */
-        .ia-response pre::-webkit-scrollbar,
-        #transcription pre::-webkit-scrollbar {
-            height: 6px;
-            width: 6px;
-            background: transparent;
-        }
-        .ia-response pre::-webkit-scrollbar-track,
-        #transcription pre::-webkit-scrollbar-track {
-            background: transparent;
-        }
-        .ia-response pre::-webkit-scrollbar-thumb,
-        #transcription pre::-webkit-scrollbar-thumb {
-            background: #3a3a42;
-            border-radius: 3px;
-            transition: background 0.2s;
-        }
-        .ia-response pre:hover::-webkit-scrollbar-thumb,
-        #transcription pre:hover::-webkit-scrollbar-thumb {
-            background: #5a5a62;
-        }
-        .ia-response pre::-webkit-scrollbar-corner,
-        #transcription pre::-webkit-scrollbar-corner {
-            background: transparent;
-        }
-
-        .ia-response code {
-            position: relative;
-            text-align: start;
-            color: #e0e0e0; /* Corrigido para texto claro */
-            font-family: 'Courier New', monospace;
-            display: inline;
-            white-space: normal;
-            overflow-wrap: break-word;
-            max-width: 100%;
-        }
-
-        .ia-response p {
-            margin: 8px 0;
+            margin: 3px 0;
+            font-size: 11.5px;
+            color: var(--text-2);
             line-height: 1.5;
-            overflow-wrap: break-word;
-            text-align: left; /* Alinha parágrafos à esquerda */
         }
+        .command-item strong { color: var(--accent-2); font-weight: 600; }
 
-        .ia-response ul {
-            margin: 8px 0;
-            padding-left: 20px;
-            max-width: 100%;
-            overflow-wrap: break-word;
-            text-align: left; /* Alinha listas à esquerda */
-        }
-
-        .ia-response li {
-            color: #e0e0e0; /* Garante que os itens da lista sejam brancos */
-            margin-bottom: 4px;
-        }
-
-        .copy-button {
-            position: absolute;
-            top: 8px;
-            right: 8px;
-            background: transparent;
-            border: none;
-            border-radius: 4px;
-            padding: 4px 6px;
-            cursor: pointer;
-            font-size: 0;
-            color: rgba(255, 255, 255, 0.5);
-            transition: all 0.15s ease;
-            z-index: 2;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 28px;
-            height: 28px;
-        }
-        .copy-button:hover {
-            background: rgba(255, 255, 255, 0.08);
-            color: rgba(255, 255, 255, 0.9);
-        }
-        .copy-button svg {
-            width: 16px;
-            height: 16px;
-        }
-        .copy-button.copied {
-            background: rgba(76, 175, 80, 0.2);
-            color: rgba(149, 255, 170, 0.95);
-        }
-        .copy-button.copy-error {
-            background: rgba(244, 67, 54, 0.2);
-            color: rgba(255, 138, 128, 0.95);
-        }
-
-
-
-        code {
-            z-index: 1;
-        }
-
-        .question-text {
-            position: relative;
-            display: block;
-            text-align: left;
-            padding: 3px 0;
-            border-radius: 5px;
-            transition: background-color 0.3s;
-            cursor: pointer;
-            font-weight: bold;
-            color: #ffffff;
-            margin-bottom: 4px;
-        }
-
-        .question-text:hover {
-            background-color: rgba(255, 255, 255, 0.1);
-        }
-
-        .question-text:hover .edit-icon {
-            display: inline-block;
-        }
-
-        .edit-icon {
-            display: none;
-            margin-left: 8px;
-            font-size: 14px;
-            opacity: 0.7;
-        }
-
-        .edit-input, .edit-textarea {
-            width: 100%;
-            background-color: rgba(50, 50, 50, 0.9);
-            color: #fff; /* Ajuste para uma cor visivel */
-            border: 2px solid #4CAF50; /* Cor mais agradavel */
-            border-radius: 5px;
-            padding: 10px;
-            font-family: "Source Code Pro", monospace;
-            font-weight: normal;
-            font-style: italic;
-            font-size: 16px;
-            resize: none;
-            outline: none;
-            margin-bottom: 20px;
-            transition: box-shadow 0.3s, border-color 0.3s;
-        }
-
-        .edit-input:focus, .edit-textarea:focus {
-            box-shadow: 0 0 10px #4CAF50;
-            border-color: #81c784;
-        }
-
-        .edit-textarea {
-            min-height: 120px;
-            white-space: pre-wrap;
-        }
-
-        /* ============ MANUAL INPUT (estilo terminal) ============
-           Usado quando o usuario digita pergunta manual via Ctrl+I ou
-           clicando na tela. Visual de prompt de terminal: prefixo '>' verde,
-           cursor '_' piscando, fundo igual ao app (sem destaque verde),
-           altura compacta com auto-grow.
-        */
-        .terminal-input-wrap {
-            position: relative;
-            background: rgba(20, 20, 22, 0.95);
-            border: 1px solid #2a2a2e;
-            border-radius: 6px;
-            padding: 8px 10px 8px 24px;
-            font-family: "Source Code Pro", "JetBrains Mono", monospace;
-            font-size: 15px;
-            color: #e6e6e6;
-            transition: border-color 0.15s ease;
-            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02);
-            box-sizing: border-box;
-        }
-        .terminal-input-wrap:focus-within {
-            border-color: #4a4a52;
-        }
-        .terminal-input-wrap::before {
-            content: '>';
-            position: absolute;
-            left: 9px;
-            top: 8px;
-            color: #5fd75f;
-            font-weight: bold;
-            user-select: none;
-            pointer-events: none;
-            line-height: 1.4;
-            font-size: 15px;
-            font-family: inherit;
-        }
-        /* contenteditable: cursor '_' real fica DEPOIS do texto, sem replicacao. */
-        .terminal-input {
-            display: block;
-            min-height: 22px;
-            max-height: 200px;
-            overflow-y: auto;
-            background: transparent;
-            border: none;
-            outline: none;
-            color: #e6e6e6;
-            font: inherit;
-            line-height: 1.4;
-            padding: 0;
-            margin: 0;
-            text-align: left; /* herda center de algum pai — forca esquerda */
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            overflow-wrap: break-word;
-            caret-color: transparent; /* nativo escondido — _ DOM e' o cursor */
-            scrollbar-width: thin;
-        }
-        .terminal-input::selection { background: rgba(95, 215, 95, 0.3); }
-        .terminal-input .gcursor {
-            color: #5fd75f;
-            font-weight: bold;
-            animation: terminal-blink 1.05s steps(2, start) infinite;
-            user-select: none;
-        }
-        @keyframes terminal-blink {
-            0%, 50% { opacity: 1; }
-            50.01%, 100% { opacity: 0; }
-        }
-        .terminal-hint {
-            position: absolute;
-            left: 38px;
-            top: 8px;
-            color: #6a6a72;
-            font-size: 14px;
-            font-style: normal;
-            font-family: inherit;
-            pointer-events: none;
-            user-select: none;
-            white-space: nowrap;
-            opacity: 0.7;
-            line-height: 1.4;
-        }
-        .terminal-input-wrap.has-text .terminal-hint { display: none; }
-
-        .edit-controls {
-            display: flex;
-            gap: 10px;
-            margin-top: 10px;
-            justify-content: flex-start;
-        }
-
-        .manual-input-container {
-            margin-top: 14px;
-            margin-bottom: 16px;
-        }
-
-        .send-button {
-            background: #4CAF50;
-            border: none;
-            border-radius: 5px;
-            padding: 8px 16px;
-            cursor: pointer;
-            font-size: 14px;
-            color: white;
-            font-weight: bold;
-            transition: background 0.3s;
-        }
-
-        .send-button:hover {
-            background: #45a049;
-        }
-
-        .ocr-left {
-            text-align: left !important;
-        }
-
-        /* Streaming cursor animation */
-        .typing-cursor {
-            display: inline-block;
-            width: 2px;
-            height: 1em;
-            background-color: #00ff00;
-            margin-left: 2px;
-            animation: blink 1s infinite;
-            vertical-align: text-bottom;
-        }
-
-        @keyframes blink {
-            0%, 49% {
-                opacity: 1;
-            }
-            50%, 100% {
-                opacity: 0;
-            }
-        }
-
-        .streaming-response {
-            font-family: "Source Code Pro", monospace;
-            font-optical-sizing: auto;
-            font-weight: bold;
-            line-height: 1.5;
-            overflow-wrap: break-word;
-            margin-top: 20px;
-            text-align: left;
-        }
-
-        /* Toast notification */
-        .copy-toast {
-            position: fixed;
-            bottom: 30px;
-            right: 30px;
-            background-color: rgba(76, 175, 80, 0.95);
-            color: white;
-            padding: 12px 24px;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 500;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-            z-index: 10000;
-            opacity: 0;
-            transform: translateY(20px);
-            transition: opacity 0.3s ease, transform 0.3s ease;
-            pointer-events: none;
-        }
-
-        .copy-toast.show {
-            opacity: 1;
-            transform: translateY(0);
-        }
-
-        /* === Workspace bar (inline, clipe + chips) === */
-        .ws-bar {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            padding: 8px;
-            margin-top: 4px;
-            background-color: rgba(0, 0, 0, 0.5);
-            border: none;
-            border-radius: 5px;
-            flex-wrap: wrap;
-            min-height: 26px;
+        /* === Workspace / Projeto na sidebar === */
+        .ws-section {
+            padding: 4px 4px 6px; margin: 0 4px 6px;
             -webkit-app-region: no-drag;
         }
-        .ws-clip-btn {
-            width: 22px;
-            height: 22px;
-            padding: 0;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            background: transparent;
-            border: none;
-            border-radius: 3px;
-            color: rgba(255,255,255,0.7);
-            cursor: pointer;
-            flex-shrink: 0;
-            transition: background 0.15s, color 0.15s;
+        .ws-actions { display: flex; flex-direction: column; gap: 4px; }
+        .ws-action {
+            display: flex; align-items: center; gap: 8px;
+            padding: 7px 9px; width: 100%;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text-2); font-size: 12px; font-family: var(--font-ui);
+            cursor: pointer; text-align: left;
+            transition: background .15s var(--ease), border-color .15s var(--ease), color .15s var(--ease);
         }
-        .ws-clip-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
-        .ws-clip-btn svg { width: 14px; height: 14px; }
-        .ws-chips {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 4px;
-            flex: 1;
-            min-width: 0;
+        .ws-action:hover { background: rgba(255,255,255,0.06); border-color: var(--border-strong); color: var(--text); }
+        .ws-action svg { width: 15px; height: 15px; opacity: .8; flex-shrink: 0; }
+        .ws-action-primary { color: var(--text); }
+        .ws-action-primary svg { opacity: .95; }
+
+        /* Projeto aberto (modelo IDE): header discreto + dropdown da árvore */
+        .ws-project-row { display: flex; align-items: center; gap: 2px; }
+        .ws-project-main {
+            flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
+            padding: 7px 9px; background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border); border-radius: var(--radius-sm);
+            color: var(--text); font-size: 12px; font-family: var(--font-ui);
+            font-weight: 500; cursor: pointer; text-align: left;
+            transition: background .15s var(--ease), border-color .15s var(--ease);
         }
+        .ws-project-main:hover { background: rgba(255,255,255,0.06); border-color: var(--border-strong); }
+        .ws-project-main .ws-folder-ic { width: 15px; height: 15px; opacity: .85; flex-shrink: 0; }
+        .ws-project-main span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ws-tree-toggle {
+            flex-shrink: 0; width: 28px; height: 30px; padding: 0;
+            display: inline-flex; align-items: center; justify-content: center;
+            background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+            border-radius: var(--radius-sm); color: var(--text-3); cursor: pointer;
+            transition: background .15s, color .15s, border-color .15s;
+        }
+        .ws-tree-toggle:hover { background: rgba(255,255,255,0.06); color: var(--text); border-color: var(--border-strong); }
+        .ws-tree-toggle svg { width: 13px; height: 13px; transition: transform .2s var(--ease); }
+        .ws-tree-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+        .ws-tree {
+            margin-top: 5px; padding: 7px 9px;
+            background: rgba(0,0,0,0.22); border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            font-family: var(--font-mono); font-size: 10.5px; line-height: 1.55;
+            color: var(--text-3); white-space: pre; overflow: auto;
+            max-height: 34vh; scrollbar-width: none;
+        }
+        .ws-tree::-webkit-scrollbar { width: 0; height: 0; }
+        .ws-tree .ws-tree-empty { color: var(--text-4); font-style: italic; white-space: normal; }
+
+        .ws-chips { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; margin-top: 6px; }
+        .ws-chips:empty { display: none; }
         .ws-chip {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 2px 4px 2px 6px;
-            background: rgba(33, 150, 243, 0.18);
-            border: 1px solid rgba(33, 150, 243, 0.4);
-            border-radius: 10px;
-            font-size: 9px;
-            color: #d6e6ff;
-            max-width: 160px;
-            cursor: pointer;
-            transition: background 0.15s;
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 3px 5px 3px 8px;
+            background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+            border-radius: 6px; font-size: 10.5px; color: var(--text-2); max-width: 170px;
+            cursor: pointer; transition: background .15s, border-color .15s;
         }
-        .ws-chip:hover { background: rgba(33, 150, 243, 0.32); }
-        .ws-chip-label {
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
+        .ws-chip:hover { background: rgba(255,255,255,0.08); border-color: var(--border-strong); }
+        .ws-chip-ic { display: inline-flex; align-items: center; flex-shrink: 0; }
+        .ws-chip-ic svg { width: 12px; height: 12px; opacity: .75; }
+        .ws-chip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .ws-chip-x {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 14px;
-            height: 14px;
-            padding: 0;
-            background: transparent;
-            border: none;
-            border-radius: 50%;
-            color: rgba(255,255,255,0.55);
-            cursor: pointer;
-            flex-shrink: 0;
-            transition: background 0.15s, color 0.15s;
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 14px; height: 14px; padding: 0; background: transparent; border: none;
+            border-radius: 50%; color: rgba(255,255,255,0.6); cursor: pointer; flex-shrink: 0;
+            transition: background .15s, color .15s;
         }
-        .ws-chip-x:hover { background: rgba(255,80,80,0.5); color: #fff; }
+        .ws-chip-x:hover { background: rgba(248,113,113,0.5); color: #fff; }
         .ws-chip-x svg { width: 8px; height: 8px; }
-
-        /* Linha discreta de evento de arquivo (criado/editado/etc) */
-        .ws-file-event {
-            margin: 4px 0;
-            font-size: 11px;
-            color: rgba(255,255,255,0.55);
-            display: flex;
-            align-items: baseline;
-            gap: 4px;
-            flex-wrap: wrap;
-        }
-        .ws-file-event-label { color: rgba(255,255,255,0.45); }
-        .ws-file-link {
-            color: #9ec5ff;
-            cursor: pointer;
-            text-decoration: none;
-            border-bottom: 1px dashed rgba(158,197,255,0.4);
-        }
+        .ws-file-event { margin: 4px 0; font-size: 11px; color: var(--text-3); display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; }
+        .ws-file-event-label { color: var(--text-4); }
+        .ws-file-link { color: #9ec5ff; cursor: pointer; text-decoration: none; border-bottom: 1px dashed rgba(158,197,255,0.4); }
         .ws-file-link:hover { color: #fff; border-bottom-style: solid; }
 
-        /* Cursor pointer em blocos de código */
-        .ia-response pre code,
-        .streaming-response pre code {
-            display: block;
-            white-space: pre;
-            overflow-wrap: normal;
-            cursor: pointer;
-            transition: background-color 0.2s;
+        /* Estado "explicado" para anexos desativados */
+        .ws-empty-note {
+            font-size: 11px; color: var(--text-4); line-height: 1.45;
+            padding: 4px 8px 2px;
+        }
+        .ws-empty-note b { color: var(--text-3); font-weight: 600; }
+
+        /* Rodapé da sidebar: status + config */
+        .sb-foot {
+            border-top: 1px solid var(--border);
+            padding: 8px 8px 10px;
+            display: flex; flex-direction: column; gap: 2px;
+            -webkit-app-region: no-drag;
+        }
+        .sb-foot-btn {
+            display: flex; align-items: center; gap: 10px;
+            padding: 8px 10px; border: none; background: transparent;
+            color: var(--text-3); font-size: 12.5px; font-family: var(--font-ui);
+            border-radius: var(--radius-sm); cursor: pointer; text-align: left; width: 100%;
+            transition: background .15s var(--ease), color .15s var(--ease);
+        }
+        .sb-foot-btn:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+        .sb-foot-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+        .sb-foot-btn .kbd {
+            margin-left: auto; font-family: var(--font-mono); font-size: 10px;
+            color: var(--text-4); background: rgba(255,255,255,0.04);
+            padding: 1px 5px; border-radius: 4px; border: 1px solid var(--border);
         }
 
-        .ia-response pre code:hover,
-        .streaming-response pre code:hover {
-            background-color: rgba(100, 100, 100, 0.3);
-        }
-
-        /* Cursor pointer em código inline */
-        .ia-response code:not(pre code),
-        .streaming-response code:not(pre code) {
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-
-        .ia-response code:not(pre code):hover,
-        .streaming-response code:not(pre code):hover {
-            background-color: rgba(100, 100, 100, 0.5);
-        }
-
-        .copy-button:active {
-            transform: scale(0.8);
-        }
-
-        /* === Agentic Workflow UI === */
-        #agentic-status-container {
-            display: none;
-            position: fixed;
-            bottom: 80px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(20, 20, 22, 0.9);
-            border: 1px solid rgba(76, 175, 80, 0.5);
-            border-radius: 8px;
-            padding: 8px 16px;
-            z-index: 10000;
+        /* =====================================================================
+           MAIN (chat)
+           ===================================================================== */
+        #main {
+            grid-row: 1;
             display: flex;
-            align-items: center;
-            gap: 12px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-            font-family: 'Inter', sans-serif;
-            font-size: 13px;
-            min-width: 300px;
-            pointer-events: auto;
+            flex-direction: column;
+            min-width: 0;
+            min-height: 0;
+            background: var(--bg-base);
+            position: relative;
         }
 
-        #agentic-status-text {
-            flex: 1;
-            color: #e0e0e0;
-            font-weight: 500;
+        .chat-area {
+            position: relative;
+            overflow: hidden;
+            min-height: 0;
+            flex: 1 1 auto;
         }
 
-        #agentic-phase-tag {
-            background: rgba(76, 175, 80, 0.2);
-            color: #81c784;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 10px;
-            text-transform: uppercase;
-            font-weight: bold;
-            letter-spacing: 0.5px;
-        }
-
-        .agentic-stop-btn {
-            background: rgba(244, 67, 54, 0.1);
-            border: 1px solid rgba(244, 67, 54, 0.4);
-            color: #ff8a80;
-            width: 24px;
-            height: 24px;
-            border-radius: 50%;
+        /* =================================================================
+           ESTADO VAZIO (modo chat / boas-vindas) — o composer "respira" no
+           centro vertical junto da saudação, como no Zed/ZCode. Quando a
+           conversa começa (#main perde .is-empty), o composer doca embaixo.
+           ================================================================= */
+        #main.is-empty { justify-content: center; }
+        #main.is-empty .chat-area {
+            flex: 0 0 auto;
+            overflow: visible;
             display: flex;
+            flex-direction: column;
             align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-size: 14px;
-            font-weight: bold;
-            padding: 0;
-            line-height: 1;
         }
-
-        .agentic-stop-btn:hover {
-            background: rgba(244, 67, 54, 0.3);
-            border-color: rgba(244, 67, 54, 0.8);
-            color: #fff;
+        #main.is-empty #transcription { display: none; }
+        /* Sem conversa, a topbar (gradiente + "Copiar tudo") não tem função e
+           aparecia como uma "barra fantasma" sobre o título do hero. */
+        #main.is-empty .chat-topbar { display: none; }
+        #main.is-empty #welcome-hero {
+            position: static;
+            inset: auto;
+            padding: 0 24px 4px;
+            min-height: 0;
         }
-
-        .agentic-debug-block {
-            background: rgba(0, 0, 0, 0.3);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 6px;
-            padding: 10px;
-            margin: 10px 0;
-            font-size: 11px;
-            max-height: 200px;
-            overflow-y: auto;
-            text-align: left;
+        #main.is-empty #welcome-hero .hero-logo { display: none; }
+        #main.is-empty #composer {
+            border-top: none;
+            background: transparent;
         }
+        #main.is-empty .composer-hint { opacity: 0; }
 
-        .agentic-debug-header {
-            font-weight: bold;
-            color: #ffab40;
-            margin-bottom: 6px;
-            display: flex;
-            justify-content: space-between;
-        }
-
-        /* === Assistente de Tradução — indicador ao vivo (sem texto, só animação) === */
-        #ta-live-indicator {
-            display: none;
-            position: fixed;
-            top: 14px;
-            right: 14px;
-            z-index: 9991;
-            width: 45px;
-            height: 45px;
-            align-items: center;
-            justify-content: center;
+        /* Header fino do chat com Copy All */
+        .chat-topbar {
+            position: absolute; top: 0; left: 0; right: 0; z-index: 30;
+            height: 38px; display: flex; align-items: center; justify-content: flex-end;
+            padding: 0 14px;
+            background: linear-gradient(to bottom, var(--bg-base) 55%, rgba(14,17,22,0));
             pointer-events: none;
-            transition: opacity 0.3s;
         }
+        .chat-topbar > * { pointer-events: auto; }
+        #copy-all-btn {
+            display: none;
+            background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+            color: var(--text-3); font-size: 11px; font-family: var(--font-ui);
+            padding: 4px 10px; border-radius: 6px; cursor: pointer;
+            transition: background .15s, color .15s, border-color .15s;
+        }
+        #copy-all-btn:hover { background: rgba(255,255,255,0.09); color: var(--text); border-color: var(--border-strong); }
+        #copy-all-btn.copied { color: var(--accent-2); border-color: var(--accent-border); background: var(--accent-soft); }
+
+        /* #transcription — área central rolável de mensagens.
+           O &lt;script&gt; posiciona #transcription com position:fixed via CSS antigo;
+           aqui redefinimos para fluir dentro do layout grid. Mantém o ID. */
+        #transcription {
+            position: absolute;
+            inset: 0;
+            top: 38px;
+            padding: 24px clamp(20px, 6%, 64px) 28px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            color: var(--text);
+            text-align: left;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255,255,255,0.14) transparent;
+        }
+        #transcription::-webkit-scrollbar { width: 10px; }
+        #transcription::-webkit-scrollbar-track { background: transparent; }
+        #transcription::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.10); border-radius: 8px; border: 3px solid transparent; background-clip: content-box; }
+        #transcription::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.20); background-clip: content-box; border: 3px solid transparent; }
+        #transcription br { display: block; margin-top: 4px; }
+        #transcription pre {
+            text-align: left; max-width: 100%; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;
+            padding: 12px 14px; background: var(--bg-surface); border: 1px solid var(--border);
+            border-radius: var(--radius); box-sizing: border-box; scrollbar-width: thin; scrollbar-color: #3a3a42 transparent;
+        }
+
+        /* === Hero de boas-vindas (onboarding implícito) === */
+        #welcome-hero {
+            position: absolute;
+            inset: 0;
+            top: 38px;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            text-align: center; padding: 24px clamp(24px, 7%, 80px);
+            gap: 10px; transition: opacity .35s var(--ease);
+        }
+        #welcome-hero.hidden { opacity: 0; pointer-events: none; }
+        .hero-logo {
+            width: 58px; height: 58px; border-radius: 16px;
+            background: linear-gradient(145deg, #5fd75f, #2e7d32);
+            display: flex; align-items: center; justify-content: center;
+            color: #06210a; font-weight: 800; font-size: 30px; margin-bottom: 8px;
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.10), 0 14px 36px rgba(76,175,80,0.32);
+        }
+        .hero-title { font-size: 23px; font-weight: 700; color: var(--text); letter-spacing: -.2px; }
+        .hero-sub { font-size: 13.5px; color: var(--text-3); max-width: 440px; line-height: 1.55; }
+        .hero-suggestions { display: flex; flex-wrap: wrap; gap: 9px; justify-content: center; margin-top: 14px; max-width: 520px; }
+        .hero-chip {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 9px 14px; background: var(--bg-surface); border: 1px solid var(--border);
+            color: var(--text-2); font-size: 12.5px; font-family: var(--font-ui);
+            border-radius: 999px; cursor: pointer; text-align: left;
+            transition: background .16s var(--ease), border-color .16s var(--ease), color .16s var(--ease), transform .1s var(--ease);
+        }
+        .hero-chip:hover { background: var(--bg-surface-2); border-color: var(--accent-border); color: var(--text); transform: translateY(-1px); }
+        .hero-chip:active { transform: translateY(0); }
+        .hero-chip .hero-chip-ic { font-size: 15px; }
+
+        /* Mensagens: blocos pergunta+resposta */
+        .interaction-block {
+            position: relative;
+            border-radius: var(--radius);
+            padding: 14px 16px;
+            margin-top: 18px;
+            transition: background .2s var(--ease);
+        }
+        .interaction-block:first-child { margin-top: 0; }
+        .interaction-block:hover { background: rgba(255,255,255,0.025); }
+
+        .question-text {
+            position: relative; display: block; text-align: left;
+            padding: 9px 13px; border-radius: var(--radius);
+            background: linear-gradient(135deg, rgba(96,165,250,0.10), rgba(96,165,250,0.04));
+            border: 1px solid rgba(96,165,250,0.18);
+            color: var(--text); font-weight: 600; font-size: 14px; line-height: 1.5;
+            margin-bottom: 10px; cursor: pointer; word-break: break-word;
+            transition: background .2s var(--ease);
+        }
+        .question-text:hover { background: linear-gradient(135deg, rgba(96,165,250,0.16), rgba(96,165,250,0.07)); }
+        .question-text:hover .edit-icon { display: inline-block; }
+        .edit-icon { display: none; margin-left: 8px; font-size: 13px; opacity: .6; color: var(--text-3); }
+
+        .ia-response {
+            font-family: var(--font-mono);
+            font-weight: 400; font-size: 14px; line-height: 1.75;
+            color: var(--text); overflow-wrap: break-word; margin-top: 6px;
+        }
+        .ia-response p { margin: 8px 0; line-height: 1.7; overflow-wrap: break-word; text-align: left; }
+        .ia-response ul, .ia-response ol { margin: 8px 0; padding-left: 22px; max-width: 100%; overflow-wrap: break-word; text-align: left; }
+        .ia-response li { color: var(--text); margin-bottom: 4px; }
+        .ia-response strong { font-weight: 700; color: var(--accent-2); }
+        .ia-response pre {
+            position: relative; text-align: start; color: var(--text);
+            background: var(--bg-surface); border: 1px solid var(--border);
+            padding: 12px 14px; border-radius: var(--radius);
+            overflow-x: auto; max-width: 100%; box-sizing: border-box; margin: 10px 0;
+            font-family: var(--font-mono); scrollbar-width: thin; scrollbar-color: #3a3a42 transparent;
+        }
+        .ia-response code { text-align: start; color: var(--text); font-family: var(--font-mono); display: inline; white-space: normal; overflow-wrap: break-word; max-width: 100%; }
+        .ia-response pre code { display: block; white-space: pre; overflow-wrap: normal; cursor: pointer; transition: background-color .2s; }
+        .ia-response pre code:hover { background-color: rgba(255,255,255,0.04); }
+        .ia-response code:not(pre code) { cursor: pointer; transition: background-color .2s; }
+        .ia-response code:not(pre code):hover { background-color: rgba(255,255,255,0.06); }
+
+        .streaming-response {
+            font-family: var(--font-mono); font-weight: 400; line-height: 1.75; font-size: 14px;
+            overflow-wrap: break-word; margin-top: 8px; text-align: left; color: var(--text);
+        }
+        .streaming-response pre code, .streaming-response code { display: block; white-space: pre; overflow-wrap: normal; cursor: pointer; transition: background-color .2s; }
+        .streaming-response pre code:hover, .streaming-response code:hover { background-color: rgba(255,255,255,0.04); }
+
+        .typing-cursor { display: inline-block; width: 2px; height: 1em; background-color: var(--accent-2); margin-left: 2px; animation: blink 1s infinite; vertical-align: text-bottom; }
+        @keyframes blink { 0%,49%{opacity:1;} 50%,100%{opacity:0;} }
+
+        /* Botão Copiar dentro de cada interaction-block */
+        /* Copiar a RESPOSTA — ícone discreto no canto inferior do bloco, vira ✓
+           ao copiar (estilo ChatGPT). Fica embaixo p/ ficar claro que é da
+           resposta, não da pergunta. */
+        .copy-interaction-btn {
+            position: absolute; bottom: 8px; right: 8px;
+            width: 26px; height: 26px; padding: 0;
+            display: inline-flex; align-items: center; justify-content: center;
+            background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+            border-radius: 6px; cursor: pointer; color: var(--text-3);
+            opacity: 0; transition: opacity .15s var(--ease), background .15s var(--ease), color .15s var(--ease), border-color .15s var(--ease);
+            z-index: 3; pointer-events: none;
+        }
+        .copy-interaction-btn svg { width: 14px; height: 14px; pointer-events: none; }
+        .interaction-block:hover .copy-interaction-btn { opacity: .55; pointer-events: auto; }
+        .interaction-block:hover .copy-interaction-btn:hover { opacity: 1; background: rgba(255,255,255,0.10); color: var(--text); }
+        .copy-interaction-btn.copied { opacity: 1; color: var(--accent-2); border-color: var(--accent-border); background: var(--accent-soft); }
+
+        /* "Thinking"/ações da IA ao vivo (estilo IDE): lista discreta do que a
+           IA está fazendo — ler arquivo, buscar, rodar comando… */
+        .ai-activity {
+            display: flex; flex-direction: column; gap: 3px;
+            margin: 8px 0 4px; padding: 8px 10px;
+            background: rgba(255,255,255,0.025); border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+        }
+        .ai-activity-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-3); font-family: var(--font-mono); }
+        .ai-activity-ic { width: 13px; height: 13px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
+        .ai-activity-ic svg { width: 13px; height: 13px; }
+        .ai-activity-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ai-activity-item.running .ai-activity-label { color: var(--text-2); }
+        .ai-activity-item.done .ai-activity-label { color: var(--text-3); }
+        .ai-activity-item.fail .ai-activity-label { color: var(--text-3); text-decoration: line-through; opacity: .8; }
+        .ai-activity-check { color: var(--accent-2); }
+        .ai-activity-fail { color: var(--danger); }
+        .ai-activity-spinner {
+            width: 11px; height: 11px; border: 2px solid rgba(255,255,255,0.18);
+            border-top-color: var(--accent-2); border-radius: 50%;
+            animation: ai-spin .7s linear infinite;
+        }
+        @keyframes ai-spin { to { transform: rotate(360deg); } }
+
+        /* Fase do agentic INLINE na conversa (nada de balão flutuante) */
+        .ai-phase { display: flex; align-items: center; gap: 8px; margin: 8px 0 2px; font-size: 12px; font-family: var(--font-ui); }
+        .ai-phase-spin { width: 12px; height: 12px; border: 2px solid rgba(255,255,255,0.18); border-top-color: var(--accent-2); border-radius: 50%; animation: ai-spin .7s linear infinite; flex-shrink: 0; }
+        .ai-phase-tag { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; font-weight: 700; color: var(--accent-2); background: var(--accent-soft); padding: 2px 7px; border-radius: 5px; flex-shrink: 0; }
+        .ai-phase-text { color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ai-phase-stop { margin-left: auto; flex-shrink: 0; width: 20px; height: 20px; border: 1px solid rgba(248,113,113,0.4); background: rgba(248,113,113,0.1); color: var(--danger); border-radius: 5px; cursor: pointer; font-size: 13px; line-height: 1; display: flex; align-items: center; justify-content: center; padding: 0; }
+        .ai-phase-stop:hover { background: rgba(248,113,113,0.25); color: #fff; }
+        .ai-phase.done .ai-phase-tag { color: var(--text-3); background: rgba(255,255,255,0.06); }
+        .ai-phase.done .ai-phase-text { color: var(--text-4); }
+        .ai-phase.error .ai-phase-tag { color: var(--danger); background: rgba(248,113,113,0.15); }
+
+        /* Balão flutuante de status do agentic: aposentado (tudo é inline agora). */
+        #agentic-status-container { display: none !important; }
+
+        /* Botão copiar de blocos de código (pre > button.copy-button) */
+        .copy-button {
+            position: absolute; top: 8px; right: 8px;
+            background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+            border-radius: 5px; padding: 4px 6px; cursor: pointer; font-size: 0;
+            color: var(--text-3); transition: all .15s var(--ease); z-index: 2;
+            display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px;
+        }
+        .copy-button:hover { background: rgba(255,255,255,0.12); color: var(--text); }
+        .copy-button svg { width: 15px; height: 15px; }
+        .copy-button.copied { background: var(--accent-soft); color: var(--accent-2); border-color: var(--accent-border); }
+        .copy-button.copy-error { background: rgba(248,113,113,0.18); color: var(--danger); }
+        .copy-button:active { transform: scale(.85); }
+
+        .tool-files-list { display: flex; flex-wrap: wrap; gap: 5px; margin: 8px 0 2px; }
+        .tool-file-chip { font-size: 11px; background: rgba(255,255,255,0.04); color: var(--text-2); border: 1px solid var(--border); border-radius: 5px; padding: 2px 7px; font-family: var(--font-mono); cursor: pointer; transition: background .15s, border-color .15s; }
+        .tool-file-chip:hover { background: rgba(255,255,255,0.08); border-color: var(--border-strong); }
+        .kb-used-badge { font-size: 11px; color: var(--accent-2); opacity: .85; margin-bottom: 6px; font-style: italic; }
+
+        /* Palavras-chave em destaque (realtime + tradutor) */
+        .rt-assistant-text strong, .ia-response strong { font-size: 1.12em; font-weight: 700; color: var(--accent-2); letter-spacing: .2px; }
+
+        /* =====================================================================
+           COMPOSER (rodapé) — input sempre visível.
+           Estratégia: um "ghost" persistente (placeholder clicável) que invoca
+           openManualInput(). O input real (terminal-input-wrap) é criado pelo
+           &lt;script&gt; e inserido como filho de #transcription (contrato mantido).
+           Aqui damos um container visual fixo; quando o input real aparece,
+           flutua sobre o ghost.
+           ===================================================================== */
+        #composer {
+            border-top: 1px solid var(--border);
+            padding: 16px clamp(16px, 5%, 40px) 20px;
+            background: linear-gradient(to top, var(--bg-base) 70%, rgba(14,17,22,0));
+            -webkit-app-region: no-drag;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #composer > * { width: 100%; max-width: 760px; }
+
+        /* === Contexto ativo do projeto (pills discretos acima do input) === */
+        .composer-context {
+            display: flex; align-items: center; gap: 8px;
+            margin-bottom: 9px; padding: 0 2px;
+        }
+        .ctx-pill {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 4px 10px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            color: var(--text-3);
+            font-size: 11.5px; font-family: var(--font-ui);
+            max-width: 240px; line-height: 1.2;
+        }
+        .ctx-pill svg { width: 13px; height: 13px; opacity: .75; flex-shrink: 0; }
+        .ctx-pill .ctx-caret { width: 11px; height: 11px; opacity: .55; margin-left: 1px; }
+        .ctx-pill span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        button.ctx-pill {
+            cursor: pointer;
+            transition: background .15s var(--ease), border-color .15s var(--ease), color .15s var(--ease);
+        }
+        button.ctx-pill:hover { background: var(--bg-surface-2); border-color: var(--border-strong); color: var(--text-2); }
+        .ctx-branch { color: var(--text-4); font-family: var(--font-mono); font-size: 11px; }
+
+        .composer-shell {
+            display: flex; align-items: flex-end; gap: 10px;
+            background: var(--bg-surface); border: 1px solid var(--border-strong);
+            border-radius: var(--radius); padding: 9px 9px 9px 11px;
+            transition: border-color .18s var(--ease), box-shadow .18s var(--ease);
+        }
+        .composer-shell:focus-within { border-color: var(--accent-border); box-shadow: 0 0 0 3px rgba(76,175,80,0.14); }
+        .composer-ghost {
+            flex: 1; min-height: 26px; padding: 3px 2px;
+            color: var(--text-3); font-size: 14px; font-family: var(--font-mono);
+            cursor: text; white-space: pre-wrap; overflow-wrap: break-word; line-height: 1.5;
+            -webkit-app-region: no-drag;
+            outline: none;   /* o foco é indicado pelo glow verde do .composer-shell:focus-within;
+                                sem isto o Chromium desenha o anel de foco do SO (laranja no COSMIC)
+                                em volta do ghost, parecendo um "input dentro do input". */
+        }
+        .composer-ghost:focus, .composer-ghost:focus-visible { outline: none; }
+        .composer-ghost::before { content: '>'; color: var(--accent-2); font-weight: 700; margin-right: 8px; }
+        .composer-ghost.idle::after { content: '_'; color: var(--accent-2); animation: blink 1.05s steps(2,start) infinite; margin-left: 1px; }
+        .composer-send {
+            flex-shrink: 0; padding: 0 14px; height: 34px;
+            background: var(--accent); border: none; border-radius: 8px;
+            color: #06210a; font-weight: 700; font-size: 13px; font-family: var(--font-ui);
+            cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+            transition: background .15s var(--ease), transform .1s var(--ease), box-shadow .15s var(--ease);
+            box-shadow: 0 3px 10px rgba(76,175,80,0.22);
+        }
+        .composer-send:hover { background: var(--accent-2); }
+        .composer-send:active { transform: translateY(1px); }
+        .composer-send svg { width: 15px; height: 15px; }
+        /* Barra inferior do composer: seletor de modelo (estilo ZCode) */
+        .composer-toolbar {
+            display: flex; align-items: center; gap: 8px;
+            margin-top: 8px; padding: 0 2px;
+        }
+        .composer-model {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 4px 9px; background: transparent;
+            border: 1px solid var(--border); border-radius: 7px;
+            color: var(--text-3); font-size: 11.5px; font-family: var(--font-ui);
+            cursor: pointer; max-width: 240px; line-height: 1.2;
+            transition: background .15s var(--ease), border-color .15s var(--ease), color .15s var(--ease);
+        }
+        .composer-model:hover { background: var(--bg-surface); border-color: var(--border-strong); color: var(--text-2); }
+        .composer-model > svg:first-child { width: 13px; height: 13px; opacity: .7; flex-shrink: 0; }
+        .composer-model .cm-caret { width: 11px; height: 11px; opacity: .55; flex-shrink: 0; }
+        .composer-model span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        .composer-hint {
+            margin-top: 8px; text-align: center; font-size: 10.5px; color: var(--text-4);
+            font-family: var(--font-mono);
+        }
+        .composer-hint .h-kbd {
+            color: var(--text-3); background: rgba(255,255,255,0.04); padding: 1px 5px;
+            border-radius: 4px; border: 1px solid var(--border);
+        }
+
+        /* Quando o input real do &lt;script&gt; estiver ativo, ele aparece DENTRO do
+           #transcription no fim. Para que ele pareça parte do composer fixo,
+           reposicionamos: o .manual-input-container sobe para o #composer via
+           classe adicionada pelo script (composer docked). Estilo aqui: */
+        #composer .manual-input-container { margin: 0; width: 100%; }
+        #composer .terminal-input-wrap {
+            background: transparent; border: none; border-radius: 0;
+            padding: 0 0 0 0; flex: 1; box-shadow: none;
+        }
+        #composer .terminal-input-wrap::before { display: none; }
+        #composer .terminal-input {
+            min-height: 26px; max-height: 200px; font-size: 14px; color: var(--text);
+        }
+        #composer .edit-controls { margin-top: 0; }
+        #composer .send-button { display: none; } /* o composer-send já cumpre o papel */
+
+        /* Override: input manual real deve aparecer no composer, não no fluxo do chat */
+        #transcription > .manual-input-container { display: none !important; }
+
+        /* =====================================================================
+           INPUT MANUAL / EDIÇÃO (terminal style) — preserva classes do &lt;script&gt;
+           ===================================================================== */
+        .terminal-input-wrap {
+            position: relative; background: rgba(20,20,22,0.95); border: 1px solid var(--border-strong);
+            border-radius: var(--radius); padding: 9px 12px 9px 26px;
+            font-family: var(--font-mono); font-size: 14px; color: var(--text);
+            transition: border-color .15s var(--ease), box-shadow .15s var(--ease);
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02); box-sizing: border-box;
+        }
+        .terminal-input-wrap:focus-within { border-color: var(--accent-border); box-shadow: 0 0 0 3px rgba(76,175,80,0.12); }
+        .terminal-input-wrap::before {
+            content: '>'; position: absolute; left: 11px; top: 9px;
+            color: var(--accent-2); font-weight: 700; user-select: none; pointer-events: none;
+            line-height: 1.5; font-size: 14px; font-family: inherit;
+        }
+        .terminal-input {
+            display: block; min-height: 22px; max-height: 200px; overflow-y: auto;
+            background: transparent; border: none; outline: none; color: var(--text);
+            font: inherit; line-height: 1.5; padding: 0; margin: 0; text-align: left;
+            white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word;
+            caret-color: var(--accent-2); scrollbar-width: thin;
+        }
+        .terminal-input::selection { background: rgba(95,215,95,0.3); }
+        /* Cursor falso desativado: usamos o caret nativo (caret-color acima).
+           Manipular um <span> cursor no DOM a cada tecla embaralhava as letras
+           e quebrava o backspace. */
+        .terminal-input .gcursor { display: none; }
+        @keyframes terminal-blink { 0%,50%{opacity:1;} 50.01%,100%{opacity:0;} }
+        .terminal-hint {
+            position: absolute; left: 40px; top: 9px; color: var(--text-4);
+            font-size: 13.5px; font-style: normal; font-family: inherit;
+            pointer-events: none; user-select: none; white-space: nowrap; opacity: .8; line-height: 1.5;
+        }
+        .terminal-input-wrap.has-text .terminal-hint { display: none; }
+        .edit-controls { display: flex; gap: 10px; margin-top: 10px; justify-content: flex-start; }
+        .manual-input-container { margin-top: 14px; margin-bottom: 16px; }
+        .send-button { background: var(--accent); border: none; border-radius: var(--radius-sm); padding: 8px 18px; cursor: pointer; font-size: 13.5px; color: #06210a; font-weight: 700; font-family: var(--font-ui); transition: background .2s var(--ease); }
+        .send-button:hover { background: var(--accent-2); }
+
+        .edit-input, .edit-textarea {
+            width: 100%; background-color: var(--bg-surface); color: var(--text);
+            border: 2px solid var(--accent-border); border-radius: var(--radius); padding: 11px;
+            font-family: var(--font-mono); font-weight: 400; font-size: 14px; resize: none; outline: none;
+            margin-bottom: 16px; transition: box-shadow .2s, border-color .2s;
+        }
+        .edit-input:focus, .edit-textarea:focus { box-shadow: 0 0 0 3px rgba(76,175,80,0.18); border-color: var(--accent); }
+        .edit-textarea { min-height: 120px; white-space: pre-wrap; }
+
+        .ocr-left { text-align: left !important; }
+
+        /* =====================================================================
+           BOLHAS REALTIME
+           ===================================================================== */
+        .content { display: block; width: 100%; overflow-wrap: break-word; }
+        .rt-assistant-feed { display: flex; flex-direction: column; gap: 10px; width: 100%; margin-top: 10px; text-align: left; }
+        .rt-bubble { max-width: 88%; border-radius: 14px; line-height: 1.55; font-family: var(--font-ui); font-size: 13px; word-break: break-word; }
+        .rt-bubble.user { align-self: flex-end; background: rgba(96,165,250,0.14); border: 1px solid rgba(96,165,250,0.30); overflow: hidden; }
+        .rt-bubble.user .rt-bubble-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; cursor: pointer; user-select: none; font-size: 12px; font-weight: 500; color: rgba(160,200,255,0.95); gap: 8px; }
+        .rt-bubble.user .rt-bubble-header:hover { background: rgba(96,165,250,0.12); }
+        .rt-bubble.user .rt-bubble-toggle { font-size: 10px; opacity: .7; flex-shrink: 0; transition: transform .2s var(--ease); }
+        .rt-bubble.user .rt-bubble-toggle.open { transform: rotate(180deg); }
+        .rt-bubble.user .rt-bubble-body { display: none; padding: 0 12px 10px; font-size: 12.5px; color: rgba(220,235,255,0.88); white-space: pre-wrap; border-top: 1px solid rgba(96,165,250,0.20); }
+        .rt-bubble.user .rt-bubble-body.open { display: block; }
+        .rt-bubble.assistant { align-self: flex-start; background: var(--accent-soft); border: 1px solid var(--accent-border); padding: 10px 14px; font-size: 13px; color: rgba(220,255,220,0.94); white-space: pre-wrap; }
+        .rt-bubble.system { align-self: center; background: rgba(255,255,255,0.06); border: 1px solid var(--border); color: var(--text-3); font-size: 11px; padding: 5px 10px; border-radius: 8px; }
+        .rt-bubble.fatal-error { align-self: center; background: rgba(248,113,113,0.18); border: 1px solid rgba(248,113,113,0.55); color: var(--danger); font-size: 13px; font-weight: 600; text-align: center; max-width: 95%; padding: 10px 14px; }
+
+        /* Tradutor */
+        .ta-meta { font-size: 11px; color: var(--text-4); margin: 10px 0 3px; letter-spacing: .04em; }
+        .ta-original { font-size: 14px; color: rgba(255,255,255,0.65); font-style: italic; margin-bottom: 5px; opacity: .85; }
+        .ta-user-answer { font-size: 12px; color: rgba(255,255,255,0.5); font-style: italic; margin-bottom: 5px; }
+        .ta-evaluation { font-size: 13px; white-space: pre-wrap; line-height: 1.55; color: #a8e6a3; }
+
+        /* =====================================================================
+           ELEMENTOS FLUTUANTES (preservam IDs/posicionamento do &lt;script&gt;)
+           ===================================================================== */
+        #animation-container { position: fixed; top: 44px; right: 30px; width: 60px; height: 60px; display: none; z-index: 9999; pointer-events: none; opacity: .95; }
+        .icon, #robot { position: fixed; top: 44px; right: 30px; width: 44px; height: 44px; display: none; z-index: 1000; border-radius: 8px; }
+        .drag-area { position: absolute; top: 0; left: 0; width: 100%; height: 30px; -webkit-app-region: drag; z-index: 1001; }
+        .hidden { opacity: 0; pointer-events: none; }
+
+        /* Painel de atalhos (commands) legado — escondido: usamos a sidebar.
+           Mas mantemos o container no DOM (contrato). */
+        .commands { display: none !important; }
+        /* Botão antigo de toggle de painéis: removido visualmente (usamos sidebar) */
+        #panels-toggle-btn { display: none !important; }
+        /* #greeting antigo: existe no &lt;script&gt; (referenciado em newChat). Mantemos
+           um nó oculto no body para não quebrar a referência. */
+        #greeting { display: none !important; }
+
+        /* Screenshot preview (OCR/captura) */
+        #screenshot-preview {
+            position: fixed; bottom: 90px; right: 22px; width: 120px; height: auto;
+            border: 2px solid var(--border-strong); border-radius: 10px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.55); display: none; z-index: 2000;
+        }
+
+        /* Toast de "copiado" (código) */
+        .copy-toast { position: fixed; bottom: 96px; right: 24px; background: var(--accent); color: #06210a; padding: 10px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; font-family: var(--font-ui); box-shadow: 0 6px 18px rgba(0,0,0,0.4); z-index: 10000; opacity: 0; transform: translateY(16px); transition: opacity .3s var(--ease), transform .3s var(--ease); pointer-events: none; }
+        .copy-toast.show { opacity: 1; transform: translateY(0); }
+
+        /* Toast in-app (status) */
+        #app-toast { position: fixed; bottom: 96px; left: 50%; transform: translateX(-50%) translateY(16px); background: var(--bg-elevated); border: 1px solid var(--accent-border); color: var(--text); padding: 10px 16px; border-radius: 8px; font-size: 12.5px; font-family: var(--font-ui); max-width: 70%; box-shadow: 0 8px 24px rgba(0,0,0,0.6); opacity: 0; pointer-events: none; transition: opacity .2s var(--ease), transform .2s var(--ease); z-index: 99999; white-space: pre-wrap; word-break: break-all; }
+        #app-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+        #app-toast.error { border-color: rgba(248,113,113,0.6); color: #ffe5e5; }
+
+        /* Conversation viewer (modal) */
+        #conversation-viewer { position: fixed; top: 12%; left: 14%; right: 14%; max-height: 66vh; background: var(--bg-elevated); border: 1px solid var(--border-strong); box-shadow: 0 16px 50px rgba(0,0,0,0.7); border-radius: var(--radius); padding: 40px 22px 22px; overflow: visible; color: var(--text); font-size: 13px; line-height: 1.6; display: none; z-index: 5000; }
+
+        /* Painel de diff (split view): ocupa a metade direita da janela */
+        #diff-viewer {
+            position: fixed; top: 8px; right: 8px; bottom: 8px; width: 58%;
+            display: none; flex-direction: column; z-index: 6000;
+            background: var(--bg-base); border: 1px solid var(--border-strong);
+            border-radius: var(--radius); box-shadow: -12px 0 40px rgba(0,0,0,0.55);
+            overflow: hidden;
+        }
+        #diff-viewer.open { display: flex; }
+        .diff-header {
+            display: flex; align-items: center; gap: 8px;
+            padding: 10px 12px; border-bottom: 1px solid var(--border);
+            background: var(--bg-sidebar); flex-shrink: 0;
+        }
+        .diff-file-ic { width: 14px; height: 14px; opacity: .7; flex-shrink: 0; }
+        .diff-file { font-family: var(--font-mono); font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .diff-stats { font-family: var(--font-mono); font-size: 11px; margin-left: 4px; flex-shrink: 0; }
+        .diff-stats .d-add { color: var(--accent-2); }
+        .diff-stats .d-del { color: var(--danger); margin-left: 6px; }
+        .diff-close {
+            margin-left: auto; flex-shrink: 0; width: 24px; height: 24px;
+            background: transparent; border: none; color: var(--text-3); font-size: 18px;
+            cursor: pointer; border-radius: 5px; display: flex; align-items: center; justify-content: center;
+        }
+        .diff-close:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+        .diff-body {
+            flex: 1; overflow: auto; padding: 6px 0;
+            font-family: var(--font-mono); font-size: 12px; line-height: 1.5;
+            scrollbar-width: thin;
+        }
+        .diff-line { display: flex; white-space: pre; }
+        .diff-line .dl-gutter {
+            flex-shrink: 0; width: 44px; text-align: right; padding: 0 8px;
+            color: var(--text-4); user-select: none; opacity: .7;
+        }
+        .diff-line .dl-sign { flex-shrink: 0; width: 16px; text-align: center; user-select: none; }
+        .diff-line .dl-text { flex: 1; padding-right: 12px; overflow-wrap: anywhere; white-space: pre-wrap; }
+        .diff-line.add { background: rgba(76,175,80,0.12); }
+        .diff-line.add .dl-sign, .diff-line.add .dl-text { color: #c8ffd0; }
+        .diff-line.del { background: rgba(248,113,113,0.12); }
+        .diff-line.del .dl-sign, .diff-line.del .dl-text { color: #ffd2d2; }
+        .diff-line.ctx .dl-text { color: var(--text-3); }
+        .diff-empty { padding: 20px; color: var(--text-4); font-family: var(--font-ui); font-size: 13px; }
+
+        /* ===== Visualizador de arquivo (IDE) — cobre a área principal ===== */
+        #file-viewer {
+            position: absolute; inset: 0; z-index: 40;
+            display: none; flex-direction: column;
+            background: var(--bg-base);
+        }
+        #file-viewer.open { display: flex; }
+        .fv-header {
+            display: flex; align-items: center; gap: 8px;
+            padding: 9px 12px; border-bottom: 1px solid var(--border);
+            background: var(--bg-sidebar); flex-shrink: 0;
+        }
+        .fv-ic { width: 14px; height: 14px; opacity: .7; flex-shrink: 0; }
+        .fv-path { font-family: var(--font-mono); font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .fv-lang { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-4); background: rgba(255,255,255,0.05); padding: 2px 7px; border-radius: 5px; flex-shrink: 0; }
+        .fv-close { margin-left: auto; flex-shrink: 0; width: 26px; height: 26px; background: transparent; border: none; color: var(--text-3); font-size: 19px; cursor: pointer; border-radius: 5px; display: flex; align-items: center; justify-content: center; }
+        .fv-close:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+        .fv-body { flex: 1; overflow: auto; scrollbar-width: thin; }
+        .fv-body pre { margin: 0; padding: 14px 16px; }
+        .fv-body code {
+            font-family: 'JetBrains Mono', var(--font-mono); font-size: 13px;
+            line-height: 1.6; font-variant-ligatures: contextual; background: transparent !important;
+            white-space: pre; tab-size: 2;
+        }
+
+        /* Entradas clicáveis da árvore do projeto (dropdown do workspace) */
+        .ws-tree-node {
+            display: flex; align-items: center; gap: 6px;
+            padding: 2px 4px; border-radius: 4px; cursor: default;
+            white-space: nowrap; color: var(--text-3);
+        }
+        .ws-tree-node.file { cursor: pointer; }
+        .ws-tree-node.file:hover { background: rgba(255,255,255,0.06); color: var(--text); }
+        .ws-tree-node .ws-tree-ic { width: 12px; height: 12px; opacity: .65; flex-shrink: 0; }
+        .ws-tree-node.dir { color: var(--text-2); }
+        #conversation-content { max-height: calc(66vh - 70px); overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.2) transparent; }
+        .conversation-close-btn { position: absolute; top: 10px; right: 10px; background: transparent; border: none; color: var(--text-2); font-size: 20px; cursor: pointer; padding: 0; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; opacity: .6; transition: opacity .2s; z-index: 5100; border-radius: 5px; }
+        .conversation-close-btn:hover { opacity: 1; background: rgba(255,255,255,0.08); }
+        .conversation-download-btn { position: absolute; top: 10px; right: 40px; background: transparent; border: none; color: var(--text-2); cursor: pointer; padding: 0; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; opacity: .6; transition: opacity .2s, color .2s; border-radius: 5px; }
+        .conversation-download-btn:hover { opacity: 1; color: var(--accent-2); background: rgba(255,255,255,0.08); }
+        .conversation-download-btn svg { width: 15px; height: 15px; display: block; pointer-events: none; }
+        .conversation-message { margin-bottom: 12px; padding: 10px 12px; background: var(--bg-surface); border-left: 3px solid var(--accent-border); border-radius: 6px; }
+        .conversation-message.user { border-left-color: rgba(96,165,250,0.5); }
+        .conversation-message.assistant { border-left-color: var(--accent-border); }
+        .conversation-message-label { font-weight: 700; color: var(--accent-2); margin-bottom: 3px; font-size: 11px; }
+        .conversation-message.user .conversation-message-label { color: #9ec5ff; }
+        .conversation-message-content { white-space: pre-wrap; word-wrap: break-word; text-align: left; }
+
+        /* Agentic status pill */
+        #agentic-status-container { display: none; position: fixed; bottom: 92px; left: 50%; transform: translateX(-50%); background: var(--bg-elevated); border: 1px solid var(--accent-border); border-radius: 10px; padding: 9px 16px; z-index: 10000; align-items: center; gap: 12px; box-shadow: 0 8px 28px rgba(0,0,0,0.55); font-family: var(--font-ui); font-size: 13px; min-width: 300px; pointer-events: auto; }
+        #agentic-status-text { flex: 1; color: var(--text); font-weight: 500; }
+        #agentic-phase-tag { background: var(--accent-soft); color: var(--accent-2); padding: 2px 9px; border-radius: 5px; font-size: 10px; text-transform: uppercase; font-weight: 700; letter-spacing: .5px; }
+        .agentic-stop-btn { background: rgba(248,113,113,0.10); border: 1px solid rgba(248,113,113,0.40); color: var(--danger); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all .2s var(--ease); font-size: 14px; font-weight: 700; padding: 0; line-height: 1; }
+        .agentic-stop-btn:hover { background: rgba(248,113,113,0.30); border-color: rgba(248,113,113,0.80); color: #fff; }
+        .agentic-debug-block { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 6px; padding: 10px; margin: 10px 0; font-size: 11px; max-height: 200px; overflow-y: auto; text-align: left; }
+        .agentic-debug-header { font-weight: 700; color: #ffab40; margin-bottom: 6px; display: flex; justify-content: space-between; }
+
+        /* Indicadores do tradutor (posicionamento fixo herdado) */
+        #ta-live-indicator { display: none; position: fixed; top: 16px; right: 16px; z-index: 9991; width: 45px; height: 45px; align-items: center; justify-content: center; pointer-events: none; transition: opacity .3s; }
         #ta-live-indicator.visible { display: flex; }
         #ta-live-indicator.hidden-by-loader { opacity: 0; }
-
-        /* Barra de volume (mic/sys) — embaixo da bolinha do live. Mostra se está
-           captando áudio: verde quando acima do limiar de silêncio. */
-        #ta-volume {
-            display: none;
-            position: fixed;
-            top: 62px;
-            right: 10px;
-            z-index: 9991;
-            width: 78px;
-            pointer-events: none;
-            font-family: monospace;
-        }
+        #ta-volume { display: none; position: fixed; top: 64px; right: 12px; z-index: 9991; width: 78px; pointer-events: none; font-family: var(--font-mono); }
         #ta-volume .ta-vol-row { display: flex; align-items: center; gap: 4px; margin-top: 3px; }
-        #ta-volume .ta-vol-tag { font-size: 9px; color: #8a8a8a; width: 20px; text-align: right; }
+        #ta-volume .ta-vol-tag { font-size: 9px; color: var(--text-4); width: 20px; text-align: right; }
         #ta-volume .ta-vol-track { flex: 1; height: 6px; background: rgba(255,255,255,0.12); border-radius: 3px; overflow: hidden; }
         #ta-volume .ta-vol-fill { width: 0%; height: 100%; background: #4a4a4a; border-radius: 3px; transition: width 80ms linear, background 120ms; }
         #ta-volume .ta-vol-fill.active { background: #00e676; }
-
-        /* Palavras-chave (negrito) em destaque: maiores + cor de realce. Vale pro
-           Realtime (.rt-assistant-text) e pro Tradutor (.ia-response) — pra bater o
-           olho nos termos que o recrutador quer ouvir. */
-        .rt-assistant-text strong, .ia-response strong {
-            font-size: 1.18em;
-            font-weight: 700;
-            color: #7CFFB0;
-            letter-spacing: 0.2px;
-        }
-
-        /* Selo pequeno: resposta usou a base de conhecimento */
-        .kb-used-badge {
-            font-size: 10px;
-            color: #7CFFB0;
-            opacity: 0.85;
-            margin-bottom: 5px;
-            font-style: italic;
-        }
-
-        /* Loading "processando" — robôzinho pulando (robot.gif), pequeno, embaixo das barras */
-        #ta-loading {
-            display: none;
-            position: fixed;
-            top: 96px;
-            right: 29px;
-            z-index: 9991;
-            width: 40px;
-            height: 40px;
-            pointer-events: none;
-        }
-
-        /* Pulsating circle (mic aberto) — 15×15, animação lenta */
+        #ta-loading { display: none; position: fixed; top: 100px; right: 31px; z-index: 9991; width: 40px; height: 40px; pointer-events: none; }
         #ta-live-pulse { display: none; position: relative; width: 15px; height: 15px; }
         #ta-live-indicator.state-mic #ta-live-pulse { display: block; }
-        #ta-live-pulse:before {
-            content: '';
-            position: relative;
-            display: block;
-            width: 300%;
-            height: 300%;
-            box-sizing: border-box;
-            margin-left: -100%;
-            margin-top: -100%;
-            border-radius: 45px;
-            background-color: #01a4e9;
-            animation: pulse-ring 2.5s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
-        }
-        #ta-live-pulse:after {
-            content: '';
-            position: absolute;
-            left: 0; top: 0;
-            display: block;
-            width: 100%; height: 100%;
-            background-color: white;
-            border-radius: 15px;
-            box-shadow: 0 0 8px rgba(0,0,0,.3);
-            animation: pulse-dot 2.5s cubic-bezier(0.455, 0.03, 0.515, 0.955) -.4s infinite;
-        }
-        @keyframes pulse-ring {
-            0% { transform: scale(.33); }
-            80%, 100% { opacity: 0; }
-        }
-        @keyframes pulse-dot {
-            0% { transform: scale(.8); }
-            50% { transform: scale(1); }
-            100% { transform: scale(.8); }
-        }
-        .ta-meta {
-            font-size: 11px;
-            color: #555;
-            margin: 10px 0 3px 0;
-            letter-spacing: 0.04em;
-        }
-        .ta-original {
-            font-size: 14px;
-            color: rgba(255,255,255,0.65);
-            font-style: italic;
-            margin-bottom: 5px;
-            opacity: 0.85;
-        }
-        .ta-user-answer {
-            font-size: 12px;
-            color: rgba(255,255,255,0.5);
-            font-style: italic;
-            margin-bottom: 5px;
-        }
-        .ta-evaluation {
-            font-size: 13px;
-            white-space: pre-wrap;
-            line-height: 1.55;
-            color: #a8e6a3;
-        }
+        #ta-live-pulse:before { content: ''; position: relative; display: block; width: 300%; height: 300%; box-sizing: border-box; margin-left: -100%; margin-top: -100%; border-radius: 45px; background-color: #01a4e9; animation: pulse-ring 2.5s cubic-bezier(0.215,0.61,0.355,1) infinite; }
+        #ta-live-pulse:after { content: ''; position: absolute; left: 0; top: 0; display: block; width: 100%; height: 100%; background-color: white; border-radius: 15px; box-shadow: 0 0 8px rgba(0,0,0,.3); animation: pulse-dot 2.5s cubic-bezier(0.455,0.03,0.515,0.955) -.4s infinite; }
+        @keyframes pulse-ring { 0%{transform:scale(.33);} 80%,100%{opacity:0;} }
+        @keyframes pulse-dot { 0%{transform:scale(.8);} 50%{transform:scale(1);} 100%{transform:scale(.8);} }
 
+        code { z-index: 1; }
+
+        /* Scrollbars de código finas dentro do chat */
+        .ia-response pre::-webkit-scrollbar, #transcription pre::-webkit-scrollbar { height: 6px; width: 6px; background: transparent; }
+        .ia-response pre::-webkit-scrollbar-track, #transcription pre::-webkit-scrollbar-track { background: transparent; }
+        .ia-response pre::-webkit-scrollbar-thumb, #transcription pre::-webkit-scrollbar-thumb { background: #3a3a42; border-radius: 3px; transition: background .2s; }
+        .ia-response pre:hover::-webkit-scrollbar-thumb, #transcription pre:hover::-webkit-scrollbar-thumb { background: #5a5a62; }
+        .ia-response pre::-webkit-scrollbar-corner, #transcription pre::-webkit-scrollbar-corner { background: transparent; }
+
+        /* Responsividade mínima (janela é 800x600) */
+        @media (max-width: 640px) {
+            #app-shell { grid-template-columns: 0 1fr; }
+            #sidebar { display: none; }
+        }
     </style>
-    <!-- Inclua a biblioteca Lottie -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js"></script>
 </head>
 <body>
+    <div id="app-shell">
+        <!-- ===================== SIDEBAR ===================== -->
+        <aside id="sidebar">
+            <div class="sb-brand">
+                <span class="sb-logo">H</span>
+                <span>Helper Node</span>
+                <span class="sb-ver" id="app-edition-tag">full</span>
+            </div>
+
+            <button class="new-chat-btn" id="new-chat-btn">＋ Novo Chat</button>
+
+            <div class="sb-scroll">
+                <!-- Histórico (painel reaproveitado) -->
+                <div class="panel" id="history-panel">
+                    <div class="panel-header" id="history-header">
+                        <span class="panel-label">Histórico</span>
+                        <span class="panel-filler"></span>
+                        <button id="history-toggle" class="commands-toggle" aria-label="Recolher/expandir histórico" tabindex="-1">
+                            <svg viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M3 4.5 L6 7.5 L9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        </button>
+                    </div>
+                    <div class="commands-content" id="history-content"></div>
+                </div>
+
+                <!-- Atalhos (painel reaproveitado) -->
+                <div class="panel" id="shortcut-panel">
+                    <div class="panel-header" id="shortcut-header">
+                        <span class="panel-label">Atalhos</span>
+                        <span class="panel-filler"></span>
+                        <button id="shortcut-toggle" class="commands-toggle" aria-label="Recolher/expandir atalhos" tabindex="-1">
+                            <svg viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M3 4.5 L6 7.5 L9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        </button>
+                    </div>
+                    <div class="commands-content" id="shortcut-content">
+                        <div id="debug-indicator" class="command-item" style="display: none; color: #ffab40;">🐞 Modo Debug Ativo</div>
+                    </div>
+                </div>
+
+                <!-- Workspace / Projeto (modelo IDE: 1 projeto por vez) -->
+                <div class="ws-section" id="workspace-panel" style="display:none;">
+                    <!-- Sem projeto aberto: ações -->
+                    <div class="ws-actions" id="ws-actions">
+                        <button id="workspace-open-project" class="ws-action ws-action-primary" type="button" title="Abrir uma pasta de projeto">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                            <span>Abrir projeto</span>
+                        </button>
+                        <button id="workspace-add" class="ws-action" type="button" title="Anexar arquivo ao contexto">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                            <span>Anexar arquivo</span>
+                        </button>
+                    </div>
+                    <!-- Com projeto aberto: header (pasta + dropdown da árvore) -->
+                    <div class="ws-project" id="ws-project" style="display:none;">
+                        <div class="ws-project-row">
+                            <button class="ws-project-main" id="ws-project-main" type="button" title="Trocar / fechar projeto">
+                                <svg class="ws-folder-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                                <span id="ws-project-name">projeto</span>
+                            </button>
+                            <button class="ws-tree-toggle" id="ws-tree-toggle" type="button" title="Ver estrutura do projeto" aria-expanded="false">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                        </div>
+                        <div class="ws-tree" id="ws-tree" style="display:none;"></div>
+                    </div>
+                    <div class="ws-chips" id="workspace-content"></div>
+                </div>
+                <div class="ws-empty-note" id="ws-empty-note" style="display:none;"><b>Anexos</b> desativados — ative em ⚙ Configurações.</div>
+            </div>
+
+            <!-- Rodapé da sidebar -->
+            <div class="sb-foot">
+                <button class="sb-foot-btn" id="config-open-btn" title="Abrir Configurações">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    <span>Configurações</span>
+                    <span class="kbd">⌃⇧C</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- ===================== MAIN ===================== -->
+        <main id="main">
+            <div class="chat-area">
+                <div class="chat-topbar">
+                    <button id="copy-all-btn" class="copy-all-fixed-btn">Copiar tudo</button>
+                </div>
+
+                <!-- Hero de boas-vindas (onboarding). Some na 1ª mensagem. -->
+                <div id="welcome-hero">
+                    <div class="hero-logo">H</div>
+                    <div class="hero-title">Helper Node</div>
+                    <div class="hero-sub">Seu copiloto de IA para conversas, entrevistas e código. Comece abaixo ou escolha uma sugestão.</div>
+                    <div class="hero-suggestions">
+                        <button class="hero-chip" data-prompt="Explique de forma simples o conceito de ">
+                            <span class="hero-chip-ic">💡</span> Explique um conceito
+                        </button>
+                        <button class="hero-chip" data-prompt="Reescreva e melhore este código:\n">
+                            <span class="hero-chip-ic">⌨️</span> Ajude com código
+                        </button>
+                        <button class="hero-chip" data-prompt="Resuma e destaque os pontos-chave de:\n">
+                            <span class="hero-chip-ic">📝</span> Resumir um texto
+                        </button>
+                    </div>
+                </div>
+
+                <!-- #transcription: o &lt;script&gt; anexa mensagens aqui (contrato) -->
+                <div id="transcription"></div>
+                <div class="content"></div>
+            </div>
+
+            <!-- ===================== COMPOSER ===================== -->
+            <div id="composer">
+                <!-- Contexto ativo do projeto (modo IDE): projeto + branch. Oculto no modo chat puro. -->
+                <div class="composer-context" id="composer-context" style="display:none;">
+                    <!-- Sem projeto aberto (modo arquivos ligado): convidar a abrir -->
+                    <button class="ctx-pill" id="ctx-open-project" type="button" title="Abrir um projeto" style="display:none;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+                        <span>Abrir projeto</span>
+                    </button>
+                    <!-- Projeto aberto: clicar abre o menu de gerenciamento -->
+                    <button class="ctx-pill" id="ctx-project" type="button" title="Gerenciar projeto" style="display:none;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                        <span id="ctx-project-name">projeto</span>
+                        <svg class="ctx-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                    <span class="ctx-pill ctx-branch" id="ctx-branch" style="display:none;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+                        <span id="ctx-branch-name">main</span>
+                    </span>
+                </div>
+                <div class="composer-shell" id="composer-shell">
+                    <div class="composer-ghost idle" id="composer-ghost">Pergunte qualquer coisa…</div>
+                    <button class="composer-send" id="composer-send" title="Enviar (Shift+Enter)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                        Enviar
+                    </button>
+                </div>
+                <div class="composer-toolbar">
+                    <button class="composer-model" id="composer-model" type="button" title="Trocar modelo">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3 3 3 0 0 0-3 3 3 3 0 0 0 0 6 3 3 0 0 0 3 3 3 3 0 0 0 6 0 3 3 0 0 0 3-3 3 3 0 0 0 0-6 3 3 0 0 0-3-3 3 3 0 0 0-3-3z"/><path d="M12 8v8M9 12h6"/></svg>
+                        <span id="composer-model-name">modelo</span>
+                        <svg class="cm-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                </div>
+                <div class="composer-hint"><span class="h-kbd">Enter</span> quebra linha · <span class="h-kbd">Shift+Enter</span> envia · <span class="h-kbd">Esc</span> fecha</div>
+            </div>
+
+            <!-- Visualizador de arquivo (IDE): cobre a área principal; fecha volta pro chat -->
+            <div id="file-viewer">
+                <div class="fv-header">
+                    <svg class="fv-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    <span class="fv-path" id="fv-path"></span>
+                    <span class="fv-lang" id="fv-lang"></span>
+                    <button class="fv-close" id="fv-close" title="Fechar (Esc)">×</button>
+                </div>
+                <div class="fv-body" id="fv-body"><pre><code id="fv-code"></code></pre></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Elementos preservados (contrato do &lt;script&gt;) -->
     <div class="drag-area"></div>
-    <button id="panels-toggle-btn" title="Mostrar/esconder painéis"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8.636 12.5a.5.5 0 0 1-.5.5H1.5A1.5 1.5 0 0 1 0 11.5v-10A1.5 1.5 0 0 1 1.5 0h10A1.5 1.5 0 0 1 13 1.5v6.636a.5.5 0 0 1-1 0V1.5a.5.5 0 0 0-.5-.5h-10a.5.5 0 0 0-.5.5v10a.5.5 0 0 0 .5.5h6.636a.5.5 0 0 1 .5.5"/><path fill-rule="evenodd" d="M16 15.5a.5.5 0 0 1-.5.5h-5a.5.5 0 0 1 0-1h3.793L6.146 6.854a.5.5 0 1 1 .708-.708L15 14.293V10.5a.5.5 0 0 1 1 0z"/></svg></button>
+    <button id="panels-toggle-btn" title="Mostrar/esconder painéis"></button>
     <div class="commands">
-        <div class="panel" id="shortcut-panel">
-            <div class="panel-header" id="shortcut-header">
-                <span class="panel-label">Atalhos</span>
-                <span class="panel-filler"></span>
-                <button id="shortcut-toggle" class="commands-toggle" aria-label="Recolher/expandir atalhos" tabindex="-1">
-                    <svg viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                        <path d="M3 4.5 L6 7.5 L9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                </button>
-            </div>
-            <div class="commands-content" id="shortcut-content">
-                <!-- Preenchido dinamicamente por window.electronAPI.getAvailableShortcuts() -->
-                <div id="debug-indicator" class="command-item" style="display: none; color: #ffab40;">🐞 Modo Debug Ativo</div>
-            </div>
-        </div>
-
-        <div class="panel" id="history-panel">
-            <div class="panel-header" id="history-header">
-                <span class="panel-label">Histórico de conversas</span>
-                <span class="panel-filler"></span>
-                <button id="history-toggle" class="commands-toggle" aria-label="Recolher/expandir histórico" tabindex="-1">
-                    <svg viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                        <path d="M3 4.5 L6 7.5 L9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                </button>
-            </div>
-            <div class="commands-content" id="history-content">
-            </div>
-            <button class="new-chat-btn" id="new-chat-btn">+ Novo Chat</button>
-        </div>
-
-        <div class="ws-bar" id="workspace-panel" style="display:none;">
-            <button id="workspace-add" class="ws-clip-btn" title="Anexar arquivo ou pasta" aria-label="Anexar arquivo ou pasta">
-                <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M10.5 4.5 L5.8 9.2 a2 2 0 1 0 2.83 2.83 L13.5 7.16 a3.5 3.5 0 1 0 -4.95 -4.95 L3.3 7.46 a5 5 0 0 0 7.07 7.07 L14.5 10.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-            </button>
-            <div class="ws-chips" id="workspace-content"></div>
-        </div>
+        <div class="panel" id="shortcut-panel-legacy"></div>
     </div>
-
+    <h1 id="greeting">Olá amigo</h1>
+    <div id="transcription-header"></div>
     <div id="animation-container"></div>
-    <img src="./assets/robot.gif" id="robot" class="icon" />
-
-    <div class="content">
-        <h1 id="greeting">Olá amigo</h1>
-        <div id="transcription-header">
-            <button id="copy-all-btn" class="copy-all-fixed-btn">Copy All</button>
-        </div>
-        <div id="transcription"></div>
-    </div>
-    
-    <!-- Toast para copiar código -->
+    <img src="./assets/robot.gif" id="robot" class="icon" alt="" />
     <div id="copy-toast" class="copy-toast"></div>
-    
-    <img id="screenshot-preview" style="
-        position: absolute;
-        bottom: 20px;
-        right: 20px;
-        width: 120px;
-        height: auto;
-        border: 2px solid white;
-        border-radius: 8px;
-        box-shadow: 0 0 10px rgba(255,255,255,0.3);
-        display: none;
-        z-index: 2000;
-    "/>
-
-    <!-- Conversation Viewer -->
+    <img id="screenshot-preview" alt="" />
     <div id="conversation-viewer">
         <button class="conversation-download-btn" id="conversation-download-btn" title="Baixar como .txt" aria-label="Baixar conversa">
-            <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <path d="M8 2 L8 11 M4.5 7.5 L8 11 L11.5 7.5 M3 13 L13 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
+            <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M8 2 L8 11 M4.5 7.5 L8 11 L11.5 7.5 M3 13 L13 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
         <button class="conversation-close-btn" id="conversation-close-btn">×</button>
         <div id="conversation-content"></div>
     </div>
-    <div id="app-toast" role="status" aria-live="polite"></div>
-
-    <!-- Indicador ao vivo: pulsating circle discreta enquanto mic está aberto -->
-    <div id="ta-live-indicator">
-        <div id="ta-live-pulse"></div>
+    <!-- Painel de diff (split view) — mostra o que a IA mudou no arquivo -->
+    <div id="diff-viewer">
+        <div class="diff-header">
+            <svg class="diff-file-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span class="diff-file" id="diff-file"></span>
+            <span class="diff-stats" id="diff-stats"></span>
+            <button class="diff-close" id="diff-close" title="Fechar">×</button>
+        </div>
+        <div class="diff-body" id="diff-body"></div>
     </div>
-
-    <!-- Barra de volume: nível do mic (e sys) enquanto o tradutor escuta -->
+    <div id="app-toast" role="status" aria-live="polite"></div>
+    <div id="ta-live-indicator"><div id="ta-live-pulse"></div></div>
     <div id="ta-volume">
         <div class="ta-vol-row"><span class="ta-vol-tag">mic</span><div class="ta-vol-track"><div class="ta-vol-fill" id="ta-vol-mic"></div></div></div>
         <div class="ta-vol-row"><span class="ta-vol-tag">sys</span><div class="ta-vol-track"><div class="ta-vol-fill" id="ta-vol-sys"></div></div></div>
     </div>
-
-    <!-- Loading: robôzinho pulando enquanto a IA processa/responde o trecho -->
     <img id="ta-loading" src="./assets/robot.gif" alt="" />
-
-    <!-- Agentic Workflow Status -->
     <div id="agentic-status-container" style="display: none;">
         <div id="agentic-phase-tag">DISCOVERY</div>
         <div id="agentic-status-text">Iniciando...</div>
         <button id="agentic-stop-btn" class="agentic-stop-btn" title="Interromper processo">×</button>
     </div>
-
 
     <script>
 
@@ -1545,6 +1220,286 @@
                 });
             }
 
+            // === Novos handlers da UI redesenhada (apresentação) ===
+
+            // Hero de boas-vindas: sugestões clicáveis preenchem o composer
+            const welcomeHero = document.getElementById('welcome-hero');
+            document.querySelectorAll('.hero-chip').forEach(chip => {
+                chip.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const prompt = chip.dataset.prompt || '';
+                    openManualInput(prompt);
+                    if (welcomeHero) welcomeHero.classList.add('hidden');
+                });
+            });
+
+            // Composer ghost: clicar no placeholder abre o input real
+            const composerGhost = document.getElementById('composer-ghost');
+            const composerShell = document.getElementById('composer-shell');
+            if (composerGhost && composerShell) {
+                composerShell.addEventListener('click', (e) => {
+                    if (e.target.closest('.composer-send')) return;
+                    if (manualInputActive || isEditingQuestion) return;
+                    openManualInput();
+                });
+            }
+
+            // Composer send button: atalho visual — aciona submit se houver input ativo
+            const composerSendBtn = document.getElementById('composer-send');
+            if (composerSendBtn) {
+                composerSendBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (!manualInputActive) { openManualInput(); return; }
+                    const input = document.querySelector('.manual-input-container .terminal-input');
+                    if (input) {
+                        const question = (input.value || '').trim();
+                        const container = input.closest('.manual-input-container');
+                        if ((question || pastedImageForManualInput) && container) {
+                            submitManualQuestion(question, container);
+                        }
+                    }
+                });
+            }
+
+            // Foco inicial suave na área de escrita visível
+            if (composerGhost) {
+                composerGhost.setAttribute('tabindex', '0');
+                setTimeout(() => {
+                    try {
+                        composerGhost.focus({ preventScroll: true });
+                    } catch (_) {
+                        composerGhost.focus();
+                    }
+                }, 120);
+            }
+
+            // Botão ⚙ Configurações (sidebar)
+            const configOpenBtn = document.getElementById('config-open-btn');
+            if (configOpenBtn && window.electronAPI && window.electronAPI.openConfig) {
+                configOpenBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    window.electronAPI.openConfig();
+                });
+            }
+
+            // Tag de edição na sidebar (full/lite)
+            const editionTag = document.getElementById('app-edition-tag');
+            if (editionTag && window.electronAPI && window.electronAPI.getEdition) {
+                try { editionTag.textContent = await window.electronAPI.getEdition(); } catch(_) {}
+            }
+
+            // === Estado vazio (modo chat centralizado) × conversa ativa ===
+            // O composer "respira" no centro até a conversa começar; aí doca embaixo.
+            // Em vez de tocar em todos os pontos que escondem o hero, observamos a
+            // classe .hidden do hero — que o resto do código já alterna — e
+            // espelhamos isso em #main.is-empty.
+            const mainEl = document.getElementById('main');
+            function syncEmptyState() {
+                const empty = welcomeHero && !welcomeHero.classList.contains('hidden');
+                if (mainEl) mainEl.classList.toggle('is-empty', !!empty);
+            }
+            syncEmptyState();
+            if (welcomeHero) {
+                new MutationObserver(syncEmptyState)
+                    .observe(welcomeHero, { attributes: true, attributeFilter: ['class'] });
+            }
+
+            // === Contexto ativo do projeto (modo IDE) ===
+            // Modo arquivos OFF  → composer-context oculto (chat puro, limpo).
+            // Modo arquivos ON, sem pasta → botão "Abrir projeto".
+            // Modo arquivos ON, com pasta → pill do projeto (clique = menu de
+            //   gerenciamento: trocar / abrir no sistema / fechar) + branch.
+            const composerCtx = document.getElementById('composer-context');
+            const ctxOpenProjectBtn = document.getElementById('ctx-open-project');
+            const ctxProjectBtn = document.getElementById('ctx-project');
+            const ctxProjectName = document.getElementById('ctx-project-name');
+            const ctxBranch = document.getElementById('ctx-branch');
+            const ctxBranchName = document.getElementById('ctx-branch-name');
+            let ctxProject = null; // { id, name, path, branch }
+
+            async function pickProjectFolder() {
+                if (!(window.electronAPI && window.electronAPI.workspacePickDir)) return;
+                const r = await window.electronAPI.workspacePickDir();
+                if (r && r.attachments && typeof renderWorkspacePanel === 'function') renderWorkspacePanel(r.attachments);
+                await refreshProjectContext();
+            }
+
+            async function refreshProjectContext() {
+                if (!composerCtx) return;
+                let enabled = false;
+                try {
+                    enabled = window.electronAPI && window.electronAPI.getWorkspaceAccessEnabled
+                        ? await window.electronAPI.getWorkspaceAccessEnabled() : false;
+                } catch (_) {}
+                if (!enabled) { composerCtx.style.display = 'none'; ctxProject = null; return; }
+
+                let ctx = null;
+                try { ctx = window.electronAPI.getProjectContext ? await window.electronAPI.getProjectContext() : null; } catch (_) {}
+                ctxProject = (ctx && ctx.name) ? ctx : null;
+                composerCtx.style.display = 'flex';
+
+                if (!ctxProject) {
+                    if (ctxOpenProjectBtn) ctxOpenProjectBtn.style.display = 'inline-flex';
+                    if (ctxProjectBtn) ctxProjectBtn.style.display = 'none';
+                    if (ctxBranch) ctxBranch.style.display = 'none';
+                    return;
+                }
+                if (ctxOpenProjectBtn) ctxOpenProjectBtn.style.display = 'none';
+                if (ctxProjectBtn) ctxProjectBtn.style.display = 'inline-flex';
+                if (ctxProjectName) ctxProjectName.textContent = ctxProject.name;
+                if (ctxBranch) {
+                    if (ctxProject.branch) {
+                        ctxBranch.style.display = 'inline-flex';
+                        if (ctxBranchName) ctxBranchName.textContent = ctxProject.branch;
+                    } else { ctxBranch.style.display = 'none'; }
+                }
+            }
+
+            // Menu de gerenciamento do projeto (estilo IDE) ancorado no pill
+            function showProjectMenu(anchor) {
+                document.querySelectorAll('.ctx-project-menu').forEach(m => m.remove());
+                const menu = document.createElement('div');
+                menu.className = 'ctx-project-menu';
+                menu.style.cssText = 'position:absolute; z-index:9999; background:var(--bg-elevated); border:1px solid var(--border-strong); border-radius:8px; padding:4px; box-shadow:0 10px 30px rgba(0,0,0,0.55); min-width:188px;';
+                const mkItem = (label, fn, danger) => {
+                    const b = document.createElement('button');
+                    b.textContent = label;
+                    b.style.cssText = 'display:block; width:100%; text-align:left; background:transparent; border:none; color:' + (danger ? 'var(--danger)' : 'var(--text-2)') + '; font-size:12px; padding:7px 10px; cursor:pointer; border-radius:5px; font-family:var(--font-ui);';
+                    b.addEventListener('mouseenter', () => b.style.background = 'rgba(255,255,255,0.06)');
+                    b.addEventListener('mouseleave', () => b.style.background = 'transparent');
+                    b.addEventListener('click', () => { menu.remove(); fn(); });
+                    return b;
+                };
+                menu.appendChild(mkItem('📂  Trocar projeto…', () => pickProjectFolder()));
+                menu.appendChild(mkItem('🗂  Abrir no sistema de arquivos', () => {
+                    if (ctxProject && ctxProject.path && window.electronAPI.workspaceOpenExternal) {
+                        window.electronAPI.workspaceOpenExternal(ctxProject.path);
+                    }
+                }));
+                menu.appendChild(mkItem('✕  Fechar projeto', async () => {
+                    if (ctxProject && ctxProject.id != null && window.electronAPI.workspaceRemove) {
+                        const updated = await window.electronAPI.workspaceRemove(ctxProject.id);
+                        if (typeof renderWorkspacePanel === 'function') renderWorkspacePanel(updated);
+                        await refreshProjectContext();
+                    }
+                }, true));
+                document.body.appendChild(menu);
+                const r = anchor.getBoundingClientRect();
+                menu.style.left = r.left + 'px';
+                menu.style.top = (r.top - menu.offsetHeight - 6) + 'px';
+                const closer = (ev) => {
+                    if (!menu.contains(ev.target) && ev.target !== anchor && !anchor.contains(ev.target)) {
+                        menu.remove();
+                        document.removeEventListener('click', closer, true);
+                    }
+                };
+                setTimeout(() => document.addEventListener('click', closer, true), 0);
+            }
+
+            if (ctxOpenProjectBtn) {
+                ctxOpenProjectBtn.addEventListener('click', (e) => { e.stopPropagation(); pickProjectFolder(); });
+            }
+            if (ctxProjectBtn) {
+                ctxProjectBtn.addEventListener('click', (e) => { e.stopPropagation(); showProjectMenu(ctxProjectBtn); });
+            }
+            refreshProjectContext();
+
+            // === Seletor de modelo no composer (estilo ZCode) ===
+            // Provider = ChatGPT → troca o modelo gpt inline; outros providers
+            // → abre Configurações (não há lista de endpoints inline ainda).
+            const OPENAI_MODELS = [
+                { value: 'gpt-4.1-nano', label: 'GPT-4.1 Nano' },
+                { value: 'gpt-4.1', label: 'GPT-4.1' },
+                { value: 'gpt-5.1', label: 'GPT-5.1' },
+                { value: 'gpt-5.4-mini', label: 'GPT-5.4 Mini' },
+                { value: 'gpt-5.4', label: 'GPT-5.4' },
+            ];
+            const PROVIDER_LABELS = {
+                openIa: 'ChatGPT', llama: 'Backend (Llama)',
+                'llama-stream': 'Backend (stream)', ollamaLocal: 'Ollama Local',
+            };
+            const composerModelBtn = document.getElementById('composer-model');
+            const composerModelName = document.getElementById('composer-model-name');
+
+            async function refreshComposerModel() {
+                if (!composerModelBtn || !composerModelName) return;
+                let provider = 'openIa';
+                try { provider = (await window.electronAPI.getAiModel()) || 'openIa'; } catch (_) {}
+                composerModelBtn.dataset.provider = provider;
+                if (provider === 'openIa') {
+                    let m = 'gpt-4.1-nano';
+                    try { m = (await window.electronAPI.getOpenaiModel()) || m; } catch (_) {}
+                    const found = OPENAI_MODELS.find(x => x.value === m);
+                    composerModelName.textContent = found ? found.label : m;
+                } else {
+                    composerModelName.textContent = PROVIDER_LABELS[provider] || provider;
+                }
+            }
+
+            function showModelMenu(anchor) {
+                const provider = anchor.dataset.provider || 'openIa';
+                if (provider !== 'openIa') {
+                    // Backend/Ollama: troca pelo painel de Configurações.
+                    if (window.electronAPI.openConfig) window.electronAPI.openConfig();
+                    return;
+                }
+                document.querySelectorAll('.composer-model-menu').forEach(m => m.remove());
+                const current = composerModelName.textContent;
+                const menu = document.createElement('div');
+                menu.className = 'composer-model-menu';
+                menu.style.cssText = 'position:absolute; z-index:9999; background:var(--bg-elevated); border:1px solid var(--border-strong); border-radius:8px; padding:4px; box-shadow:0 10px 30px rgba(0,0,0,0.55); min-width:180px;';
+                OPENAI_MODELS.forEach(opt => {
+                    const b = document.createElement('button');
+                    b.type = 'button';
+                    const active = opt.label === current;
+                    b.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; text-align:left; background:transparent; border:none; color:' + (active ? 'var(--accent-2)' : 'var(--text-2)') + '; font-size:12px; padding:7px 10px; cursor:pointer; border-radius:5px; font-family:var(--font-ui);';
+                    b.innerHTML = '<span>' + opt.label + '</span>' + (active ? '<span>✓</span>' : '');
+                    b.addEventListener('mouseenter', () => b.style.background = 'rgba(255,255,255,0.06)');
+                    b.addEventListener('mouseleave', () => b.style.background = 'transparent');
+                    b.addEventListener('click', () => {
+                        menu.remove();
+                        try { window.electronAPI.setOpenaiModel(opt.value); } catch (_) {}
+                        composerModelName.textContent = opt.label;
+                        if (typeof showToast === 'function') showToast('Modelo: ' + opt.label);
+                    });
+                    menu.appendChild(b);
+                });
+                document.body.appendChild(menu);
+                const r = anchor.getBoundingClientRect();
+                menu.style.left = r.left + 'px';
+                menu.style.top = (r.top - menu.offsetHeight - 6) + 'px';
+                const closer = (ev) => {
+                    if (!menu.contains(ev.target) && ev.target !== anchor && !anchor.contains(ev.target)) {
+                        menu.remove();
+                        document.removeEventListener('click', closer, true);
+                    }
+                };
+                setTimeout(() => document.addEventListener('click', closer, true), 0);
+            }
+            if (composerModelBtn) {
+                composerModelBtn.addEventListener('click', (e) => { e.stopPropagation(); showModelMenu(composerModelBtn); });
+            }
+            refreshComposerModel();
+            // Reflete mudanças feitas na janela de Configurações ao voltar o foco.
+            window.addEventListener('focus', () => { refreshComposerModel(); });
+
+            // Workspace empty note: mostra quando workspace desativado
+            const wsEmptyNote = document.getElementById('ws-empty-note');
+            const wsPanelTop = document.getElementById('workspace-panel');
+            if (wsEmptyNote && wsPanelTop) {
+                // O painel é escondido APENAS com display:'none'. Quando ativo, o
+                // refreshWorkspacePanel usa display:'' (volta ao padrão = visível).
+                // O bug antigo tratava '' como "escondido" e mostrava o aviso
+                // "Anexos desativados" mesmo com projetos anexados.
+                const syncWsNote = () => {
+                    const hidden = wsPanelTop.style.display === 'none';
+                    wsEmptyNote.style.display = hidden ? '' : 'none';
+                };
+                new MutationObserver(syncWsNote)
+                    .observe(wsPanelTop, { attributes: true, attributeFilter: ['style'] });
+                syncWsNote();
+            }
+
             // === Botão Copy All fixo no topo ===
             const copyAllFixedBtn = document.getElementById('copy-all-btn');
             if (copyAllFixedBtn) {
@@ -1568,26 +1523,50 @@
 
 
             // === Agentic Workflow Listeners ===
-            const agenticContainer = document.getElementById('agentic-status-container');
-            const agenticPhaseTag = document.getElementById('agentic-phase-tag');
-            const agenticStatusText = document.getElementById('agentic-status-text');
-            const agenticStopBtn = document.getElementById('agentic-stop-btn');
             let activeAgenticSession = null;
+            const PHASE_LABELS = {
+                discovery: 'Explorando', planning: 'Planejando',
+                implementation: 'Implementando', review: 'Revisando',
+                completed: 'Concluído', error: 'Erro',
+            };
 
+            // Fase do agentic renderizada INLINE no bloco da pergunta atual,
+            // com botão de interromper — sem balão flutuante.
             window.electronAPI.onAgenticPhaseUpdate(({ phase, status, sessionId }) => {
-                activeAgenticSession = sessionId;
-                agenticContainer.style.display = 'flex';
-                agenticPhaseTag.textContent = phase;
-                agenticStatusText.textContent = status;
-
-                if (phase === 'completed' || phase === 'error') {
-                    setTimeout(() => {
-                        if (activeAgenticSession === sessionId) {
-                            agenticContainer.style.display = 'none';
-                            activeAgenticSession = null;
+                const done = (phase === 'completed' || phase === 'error');
+                if (!done) activeAgenticSession = sessionId;
+                const block = transcriptionElement
+                    ? transcriptionElement.querySelector('.interaction-block:last-child')
+                    : null;
+                if (!block) { if (done) activeAgenticSession = null; return; }
+                let ph = block.querySelector('.ai-phase');
+                if (!ph) {
+                    ph = document.createElement('div');
+                    ph.className = 'ai-phase';
+                    ph.innerHTML = '<span class="ai-phase-spin"></span><span class="ai-phase-tag"></span><span class="ai-phase-text"></span><button class="ai-phase-stop" title="Interromper">×</button>';
+                    const q = block.querySelector('.question-text');
+                    if (q && q.nextSibling) block.insertBefore(ph, q.nextSibling);
+                    else block.insertBefore(ph, block.firstChild);
+                    const stop = ph.querySelector('.ai-phase-stop');
+                    if (stop) stop.addEventListener('click', () => {
+                        if (activeAgenticSession) {
+                            window.electronAPI.stopAgenticWorkflow(activeAgenticSession);
+                            const txt = ph.querySelector('.ai-phase-text');
+                            if (txt) txt.textContent = 'Interrompendo…';
                         }
-                    }, 5000);
+                    });
                 }
+                const tag = ph.querySelector('.ai-phase-tag');
+                const txt = ph.querySelector('.ai-phase-text');
+                if (tag) tag.textContent = PHASE_LABELS[phase] || phase;
+                if (txt) txt.textContent = status || '';
+                if (done) {
+                    ph.classList.add(phase === 'error' ? 'error' : 'done');
+                    const spin = ph.querySelector('.ai-phase-spin'); if (spin) spin.remove();
+                    const stop = ph.querySelector('.ai-phase-stop'); if (stop) stop.remove();
+                    activeAgenticSession = null;
+                }
+                scrollTranscriptionToBottom('auto');
             });
 
             window.electronAPI.onAgenticDebugInfo(({ type, data, sessionId }) => {
@@ -1612,32 +1591,62 @@
                 scrollTranscriptionToBottom();
             });
 
-            agenticStopBtn.addEventListener('click', () => {
-                if (activeAgenticSession) {
-                    window.electronAPI.stopAgenticWorkflow(activeAgenticSession);
-                    agenticStatusText.textContent = 'Interrompendo...';
-                }
-            });
+            // (O botão de interromper agora vive inline no .ai-phase.)
 
             // === Workspace bar (anexos pra contexto da IA) ===
             const wsPanel = document.getElementById('workspace-panel');
             const wsContent = document.getElementById('workspace-content');
             const wsAddBtn = document.getElementById('workspace-add');
+            const wsActions = document.getElementById('ws-actions');
+            const wsProject = document.getElementById('ws-project');
+            const wsProjectName = document.getElementById('ws-project-name');
+            const wsProjectMain = document.getElementById('ws-project-main');
+            const wsTreeToggle = document.getElementById('ws-tree-toggle');
+            const wsTree = document.getElementById('ws-tree');
 
+            const FILE_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+
+            function collapseProjectTree() {
+                if (wsTree) { wsTree.style.display = 'none'; wsTree.innerHTML = ''; }
+                if (wsTreeToggle) wsTreeToggle.setAttribute('aria-expanded', 'false');
+            }
+
+            // Modelo IDE: 1 projeto (pasta) por vez como "header"; arquivos avulsos
+            // viram chips discretos com ícone monocromático.
             function renderWorkspacePanel(attachments) {
+                const list = attachments || [];
+                const dir = list.find(a => a.type === 'dir');
+                const files = list.filter(a => a.type === 'file');
+
+                if (dir) {
+                    const name = dir.path.split('/').filter(Boolean).slice(-1)[0] || dir.path;
+                    if (wsProjectMain && wsProjectMain.dataset.path !== dir.path) collapseProjectTree();
+                    if (wsActions) wsActions.style.display = 'none';
+                    if (wsProject) wsProject.style.display = '';
+                    if (wsProjectName) wsProjectName.textContent = name;
+                    if (wsProjectMain) { wsProjectMain.dataset.path = dir.path; wsProjectMain.title = dir.path; }
+                } else {
+                    if (wsActions) wsActions.style.display = '';
+                    if (wsProject) wsProject.style.display = 'none';
+                    if (wsProjectMain) wsProjectMain.dataset.path = '';
+                    collapseProjectTree();
+                }
+
                 if (!wsContent) return;
                 wsContent.innerHTML = '';
-                const list = attachments || [];
-                if (!list.length) return; // vazio: so' aparece o clipe
-                for (const a of list) {
+                for (const a of files) {
                     const chip = document.createElement('div');
                     chip.className = 'ws-chip';
                     chip.title = a.path;
 
+                    const ic = document.createElement('span');
+                    ic.className = 'ws-chip-ic';
+                    ic.innerHTML = FILE_ICON_SVG;
+
                     const label = document.createElement('span');
                     label.className = 'ws-chip-label';
-                    const icon = a.type === 'dir' ? '📁' : '📄';
-                    label.textContent = `${icon} ${a.path.split('/').slice(-1)[0]}`;
+                    label.textContent = a.path.split('/').slice(-1)[0];
+
                     chip.addEventListener('click', (e) => {
                         if (e.target.closest('.ws-chip-x')) return;
                         if (window.electronAPI && window.electronAPI.workspaceOpenExternal) {
@@ -1657,10 +1666,54 @@
                         }
                     });
 
+                    chip.appendChild(ic);
                     chip.appendChild(label);
                     chip.appendChild(xBtn);
                     wsContent.appendChild(chip);
                 }
+            }
+
+            // Clicar no projeto → menu Trocar/Fechar (reusa o do composer).
+            if (wsProjectMain) {
+                wsProjectMain.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    showProjectMenu(wsProjectMain);
+                });
+            }
+            // Dropdown da árvore (blueprint) — reusa o tree enviado pra IA.
+            const TREE_FILE_IC = '<svg class="ws-tree-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+            const TREE_DIR_IC = '<svg class="ws-tree-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+            async function toggleProjectTree() {
+                if (!wsTree || !wsTreeToggle) return;
+                const open = wsTreeToggle.getAttribute('aria-expanded') === 'true';
+                if (open) { collapseProjectTree(); return; }
+                wsTreeToggle.setAttribute('aria-expanded', 'true');
+                wsTree.style.display = '';
+                wsTree.textContent = 'carregando…';
+                let res = null;
+                try { res = window.electronAPI.getProjectTree ? await window.electronAPI.getProjectTree() : null; } catch (_) {}
+                if (!res || !res.entries || !res.entries.length) {
+                    wsTree.innerHTML = '<span class="ws-tree-empty">Não foi possível ler a estrutura.</span>';
+                    return;
+                }
+                wsTree.innerHTML = '';
+                for (const e of res.entries) {
+                    const node = document.createElement('div');
+                    node.className = 'ws-tree-node ' + (e.isDir ? 'dir' : 'file');
+                    node.style.paddingLeft = (4 + e.depth * 12) + 'px';
+                    node.innerHTML = (e.isDir ? TREE_DIR_IC : TREE_FILE_IC);
+                    const label = document.createElement('span');
+                    label.textContent = e.name;
+                    node.appendChild(label);
+                    if (!e.isDir) {
+                        node.title = e.path + '  (clique para abrir)';
+                        node.addEventListener('click', () => openFileViewer(e.path));
+                    }
+                    wsTree.appendChild(node);
+                }
+            }
+            if (wsTreeToggle) {
+                wsTreeToggle.addEventListener('click', (e) => { e.stopPropagation(); toggleProjectTree(); });
             }
 
             async function refreshWorkspacePanel() {
@@ -1673,6 +1726,7 @@
                     const list = await window.electronAPI.workspaceList();
                     renderWorkspacePanel(list);
                 }
+                refreshProjectContext();
             }
 
             // Mini popover pra escolher Arquivo ou Pasta (Linux nao deixa selecionar ambos)
@@ -1711,9 +1765,19 @@
                 setTimeout(() => document.addEventListener('click', closer, true), 0);
             }
 
-            if (wsAddBtn) wsAddBtn.addEventListener('click', (e) => {
+            // "Abrir projeto" (pasta) e "Anexar arquivo" agora são ações
+            // explícitas e rotuladas na sidebar — nada de menu escondido.
+            const wsOpenProjectBtn = document.getElementById('workspace-open-project');
+            if (wsOpenProjectBtn) wsOpenProjectBtn.addEventListener('click', async (e) => {
                 e.stopPropagation();
-                showAttachMenu(wsAddBtn);
+                await pickProjectFolder();
+            });
+            if (wsAddBtn) wsAddBtn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                if (!(window.electronAPI && window.electronAPI.workspacePickFile)) return;
+                const r = await window.electronAPI.workspacePickFile();
+                if (r && r.attachments) renderWorkspacePanel(r.attachments);
+                refreshProjectContext();
             });
             if (window.electronAPI && window.electronAPI.onWorkspaceChanged) {
                 window.electronAPI.onWorkspaceChanged((data) => {
@@ -1721,6 +1785,7 @@
                         wsPanel.style.display = data.enabled ? '' : 'none';
                     }
                     if (data.attachments) renderWorkspacePanel(data.attachments);
+                    refreshProjectContext();
                 });
             }
             // Listener pra IA ter editado um arquivo → chips horizontais no último interaction-block
@@ -1751,10 +1816,11 @@
 
                         const chip = document.createElement('span');
                         chip.className = 'tool-file-chip';
-                        chip.title = data.path;
+                        chip.title = `${data.path}\n(clique para ver o diff)`;
                         chip.textContent = `${verb} ${shortName}`;
+                        // Clicar mostra o DIFF (o que a IA mudou), não abre externo.
                         chip.addEventListener('click', () => {
-                            window.electronAPI.workspaceOpenExternal(data.path);
+                            openFileDiff(data.path, data.backupAt);
                         });
                         filesList.appendChild(chip);
 
@@ -1762,6 +1828,52 @@
                             transcriptionElement.scrollTo({ top: transcriptionElement.scrollHeight, behavior: 'smooth' });
                         }
                     } catch (e) { console.warn('file-written render failed:', e); }
+                });
+            }
+
+            // === "Thinking"/ações da IA ao vivo (ler, buscar, rodar comando…) ===
+            if (window.electronAPI && window.electronAPI.onAiToolActivity) {
+                const ACT_CHECK = '<svg class="ai-activity-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+                const ACT_FAIL = '<svg class="ai-activity-fail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+                window.electronAPI.onAiToolActivity((data) => {
+                    try {
+                        if (!data || !data.id || !transcriptionElement) return;
+                        const block = transcriptionElement.querySelector('.interaction-block:last-child');
+                        if (!block) return;
+                        let feed = block.querySelector('.ai-activity');
+                        if (!feed) {
+                            feed = document.createElement('div');
+                            feed.className = 'ai-activity';
+                            // Abaixo da fase (se houver), senão logo após a pergunta.
+                            const anchor = block.querySelector('.ai-phase') || block.querySelector('.question-text');
+                            if (anchor && anchor.nextSibling) block.insertBefore(feed, anchor.nextSibling);
+                            else block.appendChild(feed);
+                        }
+                        if (data.phase === 'start') {
+                            if (feed.querySelector(`[data-id="${data.id}"]`)) return;
+                            const item = document.createElement('div');
+                            item.className = 'ai-activity-item running';
+                            item.dataset.id = data.id;
+                            const ic = document.createElement('span');
+                            ic.className = 'ai-activity-ic';
+                            ic.innerHTML = '<span class="ai-activity-spinner"></span>';
+                            const lbl = document.createElement('span');
+                            lbl.className = 'ai-activity-label';
+                            lbl.textContent = data.label || data.name || 'trabalhando…';
+                            item.appendChild(ic);
+                            item.appendChild(lbl);
+                            feed.appendChild(item);
+                            transcriptionElement.scrollTo({ top: transcriptionElement.scrollHeight, behavior: 'smooth' });
+                        } else if (data.phase === 'done') {
+                            const item = feed.querySelector(`[data-id="${data.id}"]`);
+                            if (!item) return;
+                            const ok = data.ok !== false;
+                            item.classList.remove('running');
+                            item.classList.add(ok ? 'done' : 'fail');
+                            const ic = item.querySelector('.ai-activity-ic');
+                            if (ic) ic.innerHTML = ok ? ACT_CHECK : ACT_FAIL;
+                        }
+                    } catch (e) { console.warn('ai-activity render failed:', e); }
                 });
             }
             // Inicial
@@ -1821,23 +1933,41 @@
                 sessions.forEach(session => {
                     const item = document.createElement('div');
                     item.className = 'panel-item';
-                    
+                    if (session.id === historyState.currentSessionId) item.classList.add('active');
+
                     const titleSpan = document.createElement('span');
                     titleSpan.className = 'panel-item-title';
                     titleSpan.textContent = session.title;
-                    titleSpan.addEventListener('click', () => viewConversation(session.id));
-                    
+                    // Clicar restaura a conversa DENTRO do chat (não em modal) e
+                    // continua a sessão, com o contexto recarregado na IA.
+                    titleSpan.addEventListener('click', () => loadSessionIntoChat(session.id));
+
+                    // Ações: baixar (.txt) + deletar, lado a lado.
+                    const actions = document.createElement('div');
+                    actions.className = 'panel-item-actions';
+
+                    const downloadBtn = document.createElement('button');
+                    downloadBtn.className = 'panel-item-action';
+                    downloadBtn.title = 'Baixar conversa (.txt)';
+                    downloadBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+                    downloadBtn.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        try {
+                            const res = await window.electronAPI.downloadConversationTxt(session.id);
+                            if (res && res.ok) showToast(`Conversa salva em:\n${res.path}`);
+                            else showToast(`Falha ao baixar: ${(res && res.error) || 'erro'}`, 'error');
+                        } catch (err) { showToast(`Falha ao baixar: ${err.message}`, 'error'); }
+                    });
+
                     const deleteBtn = document.createElement('button');
-                    deleteBtn.className = 'panel-item-delete';
-                    deleteBtn.textContent = '✕';
+                    deleteBtn.className = 'panel-item-action panel-item-delete';
                     deleteBtn.title = 'Deletar conversa';
+                    deleteBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
                     deleteBtn.addEventListener('click', async (e) => {
                         e.stopPropagation();
                         try {
                             const result = await window.electronAPI.deleteSession(session.id);
                             if (result.success) {
-                                console.log(`✓ Conversa deletada: ${session.id}`);
-                                // Remove from UI
                                 historyState.loadedSessions = historyState.loadedSessions.filter(s => s.id !== session.id);
                                 renderHistoryList(historyState.loadedSessions);
                             }
@@ -1845,9 +1975,11 @@
                             console.error('Erro ao deletar conversa:', error);
                         }
                     });
-                    
+
+                    actions.appendChild(downloadBtn);
+                    actions.appendChild(deleteBtn);
                     item.appendChild(titleSpan);
-                    item.appendChild(deleteBtn);
+                    item.appendChild(actions);
                     historyContent.appendChild(item);
                 });
             }
@@ -1856,10 +1988,11 @@
                 if (!session) return;
 
                 const withoutCurrent = historyState.loadedSessions.filter(s => s.id !== session.id);
+                // Sem limite de 3: a sidebar mostra todas as conversas (com rolagem).
                 historyState.loadedSessions = [
                     { id: session.id, title: session.title, created: session.created },
                     ...withoutCurrent
-                ].slice(0, 3);
+                ];
 
                 renderHistoryList(historyState.loadedSessions);
             }
@@ -1897,14 +2030,76 @@
                 }
             };
 
-            // Carregar histórico do backend
+            // Carregar histórico do backend (TODAS as conversas)
             async function loadHistory() {
                 try {
-                    const sessions = await window.electronAPI.getLastThreeSessions();
+                    const sessions = window.electronAPI.getAllSessions
+                        ? await window.electronAPI.getAllSessions()
+                        : await window.electronAPI.getLastThreeSessions();
                     historyState.loadedSessions = Array.isArray(sessions) ? sessions : [];
                     renderHistoryList(historyState.loadedSessions);
                 } catch (error) {
                     console.error('Erro ao carregar histórico:', error);
+                }
+            }
+
+            // Restaura uma conversa DENTRO do chat (recupera a sessão) e recarrega
+            // o contexto na IA, pra continuar de onde parou.
+            async function loadSessionIntoChat(sessionId) {
+                try {
+                    const session = await window.electronAPI.getSessionById(sessionId);
+                    if (!session || !Array.isArray(session.conversations)) return;
+
+                    const transcriptionElement = document.getElementById('transcription');
+                    manualInputActive = false;
+                    removeManualInputContainer();
+                    transcriptionElement.innerHTML = '';
+                    const hero = document.getElementById('welcome-hero');
+                    if (hero) hero.classList.add('hidden');
+
+                    let currentBlock = null;
+                    session.conversations.forEach(msg => {
+                        if (!msg || !msg.content) return;
+                        if (msg.role === 'user') {
+                            currentBlock = document.createElement('div');
+                            currentBlock.className = 'interaction-block';
+                            const q = document.createElement('span');
+                            q.className = 'question-text';
+                            q.textContent = msg.content;
+                            q.addEventListener('click', () => handleQuestionEdit(q));
+                            currentBlock.appendChild(q);
+                            currentBlock.appendChild(createBlockActions(transcriptionElement));
+                            transcriptionElement.appendChild(currentBlock);
+                        } else {
+                            if (!currentBlock) {
+                                currentBlock = document.createElement('div');
+                                currentBlock.className = 'interaction-block';
+                                currentBlock.appendChild(createBlockActions(transcriptionElement));
+                                transcriptionElement.appendChild(currentBlock);
+                            }
+                            let resp = currentBlock.querySelector('.ia-response');
+                            if (!resp) {
+                                resp = document.createElement('div');
+                                resp.className = 'ia-response';
+                                currentBlock.appendChild(resp);
+                            }
+                            resp.innerText = (resp.innerText ? resp.innerText + '\n' : '') + msg.content;
+                        }
+                    });
+
+                    historyState.currentSessionId = sessionId;
+                    renderHistoryList(historyState.loadedSessions); // re-marca o item ativo
+                    const cab = document.getElementById('copy-all-btn');
+                    if (cab) cab.style.display = '';
+
+                    // Recarrega o contexto na IA pra continuar a conversa
+                    if (window.electronAPI.seedAiSession) {
+                        try { await window.electronAPI.seedAiSession(session.conversations); } catch (_) {}
+                    }
+                    scrollTranscriptionToBottom('auto');
+                    showToast('Conversa restaurada — pode continuar daqui.');
+                } catch (error) {
+                    console.error('Erro ao restaurar conversa:', error);
                 }
             }
 
@@ -1979,6 +2174,8 @@
                     transcriptionElement.innerHTML = '';
                     const cabReset = document.getElementById('copy-all-btn');
                     if (cabReset) cabReset.style.display = 'none';
+                    const hero = document.getElementById('welcome-hero');
+                    if (hero) hero.classList.remove('hidden');
                     greeting.style.display = 'block';
                     
                     // Reseta estado local
@@ -2299,8 +2496,13 @@
         document.body.addEventListener('click', (event) => {
             greeting.classList.add('hidden');
 
+            // NÃO escondemos mais o hero a cada clique: isso fazia o composer
+            // centralizado "pular" pro rodapé só de clicar na tela. O hero (e o
+            // dock do composer) só saem quando uma pergunta é realmente enviada
+            // (appendQuestionEntry cuida disso).
+
             const interactive = event.target.closest(
-                'button, a, input, textarea, .edit-container, .copy-button, .block-action-btn, .block-actions-toggle, .block-actions-close, .panel, #conversation-viewer'
+                'button, a, input, textarea, .edit-container, .copy-button, .block-action-btn, .block-actions-toggle, .block-actions-close, .panel, #conversation-viewer, #composer, #sidebar, .hero-chip'
             );
             if (interactive) return;
             if (manualInputActive || isEditingQuestion) return;
@@ -2324,27 +2526,163 @@
             el.scrollTo({ top: el.scrollHeight, behavior });
         }
 
+        // === Diff view: mostra o que a IA mudou num arquivo (estilo PR) ===
+        async function openFileDiff(filePath, backupAt) {
+            const viewer = document.getElementById('diff-viewer');
+            const body = document.getElementById('diff-body');
+            const fileEl = document.getElementById('diff-file');
+            const statsEl = document.getElementById('diff-stats');
+            if (!viewer || !body) return;
+            fileEl.textContent = String(filePath || '').split('/').slice(-2).join('/');
+            fileEl.title = filePath || '';
+            statsEl.innerHTML = '';
+            body.innerHTML = '<div class="diff-empty">Carregando diff…</div>';
+            viewer.classList.add('open');
+
+            let res = null;
+            try {
+                res = window.electronAPI.getFileDiff
+                    ? await window.electronAPI.getFileDiff({ path: filePath, backupAt })
+                    : null;
+            } catch (_) {}
+            if (!res) { body.innerHTML = '<div class="diff-empty">Não foi possível gerar o diff.</div>'; return; }
+            if (res.tooBig) { body.innerHTML = '<div class="diff-empty">Arquivo grande demais para exibir o diff.</div>'; return; }
+
+            statsEl.innerHTML = `<span class="d-add">+${res.adds}</span><span class="d-del">−${res.dels}</span>`;
+            const lines = res.lines || [];
+            if (!lines.length || (res.adds === 0 && res.dels === 0)) {
+                body.innerHTML = '<div class="diff-empty">Sem alterações detectadas neste arquivo.</div>';
+                return;
+            }
+            body.innerHTML = '';
+            const addLine = (l) => {
+                const div = document.createElement('div');
+                div.className = 'diff-line ' + (l.t === 'add' ? 'add' : l.t === 'del' ? 'del' : 'ctx');
+                const g = document.createElement('span'); g.className = 'dl-gutter'; g.textContent = (l.ln != null ? l.ln : '');
+                const s = document.createElement('span'); s.className = 'dl-sign'; s.textContent = (l.t === 'add' ? '+' : l.t === 'del' ? '−' : '');
+                const t = document.createElement('span'); t.className = 'dl-text'; t.textContent = l.text;
+                div.appendChild(g); div.appendChild(s); div.appendChild(t);
+                body.appendChild(div);
+            };
+            // Colapsa trechos longos sem alteração (estilo PR).
+            const COLLAPSE = 4;
+            let run = [];
+            const flushCtx = () => {
+                if (!run.length) return;
+                if (run.length > COLLAPSE * 2) {
+                    run.slice(0, COLLAPSE).forEach(addLine);
+                    const sep = document.createElement('div');
+                    sep.className = 'diff-line ctx';
+                    sep.innerHTML = '<span class="dl-gutter"></span><span class="dl-sign"></span><span class="dl-text" style="color:var(--text-4)">⋯ ' + (run.length - COLLAPSE * 2) + ' linhas inalteradas ⋯</span>';
+                    body.appendChild(sep);
+                    run.slice(-COLLAPSE).forEach(addLine);
+                } else {
+                    run.forEach(addLine);
+                }
+                run = [];
+            };
+            let count = 0;
+            for (const l of lines) {
+                if (count++ > 2000) break;
+                if (l.t === 'ctx') run.push(l);
+                else { flushCtx(); addLine(l); }
+            }
+            flushCtx();
+            body.scrollTop = 0;
+        }
+        function closeFileDiff() {
+            const v = document.getElementById('diff-viewer');
+            if (v) v.classList.remove('open');
+        }
+        (function wireDiffViewer() {
+            const closeBtn = document.getElementById('diff-close');
+            if (closeBtn) closeBtn.addEventListener('click', closeFileDiff);
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    const v = document.getElementById('diff-viewer');
+                    if (v && v.classList.contains('open')) { e.stopPropagation(); closeFileDiff(); }
+                }
+            }, true);
+        })();
+
+        // ===== Visualizador de arquivo (IDE): abre no lugar do chat =====
+        const FV_EXT_LANG = {
+            js:'javascript', jsx:'javascript', mjs:'javascript', cjs:'javascript',
+            ts:'typescript', tsx:'typescript', java:'java', cs:'csharp', py:'python',
+            html:'xml', htm:'xml', css:'css', scss:'scss', json:'json', md:'markdown',
+            sh:'bash', bash:'bash', yml:'yaml', yaml:'yaml', xml:'xml', sql:'sql',
+            go:'go', rs:'rust', c:'c', h:'c', cpp:'cpp', hpp:'cpp', php:'php', rb:'ruby',
+        };
+        async function openFileViewer(filePath) {
+            const viewer = document.getElementById('file-viewer');
+            const codeEl = document.getElementById('fv-code');
+            const pathEl = document.getElementById('fv-path');
+            const langEl = document.getElementById('fv-lang');
+            if (!viewer || !codeEl) return;
+            pathEl.textContent = String(filePath || '').split('/').slice(-3).join('/');
+            pathEl.title = filePath || '';
+            langEl.textContent = '';
+            codeEl.removeAttribute('data-highlighted');
+            codeEl.className = '';
+            codeEl.textContent = 'Carregando…';
+            viewer.classList.add('open');
+
+            let res = null;
+            try { res = window.electronAPI.readFileContent ? await window.electronAPI.readFileContent(filePath) : null; } catch (_) {}
+            if (!res || !res.ok) {
+                codeEl.textContent = (res && res.error) ? ('Não foi possível abrir: ' + res.error) : 'Não foi possível abrir o arquivo.';
+                return;
+            }
+            const lang = FV_EXT_LANG[res.ext] || '';
+            langEl.textContent = (lang || res.ext || 'texto').toUpperCase();
+            codeEl.removeAttribute('data-highlighted');
+            codeEl.className = lang ? ('language-' + lang) : '';
+            codeEl.textContent = res.content;
+            try { if (window.hljs) window.hljs.highlightElement(codeEl); } catch (_) {}
+            const body = document.getElementById('fv-body');
+            if (body) body.scrollTop = 0;
+        }
+        function closeFileViewer() {
+            const v = document.getElementById('file-viewer');
+            if (v) v.classList.remove('open');
+        }
+        (function wireFileViewer() {
+            const closeBtn = document.getElementById('fv-close');
+            if (closeBtn) closeBtn.addEventListener('click', closeFileViewer);
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    const v = document.getElementById('file-viewer');
+                    if (v && v.classList.contains('open')) { e.stopPropagation(); closeFileViewer(); }
+                }
+            }, true);
+        })();
+
         function removeManualInputContainer() {
             const existing = document.querySelector('.manual-input-container');
             if (existing) existing.remove();
+            undockComposer();
         }
 
+        const COPY_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+        const CHECK_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+
         function createBlockActions(transcriptionElement) {
-            // Botão simples "Copiar" dentro do bloco
+            // Ícone de copiar a RESPOSTA (vira ✓ ao copiar, estilo ChatGPT).
             const copyBtn = document.createElement('button');
             copyBtn.className = 'copy-interaction-btn';
-            copyBtn.textContent = 'Copiar';
+            copyBtn.title = 'Copiar resposta';
+            copyBtn.setAttribute('aria-label', 'Copiar resposta');
+            copyBtn.innerHTML = COPY_ICON_SVG;
             copyBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const block = copyBtn.closest('.interaction-block');
-                const qEl = block.querySelector('.question-text');
-                const qText = qEl ? getQuestionText(qEl) : '';
-                const aEl = block.querySelector('.ia-response');
-                const aText = aEl ? (aEl.innerText || aEl.textContent) : '';
-                const full = (qText ? `Pergunta: ${qText}\n\n` : '') + (aText ? `Resposta: ${aText}` : '');
-                navigator.clipboard.writeText(full).then(() => {
-                    copyBtn.textContent = 'Copiado ✓';
-                    setTimeout(() => { copyBtn.textContent = 'Copiar'; }, 1500);
+                const aEl = block.querySelector('.ia-response') || block.querySelector('.streaming-response');
+                const aText = aEl ? (aEl.innerText || aEl.textContent || '').trim() : '';
+                if (!aText) return;
+                navigator.clipboard.writeText(aText).then(() => {
+                    copyBtn.innerHTML = CHECK_ICON_SVG;
+                    copyBtn.classList.add('copied');
+                    setTimeout(() => { copyBtn.innerHTML = COPY_ICON_SVG; copyBtn.classList.remove('copied'); }, 1500);
                 });
             });
             return copyBtn;
@@ -2352,6 +2690,10 @@
 
         function appendQuestionEntry(text) {
             const transcriptionElement = document.getElementById('transcription');
+
+            // Oculta o hero de boas-vindas na primeira mensagem real
+            const hero = document.getElementById('welcome-hero');
+            if (hero) hero.classList.add('hidden');
 
             // Cria o bloco que agrupa pergunta + resposta
             const interactionBlock = document.createElement('div');
@@ -2983,6 +3325,7 @@
                 if (e.key === 'Escape' && manualInputActive) {
                     manualInputActive = false;
                     removeManualInputContainer();
+                    undockComposer();
                     pastedImageForManualInput = null;
                     document.getElementById('screenshot-preview').style.display = 'none';
                     e.stopPropagation();
@@ -3344,6 +3687,42 @@
             console.log('Notificações iniciadas');
         }
         
+        // === Composer fixo (apresentação) ===
+        // Ancora o container de input real no composer shell visual, mantendo
+        // toda a lógica intacta. "Dock" é puramente reposicionamento DOM —
+        // nenhum fluxo de dados, validação ou submissão é alterado.
+        function dockComposer(container) {
+            const shell = document.getElementById('composer-shell');
+            const ghost = document.getElementById('composer-ghost');
+            const sendBtn = document.getElementById('composer-send');
+            if (!shell) { transcriptionElement.appendChild(container); return; } // fallback
+            // Insere o input ANTES do botão enviar (ghost escondido)
+            if (ghost) ghost.style.display = 'none';
+            if (sendBtn) shell.insertBefore(container, sendBtn);
+            else shell.appendChild(container);
+        }
+        function undockComposer() {
+            const shell = document.getElementById('composer-shell');
+            const ghost = document.getElementById('composer-ghost');
+            const sendBtn = document.getElementById('composer-send');
+            // Reverte o dock: se o input manual ainda está dentro do composer,
+            // devolve-o para #transcription (onde o CSS o mantém oculto). Assim,
+            // qualquer container.replaceWith(bloco) seguinte insere a pergunta no
+            // fluxo do chat — e não dentro do text area. (Corrige o bug em que a
+            // pergunta ficava presa num balão dentro do composer.)
+            if (shell) {
+                const docked = shell.querySelector('.manual-input-container');
+                if (docked) {
+                    const transcription = document.getElementById('transcription');
+                    if (transcription) transcription.appendChild(docked);
+                }
+            }
+            if (ghost) ghost.style.display = '';
+            // O send-button do .edit-controls (legado) fica escondido via CSS
+            // quando está dentro de #composer, mas mostra o composer-send.
+            if (sendBtn) sendBtn.style.display = '';
+        }
+
         function openManualInput(initialText = '') {
             if (manualInputActive || isEditingQuestion) {
                 // Se ja esta ativo, apenas garante o foco no input
@@ -3361,7 +3740,7 @@
                 }
                 return;
             }
-            
+
             manualInputActive = true;
             pastedImageForManualInput = null; // Reseta a imagem colada
             document.getElementById('screenshot-preview').style.display = 'none'; // Esconde o preview
@@ -3411,78 +3790,37 @@
                 configurable: true,
             });
 
-            // Garante que o '_' esteja sempre no FIM do conteudo + toggle has-text.
-            const syncCursor = () => {
-                // Remove cursores duplicados (caso o usuario tenha colado).
-                inputField.querySelectorAll('.gcursor').forEach(n => n.remove());
-                inputField.appendChild(gCursor);
+            // Usamos o caret NATIVO (caret-color no CSS). Estas funções agora só
+            // atualizam o toggle .has-text (esconde a dica). Nada de inserir/mover
+            // o cursor no DOM — era isso que embaralhava as letras e travava o
+            // backspace. O gCursor permanece definido mas nunca é inserido.
+            const updateHasText = () => {
                 const txt = inputField.value;
                 if (txt.length > 0) wrap.classList.add('has-text');
                 else wrap.classList.remove('has-text');
             };
+            const syncCursor = updateHasText;
+            const syncCursorWithCaretPosition = updateHasText;
 
-            // Reposiciona o '_' para ficar logo ANTES da posicao atual do caret.
-            const syncCursorWithCaretPosition = () => {
-                try {
-                    const sel = window.getSelection();
-                    if (!sel.rangeCount) return;
-                    
-                    // Remove o cursor visual de qualquer lugar
-                    inputField.querySelectorAll('.gcursor').forEach(n => n.remove());
-                    
-                    // Obtem a posicao do caret
-                    const caretRange = sel.getRangeAt(0).cloneRange();
-                    caretRange.collapse(true);
-                    
-                    // Insere o cursor visual NA posicao do caret
-                    try {
-                        caretRange.insertNode(gCursor);
-                    } catch (_) {
-                        // Se falhar, coloca no fim (fallback)
-                        inputField.appendChild(gCursor);
-                    }
-                    
-                    // Atualiza toggle has-text
-                    const txt = inputField.value;
-                    if (txt.length > 0) wrap.classList.add('has-text');
-                    else wrap.classList.remove('has-text');
-                } catch (_) {}
-            };
+            inputField.addEventListener('input', updateHasText);
 
-            inputField.addEventListener('input', () => {
-                syncCursorWithCaretPosition();
-            });
-
-            // Monitor setas direcionais, Home, End, Delete, Backspace
-            inputField.addEventListener('keydown', (e) => {
-                const keysToHandle = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'Delete', 'Backspace'];
-                if (keysToHandle.includes(e.key)) {
-                    // Deixa a navegacao acontecer naturalmente
-                    setTimeout(() => {
-                        syncCursorWithCaretPosition();
-                    }, 0);
-                }
-            });
-
-            // Monitor clique do mouse
-            inputField.addEventListener('mousedown', () => {
-                setTimeout(() => {
-                    syncCursorWithCaretPosition();
-                }, 0);
-            });
-
-            // Monitor selectionchange global (caso caret se mova por outras vias)
-            document.addEventListener('selectionchange', () => {
-                if (document.activeElement === inputField) {
-                    syncCursorWithCaretPosition();
-                }
-            });
-
-            // Init: insere o cursor.
+            // Init: caret nativo. Se houver texto inicial, posiciona o caret no fim.
             if (initialText) {
                 inputField.textContent = initialText;
             }
-            syncCursorWithCaretPosition();
+            updateHasText();
+            // Coloca o caret no fim do conteúdo quando o input ganha foco a 1ª vez.
+            const placeCaretEnd = () => {
+                try {
+                    const range = document.createRange();
+                    range.selectNodeContents(inputField);
+                    range.collapse(false);
+                    const sel = window.getSelection();
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                } catch (_) {}
+            };
+            inputField.addEventListener('focus', () => { if (inputField.value) placeCaretEnd(); }, { once: true });
 
             wrap.appendChild(hint);
             wrap.appendChild(inputField);
@@ -3503,10 +3841,13 @@
             
             controls.appendChild(sendButton);
             container.appendChild(controls); // Append controls to container
-            
-            transcriptionElement.appendChild(container);
-            scrollTranscriptionToBottom();
-            
+
+            // === Composer fixo (UX): ancora o input no rodapé, sempre visível.
+            // O input real é criado aqui (preserva toda a lógica), mas "ancorado"
+            // visualmente dentro do composer fixo da UI. Limpeza apenas de camada
+            // de apresentação — nenhum fluxo de dados é alterado.
+            dockComposer(container);
+
             // Foca no input com um pequeno delay para garantir que o DOM foi atualizado
             setTimeout(() => {
                 inputField.focus();
@@ -3520,6 +3861,7 @@
                     e.stopPropagation(); // Evita que o evento se propague
                     manualInputActive = false;
                     container.remove();
+                    undockComposer();
                     pastedImageForManualInput = null; // Limpa a imagem
                     document.getElementById('screenshot-preview').style.display = 'none'; // Esconde o preview
                 } else if (e.key === 'Enter' && e.shiftKey) {
@@ -3535,6 +3877,14 @@
         
         async function submitManualQuestion(text, container) {
             manualInputActive = false;
+            undockComposer(); // restaura o ghost do composer após envio
+
+            // Enviar = conversa começou: esconde o hero (→ #main perde .is-empty,
+            // o composer doca embaixo e o #transcription fica visível). Antes isso
+            // dependia do clique no body, que removi pra parar o "pulo" — sem este
+            // hide a pergunta/resposta caíam num #transcription display:none.
+            const _heroSubmit = document.getElementById('welcome-hero');
+            if (_heroSubmit) _heroSubmit.classList.add('hidden');
 
             const isDebug = await window.electronAPI.getDebugModeStatus();
 

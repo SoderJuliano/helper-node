@@ -122,7 +122,7 @@ function buildHelperToolsOpenAIOpts(userText, baseInstruction, baseModel) {
     const modelTier = (m) => {
       const s = String(m || "").toLowerCase();
       if (!s) return 0;
-      if (/gpt-5\.[45]/.test(s)) return 5;
+      if (/gpt-5\.[45]/.test(s) && !/(mini|nano)/.test(s)) return 5;
       if (/gpt-5(\.\d)?($|[^.\d])/.test(s) && !/(mini|nano)/.test(s)) return 4;
       if (/gpt-4\.1($|[^-])/.test(s) && !/(mini|nano)/.test(s)) return 3;
       if (/gpt-4o($|[^-])/.test(s) && !/mini/.test(s)) return 3;
@@ -131,9 +131,22 @@ function buildHelperToolsOpenAIOpts(userText, baseInstruction, baseModel) {
       return 2; // desconhecido — assume médio
     };
     let model = baseModel;
-    const forceHeavy = helperTools.shouldForceHeavyModel
+    // Sinal de intenção pesada por palavra-chave (escrita/edição/comandos).
+    const heavyIntent = helperTools.shouldForceHeavyModel
       ? helperTools.shouldForceHeavyModel(userText || "")
       : false;
+    // Trabalhando sobre um PROJETO/arquivos anexados, qualquer pergunta (mesmo
+    // de leitura, ex.: "qual versão de node?") precisa raciocinar sobre código
+    // → o nano default dá respostas rasas/preguiçosas. Nesse contexto forçamos
+    // o upgrade também. A regra abaixo (heavyTier > userTier) garante que quem
+    // já escolheu um modelo melhor NÃO é rebaixado.
+    let hasWorkspaceCtx = false;
+    try {
+      hasWorkspaceCtx = !!(configService.getWorkspaceAccessEnabled &&
+        configService.getWorkspaceAccessEnabled() &&
+        workspace.list && workspace.list().length > 0);
+    } catch (_) {}
+    const forceHeavy = heavyIntent || hasWorkspaceCtx;
     if (forceHeavy) {
       const rawModel = cfg.modelHeavy || "";
       if (rawModel.startsWith("openai:")) {
@@ -193,11 +206,37 @@ function buildHelperToolsOpenAIOpts(userText, baseInstruction, baseModel) {
             } catch (_) {}
             return null;
           };
+          // Resumo legível da ação pra mostrar o "thinking"/ações na UI.
+          const baseName = (p) => String(p || "").split("/").filter(Boolean).slice(-1)[0] || String(p || "");
+          const summarizeTool = (name, a = {}) => {
+            switch (name) {
+              case "readFile": return `Lendo ${baseName(a.path)}`;
+              case "findFiles": return `Procurando ${a.glob || a.pattern || "arquivos"}`;
+              case "listDir": case "readDir": return `Listando ${baseName(a.path) || "diretório"}`;
+              case "writeFile": return `Escrevendo ${baseName(a.path)}`;
+              case "appendToFile": return `Anexando em ${baseName(a.path)}`;
+              case "patchFile": return `Editando ${baseName(a.path)}`;
+              case "deleteFile": return `Removendo ${baseName(a.path)}`;
+              case "runCommand": case "runTerminal": return `Rodando: ${String(a.command || a.cmd || "").slice(0, 70)}`;
+              case "grep": case "searchInFiles": return `Buscando "${String(a.query || a.pattern || "").slice(0, 50)}"`;
+              default: return name;
+            }
+          };
+          const emitActivity = (payload) => {
+            try {
+              if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send("ai-tool-activity", payload);
+              }
+            } catch (_) {}
+          };
           return async (name, args /*, meta */) => {
+            const callId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+            emitActivity({ id: callId, name, label: summarizeTool(name, args), phase: "start" });
             const key = hashKey(name, args);
             if (key && seen.has(key)) {
               console.log(`🚫 anti-dup: ${name} já executado neste turno (key=${key}); retornando resultado anterior sem reexecutar.`);
               const prev = seen.get(key);
+              emitActivity({ id: callId, name, phase: "done", ok: true });
               return {
                 ok: true,
                 result: {
@@ -211,6 +250,7 @@ function buildHelperToolsOpenAIOpts(userText, baseInstruction, baseModel) {
               source: "openai-tool-call",
             });
             if (key && res && res.ok !== false) seen.set(key, res);
+            emitActivity({ id: callId, name, phase: "done", ok: res && res.ok !== false });
             return res;
           };
         })(),
@@ -222,6 +262,22 @@ function buildHelperToolsOpenAIOpts(userText, baseInstruction, baseModel) {
     console.warn("buildHelperToolsOpenAIOpts falhou, seguindo sem tools:", e && e.message);
     return { opts: {} };
   }
+}
+
+// Decide se uma mensagem deve usar o Agentic Workflow (multi-fase) ou só o
+// caminho normal de tool-calling. Comando DIRETO (git/npm/commit/push/rode/
+// test/build…) NUNCA planeja — só executa. Receba SEMPRE o texto cru do
+// usuário (não a versão com contexto do projeto, que tem ruído).
+function shouldUseAgentic(rawText) {
+  if (!configService.getHelperToolsEnabled || !configService.getHelperToolsEnabled()) return false;
+  if (!configService.getWorkspaceAccessEnabled || !configService.getWorkspaceAccessEnabled()) return false;
+  if (!(helperTools.shouldForceHeavyModel && helperTools.shouldForceHeavyModel(rawText || ""))) return false;
+  const t = (rawText || "").toLowerCase();
+  const isDirectCommand =
+    /\b(git|npm|yarn|pnpm|cargo|docker|kubectl|systemctl|make)\b/.test(t) ||
+    /\b(commit|push|pull|rebase|merge|clone|checkout|stash)\b/.test(t) ||
+    /\b(rode|roda|rodar|execut|\brun\b|test|build|deploy|lint|instal)\b/.test(t);
+  return !isDirectCommand;
 }
 
 // === Workspace context injection ===
@@ -246,14 +302,28 @@ async function prependWorkspaceContextIfNeeded(text, modelKey) {
       console.log(`[workspace] SKIP: nenhum anexo no painel`);
       return text;
     }
+    // Âncora CURTA do projeto ativo — vai em TODO turno (barato). Sem isso o
+    // modelo esquece a raiz do projeto após a 1ª msg e começa a varrer ~ ("achei
+    // 3 projetos, qual o caminho?"). O blueprint completo (árvore) vai só 1x.
+    const dirs = workspace.list().filter((a) => a.type === "dir");
+    let anchor = "";
+    if (dirs.length) {
+      const root = dirs[0].path;
+      anchor =
+        `[PROJETO ATIVO: ${root}]\n` +
+        `Esta é a RAIZ do projeto em que estamos trabalhando. Faça TODAS as operações ` +
+        `de arquivo/busca/comando DENTRO deste diretório (use-o como cwd). ` +
+        `NÃO procure em ~ nem em outros projetos. Caminho relativo = relativo a esta raiz.`;
+    }
+
     const ctx = await workspace.buildContextIfNeeded(modelKey || "", { userText: text });
     if (!ctx) {
-      console.log(`[workspace] SKIP: contexto ja injetado nesta sessao (anexos=${attCount}). Use 'Novo Chat' pra reinjetar.`);
-      return text;
+      console.log(`[workspace] contexto ja injetado; mandando só a âncora do projeto (anexos=${attCount}).`);
+      return anchor ? anchor + "\n\n---\n\n" + (text || "") : text;
     }
     workspace.markContextSent();
     console.log(`[workspace] ✅ contexto injetado (${ctx.length} chars, ${attCount} anexos, model=${modelKey})`);
-    return ctx + "\n\n---\n\n" + (text || "");
+    return (anchor ? anchor + "\n\n" : "") + ctx + "\n\n---\n\n" + (text || "");
   } catch (e) {
     console.warn("[workspace] prependContext falhou:", e.message);
     return text;
@@ -273,7 +343,11 @@ function calculateImageHash(imageBuffer) {
 // --- SINGLE INSTANCE LOCK ---
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
-  app.quit();
+  // Outra instância já está rodando: encerra imediatamente para não tentar
+  // criar/carregar a janela (o que abortava o loadFile e gerava o erro
+  // enganoso "index.html not found / ERR_FAILED"). A instância original
+  // recebe o evento 'second-instance' e foca a janela existente.
+  app.exit(0);
 } else {
   app.on('second-instance', (event, argv, workingDirectory) => {
     // Focus existing window if a second instance is started
@@ -2685,27 +2759,33 @@ async function getIaResponse(text) {
             return;
         }
         const openAiModel = configService.getOpenAiModel();
-        const _wsText1 = await prependWorkspaceContextIfNeeded(text, openAiModel);
 
-        // Decide se usa o Agentic Workflow (multi-fases) ou single-shot.
-        // Requisitos: OpenAI + Advanced Tools ON + Workspace Access ON + Intent de escrita/complexa.
-        const useAgentic = configService.getHelperToolsEnabled() && 
-                          configService.getWorkspaceAccessEnabled() && 
-                          helperTools.shouldForceHeavyModel(text);
+        // Comando direto não planeja (só executa); tarefa complexa → agentic.
+        const useAgentic = shouldUseAgentic(text);
+
+        // O agentic limpa as sessões da IA; sem re-injetar o contexto do
+        // workspace a IA "esquece" o projeto. Reseta a flag ANTES de montar o
+        // contexto pra garantir que a estrutura do projeto entre neste turno.
+        if (useAgentic) { try { workspace.resetContextSent(); } catch (_) {} }
+
+        const _wsText1 = await prependWorkspaceContextIfNeeded(text, openAiModel);
 
         if (useAgentic) {
             console.log('🤖 Iniciando AGENTIC WORKFLOW (multi-fase)...');
-            // Limpa qualquer sessão anterior pra evitar contaminação de contexto (ex: Pikachu vs Helper-Node)
+            // Limpa a sessão anterior pra evitar contaminação entre tarefas distintas.
             if (OpenAIService.sessions) OpenAIService.sessions = {};
-            
+
             try {
               resposta = await agenticWorkflow.run(
-                  _wsText1, 
+                  _wsText1,
                   { token, model: openAiModel, baseInstruction: instruction },
                   mainWindow.webContents
               );
             } catch (err) {
               resposta = `[Agentic Workflow] Interrompido ou falhou: ${err.message}`;
+            } finally {
+              // Próximo turno re-injeta o contexto do projeto (a sessão foi limpa).
+              try { workspace.resetContextSent(); } catch (_) {}
             }
         } else {
             const _kb1 = await knowledgeBlockForOpenAI(text);
@@ -2734,11 +2814,9 @@ async function getIaResponse(text) {
         // Helper tools agora funcionam tambem no Ollama (via structured prompt + parser).
         try {
           const instructionO = configService.getPromptInstruction();
+          const useAgentic = shouldUseAgentic(text);
+          if (useAgentic) { try { workspace.resetContextSent(); } catch (_) {} }
           const _wsTxtO = await prependWorkspaceContextIfNeeded(text, 'ollama');
-
-          const useAgentic = configService.getHelperToolsEnabled() && 
-                            configService.getWorkspaceAccessEnabled() && 
-                            helperTools.shouldForceHeavyModel(_wsTxtO);
 
           if (useAgentic) {
               console.log('🤖 Iniciando AGENTIC WORKFLOW OLLAMA (multi-fase)...');
@@ -3189,25 +3267,28 @@ ipcMain.on("send-to-gemini", async (event, text) => {
             return;
         }
         const openAiModel = configService.getOpenAiModel();
-        const _wsText2 = await prependWorkspaceContextIfNeeded(text, openAiModel);
 
-        const useAgentic = configService.getHelperToolsEnabled() && 
-                          configService.getWorkspaceAccessEnabled() && 
-                          helperTools.shouldForceHeavyModel(text);
+        // Comando direto não planeja (só executa); tarefa complexa → agentic.
+        const useAgentic = shouldUseAgentic(text);
+        if (useAgentic) { try { workspace.resetContextSent(); } catch (_) {} }
+
+        const _wsText2 = await prependWorkspaceContextIfNeeded(text, openAiModel);
 
         if (useAgentic) {
             console.log('🤖 IPC: Iniciando AGENTIC WORKFLOW (multi-fase)...');
             // Limpa qualquer sessão anterior pra evitar contaminação
             if (OpenAIService.sessions) OpenAIService.sessions = {};
-            
+
             try {
               resposta = await agenticWorkflow.run(
-                  _wsText2, 
+                  _wsText2,
                   { token, model: openAiModel, baseInstruction: instruction },
                   event.sender
               );
             } catch (err) {
               resposta = `[Agentic Workflow] Interrompido ou falhou: ${err.message}`;
+            } finally {
+              try { workspace.resetContextSent(); } catch (_) {}
             }
         } else {
             const _kb2 = await knowledgeBlockForOpenAI(text);
@@ -3229,11 +3310,9 @@ ipcMain.on("send-to-gemini", async (event, text) => {
         // Ollama/Backend e' o unico provider nao-OpenAI suportado.
         try {
           const instructionO2 = configService.getPromptInstruction();
+          const useAgentic = shouldUseAgentic(text);
+          if (useAgentic) { try { workspace.resetContextSent(); } catch (_) {} }
           const _wsTxtO2 = await prependWorkspaceContextIfNeeded(text, 'ollama');
-
-          const useAgentic = configService.getHelperToolsEnabled() && 
-                            configService.getWorkspaceAccessEnabled() && 
-                            helperTools.shouldForceHeavyModel(_wsTxtO2);
 
           if (useAgentic) {
               console.log('🤖 IPC: Iniciando AGENTIC WORKFLOW OLLAMA (multi-fase)...');
@@ -3616,9 +3695,10 @@ ipcMain.handle("workspace:pick-dir", async () => {
   });
   if (res.canceled || !res.filePaths.length) return { ok: false, canceled: true };
   const added = [];
+  // Modelo IDE: um projeto por vez — openProject substitui a pasta anterior.
   for (const p of res.filePaths) {
-    try { await workspace.addPath(p, "dir"); added.push(p); }
-    catch (e) { console.warn("[workspace] add dir falhou:", e.message); }
+    try { await workspace.openProject(p); added.push(p); }
+    catch (e) { console.warn("[workspace] open project falhou:", e.message); }
   }
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send("workspace-changed", { attachments: workspace.list() });
@@ -3627,6 +3707,131 @@ ipcMain.handle("workspace:pick-dir", async () => {
 });
 
 ipcMain.handle("workspace:list", () => workspace.list());
+
+// Contexto ativo do projeto (pasta anexada + branch git) — exibido como pills
+// discretos acima do composer, ao estilo de uma IDE. Retorna null quando não há
+// pasta no workspace (modo chat puro).
+ipcMain.handle("get-project-context", async () => {
+  try {
+    const dir = (workspace.list() || []).find((a) => a.type === "dir");
+    if (!dir) return null;
+    const name = path.basename(dir.path);
+    let branch = null;
+    try {
+      const { execFile } = require("child_process");
+      branch = await new Promise((resolve) => {
+        execFile(
+          "git",
+          ["-C", dir.path, "rev-parse", "--abbrev-ref", "HEAD"],
+          { timeout: 2500 },
+          (err, stdout) => resolve(err ? null : (stdout || "").trim() || null)
+        );
+      });
+    } catch (_) { /* sem git: mostra só o projeto */ }
+    return { id: dir.id, name, path: dir.path, branch };
+  } catch (e) {
+    console.warn("[project-context] falhou:", e.message);
+    return null;
+  }
+});
+
+// Diff linha-a-linha (LCS) entre dois textos — sem dependências externas.
+function computeLineDiff(oldText, newText) {
+  const a = String(oldText || "").split("\n");
+  const b = String(newText || "").split("\n");
+  const n = a.length, m = b.length;
+  if (n > 4000 || m > 4000) return null; // grande demais p/ exibir
+  const dp = [];
+  for (let i = 0; i <= n; i++) dp.push(new Int32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const lines = [];
+  let i = 0, j = 0, ln = 1;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { lines.push({ t: "ctx", text: a[i], ln: ln++ }); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { lines.push({ t: "del", text: a[i] }); i++; }
+    else { lines.push({ t: "add", text: b[j], ln: ln++ }); j++; }
+  }
+  while (i < n) { lines.push({ t: "del", text: a[i] }); i++; }
+  while (j < m) { lines.push({ t: "add", text: b[j], ln: ln++ }); j++; }
+  return lines;
+}
+
+// Diff de um arquivo editado pela IA: backup (antes) × atual (depois).
+ipcMain.handle("get-file-diff", async (event, payload) => {
+  try {
+    const filePath = payload && payload.path;
+    const backupAt = payload && payload.backupAt;
+    if (!filePath) return null;
+    let oldText = "";
+    if (backupAt && fs2.existsSync(backupAt)) {
+      try { oldText = fs2.readFileSync(backupAt, "utf8"); } catch (_) {}
+    }
+    let newText = "";
+    try { if (fs2.existsSync(filePath)) newText = fs2.readFileSync(filePath, "utf8"); } catch (_) {}
+    const lines = computeLineDiff(oldText, newText);
+    const adds = lines ? lines.filter((l) => l.t === "add").length : 0;
+    const dels = lines ? lines.filter((l) => l.t === "del").length : 0;
+    return { path: filePath, lines: lines || [], adds, dels, tooBig: !lines, isNew: !backupAt };
+  } catch (e) {
+    console.warn("[file-diff] falhou:", e.message);
+    return null;
+  }
+});
+
+// Árvore (blueprint) do projeto aberto — pra exibir no dropdown da sidebar.
+ipcMain.handle("get-project-tree", async () => {
+  try {
+    const dir = (workspace.list() || []).find((a) => a.type === "dir");
+    if (!dir) return null;
+    const root = dir.path;
+    // Lista estruturada (clicável) — usa -printf pra saber tipo (d/f) direto.
+    let entries = [];
+    try {
+      const { execSync } = require("child_process");
+      // path PRIMEIRO (%p) pra ordenar por caminho com `sort` simples; tipo (%y)
+      // depois. -printf interpreta \t/\n; o sort -t com tab literal quebrava.
+      const cmd =
+        `find "${root}" \\( -name '.git' -o -name 'node_modules' -o -name 'target' ` +
+        `-o -name 'build' -o -name '.idea' -o -name '__pycache__' -o -name '.venv' ` +
+        `-o -name 'dist' \\) -prune -o \\( -type f -o -type d \\) -printf '%p\\t%y\\n' ` +
+        `2>/dev/null | sort | head -400`;
+      const out = execSync(cmd, { encoding: "utf8" }).trim();
+      entries = out.split("\n").filter(Boolean).map((line) => {
+        const tab = line.lastIndexOf("\t");
+        const p = tab >= 0 ? line.slice(0, tab) : line;
+        const type = tab >= 0 ? line.slice(tab + 1) : "f";
+        const rel = path.relative(root, p);
+        return { path: p, name: path.basename(p), depth: rel ? rel.split(path.sep).length - 1 : 0, isDir: type === "d" };
+      }).filter((e) => e.path !== root);
+    } catch (_) {}
+    return { root, path: root, entries, tree: workspace.tree(root) || "" };
+  } catch (e) {
+    console.warn("[project-tree] falhou:", e.message);
+    return null;
+  }
+});
+
+// Lê o conteúdo de um arquivo do projeto pra exibir no visualizador da IDE.
+ipcMain.handle("read-file-content", async (event, filePath) => {
+  try {
+    if (!filePath) return { ok: false, error: "path vazio" };
+    if (workspace.isPathAllowed && !workspace.isPathAllowed(filePath)) {
+      return { ok: false, error: "arquivo fora do projeto/workspace" };
+    }
+    if (!fs2.existsSync(filePath)) return { ok: false, error: "arquivo não existe" };
+    const st = fs2.statSync(filePath);
+    if (!st.isFile()) return { ok: false, error: "não é um arquivo" };
+    if (st.size > 2 * 1024 * 1024) return { ok: false, error: "arquivo grande demais (>2MB)" };
+    const content = fs2.readFileSync(filePath, "utf8");
+    return { ok: true, path: filePath, content, ext: path.extname(filePath).slice(1).toLowerCase(), bytes: st.size };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
 
 ipcMain.handle("workspace:remove", (event, id) => {
   workspace.removePath(id);
@@ -4038,6 +4243,10 @@ ipcMain.handle("get-ai-model", () => {
 
 ipcMain.handle("get-edition", () => {
   return edition.getEdition();
+});
+
+ipcMain.on("open-config-ui", () => {
+  createConfigWindow();
 });
 
 ipcMain.on("set-ai-model", (event, aiModel) => {
@@ -5091,10 +5300,7 @@ async function processOsQuestion(text, image = null, opts = {}) {
       console.log(`🤖 OpenAI ${openAiModel}${sendImage ? ' [VISÃO high]' : ' [TEXTO]'}...`);
       const _wsText3 = sendImage ? text : await prependWorkspaceContextIfNeeded(text, openAiModel);
 
-      const useAgentic = !sendImage && 
-                        configService.getHelperToolsEnabled() && 
-                        configService.getWorkspaceAccessEnabled() && 
-                        helperTools.shouldForceHeavyModel(_wsText3);
+      const useAgentic = !sendImage && shouldUseAgentic(text);
 
       if (useAgentic) {
           console.log('🤖 OCR: Iniciando AGENTIC WORKFLOW (multi-fase)...');
@@ -5133,11 +5339,9 @@ async function processOsQuestion(text, image = null, opts = {}) {
       // Backends sem visão (Ollama): só TEXTO. Mas com tool calling agora.
       try {
         const instructionO3 = configService.getPromptInstruction();
+        const useAgentic = shouldUseAgentic(text);
+        if (useAgentic) { try { workspace.resetContextSent(); } catch (_) {} }
         const _wsTxtO3 = await prependWorkspaceContextIfNeeded(text, 'ollama');
-
-        const useAgentic = configService.getHelperToolsEnabled() && 
-                          configService.getWorkspaceAccessEnabled() && 
-                          helperTools.shouldForceHeavyModel(text || _wsTxtO3);
 
         if (useAgentic) {
             console.log('🤖 OCR: Iniciando AGENTIC WORKFLOW OLLAMA (multi-fase)...');
@@ -5201,6 +5405,27 @@ ipcMain.handle('get-last-three-sessions', async () => {
   } catch (error) {
     console.error('Erro ao obter últimas 3 sessões:', error);
     return [];
+  }
+});
+
+ipcMain.handle('get-all-sessions', async () => {
+  try {
+    return historyService.getAllSessions();
+  } catch (error) {
+    console.error('Erro ao obter todas as sessões:', error);
+    return [];
+  }
+});
+
+// Restaura o contexto de uma conversa na sessão da IA (OpenAI), pra continuar
+// de onde parou. Recebe os pares {role, content} da conversa restaurada.
+ipcMain.handle('seed-ai-session', async (event, messages) => {
+  try {
+    const n = OpenAIService.seedSession(Array.isArray(messages) ? messages : []);
+    return { ok: true, seeded: n };
+  } catch (error) {
+    console.error('Erro ao restaurar contexto da IA:', error);
+    return { ok: false, error: error.message };
   }
 });
 

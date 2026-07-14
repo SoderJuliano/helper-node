@@ -5,10 +5,29 @@ const registry = require('./helperTools/registry');
 const schema = require('./helperTools/schema');
 const configService = require('./configService');
 
+// Resumo legível de uma ação pra mostrar o "thinking" inline na conversa.
+function _summarizeTool(name, a = {}) {
+    const base = (p) => String(p || '').split('/').filter(Boolean).slice(-1)[0] || String(p || '');
+    switch (name) {
+        case 'readFile': case 'readFileChunk': return `Lendo ${base(a.path)}`;
+        case 'fileInfo': return `Inspecionando ${base(a.path)}`;
+        case 'findFiles': return `Procurando ${a.glob || a.pattern || 'arquivos'}`;
+        case 'listDir': case 'readDir': return `Listando ${base(a.path) || 'diretório'}`;
+        case 'writeFile': return `Escrevendo ${base(a.path)}`;
+        case 'appendToFile': return `Anexando em ${base(a.path)}`;
+        case 'patchFile': return `Editando ${base(a.path)}`;
+        case 'deleteFile': return `Removendo ${base(a.path)}`;
+        case 'runCommand': case 'runTerminal': return `Rodando: ${String(a.command || a.cmd || '').slice(0, 70)}`;
+        case 'grep': case 'searchInFiles': return `Buscando "${String(a.query || a.pattern || '').slice(0, 50)}"`;
+        default: return name;
+    }
+}
+
 class AgenticWorkflowService {
     constructor() {
         this.activeSessions = new Set();
         this.abortControllers = new Map();
+        this.senderBySession = new Map();
     }
 
     /**
@@ -20,7 +39,8 @@ class AgenticWorkflowService {
     async run(userText, baseOpts, eventSender) {
         const sessionId = Date.now().toString();
         this.activeSessions.add(sessionId);
-        
+        this.senderBySession.set(sessionId, eventSender);
+
         const { token, model, baseInstruction } = baseOpts;
         const debugMode = configService.getDebugModeStatus();
         const workspaceEnabled = configService.getWorkspaceAccessEnabled();
@@ -181,6 +201,7 @@ class AgenticWorkflowService {
             throw error;
         } finally {
             this.activeSessions.delete(sessionId);
+            this.senderBySession.delete(sessionId);
         }
     }
 
@@ -188,10 +209,20 @@ class AgenticWorkflowService {
         if (this.isAborted(sessionId)) {
             throw new Error('Processo interrompido pelo usuário.');
         }
-        return await helperTools.executeTool(name, args, {
+        // Mostra a ação inline na conversa (mesmo evento do chat normal).
+        const sender = this.senderBySession.get(sessionId);
+        const callId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        if (sender) {
+            try { sender.send('ai-tool-activity', { id: callId, name, label: _summarizeTool(name, args), phase: 'start' }); } catch (_) {}
+        }
+        const res = await helperTools.executeTool(name, args, {
             source: "agentic-workflow-tool-call",
             force: true, // Bypass manual confirmation in agentic mode
         });
+        if (sender) {
+            try { sender.send('ai-tool-activity', { id: callId, name, phase: 'done', ok: res && res.ok !== false }); } catch (_) {}
+        }
+        return res;
     }
 
     async updatePhase(eventSender, phase, status, sessionId) {
