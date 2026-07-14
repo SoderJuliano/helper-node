@@ -339,6 +339,7 @@
                 </div>
             </label>
         </div>
+        <p id="realtime-fast-model-note" style="display:none; font-size:11px; color:#7ec9ff; margin:-9px 0 15px 4px; -webkit-app-region:no-drag;">⚡ Modelo de raciocínio detectado — assistente em tempo real e tradutor usam automaticamente gpt-4.1 (sem raciocínio) pra manter a resposta rápida.</p>
 
         <div class="setting-item" title="Permite à IA ler e editar arquivos do seu computador, executar comandos e gerar scripts. Quando ativo, o modo integrado (overlay) é desativado. Usa modelo mais pesado (gpt-4o-mini ou qwen2.5:7b) para edições de código.">
             <label for="helper-tools-toggle">Ferramentas avançadas (ler/editar arquivos, comandos)</label>
@@ -391,6 +392,32 @@
                 <option value="gpt-5.4-mini">GPT-5.4 Mini</option>
                 <option value="gpt-5.4">GPT-5.4</option>
                 <option value="gpt-5.5">GPT-5.5</option>
+                <option value="gpt-5.6-luna">GPT-5.6 Luna</option>
+                <option value="gpt-5.6-terra">GPT-5.6 Terra</option>
+                <option value="gpt-5.6-sol">GPT-5.6 Sol</option>
+            </select>
+        </div>
+
+        <div class="setting-item" id="openai-reasoning-effort-container" style="display: none;">
+            <label for="openai-reasoning-effort-select">Esforço de raciocínio (modelos GPT-5.x)</label>
+            <select id="openai-reasoning-effort-select" class="custom-select">
+                <option value="low">Baixo (respostas mais rápidas)</option>
+                <option value="medium">Médio</option>
+                <option value="high">Alto (mais lento, mais preciso)</option>
+            </select>
+        </div>
+
+        <div class="setting-item" id="openai-vision-model-container" style="display: none;">
+            <label for="openai-vision-model-select">Modelo de visão (imagens/prints)</label>
+            <select id="openai-vision-model-select" class="custom-select">
+                <option value="gpt-4o-mini">GPT-4o Mini</option>
+                <option value="gpt-4o">GPT-4o</option>
+                <option value="gpt-4.1">GPT-4.1</option>
+                <option value="gpt-5.4">GPT-5.4</option>
+                <option value="gpt-5.5">GPT-5.5</option>
+                <option value="gpt-5.6-luna">GPT-5.6 Luna (econômico, bom p/ OCR em volume)</option>
+                <option value="gpt-5.6-terra">GPT-5.6 Terra</option>
+                <option value="gpt-5.6-sol">GPT-5.6 Sol</option>
             </select>
         </div>
 
@@ -535,32 +562,6 @@
             </div>
         </div>
 
-        <!-- Base de Conhecimento (RAG) — compartilhada por Assistente + Tradutor -->
-        <div id="knowledge-base-section" style="margin-top: 14px; padding: 14px; background-color: rgba(0,0,0,0.35); border-radius: 5px; -webkit-app-region: no-drag;">
-            <div style="font-weight: bold; color: #00aaff; margin-bottom: 8px;">Base de Conhecimento (atualizações de tecnologia)</div>
-            <p style="font-size: 12px; color: #aaa; margin: 0 0 10px 0;">Cole novidades/docs de tecnologias recentes (versões de libs, frameworks novos). O app injeta trechos relevantes nas respostas técnicas — usado pelo Assistente e pelo Tradutor.</p>
-
-            <div class="setting-item" style="margin-bottom: 8px;">
-                <label for="kb-enabled">Habilitar base de conhecimento</label>
-                <span id="kb-enabled-status" style="font-weight: bold; margin-left: 10px; min-width: 30px; text-align: center; -webkit-app-region: no-drag;">ON</span>
-                <label class="switch">
-                    <input type="checkbox" id="kb-enabled" hidden>
-                    <div class="switch__wrapper"><div class="switch__toggle"></div></div>
-                </label>
-            </div>
-
-            <p style="font-size: 11.5px; color: #888; margin: 0 0 8px 0;">Este campo é só para <b>adicionar</b> conteúdo novo — ao salvar, é anexado ao final da base já existente (o que já está salvo não é recarregado nem reescrito). Com a base habilitada, a IA resume/organiza apenas este trecho novo antes de anexar.</p>
-
-            <textarea id="kb-text" style="width:100%; min-height:120px; padding:8px 12px; border-radius:5px; border:1px solid #555; background-color:#252525; color:white; font-size:13px; box-sizing:border-box; -webkit-app-region:no-drag; resize:vertical;" placeholder="Ex: Spring Boot 3.4 mudou X... Java 26 trouxe Y... a lib Z agora usa W em vez de V..."></textarea>
-
-            <div style="display:flex; align-items:center; gap:12px; margin-top:8px;">
-                <button id="kb-rewrite-btn" style="margin:0; padding:8px 14px; align-self:auto;">Resumir e organizar com IA</button>
-                <span id="kb-status" style="font-size:12px; color:#888;"></span>
-            </div>
-
-            <div id="kb-source-link" style="display:none; margin-top:8px; font-size:11.5px; color:#7ec9ff; cursor:pointer; -webkit-app-region:no-drag;" title="Abre o arquivo completo no visualizador do app">📄 Ver base completa</div>
-        </div>
-
         <!-- Assistente de Tradução (entrevistas) -->
         <div id="translation-assistant-section" style="margin-top: 14px; padding: 14px; background-color: rgba(0,0,0,0.35); border-radius: 5px; -webkit-app-region: no-drag;">
             <div style="font-weight: bold; color: #00aaff; margin-bottom: 8px;">Assistente de Tradução (Entrevistas)</div>
@@ -575,16 +576,6 @@
                         <div class="switch__toggle"></div>
                     </div>
                 </label>
-            </div>
-
-            <div style="margin-bottom: 8px;">
-                <label for="translation-username" style="display: block; margin-bottom: 4px; font-size: 13px;">Seu nome (para contexto da IA)</label>
-                <input type="text" id="translation-username" class="custom-input" placeholder="Ex: João Silva">
-            </div>
-
-            <div style="margin-bottom: 8px;">
-                <label for="translation-background" style="display: block; margin-bottom: 4px; font-size: 13px;">Seu background profissional</label>
-                <textarea id="translation-background" style="width:100%; min-height:70px; padding:8px 12px; border-radius:5px; border:1px solid #555; background-color:#252525; color:white; font-size:13px; box-sizing:border-box; -webkit-app-region:no-drag; resize:vertical;" placeholder="Ex: Desenvolvedor backend com 5 anos de experiência em Node.js e AWS..."></textarea>
             </div>
 
             <div class="setting-item" style="margin-bottom: 0;">
@@ -620,7 +611,10 @@
         </div>
 
     </div>
-    <button id="save-btn">Salvar e Fechar</button>
+    <div style="display:flex; gap:10px; align-items:center; -webkit-app-region:no-drag;">
+        <button id="save-btn" style="flex:1;">Salvar e Fechar</button>
+        <button id="open-preferences-btn" style="flex:1; margin-top:15px; background-color:#333;">Preferências do Usuário</button>
+    </div>
     <div style="margin-top: 20px; padding: 15px; background-color: rgba(0, 0, 0, 0.3); border-radius: 5px; -webkit-app-region: no-drag; display: flex; justify-content: space-between; align-items: center;">
         <p id="backend-url" style="margin: 0; font-size: 13px; color: #aaa;">
             Backend URL: <span id="backend-url-value" style="font-weight: bold; color: #00aaff; word-break: break-all;">Carregando...</span>

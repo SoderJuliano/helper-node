@@ -1,4 +1,5 @@
 const { ipcRenderer } = require("electron");
+const { supportsReasoningEffort } = require("./services/openAiRealtimeModels");
 
 const instructionTextarea = document.getElementById("prompt-instruction");
 const saveButton = document.getElementById("save-btn");
@@ -23,6 +24,19 @@ const openIaTokenContainer = document.getElementById("openai-token-container");
 const openIaTokenInput = document.getElementById("openai-token");
 const openAiModelContainer = document.getElementById("openai-model-container");
 const openAiModelSelect = document.getElementById("openai-model-select");
+const realtimeFastModelNote = document.getElementById("realtime-fast-model-note");
+
+function updateRealtimeFastModelNote() {
+  if (!realtimeFastModelNote) return;
+  realtimeFastModelNote.style.display = supportsReasoningEffort(openAiModelSelect.value) ? 'block' : 'none';
+}
+if (openAiModelSelect) {
+  openAiModelSelect.addEventListener('change', updateRealtimeFastModelNote);
+}
+const openAiReasoningEffortContainer = document.getElementById("openai-reasoning-effort-container");
+const openAiReasoningEffortSelect = document.getElementById("openai-reasoning-effort-select");
+const openAiVisionModelContainer = document.getElementById("openai-vision-model-container");
+const openAiVisionModelSelect = document.getElementById("openai-vision-model-select");
 const ollamaLocalModelContainer = document.getElementById("ollama-local-model-container");
 const ollamaLocalModelSelect = document.getElementById("ollama-local-model-select");
 const ollamaLocalInfo = document.getElementById("ollama-local-info");
@@ -105,6 +119,8 @@ function applyLiteUi() {
   });
   if (openIaTokenContainer) openIaTokenContainer.style.display = 'flex';
   if (openAiModelContainer) openAiModelContainer.style.display = 'flex';
+  if (openAiReasoningEffortContainer) openAiReasoningEffortContainer.style.display = 'flex';
+  if (openAiVisionModelContainer) openAiVisionModelContainer.style.display = 'flex';
 }
 
 // Edição do app (full/lite), preenchida no load. Controla a visibilidade da URL do backend.
@@ -296,6 +312,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (savedOpenAiModel) {
     openAiModelSelect.value = savedOpenAiModel;
   }
+  updateRealtimeFastModelNote();
+
+  // Load saved reasoning effort e modelo de visão
+  try {
+    const savedEffort = await ipcRenderer.invoke("get-openai-reasoning-effort");
+    if (savedEffort && openAiReasoningEffortSelect) openAiReasoningEffortSelect.value = savedEffort;
+  } catch (e) { console.warn("get-openai-reasoning-effort failed:", e); }
+  try {
+    const savedVisionModel = await ipcRenderer.invoke("get-openai-vision-model");
+    if (savedVisionModel && openAiVisionModelSelect) openAiVisionModelSelect.value = savedVisionModel;
+  } catch (e) { console.warn("get-openai-vision-model failed:", e); }
 
   // Load saved Ollama Local model
   try {
@@ -326,6 +353,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (aiModelSelect.value === 'openIa') {
     openIaTokenContainer.style.display = 'flex';
     openAiModelContainer.style.display = 'flex';
+    if (openAiReasoningEffortContainer) openAiReasoningEffortContainer.style.display = 'flex';
+    if (openAiVisionModelContainer) openAiVisionModelContainer.style.display = 'flex';
   } else if (aiModelSelect.value === 'ollamaLocal') {
     if (ollamaLocalModelContainer) ollamaLocalModelContainer.style.display = 'flex';
     if (ollamaLocalInfo) ollamaLocalInfo.style.display = 'block';
@@ -446,6 +475,8 @@ aiModelSelect.addEventListener('change', () => {
     const isCli = (v === 'geminiCli' || v === 'claudeCli');
     openIaTokenContainer.style.display = (v === 'openIa') ? 'flex' : 'none';
     openAiModelContainer.style.display = (v === 'openIa') ? 'flex' : 'none';
+    if (openAiReasoningEffortContainer) openAiReasoningEffortContainer.style.display = (v === 'openIa') ? 'flex' : 'none';
+    if (openAiVisionModelContainer) openAiVisionModelContainer.style.display = (v === 'openIa') ? 'flex' : 'none';
     if (ollamaLocalModelContainer) ollamaLocalModelContainer.style.display = (v === 'ollamaLocal') ? 'flex' : 'none';
     if (ollamaLocalInfo) ollamaLocalInfo.style.display = (v === 'ollamaLocal') ? 'block' : 'none';
     if (geminiCliModelContainer) geminiCliModelContainer.style.display = (v === 'geminiCli') ? 'flex' : 'none';
@@ -571,6 +602,14 @@ saveButton.addEventListener("click", async () => {
   // Save OpenAI model
   ipcRenderer.send("set-openai-model", openAiModelSelect.value);
 
+  // Save reasoning effort e modelo de visão
+  if (openAiReasoningEffortSelect) {
+    ipcRenderer.send("set-openai-reasoning-effort", openAiReasoningEffortSelect.value);
+  }
+  if (openAiVisionModelSelect) {
+    ipcRenderer.send("set-openai-vision-model", openAiVisionModelSelect.value);
+  }
+
   // Save Ollama Local model
   if (ollamaLocalModelSelect) {
     ipcRenderer.send("set-ollama-local-model", ollamaLocalModelSelect.value);
@@ -596,19 +635,6 @@ saveButton.addEventListener("click", async () => {
     ipcRenderer.send("save-backend-api-key", backendApiKeyInput.value);
   }
 
-  // Anexa SÓ o que o usuário digitou agora (o campo não carrega mais a base
-  // inteira). Texto vazio = no-op instantâneo — não reprocessa a base a toa,
-  // que era o motivo do "Salvar e Fechar" ficar lento. Com a base habilitada,
-  // a IA resume/organiza apenas esse trecho novo antes de anexar ao arquivo.
-  try {
-    const kbEnabled = kbEnabledToggle ? kbEnabledToggle.checked : true;
-    await ipcRenderer.invoke('kb-append', {
-      text: kbText ? kbText.value : '',
-      aiRewrite: kbEnabled,
-      enabled: kbEnabled,
-    });
-  } catch (e) { console.warn('[kb] append on close failed:', e.message); }
-
   // Close window
   window.close();
 });
@@ -620,10 +646,10 @@ document.getElementById("clear-openai-token").addEventListener("click", () => {
 });
 
 // === Assistente de Tradução ===
+// Nome/background do usuário (dados pessoais) moraram pra preferences.js —
+// ver "Preferências do Usuário". Aqui só o que é funcional/técnico do tradutor.
 const translationEnabledToggle = document.getElementById('translation-enabled');
 const translationEnabledStatus = document.getElementById('translation-enabled-status');
-const translationUsernameInput = document.getElementById('translation-username');
-const translationBackgroundInput = document.getElementById('translation-background');
 const translationTargetLangSelect = document.getElementById('translation-target-lang');
 
 function updateTranslationEnabledStatus(v) {
@@ -639,18 +665,6 @@ if (translationEnabledToggle) {
       updateRealtimeAssistantStatus(false);
     }
     ipcRenderer.send('set-translation-assistant-config', { enabled: translationEnabledToggle.checked });
-  });
-}
-
-if (translationUsernameInput) {
-  translationUsernameInput.addEventListener('input', () => {
-    ipcRenderer.send('set-translation-assistant-config', { userName: translationUsernameInput.value });
-  });
-}
-
-if (translationBackgroundInput) {
-  translationBackgroundInput.addEventListener('input', () => {
-    ipcRenderer.send('set-translation-assistant-config', { userBackground: translationBackgroundInput.value });
   });
 }
 
@@ -716,8 +730,6 @@ if (translationMicRefresh) {
       translationEnabledToggle.checked = !!ta.enabled;
       updateTranslationEnabledStatus(!!ta.enabled);
     }
-    if (translationUsernameInput) translationUsernameInput.value = ta.userName || '';
-    if (translationBackgroundInput) translationBackgroundInput.value = ta.userBackground || '';
     if (translationTargetLangSelect) translationTargetLangSelect.value = ta.targetLanguage || 'pt-br';
     // Modo de Teste é só por sessão — sempre começa desmarcado ao abrir o config.
     if (translationTestModeInput) translationTestModeInput.checked = false;
@@ -727,65 +739,12 @@ if (translationMicRefresh) {
   }
 })();
 
-// === Base de Conhecimento (RAG) ===
-const kbEnabledToggle = document.getElementById('kb-enabled');
-const kbEnabledStatus = document.getElementById('kb-enabled-status');
-const kbText = document.getElementById('kb-text');
-const kbRewriteBtn = document.getElementById('kb-rewrite-btn');
-const kbStatus = document.getElementById('kb-status');
-const kbSourceLink = document.getElementById('kb-source-link');
-
-if (kbSourceLink) {
-  kbSourceLink.addEventListener('click', () => ipcRenderer.send('kb-open-source-file'));
+// Base de Conhecimento (RAG) e dados pessoais (nome/background) moraram pra
+// preferences.js — ver "Preferências do Usuário".
+const openPreferencesBtn = document.getElementById('open-preferences-btn');
+if (openPreferencesBtn) {
+  openPreferencesBtn.addEventListener('click', () => ipcRenderer.send('open-preferences-ui'));
 }
-
-function updateKbEnabledStatus(v) { if (kbEnabledStatus) kbEnabledStatus.textContent = v ? 'ON' : 'OFF'; }
-
-if (kbEnabledToggle) kbEnabledToggle.addEventListener('change', () => updateKbEnabledStatus(kbEnabledToggle.checked));
-
-// "Resumir e organizar com IA": reescreve o texto da base e devolve NO CAMPO (não salva —
-// salvar é no "Salvar e Fechar"). Mantém as travas (pula código, descarta se encurtar).
-if (kbRewriteBtn) {
-  kbRewriteBtn.addEventListener('click', async () => {
-    if (!kbText || !kbText.value.trim()) {
-      if (kbStatus) { kbStatus.style.color = '#ffb74d'; kbStatus.textContent = 'Cole algum texto primeiro.'; }
-      return;
-    }
-    if (kbStatus) { kbStatus.style.color = '#888'; kbStatus.textContent = 'Reorganizando com IA…'; }
-    kbRewriteBtn.disabled = true;
-    try {
-      const res = await ipcRenderer.invoke('kb-rewrite', { text: kbText.value });
-      if (res && res.ok) {
-        if (typeof res.text === 'string') kbText.value = res.text;
-        if (kbStatus) {
-          if (res.codeSkipped) { kbStatus.style.color = '#9ef0a8'; kbStatus.textContent = 'Contém código — mantido sem reorganizar.'; }
-          else if (res.shrunk) { kbStatus.style.color = '#ffb74d'; kbStatus.textContent = 'A IA encurtou demais — mantive o original.'; }
-          else if (res.rewritten) { kbStatus.style.color = '#9ef0a8'; kbStatus.textContent = 'Reorganizado ✓ — lembre de Salvar e Fechar.'; }
-          else { kbStatus.style.color = '#888'; kbStatus.textContent = 'Sem alterações.'; }
-        }
-      } else if (kbStatus) {
-        kbStatus.style.color = '#ff6b6b'; kbStatus.textContent = 'Erro: ' + ((res && res.error) || 'falha ao reorganizar');
-      }
-    } catch (e) {
-      if (kbStatus) { kbStatus.style.color = '#ff6b6b'; kbStatus.textContent = 'Erro: ' + e.message; }
-    } finally {
-      kbRewriteBtn.disabled = false;
-    }
-  });
-}
-
-(async () => {
-  try {
-    const kb = await ipcRenderer.invoke('kb-get');
-    if (!kb) return;
-    if (kbEnabledToggle) { kbEnabledToggle.checked = kb.enabled !== false; updateKbEnabledStatus(kbEnabledToggle.checked); }
-    // O campo começa SEMPRE vazio — é só pra adicionar conteúdo novo, não carrega
-    // (nem edita) o arquivo consolidado. Ver a base completa é pelo link abaixo.
-    if (kbText) kbText.value = '';
-    if (kbStatus) kbStatus.textContent = kb.chunks ? `${kb.chunks} trecho(s) na base` : 'base vazia — nada salvo ainda';
-    if (kbSourceLink) kbSourceLink.style.display = kb.chunks ? '' : 'none';
-  } catch (e) { console.warn('[kb] load failed:', e.message); }
-})();
 
 // === "Instrução para IA": read-only por padrão + cadeado (área sensível) ===
 const promptEditToggle = document.getElementById('prompt-edit-toggle');

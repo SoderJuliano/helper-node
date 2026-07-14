@@ -1,5 +1,7 @@
 const fs = require('fs');
 const path = require('path');
+const configService = require('../configService');
+const { maxTokensParam } = require('../openAiRealtimeModels');
 
 async function analyzeInterviewImage(imageInput, apiKey, context = {}) {
   // imageInput: caminho de arquivo OU data URL (data:image/...;base64,...)
@@ -57,8 +59,8 @@ Se houver um stub de método já escrito (ex: "public int[] twoSum(int[] nums, i
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'gpt-4o',
-      max_tokens: 900,
+      model: configService.getOpenAiVisionModel(),
+      ...maxTokensParam(configService.getOpenAiVisionModel(), 900),
       messages: [
         { role: 'system', content: systemPrompt },
         {

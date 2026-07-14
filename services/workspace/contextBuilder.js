@@ -17,6 +17,9 @@ const BUDGETS_CHARS = {
   "gpt-5.4-mini": 100000,  // antes de "gpt-5.4" (budgetFor casa por substring)
   "gpt-5.4": 128000,
   "gpt-5.5": 128000,
+  "gpt-5.6-luna": 100000,
+  "gpt-5.6-terra": 128000,
+  "gpt-5.6-sol": 128000,
   "llama3": 16000,         // backend ollama pequeno
   "qwen25": 48000,
   "llamatiny": 8000,

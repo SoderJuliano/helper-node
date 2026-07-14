@@ -136,6 +136,10 @@ function buildHelperToolsOpenAIOpts(userText, baseInstruction, baseModel) {
     const modelTier = (m) => {
       const s = String(m || "").toLowerCase();
       if (!s) return 0;
+      // Família 5.6 tem variantes nomeadas (sol/terra/luna) em vez de mini/nano.
+      if (/gpt-5\.6-sol/.test(s)) return 5;
+      if (/gpt-5\.6-terra/.test(s)) return 4;
+      if (/gpt-5\.6-luna/.test(s)) return 2;
       if (/gpt-5\.[45]/.test(s) && !/(mini|nano)/.test(s)) return 5;
       if (/gpt-5(\.\d)?($|[^.\d])/.test(s) && !/(mini|nano)/.test(s)) return 4;
       if (/gpt-4\.1($|[^-])/.test(s) && !/(mini|nano)/.test(s)) return 3;
@@ -377,6 +381,7 @@ if (!gotTheLock) {
 
 let backendIsOnline = false;
 let configWindow = null;
+let preferencesWindow = null;
 let shortcutsRegistered = false;
 
 async function checkBackendStatus() {
@@ -442,12 +447,18 @@ let osVoskSilenceTimer = null;
 let osLiveSegment = null;
 let osLiveSilenceInterval = null;
 let osLiveTurnCount = 0;
+// Fusao de fala fragmentada por pausa — se o proximo segmento fechar dentro
+// dessa janela apos o anterior, junta os dois textos e reprocessa a pergunta
+// inteira (ver closeOsLiveSegment).
+let osLiveLastClosed = null; // { id, text, closedAt }
+const OS_LIVE_CONTINUATION_WINDOW_MS = 3000;
 const OS_LIVE_SAMPLE_RATE = 16000;
 const OS_LIVE_SILENCE_RMS = 250;
-// Silêncio antes de fechar segmento. 3s era muito agressivo: cortava
-// perguntas longas em 2-3 partes nas pausas naturais de leitura/respiração.
-// 6s dá conforto para fala humana sem perder responsividade.
-const OS_LIVE_SILENCE_MS = 6000;
+// Silêncio antes de fechar segmento. 3s era muito agressivo: cortava perguntas
+// longas em 2-3 partes nas pausas naturais de leitura/respiração — por isso
+// tinha sido subido pra 6s como paliativo. Agora a fusao de fala (acima) resolve
+// isso de verdade, entao voltamos a um valor mais responsivo.
+const OS_LIVE_SILENCE_MS = 2800;
 // Tempo máximo de um único segmento. 60s acomoda explicações técnicas
 // longas ("como faz X dado Y com Z...").
 const OS_LIVE_MAX_MS = 60000;
@@ -459,6 +470,7 @@ function clearOsVoskSilenceTimer() {
   if (osLiveSilenceInterval) { clearInterval(osLiveSilenceInterval); osLiveSilenceInterval = null; }
   osLiveSegment = null;
   osLiveTurnCount = 0;
+  osLiveLastClosed = null;
 }
 
 const VoskStreamService = require("./services/voskStreamService.js");
@@ -798,6 +810,34 @@ function createConfigWindow() {
 
   configWindow.on("closed", () => {
     configWindow = null;
+  });
+}
+
+function createPreferencesWindow() {
+  if (preferencesWindow) {
+    preferencesWindow.focus();
+    return;
+  }
+
+  preferencesWindow = new BrowserWindow({
+    width: 520,
+    height: 560,
+    title: "Preferências do Usuário",
+    backgroundColor: "#00000000",
+    transparent: true,
+    frame: false,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+    },
+    skipTaskbar: false,
+    icon: path.join(__dirname, "assets", "linux.png"),
+  });
+
+  preferencesWindow.loadFile("preferences.html");
+
+  preferencesWindow.on("closed", () => {
+    preferencesWindow = null;
   });
 }
 
@@ -4667,6 +4707,10 @@ ipcMain.on("open-config-ui", () => {
   createConfigWindow();
 });
 
+ipcMain.on("open-preferences-ui", () => {
+  createPreferencesWindow();
+});
+
 ipcMain.on("set-ai-model", (event, aiModel) => {
   configService.setAiModel(aiModel);
 });
@@ -4678,6 +4722,24 @@ ipcMain.handle("get-openai-model", () => {
 
 ipcMain.on("set-openai-model", (event, model) => {
   configService.setOpenAiModel(model);
+});
+
+// IPC Handlers for OpenAI reasoning effort (gpt-5.x/o-series)
+ipcMain.handle("get-openai-reasoning-effort", () => {
+  return configService.getOpenAiReasoningEffort();
+});
+
+ipcMain.on("set-openai-reasoning-effort", (event, effort) => {
+  configService.setOpenAiReasoningEffort(effort);
+});
+
+// IPC Handlers for OpenAI Vision Model
+ipcMain.handle("get-openai-vision-model", () => {
+  return configService.getOpenAiVisionModel();
+});
+
+ipcMain.on("set-openai-vision-model", (event, model) => {
+  configService.setOpenAiVisionModel(model);
 });
 
 // IPC Handlers for Ollama Local
@@ -5442,16 +5504,31 @@ async function closeOsLiveSegment() {
     fs2.writeFileSync(wavPath, _buildWavFile(pcm, OS_LIVE_SAMPLE_RATE, 1, 16));
   } catch (e) { console.error('[os-live] WAV write failed:', e.message); }
 
-  // Marca bolha como "processando"
+  // Continuacao de fala: se o segmento anterior fechou ha pouco tempo (pausa pra
+  // respirar, nao fim de pergunta), junta os textos e reprocessa a pergunta INTEIRA.
+  const prevClosed = osLiveLastClosed;
+  const isContinuation = !!(prevClosed && (Date.now() - prevClosed.closedAt) <= OS_LIVE_CONTINUATION_WINDOW_MS);
+  const askVoskText = isContinuation ? `${prevClosed.text} ${seg.voskText}`.trim() : seg.voskText;
+
+  // Marca bolha como "processando" — mostra a pergunta completa se for continuacao.
   if (osNotificationWindow && !osNotificationWindow.isDestroyed()) {
     osNotificationWindow.webContents.executeJavaScript(
-      `window.markTurnFinal && window.markTurnFinal(${JSON.stringify(seg.id)}, ${JSON.stringify(seg.voskText)})`
+      `window.markTurnFinal && window.markTurnFinal(${JSON.stringify(seg.id)}, ${JSON.stringify(askVoskText)})`
     ).catch(() => {});
   }
 
-  // 1) Pergunta IA com texto Vosk (rapido)
+  // Marca a resposta do turno anterior como superada — a pergunta continuava.
+  if (isContinuation && osNotificationWindow && !osNotificationWindow.isDestroyed()) {
+    osNotificationWindow.webContents.executeJavaScript(
+      `window.showTurnResponse && window.showTurnResponse(${JSON.stringify(prevClosed.id)}, ${JSON.stringify('↳ pergunta continuou no trecho seguinte — veja a resposta completa abaixo.')}, true)`
+    ).catch(() => {});
+  }
+
+  osLiveLastClosed = { id: seg.id, text: askVoskText, closedAt: Date.now() };
+
+  // 1) Pergunta IA com texto Vosk (rapido, ja mesclado se continuacao)
   try {
-    const resp = await _askOsLiveAI(seg.voskText, null);
+    const resp = await _askOsLiveAI(askVoskText, null);
     seg.responseVosk = resp;
     if (osNotificationWindow && !osNotificationWindow.isDestroyed()) {
       osNotificationWindow.webContents.executeJavaScript(

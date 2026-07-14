@@ -9,6 +9,7 @@
 
 const axios = require("axios");
 const store = require("./store");
+const { maxTokensParam } = require("../openAiRealtimeModels");
 
 const RECENT_KEEP = 5;       // sempre preservar as 5 mais recentes
 const COMPACT_THRESHOLD = 10; // a partir daqui começa a compactar
@@ -116,7 +117,7 @@ async function summarizeBatch(batch, opts) {
         "https://api.openai.com/v1/chat/completions",
         {
           model: opts.cheapModel,
-          max_tokens: 200,
+          ...maxTokensParam(opts.cheapModel, 200),
           messages: [
             { role: "system", content: "Você é um compactador de contexto. Responda APENAS o resumo, sem preâmbulo." },
             { role: "user", content: prompt },

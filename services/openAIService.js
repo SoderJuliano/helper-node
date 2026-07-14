@@ -1,5 +1,7 @@
 const { ipcMain } = require('electron');
 const axios = require('axios');
+const configService = require('./configService');
+const { supportsReasoningEffort } = require('./openAiRealtimeModels');
 
 class OpenAIService {
     constructor() {
@@ -84,6 +86,9 @@ class OpenAIService {
             model: model || 'gpt-4.1-nano',
             messages: messages,
         };
+        if (supportsReasoningEffort(requestPayload.model)) {
+            requestPayload.reasoning_effort = configService.getOpenAiReasoningEffort();
+        }
 
         // helperTools: se o caller passou tools[] (schema OpenAI), entra em loop de tool-calling
         const tools = hasTools ? opts.tools : null;

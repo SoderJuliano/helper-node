@@ -60,6 +60,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getAiModel: () => ipcRenderer.invoke("get-ai-model"),
   getOpenaiModel: () => ipcRenderer.invoke("get-openai-model"),
   setOpenaiModel: (model) => ipcRenderer.send("set-openai-model", model),
+  getOpenaiReasoningEffort: () => ipcRenderer.invoke("get-openai-reasoning-effort"),
+  setOpenaiReasoningEffort: (effort) => ipcRenderer.send("set-openai-reasoning-effort", effort),
+  getOpenaiVisionModel: () => ipcRenderer.invoke("get-openai-vision-model"),
+  setOpenaiVisionModel: (model) => ipcRenderer.send("set-openai-vision-model", model),
   // Claude Code CLI provider
   getClaudeCliModel: () => ipcRenderer.invoke("get-claude-cli-model"),
   setClaudeCliModel: (model) => ipcRenderer.send("set-claude-cli-model", model),
