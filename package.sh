@@ -62,7 +62,7 @@ build_deb() {
     
     # Copy application files
     echo -e "${YELLOW}→${NC} Copying application files..."
-        cp -r main.js main_new_notification.js createOsNotificationWindow_fixed.js index.html config.html config.js preload.js "${APP_ROOT}/" 2>/dev/null || true
+        cp -r main.js main_new_notification.js createOsNotificationWindow_fixed.js index.html config.html config.js preload.js editorController.js preferences.html preferences.js "${APP_ROOT}/" 2>/dev/null || true
         cp -r assets os-integration services "${APP_ROOT}/"
 
         # Marca a edição pro runtime (services/edition.js lê esse arquivo)
@@ -361,7 +361,7 @@ build_arch() {
         --exclude='.idea' \
         --exclude='*.png' \
         --transform "s,^,helper-node/," \
-        main.js index.html config.html config.js preload.js \
+        main.js index.html config.html config.js preload.js editorController.js preferences.html preferences.js \
         assets/ os-integration/ services/ \
         ${LOCAL_AI_FILES} package.json *.traineddata \
         helper-node.sh helper-node.desktop setup-hotkey.sh \

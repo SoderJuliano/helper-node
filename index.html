@@ -2323,6 +2323,36 @@
                     contentSearchDebounce = null;
                 }
             }
+            // Expande/colapsa uma pasta. Pastas "lazy" (node_modules, build,
+            // dist, .git, etc. — ver TREE_HEAVY_DIRS no main.js) só aparecem
+            // como nó; os filhos são buscados sob demanda na primeira expansão
+            // e inseridos em treeEntries logo depois do nó pai.
+            async function toggleDir(e) {
+                if (!e.collapsed) { e.collapsed = true; renderTree(); return; }
+                if (e.lazy && !e.loaded && !e.loading) {
+                    e.loading = true;
+                    renderTree();
+                    let res = null;
+                    try {
+                        res = window.electronAPI.getDirChildren
+                            ? await window.electronAPI.getDirChildren(e.path)
+                            : null;
+                    } catch (_) {}
+                    e.loading = false;
+                    const idx = treeEntries.indexOf(e);
+                    if (res && res.ok && res.entries && res.entries.length && idx !== -1) {
+                        const children = res.entries.map((entry) => ({
+                            ...entry,
+                            depth: e.depth + 1 + entry.depth, // depth do backend é relativo (filho imediato = 0)
+                            collapsed: entry.isDir,
+                        }));
+                        treeEntries.splice(idx + 1, 0, ...children);
+                    }
+                    e.loaded = true;
+                }
+                e.collapsed = false;
+                renderTree();
+            }
             function renderTree() {
                 if (!wsTree) return;
                 wsTree.innerHTML = '';
@@ -2520,8 +2550,7 @@
                                     renderTree();
                                     return;
                                 }
-                                e.collapsed = !e.collapsed;
-                                renderTree();
+                                toggleDir(e);
                             });
                         } else {
                             node.title = e.path + '  (clique ou Enter para abrir)';
@@ -2540,7 +2569,7 @@
                         node.addEventListener('keydown', (ev) => {
                             if (ev.key !== 'Enter' && ev.key !== ' ') return;
                             ev.preventDefault(); ev.stopPropagation();
-                            if (e.isDir) { e.collapsed = !e.collapsed; renderTree(); }
+                            if (e.isDir) { toggleDir(e); }
                             else openFileViewer(e.path);
                         });
                     }
@@ -2786,7 +2815,12 @@
                 });
                 treeEntries = res.entries.map((entry) => ({
                     ...entry,
-                    collapsed: entry.isDir ? (collapsedMap.has(entry.path) ? collapsedMap.get(entry.path) : true) : false
+                    // Pasta lazy sempre volta colapsada: os filhos dela não vêm
+                    // no refresh (são carregados sob demanda), então mantê-la
+                    // "aberta" mostraria uma pasta vazia até re-expandir.
+                    collapsed: entry.isDir
+                        ? (entry.lazy ? true : (collapsedMap.has(entry.path) ? collapsedMap.get(entry.path) : true))
+                        : false
                 }));
                 renderTree();
             }

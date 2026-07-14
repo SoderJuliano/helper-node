@@ -4048,7 +4048,9 @@ ipcMain.handle("get-file-diff", async (event, payload) => {
   }
 });
 
-// Árvore (blueprint) do projeto aberto — pra exibir no dropdown da sidebar.
+// Usado SÓ pela busca de conteúdo (Ctrl+Shift+F) — aí faz sentido não varrer
+// node_modules/build. A ÁRVORE da sidebar NÃO esconde mais esses diretórios
+// (ver TREE_HEAVY_DIRS): eles aparecem como nós e carregam sob demanda.
 const PROJECT_SEARCH_SKIP_DIRS = new Set([
   ".git",
   "node_modules",
@@ -4072,6 +4074,35 @@ const PROJECT_SEARCH_SKIP_DIRS = new Set([
   "out",
 ]);
 
+// Diretórios "pesados": APARECEM na árvore como nós, mas não são percorridos
+// de imediato — seus filhos são carregados sob demanda (get-dir-children)
+// quando o usuário expande. Sem isso, um node_modules com 100k arquivos ou
+// estouraria o orçamento (sumindo o resto do projeto) ou travaria a UI. Antes
+// esses diretórios eram simplesmente escondidos (bug: "não vejo node_modules/
+// dist/build no sidebar").
+const TREE_HEAVY_DIRS = new Set([
+  ".git",
+  "node_modules",
+  "target",
+  "build",
+  "dist",
+  "vendor",
+  ".venv",
+  "venv",
+  ".idea",
+  "__pycache__",
+  ".cache",
+  ".next",
+  ".nuxt",
+  "coverage",
+  ".pytest_cache",
+  ".m2",
+  ".gradle",
+  ".terraform",
+  "out",
+  ".tooling",
+]);
+
 function isLikelyBinaryBuffer(buffer) {
   if (!buffer || !buffer.length) return false;
   const limit = Math.min(buffer.length, 1024);
@@ -4093,35 +4124,50 @@ function isLikelyBinaryBuffer(buffer) {
 // pelo composer, ou node_modules) nunca consome o budget inteiro e deixa
 // o resto do projeto sem aparecer (bug reportado: "só mostra os arquivos
 // novos depois do build").
-function collectProjectEntries(root, limit = 4000, perTopLevelBudget = 500) {
+// Empurra um nó da árvore. Diretórios pesados recebem `lazy: true` e NÃO são
+// percorridos pelo walker — o front carrega os filhos deles sob demanda.
+// Retorna true se o diretório é pesado (pra o chamador não recursar nele).
+function pushTreeNode(entries, absPath, name, depth, isDir) {
+  const heavy = isDir && TREE_HEAVY_DIRS.has(name);
+  entries.push(
+    heavy
+      ? { path: absPath, name, depth, isDir, lazy: true }
+      : { path: absPath, name, depth, isDir }
+  );
+  return heavy;
+}
+
+// Percorre `dirPath` em DFS pre-order (pasta seguida dos filhos), respeitando
+// um orçamento local por subárvore e um limite global de entradas. Diretórios
+// pesados aparecem mas não são expandidos aqui (viram nós lazy).
+function walkTreeInto(entries, dirPath, depth, localBudget, globalLimit) {
+  let dirEntries = [];
+  try {
+    dirEntries = fs2.readdirSync(dirPath, { withFileTypes: true });
+  } catch (_) {
+    return 0;
+  }
+  dirEntries.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  let used = 0;
+  for (const dirent of dirEntries) {
+    if (entries.length >= globalLimit) return used;
+    if (used >= localBudget) return used;
+    const absPath = path.join(dirPath, dirent.name);
+    const isDir = dirent.isDirectory();
+    const heavy = pushTreeNode(entries, absPath, dirent.name, depth, isDir);
+    used += 1;
+    if (isDir && !heavy) {
+      // Filhos herdam o que sobrou do budget local (não o global) — garante
+      // que essa subárvore nunca ultrapasse sua cota, seja lá quão profunda for.
+      used += walkTreeInto(entries, absPath, depth + 1, localBudget - used, globalLimit);
+    }
+    if (entries.length >= globalLimit || used >= localBudget) return used;
+  }
+  return used;
+}
+
+function collectProjectEntries(root, limit = 4000, perTopLevelBudget = 800) {
   const entries = [];
-  const visit = (dirPath, depth, localBudget) => {
-    let dirEntries = [];
-    try {
-      dirEntries = fs2.readdirSync(dirPath, { withFileTypes: true });
-    } catch (_) {
-      return 0;
-    }
-    dirEntries.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
-    let used = 0;
-    for (const dirent of dirEntries) {
-      if (entries.length >= limit) return used;
-      if (used >= localBudget) return used;
-      if (PROJECT_SEARCH_SKIP_DIRS.has(dirent.name)) continue;
-      const absPath = path.join(dirPath, dirent.name);
-      const isDir = dirent.isDirectory();
-      entries.push({ path: absPath, name: dirent.name, depth, isDir });
-      used += 1;
-      if (isDir) {
-        // Filhos herdam o que sobrou do budget local (não o global) —
-        // garante que essa subárvore nunca ultrapasse sua cota, não
-        // importa o quão profunda ela seja.
-        used += visit(absPath, depth + 1, localBudget - used);
-      }
-      if (entries.length >= limit || used >= localBudget) return used;
-    }
-    return used;
-  };
 
   // Passo 1: todas as entradas de topo (raiz do projeto) SEMPRE aparecem,
   // sem limite — é o que garante que nenhuma pasta/arquivo do nível
@@ -4135,12 +4181,34 @@ function collectProjectEntries(root, limit = 4000, perTopLevelBudget = 500) {
   topLevel.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
 
   for (const dirent of topLevel) {
-    if (PROJECT_SEARCH_SKIP_DIRS.has(dirent.name)) continue;
     const absPath = path.join(root, dirent.name);
     const isDir = dirent.isDirectory();
-    entries.push({ path: absPath, name: dirent.name, depth: 0, isDir });
-    if (isDir) visit(absPath, 1, perTopLevelBudget);
+    const heavy = pushTreeNode(entries, absPath, dirent.name, 0, isDir);
+    if (isDir && !heavy) walkTreeInto(entries, absPath, 1, perTopLevelBudget, limit);
     if (entries.length >= limit) break;
+  }
+  return entries;
+}
+
+// Filhos de UM diretório específico — usado quando o usuário expande uma pasta
+// lazy (node_modules, build, etc.) na sidebar. Profundidade relativa: filhos
+// imediatos = 0 (o renderer soma a profundidade do pai + 1).
+function collectDirChildren(dirPath, limit = 3000, perTopLevelBudget = 800) {
+  const entries = [];
+  let top = [];
+  try {
+    top = fs2.readdirSync(dirPath, { withFileTypes: true });
+  } catch (_) {
+    return entries;
+  }
+  top.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+
+  for (const dirent of top) {
+    if (entries.length >= limit) break;
+    const absPath = path.join(dirPath, dirent.name);
+    const isDir = dirent.isDirectory();
+    const heavy = pushTreeNode(entries, absPath, dirent.name, 0, isDir);
+    if (isDir && !heavy) walkTreeInto(entries, absPath, 1, perTopLevelBudget, limit);
   }
   return entries;
 }
@@ -4150,11 +4218,27 @@ ipcMain.handle("get-project-tree", async () => {
     const dir = (workspace.list() || []).find((a) => a.type === "dir");
     if (!dir) return null;
     const root = dir.path;
-    const entries = collectProjectEntries(root, 400);
+    const entries = collectProjectEntries(root);
     return { root, path: root, entries, tree: workspace.tree(root) || "" };
   } catch (e) {
     console.warn("[project-tree] falhou:", e.message);
     return null;
+  }
+});
+
+// Carrega os filhos de uma pasta lazy (node_modules, build, etc.) quando o
+// usuário a expande na sidebar. Ver collectDirChildren / TREE_HEAVY_DIRS.
+ipcMain.handle("get-dir-children", async (_event, dirPath) => {
+  try {
+    if (!dirPath) return { ok: false, error: "path vazio", entries: [] };
+    if (workspace.isPathAllowed && !workspace.isPathAllowed(dirPath)) {
+      return { ok: false, error: "pasta fora do projeto/workspace", entries: [] };
+    }
+    const entries = collectDirChildren(dirPath);
+    return { ok: true, path: dirPath, entries };
+  } catch (e) {
+    console.warn("[get-dir-children] falhou:", e.message);
+    return { ok: false, error: e.message, entries: [] };
   }
 });
 
