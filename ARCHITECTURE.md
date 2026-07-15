@@ -143,6 +143,16 @@ Quando `state:'started'` → oculta composer (`setComposerVisibility(false)`).
 
 `agentic-phase-update { phase:'thinking', status: <snippet 140 chars> }` chega a cada 400ms durante o raciocínio. O snippet é os últimos 140 chars do buffer de thinking acumulado. CSS `.ai-phase-text` tem `text-overflow:ellipsis; white-space:nowrap` — uma linha, se atualiza ao vivo.
 
+### Ctrl+D — modo IDE × modo janela (push-to-talk)
+
+`Ctrl+D` (fora do Assistente em Tempo Real) tem DOIS comportamentos, decididos por `workspace.list().length > 0` (há pasta ou arquivo anexado no sidebar, independente de "Ferramentas avançadas" estar ligado):
+
+- **Modo janela** (nenhum anexo no workspace): comportamento antigo — grava, transcreve (Whisper local na Full / `gpt-4o-mini-transcribe` na Lite) e **envia direto pra IA** (`getIaResponse` / `processOsQuestion` em OS Integration).
+- **Modo IDE** (pasta/arquivo anexado): grava e transcreve igual, mas **NÃO envia sozinho** — o texto vai pro composer (`ide-audio-transcribed` → `openManualInput(text)`) pra o usuário revisar/editar e mandar com Shift+Enter ou o botão Enviar. Enquanto grava, mostra `#composer-listening` (bolinha em pulso + "Ouvindo áudio… Ctrl+D para transcrever") em vez do robot/loading padrão.
+- **Providers CLI (`geminiCli` / `claudeCli`) + modo IDE**: bloqueados — esses CLIs não expõem erro tratável quando recebem áudio fora do fluxo esperado (ficavam travando com "Failed to process IA response"). Ao apertar Ctrl+D nesse combo, `toggleRecording()` recusa a gravação e manda `transcription-error` avisando pra trocar de modelo. Aviso também aparece discreto em Configurações (`#gemini-cli-info` / `#claude-cli-info`).
+
+Motivo: CLI providers gerenciam o próprio contexto/sessão de forma nativa e não têm um canal de erro amigável pra áudio mal formatado — silenciosamente travavam. Full com OpenAI/Ollama usa Whisper local normalmente nesse fluxo.
+
 ---
 
 ## Ferramentas avançadas (`services/helperTools/`)

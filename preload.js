@@ -23,6 +23,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
       callback(audioFilePath);
     });
   },
+  // Modo IDE (pasta/arquivos anexados no sidebar): Ctrl+D transcreve o áudio
+  // via Whisper mas NÃO envia sozinho pra IA — o texto vai pro composer pra
+  // o usuário revisar/editar e enviar manualmente (Shift+Enter ou botão).
+  onIdeAudioTranscribed: (callback) => {
+    ipcRenderer.on("ide-audio-transcribed", (event, { text }) => callback(text));
+  },
   onIaResponse: (callback) => {
     // ipcRenderer.on('llama-response', (event, { resposta }) => {
     //     callback(resposta);

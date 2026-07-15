@@ -320,7 +320,36 @@ class GeminiCliParser {
     const appDataDir = path.join(os.homedir(), '.gemini', 'antigravity-cli');
     const transcriptPath = path.join(appDataDir, 'brain', this._agyConvId, '.system_generated', 'logs', 'transcript.jsonl');
 
+    // Pre-populate processed steps with existing ones from past turns
+    try {
+      if (fs.existsSync(transcriptPath)) {
+        const content = fs.readFileSync(transcriptPath, 'utf8');
+        const lines = content.split('\n');
+        for (const rawLine of lines) {
+          const trimmed = rawLine.trim();
+          if (!trimmed) continue;
+          try {
+            const data = JSON.parse(trimmed);
+            const stepIndex = data.step_index;
+            if (stepIndex !== undefined) {
+              this._processedSteps.add(stepIndex);
+            }
+          } catch (e) {
+            // ignore partial/incomplete JSON lines
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[GeminiCliParser] Error pre-populating processed steps:', err.message);
+    }
+
     let lastSize = 0;
+    try {
+      if (fs.existsSync(transcriptPath)) {
+        const stats = fs.statSync(transcriptPath);
+        lastSize = stats.size;
+      }
+    } catch (e) {}
 
     const poll = () => {
       try {

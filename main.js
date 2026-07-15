@@ -2593,7 +2593,15 @@ async function toggleRecording() {
         }
 
         const aiModel = getEffectiveAiModel();
-        if (isOsIntegration) {
+        // Modo IDE (pasta/arquivo anexado no sidebar, com ou sem helperTools):
+        // Ctrl+D transcreve mas NÃO auto-envia pra IA. O texto vai pro composer
+        // pra o usuário revisar/editar e mandar com Shift+Enter ou o botão de
+        // enviar — igual o fluxo de digitar manualmente.
+        const isIdeModeNow = (workspace.list() || []).length > 0;
+        if (isIdeModeNow) {
+          console.log("[ide-audio] Modo IDE — transcrição enviada pro composer, sem auto-envio pra IA.");
+          mainWindow.webContents.send("ide-audio-transcribed", { text: audioText });
+        } else if (isOsIntegration) {
           await processOsQuestion(audioText);
         } else if (aiModel === 'llama-stream') {
           mainWindow.webContents.send("send-to-gemini-stream-auto", audioText);
@@ -2612,6 +2620,22 @@ async function toggleRecording() {
     } else {
       // === START RECORDING ===
       const isOsIntegration = configService.getOsIntegrationStatus();
+      const isIdeMode = (workspace.list() || []).length > 0;
+      const effModelForAudio = getEffectiveAiModel();
+      const isCliProvider = (effModelForAudio === 'geminiCli' || effModelForAudio === 'claudeCli');
+
+      // Modo IDE (pasta/arquivo anexado) + provider via CLI (Claude Code /
+      // Gemini CLI): esses providers não tem como receber áudio — o processo
+      // CLI trava/não devolve erro tratável. Em vez de deixar quebrar
+      // silenciosamente, avisa o usuário e não inicia a gravação.
+      if (isIdeMode && isCliProvider) {
+        console.log(`[ide-audio] Ctrl+D bloqueado — provider "${effModelForAudio}" (CLI) não suporta áudio no modo IDE.`);
+        mainWindow.webContents.send(
+          "transcription-error",
+          "Este modelo (CLI) não suporta transcrição de áudio. Troque para ChatGPT ou Ollama nas Configurações pra usar o Ctrl+D."
+        );
+        return;
+      }
 
       // Mutex: em modo integrado, se o Translation Assistant está ativo ele já
       // escuta mic+sys e responde sozinho — não sobe gravação em paralelo.
@@ -2646,7 +2670,7 @@ async function toggleRecording() {
       } else if (appConfig.notificationsEnabled && Notification.isSupported()) {
         new Notification({ title: "Helper-Node", body: "Gravando...", silent: true }).show();
       }
-      mainWindow.webContents.send("toggle-recording", { isRecording, audioFilePath });
+      mainWindow.webContents.send("toggle-recording", { isRecording, audioFilePath, isIdeMode });
     }
   } catch (error) {
     console.error("Error toggling recording:", error);

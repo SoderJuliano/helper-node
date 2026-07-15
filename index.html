@@ -850,6 +850,24 @@
             transition: border-color .18s var(--ease), box-shadow .18s var(--ease);
         }
         .composer-shell:focus-within { border-color: var(--accent-border); box-shadow: 0 0 0 3px rgba(76,175,80,0.14); }
+        /* Indicador "ouvindo áudio" — modo IDE, aparece acima do composer
+           enquanto o Ctrl+D está gravando. Bolinha em pulso (não a animação
+           de "processando" que já existe pro robot). */
+        .composer-listening {
+            display: flex; align-items: center; gap: 8px;
+            font-size: 12px; font-family: var(--font-ui); color: var(--accent-2);
+            padding: 4px 4px 8px 4px;
+        }
+        .composer-listening-dot {
+            width: 9px; height: 9px; border-radius: 50%;
+            background: var(--accent-2); flex-shrink: 0;
+            animation: composer-listening-pulse 1.2s ease-in-out infinite;
+        }
+        @keyframes composer-listening-pulse {
+            0%   { transform: scale(0.75); opacity: 0.55; box-shadow: 0 0 0 0 rgba(76,175,80,0.45); }
+            50%  { transform: scale(1.15); opacity: 1; box-shadow: 0 0 0 6px rgba(76,175,80,0); }
+            100% { transform: scale(0.75); opacity: 0.55; box-shadow: 0 0 0 0 rgba(76,175,80,0); }
+        }
         .composer-ghost {
             flex: 1; min-height: 26px; max-height: 220px; padding: 3px 2px;
             color: var(--text-3); font-size: 14px; font-family: var(--font-mono);
@@ -1486,6 +1504,13 @@
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
                         <span id="ctx-branch-name">main</span>
                     </span>
+                </div>
+                <!-- Indicador "ouvindo áudio" — só aparece no modo IDE (pasta/arquivo
+                     anexado) enquanto o Ctrl+D está gravando. Nesse modo a
+                     transcrição vai pro composer, não direto pra IA. -->
+                <div class="composer-listening" id="composer-listening" style="display:none;">
+                    <span class="composer-listening-dot"></span>
+                    <span>Ouvindo áudio… Ctrl+D para transcrever</span>
                 </div>
                 <div class="composer-shell" id="composer-shell">
                     <div class="composer-ghost idle" id="composer-ghost">Pergunte qualquer coisa…</div>
@@ -4363,7 +4388,32 @@
         window.electronAPI.onToggleRecording((event, data) => {
             if (!data) return;
             toggleAnimation(data.isRecording);
+
+            // Modo IDE: em vez do robot/loading padrão, mostra a bolinha em
+            // pulso acima do composer avisando que o áudio está sendo
+            // capturado — a transcrição vai pro composer, não direto pra IA.
+            const listeningEl = document.getElementById('composer-listening');
+            if (listeningEl) {
+                listeningEl.style.display = (data.isIdeMode && data.isRecording) ? 'flex' : 'none';
+            }
         });
+
+        // Modo IDE: chega o texto transcrito por Whisper (Ctrl+D) — preenche
+        // o composer pro usuário revisar/editar e enviar com Shift+Enter ou
+        // o botão Enviar. NÃO envia sozinho pra IA.
+        if (window.electronAPI.onIdeAudioTranscribed) {
+            window.electronAPI.onIdeAudioTranscribed((text) => {
+                const listeningEl = document.getElementById('composer-listening');
+                if (listeningEl) listeningEl.style.display = 'none';
+                if (!text || !text.trim() || text === '[BLANK_AUDIO]') {
+                    if (typeof showToast === 'function') showToast('Nenhum áudio detectado.');
+                    return;
+                }
+                if (typeof openManualInput === 'function') {
+                    openManualInput(text);
+                }
+            });
+        }
 
         // Função unificada para controle
         function toggleAnimation(shouldPlay) {

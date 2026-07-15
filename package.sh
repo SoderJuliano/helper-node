@@ -13,23 +13,28 @@ NC='\033[0m' # No Color
 
 # Configuration
 APP_NAME="helper-node"
-VERSION="0.4.2"
 BUILD_DIR="$(pwd)/build"
 DIST_DIR="$(pwd)/dist"
 PROJECT_ROOT="$(pwd)"
 # (Removido APP_CONFIG_CANDIDATES — o build NÃO empacota config do usuário:
 #  continha a API key e vazava nos pacotes. Cada user configura a própria chave.)
 
-echo -e "${GREEN}╔════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║  Helper Node Package Builder v${VERSION}  ║${NC}"
-echo -e "${GREEN}╚════════════════════════════════════════╝${NC}"
-echo ""
-
 # Check if we're in the right directory
 if [ ! -f "main.js" ] || [ ! -f "package.json" ]; then
     echo -e "${RED}Error: Must be run from helper-node project root!${NC}"
     exit 1
 fi
+
+# VERSION vem SEMPRE do package.json — antes era hardcoded aqui e ficava
+# dessincronizado (o script buildava uma versão "fantasma" enquanto o
+# package.json já tinha outra), fazendo o build parecer "novo" mas instalar
+# sempre o pacote velho.
+VERSION="$(node -p "require('./package.json').version")"
+
+echo -e "${GREEN}╔════════════════════════════════════════╗${NC}"
+echo -e "${GREEN}║  Helper Node Package Builder v${VERSION}  ║${NC}"
+echo -e "${GREEN}╚════════════════════════════════════════╝${NC}"
+echo ""
 
 # Cada build limpa só o SEU próprio artefato (dentro de build_deb/build_arch),
 # pra não apagar as outras edições/formatos. Aqui só garante o diretório.
@@ -52,7 +57,10 @@ build_deb() {
         DEB_ROOT="${BUILD_DIR}/deb-root/${PKG_NAME}_${VERSION}_amd64"
         APP_ROOT="${DEB_ROOT}/opt/helper-node"
         DEB_OUTPUT="${DIST_DIR}/${PKG_NAME}_${VERSION}_amd64.deb"
-        rm -f "${DEB_OUTPUT}"
+        # Apaga QUALQUER versão anterior deste mesmo pacote (edição+formato), não só
+        # o nome exato da versão atual — senão dist/ acumula .deb de builds antigas
+        # e o instalador errado pode sobrar por lá confundindo instalação futura.
+        rm -f "${DIST_DIR}/${PKG_NAME}"_*_amd64.deb
     
     # Create directory structure
     echo -e "${YELLOW}→${NC} Creating DEB directory structure..."
@@ -420,7 +428,11 @@ PKGBUILD_EOF
         cd "${ARCH_BUILD}"
         makepkg -f --nodeps
         cd "${PROJECT_ROOT}"
-        mv "${ARCH_BUILD}"/*.pkg.tar.zst "${DIST_DIR}/" 2>/dev/null || true
+        # Apaga versões anteriores deste mesmo pacote antes de mover a nova (mesmo
+        # motivo do DEB acima). Glob restrito a "-<digito>" pra não pegar o pacote
+        # -debug do makepkg (helper-node-full-debug-...) junto com o principal.
+        rm -f "${DIST_DIR}/${PKG_NAME}"-[0-9]*-x86_64.pkg.tar.zst
+        mv "${ARCH_BUILD}/${PKG_NAME}"-[0-9]*-x86_64.pkg.tar.zst "${DIST_DIR}/" 2>/dev/null || true
         echo -e "${GREEN}✓${NC} Arch package created: ${DIST_DIR}/${PKG_NAME}-${VERSION}-1-x86_64.pkg.tar.zst"
         gen_arch_installer
     elif command -v docker &> /dev/null || command -v podman &> /dev/null; then
@@ -440,6 +452,8 @@ PKGBUILD_EOF
         '
         # Move pacote final pra dist/ e limpa TUDO desnecessario
         if ls "${ARCH_BUILD}"/${PKG_NAME}-${VERSION}-*-x86_64.pkg.tar.zst &>/dev/null; then
+            # Apaga versões anteriores deste mesmo pacote antes de mover a nova.
+            rm -f "${DIST_DIR}/${PKG_NAME}"-[0-9]*-x86_64.pkg.tar.zst
             mv "${ARCH_BUILD}"/${PKG_NAME}-${VERSION}-*-x86_64.pkg.tar.zst "${DIST_DIR}/"
             echo -e "${GREEN}✓${NC} Arch package created: ${DIST_DIR}/${PKG_NAME}-${VERSION}-1-x86_64.pkg.tar.zst"
             gen_arch_installer
@@ -493,7 +507,8 @@ echo -e "${GREEN}Packages created in:${NC} ${DIST_DIR}/"
 echo ""
 ls -lh "${DIST_DIR}"/*.deb "${DIST_DIR}"/*.pkg.tar.zst 2>/dev/null | awk '{print "  • " $9 " (" $5 ")"}'
 echo ""
-echo -e "${GREEN}Installation:${NC}"
-echo -e "  DEB:  ${YELLOW}sudo dpkg -i ${DIST_DIR}/${APP_NAME}_0.0.1_amd64.deb${NC}"
-echo -e "  Arch: ${YELLOW}sudo pacman -U ${DIST_DIR}/${APP_NAME}-0.0.1-1-x86_64.pkg.tar.zst${NC}"
+echo -e "${GREEN}Installation:${NC} rode um dos instaladores abaixo (removem a versão antiga sozinhos)"
+for f in "${DIST_DIR}"/instalar-*.sh; do
+    [ -e "$f" ] && echo -e "  ${YELLOW}${f}${NC}"
+done
 echo ""
