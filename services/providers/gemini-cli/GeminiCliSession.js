@@ -89,7 +89,7 @@ class GeminiCliSession extends EventEmitter {
     this._transition('busy');
 
     const history = opts.history || [];
-    const isContinue = this._hasStarted;
+    let isContinue = this._hasStarted;
     
     let finalPrompt = prompt;
     if (!isContinue && history.length > 0) {
@@ -112,118 +112,194 @@ class GeminiCliSession extends EventEmitter {
       finalPrompt = historyContext + prompt;
     }
 
-    return new Promise((resolve, reject) => {
-      let completed = false;
+    const runAttempt = (currentPrompt, currentIsContinue, retriesLeft) => {
+      return new Promise((resolve, reject) => {
+        let completed = false;
 
-      const parser = new GeminiCliParser({
-        onConnected: ()     => {},
-        onChunk:     (t)    => {
-          this._transition('streaming');
-          opts.onChunk && opts.onChunk(t);
-        },
-        onThinking:  (t)    => opts.onThinking && opts.onThinking(t),
-        onThinkingChunk: (t) => opts.onThinking && opts.onThinking(t),
-        onToolStart: (info) => opts.onToolStart && opts.onToolStart(info),
-        onToolDone:  (info) => opts.onToolDone && opts.onToolDone(info),
-        onFileTool:  (info) => opts.onFileTool && opts.onFileTool(info),
-        onTokenUpdate: (info) => opts.onTokenUpdate && opts.onTokenUpdate(info),
-        onDone: ({ text, thinking }) => {
-          if (completed) return;
-          completed = true;
+        const parser = new GeminiCliParser({
+          onConnected: ()     => {},
+          onChunk:     (t)    => {
+            this._transition('streaming');
+            opts.onChunk && opts.onChunk(t);
+          },
+          onThinking:  (t)    => opts.onThinking && opts.onThinking(t),
+          onThinkingChunk: (t) => opts.onThinking && opts.onThinking(t),
+          onToolStart: (info) => opts.onToolStart && opts.onToolStart(info),
+          onToolDone:  (info) => opts.onToolDone && opts.onToolDone(info),
+          onFileTool:  (info) => opts.onFileTool && opts.onFileTool(info),
+          onTokenUpdate: (info) => opts.onTokenUpdate && opts.onTokenUpdate(info),
+          onDone: ({ text, thinking }) => {
+            if (completed) return;
+            completed = true;
 
-          this._hasStarted = true;
-          if (this._sessionId) {
-            const sessions = loadSessions();
-            sessions[this._projectPath] = {
-              sessionId: this._sessionId,
-              lastUsed: Date.now()
-            };
-            saveSessions(sessions);
-          }
+            this._hasStarted = true;
+            if (this._sessionId) {
+              const sessions = loadSessions();
+              sessions[this._projectPath] = {
+                sessionId: this._sessionId,
+                lastUsed: Date.now()
+              };
+              saveSessions(sessions);
+            }
 
-          this._transition('waiting');
-          opts.onDone && opts.onDone({ text, thinking });
-          resolve({ text, thinking });
-        },
-        onError: (err) => {
-          if (completed) return;
-          completed = true;
+            this._transition('waiting');
+            opts.onDone && opts.onDone({ text, thinking });
+            resolve({ text, thinking });
+          },
+          onError: (err) => {
+            if (completed) return;
+            completed = true;
 
-          this._transition('error');
+            if (retriesLeft > 0 && !this._aborted) {
+              console.warn(`[gemini-cli] Process error: ${err.message}. Retrying...`);
+              if (parser._agyConvId) {
+                this._hasStarted = true;
+              }
+              parser.reset();
+              if (opts.onThinking) {
+                opts.onThinking(`[Recuperação] Erro de processo: ${err.message}. Retentando com --continue...`);
+              }
+              runAttempt("continue de onde parou e complete a tarefa anterior", true, retriesLeft - 1)
+                .then(resolve)
+                .catch(reject);
+            } else {
+              this._transition('error');
+              if (this._aborted) {
+                opts.onDone && opts.onDone({ text: '', thinking: '' });
+                resolve({ text: '', thinking: '' });
+                return;
+              }
+              opts.onError && opts.onError(err);
+              reject(err);
+            }
+          },
+        });
+
+        const proc = new GeminiCliProcess();
+        this._activeProc = proc;
+
+        const stderrChunks = [];
+        proc.onData((chunk) => { parser.feed(chunk); });
+        proc.onStderr((chunk) => {
+          stderrChunks.push(chunk);
+          parser.feedStderr(chunk);
+        });
+        proc.onStdoutEnd(() => {
+          console.log('[gemini-cli] stdout end - flushing parser');
+          parser.flush();
+        });
+        proc.onError((msg) => { console.warn('[gemini-cli] proc error:', msg); });
+        proc.onClose((code, signal) => {
+          parser.flush();
+          this._activeProc = null;
           if (this._aborted) {
+            if (completed) return;
+            completed = true;
+            this._transition('waiting');
             opts.onDone && opts.onDone({ text: '', thinking: '' });
             resolve({ text: '', thinking: '' });
             return;
           }
-          opts.onError && opts.onError(err);
-          reject(err);
-        },
-      });
+          if (code !== 0 && code !== null) {
+            if (completed) return;
 
-      const proc = new GeminiCliProcess();
-      this._activeProc = proc;
+            const rawStderr = stderrChunks.join('');
+            const cleanStderr = rawStderr.replace(/[\u001b\u009b]\[[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '')
+              .split('\n')
+              .map(line => line.trim())
+              .filter(line => {
+                if (!line) return false;
+                if (line.includes('quotaRefreshLoop') || line.includes('keyringAuth') || line.includes('HTTP') || line.includes('gRPC')) return false;
+                if (line.includes('Failed to poll') || line.includes('admin controls not applicable') || line.includes('Singleflight refresh failed')) return false;
+                if (line.includes('server.go') || line.includes('auth.go') || line.includes('http_helpers.go') || line.includes('experiment_manager')) return false;
+                return true;
+              })
+              .slice(-15)
+              .join('\n');
 
-      proc.onData((chunk) => { parser.feed(chunk); });
-      proc.onStderr((chunk) => { parser.feedStderr(chunk); });
-      proc.onStdoutEnd(() => {
-        console.log('[gemini-cli] stdout end - flushing parser');
-        parser.flush();
-      });
-      proc.onError((msg) => { console.warn('[gemini-cli] proc error:', msg); });
-      proc.onClose((code, signal) => {
-        parser.flush();
-        this._activeProc = null;
-        if (this._aborted) {
-          if (completed) return;
-          completed = true;
-          this._transition('waiting');
-          opts.onDone && opts.onDone({ text: '', thinking: '' });
-          resolve({ text: '', thinking: '' });
-          return;
-        }
-        if (code !== 0 && code !== null) {
-          if (completed) return;
-          completed = true;
-          this._transition('error');
-          const errMsg = `Antigravity CLI encerrou com código ${code}.`;
-          const err = new Error(errMsg);
-          opts.onError && opts.onError(err);
-          reject(err);
-        } else {
-          if (completed) return;
-          completed = true;
+            if (retriesLeft > 0) {
+              console.warn(`[gemini-cli] Processo encerrou com código ${code}. Tentativas restantes: ${retriesLeft}. Retentando...`);
+              completed = true;
 
-          // Process exited successfully
-          this._hasStarted = true;
-          if (this._sessionId) {
-            const sessions = loadSessions();
-            sessions[this._projectPath] = {
-              sessionId: this._sessionId,
-              lastUsed: Date.now()
-            };
-            saveSessions(sessions);
+              if (parser._agyConvId) {
+                this._hasStarted = true;
+              }
+              parser.reset();
+
+              if (opts.onThinking) {
+                opts.onThinking(`[Recuperação] Antigravity CLI encerrou com código ${code}. Retentando passo pendente com --continue...`);
+              }
+
+              // Espera um segundo antes de retentar para evitar loops rápidos
+              setTimeout(() => {
+                runAttempt("continue de onde parou e complete a tarefa anterior", true, retriesLeft - 1)
+                  .then(resolve)
+                  .catch(reject);
+              }, 1200);
+            } else {
+              completed = true;
+              this._transition('error');
+              const errMsg = `Antigravity CLI encerrou com código ${code}.${cleanStderr ? '\n\nLogs de erro do CLI:\n' + cleanStderr : ''}`;
+              const err = new Error(errMsg);
+              opts.onError && opts.onError(err);
+              reject(err);
+            }
+          } else {
+            if (completed) return;
+            completed = true;
+
+            // Process exited successfully
+            this._hasStarted = true;
+            if (this._sessionId) {
+              const sessions = loadSessions();
+              sessions[this._projectPath] = {
+                sessionId: this._sessionId,
+                lastUsed: Date.now()
+              };
+              saveSessions(sessions);
+            }
+
+            this._transition('waiting');
+            const text = parser._responseLines.join('\n').trim();
+            const thinking = parser._thinkingLines.join('\n').trim();
+            opts.onDone && opts.onDone({ text, thinking });
+            resolve({ text, thinking });
           }
+        });
 
-          this._transition('waiting');
-          const text = parser._responseLines.join('\n').trim();
-          const thinking = parser._thinkingLines.join('\n').trim();
-          opts.onDone && opts.onDone({ text, thinking });
-          resolve({ text, thinking });
-        }
-      });
+        proc.start({
+          cwd: this._projectPath,
+          model: this._model,
+          prompt: currentPrompt,
+          isContinue: currentIsContinue,
+        }).catch((startErr) => {
+          if (completed) return;
+          completed = true;
 
-      proc.start({
-        cwd: this._projectPath,
-        model: this._model,
-        prompt: finalPrompt,
-        isContinue,
-      }).catch((startErr) => {
-        this._transition('error');
-        this._activeProc = null;
-        opts.onError && opts.onError(startErr);
-        reject(startErr);
+          if (retriesLeft > 0 && !this._aborted) {
+            console.warn(`[gemini-cli] Falha ao iniciar processo: ${startErr.message}. Retentando...`);
+            if (parser._agyConvId) {
+              this._hasStarted = true;
+            }
+            parser.reset();
+            if (opts.onThinking) {
+              opts.onThinking(`[Recuperação] Falha ao iniciar processo. Retentando com --continue...`);
+            }
+            runAttempt("continue de onde parou e complete a tarefa anterior", true, retriesLeft - 1)
+              .then(resolve)
+              .catch(reject);
+          } else {
+            this._transition('error');
+            this._activeProc = null;
+            opts.onError && opts.onError(startErr);
+            reject(startErr);
+          }
+        });
       });
-    });
+    };
+
+    // Permite até 2 retentativas automáticas em caso de falha do CLI
+    return runAttempt(finalPrompt, isContinue, 2);
   }
 
   async abort() {
