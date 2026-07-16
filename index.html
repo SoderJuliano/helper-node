@@ -799,13 +799,151 @@
         .rt-assistant-text strong, .ia-response strong { font-size: 1.12em; font-weight: 700; color: var(--accent-2); letter-spacing: .2px; }
 
         /* =====================================================================
-           COMPOSER (rodapé) — input sempre visível.
-           Estratégia: um "ghost" persistente (placeholder clicável) que invoca
-           openManualInput(). O input real (terminal-input-wrap) é criado pelo
-           &lt;script&gt; e inserido como filho de #transcription (contrato mantido).
-           Aqui damos um container visual fixo; quando o input real aparece,
-           flutua sobre o ghost.
+           TABS E TERMINAL CONNECTION (custom integration)
            ===================================================================== */
+        .composer-view-header {
+            display: flex;
+            justify-content: flex-start;
+            margin-bottom: 8px;
+            width: 100%;
+            max-width: 100%;
+        }
+        .composer-view-tabs {
+            display: flex;
+            gap: 4px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 2px;
+        }
+        .composer-tab-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: transparent;
+            border: none;
+            border-radius: 4px;
+            color: var(--text-3);
+            font-size: 11px;
+            font-family: var(--font-ui);
+            padding: 4px 10px;
+            cursor: pointer;
+            transition: all .15s ease;
+        }
+        .composer-tab-btn:hover {
+            color: var(--text);
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .composer-tab-btn.active {
+            color: var(--accent-2);
+            background: rgba(76, 175, 80, 0.15);
+            border: 1px solid rgba(76, 175, 80, 0.3);
+            box-shadow: 0 2px 6px rgba(76, 175, 80, 0.1);
+        }
+        .tab-icon {
+            width: 13px;
+            height: 13px;
+            stroke-width: 2.2px;
+        }
+
+        .composer-view-content {
+            display: flex;
+            width: 100%;
+            transition: all 0.2s ease;
+        }
+        .flex-layout-chat #pane-chat {
+            display: flex !important;
+            flex-direction: column;
+            width: 100%;
+        }
+        .flex-layout-chat #pane-terminal {
+            display: none !important;
+        }
+
+        .flex-layout-terminal #pane-terminal {
+            display: flex !important;
+            flex-direction: column;
+            width: 100%;
+        }
+        .flex-layout-terminal #pane-chat {
+            display: none !important;
+        }
+
+        .flex-layout-split #pane-terminal {
+            display: flex !important;
+            flex-direction: column;
+            width: 50%;
+        }
+        .flex-layout-split #pane-chat {
+            display: flex !important;
+            flex-direction: column;
+            width: 50%;
+        }
+
+        .composer-view-pane {
+            flex-shrink: 0;
+            flex-grow: 1;
+            min-height: 0;
+        }
+
+        /* Terminal screen and container styles */
+        .terminal-container {
+            display: flex;
+            flex-direction: column;
+            background: #090a0f;
+            border: 1px solid var(--border-strong);
+            border-radius: var(--radius);
+            padding: 10px;
+            font-family: var(--font-mono);
+            font-size: 11.5px;
+            height: 180px;
+            box-sizing: border-box;
+        }
+        .terminal-screen {
+            flex-grow: 1;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            color: #d8dee9;
+            margin-bottom: 8px;
+            padding-right: 4px;
+            text-align: left;
+        }
+        .terminal-screen::-webkit-scrollbar {
+            width: 4px;
+        }
+        .terminal-screen::-webkit-scrollbar-thumb {
+            background: var(--border-strong);
+            border-radius: 2px;
+        }
+        .terminal-input-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            padding-top: 6px;
+        }
+        .terminal-prompt {
+            color: var(--accent-2);
+            font-weight: bold;
+            user-select: none;
+        }
+        #terminal-input-field {
+            flex-grow: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: #ffffff;
+            font-family: inherit;
+            font-size: inherit;
+            padding: 0;
+            margin: 0;
+        }
+        body.terminal-active #composer > *,
+        body.split-active #composer > * {
+            max-width: 100%;
+        }
+
         #composer {
             border-top: 1px solid var(--border);
             padding: 16px clamp(16px, 5%, 40px) 20px;
@@ -1487,47 +1625,76 @@
 
             <!-- ===================== COMPOSER ===================== -->
             <div id="composer">
-                <!-- Contexto ativo do projeto (modo IDE): projeto + branch. Oculto no modo chat puro. -->
-                <div class="composer-context" id="composer-context" style="display:none;">
-                    <!-- Sem projeto aberto (modo arquivos ligado): convidar a abrir -->
-                    <button class="ctx-pill" id="ctx-open-project" type="button" title="Abrir um projeto" style="display:none;">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
-                        <span>Abrir projeto</span>
-                    </button>
-                    <!-- Projeto aberto: clicar abre o menu de gerenciamento -->
-                    <button class="ctx-pill" id="ctx-project" type="button" title="Gerenciar projeto" style="display:none;">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                        <span id="ctx-project-name">projeto</span>
-                        <svg class="ctx-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                    </button>
-                    <span class="ctx-pill ctx-branch" id="ctx-branch" style="display:none;">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
-                        <span id="ctx-branch-name">main</span>
-                    </span>
+                <div class="composer-view-header">
+                    <div class="composer-view-tabs">
+                        <button class="composer-tab-btn active" id="tab-btn-chat" title="Modo Chat IA" type="button">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tab-icon"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                            <span>Chat IA</span>
+                        </button>
+                        <button class="composer-tab-btn" id="tab-btn-terminal" title="Modo Terminal" type="button">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tab-icon"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                            <span>Terminal</span>
+                        </button>
+                        <button class="composer-tab-btn" id="tab-btn-split" title="Dividir Tela" type="button">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tab-icon"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>
+                            <span>Dividir</span>
+                        </button>
+                    </div>
                 </div>
-                <!-- Indicador "ouvindo áudio" — só aparece no modo IDE (pasta/arquivo
-                     anexado) enquanto o Ctrl+D está gravando. Nesse modo a
-                     transcrição vai pro composer, não direto pra IA. -->
-                <div class="composer-listening" id="composer-listening" style="display:none;">
-                    <span class="composer-listening-dot"></span>
-                    <span>Ouvindo áudio… Ctrl+D para transcrever</span>
+                <div class="composer-view-content flex-layout-chat" id="composer-view-content">
+                    <div class="composer-view-pane pane-terminal" id="pane-terminal" style="display: none;">
+                        <div class="terminal-container" id="terminal-container-element">
+                            <div class="terminal-screen" id="terminal-screen"></div>
+                            <div class="terminal-input-row">
+                                <span class="terminal-prompt">$</span>
+                                <input type="text" id="terminal-input-field" placeholder="Digite comandos aqui... (Enter para enviar)" autocomplete="off" />
+                            </div>
+                        </div>
+                    </div>
+                    <div class="composer-view-pane pane-chat" id="pane-chat">
+                        <!-- Contexto ativo do projeto (modo IDE): projeto + branch. Oculto no modo chat puro. -->
+                        <div class="composer-context" id="composer-context" style="display:none;">
+                            <!-- Sem projeto aberto (modo arquivos ligado): convidar a abrir -->
+                            <button class="ctx-pill" id="ctx-open-project" type="button" title="Abrir um projeto" style="display:none;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+                                <span>Abrir projeto</span>
+                            </button>
+                            <!-- Projeto aberto: clicar abre o menu de gerenciamento -->
+                            <button class="ctx-pill" id="ctx-project" type="button" title="Gerenciar projeto" style="display:none;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                                <span id="ctx-project-name">projeto</span>
+                                <svg class="ctx-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                            <span class="ctx-pill ctx-branch" id="ctx-branch" style="display:none;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+                                <span id="ctx-branch-name">main</span>
+                            </span>
+                        </div>
+                        <!-- Indicador "ouvindo áudio" — só aparece no modo IDE (pasta/arquivo
+                             anexado) enquanto o Ctrl+D está gravando. Nesse modo a
+                             transcrição vai pro composer, não direto pra IA. -->
+                        <div class="composer-listening" id="composer-listening" style="display:none;">
+                            <span class="composer-listening-dot"></span>
+                            <span>Ouvindo áudio… Ctrl+D para transcrever</span>
+                        </div>
+                        <div class="composer-shell" id="composer-shell">
+                            <div class="composer-ghost idle" id="composer-ghost">Pergunte qualquer coisa…</div>
+                            <button class="composer-send" id="composer-send" title="Enviar (Shift+Enter)">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                                Enviar
+                            </button>
+                        </div>
+                        <div class="composer-toolbar">
+                            <button class="composer-model" id="composer-model" type="button" title="Trocar modelo">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3 3 3 0 0 0-3 3 3 3 0 0 0 0 6 3 3 0 0 0 3 3 3 3 0 0 0 6 0 3 3 0 0 0 3-3 3 3 0 0 0 0-6 3 3 0 0 0-3-3 3 3 0 0 0-3-3z"/><path d="M12 8v8M9 12h6"/></svg>
+                                <span id="composer-model-name">modelo</span>
+                                <svg class="cm-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                            <span class="composer-token-count" id="composer-token-count" title="Tokens estimados do input"></span>
+                        </div>
+                        <div class="composer-hint"><span class="h-kbd">Enter</span> quebra linha · <span class="h-kbd">Shift+Enter</span> envia · <span class="h-kbd">Esc</span> fecha</div>
+                    </div>
                 </div>
-                <div class="composer-shell" id="composer-shell">
-                    <div class="composer-ghost idle" id="composer-ghost">Pergunte qualquer coisa…</div>
-                    <button class="composer-send" id="composer-send" title="Enviar (Shift+Enter)">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                        Enviar
-                    </button>
-                </div>
-                <div class="composer-toolbar">
-                    <button class="composer-model" id="composer-model" type="button" title="Trocar modelo">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3 3 3 0 0 0-3 3 3 3 0 0 0 0 6 3 3 0 0 0 3 3 3 3 0 0 0 6 0 3 3 0 0 0 3-3 3 3 0 0 0 0-6 3 3 0 0 0-3-3 3 3 0 0 0-3-3z"/><path d="M12 8v8M9 12h6"/></svg>
-                        <span id="composer-model-name">modelo</span>
-                        <svg class="cm-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                    </button>
-                    <span class="composer-token-count" id="composer-token-count" title="Tokens estimados do input"></span>
-                </div>
-                <div class="composer-hint"><span class="h-kbd">Enter</span> quebra linha · <span class="h-kbd">Shift+Enter</span> envia · <span class="h-kbd">Esc</span> fecha</div>
             </div>
 
             <!-- Editor de arquivo (IDE): cobre a área principal; fecha volta pro chat.
@@ -2530,6 +2697,9 @@
                                 
                                 const res = await window.electronAPI.renameItem(e.path, newPath);
                                 if (res.ok) {
+                                    if (window.EditorController && typeof window.EditorController.renamePath === 'function') {
+                                        window.EditorController.renamePath(e.path, newPath);
+                                    }
                                     e.path = newPath;
                                     e.name = newName;
                                     renamingPath = null;
@@ -4428,6 +4598,7 @@
 
         window.addEventListener('DOMContentLoaded', () => {
             loadAnimation();
+            setupTerminalUI();
 
             // Listener para colar imagem da área de transferência
             document.addEventListener('paste', (event) => {
@@ -5792,28 +5963,203 @@
             });
         }
 
-        // const { ipcRenderer } = require('electron');
+        // =====================================================================
+        // TERMINAL CONNECTION INTEGRATION
+        // =====================================================================
+        let isTerminalInitialized = false;
+        const terminalHistory = [];
+        let terminalHistoryIdx = -1;
 
-        // ipcRenderer.on('sharing-status', (event, data) => {
-        //     const warningElement = document.getElementById('sharing-warning') || 
-        //                         document.createElement('div');
+        function ansiToHtml(text) {
+            let html = text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
             
-        //     if (!document.getElementById('sharing-warning')) {
-        //         warningElement.id = 'sharing-warning';
-        //         warningElement.style.position = 'fixed';
-        //         warningElement.style.bottom = '10px';
-        //         warningElement.style.right = '10px';
-        //         warningElement.style.padding = '10px';
-        //         warningElement.style.background = 'red';
-        //         warningElement.style.color = 'white';
-        //         warningElement.style.zIndex = '9999';
-        //         warningElement.textContent = 'ATENÇÃO: TELA SENDO COMPARTILHADA';
-        //         document.body.appendChild(warningElement);
-        //     }
+            const colors = {
+                30: 'color: #000000',
+                31: 'color: #ff5555',
+                32: 'color: #50fa7b',
+                33: 'color: #f1fa8c',
+                34: 'color: #bd93f9',
+                35: 'color: #ff79c6',
+                36: 'color: #8be9fd',
+                37: 'color: #f8f8f2',
+                90: 'color: #6272a4',
+                91: 'color: #ff6e6e',
+                92: 'color: #69ff94',
+                93: 'color: #ffffa5',
+                94: 'color: #d6acff',
+                95: 'color: #ff92df',
+                96: 'color: #a4ffff',
+                97: 'color: #ffffff',
+            };
 
-        //     warningElement.style.display = data.isSharing ? 'block' : 'none';
-        // });
+            let openSpan = false;
 
+            html = html.replace(/\x1b\[([0-9;]*)m/g, (match, p1) => {
+                let style = '';
+                const codes = p1.split(';');
+                let reset = false;
+                
+                for (const code of codes) {
+                    if (code === '0' || code === '') {
+                        reset = true;
+                    } else if (code === '1') {
+                        style += 'font-weight: bold;';
+                    } else if (colors[code]) {
+                        style += colors[code] + ';';
+                    }
+                }
+
+                let result = '';
+                if (reset && openSpan) {
+                    result += '</span>';
+                    openSpan = false;
+                }
+                if (style) {
+                    if (openSpan) {
+                        result += '</span>';
+                    }
+                    result += `<span style="${style}">`;
+                    openSpan = true;
+                }
+                return result;
+            });
+
+            if (openSpan) {
+                html += '</span>';
+            }
+            return html;
+        }
+
+        async function initTerminalProcess() {
+            if (isTerminalInitialized) return;
+            isTerminalInitialized = true;
+            
+            const termScreen = document.getElementById('terminal-screen');
+            if (termScreen) {
+                termScreen.innerHTML = '<span style="color: #6272a4;">Iniciando conexão com terminal do sistema...\n</span>';
+            }
+
+            try {
+                const res = await window.electronAPI.terminalInit();
+                if (res && res.ok) {
+                    if (termScreen) {
+                        termScreen.innerHTML += `<span style="color: #50fa7b;">Terminal conectado (${res.shell}) em ${res.projectPath}\n\n</span>`;
+                    }
+                } else {
+                    if (termScreen) {
+                        termScreen.innerHTML += '<span style="color: #ff5555;">Erro ao iniciar terminal.\n</span>';
+                    }
+                }
+            } catch (e) {
+                if (termScreen) {
+                    termScreen.innerHTML += `<span style="color: #ff5555;">Erro: ${e.message}\n</span>`;
+                }
+            }
+        }
+
+        function setupTerminalUI() {
+            const btnChat = document.getElementById('tab-btn-chat');
+            const btnTerminal = document.getElementById('tab-btn-terminal');
+            const btnSplit = document.getElementById('tab-btn-split');
+            const content = document.getElementById('composer-view-content');
+            const termScreen = document.getElementById('terminal-screen');
+            const termInput = document.getElementById('terminal-input-field');
+            const termContainer = document.getElementById('terminal-container-element');
+
+            function setActiveTab(activeBtn, layoutClass) {
+                [btnChat, btnTerminal, btnSplit].forEach(btn => {
+                    if (btn) btn.classList.remove('active');
+                });
+                if (activeBtn) activeBtn.classList.add('active');
+                
+                if (content) {
+                    content.className = 'composer-view-content ' + layoutClass;
+                }
+
+                // Manage body classes for full-width layout
+                document.body.classList.remove('terminal-active', 'split-active');
+                if (layoutClass === 'flex-layout-terminal') {
+                    document.body.classList.add('terminal-active');
+                    initTerminalProcess();
+                    setTimeout(() => termInput && termInput.focus(), 50);
+                } else if (layoutClass === 'flex-layout-split') {
+                    document.body.classList.add('split-active');
+                    initTerminalProcess();
+                    setTimeout(() => termInput && termInput.focus(), 50);
+                }
+            }
+
+            if (btnChat) btnChat.addEventListener('click', () => setActiveTab(btnChat, 'flex-layout-chat'));
+            if (btnTerminal) btnTerminal.addEventListener('click', () => setActiveTab(btnTerminal, 'flex-layout-terminal'));
+            if (btnSplit) btnSplit.addEventListener('click', () => setActiveTab(btnSplit, 'flex-layout-split'));
+
+            if (termContainer && termInput) {
+                termContainer.addEventListener('click', () => {
+                    termInput.focus();
+                });
+            }
+
+            if (termInput) {
+                termInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        const val = termInput.value;
+                        window.electronAPI.terminalInput(val + '\n');
+                        if (val.trim()) {
+                            terminalHistory.push(val);
+                            terminalHistoryIdx = terminalHistory.length;
+                        }
+                        termInput.value = '';
+                    } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        if (terminalHistory.length > 0 && terminalHistoryIdx > 0) {
+                            terminalHistoryIdx--;
+                            termInput.value = terminalHistory[terminalHistoryIdx];
+                        }
+                    } else if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        if (terminalHistoryIdx < terminalHistory.length - 1) {
+                            terminalHistoryIdx++;
+                            termInput.value = terminalHistory[terminalHistoryIdx];
+                        } else {
+                            terminalHistoryIdx = terminalHistory.length;
+                            termInput.value = '';
+                        }
+                    }
+                });
+            }
+
+            if (window.electronAPI.onTerminalOutput) {
+                window.electronAPI.onTerminalOutput((payload) => {
+                    if (termScreen) {
+                        const isAtBottom = termScreen.scrollHeight - termScreen.clientHeight <= termScreen.scrollTop + 20;
+                        const chunk = payload.data;
+                        const span = document.createElement('span');
+                        span.innerHTML = ansiToHtml(chunk);
+                        termScreen.appendChild(span);
+                        
+                        if (isAtBottom) {
+                            termScreen.scrollTop = termScreen.scrollHeight;
+                        }
+                    }
+                });
+            }
+
+            if (window.electronAPI.onTerminalClosed) {
+                window.electronAPI.onTerminalClosed((payload) => {
+                    if (termScreen) {
+                        const span = document.createElement('span');
+                        span.style.color = '#ff5555';
+                        span.textContent = `\n[Terminal desconectado com código ${payload.code}]\n`;
+                        termScreen.appendChild(span);
+                        termScreen.scrollTop = termScreen.scrollHeight;
+                    }
+                    isTerminalInitialized = false;
+                });
+            }
+        }
     </script>
 </body>
 </html>

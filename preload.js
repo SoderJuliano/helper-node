@@ -196,4 +196,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   requestTranslationResize: () =>
     ipcRenderer.send("request-translation-resize"),
   overlayPosition: (pos) => ipcRenderer.send('overlay-position', pos),
+
+  // === Terminal Connection ===
+  terminalInit: () => ipcRenderer.invoke("terminal:init"),
+  terminalInput: (data) => ipcRenderer.send("terminal:input", data),
+  onTerminalOutput: (cb) => ipcRenderer.on("terminal:output", (event, data) => cb(data)),
+  onTerminalClosed: (cb) => ipcRenderer.on("terminal:closed", (event, data) => cb(data)),
 });

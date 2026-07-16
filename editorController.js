@@ -362,7 +362,49 @@
     setConflictBanner(`⚠ ${label} está mexendo neste arquivo agora`);
   }
 
-  window.EditorController = { openFile, saveActive, closeEditor, isDirty, focusSearch, hasOpenFile };
+  function renamePath(oldPath, newPath) {
+    let changed = false;
+    const updates = [];
+    openFiles.forEach((doc, filePath) => {
+      if (filePath === oldPath) {
+        updates.push({ oldPath: filePath, newPath: newPath });
+      } else if (filePath.startsWith(oldPath + '/') || filePath.startsWith(oldPath + '\\')) {
+        const relative = filePath.substring(oldPath.length);
+        updates.push({ oldPath: filePath, newPath: newPath + relative });
+      }
+    });
+
+    updates.forEach(u => {
+      const doc = openFiles.get(u.oldPath);
+      openFiles.delete(u.oldPath);
+      openFiles.set(u.newPath, doc);
+      if (activePath === u.oldPath) {
+        activePath = u.newPath;
+        changed = true;
+      }
+    });
+
+    if (updates.length > 0) {
+      renderTabs();
+      if (changed) {
+        const pathEl = document.getElementById('fv-path');
+        if (pathEl) {
+          pathEl.textContent = String(activePath).split('/').slice(-3).join('/');
+          pathEl.title = activePath;
+        }
+        if (cm) {
+          const ext = extOf(activePath);
+          const langEl = document.getElementById('fv-lang');
+          if (langEl) {
+            langEl.textContent = LANG_LABEL_BY_EXT[ext] || (ext || 'texto').toUpperCase();
+          }
+          cm.setOption('mode', CM_MODE_BY_EXT[ext] || null);
+        }
+      }
+    }
+  }
+
+  window.EditorController = { openFile, saveActive, closeEditor, isDirty, focusSearch, hasOpenFile, renamePath };
 
   if (window.electronAPI && window.electronAPI.onFileMutated) {
     window.electronAPI.onFileMutated(onFileMutated);

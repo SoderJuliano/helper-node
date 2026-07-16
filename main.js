@@ -88,6 +88,8 @@ const { analyzeInterviewImage } = require("./services/translationAssistant/image
 // Transcrição cloud (gpt-4o-mini-transcribe) — usada no Ctrl+D da edição Lite.
 const { transcribeAudio: cloudTranscribeAudio } = require("./services/translationAssistant/openaiClient");
 
+let terminalProcess = null;
+
 /**
  * Monta opts pra OpenAIService.makeOpenAIRequest acoplando o helperTools quando:
  *   1) o módulo está habilitado nas configs
@@ -4407,6 +4409,60 @@ ipcMain.handle("workspace:open-external", async (event, p) => {
       return { ok: true, fallback: "xdg-open" };
     } catch (e2) {
       return { ok: false, error: e.message };
+    }
+  }
+});
+
+ipcMain.handle("terminal:init", async (event) => {
+  if (terminalProcess) {
+    try {
+      terminalProcess.kill();
+    } catch (_) {}
+    terminalProcess = null;
+  }
+
+  const workspace = require("./services/workspace");
+  const projectPath = (workspace.list()[0] || {}).path || os.homedir();
+
+  const shell = process.env.SHELL || "/bin/bash";
+  
+  terminalProcess = spawn(shell, [], {
+    env: { ...process.env, TERM: "xterm-color" },
+    cwd: projectPath,
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+
+  terminalProcess.stdout.setEncoding("utf8");
+  terminalProcess.stderr.setEncoding("utf8");
+
+  terminalProcess.stdout.on("data", (chunk) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("terminal:output", { type: "stdout", data: chunk });
+    }
+  });
+
+  terminalProcess.stderr.on("data", (chunk) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("terminal:output", { type: "stderr", data: chunk });
+    }
+  });
+
+  terminalProcess.on("close", (code) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("terminal:closed", { code });
+    }
+    terminalProcess = null;
+  });
+
+  return { ok: true, shell, projectPath };
+});
+
+ipcMain.on("terminal:input", (event, data) => {
+  if (terminalProcess && terminalProcess.stdin.writable) {
+    try {
+      terminalProcess.stdin.write(data);
+    } catch (e) {
+      console.error("[terminal:input] error:", e.message);
     }
   }
 });
