@@ -3454,6 +3454,9 @@
                     }
                     if (data.attachments) renderWorkspacePanel(data.attachments);
                     refreshProjectContext();
+                    if (typeof isTerminalInitialized !== 'undefined' && !isTerminalInitialized && (document.body.classList.contains('terminal-active') || document.body.classList.contains('split-active'))) {
+                        initTerminalProcess();
+                    }
                 });
             }
             // Listener pra IA ter editado um arquivo → chips horizontais no último interaction-block

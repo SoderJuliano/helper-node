@@ -89,6 +89,41 @@ const { analyzeInterviewImage } = require("./services/translationAssistant/image
 const { transcribeAudio: cloudTranscribeAudio } = require("./services/translationAssistant/openaiClient");
 
 let terminalProcess = null;
+let currentTerminalProjectPath = null;
+
+function getActiveProjectPath() {
+  const workspace = require("./services/workspace");
+  const dirItem = (workspace.list() || []).find((a) => a.type === "dir");
+  if (dirItem && dirItem.path) {
+    try {
+      if (fs2.existsSync(dirItem.path) && fs2.statSync(dirItem.path).isDirectory()) {
+        return dirItem.path;
+      }
+    } catch (_) {}
+  }
+  return os.homedir();
+}
+
+function syncTerminalCwd(forceMessage = false) {
+  const newProjectPath = getActiveProjectPath();
+  if (currentTerminalProjectPath !== newProjectPath || forceMessage) {
+    currentTerminalProjectPath = newProjectPath;
+    if (terminalProcess && terminalProcess.stdin && terminalProcess.stdin.writable) {
+      try {
+        terminalProcess.stdin.write(`cd "${newProjectPath.replace(/"/g, '\\"')}"\n`);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("terminal:output", {
+            type: "stdout",
+            data: `\x1b[32m\n[📁 Terminal sincronizado com projeto: ${newProjectPath}]\x1b[0m\n\n`
+          });
+        }
+      } catch (e) {
+        console.error("[terminal:sync] error:", e.message);
+      }
+    }
+  }
+}
+
 
 /**
  * Monta opts pra OpenAIService.makeOpenAIRequest acoplando o helperTools quando:
@@ -3845,6 +3880,7 @@ ipcMain.handle("workspace:pick-dir", async () => {
     try { await workspace.openProject(p); added.push(p); }
     catch (e) { console.warn("[workspace] open project falhou:", e.message); }
   }
+  syncTerminalCwd();
   // Gemini CLI: reinicia sessão quando o projeto muda.
   const newDirs = workspace.list().filter(a => a.type === 'dir').map(a => a.path);
   const oldPath = prevDirs[0] || null;
@@ -3974,6 +4010,7 @@ ipcMain.handle("workspace:create-and-open-project", async (event, { parentPath, 
     // Agora abre o projeto!
     const prevDirs = workspace.list().filter(a => a.type === 'dir').map(a => a.path);
     await workspace.openProject(newProjectPath);
+    syncTerminalCwd();
     
     // Reinicia sessões da IA se mudou
     const newDirs = workspace.list().filter(a => a.type === 'dir').map(a => a.path);
@@ -4378,6 +4415,7 @@ ipcMain.handle("editor-save-file", async (event, payload) => {
 
 ipcMain.handle("workspace:remove", (event, id) => {
   workspace.removePath(id);
+  syncTerminalCwd();
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send("workspace-changed", { attachments: workspace.list() });
   }
@@ -4386,6 +4424,7 @@ ipcMain.handle("workspace:remove", (event, id) => {
 
 ipcMain.handle("workspace:clear", () => {
   workspace.clear();
+  syncTerminalCwd();
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send("workspace-changed", { attachments: [] });
   }
@@ -4421,8 +4460,8 @@ ipcMain.handle("terminal:init", async (event) => {
     terminalProcess = null;
   }
 
-  const workspace = require("./services/workspace");
-  const projectPath = (workspace.list()[0] || {}).path || os.homedir();
+  const projectPath = getActiveProjectPath();
+  currentTerminalProjectPath = projectPath;
 
   const shell = process.env.SHELL || "/bin/bash";
   
@@ -4442,6 +4481,11 @@ ipcMain.handle("terminal:init", async (event) => {
 
   terminalProcess.stdout.setEncoding("utf8");
   terminalProcess.stderr.setEncoding("utf8");
+
+  // Injeta função cd personalizada para imprimir o caminho sempre que o usuário navegar entre pastas (ex: cd .., cd /caminho)
+  if (terminalProcess.stdin && terminalProcess.stdin.writable) {
+    terminalProcess.stdin.write('cd() { builtin cd "$@" && printf "\\033[32m📁 Pasta atual: %s\\033[0m\\n" "$(pwd)"; }\n');
+  }
 
   terminalProcess.stdout.on("data", (chunk) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
