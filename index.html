@@ -908,6 +908,8 @@
             margin-bottom: 8px;
             padding-right: 4px;
             text-align: left;
+            user-select: text;
+            -webkit-user-select: text;
         }
         .terminal-screen::-webkit-scrollbar {
             width: 4px;
@@ -6106,6 +6108,16 @@
                 termInput.addEventListener('keydown', (e) => {
                     if (e.key === 'Enter') {
                         const val = termInput.value;
+                        if (val.trim() === 'clear') {
+                            if (termScreen) {
+                                termScreen.innerHTML = '';
+                            }
+                            window.electronAPI.terminalInput('\n');
+                            terminalHistory.push(val);
+                            terminalHistoryIdx = terminalHistory.length;
+                            termInput.value = '';
+                            return;
+                        }
                         window.electronAPI.terminalInput(val + '\n');
                         if (val.trim()) {
                             terminalHistory.push(val);
@@ -6127,6 +6139,11 @@
                             terminalHistoryIdx = terminalHistory.length;
                             termInput.value = '';
                         }
+                    } else if (e.key === 'l' && e.ctrlKey) {
+                        e.preventDefault();
+                        if (termScreen) {
+                            termScreen.innerHTML = '';
+                        }
                     }
                 });
             }
@@ -6135,10 +6152,21 @@
                 window.electronAPI.onTerminalOutput((payload) => {
                     if (termScreen) {
                         const isAtBottom = termScreen.scrollHeight - termScreen.clientHeight <= termScreen.scrollTop + 20;
-                        const chunk = payload.data;
-                        const span = document.createElement('span');
-                        span.innerHTML = ansiToHtml(chunk);
-                        termScreen.appendChild(span);
+                        let chunk = payload.data;
+                        
+                        if (chunk.includes('\x1b[2J') || chunk.includes('\x1b[H') || chunk.includes('\x0c')) {
+                            termScreen.innerHTML = '';
+                            chunk = chunk.replace(/\x1b\[2J/g, '')
+                                         .replace(/\x1b\[H/g, '')
+                                         .replace(/\x0c/g, '')
+                                         .replace(/\x1b\[3J/g, '');
+                        }
+                        
+                        if (chunk) {
+                            const span = document.createElement('span');
+                            span.innerHTML = ansiToHtml(chunk);
+                            termScreen.appendChild(span);
+                        }
                         
                         if (isAtBottom) {
                             termScreen.scrollTop = termScreen.scrollHeight;
