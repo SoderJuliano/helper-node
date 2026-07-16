@@ -4427,7 +4427,15 @@ ipcMain.handle("terminal:init", async (event) => {
   const shell = process.env.SHELL || "/bin/bash";
   
   terminalProcess = spawn(shell, [], {
-    env: { ...process.env, TERM: "xterm-color" },
+    env: {
+      ...process.env,
+      TERM: "xterm-256color",
+      COLORTERM: "truecolor",
+      CLICOLOR: "1",
+      CLICOLOR_FORCE: "1",
+      FORCE_COLOR: "1",
+      GIT_CONFIG_PARAMETERS: "'color.ui=always'",
+    },
     cwd: projectPath,
     stdio: ["pipe", "pipe", "pipe"],
   });

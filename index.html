@@ -887,6 +887,35 @@
         }
 
         /* Terminal screen and container styles */
+        .terminal-resizer {
+            height: 8px;
+            width: 100%;
+            cursor: ns-resize;
+            background: rgba(255, 255, 255, 0.04);
+            border-radius: 4px;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.15s, opacity 0.15s;
+            user-select: none;
+            flex-shrink: 0;
+        }
+        .terminal-resizer::after {
+            content: "";
+            width: 36px;
+            height: 3px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+            transition: background 0.15s;
+        }
+        .terminal-resizer:hover, .terminal-resizer.resizing {
+            background: rgba(76, 175, 80, 0.2);
+        }
+        .terminal-resizer:hover::after, .terminal-resizer.resizing::after {
+            background: var(--accent-2);
+        }
+
         .terminal-container {
             display: flex;
             flex-direction: column;
@@ -896,7 +925,11 @@
             padding: 10px;
             font-family: var(--font-mono);
             font-size: 11.5px;
-            height: 180px;
+            height: 280px;
+            min-height: 120px;
+            max-height: 85vh;
+            resize: vertical;
+            overflow: hidden;
             box-sizing: border-box;
         }
         .terminal-screen {
@@ -1645,6 +1678,7 @@
                 </div>
                 <div class="composer-view-content flex-layout-chat" id="composer-view-content">
                     <div class="composer-view-pane pane-terminal" id="pane-terminal" style="display: none;">
+                        <div class="terminal-resizer" id="terminal-resizer" title="Arraste para redimensionar a altura do terminal"></div>
                         <div class="terminal-container" id="terminal-container-element">
                             <div class="terminal-screen" id="terminal-screen"></div>
                             <div class="terminal-input-row">
@@ -5979,15 +6013,18 @@
                 .replace(/>/g, '&gt;');
             
             const colors = {
-                30: 'color: #000000',
-                31: 'color: #ff5555',
-                32: 'color: #50fa7b',
-                33: 'color: #f1fa8c',
-                34: 'color: #bd93f9',
-                35: 'color: #ff79c6',
-                36: 'color: #8be9fd',
-                37: 'color: #f8f8f2',
-                90: 'color: #6272a4',
+                // Foreground standard
+                30: 'color: #21222c',
+                31: 'color: #ff5555', // Red (untracked / unstaged)
+                32: 'color: #50fa7b', // Green (staged)
+                33: 'color: #f1fa8c', // Yellow
+                34: 'color: #bd93f9', // Blue
+                35: 'color: #ff79c6', // Magenta
+                36: 'color: #8be9fd', // Cyan
+                37: 'color: #f8f8f2', // White
+                39: 'color: inherit',
+                // Foreground bright
+                90: 'color: #6272a4', // Gray/Bright Black
                 91: 'color: #ff6e6e',
                 92: 'color: #69ff94',
                 93: 'color: #ffffa5',
@@ -5995,7 +6032,50 @@
                 95: 'color: #ff92df',
                 96: 'color: #a4ffff',
                 97: 'color: #ffffff',
+                // Background standard
+                40: 'background-color: #21222c',
+                41: 'background-color: #ff5555',
+                42: 'background-color: #50fa7b',
+                43: 'background-color: #f1fa8c',
+                44: 'background-color: #bd93f9',
+                45: 'background-color: #ff79c6',
+                46: 'background-color: #8be9fd',
+                47: 'background-color: #f8f8f2',
+                49: 'background-color: transparent',
+                // Background bright
+                100: 'background-color: #6272a4',
+                101: 'background-color: #ff6e6e',
+                102: 'background-color: #69ff94',
+                103: 'background-color: #ffffa5',
+                104: 'background-color: #d6acff',
+                105: 'background-color: #ff92df',
+                106: 'background-color: #a4ffff',
+                107: 'background-color: #ffffff'
             };
+
+            function get256Color(n) {
+                if (n < 8) {
+                    const base = ['#000000','#cd0000','#00cd00','#cdcd00','#0000ee','#cd00cd','#00cdcd','#e5e5e5'];
+                    return base[n];
+                }
+                if (n < 16) {
+                    const bright = ['#7f7f7f','#ff0000','#00ff00','#ffff00','#5c5cff','#ff00ff','#00ffff','#ffffff'];
+                    return bright[n - 8];
+                }
+                if (n >= 16 && n <= 231) {
+                    n -= 16;
+                    const r = Math.floor(n / 36);
+                    const g = Math.floor((n % 36) / 6);
+                    const b = n % 6;
+                    const map = [0, 95, 135, 175, 215, 255];
+                    return `rgb(${map[r]}, ${map[g]}, ${map[b]})`;
+                }
+                if (n >= 232 && n <= 255) {
+                    const val = (n - 232) * 10 + 8;
+                    return `rgb(${val}, ${val}, ${val})`;
+                }
+                return '#f8f8f2';
+            }
 
             let openSpan = false;
 
@@ -6004,11 +6084,30 @@
                 const codes = p1.split(';');
                 let reset = false;
                 
-                for (const code of codes) {
+                for (let i = 0; i < codes.length; i++) {
+                    const code = codes[i];
                     if (code === '0' || code === '') {
                         reset = true;
                     } else if (code === '1') {
                         style += 'font-weight: bold;';
+                    } else if (code === '2') {
+                        style += 'opacity: 0.75;';
+                    } else if (code === '4') {
+                        style += 'text-decoration: underline;';
+                    } else if (code === '38' && codes[i+1] === '5' && codes[i+2] !== undefined) {
+                        const colorIdx = parseInt(codes[i+2], 10);
+                        style += `color: ${get256Color(colorIdx)};`;
+                        i += 2;
+                    } else if (code === '48' && codes[i+1] === '5' && codes[i+2] !== undefined) {
+                        const colorIdx = parseInt(codes[i+2], 10);
+                        style += `background-color: ${get256Color(colorIdx)};`;
+                        i += 2;
+                    } else if (code === '38' && codes[i+1] === '2' && codes[i+4] !== undefined) {
+                        style += `color: rgb(${codes[i+2]}, ${codes[i+3]}, ${codes[i+4]});`;
+                        i += 4;
+                    } else if (code === '48' && codes[i+1] === '2' && codes[i+4] !== undefined) {
+                        style += `background-color: rgb(${codes[i+2]}, ${codes[i+3]}, ${codes[i+4]});`;
+                        i += 4;
                     } else if (colors[code]) {
                         style += colors[code] + ';';
                     }
@@ -6070,6 +6169,43 @@
             const termScreen = document.getElementById('terminal-screen');
             const termInput = document.getElementById('terminal-input-field');
             const termContainer = document.getElementById('terminal-container-element');
+            const resizer = document.getElementById('terminal-resizer');
+
+            if (resizer && termContainer) {
+                let startY = 0;
+                let startH = 0;
+                resizer.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    startY = e.clientY;
+                    startH = termContainer.offsetHeight;
+                    resizer.classList.add('resizing');
+                    document.body.style.cursor = 'ns-resize';
+                    document.body.style.userSelect = 'none';
+
+                    function onMouseMove(me) {
+                        const dy = startY - me.clientY;
+                        const newH = Math.max(120, Math.min(window.innerHeight - 150, startH + dy));
+                        termContainer.style.height = `${newH}px`;
+                    }
+
+                    function onMouseUp() {
+                        resizer.classList.remove('resizing');
+                        document.body.style.cursor = '';
+                        document.body.style.userSelect = '';
+                        window.removeEventListener('mousemove', onMouseMove);
+                        window.removeEventListener('mouseup', onMouseUp);
+                        localStorage.setItem('helper_terminal_height', termContainer.style.height);
+                    }
+
+                    window.addEventListener('mousemove', onMouseMove);
+                    window.addEventListener('mouseup', onMouseUp);
+                });
+
+                const savedH = localStorage.getItem('helper_terminal_height');
+                if (savedH) {
+                    termContainer.style.height = savedH;
+                }
+            }
 
             function setActiveTab(activeBtn, layoutClass) {
                 [btnChat, btnTerminal, btnSplit].forEach(btn => {
