@@ -110,6 +110,14 @@ build_deb() {
         cp helper-node.sh helper-node.desktop setup-hotkey.sh capture-screenshot.sh install-deps.sh "${APP_ROOT}/" 2>/dev/null || true
         cp README.markdown ROADMAP.md "${APP_ROOT}/" 2>/dev/null || true
 
+        # Instala a entrada de menu (.desktop) e o ícone no pacote DEB (/usr/share/applications e /usr/share/pixmaps)
+        mkdir -p "${DEB_ROOT}/usr/share/applications"
+        cp helper-node.desktop "${DEB_ROOT}/usr/share/applications/helper-node.desktop"
+        if [ -f "assets/linux.png" ]; then
+            mkdir -p "${DEB_ROOT}/usr/share/pixmaps"
+            cp assets/linux.png "${DEB_ROOT}/usr/share/pixmaps/helper-node.png"
+        fi
+
         # ⚠️ NUNCA empacotar config do usuário. O config.json contém a API KEY e
         # estava sendo embutido como config-default.json → vazava a chave em TODO
         # pacote gerado. Removido de propósito. Cada usuário configura a própria
@@ -264,8 +272,8 @@ INSTALLER_EOF
 Version=1.0
 Name=Instalar Helper Node (${EDITION} · deb)
 Comment=Instala o Helper Node (edição ${EDITION}, .deb) no sistema
-Exec=bash -c 'p="%k"; p="\${p#file://}"; d="\$(dirname "\$p")"; [ -d "\$d" ] && cd "\$d"; exec bash ./$(basename "${INSTALLER_SH}")'
-Terminal=true
+Exec=bash -c 'DIR="\$(dirname "\$(echo "\$1" | sed "s|^file://||")")"; [ -d "\$DIR" ] && cd "\$DIR"; exec bash ./$(basename "${INSTALLER_SH}")' _ %k
+Terminal=false
 Type=Application
 Icon=system-software-install
 Categories=System;
@@ -330,8 +338,8 @@ ARCH_INST_EOF
 Version=1.0
 Name=Instalar Helper Node (${EDITION} · arch)
 Comment=Instala o Helper Node (edição ${EDITION}, .pkg.tar.zst) no sistema
-Exec=bash -c 'p="%k"; p="\${p#file://}"; d="\$(dirname "\$p")"; [ -d "\$d" ] && cd "\$d"; exec bash ./$(basename "${INST}")'
-Terminal=true
+Exec=bash -c 'DIR="\$(dirname "\$(echo "\$1" | sed "s|^file://||")")"; [ -d "\$DIR" ] && cd "\$DIR"; exec bash ./$(basename "${INST}")' _ %k
+Terminal=false
 Type=Application
 Icon=system-software-install
 Categories=System;
@@ -484,17 +492,35 @@ build_one() {
 
 # Uso: package.sh deb [full|lite] | arch [full|lite] | all
 case "$1" in
-    deb)  build_one deb  "${2:-full}" ;;
-    arch) build_one arch "${2:-full}" ;;
+    deb)
+        if [ -n "${2:-}" ]; then
+            build_one deb "$2"
+        else
+            build_one deb full
+            build_one deb lite
+        fi
+        ;;
+    arch)
+        if [ -n "${2:-}" ]; then
+            build_one arch "$2"
+        else
+            build_one arch full
+            build_one arch lite
+        fi
+        ;;
     all)
-        build_one deb  full
-        build_one deb  lite
+        build_one deb full
+        build_one deb lite
         build_one arch full
-        build_one arch lite ;;
+        build_one arch lite
+        ;;
     *)
-        # padrão: full deb + full arch (compatível com o comportamento antigo)
-        build_one deb  full
-        build_one arch full ;;
+        # padrão: gera full e lite para deb e arch
+        build_one deb full
+        build_one deb lite
+        build_one arch full
+        build_one arch lite
+        ;;
 esac
 
 # Summary

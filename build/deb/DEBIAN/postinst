@@ -37,7 +37,13 @@ else
 fi
 
 if [ -f /opt/helper-node/helper-node.desktop ]; then
+    mkdir -p /usr/share/applications
+    cp -f /opt/helper-node/helper-node.desktop /usr/share/applications/helper-node.desktop 2>/dev/null || true
     xdg-desktop-menu install --novendor /opt/helper-node/helper-node.desktop 2>/dev/null || true
+fi
+if [ -f /opt/helper-node/assets/linux.png ]; then
+    mkdir -p /usr/share/pixmaps
+    cp -f /opt/helper-node/assets/linux.png /usr/share/pixmaps/helper-node.png 2>/dev/null || true
 fi
 if command -v update-desktop-database &>/dev/null; then
     update-desktop-database /usr/share/applications 2>/dev/null || true

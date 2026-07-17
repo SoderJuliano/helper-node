@@ -4,6 +4,8 @@ set -e
 echo "Removing Helper Node..."
 
 rm -f /usr/local/bin/helper-node
+rm -f /usr/share/applications/helper-node.desktop
+rm -f /usr/share/pixmaps/helper-node.png
 
 if [ -f /opt/helper-node/helper-node.desktop ]; then
     xdg-desktop-menu uninstall /opt/helper-node/helper-node.desktop 2>/dev/null || true

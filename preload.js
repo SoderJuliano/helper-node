@@ -136,6 +136,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   workspacePickDir: () => ipcRenderer.invoke("workspace:pick-dir"),
   workspaceList: () => ipcRenderer.invoke("workspace:list"),
   getProjectContext: () => ipcRenderer.invoke("get-project-context"),
+  getProjectGitStatus: () => ipcRenderer.invoke("get-project-git-status"),
   getProjectTree: () => ipcRenderer.invoke("get-project-tree"),
   getDirChildren: (dirPath) => ipcRenderer.invoke("get-dir-children", dirPath),
   searchProjectContent: (query) => ipcRenderer.invoke("search-project-content", query),

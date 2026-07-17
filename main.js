@@ -4064,6 +4064,67 @@ ipcMain.handle("get-project-context", async () => {
   }
 });
 
+// Retorna arquivos modificados/não comitados e total de alterações via git status
+ipcMain.handle("get-project-git-status", async () => {
+  try {
+    const dir = (workspace.list() || []).find((a) => a.type === "dir");
+    if (!dir || !dir.path) {
+      return { isGit: false, changesCount: 0, modifiedFiles: {}, modifiedDirs: {} };
+    }
+    const projectPath = dir.path;
+    const { execFile } = require("child_process");
+    return await new Promise((resolve) => {
+      execFile(
+        "git",
+        ["-C", projectPath, "status", "--porcelain", "-uall"],
+        { timeout: 3500 },
+        (err, stdout) => {
+          if (err || !stdout) {
+            return resolve({ isGit: false, changesCount: 0, modifiedFiles: {}, modifiedDirs: {} });
+          }
+          const lines = stdout.split("\n");
+          const modifiedFiles = {};
+          const modifiedDirs = {};
+          let count = 0;
+
+          for (const line of lines) {
+            if (!line || line.length < 3) continue;
+            const code = line.substring(0, 2);
+            let relPath = line.substring(3).trim();
+            if (relPath.includes(" -> ")) {
+              relPath = relPath.split(" -> ")[1].trim();
+            }
+            if (relPath.startsWith('"') && relPath.endsWith('"')) {
+              relPath = relPath.substring(1, relPath.length - 1);
+            }
+            relPath = relPath.replace(/\\/g, "/");
+            if (!relPath) continue;
+
+            let status = 'M';
+            if (code.includes('?') || code.includes('U')) status = 'U';
+            else if (code.includes('A')) status = 'A';
+            else if (code.includes('D')) status = 'D';
+
+            modifiedFiles[relPath] = status;
+            count++;
+
+            const parts = relPath.split('/');
+            let currentParent = '';
+            for (let i = 0; i < parts.length - 1; i++) {
+              currentParent = currentParent ? `${currentParent}/${parts[i]}` : parts[i];
+              modifiedDirs[currentParent] = true;
+            }
+          }
+          resolve({ isGit: true, changesCount: count, modifiedFiles, modifiedDirs });
+        }
+      );
+    });
+  } catch (e) {
+    console.warn("[get-project-git-status] falhou:", e.message);
+    return { isGit: false, changesCount: 0, modifiedFiles: {}, modifiedDirs: {} };
+  }
+});
+
 // Diff linha-a-linha (LCS) entre dois textos — sem dependências externas.
 function computeLineDiff(oldText, newText) {
   const a = String(oldText || "").split("\n");

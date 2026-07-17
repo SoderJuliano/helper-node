@@ -222,25 +222,37 @@
             -webkit-app-region: no-drag;
         }
 
-        /* Botão "+ Novo Chat" em destaque */
+        /* Botão "+ Novo Chat" discreto e elegante */
         .new-chat-btn {
-            margin: 12px 12px 4px;
-            padding: 9px 12px;
-            background: var(--accent);
-            border: 1px solid transparent;
-            color: #06210a;
-            font-weight: 600;
-            font-size: 12.5px;
+            margin: 6px 10px 4px;
+            padding: 6px 10px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border);
+            color: var(--text-2);
+            font-weight: 500;
+            font-size: 11.5px;
             font-family: var(--font-ui);
             border-radius: var(--radius-sm);
             cursor: pointer;
-            transition: background .15s var(--ease), transform .1s var(--ease), box-shadow .15s var(--ease);
+            transition: background .15s var(--ease), border-color .15s var(--ease), color .15s var(--ease), transform .1s var(--ease);
             display: flex; align-items: center; justify-content: center; gap: 6px;
             -webkit-app-region: no-drag;
-            box-shadow: 0 4px 14px rgba(76,175,80,0.22);
+            box-shadow: none;
         }
-        .new-chat-btn:hover { background: var(--accent-2); box-shadow: 0 6px 18px rgba(76,175,80,0.34); }
+        .new-chat-btn:hover {
+            background: rgba(76, 175, 80, 0.12);
+            border-color: rgba(76, 175, 80, 0.35);
+            color: var(--accent-2);
+        }
         .new-chat-btn:active { transform: translateY(1px); }
+        .new-chat-btn svg {
+            width: 13px; height: 13px;
+            stroke: var(--accent);
+            transition: stroke .15s var(--ease);
+        }
+        .new-chat-btn:hover svg {
+            stroke: var(--accent-2);
+        }
 
         .sb-scroll {
             flex: 1;
@@ -436,15 +448,60 @@
             border-radius: var(--radius-sm);
             font-family: var(--font-mono); font-size: 12.5px; line-height: 1.65;
             color: var(--text-3); white-space: pre; overflow: auto;
-            /* Estica até quase o fim da janela — só desconta o que fica acima
-               (marca, novo chat, histórico/atalhos colapsados, header do projeto)
-               e o rodapé da sidebar. Antes era 34vh, ficava curtinho de propósito
-               nenhum já que o painel inteiro tem altura de sobra. */
-            max-height: calc(100vh - 260px);
+            /* Estica até o fim da janela descontando os elementos fixos superiores */
+            max-height: calc(100vh - 210px);
             scrollbar-width: none;
         }
         .ws-tree::-webkit-scrollbar { width: 0; height: 0; }
         .ws-tree .ws-tree-empty { color: var(--text-4); font-style: italic; white-space: normal; }
+
+        /* Git status no Tree Lateral & Contador de alterações */
+        .ws-git-changes-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2px 6px;
+            margin-left: 4px;
+            background: rgba(248, 81, 73, 0.15);
+            border: 1px solid rgba(248, 81, 73, 0.35);
+            color: #ff6b6b;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 600;
+            border-radius: 10px;
+            flex-shrink: 0;
+            user-select: none;
+            white-space: nowrap;
+        }
+        .ws-tree-node.git-modified {
+            color: #ff6b6b !important;
+        }
+        .ws-tree-node.git-modified .ws-tree-ic {
+            color: #ff6b6b !important;
+        }
+        .ws-tree-node.git-untracked {
+            color: #73c991 !important;
+        }
+        .ws-tree-node.git-untracked .ws-tree-ic {
+            color: #73c991 !important;
+        }
+        .ws-tree-node.git-dir-modified > .ws-tree-ic {
+            color: #e5c07b !important;
+        }
+        .ws-tree-git-tag {
+            margin-left: auto;
+            font-size: 9.5px;
+            font-weight: 700;
+            font-family: var(--font-mono);
+            padding: 0 4px;
+            border-radius: 3px;
+            opacity: 0.9;
+            flex-shrink: 0;
+        }
+        .ws-tree-git-tag.tag-m { color: #ff6b6b; background: rgba(248,81,73,0.12); }
+        .ws-tree-git-tag.tag-u { color: #73c991; background: rgba(115,201,145,0.12); }
+        .ws-tree-git-tag.tag-a { color: #50fa7b; background: rgba(80,250,123,0.12); }
+        .ws-tree-git-tag.tag-d { color: #ff5555; background: rgba(255,85,85,0.12); }
 
         .ws-chips { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; margin-top: 6px; }
         .ws-chips:empty { display: none; }
@@ -869,15 +926,20 @@
             display: none !important;
         }
 
+        .composer-view-content.flex-layout-split {
+            gap: 12px;
+        }
         .flex-layout-split #pane-terminal {
             display: flex !important;
             flex-direction: column;
-            width: 50%;
+            flex: 1 1 0;
+            min-width: 0;
         }
         .flex-layout-split #pane-chat {
             display: flex !important;
             flex-direction: column;
-            width: 50%;
+            flex: 1 1 0;
+            min-width: 0;
         }
 
         .composer-view-pane {
@@ -1548,7 +1610,10 @@
                 <span class="sb-ver" id="app-edition-tag">full</span>
             </div>
 
-            <button class="new-chat-btn" id="new-chat-btn">＋ Novo Chat</button>
+            <button class="new-chat-btn" id="new-chat-btn" title="Iniciar um novo chat">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <span>Novo Chat</span>
+            </button>
 
             <div class="sb-scroll">
                 <!-- Histórico (painel reaproveitado) -->
@@ -1597,6 +1662,7 @@
                                 <svg class="ws-folder-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
                                 <span id="ws-project-name">projeto</span>
                             </button>
+                            <span class="ws-git-changes-badge" id="ws-git-changes-badge" style="display:none;" title="Arquivos com alterações não comitadas no Git"></span>
                             <button class="ws-tree-trash-btn" id="ws-tree-trash-btn" type="button" title="Excluir itens selecionados (Delete)" style="display:none;">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
                             </button>
@@ -2609,10 +2675,31 @@
                     const shouldDim = hasNameFilter || (hasContentFilter && contentFilter.length >= 4);
                     const isMatch = isNameMatch || isContentMatch;
                     
+                    let relPath = e.path;
+                    if (projectPath && relPath.startsWith(projectPath)) {
+                        relPath = relPath.substring(projectPath.length).replace(/^[/\\]+/, '').replace(/\\/g, '/');
+                    } else {
+                        relPath = relPath.replace(/\\/g, '/');
+                    }
+
+                    let gitClass = '';
+                    let gitStatus = null;
+                    if (!e.isDir) {
+                        gitStatus = currentGitStatus.modifiedFiles ? currentGitStatus.modifiedFiles[relPath] : null;
+                        if (gitStatus) {
+                            gitClass = (gitStatus === 'U') ? ' git-untracked' : ' git-modified';
+                        }
+                    } else {
+                        if (currentGitStatus.modifiedDirs && currentGitStatus.modifiedDirs[relPath]) {
+                            gitClass = ' git-dir-modified';
+                        }
+                    }
+
                     const node = document.createElement('div');
                     node.className = 'ws-tree-node ' + (e.isDir ? 'dir' : 'file') +
                         (e.collapsed ? ' collapsed' : '') +
-                        (shouldDim ? (isMatch ? ' match' : ' dim') : '');
+                        (shouldDim ? (isMatch ? ' match' : ' dim') : '') +
+                        gitClass;
                     node.style.paddingLeft = (4 + e.depth * 12) + 'px';
                     node.innerHTML = e.isDir ? (TREE_CHEVRON_IC + TREE_DIR_IC) : (TREE_CHEVRON_SPACER + fileIconHtml(e.name));
 
@@ -2769,6 +2856,14 @@
                         const label = document.createElement('span');
                         label.textContent = e.name;
                         node.appendChild(label);
+
+                        if (!e.isDir && gitStatus) {
+                            const gitTag = document.createElement('span');
+                            gitTag.className = `ws-tree-git-tag tag-${gitStatus.toLowerCase()}`;
+                            gitTag.textContent = gitStatus;
+                            node.appendChild(gitTag);
+                        }
+
                         node.tabIndex = 0; // navegável via Tab; Enter/Espaço abrem ou colapsam, igual ao clique
                         if (e.isDir) {
                             node.title = (e.collapsed ? 'Expandir' : 'Colapsar') + ' pasta';
@@ -3029,6 +3124,34 @@
                 }
             });
 
+            let currentGitStatus = { isGit: false, changesCount: 0, modifiedFiles: {}, modifiedDirs: {} };
+
+            async function fetchAndUpdateGitStatus() {
+                if (window.electronAPI && window.electronAPI.getProjectGitStatus) {
+                    try {
+                        const res = await window.electronAPI.getProjectGitStatus();
+                        if (res) {
+                            currentGitStatus = res;
+                            updateGitStatusUi();
+                        }
+                    } catch (e) {
+                        console.warn('Erro ao buscar git status:', e);
+                    }
+                }
+            }
+
+            function updateGitStatusUi() {
+                const badge = document.getElementById('ws-git-changes-badge');
+                if (badge) {
+                    if (currentGitStatus.isGit && currentGitStatus.changesCount > 0) {
+                        badge.textContent = `+${currentGitStatus.changesCount} changes`;
+                        badge.style.display = 'inline-flex';
+                    } else {
+                        badge.style.display = 'none';
+                    }
+                }
+            }
+
             async function refreshProjectTree() {
                 if (!wsTree || !wsTreeToggle) return;
                 const open = wsTreeToggle.getAttribute('aria-expanded') === 'true';
@@ -3046,15 +3169,19 @@
                 });
                 treeEntries = res.entries.map((entry) => ({
                     ...entry,
-                    // Pasta lazy sempre volta colapsada: os filhos dela não vêm
-                    // no refresh (são carregados sob demanda), então mantê-la
-                    // "aberta" mostraria uma pasta vazia até re-expandir.
                     collapsed: entry.isDir
                         ? (entry.lazy ? true : (collapsedMap.has(entry.path) ? collapsedMap.get(entry.path) : true))
                         : false
                 }));
+                await fetchAndUpdateGitStatus();
                 renderTree();
             }
+
+            setInterval(() => {
+                if (wsProjectMain && wsProjectMain.dataset && wsProjectMain.dataset.path) {
+                    fetchAndUpdateGitStatus().then(() => renderTree());
+                }
+            }, 8000);
 
             let refreshTreeTimeout = null;
             function triggerTreeRefresh() {
