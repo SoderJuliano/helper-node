@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preferências do Usuário</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,200..900;1,200..900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: "Source Code Pro", monospace;
+            font-optical-sizing: auto;
+            font-weight: regular;
+            font-style: normal;
+            background-color: rgba(30, 30, 30, 0.9);
+            color: white;
+            margin: 0;
+            padding: 20px;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 40px);
+            box-sizing: border-box;
+            -webkit-app-region: drag;
+        }
+        h1 {
+            font-size: 20px;
+            margin-top: 0;
+            margin-bottom: 4px;
+            color: #00aaff;
+            text-align: center;
+            -webkit-app-region: no-drag;
+        }
+        p.subtitle {
+            font-size: 12px;
+            color: #aaa;
+            text-align: center;
+            margin: 0 0 15px 0;
+            -webkit-app-region: no-drag;
+        }
+        label {
+            font-size: 14px;
+            margin-bottom: 8px;
+            -webkit-app-region: no-drag;
+        }
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #555;
+            background-color: #252525;
+            color: white;
+            font-size: 14px;
+            resize: vertical;
+            box-sizing: border-box;
+            -webkit-app-region: no-drag;
+        }
+        button {
+            margin-top: 15px;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            background-color: #007bff;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            align-self: flex-end;
+            -webkit-app-region: no-drag;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+            overflow-y: auto;
+            -webkit-app-region: no-drag;
+        }
+        .setting-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 10px;
+            background-color: rgba(0, 0, 0, 0.2);
+            border-radius: 5px;
+            -webkit-app-region: no-drag;
+        }
+        .setting-item label {
+            margin-bottom: 0;
+            font-weight: bold;
+        }
+        .custom-input {
+            width: 100%;
+            padding: 8px 12px;
+            border-radius: 5px;
+            border: 1px solid #555;
+            background-color: #252525;
+            color: white;
+            font-size: 14px;
+            box-sizing: border-box;
+            -webkit-app-region: no-drag;
+        }
+
+        /* --- TOGGLE SWITCH CSS (mesmo padrão de config.html) --- */
+        :root {
+            --displacement: -0.1rem;
+            --tremble: -10deg;
+            --trembleF: 5deg;
+            --iPos: 50%;
+            --bPos: -75%;
+            --fPos: -50%;
+            --time: 430ms;
+        }
+        .switch { -webkit-app-region: no-drag; }
+        .switch__wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 4rem;
+            height: 2rem;
+            border: 2px solid rgb(255, 0, 0);
+            border-radius: 99rem;
+            transform-origin: left center;
+            animation: checked__wrapper var(--time) ease-in forwards;
+            mix-blend-mode: lighten;
+        }
+        .switch__wrapper::before, .switch__wrapper::after {
+            content: "";
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border: 2px solid #000;
+            border-radius: inherit;
+            transform-origin: inherit;
+            animation: inherit;
+            mix-blend-mode: inherit;
+        }
+        .switch__wrapper::before { --tremble: -12deg; --trembleF: -7deg; border-color: rgb(0, 255, 0); animation-delay: 50ms; }
+        .switch__wrapper::after { --tremble: -8deg; --trembleF: -4deg; border-color: rgb(0, 0, 255); animation-delay: 75ms; }
+        .switch__toggle {
+            width: 1.5rem;
+            height: 1.5rem;
+            border-radius: 99rem;
+            box-shadow: inset 0 0 0 2px #fff;
+            transform-origin: inherit;
+            animation: checked__toggle var(--time) ease-in forwards;
+        }
+        .switch input:active + .switch__wrapper .switch__toggle { width: 1.6rem; }
+        .switch input:checked + .switch__wrapper { transform-origin: right center; animation-name: checked__wrapper--r; }
+        .switch input:checked + .switch__wrapper .switch__toggle { background: #fff; animation-name: checked__toggle--r; }
+
+        @keyframes checked__wrapper {
+            0%, 45%, 100% { transform: rotateY(0deg); }
+            48% { transform: translateX(var(--displacement)); filter: blur(0); }
+            55% { transform: rotateZ(var(--tremble)); filter: blur(1px); }
+            65% { transform: rotateZ(var(--trembleF)); }
+        }
+        @keyframes checked__wrapper--r {
+            0%, 45%, 100% { transform: rotateY(0deg); }
+            48% { transform: translateX(calc(-1 * var(--displacement))); filter: blur(0); }
+            55% { transform: rotateZ(calc(-1 * var(--tremble))); filter: blur(1px); }
+            65% { transform: rotateZ(calc(-1 * var(--trembleF))); }
+        }
+        @keyframes checked__toggle {
+            0% { background: #fff; transform: translateX(var(--iPos)) scale(1.25, 1); }
+            45% { background: #fff; transform: translateX(var(--bPos)) scale(1, 1); }
+            50% { background: transparent; transform: translateX(var(--bPos)) scale(0.5, 1.1); }
+            65% { transform: translateX(var(--bPos)) scale(1, 1); }
+            100% { transform: translateX(var(--fPos)); }
+        }
+        @keyframes checked__toggle--r {
+            0% { background: transparent; transform: translateX(calc(-1 * var(--iPos))) scale(1.25, 1); }
+            45% { background: transparent; transform: translateX(calc(-1 * var(--bPos))) scale(1, 1); }
+            50% { background: #fff; transform: translateX(calc(-1 * var(--bPos))) scale(0.5, 1.1); }
+            65% { transform: translateX(calc(-1 * var(--bPos))) scale(1, 1); }
+            100% { transform: translateX(calc(-1 * var(--fPos))); }
+        }
+    </style>
+</head>
+<body>
+    <h1>Preferências do Usuário</h1>
+    <p class="subtitle">Dados pessoais e base de conhecimento usados como contexto pela IA — separados das configurações técnicas do app.</p>
+    <div class="container">
+        <div style="margin-bottom: 8px;">
+            <label for="pref-username" style="display: block; margin-bottom: 4px; font-size: 13px;">Seu nome (para contexto da IA)</label>
+            <input type="text" id="pref-username" class="custom-input" placeholder="Ex: João Silva">
+        </div>
+
+        <div style="margin-bottom: 8px;">
+            <label for="pref-background" style="display: block; margin-bottom: 4px; font-size: 13px;">Seu background profissional</label>
+            <textarea id="pref-background" style="min-height:90px;" placeholder="Ex: Desenvolvedor backend com 5 anos de experiência em Node.js e AWS..."></textarea>
+        </div>
+
+        <!-- Base de Conhecimento (RAG) — compartilhada por Assistente + Tradutor -->
+        <div id="knowledge-base-section" style="margin-top: 14px; padding: 14px; background-color: rgba(0,0,0,0.35); border-radius: 5px; -webkit-app-region: no-drag;">
+            <div style="font-weight: bold; color: #00aaff; margin-bottom: 8px;">Base de Conhecimento (atualizações de tecnologia)</div>
+            <p style="font-size: 12px; color: #aaa; margin: 0 0 10px 0;">Cole novidades/docs de tecnologias recentes (versões de libs, frameworks novos). O app injeta trechos relevantes nas respostas técnicas — usado pelo Assistente e pelo Tradutor.</p>
+
+            <div class="setting-item" style="margin-bottom: 8px;">
+                <label for="kb-enabled">Habilitar base de conhecimento</label>
+                <span id="kb-enabled-status" style="font-weight: bold; margin-left: 10px; min-width: 30px; text-align: center; -webkit-app-region: no-drag;">ON</span>
+                <label class="switch">
+                    <input type="checkbox" id="kb-enabled" hidden>
+                    <div class="switch__wrapper"><div class="switch__toggle"></div></div>
+                </label>
+            </div>
+
+            <p style="font-size: 11.5px; color: #888; margin: 0 0 8px 0;">Este campo é só para <b>adicionar</b> conteúdo novo — ao salvar, é anexado ao final da base já existente (o que já está salvo não é recarregado nem reescrito). Com a base habilitada, a IA resume/organiza apenas este trecho novo antes de anexar.</p>
+
+            <textarea id="kb-text" style="min-height:120px;" placeholder="Ex: Spring Boot 3.4 mudou X... Java 26 trouxe Y... a lib Z agora usa W em vez de V..."></textarea>
+
+            <div style="display:flex; align-items:center; gap:12px; margin-top:8px;">
+                <button id="kb-rewrite-btn" style="margin:0; padding:8px 14px; align-self:auto;">Resumir e organizar com IA</button>
+                <span id="kb-status" style="font-size:12px; color:#888;"></span>
+            </div>
+
+            <div id="kb-source-link" style="display:none; margin-top:8px; font-size:11.5px; color:#7ec9ff; cursor:pointer; -webkit-app-region:no-drag;" title="Abre o arquivo completo no visualizador do app">📄 Ver base completa</div>
+        </div>
+    </div>
+    <button id="save-btn">Salvar e Fechar</button>
+    <script src="preferences.js"></script>
+</body>
+</html>

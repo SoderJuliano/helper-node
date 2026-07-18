@@ -1,5 +1,7 @@
 const { ipcMain } = require('electron');
 const axios = require('axios');
+const configService = require('./configService');
+const { supportsReasoningEffort } = require('./openAiRealtimeModels');
 
 class OpenAIService {
     constructor() {
@@ -27,13 +29,23 @@ class OpenAIService {
             console.log(`OpenAI session ${sessionId} expired and was cleared.`);
         }
 
-        // Create a new session if it doesn't exist
+        // Create a new session or update system prompt in the existing session
         if (!this.sessions[sessionId]) {
             console.log(`Creating new OpenAI session: ${sessionId}`);
             this.sessions[sessionId] = {
                 messages: [{ role: 'system', content: instruction || 'You are a helpful assistant.' }],
                 lastActivity: now
             };
+        } else {
+            this.sessions[sessionId].lastActivity = now;
+            if (instruction) {
+                const sysMsg = this.sessions[sessionId].messages.find(m => m.role === 'system');
+                if (sysMsg) {
+                    sysMsg.content = instruction;
+                } else {
+                    this.sessions[sessionId].messages.unshift({ role: 'system', content: instruction });
+                }
+            }
         }
 
         // Build user message — multimodal if image fornecida
@@ -74,6 +86,9 @@ class OpenAIService {
             model: model || 'gpt-4.1-nano',
             messages: messages,
         };
+        if (supportsReasoningEffort(requestPayload.model)) {
+            requestPayload.reasoning_effort = configService.getOpenAiReasoningEffort();
+        }
 
         // helperTools: se o caller passou tools[] (schema OpenAI), entra em loop de tool-calling
         const tools = hasTools ? opts.tools : null;
@@ -99,11 +114,34 @@ class OpenAIService {
         const toolsTag = tools ? ` tools=${tools.length}` : '';
         console.log(`📤 OpenAI → model=${requestPayload.model} msgs=${msgCount}${toolsTag} ${userPreview}`);
 
-        const postOnce = async () => axios.post(
-            'https://api.openai.com/v1/chat/completions',
-            requestPayload,
-            { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } }
-        );
+        const postOnce = async (retries = 3, delayMs = 1500) => {
+            for (let attempt = 1; attempt <= retries; attempt++) {
+                try {
+                    return await axios.post(
+                        'https://api.openai.com/v1/chat/completions',
+                        requestPayload,
+                        { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } }
+                    );
+                } catch (err) {
+                    const isRateLimit = err.response && err.response.status === 429;
+                    const isServerError = err.response && err.response.status >= 500;
+                    
+                    if ((isRateLimit || isServerError) && attempt < retries) {
+                        let waitMs = delayMs * Math.pow(2, attempt - 1);
+                        if (isRateLimit && err.response.headers && err.response.headers['retry-after']) {
+                            const seconds = parseFloat(err.response.headers['retry-after']);
+                            if (!isNaN(seconds)) {
+                                waitMs = (seconds * 1000) + 200;
+                            }
+                        }
+                        console.warn(`[OpenAI API] Erro ${err.response ? err.response.status : 'Rede'} (tentativa ${attempt}/${retries}). Aguardando ${Math.round(waitMs)}ms antes de tentar de novo...`);
+                        await new Promise(resolve => setTimeout(resolve, waitMs));
+                    } else {
+                        throw err;
+                    }
+                }
+            }
+        };
 
         try {
             // Caminho simples (sem tools): comportamento original preservado

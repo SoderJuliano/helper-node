@@ -16,6 +16,11 @@ let config = {};
 // Última pergunta do entrevistador (sys), pra parear com a SUA resposta (mic) e
 // alimentar o banco de respostas em background.
 let lastInterviewerQuestion = '';
+// Fusao de fala fragmentada por pausa (só o entrevistador/sys — o mic não gera sugestão).
+let lastClosedSys = null; // { turnId, text, closedAt }
+// Se o proximo segmento sys fechar dentro desta janela apos o anterior, tratamos
+// como continuacao da MESMA pergunta (pausa pra respirar) em vez de fala nova.
+const CONTINUATION_WINDOW_MS = 3000;
 
 // Avalia a SUA resposta em background (sem travar a sessão) e, se a nota for boa,
 // guarda o par pergunta→resposta no banco. Silencioso: nada vai pra tela.
@@ -78,6 +83,7 @@ async function start(cfg) {
   }
   config = cfg;
   running = true;
+  lastClosedSys = null;
 
   console.log('[TranslationAssistant] iniciando...');
 
@@ -110,11 +116,19 @@ async function start(cfg) {
           return;
         }
 
-        const transcript = await transcribeAudio(audioPath, config.apiKey);
+        const rawTranscript = await transcribeAudio(audioPath, config.apiKey);
 
         // Ignora transcrições vazias ou ruído
-        if (!transcript || transcript.trim().length < 3) return;
-        lastInterviewerQuestion = transcript.trim();
+        if (!rawTranscript || rawTranscript.trim().length < 3) return;
+        const trimmed = rawTranscript.trim();
+        lastInterviewerQuestion = trimmed;
+
+        // Continuacao de fala: se o ultimo trecho do entrevistador fechou ha pouco
+        // tempo (pausa pra respirar, nao fim de pergunta), junta os textos e reprocessa
+        // a pergunta INTEIRA — em vez de responder so o pedaco novo fragmentado.
+        const prevClosed = lastClosedSys;
+        const isContinuation = !!(prevClosed && (Date.now() - prevClosed.closedAt) <= CONTINUATION_WINDOW_MS);
+        const transcript = isContinuation ? `${prevClosed.text} ${trimmed}`.trim() : trimmed;
 
         console.log(`[TranslationAssistant] sys (entrevistador): ${transcript.substring(0, 80)}...`);
 
@@ -137,11 +151,17 @@ async function start(cfg) {
           }
         );
 
+        if (isContinuation && resultCallback) {
+          // Marca o bloco do trecho anterior como superado — a pergunta continuava.
+          resultCallback({ id: prevClosed.turnId, response: '↳ pergunta continuou no trecho seguinte — veja a resposta completa abaixo.', mode: 'interviewer' });
+        }
+
         // response === null → filler já descartado no openaiClient (nada renderizado).
         // Senão, manda o resultado FINAL (streaming:false) pra fechar o bloco.
         if (response && resultCallback) {
           resultCallback({ id: turnId, transcript, response, mode: 'interviewer', streaming: false });
         }
+        lastClosedSys = { turnId, text: transcript, closedAt: Date.now() };
       } catch (err) {
         console.error('[TranslationAssistant] erro no processamento:', err.message);
       } finally {

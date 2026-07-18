@@ -57,6 +57,16 @@ module.exports = {
       return { ok: false, error: `path "${target}" não está em nenhum anexo do workspace. Adicione a pasta/arquivo primeiro.` };
     }
     const existed = fss.existsSync(target);
+    if (existed) {
+      const stats = fss.statSync(target);
+      const sizeKB = stats.size / 1024;
+      if (sizeKB > 30) {
+        return {
+          ok: false,
+          error: `O arquivo alvo "${target}" existe e é muito grande (${Math.round(sizeKB)}KB) para ser sobrescrito com writeFile (risco de truncamento pela API). Por favor, use patchFile para modificar apenas os trechos necessários.`
+        };
+      }
+    }
     const action = existed ? "SOBRESCREVER" : "CRIAR";
     
     let confirmed = false;

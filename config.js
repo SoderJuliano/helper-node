@@ -1,4 +1,5 @@
 const { ipcRenderer } = require("electron");
+const { supportsReasoningEffort } = require("./services/openAiRealtimeModels");
 
 const instructionTextarea = document.getElementById("prompt-instruction");
 const saveButton = document.getElementById("save-btn");
@@ -23,12 +24,37 @@ const openIaTokenContainer = document.getElementById("openai-token-container");
 const openIaTokenInput = document.getElementById("openai-token");
 const openAiModelContainer = document.getElementById("openai-model-container");
 const openAiModelSelect = document.getElementById("openai-model-select");
+const realtimeFastModelNote = document.getElementById("realtime-fast-model-note");
+
+function updateRealtimeFastModelNote() {
+  if (!realtimeFastModelNote) return;
+  realtimeFastModelNote.style.display = supportsReasoningEffort(openAiModelSelect.value) ? 'block' : 'none';
+}
+if (openAiModelSelect) {
+  openAiModelSelect.addEventListener('change', updateRealtimeFastModelNote);
+}
+const openAiReasoningEffortContainer = document.getElementById("openai-reasoning-effort-container");
+const openAiReasoningEffortSelect = document.getElementById("openai-reasoning-effort-select");
+const openAiVisionModelContainer = document.getElementById("openai-vision-model-container");
+const openAiVisionModelSelect = document.getElementById("openai-vision-model-select");
 const ollamaLocalModelContainer = document.getElementById("ollama-local-model-container");
 const ollamaLocalModelSelect = document.getElementById("ollama-local-model-select");
 const ollamaLocalInfo = document.getElementById("ollama-local-info");
 const ollamaPullCmd = document.getElementById("ollama-local-pull-cmd");
 const checkOllamaBtn = document.getElementById("check-ollama-btn");
 const ollamaStatusResult = document.getElementById("ollama-status-result");
+// Gemini CLI elements
+const geminiCliModelContainer = document.getElementById("gemini-cli-model-container");
+const geminiCliModelSelect = document.getElementById("gemini-cli-model-select");
+const geminiCliInfo = document.getElementById("gemini-cli-info");
+const checkGeminiCliBtn = document.getElementById("check-gemini-cli-btn");
+const geminiCliStatusResult = document.getElementById("gemini-cli-status-result");
+// Claude Code CLI elements
+const claudeCliModelContainer = document.getElementById("claude-cli-model-container");
+const claudeCliModelSelect = document.getElementById("claude-cli-model-select");
+const claudeCliInfo = document.getElementById("claude-cli-info");
+const checkClaudeCliBtn = document.getElementById("check-claude-cli-btn");
+const claudeCliStatusResult = document.getElementById("claude-cli-status-result");
 
 // Helper function to update the debug mode status text
 function updateDebugModeStatus(isDebugging) {
@@ -61,12 +87,15 @@ function updateWorkspaceAccessStatus(isEnabled) {
   workspaceAccessStatus.textContent = isEnabled ? "ON" : "OFF";
 }
 
-// Mostra/oculta workspaceAccess dependendo do modelo: só disponível pro OpenAI.
+// Mostra/oculta workspaceAccess.
+// Disponível para OpenAI (helperTools lê o projeto) e para os CLIs (define o
+// diretório de trabalho que o CLI usa como cwd e contexto de repositório).
+// Backends genéricos e Ollama não suportam — esconde e desliga.
 function applyWorkspaceAccessVisibility(model) {
   if (!workspaceAccessItem) return;
-  const isOpenAI = model === 'openIa';
-  workspaceAccessItem.style.display = isOpenAI ? '' : 'none';
-  if (!isOpenAI && workspaceAccessToggle) {
+  const supportsWorkspace = model === 'openIa' || model === 'geminiCli' || model === 'claudeCli';
+  workspaceAccessItem.style.display = supportsWorkspace ? '' : 'none';
+  if (!supportsWorkspace && workspaceAccessToggle) {
     workspaceAccessToggle.checked = false;
     updateWorkspaceAccessStatus(false);
   }
@@ -82,12 +111,16 @@ function applyLiteUi() {
     const si = aiModelSelect.closest('.setting-item');
     if (si) si.style.display = 'none';
   } catch (_) {}
-  ['backend-api-key-container', 'ollama-local-model-container', 'ollama-local-info'].forEach((id) => {
+  ['backend-api-key-container', 'ollama-local-model-container', 'ollama-local-info',
+   'gemini-cli-model-container', 'gemini-cli-info',
+   'claude-cli-model-container', 'claude-cli-info'].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
   });
   if (openIaTokenContainer) openIaTokenContainer.style.display = 'flex';
   if (openAiModelContainer) openAiModelContainer.style.display = 'flex';
+  if (openAiReasoningEffortContainer) openAiReasoningEffortContainer.style.display = 'flex';
+  if (openAiVisionModelContainer) openAiVisionModelContainer.style.display = 'flex';
 }
 
 // Edição do app (full/lite), preenchida no load. Controla a visibilidade da URL do backend.
@@ -234,6 +267,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     aiModelSelect.value = savedAiModel;
   }
   applyWorkspaceAccessVisibility(aiModelSelect.value);
+  // Se já está num provider CLI, desabilita helperTools visualmente.
+  const _isCliInit = (aiModelSelect.value === 'geminiCli' || aiModelSelect.value === 'claudeCli');
+  if (_isCliInit && helperToolsToggle) {
+    helperToolsToggle.disabled = true;
+    helperToolsToggle.checked = false;
+    updateHelperToolsStatus(false);
+    const si = helperToolsToggle.closest && helperToolsToggle.closest('.setting-item');
+    if (si) si.style.opacity = '0.4';
+  }
   const _isOllamaInit = (aiModelSelect.value === 'llama' || aiModelSelect.value === 'ollamaLocal');
   const backendApiKeyContainerInit = document.getElementById('backend-api-key-container');
   if (backendApiKeyContainerInit) backendApiKeyContainerInit.style.display = _isOllamaInit ? 'flex' : 'none';
@@ -270,6 +312,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (savedOpenAiModel) {
     openAiModelSelect.value = savedOpenAiModel;
   }
+  updateRealtimeFastModelNote();
+
+  // Load saved reasoning effort e modelo de visão
+  try {
+    const savedEffort = await ipcRenderer.invoke("get-openai-reasoning-effort");
+    if (savedEffort && openAiReasoningEffortSelect) openAiReasoningEffortSelect.value = savedEffort;
+  } catch (e) { console.warn("get-openai-reasoning-effort failed:", e); }
+  try {
+    const savedVisionModel = await ipcRenderer.invoke("get-openai-vision-model");
+    if (savedVisionModel && openAiVisionModelSelect) openAiVisionModelSelect.value = savedVisionModel;
+  } catch (e) { console.warn("get-openai-vision-model failed:", e); }
 
   // Load saved Ollama Local model
   try {
@@ -280,14 +333,38 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   } catch (e) { console.warn("ollama local model load failed:", e); }
 
-  // Show/hide OpenAI fields based on saved model
+  // Load saved Claude Code CLI model
+  try {
+    const savedClaudeCliModel = await ipcRenderer.invoke("get-claude-cli-model");
+    if (savedClaudeCliModel && claudeCliModelSelect) {
+      claudeCliModelSelect.value = savedClaudeCliModel;
+    }
+  } catch (e) { console.warn("claude-cli model load failed:", e); }
+
+  // Load saved Gemini CLI model
+  try {
+    const savedGeminiCliModel = await ipcRenderer.invoke("get-gemini-cli-model");
+    if (savedGeminiCliModel && geminiCliModelSelect) {
+      geminiCliModelSelect.value = savedGeminiCliModel;
+    }
+  } catch (e) { console.warn("gemini-cli model load failed:", e); }
+
+  // Show/hide provider fields based on saved model
   if (aiModelSelect.value === 'openIa') {
     openIaTokenContainer.style.display = 'flex';
     openAiModelContainer.style.display = 'flex';
+    if (openAiReasoningEffortContainer) openAiReasoningEffortContainer.style.display = 'flex';
+    if (openAiVisionModelContainer) openAiVisionModelContainer.style.display = 'flex';
   } else if (aiModelSelect.value === 'ollamaLocal') {
     if (ollamaLocalModelContainer) ollamaLocalModelContainer.style.display = 'flex';
     if (ollamaLocalInfo) ollamaLocalInfo.style.display = 'block';
     applyOllamaLocalExclusivity();
+  } else if (aiModelSelect.value === 'geminiCli') {
+    if (geminiCliModelContainer) geminiCliModelContainer.style.display = 'flex';
+    if (geminiCliInfo) geminiCliInfo.style.display = 'block';
+  } else if (aiModelSelect.value === 'claudeCli') {
+    if (claudeCliModelContainer) claudeCliModelContainer.style.display = 'flex';
+    if (claudeCliInfo) claudeCliInfo.style.display = 'block';
   }
 
   // -------------------------
@@ -391,16 +468,33 @@ function releaseOllamaLocalExclusivity() {
   // nada a fazer — visibilidade do workspaceAccess já é controlada por applyWorkspaceAccessVisibility
 }
 
-// Show/hide OpenAI/Ollama fields based on AI model selection
+// Show/hide OpenAI/Ollama/GeminiCli fields based on AI model selection
 aiModelSelect.addEventListener('change', () => {
     const v = aiModelSelect.value;
     const isOllama = (v === 'llama' || v === 'ollamaLocal');
+    const isCli = (v === 'geminiCli' || v === 'claudeCli');
     openIaTokenContainer.style.display = (v === 'openIa') ? 'flex' : 'none';
     openAiModelContainer.style.display = (v === 'openIa') ? 'flex' : 'none';
+    if (openAiReasoningEffortContainer) openAiReasoningEffortContainer.style.display = (v === 'openIa') ? 'flex' : 'none';
+    if (openAiVisionModelContainer) openAiVisionModelContainer.style.display = (v === 'openIa') ? 'flex' : 'none';
     if (ollamaLocalModelContainer) ollamaLocalModelContainer.style.display = (v === 'ollamaLocal') ? 'flex' : 'none';
     if (ollamaLocalInfo) ollamaLocalInfo.style.display = (v === 'ollamaLocal') ? 'block' : 'none';
+    if (geminiCliModelContainer) geminiCliModelContainer.style.display = (v === 'geminiCli') ? 'flex' : 'none';
+    if (geminiCliInfo) geminiCliInfo.style.display = (v === 'geminiCli') ? 'block' : 'none';
+    if (claudeCliModelContainer) claudeCliModelContainer.style.display = (v === 'claudeCli') ? 'flex' : 'none';
+    if (claudeCliInfo) claudeCliInfo.style.display = (v === 'claudeCli') ? 'block' : 'none';
     const backendApiKeyContainer = document.getElementById('backend-api-key-container');
     if (backendApiKeyContainer) backendApiKeyContainer.style.display = isOllama ? 'flex' : 'none';
+    // CLI providers gerenciam suas próprias ferramentas — helperTools fica desabilitado.
+    if (helperToolsToggle) {
+      helperToolsToggle.disabled = isCli;
+      helperToolsToggle.closest && helperToolsToggle.closest('.setting-item') &&
+        (helperToolsToggle.closest('.setting-item').style.opacity = isCli ? '0.4' : '');
+      if (isCli && helperToolsToggle.checked) {
+        helperToolsToggle.checked = false;
+        updateHelperToolsStatus(false);
+      }
+    }
     applyWorkspaceAccessVisibility(v);
     if (v === 'ollamaLocal') applyOllamaLocalExclusivity();
     else releaseOllamaLocalExclusivity();
@@ -434,6 +528,42 @@ if (checkOllamaBtn) {
             ollamaStatusResult.style.color = '#ff6b6b';
         }
     });
+}
+
+if (checkClaudeCliBtn) {
+  checkClaudeCliBtn.addEventListener('click', async () => {
+    if (!claudeCliStatusResult) return;
+    claudeCliStatusResult.textContent = 'Verificando...';
+    claudeCliStatusResult.style.color = '#888';
+    try {
+      const res = await ipcRenderer.invoke('check-claude-cli-installed');
+      if (res && res.installed) {
+        claudeCliStatusResult.innerHTML = '<span style="color:#9ef0a8">✓ Claude Code CLI instalado.</span>';
+      } else {
+        claudeCliStatusResult.innerHTML = '<span style="color:#ff6b6b">✗ Não encontrado.</span> Instale com <code style="background:#0d0d0d;padding:2px 5px;border-radius:3px;color:#9ef0a8;">npm install -g @anthropic-ai/claude-code</code>';
+      }
+    } catch (e) {
+      claudeCliStatusResult.innerHTML = `<span style="color:#ff6b6b">Erro: ${e.message}</span>`;
+    }
+  });
+}
+
+if (checkGeminiCliBtn) {
+  checkGeminiCliBtn.addEventListener('click', async () => {
+    if (!geminiCliStatusResult) return;
+    geminiCliStatusResult.textContent = 'Verificando...';
+    geminiCliStatusResult.style.color = '#888';
+    try {
+      const res = await ipcRenderer.invoke('check-gemini-cli-installed');
+      if (res && res.installed) {
+        geminiCliStatusResult.innerHTML = '<span style="color:#9ef0a8">✓ Gemini CLI instalado e pronto.</span>';
+      } else {
+        geminiCliStatusResult.innerHTML = '<span style="color:#ff6b6b">✗ Não encontrado.</span> Instale com <code style="background:#0d0d0d;padding:2px 5px;border-radius:3px;color:#9ef0a8;">npm install -g @google/gemini-cli</code>';
+      }
+    } catch (e) {
+      geminiCliStatusResult.innerHTML = `<span style="color:#ff6b6b">Erro: ${e.message}</span>`;
+    }
+  });
 }
 
 // Save everything
@@ -472,9 +602,27 @@ saveButton.addEventListener("click", async () => {
   // Save OpenAI model
   ipcRenderer.send("set-openai-model", openAiModelSelect.value);
 
+  // Save reasoning effort e modelo de visão
+  if (openAiReasoningEffortSelect) {
+    ipcRenderer.send("set-openai-reasoning-effort", openAiReasoningEffortSelect.value);
+  }
+  if (openAiVisionModelSelect) {
+    ipcRenderer.send("set-openai-vision-model", openAiVisionModelSelect.value);
+  }
+
   // Save Ollama Local model
   if (ollamaLocalModelSelect) {
     ipcRenderer.send("set-ollama-local-model", ollamaLocalModelSelect.value);
+  }
+
+  // Save Claude Code CLI model
+  if (claudeCliModelSelect) {
+    ipcRenderer.send("set-claude-cli-model", claudeCliModelSelect.value);
+  }
+
+  // Save Gemini CLI model
+  if (geminiCliModelSelect) {
+    ipcRenderer.send("set-gemini-cli-model", geminiCliModelSelect.value);
   }
 
   // Always save OpenAI token, regardless of current model
@@ -487,16 +635,6 @@ saveButton.addEventListener("click", async () => {
     ipcRenderer.send("save-backend-api-key", backendApiKeyInput.value);
   }
 
-  // Salvar a base de conhecimento (texto + habilitado). Sem reescrita automática: a
-  // reorganização é manual, pelo botão "Resumir e organizar com IA".
-  try {
-    await ipcRenderer.invoke('kb-save', {
-      text: kbText ? kbText.value : '',
-      aiRewrite: false,
-      enabled: kbEnabledToggle ? kbEnabledToggle.checked : true,
-    });
-  } catch (e) { console.warn('[kb] save on close failed:', e.message); }
-
   // Close window
   window.close();
 });
@@ -508,10 +646,10 @@ document.getElementById("clear-openai-token").addEventListener("click", () => {
 });
 
 // === Assistente de Tradução ===
+// Nome/background do usuário (dados pessoais) moraram pra preferences.js —
+// ver "Preferências do Usuário". Aqui só o que é funcional/técnico do tradutor.
 const translationEnabledToggle = document.getElementById('translation-enabled');
 const translationEnabledStatus = document.getElementById('translation-enabled-status');
-const translationUsernameInput = document.getElementById('translation-username');
-const translationBackgroundInput = document.getElementById('translation-background');
 const translationTargetLangSelect = document.getElementById('translation-target-lang');
 
 function updateTranslationEnabledStatus(v) {
@@ -527,18 +665,6 @@ if (translationEnabledToggle) {
       updateRealtimeAssistantStatus(false);
     }
     ipcRenderer.send('set-translation-assistant-config', { enabled: translationEnabledToggle.checked });
-  });
-}
-
-if (translationUsernameInput) {
-  translationUsernameInput.addEventListener('input', () => {
-    ipcRenderer.send('set-translation-assistant-config', { userName: translationUsernameInput.value });
-  });
-}
-
-if (translationBackgroundInput) {
-  translationBackgroundInput.addEventListener('input', () => {
-    ipcRenderer.send('set-translation-assistant-config', { userBackground: translationBackgroundInput.value });
   });
 }
 
@@ -604,8 +730,6 @@ if (translationMicRefresh) {
       translationEnabledToggle.checked = !!ta.enabled;
       updateTranslationEnabledStatus(!!ta.enabled);
     }
-    if (translationUsernameInput) translationUsernameInput.value = ta.userName || '';
-    if (translationBackgroundInput) translationBackgroundInput.value = ta.userBackground || '';
     if (translationTargetLangSelect) translationTargetLangSelect.value = ta.targetLanguage || 'pt-br';
     // Modo de Teste é só por sessão — sempre começa desmarcado ao abrir o config.
     if (translationTestModeInput) translationTestModeInput.checked = false;
@@ -615,57 +739,12 @@ if (translationMicRefresh) {
   }
 })();
 
-// === Base de Conhecimento (RAG) ===
-const kbEnabledToggle = document.getElementById('kb-enabled');
-const kbEnabledStatus = document.getElementById('kb-enabled-status');
-const kbText = document.getElementById('kb-text');
-const kbRewriteBtn = document.getElementById('kb-rewrite-btn');
-const kbStatus = document.getElementById('kb-status');
-
-function updateKbEnabledStatus(v) { if (kbEnabledStatus) kbEnabledStatus.textContent = v ? 'ON' : 'OFF'; }
-
-if (kbEnabledToggle) kbEnabledToggle.addEventListener('change', () => updateKbEnabledStatus(kbEnabledToggle.checked));
-
-// "Resumir e organizar com IA": reescreve o texto da base e devolve NO CAMPO (não salva —
-// salvar é no "Salvar e Fechar"). Mantém as travas (pula código, descarta se encurtar).
-if (kbRewriteBtn) {
-  kbRewriteBtn.addEventListener('click', async () => {
-    if (!kbText || !kbText.value.trim()) {
-      if (kbStatus) { kbStatus.style.color = '#ffb74d'; kbStatus.textContent = 'Cole algum texto primeiro.'; }
-      return;
-    }
-    if (kbStatus) { kbStatus.style.color = '#888'; kbStatus.textContent = 'Reorganizando com IA…'; }
-    kbRewriteBtn.disabled = true;
-    try {
-      const res = await ipcRenderer.invoke('kb-rewrite', { text: kbText.value });
-      if (res && res.ok) {
-        if (typeof res.text === 'string') kbText.value = res.text;
-        if (kbStatus) {
-          if (res.codeSkipped) { kbStatus.style.color = '#9ef0a8'; kbStatus.textContent = 'Contém código — mantido sem reorganizar.'; }
-          else if (res.shrunk) { kbStatus.style.color = '#ffb74d'; kbStatus.textContent = 'A IA encurtou demais — mantive o original.'; }
-          else if (res.rewritten) { kbStatus.style.color = '#9ef0a8'; kbStatus.textContent = 'Reorganizado ✓ — lembre de Salvar e Fechar.'; }
-          else { kbStatus.style.color = '#888'; kbStatus.textContent = 'Sem alterações.'; }
-        }
-      } else if (kbStatus) {
-        kbStatus.style.color = '#ff6b6b'; kbStatus.textContent = 'Erro: ' + ((res && res.error) || 'falha ao reorganizar');
-      }
-    } catch (e) {
-      if (kbStatus) { kbStatus.style.color = '#ff6b6b'; kbStatus.textContent = 'Erro: ' + e.message; }
-    } finally {
-      kbRewriteBtn.disabled = false;
-    }
-  });
+// Base de Conhecimento (RAG) e dados pessoais (nome/background) moraram pra
+// preferences.js — ver "Preferências do Usuário".
+const openPreferencesBtn = document.getElementById('open-preferences-btn');
+if (openPreferencesBtn) {
+  openPreferencesBtn.addEventListener('click', () => ipcRenderer.send('open-preferences-ui'));
 }
-
-(async () => {
-  try {
-    const kb = await ipcRenderer.invoke('kb-get');
-    if (!kb) return;
-    if (kbEnabledToggle) { kbEnabledToggle.checked = kb.enabled !== false; updateKbEnabledStatus(kbEnabledToggle.checked); }
-    if (kbText) kbText.value = kb.source || '';
-    if (kbStatus && kb.chunks != null) kbStatus.textContent = kb.chunks ? `${kb.chunks} trecho(s) indexado(s)` : 'vazio';
-  } catch (e) { console.warn('[kb] load failed:', e.message); }
-})();
 
 // === "Instrução para IA": read-only por padrão + cadeado (área sensível) ===
 const promptEditToggle = document.getElementById('prompt-edit-toggle');

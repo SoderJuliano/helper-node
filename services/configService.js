@@ -10,7 +10,8 @@ const PROMPT_PT = [
   "2. Se houver uma PERGUNTA OBJETIVA (múltipla escolha, verdadeiro/falso, definição) → indique a alternativa correta e justifique em 1 linha.",
   "3. Se for um CONCEITO TÉCNICO → explique de forma direta e dê um exemplo curto (código, fórmula ou caso prático).",
   "4. Se for um PEDIDO DE CÓDIGO → entregue o código funcional, sem encher de comentário.",
-  "5. Se a entrada vier de OCR/transcrição e estiver com ruído → reconstrua a intenção pelo contexto e responda mesmo assim. NUNCA diga 'não consegui ler' — chute o melhor entendimento.",
+  "5. Se a imagem mostrar um ENUNCIADO/ESPECIFICAÇÃO TÉCNICA (README de projeto, requisitos de sistema, trecho de código incompleto/IDE) → PROPONHA uma implementação concreta (estrutura de classes, endpoints, trecho de código relevante), não apenas descreva o que está na tela.",
+  "6. Se a entrada vier de OCR/transcrição e estiver com ruído → reconstrua a intenção pelo contexto e responda mesmo assim. NUNCA diga 'não consegui ler' — chute o melhor entendimento.",
   "",
   "FORMATO:",
   "- Texto explicativo: máximo 65 palavras.",
@@ -31,7 +32,8 @@ const PROMPT_EN = [
   "2. If there is an OBJECTIVE QUESTION (multiple choice, true/false, definition) → give the correct option and justify in 1 line.",
   "3. If it is a TECHNICAL CONCEPT → explain directly and give a short example (code, formula, or practical case).",
   "4. If it is a CODE REQUEST → deliver working code, no fluff comments.",
-  "5. If the input comes from OCR/transcription and is noisy → reconstruct intent from context and answer anyway. NEVER say 'I cannot read' — take the best guess.",
+  "5. If the image shows a TECHNICAL SPEC (project README, system requirements, incomplete code/IDE) → PROPOSE a concrete implementation (class structure, endpoints, relevant code snippet), not just a description of what's on screen.",
+  "6. If the input comes from OCR/transcription and is noisy → reconstruct intent from context and answer anyway. NEVER say 'I cannot read' — take the best guess.",
   "",
   "FORMAT:",
   "- Explanatory text: max 65 words.",
@@ -55,7 +57,8 @@ const PROMPT_PT_LITE = [
   "2. PERGUNTA OBJETIVA (múltipla escolha, V/F, definição) → alternativa correta + 1 linha de justificativa.",
   "3. CONCEITO TÉCNICO → explique direto + exemplo curto.",
   "4. PEDIDO DE CÓDIGO → entregue código funcional, sem encher de comentário.",
-  "5. Entrada com ruído (imagem/áudio) → reconstrua a intenção e responda mesmo assim. Nunca diga 'não consegui ler'.",
+  "5. ENUNCIADO/ESPECIFICAÇÃO TÉCNICA na tela (README, requisitos, IDE) → PROPONHA implementação concreta (estrutura, endpoints, trecho de código), não só descreva.",
+  "6. Entrada com ruído (imagem/áudio) → reconstrua a intenção e responda mesmo assim. Nunca diga 'não consegui ler'.",
   "",
   "FORMATO:",
   "- Texto explicativo: máximo 65 palavras. Código/fórmulas/contas: sem limite.",
@@ -72,7 +75,8 @@ const PROMPT_EN_LITE = [
   "2. OBJECTIVE QUESTION (multiple choice, true/false, definition) → correct option + 1-line justification.",
   "3. TECHNICAL CONCEPT → explain directly + short example.",
   "4. CODE REQUEST → deliver working code, no fluff comments.",
-  "5. Noisy input (image/audio) → reconstruct intent and answer anyway. Never say 'I cannot read'.",
+  "5. TECHNICAL SPEC on screen (README, requirements, IDE) → PROPOSE concrete implementation (structure, endpoints, code snippet), not just a description.",
+  "6. Noisy input (image/audio) → reconstruct intent and answer anyway. Never say 'I cannot read'.",
   "",
   "FORMAT:",
   "- Explanatory text: max 65 words. Code/formulas/calculations: no limit.",
@@ -90,6 +94,10 @@ const defaultConfig = {
   language: "pt-br",
   aiModel: "llama",
   openAiModel: "gpt-4.1-nano",
+  // Esforço de raciocínio (reasoning_effort) pra modelos gpt-5.x/o-series.
+  // "low" por padrão — prioriza velocidade de resposta. Só é enviado à API
+  // quando o modelo selecionado de fato aceita o parâmetro.
+  openAiReasoningEffort: "low",
   // Ollama LOCAL (rodando no PC do user na porta 11434). Independente do
   // backend Java remoto. App NAO instala Ollama nem baixa modelos — mostra
   // instrucoes na tela de Configuracoes pro user fazer manualmente.
@@ -113,6 +121,10 @@ const defaultConfig = {
   workspaceAccess: {
     enabled: false,
   },
+  // Gemini CLI provider — modelo escolhido pelo usuário dentro da lista do CLI.
+  geminiCliModel: "gemini-2.5-flash",
+  // Claude Code CLI provider.
+  claudeCliModel: "claude-sonnet-4-6",
   // API Key do backend remoto. Necessário para endpoints pesados (ex: qwen3.6-17b).
   // Endpoints leves (llama3, qwen25) usam o Bearer token fixo hardcoded.
   backendApiKey: "",
@@ -181,7 +193,11 @@ function loadConfig() {
         LEGACY_DEFAULTS.includes(loadedConfig.promptInstruction.trim()) ||
         // Prompt antigo (sem a regra anti-LaTeX adicionada nesta versão).
         // Detecta pela ausência da palavra-chave única.
-        !loadedConfig.promptInstruction.includes('LaTeX');
+        !loadedConfig.promptInstruction.includes('LaTeX') ||
+        // Prompt antigo (sem a regra de "especificação técnica → proponha
+        // implementação" adicionada nesta versão). Detecta pela ausência da
+        // palavra-chave única em qualquer um dos dois idiomas.
+        (!loadedConfig.promptInstruction.includes('PROPONHA') && !loadedConfig.promptInstruction.includes('PROPOSE'));
       if (isLegacy) {
         loadedConfig.promptInstruction = getDefaultPromptInstruction(lang);
       }
@@ -318,8 +334,18 @@ function setAiModel(aiModel) {
     currentConfig = loadConfig();
   }
   currentConfig.aiModel = aiModel;
-  // Mutex: ollamaLocal NAO suporta helperTools/workspaceAccess nesta versao
-  // (decisao do user pra manter simples). Desliga automaticamente.
+  // CLIs externos: desliga helperTools (o CLI gerencia suas próprias ferramentas),
+  // mas mantém workspaceAccess — ele controla o painel de projeto/diretório, que
+  // os CLIs usam como cwd e contexto de qual repositório trabalhar.
+  if (aiModel === 'geminiCli' || aiModel === 'claudeCli') {
+    if (currentConfig.helperTools && currentConfig.helperTools.enabled) {
+      currentConfig.helperTools.enabled = false;
+      console.log(`[config] ${aiModel} selecionado → helperTools desligado (CLI gerencia ferramentas)`);
+    }
+    saveConfig(currentConfig);
+    currentConfig = null;
+    return;
+  }
   if (aiModel === 'ollamaLocal') {
     if (currentConfig.helperTools && currentConfig.helperTools.enabled) {
       currentConfig.helperTools.enabled = false;
@@ -349,6 +375,22 @@ function setOpenAiModel(model) {
   currentConfig = null;
 }
 
+function getOpenAiReasoningEffort() {
+  if (!currentConfig) {
+    currentConfig = loadConfig();
+  }
+  return currentConfig.openAiReasoningEffort || defaultConfig.openAiReasoningEffort;
+}
+
+function setOpenAiReasoningEffort(effort) {
+  if (!currentConfig) {
+    currentConfig = loadConfig();
+  }
+  currentConfig.openAiReasoningEffort = effort;
+  saveConfig(currentConfig);
+  currentConfig = null;
+}
+
 function getOpenAiVisionModel() {
   if (!currentConfig) {
     currentConfig = loadConfig();
@@ -361,6 +403,30 @@ function setOpenAiVisionModel(model) {
     currentConfig = loadConfig();
   }
   currentConfig.openAiVisionModel = model;
+  saveConfig(currentConfig);
+  currentConfig = null;
+}
+
+function getClaudeCliModel() {
+  if (!currentConfig) currentConfig = loadConfig();
+  return currentConfig.claudeCliModel || defaultConfig.claudeCliModel;
+}
+
+function setClaudeCliModel(model) {
+  if (!currentConfig) currentConfig = loadConfig();
+  currentConfig.claudeCliModel = model || defaultConfig.claudeCliModel;
+  saveConfig(currentConfig);
+  currentConfig = null;
+}
+
+function getGeminiCliModel() {
+  if (!currentConfig) currentConfig = loadConfig();
+  return currentConfig.geminiCliModel || defaultConfig.geminiCliModel;
+}
+
+function setGeminiCliModel(model) {
+  if (!currentConfig) currentConfig = loadConfig();
+  currentConfig.geminiCliModel = model || defaultConfig.geminiCliModel;
   saveConfig(currentConfig);
   currentConfig = null;
 }
@@ -503,8 +569,11 @@ function getWorkspaceAccessEnabled() {
 function setWorkspaceAccessEnabled(enabled) {
   if (!currentConfig) currentConfig = loadConfig();
   if (!currentConfig.workspaceAccess) currentConfig.workspaceAccess = {};
-  // Só permite ligar se helperTools estiver ligado.
-  if (enabled && !(currentConfig.helperTools && currentConfig.helperTools.enabled)) {
+  // Para OpenAI, requer helperTools ligado (quem faz a leitura de arquivos).
+  // Para CLIs (geminiCli, claudeCli), o CLI usa o diretório diretamente — sem restrição.
+  const model = currentConfig.aiModel || 'openIa';
+  const isCli = model === 'geminiCli' || model === 'claudeCli';
+  if (enabled && !isCli && !(currentConfig.helperTools && currentConfig.helperTools.enabled)) {
     console.warn("[config] workspaceAccess requer helperTools ligado — ignorando");
     return;
   }
@@ -613,8 +682,14 @@ module.exports = {
   setOpenIaToken,
   getOpenAiModel,
   setOpenAiModel,
+  getOpenAiReasoningEffort,
+  setOpenAiReasoningEffort,
   getOpenAiVisionModel,
   setOpenAiVisionModel,
+  getClaudeCliModel,
+  setClaudeCliModel,
+  getGeminiCliModel,
+  setGeminiCliModel,
   getOllamaLocalModel,
   setOllamaLocalModel,
   getOllamaLocalHost,

@@ -22,6 +22,7 @@ const { startCapture, stopCapture } = require('./realtimeAudioCapture');
 const knowledgeBase = require('./knowledgeBase');
 const answerBank = require('./answerBank');
 const { evaluateUserResponse } = require('./translationAssistant/openaiClient');
+const { applyRealtimeOverride, supportsReasoningEffort, maxTokensParam, raceWithTimeout, RAG_TIMEOUT_MS } = require('./openAiRealtimeModels');
 
 // Transcrição própria (NÃO importa nada do Assistente de Tradução — totalmente
 // independente). Envia o WAV pro endpoint de transcrição da OpenAI.
@@ -45,11 +46,45 @@ async function transcribeAudio(audioPath, apiKey, model) {
   return data.text;
 }
 
+// Classificador rápido/barato — decide se um trecho AINDA gravando já contém
+// uma pergunta completa que merece resposta agora. Texto curto + modelo nano =
+// resposta em poucas centenas de ms, bem mais confiável que checar só se
+// termina com "?" (muita pergunta real não termina literalmente assim).
+const QUESTION_CHECK_MODEL = 'gpt-4.1-nano';
+async function isCompleteQuestion(transcript, token) {
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: QUESTION_CHECK_MODEL,
+        max_tokens: 3,
+        messages: [
+          {
+            role: 'system',
+            content: 'Você está monitorando a fala de um entrevistador em tempo real, durante uma entrevista de emprego técnica. ' +
+              'Dado o trecho transcrito até agora, responda APENAS "SIM" se ele já contém uma pergunta completa e clara que merece ' +
+              'resposta imediata, ou "NAO" se ainda está incompleto, é só contexto/comentário, ou não há pergunta nenhuma. Na dúvida, responda "SIM".',
+          },
+          { role: 'user', content: transcript },
+        ],
+      }),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    const answer = (data.choices?.[0]?.message?.content || '').trim().toUpperCase();
+    return answer.startsWith('SIM');
+  } catch (_) {
+    return false; // falhou a checagem: não força resposta precoce, o fechamento normal do segmento ainda processa depois
+  }
+}
+
 const TRANSCRIBE_MODEL = 'gpt-4o-transcribe';
-// nano é fraco demais pra copiloto em tempo real (respostas simplistas). Quando
-// o usuário deixa o default, sobe pra gpt-4.1 só aqui no realtime.
-const REALTIME_MODEL_FLOOR = { 'gpt-4.1-nano': 'gpt-4.1' };
 const CHAT_MAX_TOKENS = 700;
+// Se o proximo segmento (mesma fonte: mic ou sys) fechar dentro desta janela
+// apos o anterior, tratamos como continuacao da MESMA pergunta (pausa pra
+// respirar) — juntamos os textos e reprocessamos a pergunta inteira.
+const CONTINUATION_WINDOW_MS = 3000;
 
 class RealtimeOpenAiService {
   constructor({ configService, getMainWindow, onFatalStop, historyService }) {
@@ -65,6 +100,11 @@ class RealtimeOpenAiService {
     this.maxIterationsInContext = 10;
     // Última pergunta do interlocutor (sys) — pareada com a SUA resposta (mic) p/ o banco.
     this._lastInterviewerQuestion = '';
+    // Fusao de fala fragmentada por pausa — rastreado por fonte (mic/sys nao se misturam).
+    this.lastClosedBySource = { mic: null, sys: null };
+    // Último texto (parcial, ainda gravando) já respondido via snapshot interino —
+    // evita responder a mesma pergunta de novo a cada checagem de 4s.
+    this._interimAnswered = { mic: '', sys: '' };
   }
 
   isActive() { return this.active; }
@@ -76,6 +116,8 @@ class RealtimeOpenAiService {
     this.contextMessages = [];
     this.currentSessionId = null;
     this._lastInterviewerQuestion = '';
+    this.lastClosedBySource = { mic: null, sys: null };
+    this._interimAnswered = { mic: '', sys: '' };
 
     if (this.historyService) {
       try {
@@ -101,6 +143,7 @@ class RealtimeOpenAiService {
 
     await startCapture({
       onSpeechEnd: (audioPath, source) => this._handleSegment(audioPath, source),
+      onInterim: (audioPath, source) => this._handleInterim(audioPath, source),
       sysTarget,
       micTarget,
     });
@@ -176,16 +219,104 @@ class RealtimeOpenAiService {
       // Sua fala em modo both: já transcreveu e alimentou o banco — não gera sugestão.
       if (!respondToSegment) return;
 
+      // Já respondemos essa pergunta via snapshot interino (enquanto o segmento
+      // ainda gravava)? Não repete a resposta — só segue com o que veio DEPOIS dela.
+      let effectiveTranscript = transcript;
+      const alreadyAnswered = this._interimAnswered[source];
+      if (alreadyAnswered && transcript.startsWith(alreadyAnswered)) {
+        this._interimAnswered[source] = '';
+        effectiveTranscript = transcript.slice(alreadyAnswered.length).trim();
+        if (!effectiveTranscript) {
+          // Nada de novo depois da pergunta já respondida — so atualiza o estado e sai.
+          this.lastClosedBySource[source] = { id, text: transcript, closedAt: Date.now() };
+          return;
+        }
+      }
+
+      // Continuacao de fala: se o ultimo segmento DESSA MESMA fonte fechou ha pouco
+      // tempo (pausa pra respirar, nao fim de pergunta), junta os textos e reprocessa
+      // a pergunta INTEIRA — em vez de responder so o pedaco novo fragmentado.
+      const prevClosed = this.lastClosedBySource[source];
+      const isContinuation = !!(prevClosed && (Date.now() - prevClosed.closedAt) <= CONTINUATION_WINDOW_MS);
+      const askText = isContinuation ? `${prevClosed.text} ${effectiveTranscript}`.trim() : effectiveTranscript;
+      if (isContinuation) {
+        // Mostra a pergunta completa (com o trecho anterior) na bolha de transcricao.
+        this.emitUpdate({ type: 'segment_whisper_correction', id, iteration, text: askText, source: 'openai', timestamp: new Date().toISOString() });
+      }
+
       // Streaming: emite segment_response parcial com o MESMO id; a UI atualiza a
       // bolha no lugar (rtSegments.get(payload.id)). Throttle já é feito no _askAI.
+      const response = await this._askAI(askText, token, (partial) => {
+        this.emitUpdate({ type: 'segment_response', id, iteration, response: partial, source: 'openai', timestamp: new Date().toISOString() });
+      });
+      if (isContinuation) {
+        // Marca a resposta do trecho anterior como superada — a pergunta continuava.
+        this.emitUpdate({ type: 'segment_response', id: prevClosed.id, response: '↳ pergunta continuou no trecho seguinte — veja a resposta completa abaixo.', timestamp: new Date().toISOString() });
+      }
+      // Emite o texto final completo (garante o conteúdo inteiro mesmo se o último delta foi throttled).
+      this.emitUpdate({ type: 'segment_response', id, iteration, response, source: 'openai', timestamp: new Date().toISOString() });
+      await this._writeHistory(askText, response);
+      this.lastClosedBySource[source] = { id, text: askText, closedAt: Date.now() };
+    } catch (err) {
+      this._handleError(err, id, iteration);
+    } finally {
+      try { if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath); } catch (_) {}
+    }
+  }
+
+  // ---------- Snapshot interino (segmento AINDA gravando) ----------
+  // Chamado a cada INTERIM_CHECK_MS enquanto o segmento 'sys' continua capturando,
+  // SEM esperar ele fechar. Se o texto até agora terminar numa pergunta completa,
+  // responde IMEDIATAMENTE — a gravação do segmento oficial continua em paralelo
+  // e vai fechar/processar normalmente depois (com dedup pra não repetir a resposta).
+  async _handleInterim(audioPath, source) {
+    if (!this.active || source !== 'sys') {
+      try { if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath); } catch (_) {}
+      return;
+    }
+    const cfg = this.configService.getConfig ? this.configService.getConfig() : {};
+    const mode = cfg.realtimeAudioMode || 'both';
+    // No modo 'mic' quem gera sugestão é o mic, não o sys — snapshot interino do
+    // sys não se aplica (mesma regra de respondToSegment do fluxo normal).
+    if (mode === 'mic') {
+      try { if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath); } catch (_) {}
+      return;
+    }
+    const token = this.configService.getOpenIaToken();
+    if (!token) {
+      try { if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath); } catch (_) {}
+      return;
+    }
+    let id = null, iteration = null;
+    try {
+      const transcript = (await transcribeAudio(audioPath, token, TRANSCRIBE_MODEL) || '').trim();
+      if (!transcript || transcript.length < 3) return;
+      // Já respondemos esse texto exato via outro snapshot? Evita repetir a
+      // cada checagem de 4s enquanto o trecho ainda não muda.
+      if (transcript === this._interimAnswered.sys) return;
+
+      const isQuestion = await isCompleteQuestion(transcript, token);
+      console.log(`[realtime-openai] interim "${transcript.slice(0, 80)}" → pergunta completa? ${isQuestion ? 'sim' : 'não'}`);
+      if (!isQuestion) return;
+
+      this._interimAnswered.sys = transcript;
+      id = 'seg_interim_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+      this.iterationCount += 1;
+      iteration = this.iterationCount;
+      this.emitUpdate({ type: 'segment_start', id, iteration, timestamp: new Date().toISOString() });
+      this.emitUpdate({ type: 'segment_whisper_correction', id, iteration, text: transcript, source: 'openai', timestamp: new Date().toISOString() });
+
       const response = await this._askAI(transcript, token, (partial) => {
         this.emitUpdate({ type: 'segment_response', id, iteration, response: partial, source: 'openai', timestamp: new Date().toISOString() });
       });
-      // Emite o texto final completo (garante o conteúdo inteiro mesmo se o último delta foi throttled).
       this.emitUpdate({ type: 'segment_response', id, iteration, response, source: 'openai', timestamp: new Date().toISOString() });
       await this._writeHistory(transcript, response);
+      this.lastClosedBySource.sys = { id, text: transcript, closedAt: Date.now() };
     } catch (err) {
-      this._handleError(err, id, iteration);
+      // CRÍTICO: se já criamos a bolha (segment_start), ela NUNCA pode ficar
+      // travada em "pensando…" pra sempre — sempre resolve com um erro visível.
+      if (id) this._handleError(err, id, iteration);
+      else console.error('[realtime-openai] interim error (antes da bolha):', err.message);
     } finally {
       try { if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath); } catch (_) {}
     }
@@ -215,10 +346,12 @@ class RealtimeOpenAiService {
   // onDelta(textoAcumulado): se passado, streama a resposta (sensação "bate pronto").
   async _askAI(transcript, token, onDelta) {
     const chosen = this.configService.getOpenAiModel();
-    const model = REALTIME_MODEL_FLOOR[chosen] || chosen;
+    const model = applyRealtimeOverride(chosen);
 
     // RAG: base de conhecimento (fatos atuais) + banco de respostas (suas respostas boas).
     // Embeda a query UMA vez e compartilha entre os dois → 0 chamada de rede a mais.
+    // Tempo real: isso NUNCA pode segurar a resposta além de RAG_TIMEOUT_MS — se
+    // a busca (embeddings, chamada de rede) demorar demais, segue sem esse contexto.
     let kbBlock = '', bankHint = '';
     try {
       const kbOn = this.configService.getKnowledgeBaseConfig
@@ -226,9 +359,14 @@ class RealtimeOpenAiService {
       const abOn = this.configService.getAnswerBankConfig
         ? this.configService.getAnswerBankConfig().enabled : false;
       if (kbOn || abOn) {
-        const qEmb = await knowledgeBase.embed(transcript, token);
-        if (kbOn) kbBlock = await knowledgeBase.augment(transcript, { token, topK: 5, queryEmbedding: qEmb });
-        if (abOn) bankHint = await answerBank.augment(transcript, { token, queryEmbedding: qEmb });
+        const ragWork = (async () => {
+          const qEmb = await knowledgeBase.embed(transcript, token);
+          const kb = kbOn ? await knowledgeBase.augment(transcript, { token, topK: 5, queryEmbedding: qEmb }) : '';
+          const bank = abOn ? await answerBank.augment(transcript, { token, queryEmbedding: qEmb }) : '';
+          return { kb, bank };
+        })();
+        const result = await raceWithTimeout(ragWork, RAG_TIMEOUT_MS, null);
+        if (result) { kbBlock = result.kb; bankHint = result.bank; }
       }
     } catch (_) {}
     const ragBlock = [bankHint, kbBlock].filter(Boolean).join('\n\n');
@@ -243,7 +381,7 @@ class RealtimeOpenAiService {
     const stream = typeof onDelta === 'function';
     const payload = {
       model,
-      max_tokens: CHAT_MAX_TOKENS,
+      ...maxTokensParam(model, CHAT_MAX_TOKENS),
       stream,
       messages: [
         { role: 'system', content: this._systemInstruction() },
@@ -251,6 +389,9 @@ class RealtimeOpenAiService {
         { role: 'user', content: userPrompt },
       ],
     };
+    // Tempo real: velocidade é inegociável, então sempre usa o esforço de
+    // raciocínio mais baixo aqui, independente da preferência global do usuário.
+    if (supportsReasoningEffort(model)) payload.reasoning_effort = 'low';
 
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',

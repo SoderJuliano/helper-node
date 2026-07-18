@@ -13,23 +13,28 @@ NC='\033[0m' # No Color
 
 # Configuration
 APP_NAME="helper-node"
-VERSION="0.4.2"
 BUILD_DIR="$(pwd)/build"
 DIST_DIR="$(pwd)/dist"
 PROJECT_ROOT="$(pwd)"
 # (Removido APP_CONFIG_CANDIDATES — o build NÃO empacota config do usuário:
 #  continha a API key e vazava nos pacotes. Cada user configura a própria chave.)
 
-echo -e "${GREEN}╔════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║  Helper Node Package Builder v${VERSION}  ║${NC}"
-echo -e "${GREEN}╚════════════════════════════════════════╝${NC}"
-echo ""
-
 # Check if we're in the right directory
 if [ ! -f "main.js" ] || [ ! -f "package.json" ]; then
     echo -e "${RED}Error: Must be run from helper-node project root!${NC}"
     exit 1
 fi
+
+# VERSION vem SEMPRE do package.json — antes era hardcoded aqui e ficava
+# dessincronizado (o script buildava uma versão "fantasma" enquanto o
+# package.json já tinha outra), fazendo o build parecer "novo" mas instalar
+# sempre o pacote velho.
+VERSION="$(node -p "require('./package.json').version")"
+
+echo -e "${GREEN}╔════════════════════════════════════════╗${NC}"
+echo -e "${GREEN}║  Helper Node Package Builder v${VERSION}  ║${NC}"
+echo -e "${GREEN}╚════════════════════════════════════════╝${NC}"
+echo ""
 
 # Cada build limpa só o SEU próprio artefato (dentro de build_deb/build_arch),
 # pra não apagar as outras edições/formatos. Aqui só garante o diretório.
@@ -52,7 +57,10 @@ build_deb() {
         DEB_ROOT="${BUILD_DIR}/deb-root/${PKG_NAME}_${VERSION}_amd64"
         APP_ROOT="${DEB_ROOT}/opt/helper-node"
         DEB_OUTPUT="${DIST_DIR}/${PKG_NAME}_${VERSION}_amd64.deb"
-        rm -f "${DEB_OUTPUT}"
+        # Apaga QUALQUER versão anterior deste mesmo pacote (edição+formato), não só
+        # o nome exato da versão atual — senão dist/ acumula .deb de builds antigas
+        # e o instalador errado pode sobrar por lá confundindo instalação futura.
+        rm -f "${DIST_DIR}/${PKG_NAME}"_*_amd64.deb
     
     # Create directory structure
     echo -e "${YELLOW}→${NC} Creating DEB directory structure..."
@@ -62,7 +70,7 @@ build_deb() {
     
     # Copy application files
     echo -e "${YELLOW}→${NC} Copying application files..."
-        cp -r main.js main_new_notification.js createOsNotificationWindow_fixed.js index.html config.html config.js preload.js "${APP_ROOT}/" 2>/dev/null || true
+        cp -r main.js main_new_notification.js createOsNotificationWindow_fixed.js index.html config.html config.js preload.js editorController.js preferences.html preferences.js "${APP_ROOT}/" 2>/dev/null || true
         cp -r assets os-integration services "${APP_ROOT}/"
 
         # Marca a edição pro runtime (services/edition.js lê esse arquivo)
@@ -101,6 +109,14 @@ build_deb() {
         cp *.traineddata "${APP_ROOT}/" 2>/dev/null || true
         cp helper-node.sh helper-node.desktop setup-hotkey.sh capture-screenshot.sh install-deps.sh "${APP_ROOT}/" 2>/dev/null || true
         cp README.markdown ROADMAP.md "${APP_ROOT}/" 2>/dev/null || true
+
+        # Instala a entrada de menu (.desktop) e o ícone no pacote DEB (/usr/share/applications e /usr/share/pixmaps)
+        mkdir -p "${DEB_ROOT}/usr/share/applications"
+        cp helper-node.desktop "${DEB_ROOT}/usr/share/applications/helper-node.desktop"
+        if [ -f "assets/linux.png" ]; then
+            mkdir -p "${DEB_ROOT}/usr/share/pixmaps"
+            cp assets/linux.png "${DEB_ROOT}/usr/share/pixmaps/helper-node.png"
+        fi
 
         # ⚠️ NUNCA empacotar config do usuário. O config.json contém a API KEY e
         # estava sendo embutido como config-default.json → vazava a chave em TODO
@@ -256,8 +272,8 @@ INSTALLER_EOF
 Version=1.0
 Name=Instalar Helper Node (${EDITION} · deb)
 Comment=Instala o Helper Node (edição ${EDITION}, .deb) no sistema
-Exec=bash -c 'p="%k"; p="\${p#file://}"; d="\$(dirname "\$p")"; [ -d "\$d" ] && cd "\$d"; exec bash ./$(basename "${INSTALLER_SH}")'
-Terminal=true
+Exec=bash -c 'DIR="\$(dirname "\$(echo "\$1" | sed "s|^file://||")")"; [ -d "\$DIR" ] && cd "\$DIR"; exec bash ./$(basename "${INSTALLER_SH}")' _ %k
+Terminal=false
 Type=Application
 Icon=system-software-install
 Categories=System;
@@ -322,8 +338,8 @@ ARCH_INST_EOF
 Version=1.0
 Name=Instalar Helper Node (${EDITION} · arch)
 Comment=Instala o Helper Node (edição ${EDITION}, .pkg.tar.zst) no sistema
-Exec=bash -c 'p="%k"; p="\${p#file://}"; d="\$(dirname "\$p")"; [ -d "\$d" ] && cd "\$d"; exec bash ./$(basename "${INST}")'
-Terminal=true
+Exec=bash -c 'DIR="\$(dirname "\$(echo "\$1" | sed "s|^file://||")")"; [ -d "\$DIR" ] && cd "\$DIR"; exec bash ./$(basename "${INST}")' _ %k
+Terminal=false
 Type=Application
 Icon=system-software-install
 Categories=System;
@@ -361,7 +377,7 @@ build_arch() {
         --exclude='.idea' \
         --exclude='*.png' \
         --transform "s,^,helper-node/," \
-        main.js index.html config.html config.js preload.js \
+        main.js index.html config.html config.js preload.js editorController.js preferences.html preferences.js \
         assets/ os-integration/ services/ \
         ${LOCAL_AI_FILES} package.json *.traineddata \
         helper-node.sh helper-node.desktop setup-hotkey.sh \
@@ -420,7 +436,11 @@ PKGBUILD_EOF
         cd "${ARCH_BUILD}"
         makepkg -f --nodeps
         cd "${PROJECT_ROOT}"
-        mv "${ARCH_BUILD}"/*.pkg.tar.zst "${DIST_DIR}/" 2>/dev/null || true
+        # Apaga versões anteriores deste mesmo pacote antes de mover a nova (mesmo
+        # motivo do DEB acima). Glob restrito a "-<digito>" pra não pegar o pacote
+        # -debug do makepkg (helper-node-full-debug-...) junto com o principal.
+        rm -f "${DIST_DIR}/${PKG_NAME}"-[0-9]*-x86_64.pkg.tar.zst
+        mv "${ARCH_BUILD}/${PKG_NAME}"-[0-9]*-x86_64.pkg.tar.zst "${DIST_DIR}/" 2>/dev/null || true
         echo -e "${GREEN}✓${NC} Arch package created: ${DIST_DIR}/${PKG_NAME}-${VERSION}-1-x86_64.pkg.tar.zst"
         gen_arch_installer
     elif command -v docker &> /dev/null || command -v podman &> /dev/null; then
@@ -440,6 +460,8 @@ PKGBUILD_EOF
         '
         # Move pacote final pra dist/ e limpa TUDO desnecessario
         if ls "${ARCH_BUILD}"/${PKG_NAME}-${VERSION}-*-x86_64.pkg.tar.zst &>/dev/null; then
+            # Apaga versões anteriores deste mesmo pacote antes de mover a nova.
+            rm -f "${DIST_DIR}/${PKG_NAME}"-[0-9]*-x86_64.pkg.tar.zst
             mv "${ARCH_BUILD}"/${PKG_NAME}-${VERSION}-*-x86_64.pkg.tar.zst "${DIST_DIR}/"
             echo -e "${GREEN}✓${NC} Arch package created: ${DIST_DIR}/${PKG_NAME}-${VERSION}-1-x86_64.pkg.tar.zst"
             gen_arch_installer
@@ -470,17 +492,35 @@ build_one() {
 
 # Uso: package.sh deb [full|lite] | arch [full|lite] | all
 case "$1" in
-    deb)  build_one deb  "${2:-full}" ;;
-    arch) build_one arch "${2:-full}" ;;
+    deb)
+        if [ -n "${2:-}" ]; then
+            build_one deb "$2"
+        else
+            build_one deb full
+            build_one deb lite
+        fi
+        ;;
+    arch)
+        if [ -n "${2:-}" ]; then
+            build_one arch "$2"
+        else
+            build_one arch full
+            build_one arch lite
+        fi
+        ;;
     all)
-        build_one deb  full
-        build_one deb  lite
+        build_one deb full
+        build_one deb lite
         build_one arch full
-        build_one arch lite ;;
+        build_one arch lite
+        ;;
     *)
-        # padrão: full deb + full arch (compatível com o comportamento antigo)
-        build_one deb  full
-        build_one arch full ;;
+        # padrão: gera full e lite para deb e arch
+        build_one deb full
+        build_one deb lite
+        build_one arch full
+        build_one arch lite
+        ;;
 esac
 
 # Summary
@@ -493,7 +533,8 @@ echo -e "${GREEN}Packages created in:${NC} ${DIST_DIR}/"
 echo ""
 ls -lh "${DIST_DIR}"/*.deb "${DIST_DIR}"/*.pkg.tar.zst 2>/dev/null | awk '{print "  • " $9 " (" $5 ")"}'
 echo ""
-echo -e "${GREEN}Installation:${NC}"
-echo -e "  DEB:  ${YELLOW}sudo dpkg -i ${DIST_DIR}/${APP_NAME}_0.0.1_amd64.deb${NC}"
-echo -e "  Arch: ${YELLOW}sudo pacman -U ${DIST_DIR}/${APP_NAME}-0.0.1-1-x86_64.pkg.tar.zst${NC}"
+echo -e "${GREEN}Installation:${NC} rode um dos instaladores abaixo (removem a versão antiga sozinhos)"
+for f in "${DIST_DIR}"/instalar-*.sh; do
+    [ -e "$f" ] && echo -e "  ${YELLOW}${f}${NC}"
+done
 echo ""

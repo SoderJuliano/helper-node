@@ -21,13 +21,25 @@ const CHUNK_SIZE = BYTES_PER_SEC / 10;                   // 100ms por janela
 const SILENCE_RMS = 300;                                 // abaixo disso = silêncio
 const SILENCE_DURATION = { mic: 2500, sys: 1200 };       // silêncio p/ fechar segmento
 const MIN_SPEECH_MS = 400;                               // fala mínima válida
-const MAX_SEGMENT_MS = 60000;                            // duração máxima de um segmento
+// Teto de duração por fonte. 'sys' (entrevistador/vídeo) precisa ser curto:
+// áudio comprimido/normalizado de vídeo/podcast pode nunca cair abaixo do
+// limiar de silêncio numa pausa real, então sem um teto baixo o segmento fica
+// acumulando rumo aos 60s e a IA nunca chega a responder. A fusão de fala por
+// continuação (CONTINUATION_WINDOW_MS, em realtimeOpenAiService.js) recola os
+// pedaços se esse teto cortar no meio de uma frase. 'mic' fica em 60s (não
+// gera resposta em modo 'both' mesmo, então não precisa ser agressivo).
+const MAX_SEGMENT_MS = { mic: 60000, sys: 12000 };
 const SYS_FOLLOW_MS = 2000;                              // re-checa saída ativa
 const DIAG_MS = 3000;                                    // log de nível
+// Enquanto o segmento AINDA está gravando (sem ter fechado), a cada esse
+// intervalo entrega um snapshot do que já foi falado até agora — pra dar
+// resposta a uma pergunta completa SEM esperar o segmento inteiro fechar.
+const INTERIM_CHECK_MS = 4000;
 
 const procs = { mic: null, sys: null };
 let active = false;
 let onSpeechEndCb = null;
+let onInterimCb = null;
 let sysFollowInterval = null;
 let diagInterval = null;
 let currentSysTarget = null;
@@ -73,7 +85,20 @@ async function resolveMicTarget() {
 // ---------- VAD ----------
 
 function makeStreamState() {
-  return { pcmRemainder: Buffer.alloc(0), speechBuf: Buffer.alloc(0), hasSpeech: false, silenceMs: 0, speechMs: 0, peakRms: 0 };
+  return { pcmRemainder: Buffer.alloc(0), speechBuf: Buffer.alloc(0), hasSpeech: false, silenceMs: 0, speechMs: 0, peakRms: 0, lastInterimSpeechMs: 0 };
+}
+
+// Snapshot do que já foi falado até agora, SEM fechar nem resetar o segmento —
+// a gravação continua normalmente em paralelo.
+function emitInterimSnapshot(st, source) {
+  if (!onInterimCb || !st.hasSpeech) return;
+  try {
+    const tmpPath = path.join(os.tmpdir(), `rt_interim_${source}_${Date.now()}.wav`);
+    fs.writeFileSync(tmpPath, pcmToWav(st.speechBuf));
+    onInterimCb(tmpPath, source);
+  } catch (e) {
+    console.error('[realtime-audio] erro ao gerar snapshot interino:', e.message);
+  }
 }
 
 function calcRms(buf) {
@@ -107,6 +132,7 @@ function resetState(st) {
   st.hasSpeech = false;
   st.silenceMs = 0;
   st.speechMs = 0;
+  st.lastInterimSpeechMs = 0;
 }
 
 function flushSegment(st, source) {
@@ -127,13 +153,19 @@ function processChunk(pcm, st, source) {
   if (rms > (st.peakRms || 0)) st.peakRms = rms;
   const chunkMs = (pcm.length / BYTES_PER_SEC) * 1000;
   const silenceLimit = SILENCE_DURATION[source] || 1200;
+  const maxSegmentLimit = MAX_SEGMENT_MS[source] || 60000;
 
   if (rms > SILENCE_RMS) {
     st.hasSpeech = true;
     st.silenceMs = 0;
     st.speechMs += chunkMs;
     st.speechBuf = Buffer.concat([st.speechBuf, pcm]);
-    if (st.speechMs > MAX_SEGMENT_MS) flushSegment(st, source);
+    if (st.speechMs > maxSegmentLimit) {
+      flushSegment(st, source);
+    } else if (st.speechMs - st.lastInterimSpeechMs >= INTERIM_CHECK_MS && st.speechMs >= MIN_SPEECH_MS) {
+      st.lastInterimSpeechMs = st.speechMs;
+      emitInterimSnapshot(st, source);
+    }
   } else if (st.hasSpeech) {
     st.silenceMs += chunkMs;
     st.speechBuf = Buffer.concat([st.speechBuf, pcm]);
@@ -180,12 +212,18 @@ function logLevels() {
 
 // Segue a saída ativa: se o sink que está tocando mudar (ex: trocou monitor →
 // fone com o app já aberto), migra a captura do áudio do sistema pra ele.
+// CRÍTICO: nunca pode descartar áudio já capturado em silêncio — se tinha fala
+// em andamento no momento da troca, salva/processa ela ANTES de resetar
+// (senão uma pergunta em andamento pode ser jogada fora sem deixar rastro).
 async function followActiveSink() {
   if (!active || !sysStateRef) return;
   const running = await detectRunningSinkMonitor();
   if (!running || running === currentSysTarget) return;
   if (procs.sys) { try { procs.sys.kill('SIGTERM'); } catch (_) {} }
-  resetState(sysStateRef);
+  if (sysStateRef.hasSpeech) {
+    console.log('[realtime-audio] saída ativa mudou com fala em andamento — salvando trecho antes de trocar');
+  }
+  flushSegment(sysStateRef, 'sys'); // no-op silencioso se não houver fala acumulada
   sysStateRef.pcmRemainder = Buffer.alloc(0);
   currentSysTarget = running;
   procs.sys = startStream(running, 'sys', sysStateRef);
@@ -198,13 +236,16 @@ async function followActiveSink() {
  * Inicia a captura mic + sistema.
  * @param {object} opts
  * @param {function} opts.onSpeechEnd - callback(wavPath, source: 'mic'|'sys')
+ * @param {function} [opts.onInterim] - callback(wavPath, source) — snapshot do
+ *   segmento AINDA gravando, a cada INTERIM_CHECK_MS, sem fechar/resetar nada.
  * @param {string} [opts.micTarget] - override manual do microfone
  * @param {string} [opts.sysTarget] - override manual do sink (desativa o follower)
  */
-async function startCapture({ onSpeechEnd, micTarget, sysTarget } = {}) {
+async function startCapture({ onSpeechEnd, onInterim, micTarget, sysTarget } = {}) {
   if (active) return;
   active = true;
   onSpeechEndCb = onSpeechEnd;
+  onInterimCb = onInterim || null;
 
   const micSt = makeStreamState();
   const sysSt = makeStreamState();
@@ -232,6 +273,7 @@ async function stopCapture() {
   currentSysTarget = null;
   sysStateRef = null;
   micStateRef = null;
+  onInterimCb = null;
   for (const key of ['mic', 'sys']) {
     if (procs[key]) { try { procs[key].kill('SIGTERM'); } catch (_) {} procs[key] = null; }
   }

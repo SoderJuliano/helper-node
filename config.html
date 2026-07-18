@@ -339,6 +339,7 @@
                 </div>
             </label>
         </div>
+        <p id="realtime-fast-model-note" style="display:none; font-size:11px; color:#7ec9ff; margin:-9px 0 15px 4px; -webkit-app-region:no-drag;">⚡ Modelo de raciocínio detectado — assistente em tempo real e tradutor usam automaticamente gpt-4.1 (sem raciocínio) pra manter a resposta rápida.</p>
 
         <div class="setting-item" title="Permite à IA ler e editar arquivos do seu computador, executar comandos e gerar scripts. Quando ativo, o modo integrado (overlay) é desativado. Usa modelo mais pesado (gpt-4o-mini ou qwen2.5:7b) para edições de código.">
             <label for="helper-tools-toggle">Ferramentas avançadas (ler/editar arquivos, comandos)</label>
@@ -377,6 +378,8 @@
                 <option value="llama-stream">Llama Stream</option>
                 <option value="openIa">ChatGPT</option>
                 <option value="ollamaLocal">Ollama Local (offline)</option>
+                <option value="geminiCli">Gemini CLI</option>
+                <option value="claudeCli">Claude Code CLI</option>
             </select>
         </div>
 
@@ -388,6 +391,33 @@
                 <option value="gpt-5.1">GPT-5.1</option>
                 <option value="gpt-5.4-mini">GPT-5.4 Mini</option>
                 <option value="gpt-5.4">GPT-5.4</option>
+                <option value="gpt-5.5">GPT-5.5</option>
+                <option value="gpt-5.6-luna">GPT-5.6 Luna</option>
+                <option value="gpt-5.6-terra">GPT-5.6 Terra</option>
+                <option value="gpt-5.6-sol">GPT-5.6 Sol</option>
+            </select>
+        </div>
+
+        <div class="setting-item" id="openai-reasoning-effort-container" style="display: none;">
+            <label for="openai-reasoning-effort-select">Esforço de raciocínio (modelos GPT-5.x)</label>
+            <select id="openai-reasoning-effort-select" class="custom-select">
+                <option value="low">Baixo (respostas mais rápidas)</option>
+                <option value="medium">Médio</option>
+                <option value="high">Alto (mais lento, mais preciso)</option>
+            </select>
+        </div>
+
+        <div class="setting-item" id="openai-vision-model-container" style="display: none;">
+            <label for="openai-vision-model-select">Modelo de visão (imagens/prints)</label>
+            <select id="openai-vision-model-select" class="custom-select">
+                <option value="gpt-4o-mini">GPT-4o Mini</option>
+                <option value="gpt-4o">GPT-4o</option>
+                <option value="gpt-4.1">GPT-4.1</option>
+                <option value="gpt-5.4">GPT-5.4</option>
+                <option value="gpt-5.5">GPT-5.5</option>
+                <option value="gpt-5.6-luna">GPT-5.6 Luna (econômico, bom p/ OCR em volume)</option>
+                <option value="gpt-5.6-terra">GPT-5.6 Terra</option>
+                <option value="gpt-5.6-sol">GPT-5.6 Sol</option>
             </select>
         </div>
 
@@ -456,27 +486,85 @@
             </div>
         </div>
 
-        <!-- Base de Conhecimento (RAG) — compartilhada por Assistente + Tradutor -->
-        <div id="knowledge-base-section" style="margin-top: 14px; padding: 14px; background-color: rgba(0,0,0,0.35); border-radius: 5px; -webkit-app-region: no-drag;">
-            <div style="font-weight: bold; color: #00aaff; margin-bottom: 8px;">Base de Conhecimento (atualizações de tecnologia)</div>
-            <p style="font-size: 12px; color: #aaa; margin: 0 0 10px 0;">Cole novidades/docs de tecnologias recentes (versões de libs, frameworks novos). O app injeta trechos relevantes nas respostas técnicas — usado pelo Assistente e pelo Tradutor.</p>
+        <!-- Gemini CLI (Antigravity): select de modelo + aviso de instalação manual -->
+        <div class="setting-item" id="gemini-cli-model-container" style="display: none;">
+            <label for="gemini-cli-model-select">Modelo Antigravity (agy)</label>
+            <select id="gemini-cli-model-select" class="custom-select">
+                <option value="Gemini 3.5 Flash (High)">Gemini 3.5 Flash (High)</option>
+                <option value="Gemini 3.5 Flash (Medium)" selected>Gemini 3.5 Flash (Medium)</option>
+                <option value="Gemini 3.5 Flash (Low)">Gemini 3.5 Flash (Low)</option>
+                <option value="Gemini 3.1 Pro (High)">Gemini 3.1 Pro (High)</option>
+                <option value="Gemini 3.1 Pro (Low)">Gemini 3.1 Pro (Low)</option>
+                <option value="Claude Sonnet 4.6 (Thinking)">Claude Sonnet 4.6 (Thinking)</option>
+                <option value="Claude Opus 4.6 (Thinking)">Claude Opus 4.6 (Thinking)</option>
+                <option value="GPT-OSS 120B (Medium)">GPT-OSS 120B (Medium)</option>
+            </select>
+        </div>
 
-            <div class="setting-item" style="margin-bottom: 8px;">
-                <label for="kb-enabled">Habilitar base de conhecimento</label>
-                <span id="kb-enabled-status" style="font-weight: bold; margin-left: 10px; min-width: 30px; text-align: center; -webkit-app-region: no-drag;">ON</span>
-                <label class="switch">
-                    <input type="checkbox" id="kb-enabled" hidden>
-                    <div class="switch__wrapper"><div class="switch__toggle"></div></div>
-                </label>
+        <!-- Painel de aviso: aparece SÓ quando geminiCli está selecionado -->
+        <div id="gemini-cli-info" style="display: none; margin-top: 12px; padding: 14px; background-color: rgba(0,0,0,0.5); border-radius: 5px; font-size: 12.5px; line-height: 1.5; color: #ddd; -webkit-app-region: no-drag;">
+            <div style="font-weight: bold; color: #00d4aa; margin-bottom: 8px;">Antigravity CLI (agy) — instalação manual</div>
+            <div style="margin-bottom: 10px; color: #aaa; font-size: 12px;">
+                O app <strong>não instala o Antigravity CLI</strong>. Configure antes de usar:
             </div>
+            <div style="margin-bottom: 6px;"><strong>1. Instalar</strong>:</div>
+            <pre style="background:#0d0d0d; padding:8px 10px; border-radius:4px; margin:0 0 10px 0; overflow-x:auto; font-size:12px; color:#9ef0a8; user-select:text;">npm install -g @google/antigravity-cli</pre>
+            <div style="margin-bottom: 6px;"><strong>2. Autenticar / Configurar</strong>:</div>
+            <pre style="background:#0d0d0d; padding:8px 10px; border-radius:4px; margin:0 0 10px 0; overflow-x:auto; font-size:12px; color:#9ef0a8; user-select:text;">agy install</pre>
+            <div style="margin-bottom: 6px;"><strong>3. Verificar</strong>:</div>
+            <div style="display:flex; align-items:center; gap:10px;">
+                <button id="check-gemini-cli-btn" style="padding: 6px 12px; background:#1a4a3a; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; -webkit-app-region: no-drag;">
+                    Verificar instalação
+                </button>
+                <span id="gemini-cli-status-result" style="font-size: 12px;"></span>
+            </div>
+            <div style="margin-top: 12px; padding: 8px 10px; background: rgba(0,212,170,0.07); border-radius: 4px; font-size: 11.5px; color: #00d4aa;">
+                O Antigravity CLI (agy) gerencia arquivos, terminal e ferramentas diretamente. O Helper Node apenas envia prompts e exibe as respostas.
+            </div>
+            <div style="margin-top: 8px; padding: 8px 10px; background: rgba(255,180,77,0.08); border-radius: 4px; font-size: 11.5px; color: #ffb74d;">
+                <strong>Ferramentas avançadas</strong> e <strong>Acesso a diretórios</strong> são desativados neste modo — o CLI gerencia tudo.
+            </div>
+            <div style="margin-top: 8px; font-size: 11px; color: #999;">
+                🎙️ Ctrl+D (transcrição de áudio) não tem suporte neste modo — troque para ChatGPT ou Ollama.
+            </div>
+        </div>
 
-            <p style="font-size: 11.5px; color: #888; margin: 0 0 8px 0;">Dica: cole o texto e use <b>Resumir e organizar com IA</b> pra deixar mais limpo (opcional). Salvar é no botão <b>Salvar e Fechar</b> lá embaixo.</p>
+        <!-- Claude Code CLI: select de modelo + aviso de instalação manual -->
+        <div class="setting-item" id="claude-cli-model-container" style="display: none;">
+            <label for="claude-cli-model-select">Modelo Claude CLI</label>
+            <select id="claude-cli-model-select" class="custom-select">
+                <option value="claude-fable-5">Fable 5</option>
+                <option value="claude-opus-4-8">Opus 4.8</option>
+                <option value="claude-sonnet-4-6" selected>Sonnet 4.6 (padrão)</option>
+                <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
+                <option value="sonnet">Sonnet (latest alias)</option>
+                <option value="opus">Opus (latest alias)</option>
+                <option value="haiku">Haiku (latest alias)</option>
+            </select>
+        </div>
 
-            <textarea id="kb-text" style="width:100%; min-height:120px; padding:8px 12px; border-radius:5px; border:1px solid #555; background-color:#252525; color:white; font-size:13px; box-sizing:border-box; -webkit-app-region:no-drag; resize:vertical;" placeholder="Ex: Spring Boot 3.4 mudou X... Java 26 trouxe Y... a lib Z agora usa W em vez de V..."></textarea>
-
-            <div style="display:flex; align-items:center; gap:12px; margin-top:8px;">
-                <button id="kb-rewrite-btn" style="margin:0; padding:8px 14px; align-self:auto;">Resumir e organizar com IA</button>
-                <span id="kb-status" style="font-size:12px; color:#888;"></span>
+        <div id="claude-cli-info" style="display: none; margin-top: 12px; padding: 14px; background-color: rgba(0,0,0,0.5); border-radius: 5px; font-size: 12.5px; line-height: 1.5; color: #ddd; -webkit-app-region: no-drag;">
+            <div style="font-weight: bold; color: #cc785c; margin-bottom: 8px;">Claude Code CLI — instalação manual</div>
+            <div style="margin-bottom: 10px; color: #aaa; font-size: 12px;">O app <strong>não instala o Claude Code</strong>. Configure antes de usar:</div>
+            <div style="margin-bottom: 6px;"><strong>1. Instalar</strong>:</div>
+            <pre style="background:#0d0d0d; padding:8px 10px; border-radius:4px; margin:0 0 10px 0; overflow-x:auto; font-size:12px; color:#9ef0a8; user-select:text;">npm install -g @anthropic-ai/claude-code</pre>
+            <div style="margin-bottom: 6px;"><strong>2. Autenticar</strong> (abre browser):</div>
+            <pre style="background:#0d0d0d; padding:8px 10px; border-radius:4px; margin:0 0 10px 0; overflow-x:auto; font-size:12px; color:#9ef0a8; user-select:text;">claude</pre>
+            <div style="margin-bottom: 6px;"><strong>3. Verificar</strong>:</div>
+            <div style="display:flex; align-items:center; gap:10px;">
+                <button id="check-claude-cli-btn" style="padding: 6px 12px; background:#3a2a1a; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; -webkit-app-region: no-drag;">
+                    Verificar instalação
+                </button>
+                <span id="claude-cli-status-result" style="font-size: 12px;"></span>
+            </div>
+            <div style="margin-top: 12px; padding: 8px 10px; background: rgba(204,120,92,0.07); border-radius: 4px; font-size: 11.5px; color: #cc785c;">
+                O Claude Code CLI gerencia leitura, edição, bash e ferramentas de forma nativa. O Helper Node envia prompts e exibe os resultados em tempo real, incluindo diffs dos arquivos editados.
+            </div>
+            <div style="margin-top: 8px; padding: 8px 10px; background: rgba(255,180,77,0.08); border-radius: 4px; font-size: 11.5px; color: #ffb74d;">
+                <strong>Ferramentas avançadas</strong> desativadas neste modo — o CLI gerencia tudo internamente.
+            </div>
+            <div style="margin-top: 8px; font-size: 11px; color: #999;">
+                🎙️ Ctrl+D (transcrição de áudio) não tem suporte neste modo — troque para ChatGPT ou Ollama.
             </div>
         </div>
 
@@ -494,16 +582,6 @@
                         <div class="switch__toggle"></div>
                     </div>
                 </label>
-            </div>
-
-            <div style="margin-bottom: 8px;">
-                <label for="translation-username" style="display: block; margin-bottom: 4px; font-size: 13px;">Seu nome (para contexto da IA)</label>
-                <input type="text" id="translation-username" class="custom-input" placeholder="Ex: João Silva">
-            </div>
-
-            <div style="margin-bottom: 8px;">
-                <label for="translation-background" style="display: block; margin-bottom: 4px; font-size: 13px;">Seu background profissional</label>
-                <textarea id="translation-background" style="width:100%; min-height:70px; padding:8px 12px; border-radius:5px; border:1px solid #555; background-color:#252525; color:white; font-size:13px; box-sizing:border-box; -webkit-app-region:no-drag; resize:vertical;" placeholder="Ex: Desenvolvedor backend com 5 anos de experiência em Node.js e AWS..."></textarea>
             </div>
 
             <div class="setting-item" style="margin-bottom: 0;">
@@ -539,7 +617,10 @@
         </div>
 
     </div>
-    <button id="save-btn">Salvar e Fechar</button>
+    <div style="display:flex; gap:10px; align-items:center; -webkit-app-region:no-drag;">
+        <button id="save-btn" style="flex:1;">Salvar e Fechar</button>
+        <button id="open-preferences-btn" style="flex:1; margin-top:15px; background-color:#333;">Preferências do Usuário</button>
+    </div>
     <div style="margin-top: 20px; padding: 15px; background-color: rgba(0, 0, 0, 0.3); border-radius: 5px; -webkit-app-region: no-drag; display: flex; justify-content: space-between; align-items: center;">
         <p id="backend-url" style="margin: 0; font-size: 13px; color: #aaa;">
             Backend URL: <span id="backend-url-value" style="font-weight: bold; color: #00aaff; word-break: break-all;">Carregando...</span>

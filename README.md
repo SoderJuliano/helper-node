@@ -2,7 +2,7 @@
 
 [![Language](https://img.shields.io/badge/JavaScript-Node.js-f7df1e?style=flat-square&logo=javascript&logoColor=black)](https://nodejs.org)
 [![Electron](https://img.shields.io/badge/Electron-36-47848f?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org)
-[![Version](https://img.shields.io/badge/version-0.4.2-blue?style=flat-square)](https://github.com/SoderJuliano/helper-node/releases/latest)
+[![Version](https://img.shields.io/badge/version-0.5.1-blue?style=flat-square)](https://github.com/SoderJuliano/helper-node/releases/latest)
 [![Latest release](https://img.shields.io/github/v/release/SoderJuliano/helper-node?label=latest%20release&style=flat-square)](https://github.com/SoderJuliano/helper-node/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](#license)
 [![Platform](https://img.shields.io/badge/platform-Linux-333333?style=flat-square&logo=linux&logoColor=white)](#prerequisites)
@@ -36,13 +36,21 @@ Helper Node is an Electron desktop assistant for Linux that listens to your micr
       <td>Cloud transcription with <code>gpt-4o-transcribe</code> for the online realtime path and the Lite edition.</td>
     </tr>
     <tr>
-      <td rowspan="2"><b>AI providers</b></td>
+      <td rowspan="4"><b>AI providers</b></td>
       <td>OpenAI</td>
       <td>Chat, vision, and tool calling with <code>gpt-4.1-nano</code> (default), <code>gpt-4.1</code>, or <code>gpt-5.1</code>.</td>
     </tr>
     <tr>
       <td>Ollama / custom backend</td>
       <td>Local Ollama models or a remote backend over HTTP. No automatic fallback between providers: you choose, the agent honors it.</td>
+    </tr>
+    <tr>
+      <td>Gemini CLI</td>
+      <td>Google's <code>gemini</code> CLI as a persistent REPL session. Auth via <code>~/.gemini/</code> — no API key in the app. Streaming, tool activity, and thinking visible live.</td>
+    </tr>
+    <tr>
+      <td>Claude Code CLI</td>
+      <td>Anthropic's <code>claude</code> CLI in <code>--print --output-format stream-json</code> mode. Auth via <code>~/.claude/</code>. Thinking streamed in real time, file edits show diffs on click, session continuity via <code>--resume</code>.</td>
     </tr>
     <tr>
       <td rowspan="2"><b>Realtime copilot</b></td>

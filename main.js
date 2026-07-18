@@ -28,6 +28,15 @@ process.on("unhandledRejection", (reason) => {
   try { console.error("[unhandledRejection]", reason); } catch (_) {}
 });
 
+// Overriding emit to log all IPC messages received from the renderer
+const originalEmit = ipcMain.emit;
+ipcMain.emit = function (event, ...args) {
+  if (typeof event === 'string' && !event.startsWith('__')) {
+    console.log(`[IPC LOG] Channel: ${event}, Args:`, JSON.stringify(args.slice(1)).slice(0, 400));
+  }
+  return originalEmit.apply(ipcMain, arguments);
+};
+
 // === STEALTH MODE ===
 // Substituímos `Notification` (notificação nativa do SO) por um stub vazio.
 // Motivo: o app deve passar despercebido em reuniões/chamadas — ninguém
@@ -55,6 +64,10 @@ const fs2 = require("fs");
 // const LlamaService = require('./services/llamaService.js');
 // GeminiService removido em 0.2.4: dependia do binario `gemini` CLI que nao\n// existe no sistema. Backend Ollama + OpenAI cobrem todos os casos.
 const BackendService = require("./services/backendService.js");
+// Gemini CLI provider — processo persistente por projeto, isolado dos outros providers.
+const GeminiCliProvider = require("./services/providers/gemini-cli/GeminiCliProvider");
+// Claude Code CLI provider — spawn por mensagem + --resume para continuidade.
+const ClaudeCliProvider = require("./services/providers/claude-cli/ClaudeCliProvider");
 const TesseractService = require("./services/tesseractService.js");
 const OpenAIService = require("./services/openAIService.js");
 const RealtimeAssistantService = require("./services/realtimeAssistantService.js");
@@ -63,6 +76,7 @@ const ipcService = require("./services/ipcService.js");
 const configService = require("./services/configService.js");
 const edition = require("./services/edition.js");
 const knowledgeBase = require("./services/knowledgeBase.js");
+const fileEditService = require("./services/fileEditService.js");
 const historyService = require("./services/historyService.js");
 const helperTools = require("./services/helperTools");
 const workspace = require("./services/workspace");
@@ -73,6 +87,43 @@ const { runTestMode } = require("./services/translationAssistant/testMode");
 const { analyzeInterviewImage } = require("./services/translationAssistant/imageAnalysis");
 // Transcrição cloud (gpt-4o-mini-transcribe) — usada no Ctrl+D da edição Lite.
 const { transcribeAudio: cloudTranscribeAudio } = require("./services/translationAssistant/openaiClient");
+
+let terminalProcess = null;
+let currentTerminalProjectPath = null;
+
+function getActiveProjectPath() {
+  const workspace = require("./services/workspace");
+  const dirItem = (workspace.list() || []).find((a) => a.type === "dir");
+  if (dirItem && dirItem.path) {
+    try {
+      if (fs2.existsSync(dirItem.path) && fs2.statSync(dirItem.path).isDirectory()) {
+        return dirItem.path;
+      }
+    } catch (_) {}
+  }
+  return os.homedir();
+}
+
+function syncTerminalCwd(forceMessage = false) {
+  const newProjectPath = getActiveProjectPath();
+  if (currentTerminalProjectPath !== newProjectPath || forceMessage) {
+    currentTerminalProjectPath = newProjectPath;
+    if (terminalProcess && terminalProcess.stdin && terminalProcess.stdin.writable) {
+      try {
+        terminalProcess.stdin.write(`cd "${newProjectPath.replace(/"/g, '\\"')}"\n`);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("terminal:output", {
+            type: "stdout",
+            data: `\x1b[32m\n[📁 Terminal sincronizado com projeto: ${newProjectPath}]\x1b[0m\n\n`
+          });
+        }
+      } catch (e) {
+        console.error("[terminal:sync] error:", e.message);
+      }
+    }
+  }
+}
+
 
 /**
  * Monta opts pra OpenAIService.makeOpenAIRequest acoplando o helperTools quando:
@@ -122,6 +173,10 @@ function buildHelperToolsOpenAIOpts(userText, baseInstruction, baseModel) {
     const modelTier = (m) => {
       const s = String(m || "").toLowerCase();
       if (!s) return 0;
+      // Família 5.6 tem variantes nomeadas (sol/terra/luna) em vez de mini/nano.
+      if (/gpt-5\.6-sol/.test(s)) return 5;
+      if (/gpt-5\.6-terra/.test(s)) return 4;
+      if (/gpt-5\.6-luna/.test(s)) return 2;
       if (/gpt-5\.[45]/.test(s) && !/(mini|nano)/.test(s)) return 5;
       if (/gpt-5(\.\d)?($|[^.\d])/.test(s) && !/(mini|nano)/.test(s)) return 4;
       if (/gpt-4\.1($|[^-])/.test(s) && !/(mini|nano)/.test(s)) return 3;
@@ -196,7 +251,10 @@ function buildHelperToolsOpenAIOpts(userText, baseInstruction, baseModel) {
               if (name === 'patchFile') {
                 const h = crypto.createHash('sha256')
                   .update(String(a.path || '')).update('\0')
-                  .update(String(a.patch || a.diff || ''))
+                  .update(String(a.oldText || '')).update('\0')
+                  .update(String(a.newText || '')).update('\0')
+                  .update(String(a.startLine || '')).update('\0')
+                  .update(String(a.endLine || ''))
                   .digest('hex').slice(0, 16);
                 return `${name}:${h}`;
               }
@@ -360,6 +418,7 @@ if (!gotTheLock) {
 
 let backendIsOnline = false;
 let configWindow = null;
+let preferencesWindow = null;
 let shortcutsRegistered = false;
 
 async function checkBackendStatus() {
@@ -425,12 +484,18 @@ let osVoskSilenceTimer = null;
 let osLiveSegment = null;
 let osLiveSilenceInterval = null;
 let osLiveTurnCount = 0;
+// Fusao de fala fragmentada por pausa — se o proximo segmento fechar dentro
+// dessa janela apos o anterior, junta os dois textos e reprocessa a pergunta
+// inteira (ver closeOsLiveSegment).
+let osLiveLastClosed = null; // { id, text, closedAt }
+const OS_LIVE_CONTINUATION_WINDOW_MS = 3000;
 const OS_LIVE_SAMPLE_RATE = 16000;
 const OS_LIVE_SILENCE_RMS = 250;
-// Silêncio antes de fechar segmento. 3s era muito agressivo: cortava
-// perguntas longas em 2-3 partes nas pausas naturais de leitura/respiração.
-// 6s dá conforto para fala humana sem perder responsividade.
-const OS_LIVE_SILENCE_MS = 6000;
+// Silêncio antes de fechar segmento. 3s era muito agressivo: cortava perguntas
+// longas em 2-3 partes nas pausas naturais de leitura/respiração — por isso
+// tinha sido subido pra 6s como paliativo. Agora a fusao de fala (acima) resolve
+// isso de verdade, entao voltamos a um valor mais responsivo.
+const OS_LIVE_SILENCE_MS = 2800;
 // Tempo máximo de um único segmento. 60s acomoda explicações técnicas
 // longas ("como faz X dado Y com Z...").
 const OS_LIVE_MAX_MS = 60000;
@@ -442,6 +507,7 @@ function clearOsVoskSilenceTimer() {
   if (osLiveSilenceInterval) { clearInterval(osLiveSilenceInterval); osLiveSilenceInterval = null; }
   osLiveSegment = null;
   osLiveTurnCount = 0;
+  osLiveLastClosed = null;
 }
 
 const VoskStreamService = require("./services/voskStreamService.js");
@@ -781,6 +847,34 @@ function createConfigWindow() {
 
   configWindow.on("closed", () => {
     configWindow = null;
+  });
+}
+
+function createPreferencesWindow() {
+  if (preferencesWindow) {
+    preferencesWindow.focus();
+    return;
+  }
+
+  preferencesWindow = new BrowserWindow({
+    width: 520,
+    height: 560,
+    title: "Preferências do Usuário",
+    backgroundColor: "#00000000",
+    transparent: true,
+    frame: false,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+    },
+    skipTaskbar: false,
+    icon: path.join(__dirname, "assets", "linux.png"),
+  });
+
+  preferencesWindow.loadFile("preferences.html");
+
+  preferencesWindow.on("closed", () => {
+    preferencesWindow = null;
   });
 }
 
@@ -2454,6 +2548,16 @@ async function toggleRecording() {
       return;
     }
 
+    // Tradutor é um modo exclusivo, sem input de texto — nunca deve gravar/transcrever
+    // via Ctrl+D nem jogar texto no composer (isso é exclusividade do modo IDE).
+    // Sem esse guard, com pasta de projeto aberta (modo IDE) + Tradutor ativo numa
+    // janela normal (não OS Integration), o Ctrl+D caía na rota de baixo e enchia
+    // o composer mesmo com o Tradutor ligado.
+    if (translationAssistant.isActive()) {
+      console.log("Ctrl+D ignorado — Assistente de Tradução ativo (modo exclusivo, sem input de texto).");
+      return;
+    }
+
     // Anti-spam: ignora Ctrl+D enquanto ainda estamos transcrevendo/respondendo
     // o áudio do toque anterior (senão múltiplos toques enviam o mesmo áudio).
     if (recordingBusy) {
@@ -2536,7 +2640,15 @@ async function toggleRecording() {
         }
 
         const aiModel = getEffectiveAiModel();
-        if (isOsIntegration) {
+        // Modo IDE (pasta/arquivo anexado no sidebar, com ou sem helperTools):
+        // Ctrl+D transcreve mas NÃO auto-envia pra IA. O texto vai pro composer
+        // pra o usuário revisar/editar e mandar com Shift+Enter ou o botão de
+        // enviar — igual o fluxo de digitar manualmente.
+        const isIdeModeNow = (workspace.list() || []).length > 0;
+        if (isIdeModeNow) {
+          console.log("[ide-audio] Modo IDE — transcrição enviada pro composer, sem auto-envio pra IA.");
+          mainWindow.webContents.send("ide-audio-transcribed", { text: audioText });
+        } else if (isOsIntegration) {
           await processOsQuestion(audioText);
         } else if (aiModel === 'llama-stream') {
           mainWindow.webContents.send("send-to-gemini-stream-auto", audioText);
@@ -2555,6 +2667,22 @@ async function toggleRecording() {
     } else {
       // === START RECORDING ===
       const isOsIntegration = configService.getOsIntegrationStatus();
+      const isIdeMode = (workspace.list() || []).length > 0;
+      const effModelForAudio = getEffectiveAiModel();
+      const isCliProvider = (effModelForAudio === 'geminiCli' || effModelForAudio === 'claudeCli');
+
+      // Modo IDE (pasta/arquivo anexado) + provider via CLI (Claude Code /
+      // Gemini CLI): esses providers não tem como receber áudio — o processo
+      // CLI trava/não devolve erro tratável. Em vez de deixar quebrar
+      // silenciosamente, avisa o usuário e não inicia a gravação.
+      if (isIdeMode && isCliProvider) {
+        console.log(`[ide-audio] Ctrl+D bloqueado — provider "${effModelForAudio}" (CLI) não suporta áudio no modo IDE.`);
+        mainWindow.webContents.send(
+          "transcription-error",
+          "Este modelo (CLI) não suporta transcrição de áudio. Troque para ChatGPT ou Ollama nas Configurações pra usar o Ctrl+D."
+        );
+        return;
+      }
 
       // Mutex: em modo integrado, se o Translation Assistant está ativo ele já
       // escuta mic+sys e responde sozinho — não sobe gravação em paralelo.
@@ -2589,7 +2717,7 @@ async function toggleRecording() {
       } else if (appConfig.notificationsEnabled && Notification.isSupported()) {
         new Notification({ title: "Helper-Node", body: "Gravando...", silent: true }).show();
       }
-      mainWindow.webContents.send("toggle-recording", { isRecording, audioFilePath });
+      mainWindow.webContents.send("toggle-recording", { isRecording, audioFilePath, isIdeMode });
     }
   } catch (error) {
     console.error("Error toggling recording:", error);
@@ -2726,6 +2854,7 @@ function formatToHTML(text) {
 }
 
 async function getIaResponse(text) {
+  globalBypassAllConfirmations = false;
   console.log("getIaResponse called with text:", text);
   waitingNotificationInterval = setInterval(() => {
     if (appConfig.notificationsEnabled && Notification.isSupported()) {
@@ -3247,11 +3376,58 @@ async function bringWindowToFocus() {
   mainWindow.webContents.send("manual-input");
 }
 
-ipcMain.on("send-to-gemini", async (event, text) => {
+ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
   try {
     const aiModel = getEffectiveAiModel();
     let resposta;
     let usedKnowledge = false; // base de conhecimento injetada nesta resposta?
+
+    let promptWithHistory = text;
+    let pastMessages = [];
+    if (sessionId) {
+      const session = historyService.getSessionById(Number(sessionId)) || historyService.getSessionById(sessionId);
+      if (session && session.conversations && session.conversations.length > 1) {
+        // Exclui a última mensagem, que é o prompt atual que já foi adicionado
+        pastMessages = session.conversations.slice(0, -1);
+        if (pastMessages.length > 0) {
+          let historyContext = "=== HISTÓRICO DA CONVERSA ANTERIOR ===\n";
+          for (const msg of pastMessages) {
+            const roleName = msg.role === 'user' ? 'Usuário' : 'IA';
+            historyContext += `[${roleName}]: ${msg.content}\n\n`;
+          }
+          historyContext += "=== FIM DO HISTÓRICO ===\n\nUse o histórico acima como contexto para responder à pergunta atual.\n\nPergunta atual: ";
+          promptWithHistory = historyContext + text;
+        }
+      }
+    }
+
+    // ── Gemini CLI provider ──────────────────────────────────────────────────
+    if (aiModel === 'geminiCli') {
+      const projectPath = (workspace.list()[0] || {}).path || process.cwd();
+      const geminiModel = configService.getGeminiCliModel();
+      GeminiCliProvider.setModel(geminiModel);
+      try {
+        await GeminiCliProvider.send(text, projectPath, event.sender, sessionId, pastMessages);
+      } catch (gcliErr) {
+        console.error('[gemini-cli] send error:', gcliErr.message);
+      }
+      return;
+    }
+
+    // ── Claude Code CLI provider ─────────────────────────────────────────────
+    if (aiModel === 'claudeCli') {
+      const projectPath = (workspace.list()[0] || {}).path || process.cwd();
+      const claudeModel = configService.getClaudeCliModel();
+      ClaudeCliProvider.setModel(claudeModel);
+      try {
+        await ClaudeCliProvider.send(promptWithHistory, projectPath, event.sender);
+      } catch (ccliErr) {
+        console.error('[claude-cli] send error:', ccliErr.message);
+        // Garante que o loading fecha mesmo que o provider não tenha emitido gemini-stream-complete
+        try { event.sender.send('gemini-stream-complete'); } catch (_) {}
+      }
+      return;
+    }
 
     if (aiModel === 'openIa') {
         const token = configService.getOpenIaToken();
@@ -3272,7 +3448,7 @@ ipcMain.on("send-to-gemini", async (event, text) => {
         const useAgentic = shouldUseAgentic(text);
         if (useAgentic) { try { workspace.resetContextSent(); } catch (_) {} }
 
-        const _wsText2 = await prependWorkspaceContextIfNeeded(text, openAiModel);
+        const _wsText2 = await prependWorkspaceContextIfNeeded(promptWithHistory, openAiModel);
 
         if (useAgentic) {
             console.log('🤖 IPC: Iniciando AGENTIC WORKFLOW (multi-fase)...');
@@ -3312,7 +3488,7 @@ ipcMain.on("send-to-gemini", async (event, text) => {
           const instructionO2 = configService.getPromptInstruction();
           const useAgentic = shouldUseAgentic(text);
           if (useAgentic) { try { workspace.resetContextSent(); } catch (_) {} }
-          const _wsTxtO2 = await prependWorkspaceContextIfNeeded(text, 'ollama');
+          const _wsTxtO2 = await prependWorkspaceContextIfNeeded(promptWithHistory, 'ollama');
 
           if (useAgentic) {
               console.log('🤖 IPC: Iniciando AGENTIC WORKFLOW OLLAMA (multi-fase)...');
@@ -3410,12 +3586,19 @@ ipcMain.on("stop-agentic-workflow", (event, sessionId) => {
   if (typeof ollamaAgenticWorkflow !== 'undefined') {
     ollamaAgenticWorkflow.stop(sessionId);
   }
+  // Para CLIs: aborta o processo em curso para o projeto ativo.
+  const projectPath = (workspace.list()[0] || {}).path || process.cwd();
+  ClaudeCliProvider.abortCurrent(projectPath).catch(() => {});
+  GeminiCliProvider.abortCurrent && GeminiCliProvider.abortCurrent(projectPath).catch(() => {});
 });
 
 ipcMain.on("clear-ai-sessions", () => {
-  console.log("🧹 Limpando sessões de IA (OpenAI + Backend)...");
+  console.log("🧹 Limpando sessões de IA (OpenAI + Backend + Gemini)...");
   if (OpenAIService.sessions) OpenAIService.sessions = {};
   BackendService.clearSessions();
+  GeminiCliProvider.shutdown().catch((e) => {
+    console.warn('[gemini-cli] clear-ai-sessions shutdown error:', e.message);
+  });
 });
 
 ipcMain.on("send-to-gemini-stream", async (event, text) => {
@@ -3463,6 +3646,12 @@ ipcMain.on("cancel-ia-request", () => {
     waitingNotificationInterval = null;
   }
   console.log("IA request cancelled");
+});
+
+// Fallback Wayland: global shortcuts falham no Wayland, então o renderer envia
+// este IPC quando Ctrl+D é pressionado enquanto a janela está focada.
+ipcMain.on("renderer-toggle-recording", async () => {
+  try { await toggleRecording(); } catch (e) { console.error("[renderer-toggle-recording]", e.message); }
 });
 
 ipcMain.handle("is-hyprland", () => {
@@ -3696,9 +3885,26 @@ ipcMain.handle("workspace:pick-dir", async () => {
   if (res.canceled || !res.filePaths.length) return { ok: false, canceled: true };
   const added = [];
   // Modelo IDE: um projeto por vez — openProject substitui a pasta anterior.
+  const prevDirs = workspace.list().filter(a => a.type === 'dir').map(a => a.path);
   for (const p of res.filePaths) {
     try { await workspace.openProject(p); added.push(p); }
     catch (e) { console.warn("[workspace] open project falhou:", e.message); }
+  }
+  syncTerminalCwd();
+  // Gemini CLI: reinicia sessão quando o projeto muda.
+  const newDirs = workspace.list().filter(a => a.type === 'dir').map(a => a.path);
+  const oldPath = prevDirs[0] || null;
+  const newPath = newDirs[0] || null;
+  const activeProvider = configService.getAiModel();
+  if (oldPath !== newPath && activeProvider === 'geminiCli') {
+    GeminiCliProvider.changeProject(oldPath, newPath).catch(e =>
+      console.warn('[gemini-cli] changeProject error:', e.message)
+    );
+  }
+  if (oldPath !== newPath && activeProvider === 'claudeCli') {
+    ClaudeCliProvider.changeProject(oldPath, newPath).catch(e =>
+      console.warn('[claude-cli] changeProject error:', e.message)
+    );
   }
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send("workspace-changed", { attachments: workspace.list() });
@@ -3707,6 +3913,139 @@ ipcMain.handle("workspace:pick-dir", async () => {
 });
 
 ipcMain.handle("workspace:list", () => workspace.list());
+
+ipcMain.handle("workspace:rename-item", async (event, { oldPath, newPath }) => {
+  try {
+    if (!fs2.existsSync(oldPath)) {
+      return { ok: false, error: "Arquivo ou pasta de origem não existe." };
+    }
+    if (fs2.existsSync(newPath)) {
+      return { ok: false, error: "Já existe um arquivo ou pasta com o novo nome." };
+    }
+    fs2.renameSync(oldPath, newPath);
+    return { ok: true };
+  } catch (e) {
+    console.error("[workspace:rename-item] erro:", e.message);
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle("workspace:move-item", async (event, { srcPath, destPath }) => {
+  try {
+    if (!fs2.existsSync(srcPath)) {
+      return { ok: false, error: "Item de origem não existe." };
+    }
+    if (!fs2.existsSync(destPath)) {
+      return { ok: false, error: "Diretório de destino não existe." };
+    }
+    const stat = fs2.statSync(destPath);
+    if (!stat.isDirectory()) {
+      return { ok: false, error: "Destino precisa ser uma pasta." };
+    }
+    const filename = path.basename(srcPath);
+    const targetPath = path.join(destPath, filename);
+    if (fs2.existsSync(targetPath)) {
+      return { ok: false, error: `Já existe um item chamado "${filename}" na pasta de destino.` };
+    }
+    fs2.renameSync(srcPath, targetPath);
+    return { ok: true };
+  } catch (e) {
+    console.error("[workspace:move-item] erro:", e.message);
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle("workspace:create-file", async (event, { filePath }) => {
+  try {
+    if (fs2.existsSync(filePath)) {
+      return { ok: false, error: "Arquivo já existe." };
+    }
+    const dir = path.dirname(filePath);
+    if (!fs2.existsSync(dir)) {
+      fs2.mkdirSync(dir, { recursive: true });
+    }
+    fs2.writeFileSync(filePath, "", "utf8");
+    return { ok: true };
+  } catch (e) {
+    console.error("[workspace:create-file] erro:", e.message);
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle("workspace:create-dir", async (event, { dirPath }) => {
+  try {
+    if (fs2.existsSync(dirPath)) {
+      return { ok: false, error: "Diretório já existe." };
+    }
+    fs2.mkdirSync(dirPath, { recursive: true });
+    return { ok: true };
+  } catch (e) {
+    console.error("[workspace:create-dir] erro:", e.message);
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle("workspace:delete-items", async (event, { paths }) => {
+  try {
+    for (const p of paths) {
+      if (fs2.existsSync(p)) {
+        fs2.rmSync(p, { recursive: true, force: true });
+      }
+    }
+    return { ok: true };
+  } catch (e) {
+    console.error("[workspace:delete-items] erro:", e.message);
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle("workspace:pick-parent-dir", async () => {
+  const { dialog } = require("electron");
+  const res = await dialog.showOpenDialog(mainWindow, {
+    title: "Selecionar pasta onde criar o projeto",
+    properties: ["openDirectory"],
+  });
+  if (res.canceled || !res.filePaths.length) return null;
+  return res.filePaths[0];
+});
+
+ipcMain.handle("workspace:create-and-open-project", async (event, { parentPath, folderName }) => {
+  try {
+    const newProjectPath = path.join(parentPath, folderName);
+    if (fs2.existsSync(newProjectPath)) {
+      return { ok: false, error: "Uma pasta com esse nome já existe neste local." };
+    }
+    fs2.mkdirSync(newProjectPath, { recursive: true });
+    
+    // Agora abre o projeto!
+    const prevDirs = workspace.list().filter(a => a.type === 'dir').map(a => a.path);
+    await workspace.openProject(newProjectPath);
+    syncTerminalCwd();
+    
+    // Reinicia sessões da IA se mudou
+    const newDirs = workspace.list().filter(a => a.type === 'dir').map(a => a.path);
+    const oldPath = prevDirs[0] || null;
+    const newPath = newDirs[0] || null;
+    const activeProvider = configService.getAiModel();
+    if (oldPath !== newPath && activeProvider === 'geminiCli') {
+      GeminiCliProvider.changeProject(oldPath, newPath).catch(e =>
+        console.warn('[gemini-cli] changeProject error:', e.message)
+      );
+    }
+    if (oldPath !== newPath && activeProvider === 'claudeCli') {
+      ClaudeCliProvider.changeProject(oldPath, newPath).catch(e =>
+        console.warn('[claude-cli] changeProject error:', e.message)
+      );
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("workspace-changed", { attachments: workspace.list() });
+    }
+    return { ok: true, attachments: workspace.list() };
+  } catch (e) {
+    console.error("[workspace:create-and-open-project] erro:", e.message);
+    return { ok: false, error: e.message };
+  }
+});
 
 // Contexto ativo do projeto (pasta anexada + branch git) — exibido como pills
 // discretos acima do composer, ao estilo de uma IDE. Retorna null quando não há
@@ -3732,6 +4071,67 @@ ipcMain.handle("get-project-context", async () => {
   } catch (e) {
     console.warn("[project-context] falhou:", e.message);
     return null;
+  }
+});
+
+// Retorna arquivos modificados/não comitados e total de alterações via git status
+ipcMain.handle("get-project-git-status", async () => {
+  try {
+    const dir = (workspace.list() || []).find((a) => a.type === "dir");
+    if (!dir || !dir.path) {
+      return { isGit: false, changesCount: 0, modifiedFiles: {}, modifiedDirs: {} };
+    }
+    const projectPath = dir.path;
+    const { execFile } = require("child_process");
+    return await new Promise((resolve) => {
+      execFile(
+        "git",
+        ["-C", projectPath, "status", "--porcelain", "-uall"],
+        { timeout: 3500 },
+        (err, stdout) => {
+          if (err || !stdout) {
+            return resolve({ isGit: false, changesCount: 0, modifiedFiles: {}, modifiedDirs: {} });
+          }
+          const lines = stdout.split("\n");
+          const modifiedFiles = {};
+          const modifiedDirs = {};
+          let count = 0;
+
+          for (const line of lines) {
+            if (!line || line.length < 3) continue;
+            const code = line.substring(0, 2);
+            let relPath = line.substring(3).trim();
+            if (relPath.includes(" -> ")) {
+              relPath = relPath.split(" -> ")[1].trim();
+            }
+            if (relPath.startsWith('"') && relPath.endsWith('"')) {
+              relPath = relPath.substring(1, relPath.length - 1);
+            }
+            relPath = relPath.replace(/\\/g, "/");
+            if (!relPath) continue;
+
+            let status = 'M';
+            if (code.includes('?') || code.includes('U')) status = 'U';
+            else if (code.includes('A')) status = 'A';
+            else if (code.includes('D')) status = 'D';
+
+            modifiedFiles[relPath] = status;
+            count++;
+
+            const parts = relPath.split('/');
+            let currentParent = '';
+            for (let i = 0; i < parts.length - 1; i++) {
+              currentParent = currentParent ? `${currentParent}/${parts[i]}` : parts[i];
+              modifiedDirs[currentParent] = true;
+            }
+          }
+          resolve({ isGit: true, changesCount: count, modifiedFiles, modifiedDirs });
+        }
+      );
+    });
+  } catch (e) {
+    console.warn("[get-project-git-status] falhou:", e.message);
+    return { isGit: false, changesCount: 0, modifiedFiles: {}, modifiedDirs: {} };
   }
 });
 
@@ -3782,32 +4182,177 @@ ipcMain.handle("get-file-diff", async (event, payload) => {
   }
 });
 
-// Árvore (blueprint) do projeto aberto — pra exibir no dropdown da sidebar.
+// Usado SÓ pela busca de conteúdo (Ctrl+Shift+F) — aí faz sentido não varrer
+// node_modules/build. A ÁRVORE da sidebar NÃO esconde mais esses diretórios
+// (ver TREE_HEAVY_DIRS): eles aparecem como nós e carregam sob demanda.
+const PROJECT_SEARCH_SKIP_DIRS = new Set([
+  ".git",
+  "node_modules",
+  "target",
+  "build",
+  ".idea",
+  "__pycache__",
+  ".venv",
+  "venv",
+  "dist",
+  "vendor",
+  ".tooling",
+  ".cache",
+  ".next",
+  ".nuxt",
+  "coverage",
+  ".pytest_cache",
+  ".m2",
+  ".gradle",
+  ".terraform",
+  "out",
+]);
+
+// Diretórios "pesados": APARECEM na árvore como nós, mas não são percorridos
+// de imediato — seus filhos são carregados sob demanda (get-dir-children)
+// quando o usuário expande. Sem isso, um node_modules com 100k arquivos ou
+// estouraria o orçamento (sumindo o resto do projeto) ou travaria a UI. Antes
+// esses diretórios eram simplesmente escondidos (bug: "não vejo node_modules/
+// dist/build no sidebar").
+const TREE_HEAVY_DIRS = new Set([
+  ".git",
+  "node_modules",
+  "target",
+  "build",
+  "dist",
+  "vendor",
+  ".venv",
+  "venv",
+  ".idea",
+  "__pycache__",
+  ".cache",
+  ".next",
+  ".nuxt",
+  "coverage",
+  ".pytest_cache",
+  ".m2",
+  ".gradle",
+  ".terraform",
+  "out",
+  ".tooling",
+]);
+
+function isLikelyBinaryBuffer(buffer) {
+  if (!buffer || !buffer.length) return false;
+  const limit = Math.min(buffer.length, 1024);
+  let suspicious = 0;
+  for (let i = 0; i < limit; i += 1) {
+    const byte = buffer[i];
+    if (byte === 0) return true;
+    if ((byte < 7 || (byte > 14 && byte < 32)) && byte !== 9 && byte !== 10 && byte !== 13) suspicious += 1;
+  }
+  return suspicious / limit > 0.2;
+}
+
+// IMPORTANTE: o array final precisa ficar em ordem DFS pre-order (pasta
+// imediatamente seguida por todos os seus filhos) porque o renderer da
+// sidebar usa isso pra decidir o que esconder quando uma pasta está
+// colapsada. Por isso não dá pra simplesmente fazer BFS pra "priorizar"
+// pastas rasas — a solução é dar um orçamento (budget) de entradas PRÓPRIO
+// pra cada subárvore de topo, assim uma pasta gigante (ex: vendor/ criado
+// pelo composer, ou node_modules) nunca consome o budget inteiro e deixa
+// o resto do projeto sem aparecer (bug reportado: "só mostra os arquivos
+// novos depois do build").
+// Empurra um nó da árvore. Diretórios pesados recebem `lazy: true` e NÃO são
+// percorridos pelo walker — o front carrega os filhos deles sob demanda.
+// Retorna true se o diretório é pesado (pra o chamador não recursar nele).
+function pushTreeNode(entries, absPath, name, depth, isDir) {
+  const heavy = isDir && TREE_HEAVY_DIRS.has(name);
+  entries.push(
+    heavy
+      ? { path: absPath, name, depth, isDir, lazy: true }
+      : { path: absPath, name, depth, isDir }
+  );
+  return heavy;
+}
+
+// Percorre `dirPath` em DFS pre-order (pasta seguida dos filhos), respeitando
+// um orçamento local por subárvore e um limite global de entradas. Diretórios
+// pesados aparecem mas não são expandidos aqui (viram nós lazy).
+function walkTreeInto(entries, dirPath, depth, localBudget, globalLimit) {
+  let dirEntries = [];
+  try {
+    dirEntries = fs2.readdirSync(dirPath, { withFileTypes: true });
+  } catch (_) {
+    return 0;
+  }
+  dirEntries.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  let used = 0;
+  for (const dirent of dirEntries) {
+    if (entries.length >= globalLimit) return used;
+    if (used >= localBudget) return used;
+    const absPath = path.join(dirPath, dirent.name);
+    const isDir = dirent.isDirectory();
+    const heavy = pushTreeNode(entries, absPath, dirent.name, depth, isDir);
+    used += 1;
+    if (isDir && !heavy) {
+      // Filhos herdam o que sobrou do budget local (não o global) — garante
+      // que essa subárvore nunca ultrapasse sua cota, seja lá quão profunda for.
+      used += walkTreeInto(entries, absPath, depth + 1, localBudget - used, globalLimit);
+    }
+    if (entries.length >= globalLimit || used >= localBudget) return used;
+  }
+  return used;
+}
+
+function collectProjectEntries(root, limit = 4000, perTopLevelBudget = 800) {
+  const entries = [];
+
+  // Passo 1: todas as entradas de topo (raiz do projeto) SEMPRE aparecem,
+  // sem limite — é o que garante que nenhuma pasta/arquivo do nível
+  // principal "suma" depois de um build.
+  let topLevel = [];
+  try {
+    topLevel = fs2.readdirSync(root, { withFileTypes: true });
+  } catch (_) {
+    return entries;
+  }
+  topLevel.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+
+  for (const dirent of topLevel) {
+    const absPath = path.join(root, dirent.name);
+    const isDir = dirent.isDirectory();
+    const heavy = pushTreeNode(entries, absPath, dirent.name, 0, isDir);
+    if (isDir && !heavy) walkTreeInto(entries, absPath, 1, perTopLevelBudget, limit);
+    if (entries.length >= limit) break;
+  }
+  return entries;
+}
+
+// Filhos de UM diretório específico — usado quando o usuário expande uma pasta
+// lazy (node_modules, build, etc.) na sidebar. Profundidade relativa: filhos
+// imediatos = 0 (o renderer soma a profundidade do pai + 1).
+function collectDirChildren(dirPath, limit = 3000, perTopLevelBudget = 800) {
+  const entries = [];
+  let top = [];
+  try {
+    top = fs2.readdirSync(dirPath, { withFileTypes: true });
+  } catch (_) {
+    return entries;
+  }
+  top.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+
+  for (const dirent of top) {
+    if (entries.length >= limit) break;
+    const absPath = path.join(dirPath, dirent.name);
+    const isDir = dirent.isDirectory();
+    const heavy = pushTreeNode(entries, absPath, dirent.name, 0, isDir);
+    if (isDir && !heavy) walkTreeInto(entries, absPath, 1, perTopLevelBudget, limit);
+  }
+  return entries;
+}
+
 ipcMain.handle("get-project-tree", async () => {
   try {
     const dir = (workspace.list() || []).find((a) => a.type === "dir");
     if (!dir) return null;
     const root = dir.path;
-    // Lista estruturada (clicável) — usa -printf pra saber tipo (d/f) direto.
-    let entries = [];
-    try {
-      const { execSync } = require("child_process");
-      // path PRIMEIRO (%p) pra ordenar por caminho com `sort` simples; tipo (%y)
-      // depois. -printf interpreta \t/\n; o sort -t com tab literal quebrava.
-      const cmd =
-        `find "${root}" \\( -name '.git' -o -name 'node_modules' -o -name 'target' ` +
-        `-o -name 'build' -o -name '.idea' -o -name '__pycache__' -o -name '.venv' ` +
-        `-o -name 'dist' \\) -prune -o \\( -type f -o -type d \\) -printf '%p\\t%y\\n' ` +
-        `2>/dev/null | sort | head -400`;
-      const out = execSync(cmd, { encoding: "utf8" }).trim();
-      entries = out.split("\n").filter(Boolean).map((line) => {
-        const tab = line.lastIndexOf("\t");
-        const p = tab >= 0 ? line.slice(0, tab) : line;
-        const type = tab >= 0 ? line.slice(tab + 1) : "f";
-        const rel = path.relative(root, p);
-        return { path: p, name: path.basename(p), depth: rel ? rel.split(path.sep).length - 1 : 0, isDir: type === "d" };
-      }).filter((e) => e.path !== root);
-    } catch (_) {}
+    const entries = collectProjectEntries(root);
     return { root, path: root, entries, tree: workspace.tree(root) || "" };
   } catch (e) {
     console.warn("[project-tree] falhou:", e.message);
@@ -3815,7 +4360,82 @@ ipcMain.handle("get-project-tree", async () => {
   }
 });
 
-// Lê o conteúdo de um arquivo do projeto pra exibir no visualizador da IDE.
+// Carrega os filhos de uma pasta lazy (node_modules, build, etc.) quando o
+// usuário a expande na sidebar. Ver collectDirChildren / TREE_HEAVY_DIRS.
+ipcMain.handle("get-dir-children", async (_event, dirPath) => {
+  try {
+    if (!dirPath) return { ok: false, error: "path vazio", entries: [] };
+    if (workspace.isPathAllowed && !workspace.isPathAllowed(dirPath)) {
+      return { ok: false, error: "pasta fora do projeto/workspace", entries: [] };
+    }
+    const entries = collectDirChildren(dirPath);
+    return { ok: true, path: dirPath, entries };
+  } catch (e) {
+    console.warn("[get-dir-children] falhou:", e.message);
+    return { ok: false, error: e.message, entries: [] };
+  }
+});
+
+ipcMain.handle("search-project-content", async (_event, query) => {
+  try {
+    const dir = (workspace.list() || []).find((a) => a.type === "dir");
+    if (!dir) return { ok: false, error: "nenhum projeto aberto", matches: [] };
+    const normalizedQuery = String(query || "").trim().toLowerCase();
+    if (normalizedQuery.length < 4) return { ok: true, query: normalizedQuery, matches: [] };
+
+    const root = dir.path;
+    const matches = [];
+    const MAX_RESULTS = 200;
+    const MAX_FILE_SIZE = 1024 * 1024;
+
+    const walk = (dirPath) => {
+      if (matches.length >= MAX_RESULTS) return;
+      let dirEntries = [];
+      try {
+        dirEntries = fs2.readdirSync(dirPath, { withFileTypes: true });
+      } catch (_) {
+        return;
+      }
+      dirEntries.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+      for (const dirent of dirEntries) {
+        if (matches.length >= MAX_RESULTS) return;
+        if (PROJECT_SEARCH_SKIP_DIRS.has(dirent.name)) continue;
+        const absPath = path.join(dirPath, dirent.name);
+        if (workspace.isPathAllowed && !workspace.isPathAllowed(absPath)) continue;
+        if (dirent.isDirectory()) {
+          walk(absPath);
+          continue;
+        }
+        if (!dirent.isFile()) continue;
+        let st;
+        try {
+          st = fs2.statSync(absPath);
+        } catch (_) {
+          continue;
+        }
+        if (!st.isFile() || st.size > MAX_FILE_SIZE) continue;
+        let buffer;
+        try {
+          buffer = fs2.readFileSync(absPath);
+        } catch (_) {
+          continue;
+        }
+        if (isLikelyBinaryBuffer(buffer)) continue;
+        const text = buffer.toString("utf8").toLowerCase();
+        if (text.includes(normalizedQuery)) matches.push(absPath);
+      }
+    };
+
+    walk(root);
+    return { ok: true, query: normalizedQuery, matches, limited: matches.length >= MAX_RESULTS };
+  } catch (e) {
+    console.warn("[search-project-content] falhou:", e.message);
+    return { ok: false, error: e.message, matches: [] };
+  }
+});
+
+// Lê o conteúdo de um arquivo do projeto — usado pelo visualizador/editor da IDE
+// (editorController.js chama isso pra abrir um arquivo pra edição).
 ipcMain.handle("read-file-content", async (event, filePath) => {
   try {
     if (!filePath) return { ok: false, error: "path vazio" };
@@ -3827,7 +4447,38 @@ ipcMain.handle("read-file-content", async (event, filePath) => {
     if (!st.isFile()) return { ok: false, error: "não é um arquivo" };
     if (st.size > 2 * 1024 * 1024) return { ok: false, error: "arquivo grande demais (>2MB)" };
     const content = fs2.readFileSync(filePath, "utf8");
-    return { ok: true, path: filePath, content, ext: path.extname(filePath).slice(1).toLowerCase(), bytes: st.size };
+    // mtimeMs: o editor guarda esse valor como "baseline" pra detectar conflito
+    // (arquivo mudou por fora entre abrir e salvar) — ver fileEditService.writeFile.
+    return { ok: true, path: filePath, content, ext: path.extname(filePath).slice(1).toLowerCase(), bytes: st.size, mtimeMs: st.mtimeMs };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+// Notifica a janela principal que um arquivo mudou, seja por quem for
+// (humano no editor, OpenAI, Claude Code CLI, Gemini CLI). O editor, se tiver
+// esse arquivo aberto, usa isso só pra SINALIZAR concorrência — não recarrega
+// nem bloqueia nada sozinho. Ver ARCHITECTURE.md > Editor de código.
+function emitFileMutated(payload) {
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("file-mutated", payload);
+    }
+  } catch (_) {}
+}
+
+// Salva o conteúdo do editor humano (Ctrl+S / botão Salvar em #file-viewer).
+// Único caminho de ESCRITA do editor — ver fileEditService.js.
+ipcMain.handle("editor-save-file", async (event, payload) => {
+  try {
+    const { path: filePath, content, expectedMtimeMs } = payload || {};
+    if (!filePath) return { ok: false, error: "path vazio" };
+    if (workspace.isPathAllowed && !workspace.isPathAllowed(filePath)) {
+      return { ok: false, error: "arquivo fora do projeto/workspace" };
+    }
+    const res = fileEditService.writeFile(filePath, content || "", { expectedMtimeMs });
+    emitFileMutated({ path: filePath, origin: "user" });
+    return res;
   } catch (e) {
     return { ok: false, error: e.message };
   }
@@ -3835,6 +4486,7 @@ ipcMain.handle("read-file-content", async (event, filePath) => {
 
 ipcMain.handle("workspace:remove", (event, id) => {
   workspace.removePath(id);
+  syncTerminalCwd();
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send("workspace-changed", { attachments: workspace.list() });
   }
@@ -3843,6 +4495,7 @@ ipcMain.handle("workspace:remove", (event, id) => {
 
 ipcMain.handle("workspace:clear", () => {
   workspace.clear();
+  syncTerminalCwd();
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send("workspace-changed", { attachments: [] });
   }
@@ -3866,6 +4519,73 @@ ipcMain.handle("workspace:open-external", async (event, p) => {
       return { ok: true, fallback: "xdg-open" };
     } catch (e2) {
       return { ok: false, error: e.message };
+    }
+  }
+});
+
+ipcMain.handle("terminal:init", async (event) => {
+  if (terminalProcess) {
+    try {
+      terminalProcess.kill();
+    } catch (_) {}
+    terminalProcess = null;
+  }
+
+  const projectPath = getActiveProjectPath();
+  currentTerminalProjectPath = projectPath;
+
+  const shell = process.env.SHELL || "/bin/bash";
+  
+  terminalProcess = spawn(shell, [], {
+    env: {
+      ...process.env,
+      TERM: "xterm-256color",
+      COLORTERM: "truecolor",
+      CLICOLOR: "1",
+      CLICOLOR_FORCE: "1",
+      FORCE_COLOR: "1",
+      GIT_CONFIG_PARAMETERS: "'color.ui=always'",
+    },
+    cwd: projectPath,
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+
+  terminalProcess.stdout.setEncoding("utf8");
+  terminalProcess.stderr.setEncoding("utf8");
+
+  // Injeta função cd personalizada para imprimir o caminho sempre que o usuário navegar entre pastas (ex: cd .., cd /caminho)
+  if (terminalProcess.stdin && terminalProcess.stdin.writable) {
+    terminalProcess.stdin.write('cd() { builtin cd "$@" && printf "\\033[32m📁 Pasta atual: %s\\033[0m\\n" "$(pwd)"; }\n');
+  }
+
+  terminalProcess.stdout.on("data", (chunk) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("terminal:output", { type: "stdout", data: chunk });
+    }
+  });
+
+  terminalProcess.stderr.on("data", (chunk) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("terminal:output", { type: "stderr", data: chunk });
+    }
+  });
+
+  terminalProcess.on("close", (code) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("terminal:closed", { code });
+    }
+    terminalProcess = null;
+  });
+
+  return { ok: true, shell, projectPath };
+});
+
+ipcMain.on("terminal:input", (event, data) => {
+  if (terminalProcess && terminalProcess.stdin.writable) {
+    try {
+      terminalProcess.stdin.write(data);
+    } catch (e) {
+      console.error("[terminal:input] error:", e.message);
     }
   }
 });
@@ -3975,26 +4695,51 @@ ipcMain.on("set-language", (event, language) => {
 ipcMain.handle("kb-get", () => {
   const cfg = configService.getKnowledgeBaseConfig();
   return {
-    source: knowledgeBase.getSource(),
+    // Não manda mais o texto consolidado inteiro pro renderer — o input de
+    // Configurações é só pra ADICIONAR, não edita/recarrega o arquivo. O link
+    // "ver base completa" abre o arquivo real via sourcePath.
+    sourcePath: knowledgeBase.getSourcePath(),
     enabled: cfg.enabled,
     aiRewrite: cfg.aiRewrite,
     chunks: knowledgeBase.chunkCount(),
   };
 });
 
-ipcMain.handle("kb-save", async (event, payload) => {
+// Anexa conteúdo NOVO ao final da base já consolidada (não recarrega/reprocessa o
+// arquivo inteiro). É o que resolve o "Salvar e Fechar" demorado: antes, salvar
+// SEMPRE re-embedava a base INTEIRA de novo, mesmo se o usuário não tivesse mexido
+// na base de conhecimento (o campo vinha pré-carregado com tudo). Agora, texto
+// vazio = no-op instantâneo; texto novo = só ELE é resumido/embedado.
+ipcMain.handle("kb-append", async (event, payload) => {
   const { text = "", aiRewrite = true, enabled = true } = payload || {};
   configService.setKnowledgeBaseConfig({ aiRewrite: !!aiRewrite, enabled: !!enabled });
+  if (!(text || "").trim()) {
+    return { ok: true, appended: false, chunks: knowledgeBase.chunkCount() };
+  }
   // ChatGPT/Lite → token (embeddings + reescrita nano). Ollama/Full → backend (keyword + reescrita Ollama).
   const useOpenAI = getEffectiveAiModel() === "openIa";
   const token = useOpenAI ? configService.getOpenIaToken() : "";
   const backendResponder = useOpenAI ? null : (t, opts) => BackendService.responder(t, opts);
   try {
-    const res = await knowledgeBase.save(text, { aiRewrite: !!aiRewrite, token, backendResponder });
-    return { ok: true, chunks: res.chunks, text: res.text, rewritten: res.rewritten, shrunk: res.shrunk, codeSkipped: res.codeSkipped };
+    const res = await knowledgeBase.appendSource(text, { aiRewrite: !!aiRewrite, token, backendResponder });
+    return { ok: true, chunks: res.chunks, rewritten: res.rewritten, shrunk: res.shrunk, codeSkipped: res.codeSkipped, appended: res.appended };
   } catch (e) {
     return { ok: false, error: e.message };
   }
+});
+
+// Abre o arquivo consolidado da base de conhecimento no visualizador de arquivos
+// da janela principal (não um editor externo) — a janela de Configurações é uma
+// BrowserWindow separada, sem acesso direto ao viewer do index.html.
+ipcMain.on("kb-open-source-file", () => {
+  try {
+    const p = knowledgeBase.getSourcePath();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+      mainWindow.focus();
+      mainWindow.webContents.send("open-file-in-viewer", p);
+    }
+  } catch (_) {}
 });
 
 // Reorganiza o texto da base com IA SEM salvar (botão "Resumir e organizar com IA").
@@ -4249,6 +4994,10 @@ ipcMain.on("open-config-ui", () => {
   createConfigWindow();
 });
 
+ipcMain.on("open-preferences-ui", () => {
+  createPreferencesWindow();
+});
+
 ipcMain.on("set-ai-model", (event, aiModel) => {
   configService.setAiModel(aiModel);
 });
@@ -4262,6 +5011,24 @@ ipcMain.on("set-openai-model", (event, model) => {
   configService.setOpenAiModel(model);
 });
 
+// IPC Handlers for OpenAI reasoning effort (gpt-5.x/o-series)
+ipcMain.handle("get-openai-reasoning-effort", () => {
+  return configService.getOpenAiReasoningEffort();
+});
+
+ipcMain.on("set-openai-reasoning-effort", (event, effort) => {
+  configService.setOpenAiReasoningEffort(effort);
+});
+
+// IPC Handlers for OpenAI Vision Model
+ipcMain.handle("get-openai-vision-model", () => {
+  return configService.getOpenAiVisionModel();
+});
+
+ipcMain.on("set-openai-vision-model", (event, model) => {
+  configService.setOpenAiVisionModel(model);
+});
+
 // IPC Handlers for Ollama Local
 ipcMain.handle("get-ollama-local-model", () => {
   return configService.getOllamaLocalModel();
@@ -4273,6 +5040,59 @@ ipcMain.on("set-ollama-local-model", (event, model) => {
 
 ipcMain.handle("get-ollama-local-host", () => {
   return configService.getOllamaLocalHost();
+});
+
+// ── Gemini CLI IPC handlers ──────────────────────────────────────────────────
+
+ipcMain.handle("get-gemini-cli-model", () => configService.getGeminiCliModel());
+
+ipcMain.on("set-gemini-cli-model", (event, model) => {
+  configService.setGeminiCliModel(model);
+  GeminiCliProvider.setModel(model);
+});
+
+ipcMain.handle("get-gemini-cli-models", () => GeminiCliProvider.getModels());
+
+ipcMain.handle("check-gemini-cli-installed", async () => {
+  try {
+    const ok = await GeminiCliProvider.checkInstalled();
+    return { installed: ok };
+  } catch (e) {
+    return { installed: false, error: String(e && e.message) };
+  }
+});
+
+// Force session restart (e.g. user clicks "Reconectar" in UI).
+ipcMain.handle("gemini-cli-restart-session", async () => {
+  const projectPath = (workspace.list()[0] || {}).path || process.cwd();
+  await GeminiCliProvider.changeProject(projectPath, projectPath).catch(() => {});
+  return { ok: true };
+});
+
+// ── Claude Code CLI IPC handlers ─────────────────────────────────────────────
+
+ipcMain.handle("get-claude-cli-model", () => configService.getClaudeCliModel());
+
+ipcMain.on("set-claude-cli-model", (event, model) => {
+  configService.setClaudeCliModel(model);
+  ClaudeCliProvider.setModel(model);
+});
+
+ipcMain.handle("get-claude-cli-models", () => ClaudeCliProvider.getModels());
+
+ipcMain.handle("check-claude-cli-installed", async () => {
+  try {
+    const ok = await ClaudeCliProvider.checkInstalled();
+    return { installed: ok };
+  } catch (e) {
+    return { installed: false, error: String(e && e.message) };
+  }
+});
+
+ipcMain.handle("claude-cli-restart-session", async () => {
+  const projectPath = (workspace.list()[0] || {}).path || process.cwd();
+  await ClaudeCliProvider.changeProject(projectPath, projectPath).catch(() => {});
+  return { ok: true };
 });
 
 // Status check: o user clica "verificar" no painel pra ver se Ollama tá up.
@@ -4352,15 +5172,20 @@ ipcMain.on("resize-overlay", (event, height) => {
 // Usado por tools mutantes (systemPowerAction etc.) pra pedir clique humano
 // antes de executar algo destrutivo. Retorna Promise<boolean>.
 const _confirmActionPending = new Map(); // requestId -> { resolve, win, timer }
+let globalBypassAllConfirmations = false;
 
 function showConfirmActionOverlay(opts) {
+  if (globalBypassAllConfirmations) {
+    console.log(`[confirm] Bypassing confirmation automatically due to active 'always approve' bypass.`);
+    return Promise.resolve(true);
+  }
   return new Promise((resolve) => {
     const requestId = `cfm_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const payload = { ...opts, requestId };
-    const json = Buffer.from(JSON.stringify(payload)).toString('base64');
+    const json = encodeURIComponent(Buffer.from(JSON.stringify(payload)).toString('base64'));
 
     const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
-    const w = 420, h = 200;
+    const w = 480, h = 250;
     const win = new BrowserWindow({
       width: w, height: h,
       x: Math.floor((sw - w) / 2),
@@ -4412,7 +5237,11 @@ ipcMain.on("confirm-action-respond", (event, payload) => {
   if (!payload || !payload.requestId) return;
   const entry = _confirmActionPending.get(payload.requestId);
   if (!entry) return;
-  console.log(`[confirm] ${payload.requestId} respondido: ${payload.ok}`);
+  console.log(`[confirm] ${payload.requestId} respondido: ok=${payload.ok}, always=${payload.always}`);
+  if (payload.ok && payload.always) {
+    globalBypassAllConfirmations = true;
+    console.log(`[confirm] Bypassing all subsequent confirmations for this conversation turn.`);
+  }
   entry.finalize(!!payload.ok);
 });
 
@@ -4962,16 +5791,31 @@ async function closeOsLiveSegment() {
     fs2.writeFileSync(wavPath, _buildWavFile(pcm, OS_LIVE_SAMPLE_RATE, 1, 16));
   } catch (e) { console.error('[os-live] WAV write failed:', e.message); }
 
-  // Marca bolha como "processando"
+  // Continuacao de fala: se o segmento anterior fechou ha pouco tempo (pausa pra
+  // respirar, nao fim de pergunta), junta os textos e reprocessa a pergunta INTEIRA.
+  const prevClosed = osLiveLastClosed;
+  const isContinuation = !!(prevClosed && (Date.now() - prevClosed.closedAt) <= OS_LIVE_CONTINUATION_WINDOW_MS);
+  const askVoskText = isContinuation ? `${prevClosed.text} ${seg.voskText}`.trim() : seg.voskText;
+
+  // Marca bolha como "processando" — mostra a pergunta completa se for continuacao.
   if (osNotificationWindow && !osNotificationWindow.isDestroyed()) {
     osNotificationWindow.webContents.executeJavaScript(
-      `window.markTurnFinal && window.markTurnFinal(${JSON.stringify(seg.id)}, ${JSON.stringify(seg.voskText)})`
+      `window.markTurnFinal && window.markTurnFinal(${JSON.stringify(seg.id)}, ${JSON.stringify(askVoskText)})`
     ).catch(() => {});
   }
 
-  // 1) Pergunta IA com texto Vosk (rapido)
+  // Marca a resposta do turno anterior como superada — a pergunta continuava.
+  if (isContinuation && osNotificationWindow && !osNotificationWindow.isDestroyed()) {
+    osNotificationWindow.webContents.executeJavaScript(
+      `window.showTurnResponse && window.showTurnResponse(${JSON.stringify(prevClosed.id)}, ${JSON.stringify('↳ pergunta continuou no trecho seguinte — veja a resposta completa abaixo.')}, true)`
+    ).catch(() => {});
+  }
+
+  osLiveLastClosed = { id: seg.id, text: askVoskText, closedAt: Date.now() };
+
+  // 1) Pergunta IA com texto Vosk (rapido, ja mesclado se continuacao)
   try {
-    const resp = await _askOsLiveAI(seg.voskText, null);
+    const resp = await _askOsLiveAI(askVoskText, null);
     seg.responseVosk = resp;
     if (osNotificationWindow && !osNotificationWindow.isDestroyed()) {
       osNotificationWindow.webContents.executeJavaScript(
@@ -5572,6 +6416,9 @@ app.whenReady().then(async () => {
           mainWindow.webContents.send('workspace-file-written', data);
         }
       } catch (_) {}
+      // Também emite no canal genérico do editor (file-mutated) — se o humano
+      // tiver esse arquivo aberto, vê o indicativo de concorrência em tempo real.
+      emitFileMutated({ path: data && data.path, origin: 'openai' });
     };
     for (const toolName of ['writeFile', 'appendToFile', 'deleteFile', 'patchFile', 'runShellAdvanced']) {
       try {
@@ -5690,5 +6537,8 @@ app.on("will-quit", () => {
   globalShortcut.unregisterAll();
   stopClipboardMonitoring();
   stopAllRealtime();
+  // CLI providers: encerra processos de forma limpa.
+  GeminiCliProvider.shutdown().catch(e => console.warn('[gemini-cli] shutdown error:', e.message));
+  ClaudeCliProvider.shutdown().catch(e => console.warn('[claude-cli] shutdown error:', e.message));
 });
 

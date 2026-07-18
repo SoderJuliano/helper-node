@@ -6,6 +6,7 @@ const path = require('path');
 const configService = require('../configService');
 const knowledgeBase = require('../knowledgeBase');
 const answerBank = require('../answerBank');
+const { supportsReasoningEffort, maxTokensParam, raceWithTimeout, RAG_TIMEOUT_MS } = require('../openAiRealtimeModels');
 
 /**
  * Transcreve um arquivo de audio usando gpt-4o-mini-transcribe.
@@ -54,14 +55,21 @@ async function getTranslationAndSuggestion(transcript, { userName, userBackgroun
 
   // RAG: base de conhecimento (fatos atuais) + banco de respostas (suas respostas boas).
   // Embeda a query UMA vez e compartilha entre os dois → 0 chamada de rede a mais.
+  // Tempo real: isso NUNCA pode segurar a resposta além de RAG_TIMEOUT_MS — se
+  // a busca (embeddings, chamada de rede) demorar demais, segue sem esse contexto.
   let kbBlock = '', bankHint = '';
   try {
     const kbOn = configService.getKnowledgeBaseConfig().enabled;
     const abOn = configService.getAnswerBankConfig().enabled;
     if (kbOn || abOn) {
-      const qEmb = await knowledgeBase.embed(transcript, apiKey);
-      if (kbOn) kbBlock = await knowledgeBase.augment(transcript, { token: apiKey, topK: 5, queryEmbedding: qEmb });
-      if (abOn) bankHint = await answerBank.augment(transcript, { token: apiKey, queryEmbedding: qEmb });
+      const ragWork = (async () => {
+        const qEmb = await knowledgeBase.embed(transcript, apiKey);
+        const kb = kbOn ? await knowledgeBase.augment(transcript, { token: apiKey, topK: 5, queryEmbedding: qEmb }) : '';
+        const bank = abOn ? await answerBank.augment(transcript, { token: apiKey, queryEmbedding: qEmb }) : '';
+        return { kb, bank };
+      })();
+      const result = await raceWithTimeout(ragWork, RAG_TIMEOUT_MS, null);
+      if (result) { kbBlock = result.kb; bankHint = result.bank; }
     }
   } catch (_) {}
   const ragBlock = [bankHint, kbBlock].filter(Boolean).join('\n\n');
@@ -100,21 +108,26 @@ RESPOSTA: <resposta em inglês — texto puro, OU texto + código apenas se pedi
   const FORMAT_RE = /TRADU[ÇC][ÃA]O\s*:/i;
   const onDelta = typeof opts.onDelta === 'function' ? opts.onDelta : null;
 
+  const chatPayload = {
+    model,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userContent },
+    ],
+    ...maxTokensParam(model, 400),
+    stream: !!onDelta,
+  };
+  // Tradutor: velocidade é inegociável, sempre esforço de raciocínio mínimo
+  // (se o modelo aceitar — gpt-4.1/gpt-4o-mini de hoje não aceitam, é no-op).
+  if (supportsReasoningEffort(model)) chatPayload.reasoning_effort = 'low';
+
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userContent },
-      ],
-      max_tokens: 400,
-      stream: !!onDelta,
-    }),
+    body: JSON.stringify(chatPayload),
   });
 
   if (!res.ok) {

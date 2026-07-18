@@ -8,7 +8,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@300;400;600&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        html, body { background: transparent; overflow: hidden; }
+        html, body { background: transparent; overflow: hidden; height: 100%; }
         body {
             color: white;
             font-family: "Source Code Pro", monospace;
@@ -21,6 +21,9 @@
             border-radius: 10px;
             padding: 14px 18px;
             box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+            height: 100%;
+            display: flex;
+            flex-direction: column;
         }
         .title {
             color: #ff6464;
@@ -29,6 +32,7 @@
             letter-spacing: 1px;
             text-transform: uppercase;
             margin-bottom: 8px;
+            flex-shrink: 0;
         }
         .message {
             color: #fff;
@@ -36,6 +40,7 @@
             font-weight: 600;
             margin-bottom: 6px;
             line-height: 1.4;
+            flex-shrink: 0;
         }
         .detail {
             color: #aaa;
@@ -43,11 +48,32 @@
             margin-bottom: 14px;
             line-height: 1.4;
             font-style: italic;
+            flex: 1;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            padding-right: 6px;
+        }
+        /* Custom scrollbar for detail text */
+        .detail::-webkit-scrollbar {
+            width: 6px;
+        }
+        .detail::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 3px;
+        }
+        .detail::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 3px;
+        }
+        .detail::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.25);
         }
         .actions {
             display: flex;
             gap: 8px;
             justify-content: flex-end;
+            flex-shrink: 0;
         }
         button {
             font-family: inherit;
@@ -64,6 +90,12 @@
             border-color: rgba(255,255,255,0.18);
         }
         button.cancel:hover { background: rgba(255,255,255,0.16); color: #fff; }
+        button.always {
+            background: #e67e22;
+            color: #fff;
+            font-weight: 600;
+        }
+        button.always:hover { background: #d35400; }
         button.confirm {
             background: #d33;
             color: #fff;
@@ -75,16 +107,18 @@
             font-size: 11px;
             margin-top: 8px;
             text-align: right;
+            flex-shrink: 0;
         }
     </style>
 </head>
 <body>
     <div id="wrap">
-        <div class="title">⚠️ Confirmacao necessaria</div>
-        <div class="message" id="msg">A IA quer executar uma acao.</div>
+        <div class="title">⚠️ Confirmação necessária</div>
+        <div class="message" id="msg">A IA quer executar uma ação.</div>
         <div class="detail" id="detail" style="display:none"></div>
         <div class="actions">
             <button class="cancel" id="btn-cancel">Cancelar</button>
+            <button class="always" id="btn-always" title="Aprovar todas as ações deste turno sem perguntar de novo">Sempre</button>
             <button class="confirm" id="btn-ok">Confirmar</button>
         </div>
         <div class="countdown" id="cd"></div>
@@ -96,10 +130,17 @@
         try {
             const qs = new URLSearchParams(window.location.search);
             const raw = qs.get("json");
-            if (raw) payload = JSON.parse(atob(raw));
-        } catch (e) { console.error(e); }
+            if (raw) {
+                const binString = atob(raw);
+                const bytes = Uint8Array.from(binString, (c) => c.charCodeAt(0));
+                const decoded = new TextDecoder().decode(bytes);
+                payload = JSON.parse(decoded);
+            }
+        } catch (e) {
+            console.error("Erro ao decodificar payload base64:", e);
+        }
 
-        document.getElementById("msg").textContent = payload.message || "Confirmar acao?";
+        document.getElementById("msg").textContent = payload.message || "Confirmar ação?";
         if (payload.detail) {
             const d = document.getElementById("detail");
             d.style.display = "block";
@@ -108,14 +149,16 @@
         document.getElementById("btn-ok").textContent = payload.confirmText || "Confirmar";
         document.getElementById("btn-cancel").textContent = payload.cancelText || "Cancelar";
 
-        function respond(ok) {
+        function respond(ok, always) {
             if (window.electronAPI && window.electronAPI.confirmActionRespond) {
-                window.electronAPI.confirmActionRespond(payload.requestId, ok);
+                window.electronAPI.confirmActionRespond(payload.requestId, ok, always);
+            } else {
+                window.close();
             }
-            window.close();
         }
 
         document.getElementById("btn-ok").addEventListener("click", () => respond(true));
+        document.getElementById("btn-always").addEventListener("click", () => respond(true, true));
         document.getElementById("btn-cancel").addEventListener("click", () => respond(false));
 
         // Countdown visual (timeout efetivo eh feito no main)
@@ -131,9 +174,12 @@
             }
         }, 250);
 
-        // Atalhos: Enter confirma, Esc cancela
+        // Atalhos: Enter confirma, Shift+Enter confirma Sempre, Esc cancela
         window.addEventListener("keydown", (e) => {
-            if (e.key === "Enter") respond(true);
+            if (e.key === "Enter") {
+                if (e.shiftKey) respond(true, true);
+                else respond(true);
+            }
             else if (e.key === "Escape") respond(false);
         });
     </script>

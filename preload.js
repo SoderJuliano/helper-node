@@ -23,6 +23,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
       callback(audioFilePath);
     });
   },
+  // Modo IDE (pasta/arquivos anexados no sidebar): Ctrl+D transcreve o áudio
+  // via Whisper mas NÃO envia sozinho pra IA — o texto vai pro composer pra
+  // o usuário revisar/editar e enviar manualmente (Shift+Enter ou botão).
+  onIdeAudioTranscribed: (callback) => {
+    ipcRenderer.on("ide-audio-transcribed", (event, { text }) => callback(text));
+  },
   onIaResponse: (callback) => {
     // ipcRenderer.on('llama-response', (event, { resposta }) => {
     //     callback(resposta);
@@ -45,12 +51,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onRealtimeAssistantUpdate: (callback) =>
     ipcRenderer.on("realtime-assistant-update", (event, data) => callback(data)),
   // sendTextToLlama: (text) => ipcRenderer.send('send-to-llama', text),
-  sendTextToGemini: (text) => ipcRenderer.send("send-to-gemini", text),
+  sendTextToGemini: (text, sessionId) => ipcRenderer.send("send-to-gemini", text, sessionId),
   // Manda a IMAGEM (data URL base64) + enunciado pro modelo de visão (gpt-4o).
   // Usado quando o usuário cola/captura uma imagem no chat e o backend é OpenAI.
   sendVisionToGemini: (text, image) =>
     ipcRenderer.send("send-to-gemini-vision", { text, image }),
-  sendTextToGeminiStream: (text) => ipcRenderer.send("send-to-gemini-stream", text),
+  sendTextToGeminiStream: (text, sessionId) => ipcRenderer.send("send-to-gemini-stream", text, sessionId),
   onAutoStream: (callback) =>
     ipcRenderer.on("send-to-gemini-stream-auto", (event, text) => callback(text)),
   // Estado do auto-close da janela 'response', decidido pelo main (cursor por
@@ -60,6 +66,24 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getAiModel: () => ipcRenderer.invoke("get-ai-model"),
   getOpenaiModel: () => ipcRenderer.invoke("get-openai-model"),
   setOpenaiModel: (model) => ipcRenderer.send("set-openai-model", model),
+  getOpenaiReasoningEffort: () => ipcRenderer.invoke("get-openai-reasoning-effort"),
+  setOpenaiReasoningEffort: (effort) => ipcRenderer.send("set-openai-reasoning-effort", effort),
+  getOpenaiVisionModel: () => ipcRenderer.invoke("get-openai-vision-model"),
+  setOpenaiVisionModel: (model) => ipcRenderer.send("set-openai-vision-model", model),
+  // Claude Code CLI provider
+  getClaudeCliModel: () => ipcRenderer.invoke("get-claude-cli-model"),
+  setClaudeCliModel: (model) => ipcRenderer.send("set-claude-cli-model", model),
+  getClaudeCliModels: () => ipcRenderer.invoke("get-claude-cli-models"),
+  checkClaudeCliInstalled: () => ipcRenderer.invoke("check-claude-cli-installed"),
+  claudeCliRestartSession: () => ipcRenderer.invoke("claude-cli-restart-session"),
+  onClaudeCliStatus: (cb) => ipcRenderer.on("claude-cli-status", (event, data) => cb(data)),
+  // Gemini CLI provider
+  getGeminiCliModel: () => ipcRenderer.invoke("get-gemini-cli-model"),
+  setGeminiCliModel: (model) => ipcRenderer.send("set-gemini-cli-model", model),
+  getGeminiCliModels: () => ipcRenderer.invoke("get-gemini-cli-models"),
+  checkGeminiCliInstalled: () => ipcRenderer.invoke("check-gemini-cli-installed"),
+  geminiCliRestartSession: () => ipcRenderer.invoke("gemini-cli-restart-session"),
+  onGeminiCliStatus: (cb) => ipcRenderer.on("gemini-cli-status", (event, data) => cb(data)),
   getEdition: () => ipcRenderer.invoke("get-edition"),
   openConfig: () => ipcRenderer.send("open-config-ui"),
   stopNotifications: () => ipcRenderer.send("stop-notifications"),
@@ -84,6 +108,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   closeOsInput: () => ipcRenderer.send("close-os-input"),
   sendOsQuestion: (text, image) => ipcRenderer.send("send-os-question", { text, image }),
   cancelRecording: () => ipcRenderer.send("cancel-recording"),
+  // Fallback pra Wayland onde global shortcuts falham: renderer aciona gravação.
+  triggerToggleRecording: () => ipcRenderer.send("renderer-toggle-recording"),
   resizeOverlay: (height) => ipcRenderer.send("resize-overlay", height),
   copyToClipboard: (text) => ipcRenderer.send("copy-to-clipboard", text),
   // Region select overlay → main
@@ -102,17 +128,33 @@ contextBridge.exposeInMainWorld("electronAPI", {
   deleteSession: (sessionId) => ipcRenderer.invoke("delete-session", sessionId),
 
   // Confirmacao de acoes destrutivas (systemPowerAction etc.)
-  confirmActionRespond: (requestId, ok) =>
-    ipcRenderer.send("confirm-action-respond", { requestId, ok }),
+  confirmActionRespond: (requestId, ok, always) =>
+    ipcRenderer.send("confirm-action-respond", { requestId, ok, always }),
 
   // === Workspace (anexos pra contexto da IA) ===
   workspacePickFile: () => ipcRenderer.invoke("workspace:pick-file"),
   workspacePickDir: () => ipcRenderer.invoke("workspace:pick-dir"),
   workspaceList: () => ipcRenderer.invoke("workspace:list"),
   getProjectContext: () => ipcRenderer.invoke("get-project-context"),
+  getProjectGitStatus: () => ipcRenderer.invoke("get-project-git-status"),
   getProjectTree: () => ipcRenderer.invoke("get-project-tree"),
+  getDirChildren: (dirPath) => ipcRenderer.invoke("get-dir-children", dirPath),
+  searchProjectContent: (query) => ipcRenderer.invoke("search-project-content", query),
   readFileContent: (p) => ipcRenderer.invoke("read-file-content", p),
   getFileDiff: (payload) => ipcRenderer.invoke("get-file-diff", payload),
+  renameItem: (oldPath, newPath) => ipcRenderer.invoke("workspace:rename-item", { oldPath, newPath }),
+  moveItem: (srcPath, destPath) => ipcRenderer.invoke("workspace:move-item", { srcPath, destPath }),
+  createFile: (filePath) => ipcRenderer.invoke("workspace:create-file", { filePath }),
+  createDir: (dirPath) => ipcRenderer.invoke("workspace:create-dir", { dirPath }),
+  deleteItems: (paths) => ipcRenderer.invoke("workspace:delete-items", { paths }),
+  pickParentDir: () => ipcRenderer.invoke("workspace:pick-parent-dir"),
+  createAndOpenProject: (parentPath, folderName) => ipcRenderer.invoke("workspace:create-and-open-project", { parentPath, folderName }),
+  // === Editor de código (#file-viewer) ===
+  editorSaveFile: (payload) => ipcRenderer.invoke("editor-save-file", payload),
+  // Notifica o editor de qualquer mutação de arquivo (humano, OpenAI, Claude
+  // Code CLI, Gemini CLI) — usado só pro indicativo de concorrência em tempo
+  // real, nunca pra bloquear nada.
+  onFileMutated: (cb) => ipcRenderer.on("file-mutated", (event, data) => cb(data)),
   workspaceRemove: (id) => ipcRenderer.invoke("workspace:remove", id),
   workspaceClear: () => ipcRenderer.invoke("workspace:clear"),
   workspaceOpenExternal: (p) => ipcRenderer.invoke("workspace:open-external", p),
@@ -121,6 +163,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("workspace-changed", (event, data) => cb(data)),
   onWorkspaceFileWritten: (cb) =>
     ipcRenderer.on("workspace-file-written", (event, data) => cb(data)),
+  // Configurações (janela separada) pede pra abrir um arquivo (ex.: base de
+  // conhecimento) no visualizador desta janela.
+  onOpenFileInViewer: (cb) =>
+    ipcRenderer.on("open-file-in-viewer", (event, filePath) => cb(filePath)),
   onAiToolActivity: (cb) =>
     ipcRenderer.on("ai-tool-activity", (event, data) => cb(data)),
 
@@ -151,4 +197,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   requestTranslationResize: () =>
     ipcRenderer.send("request-translation-resize"),
   overlayPosition: (pos) => ipcRenderer.send('overlay-position', pos),
+
+  // === Terminal Connection ===
+  terminalInit: () => ipcRenderer.invoke("terminal:init"),
+  terminalInput: (data) => ipcRenderer.send("terminal:input", data),
+  onTerminalOutput: (cb) => ipcRenderer.on("terminal:output", (event, data) => cb(data)),
+  onTerminalClosed: (cb) => ipcRenderer.on("terminal:closed", (event, data) => cb(data)),
 });

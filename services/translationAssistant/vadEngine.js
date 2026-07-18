@@ -61,7 +61,7 @@ const SILENCE_RMS = 300;
 
 // Silêncio contínuo necessário para fechar o segmento (ms)
 // 'mic' = microfone do candidato, 'sys' = áudio do sistema (entrevistador)
-const SILENCE_DURATION = { mic: 2500, sys: 1200 };
+const SILENCE_DURATION = { mic: 1500, sys: 800 };
 
 // Fala mínima para considerar o segmento válido (evita enviar só ruído)
 const MIN_SPEECH_MS = 400;

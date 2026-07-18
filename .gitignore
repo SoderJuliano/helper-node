@@ -29,8 +29,20 @@ __pycache__/
 *.wav
 *.raw
 
-# ===== Configs locais =====
+# ===== Configs locais / logs / backups =====
 config-default.json
+*.log
+*.bak
+*.tmp
+
+# ===== Screenshots capturadas em runtime =====
+screenshot-*.png
+
+# ===== JDK / tooling baixado automaticamente =====
+.tooling/
+
+# ===== APKs de debug =====
+*-debug.apk
 
 # ===== IDE =====
 .vscode/
@@ -40,3 +52,4 @@ config-default.json
 # ===== OS =====
 .DS_Store
 Thumbs.db
+

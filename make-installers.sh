@@ -19,13 +19,14 @@ gen_desktop() {
     # $1 = caminho do .sh   $2 = rótulo (ex.: "lite · deb")   $3 = formato (deb/arch)
     local sh="$1" label="$2" fmt="$3"
     local dsk="$DIST_DIR/Instalar Helper Node (${label// · /-}).desktop"
+    local sh_name="$(basename "$sh")"
     cat > "$dsk" <<DESKTOP_EOF
 [Desktop Entry]
 Version=1.0
 Name=Instalar Helper Node (${label})
 Comment=Instala o Helper Node (${label}) no sistema
-Exec=bash -c 'p="%k"; p="\${p#file://}"; d="\$(dirname "\$p")"; [ -d "\$d" ] && cd "\$d"; exec bash ./$(basename "$sh")'
-Terminal=true
+Exec=bash -c 'DIR="\$(dirname "\$(echo "\$1" | sed "s|^file://||")")"; [ -d "\$DIR" ] && cd "\$DIR"; exec bash ./${sh_name}' _ %k
+Terminal=false
 Type=Application
 Icon=system-software-install
 Categories=System;

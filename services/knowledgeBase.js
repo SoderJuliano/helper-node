@@ -33,6 +33,8 @@ function getSource() {
   try { return fs.readFileSync(srcPath(), "utf8"); } catch (_) { return ""; }
 }
 
+function getSourcePath() { return srcPath(); }
+
 function loadIndex() {
   try { return JSON.parse(fs.readFileSync(idxPath(), "utf8")); } catch (_) { return { chunks: [], updatedAt: 0 }; }
 }
@@ -141,6 +143,64 @@ async function save(text, { aiRewrite = true, token, backendResponder } = {}) {
   fs.writeFileSync(idxPath(), JSON.stringify({ chunks, updatedAt: Date.now() }), "utf8");
   console.log(`[knowledgeBase] base salva: ${chunks.length} chunk(s), embeddings=${token && chunks[0] && chunks[0].embedding ? "sim" : "não (keyword)"}`);
   return { chunks: chunks.length, text: finalText, rewritten, shrunk, codeSkipped };
+}
+
+/**
+ * Anexa conteúdo NOVO ao final da base já consolidada — não recarrega/reprocessa
+ * o arquivo inteiro. Reescreve (se aiRewrite) SÓ o trecho novo, e re-chunka/re-embeda
+ * SÓ os chunks novos, empilhando no índice existente. É o que faz o "Salvar e Fechar"
+ * ser rápido mesmo com uma base grande: antes disso, salvar sempre re-embedava a base
+ * INTEIRA de novo a cada fechamento de Configurações, mesmo sem o usuário ter mexido
+ * na base de conhecimento.
+ * @returns {Promise<{chunks:number, text:string, rewritten:boolean, shrunk:boolean, codeSkipped:boolean, appended:boolean}>}
+ */
+async function appendSource(newText, { aiRewrite = true, token, backendResponder } = {}) {
+  const original = (newText || "").trim();
+  if (!original) {
+    // Nada novo pra processar — não faz nenhuma chamada de rede nem regrava o arquivo.
+    return { chunks: chunkCount(), text: getSource(), rewritten: false, shrunk: false, codeSkipped: false, appended: false };
+  }
+  ensureDir();
+
+  let addedText = original;
+  let rewritten = false;
+  let shrunk = false;
+  let codeSkipped = false;
+  const hasCode = /```|^\s{4,}\S/m.test(original);
+  if (aiRewrite && hasCode) {
+    codeSkipped = true;
+    console.log("[knowledgeBase] append: trecho novo contém código — pulando reescrita IA");
+  } else if (aiRewrite) {
+    try {
+      const out = ((await rewriteWithAI(original, { token, backendResponder })) || "").trim();
+      if (out && out.length >= original.length * 0.6) {
+        addedText = out; rewritten = true;
+        console.log(`[knowledgeBase] append: trecho novo reescrito (${original.length} → ${out.length} chars)`);
+      } else {
+        shrunk = true;
+        console.warn(`[knowledgeBase] append: reescrita encurtou demais (${original.length} → ${out.length}) — mantendo o trecho original`);
+      }
+    } catch (e) { console.warn("[knowledgeBase] append: reescrita IA falhou, anexando cru:", e.message); }
+  }
+
+  const existing = getSource();
+  const finalText = existing ? existing.trimEnd() + "\n\n" + addedText : addedText;
+  fs.writeFileSync(srcPath(), finalText, "utf8");
+
+  const newChunks = chunkText(addedText).map((t) => ({ text: t }));
+  if (token && newChunks.length) {
+    try {
+      const embs = await embedOpenAI(newChunks.map((c) => c.text), token);
+      newChunks.forEach((c, i) => { c.embedding = embs[i]; });
+    } catch (e) { console.warn("[knowledgeBase] append: embeddings do trecho novo falharam, usando keyword:", e.message); }
+  }
+  const idx = loadIndex();
+  idx.chunks = [...(idx.chunks || []), ...newChunks];
+  idx.updatedAt = Date.now();
+  fs.writeFileSync(idxPath(), JSON.stringify(idx), "utf8");
+
+  console.log(`[knowledgeBase] append: +${newChunks.length} chunk(s) novo(s) (total ${idx.chunks.length})`);
+  return { chunks: idx.chunks.length, text: finalText, rewritten, shrunk, codeSkipped, appended: true };
 }
 
 /**
@@ -287,6 +347,6 @@ async function augment(query, opts = {}) {
 }
 
 module.exports = {
-  getSource, save, rewrite, retrieve, augment, buildContextBlock, chunkCount, chunkText,
-  embed, cosine, baseDir,
+  getSource, getSourcePath, save, appendSource, rewrite, retrieve, augment, buildContextBlock,
+  chunkCount, chunkText, embed, cosine, baseDir,
 };

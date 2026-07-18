@@ -7,6 +7,7 @@ const { exec, spawn } = require("child_process");
 const util = require("util");
 const execPromise = util.promisify(exec);
 const voskStreamService = require("./voskStreamService");
+const { applyRealtimeOverride, supportsReasoningEffort, maxTokensParam } = require("./openAiRealtimeModels");
 
 /**
  * Realtime Assistant — Whisper-first (Option A).
@@ -32,7 +33,7 @@ const voskStreamService = require("./voskStreamService");
 
 const SAMPLE_RATE = 16000;
 const SILENCE_RMS_THRESHOLD = 250;
-const SILENCE_DURATION_MS = 4000;        // pausa real, nao respirada
+const SILENCE_DURATION_MS = 3000;        // pausa real, nao respirada (fusao de fala cobre falso-positivo)
 const MAX_SEGMENT_MS = 90000;            // explicacao tecnica longa cabe
 const GRACE_EXTEND_MS = 15000;           // se ainda falando ao bater max, estende
 const HARD_CAP_MS = 120000;              // limite absoluto (sem chance de virar audiobook)
@@ -40,6 +41,10 @@ const CONNECTOR_GRACE_MS = 4000;         // se parou em conector, aguarda mais X
 const LOUD_ACTIVE_WINDOW_MS = 700;       // "ainda falando" = teve som loud nos ultimos N ms
 const WHISPER_TIMEOUT_MS = 45000;        // mata whisper se ultrapassar
 const MAX_PARALLEL_WHISPER = 2;          // evita N whisper-cli concorrendo no CPU
+// Se o proximo segmento fechar dentro desta janela apos o anterior, tratamos
+// como continuacao da MESMA pergunta (pausa pra respirar) em vez de fala nova —
+// juntamos os dois textos e reprocessamos a pergunta inteira.
+const CONTINUATION_WINDOW_MS = 3000;
 
 // Tokens que indicam fala incompleta ("...porque", "...entao", "...e").
 // Quando o ultimo token do parcial bate, NAO fechamos por silencio na hora —
@@ -74,6 +79,7 @@ class RealtimeAssistantService {
 
     this.currentSegment = null;
     this._silenceCheckInterval = null;
+    this.lastClosed = null; // { id, text, closedAt } — pra fusao de fala fragmentada por pausa
 
     // Fila do Whisper: limita paralelismo pra nao travar CPU.
     this._whisperQueue = [];
@@ -89,6 +95,7 @@ class RealtimeAssistantService {
     this.contextMessages = [];
     this.currentSessionId = null;
     this.currentSegment = null;
+    this.lastClosed = null;
 
     if (this.historyService) {
       try {
@@ -273,19 +280,37 @@ class RealtimeAssistantService {
       try { await fsp.unlink(wavPath); } catch (_) {}
 
       seg.whisperText = whisperOk ? finalText : null;
-      // Sempre emite o texto definitivo (whisper ou vosk fallback).
+
+      // Continuacao de fala: se o segmento anterior fechou ha pouco tempo (pausa
+      // pra respirar, nao fim de pergunta), junta os dois textos e reprocessa a
+      // pergunta INTEIRA — em vez de responder so o pedaco novo fragmentado.
+      const prevClosed = this.lastClosed;
+      const isContinuation = !!(prevClosed && (Date.now() - prevClosed.closedAt) <= CONTINUATION_WINDOW_MS);
+      const askText = isContinuation ? `${prevClosed.text} ${finalText}`.trim() : finalText;
+
+      // Sempre emite o texto definitivo (whisper ou vosk fallback) — se for
+      // continuacao, mostra a pergunta completa (com o trecho anterior), nao so o pedaco novo.
       this.emitUpdate({
         type: "segment_whisper_correction",
         id: seg.id,
-        text: finalText,
+        text: askText,
         source: whisperOk ? "whisper" : "vosk-fallback",
         timestamp: new Date().toISOString(),
       });
 
-      // Agora sim — pergunta a IA UMA unica vez com o texto final.
+      // Agora sim — pergunta a IA UMA unica vez com o texto final (ja mesclado se continuacao).
       try {
-        const resp = await this._askAI(finalText);
+        const resp = await this._askAI(askText);
         seg.responseFinal = resp;
+        if (isContinuation) {
+          // Marca a resposta do trecho anterior como superada — a pergunta continuava.
+          this.emitUpdate({
+            type: "segment_response",
+            id: prevClosed.id,
+            response: "↳ pergunta continuou no trecho seguinte — veja a resposta completa abaixo.",
+            timestamp: new Date().toISOString(),
+          });
+        }
         this.emitUpdate({
           type: "segment_response",
           id: seg.id,
@@ -293,8 +318,10 @@ class RealtimeAssistantService {
           source: whisperOk ? "whisper" : "vosk-fallback",
           timestamp: new Date().toISOString(),
         });
-        await this._writeHistory(seg, finalText, resp);
+        await this._writeHistory(seg, askText, resp);
       } catch (err) { this._handleAIError(err, seg); }
+
+      this.lastClosed = { id: seg.id, text: askText, closedAt: Date.now() };
     });
   }
 
@@ -416,7 +443,7 @@ class RealtimeAssistantService {
 
     const token = this.configService.getOpenIaToken();
     if (!token) throw new Error("Token da OpenAI não configurado.");
-    const model = this.configService.getOpenAiModel();
+    const model = applyRealtimeOverride(this.configService.getOpenAiModel());
 
     const userPrompt =
       `TRANSCRIÇÃO do áudio captado (refinada por Whisper, alta qualidade):\n\n` +
@@ -425,13 +452,16 @@ class RealtimeAssistantService {
       `responda APENAS '(trecho sem conteúdo relevante)'.`;
 
     const payload = {
-      model, max_tokens: 500,
+      model,
+      ...maxTokensParam(model, 500),
       messages: [
         { role: "system", content: this._systemInstruction() },
         ...this._buildContext(),
         { role: "user", content: userPrompt },
       ],
     };
+    // Tempo real: velocidade é inegociável, sempre esforço de raciocínio mínimo.
+    if (supportsReasoningEffort(model)) payload.reasoning_effort = "low";
     const response = await axios.post("https://api.openai.com/v1/chat/completions", payload, {
       headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
       timeout: 60000,
