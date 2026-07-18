@@ -4153,7 +4153,14 @@
 
                 switch (payload.type) {
                     case 'state':
-                        if (payload.state === 'started') setComposerVisibility(false);
+                        if (payload.state === 'started') {
+                            setComposerVisibility(false);
+                            // Modo Assistente em Tempo Real não tem input de texto — o hero
+                            // (com chips de sugestão que abrem o composer) não pode ficar
+                            // flutuando sozinho na tela quando o composer some.
+                            const hero = document.getElementById('welcome-hero');
+                            if (hero) hero.classList.add('hidden');
+                        }
                         else if (payload.state === 'stopped') setComposerVisibility(true);
                         appendRealtimeBubble('system', payload.message || 'Atualização do modo em tempo real');
                         return;
@@ -5974,6 +5981,11 @@
                     if (status && status !== 'idle') {
                         const hero = document.getElementById('welcome-hero');
                         if (hero) hero.classList.add('hidden');
+                        // Tradutor também não tem input de texto — mesma regra do
+                        // Assistente em Tempo Real: composer some enquanto o modo está ativo.
+                        if (typeof setComposerVisibility === 'function') setComposerVisibility(false);
+                    } else if (status === 'idle') {
+                        if (typeof setComposerVisibility === 'function') setComposerVisibility(true);
                     }
                     if (status === 'mic_open') {
                         _taLive.className = 'visible state-mic';

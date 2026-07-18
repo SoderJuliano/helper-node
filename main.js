@@ -2548,6 +2548,16 @@ async function toggleRecording() {
       return;
     }
 
+    // Tradutor é um modo exclusivo, sem input de texto — nunca deve gravar/transcrever
+    // via Ctrl+D nem jogar texto no composer (isso é exclusividade do modo IDE).
+    // Sem esse guard, com pasta de projeto aberta (modo IDE) + Tradutor ativo numa
+    // janela normal (não OS Integration), o Ctrl+D caía na rota de baixo e enchia
+    // o composer mesmo com o Tradutor ligado.
+    if (translationAssistant.isActive()) {
+      console.log("Ctrl+D ignorado — Assistente de Tradução ativo (modo exclusivo, sem input de texto).");
+      return;
+    }
+
     // Anti-spam: ignora Ctrl+D enquanto ainda estamos transcrevendo/respondendo
     // o áudio do toque anterior (senão múltiplos toques enviam o mesmo áudio).
     if (recordingBusy) {
