@@ -171,15 +171,93 @@ elif [[ "$XDG_CURRENT_DESKTOP" == "Hyprland" ]]; then
     echo "------------------------------------------------------------------"
 
 elif [[ "$XDG_CURRENT_DESKTOP" == *"KDE"* || "$XDG_CURRENT_DESKTOP" == *"PLASMA"* || "$XDG_CURRENT_DESKTOP" == *"KDE Plasma"* ]]; then
-    # --- KDE Plasma Configuration via KHotKeys ---
+    # --- KDE Plasma Configuration ---
     echo "Attempting to configure for KDE Plasma..."
 
-    KHOTKEYS_DIR="$HOME/.config/khotkeys"
-    KHOTKEYS_FILE="$KHOTKEYS_DIR/helper-node.khotkeys"
+    PLASMA_VER=$(plasmashell --version 2>/dev/null | grep -oP '(?<=plasmashell )\d+' || echo "5")
+    if [[ "$PLASMA_VER" -ge 6 ]]; then
+        echo "Configuring for KDE Plasma 6 (Wayland compatible)..."
+        echo "Due to KDE 6 Wayland security restrictions, global shortcuts configured via script require a logout/login."
+        echo "To provide IMMEDIATE hotkeys, we will install a background evdev listener (requires sudo)."
+        
+        # Cria e instala o script evdev
+        EVDEV_SCRIPT="/tmp/helper-node-evdev-hotkeys.py"
+        cat > "$EVDEV_SCRIPT" << 'EOF'
+#!/usr/bin/env python3
+import evdev, asyncio, os, getpass, pwd, subprocess
+from evdev import ecodes
 
-    mkdir -p "$KHOTKEYS_DIR"
+SHORTCUTS = {
+    (frozenset([ecodes.KEY_LEFTCTRL]), frozenset([ecodes.KEY_D])): "curl -X POST http://localhost:3000/toggle-recording -s -o /dev/null",
+    (frozenset([ecodes.KEY_LEFTCTRL]), frozenset([ecodes.KEY_I])): "curl -X POST http://localhost:3000/bring-to-focus-and-input -s -o /dev/null",
+    (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_I])): "curl -X POST http://localhost:3000/bring-to-focus-and-input -s -o /dev/null",
+    (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_S])): "curl -X POST http://localhost:3000/capture-screen-auto -s -o /dev/null",
+    (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_C])): "curl -X POST http://localhost:3000/open-config -s -o /dev/null",
+    (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_1])): "curl -X POST http://localhost:3000/move-to-display/0 -s -o /dev/null",
+    (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_2])): "curl -X POST http://localhost:3000/move-to-display/1 -s -o /dev/null",
+}
 
-    cat > "$KHOTKEYS_FILE" << 'EOF'
+MODS = {ecodes.KEY_LEFTCTRL: ecodes.KEY_LEFTCTRL, ecodes.KEY_RIGHTCTRL: ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT: ecodes.KEY_LEFTSHIFT, ecodes.KEY_RIGHTSHIFT: ecodes.KEY_LEFTSHIFT}
+TARGET_USER = os.environ.get("SUDO_USER", "root")
+
+async def monitor(dev):
+    active = set()
+    try:
+        async for event in dev.async_read_loop():
+            if event.type == ecodes.EV_KEY:
+                e = evdev.categorize(event)
+                if e.scancode in MODS:
+                    if e.keystate == 1: active.add(MODS[e.scancode])
+                    elif e.keystate == 0 and MODS[e.scancode] in active: active.remove(MODS[e.scancode])
+                elif e.keystate == 1:
+                    combo = (frozenset(active), frozenset([e.scancode]))
+                    if combo in SHORTCUTS:
+                        cmd = SHORTCUTS[combo]
+                        if TARGET_USER != 'root': cmd = f"su - {TARGET_USER} -c '{cmd}'"
+                        subprocess.Popen(cmd, shell=True)
+    except: pass
+
+async def main():
+    devs = [evdev.InputDevice(p) for p in evdev.list_devices()]
+    kbds = [d for d in devs if ecodes.EV_KEY in d.capabilities() and ecodes.KEY_A in d.capabilities()[ecodes.EV_KEY]]
+    await asyncio.gather(*(monitor(d) for d in kbds))
+
+if __name__ == "__main__": asyncio.run(main())
+EOF
+
+        SERVICE_FILE="/tmp/helper-node-hotkeys.service"
+        cat > "$SERVICE_FILE" << EOF
+[Unit]
+Description=Helper-Node Global Hotkeys (evdev)
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/helper-node-evdev-hotkeys
+Restart=always
+User=root
+Environment=SUDO_USER=$USER
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+        echo "Asking for permission via pkexec to install the robust hotkey daemon..."
+        if pkexec bash -c "cp $EVDEV_SCRIPT /usr/local/bin/helper-node-evdev-hotkeys && chmod +x /usr/local/bin/helper-node-evdev-hotkeys && cp $SERVICE_FILE /etc/systemd/system/ && systemctl daemon-reload && systemctl enable --now helper-node-hotkeys.service"; then
+            echo "------------------------------------------------------------------"
+            echo "SUCCESS: KDE Plasma 6 hotkeys configured robustly via systemd daemon!"
+            echo "Global hotkeys are ACTIVE RIGHT NOW: Ctrl+D, Ctrl+Shift+1, Ctrl+Shift+2, Ctrl+I, Ctrl+Shift+I, Ctrl+Shift+S, Ctrl+Shift+C."
+            echo "No logout required."
+            echo "------------------------------------------------------------------"
+        else
+            echo "Failed to install the daemon. You may need to run this script or commands manually."
+        fi
+    else
+        # Plasma 5 (KHotKeys)
+        KHOTKEYS_DIR="$HOME/.config/khotkeys"
+        KHOTKEYS_FILE="$KHOTKEYS_DIR/helper-node.khotkeys"
+        mkdir -p "$KHOTKEYS_DIR"
+
+        cat > "$KHOTKEYS_FILE" << 'EOF'
 [Data]
 Name=Helper-Node
 Enabled=true
@@ -239,30 +317,30 @@ TriggerOnRelease=false
 CommandURL=curl -X POST http://localhost:3000/open-config
 
 [Data_7]
-Comment=Capture Screen Auto (Ctrl+Shift+S)
+Comment=Capture Screen Auto (Ctrl+S)
 Enabled=true
 Name=Helper-Node: Capture Screen Auto
 Type=SHORTCUT
-Shortcut=Ctrl+Shift+S
+Shortcut=Ctrl+S
 TriggerOnRelease=false
 CommandURL=curl -X POST http://localhost:3000/capture-screen-auto
 EOF
 
-    echo "Helper-Node KHotKeys configuration written to $KHOTKEYS_FILE"
+        echo "Helper-Node KHotKeys configuration written to $KHOTKEYS_FILE"
 
-    # Reload khotkeys if available
-    if command -v qdbus &> /dev/null; then
-        qdbus org.kde.khotkeys /khotkeys org.kde.KHotKeys.read_config || true
-        qdbus org.kde.kglobalaccel /component/khotkeys org.kde.kglobalaccel.Component.reload || true
-    else
-        echo "qdbus not found; if shortcuts are not active, log out/in or run: kquitapp5 khotkeys && kstart5 khotkeys"
+        if command -v qdbus &> /dev/null; then
+            qdbus org.kde.khotkeys /khotkeys org.kde.KHotKeys.read_config || true
+            qdbus org.kde.kglobalaccel /component/khotkeys org.kde.kglobalaccel.Component.reload || true
+        else
+            echo "qdbus not found; if shortcuts are not active, log out/in or run: kquitapp5 khotkeys && kstart5 khotkeys"
+        fi
+
+        echo "------------------------------------------------------------------"
+        echo "SUCCESS: KDE Plasma hotkeys configured!"
+        echo "Global hotkeys should now be active: Ctrl+D, Ctrl+Shift+1, Ctrl+Shift+2, Ctrl+I, Ctrl+Shift+I, Ctrl+S, Ctrl+Shift+C."
+        echo "If they don't work immediately, try restarting KHotKeys: kquitapp5 khotkeys && kstart5 khotkeys"
+        echo "------------------------------------------------------------------"
     fi
-
-    echo "------------------------------------------------------------------"
-    echo "SUCCESS: KDE Plasma hotkeys configured!"
-    echo "Global hotkeys should now be active: Ctrl+D, Ctrl+Shift+1, Ctrl+Shift+2, Ctrl+I, Ctrl+Shift+I, Ctrl+Shift+S, Ctrl+Shift+C."
-    echo "If they don't work immediately, try restarting KHotKeys: kquitapp5 khotkeys && kstart5 khotkeys"
-    echo "------------------------------------------------------------------"
 
 elif [[ "$XDG_CURRENT_DESKTOP" == *"COSMIC"* ]]; then
     # --- COSMIC Desktop Environment Configuration ---

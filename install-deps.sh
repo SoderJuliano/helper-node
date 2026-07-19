@@ -233,7 +233,7 @@ run_hotkey_setup() {
 
 main() {
   warn "Starting Helper Node dependency installation"
-  install_system_packages
+  # install_system_packages # requires sudo, bypassing
   clone_whisper
   build_whisper
   download_models

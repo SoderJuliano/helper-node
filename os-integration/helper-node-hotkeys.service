@@ -1,0 +1,12 @@
+[Unit]
+Description=Helper-Node Global Hotkeys (evdev)
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/helper-node-evdev-hotkeys
+Restart=always
+User=root
+Environment=SUDO_USER=soder
+
+[Install]
+WantedBy=multi-user.target
