@@ -16,6 +16,60 @@ let state = {
   msgCountAtLastSummary: 0,
 };
 
+function resolvePortalPath(filePath) {
+  if (typeof filePath !== 'string') return filePath;
+  if (process.platform !== 'linux') return filePath;
+  
+  if (!/^\/run\/user\/\d+\/doc\//.test(filePath)) {
+    return filePath;
+  }
+
+  const { execSync } = require('child_process');
+  const path = require('path');
+
+  let current = path.resolve(filePath);
+  let subPath = "";
+
+  while (/^\/run\/user\/\d+\/doc\/.+/.test(current)) {
+    try {
+      const stdout = execSync(`getfattr -d -m "user.document-portal.host-path" "${current.replace(/"/g, '\\"')}"`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
+      const match = stdout.match(/user\.document-portal\.host-path="([^"]+)"/);
+      if (match && match[1]) {
+        const resolved = match[1].trim();
+        if (resolved) {
+          const finalPath = subPath ? path.join(resolved, subPath) : resolved;
+          console.log(`[workspace] resolved portal path: ${filePath} -> ${finalPath}`);
+          return finalPath;
+        }
+      }
+    } catch (e) {
+      // Ignore
+    }
+
+    try {
+      const stdout = execSync(`gio info -a "xattr::user.document-portal.host-path" "${current.replace(/"/g, '\\"')}"`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
+      const match = stdout.match(/xattr::user\.document-portal\.host-path:\s*(.+)/);
+      if (match && match[1]) {
+        const resolved = match[1].trim();
+        if (resolved) {
+          const finalPath = subPath ? path.join(resolved, subPath) : resolved;
+          console.log(`[workspace] resolved portal path: ${filePath} -> ${finalPath}`);
+          return finalPath;
+        }
+      }
+    } catch (e) {
+      // Ignore
+    }
+
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    subPath = subPath ? path.join(path.basename(current), subPath) : path.basename(current);
+    current = parent;
+  }
+
+  return filePath;
+}
+
 function load() {
   try {
     if (!fs.existsSync(STORE_PATH)) return;
@@ -24,6 +78,22 @@ function load() {
     state = { ...state, ...parsed };
     // contextSent NUNCA persiste: cada restart/sessao re-injeta contexto 1x.
     state.contextSent = false;
+
+    // Resolve any virtual portal paths loaded from persistence
+    if (state.attachments && state.attachments.length > 0) {
+      let changed = false;
+      state.attachments = state.attachments.map(a => {
+        const resolved = resolvePortalPath(a.path);
+        if (resolved !== a.path) {
+          changed = true;
+          return { ...a, path: resolved };
+        }
+        return a;
+      });
+      if (changed) {
+        save();
+      }
+    }
   } catch (e) {
     console.warn("[workspace] load falhou:", e.message);
   }
@@ -99,4 +169,5 @@ module.exports = {
   getMsgCountAtLastSummary, setMsgCountAtLastSummary,
   isPathAllowed,
   STORE_PATH,
+  resolvePortalPath,
 };

@@ -8,13 +8,50 @@ const pathCmd = require("./pathCommands");
 const { buildContextBlock, budgetFor, generateTreeStructure } = require("./contextBuilder");
 const summarizer = require("./conversationSummarizer");
 
+function ensureAgyTrustedWorkspace(absPath) {
+  try {
+    const os = require("os");
+    const settingsPath = path.join(os.homedir(), ".gemini", "antigravity-cli", "settings.json");
+    if (!fs.existsSync(settingsPath)) return;
+
+    const settings = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+    if (!settings.trustedWorkspaces) {
+      settings.trustedWorkspaces = [];
+    }
+
+    // Verifica se o diretório ou um de seus pais já é confiável
+    let isTrusted = false;
+    let current = absPath;
+    while (current && current !== "/" && current !== ".") {
+      if (settings.trustedWorkspaces.includes(current)) {
+        isTrusted = true;
+        break;
+      }
+      const parent = path.dirname(current);
+      if (parent === current) break;
+      current = parent;
+    }
+
+    if (!isTrusted) {
+      settings.trustedWorkspaces.push(absPath);
+      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf8");
+      console.log(`[workspace] Registrado ${absPath} nos workspaces confiáveis do Antigravity CLI`);
+    }
+  } catch (e) {
+    console.warn(`[workspace] Falha ao registrar workspace confiável:`, e.message);
+  }
+}
+
 async function addPath(absPath, type) {
   if (!absPath) throw new Error("path vazio");
+  absPath = store.resolvePortalPath(absPath);
   if (!fs.existsSync(absPath)) throw new Error("path não existe: " + absPath);
   const st = fs.statSync(absPath);
   const resolvedType = type || (st.isDirectory() ? "dir" : "file");
   if (resolvedType === "dir" && !st.isDirectory()) throw new Error("não é diretório");
   if (resolvedType === "file" && !st.isFile()) throw new Error("não é arquivo");
+
+  ensureAgyTrustedWorkspace(resolvedType === "dir" ? absPath : path.dirname(absPath));
 
   let sizeBytes = 0, fileCount = 0;
   if (resolvedType === "file") {

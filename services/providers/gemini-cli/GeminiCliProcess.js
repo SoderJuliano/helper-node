@@ -76,8 +76,21 @@ class GeminiCliProcess {
       spawnArgs = ['-oL', '-eL', this._binary, ...args];
     }
 
+    const path = require('path');
+    const { resolvePortalPath } = require('../../workspace/store');
+    
+    let resolvedCwd = cwd;
+    if (resolvePortalPath) {
+      try {
+        resolvedCwd = resolvePortalPath(cwd);
+      } catch (e) {
+        console.warn('[gemini-cli] failed to resolve portal path in process:', e.message);
+      }
+    }
+    resolvedCwd = path.resolve(resolvedCwd);
+
     this._proc = spawn(spawnBin, spawnArgs, {
-      cwd,
+      cwd: resolvedCwd,
       stdio: ['pipe', 'pipe', 'pipe'],
       env,
     });
