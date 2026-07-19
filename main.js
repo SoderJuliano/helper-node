@@ -2931,13 +2931,20 @@ async function getIaResponse(text) {
             );
         }
     } else if (aiModel === 'ollamaLocal') {
-        // Ollama rodando no PC do user. SEM helperTools/workspaceAccess (mutex
-        // em configService). Erros de Ollama-down / modelo-ausente vem como
-        // texto markdown amigavel direto pra UI.
         const OllamaLocalService = require('./services/ollamaLocalService');
         const _kbL = await knowledgeBlockForOllama(text);
         if (_kbL) usedKnowledge = true;
-        resposta = await OllamaLocalService.responder(_kbL ? _kbL + "\n\n---\n\n" + text : text);
+        const _augTextL = _kbL ? _kbL + "\n\n---\n\n" + text : text;
+
+        const htEnabled = configService.getHelperToolsEnabled && configService.getHelperToolsEnabled();
+        if (htEnabled) {
+          const instructionO = configService.getPromptInstruction();
+          const _wsTxtO = await prependWorkspaceContextIfNeeded(_augTextL, 'ollama');
+          const _htO = buildHelperToolsOpenAIOpts(_wsTxtO, instructionO, configService.getOpenAiModel());
+          resposta = await OllamaLocalService.responder(_wsTxtO, _htO.opts);
+        } else {
+          resposta = await OllamaLocalService.responder(_augTextL);
+        }
     } else {
         // Ollama/Backend e' o unico provider nao-OpenAI suportado.
         // Helper tools agora funcionam tambem no Ollama (via structured prompt + parser).
@@ -3482,6 +3489,28 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
         }
         event.sender.send("openai-final-response", { resposta, usedKnowledge });
         return;
+    } else if (aiModel === 'ollamaLocal') {
+        try {
+          const OllamaLocalService = require('./services/ollamaLocalService');
+          const _kbL = await knowledgeBlockForOllama(text);
+          if (_kbL) usedKnowledge = true;
+          const _augTextL = _kbL ? _kbL + "\n\n---\n\n" + promptWithHistory : promptWithHistory;
+
+          const htEnabled = configService.getHelperToolsEnabled && configService.getHelperToolsEnabled();
+          if (htEnabled) {
+            const instructionO = configService.getPromptInstruction();
+            const _wsTxtO = await prependWorkspaceContextIfNeeded(_augTextL, 'ollama');
+            const _htO = buildHelperToolsOpenAIOpts(_wsTxtO, instructionO, configService.getOpenAiModel());
+            resposta = await OllamaLocalService.responder(_wsTxtO, _htO.opts);
+          } else {
+            resposta = await OllamaLocalService.responder(_augTextL);
+          }
+        } catch (ollamaError) {
+          console.error("IPC: Ollama Local falhou:", ollamaError && ollamaError.message);
+          throw new Error(
+            "Ollama Local indisponivel. Verifique se o servico esta rodando ou troque pra OpenAI em Configuracoes."
+          );
+        }
     } else {
         // Ollama/Backend e' o unico provider nao-OpenAI suportado.
         try {
@@ -3540,7 +3569,24 @@ ipcMain.on("send-to-gemini-vision", async (event, { text, image }) => {
       return;
     }
     const aiModel = getEffectiveAiModel();
-    if (aiModel !== 'openIa') {
+    if (aiModel === 'ollamaLocal') {
+      const OllamaLocalService = require('./services/ollamaLocalService');
+      const ocr = await TesseractService.getTextFromImage(image).catch(() => '');
+      const instructionO = configService.getPromptInstruction();
+      const baseTxt = (text && text.trim() ? `${text}\n\n` : '')
+        + (ocr && ocr.trim() ? `Conteúdo extraído da imagem:\n${ocr}` : '');
+      const _wsTxt = await prependWorkspaceContextIfNeeded(baseTxt, 'ollama');
+      let resposta;
+      const htEnabled = configService.getHelperToolsEnabled && configService.getHelperToolsEnabled();
+      if (htEnabled) {
+        const _ht = buildHelperToolsOpenAIOpts(_wsTxt, instructionO, configService.getOpenAiModel());
+        resposta = await OllamaLocalService.responder(_wsTxt, _ht.opts);
+      } else {
+        resposta = await OllamaLocalService.responder(_wsTxt);
+      }
+      event.sender.send("gemini-response", { resposta, usedKnowledge: false });
+      return;
+    } else if (aiModel !== 'openIa') {
       // Backends sem visão (Ollama/full offline): cai no OCR + texto.
       const ocr = await TesseractService.getTextFromImage(image).catch(() => '');
       const instructionO = configService.getPromptInstruction();
@@ -4537,7 +4583,8 @@ ipcMain.handle("terminal:init", async (event) => {
   const shell = process.env.SHELL || "/bin/bash";
   const env = {
     ...process.env,
-    TERM: "xterm-256color",
+    TERM: "linux", // Evita que o fish mande queries de DA1 que causam timeout em terminais simples
+    FISH_NO_SHELL_INTEGRATION: "1", // Desativa as sequências ]133; que poluem a saída
     COLORTERM: "truecolor",
     CLICOLOR: "1",
     CLICOLOR_FORCE: "1",
@@ -4546,7 +4593,7 @@ ipcMain.handle("terminal:init", async (event) => {
     GIT_CONFIG_PARAMETERS: "'color.ui=always'",
   };
 
-  const ptyCode = `import pty, os; os.environ['TERM']='xterm-256color'; pty.spawn(['${shell}', '-i'])`;
+  const ptyCode = `import pty, os; os.environ['TERM']='linux'; pty.spawn(['${shell}', '-i'])`;
 
   try {
     terminalProcess = spawn("python3", ["-c", ptyCode], {
@@ -6192,6 +6239,23 @@ async function processOsQuestion(text, image = null, opts = {}) {
           );
       }
       console.log(`🤖 Got OpenAI response: ${resposta.substring(0, 50)}...`);
+    } else if (aiModel === 'ollamaLocal') {
+      try {
+        const OllamaLocalService = require('./services/ollamaLocalService');
+        const instructionO3 = configService.getPromptInstruction();
+        const _wsTxtO3 = await prependWorkspaceContextIfNeeded(text, 'ollama');
+
+        const htEnabled = configService.getHelperToolsEnabled && configService.getHelperToolsEnabled();
+        if (htEnabled) {
+          const _htO3 = buildHelperToolsOpenAIOpts(_wsTxtO3, instructionO3, configService.getOpenAiModel());
+          resposta = await OllamaLocalService.responder(_wsTxtO3, _htO3.opts);
+        } else {
+          resposta = await OllamaLocalService.responder(_wsTxtO3);
+        }
+      } catch (ollamaErr) {
+        console.error("Local Ollama falhou:", ollamaErr && ollamaErr.message);
+        resposta = `Ollama Local falhou: ${ollamaErr.message}`;
+      }
     } else {
       // Backends sem visão (Ollama): só TEXTO. Mas com tool calling agora.
       try {

@@ -1052,6 +1052,59 @@
             flex-direction: column;
             align-items: center;
         }
+        #composer.collapsed {
+            height: 32px !important;
+            min-height: 32px !important;
+            padding: 0 !important;
+            background: var(--bg-surface) !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        #composer.collapsed > *:not(#composer-collapse-toggle) {
+            display: none !important;
+        }
+        #composer.collapsed #composer-collapse-toggle {
+            display: flex !important;
+            position: relative !important;
+            top: 0 !important;
+            right: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            background: transparent !important;
+            border: none !important;
+            color: var(--text-3) !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 8px;
+            cursor: pointer;
+        }
+        #composer.collapsed #composer-collapse-toggle:hover {
+            color: var(--text-1) !important;
+            background: rgba(255, 255, 255, 0.05) !important;
+        }
+        #composer #composer-collapse-toggle {
+            position: absolute;
+            top: 8px;
+            right: 12px;
+            z-index: 10;
+            background: transparent;
+            border: none;
+            color: var(--text-4);
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+        #composer #composer-collapse-toggle:hover {
+            color: var(--text-2);
+            background: rgba(255, 255, 255, 0.05);
+        }
         #composer > * { width: 100%; max-width: 760px; }
 
         /* === Contexto ativo do projeto (pills discretos acima do input) === */
@@ -1727,6 +1780,9 @@
 
             <!-- ===================== COMPOSER ===================== -->
             <div id="composer">
+                <button id="composer-collapse-toggle" title="Esconder/Mostrar Input (Ctrl+I)" type="button">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px;"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
                 <div class="composer-view-header">
                     <div class="composer-view-tabs">
                         <button class="composer-tab-btn active" id="tab-btn-chat" title="Modo Chat IA" type="button">
@@ -4141,12 +4197,39 @@
             }
 
             const composerEl = document.getElementById('composer');
+            const composerToggleBtn = document.getElementById('composer-collapse-toggle');
             let _realtimeComposerHidden = false;
+
+            function setComposerCollapsed(collapsed) {
+                if (!composerEl) return;
+                if (collapsed) {
+                    composerEl.classList.add('collapsed');
+                    if (composerToggleBtn) {
+                        composerToggleBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px;"><polyline points="18 15 12 9 6 15"/></svg> <span style="font-size: 11px; margin-left: 6px; font-family: var(--font-ui);">Mostrar Input (Ctrl+I)</span>`;
+                    }
+                } else {
+                    composerEl.classList.remove('collapsed');
+                    if (composerToggleBtn) {
+                        composerToggleBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px;"><polyline points="6 9 12 15 18 9"/></svg>`;
+                    }
+                }
+                setTimeout(() => {
+                    window.dispatchEvent(new Event('resize'));
+                }, 50);
+            }
 
             function setComposerVisibility(show) {
                 if (!composerEl) return;
-                composerEl.style.display = show ? '' : 'none';
+                setComposerCollapsed(!show);
                 _realtimeComposerHidden = !show;
+            }
+
+            if (composerToggleBtn) {
+                composerToggleBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const isCollapsed = composerEl.classList.contains('collapsed');
+                    setComposerVisibility(isCollapsed);
+                });
             }
 
             window.electronAPI.onRealtimeAssistantUpdate((payload) => {
@@ -5288,7 +5371,7 @@
                     if (!isInput && _realtimeComposerHidden !== undefined) {
                         e.preventDefault();
                         e.stopPropagation();
-                        setComposerVisibility(composerEl && composerEl.style.display === 'none');
+                        setComposerVisibility(composerEl && composerEl.classList.contains('collapsed'));
                         return;
                     }
                 }

@@ -93,7 +93,7 @@ function updateWorkspaceAccessStatus(isEnabled) {
 // Backends genéricos e Ollama não suportam — esconde e desliga.
 function applyWorkspaceAccessVisibility(model) {
   if (!workspaceAccessItem) return;
-  const supportsWorkspace = model === 'openIa' || model === 'geminiCli' || model === 'claudeCli';
+  const supportsWorkspace = model === 'openIa' || model === 'geminiCli' || model === 'claudeCli' || model === 'ollamaLocal';
   workspaceAccessItem.style.display = supportsWorkspace ? '' : 'none';
   if (!supportsWorkspace && workspaceAccessToggle) {
     workspaceAccessToggle.checked = false;
@@ -267,9 +267,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     aiModelSelect.value = savedAiModel;
   }
   applyWorkspaceAccessVisibility(aiModelSelect.value);
-  // Se já está num provider CLI, desabilita helperTools visualmente.
-  const _isCliInit = (aiModelSelect.value === 'geminiCli' || aiModelSelect.value === 'claudeCli');
-  if (_isCliInit && helperToolsToggle) {
+  // Se já está num provider CLI ou Ollama com backend, desabilita helperTools visualmente.
+  const _disableHelperToolsInit = (aiModelSelect.value === 'geminiCli' || aiModelSelect.value === 'claudeCli' || aiModelSelect.value === 'llama' || aiModelSelect.value === 'llama-stream');
+  if (_disableHelperToolsInit && helperToolsToggle) {
     helperToolsToggle.disabled = true;
     helperToolsToggle.checked = false;
     updateHelperToolsStatus(false);
@@ -325,13 +325,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   } catch (e) { console.warn("get-openai-vision-model failed:", e); }
 
   // Load saved Ollama Local model
+  let savedOllamaModel = null;
   try {
-    const savedOllamaModel = await ipcRenderer.invoke("get-ollama-local-model");
-    if (savedOllamaModel && ollamaLocalModelSelect) {
-      ollamaLocalModelSelect.value = savedOllamaModel;
-      updateOllamaPullCmd();
-    }
+    savedOllamaModel = await ipcRenderer.invoke("get-ollama-local-model");
   } catch (e) { console.warn("ollama local model load failed:", e); }
+  await populateOllamaLocalModels(savedOllamaModel);
 
   // Load saved Claude Code CLI model
   try {
@@ -358,6 +356,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   } else if (aiModelSelect.value === 'ollamaLocal') {
     if (ollamaLocalModelContainer) ollamaLocalModelContainer.style.display = 'flex';
     if (ollamaLocalInfo) ollamaLocalInfo.style.display = 'block';
+    populateOllamaLocalModels();
     applyOllamaLocalExclusivity();
   } else if (aiModelSelect.value === 'geminiCli') {
     if (geminiCliModelContainer) geminiCliModelContainer.style.display = 'flex';
@@ -452,27 +451,92 @@ if (workspaceAccessToggle) {
 // Mostra/esconde campos do provider selecionado.
 function updateOllamaPullCmd() {
   if (!ollamaLocalModelSelect || !ollamaPullCmd) return;
-  ollamaPullCmd.textContent = `ollama pull ${ollamaLocalModelSelect.value}`;
+  const val = ollamaLocalModelSelect.value;
+  ollamaPullCmd.textContent = val ? `ollama pull ${val}` : `ollama pull <modelo>`;
 }
 
-// Quando ollamaLocal selecionado, desliga workspaceAccess (exclusivo do OpenAI).
-function applyOllamaLocalExclusivity() {
-  if (aiModelSelect.value !== 'ollamaLocal') return;
-  if (workspaceAccessToggle && workspaceAccessToggle.checked) {
-    workspaceAccessToggle.checked = false;
-    updateWorkspaceAccessStatus(false);
+async function populateOllamaLocalModels(savedModel = null) {
+  if (!ollamaLocalModelSelect) return;
+  
+  const currentVal = savedModel || ollamaLocalModelSelect.value;
+  
+  try {
+    const res = await ipcRenderer.invoke('check-ollama-local-status');
+    ollamaLocalModelSelect.innerHTML = '';
+    
+    let models = [];
+    if (res && res.running && Array.isArray(res.models)) {
+      models = res.models;
+    }
+    
+    if (models.length > 0) {
+      // Adiciona cada modelo como uma opção
+      models.forEach(model => {
+        const option = document.createElement('option');
+        option.value = model;
+        option.textContent = model;
+        ollamaLocalModelSelect.appendChild(option);
+      });
+      
+      // Se o modelo configurado atualmente não estiver na lista instalada, adiciona ele no final
+      if (currentVal && !models.includes(currentVal)) {
+        const option = document.createElement('option');
+        option.value = currentVal;
+        option.textContent = `${currentVal} (não baixado)`;
+        ollamaLocalModelSelect.appendChild(option);
+      }
+      
+      // Seleciona o modelo atual/configurado
+      if (currentVal) {
+        ollamaLocalModelSelect.value = currentVal;
+      } else {
+        ollamaLocalModelSelect.selectedIndex = 0;
+      }
+    } else {
+      // Nenhum modelo encontrado ou Ollama offline
+      if (currentVal) {
+        const option = document.createElement('option');
+        option.value = currentVal;
+        option.textContent = `${currentVal} (indisponível)`;
+        ollamaLocalModelSelect.appendChild(option);
+        ollamaLocalModelSelect.value = currentVal;
+      } else {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = (res && res.running) ? 'Nenhum modelo encontrado no Ollama' : 'Ollama offline / não respondendo';
+        option.disabled = true;
+        ollamaLocalModelSelect.appendChild(option);
+      }
+    }
+  } catch (e) {
+    console.error("Failed to populate Ollama Local models:", e);
+    if (currentVal) {
+      const option = document.createElement('option');
+      option.value = currentVal;
+      option.textContent = currentVal;
+      ollamaLocalModelSelect.appendChild(option);
+      ollamaLocalModelSelect.value = currentVal;
+    } else {
+      ollamaLocalModelSelect.innerHTML = '<option value="" disabled>Erro ao carregar modelos</option>';
+    }
   }
+  
+  updateOllamaPullCmd();
+}
+
+// Quando ollamaLocal selecionado, nada a fazer extra
+function applyOllamaLocalExclusivity() {
 }
 
 function releaseOllamaLocalExclusivity() {
-  // nada a fazer — visibilidade do workspaceAccess já é controlada por applyWorkspaceAccessVisibility
 }
 
 // Show/hide OpenAI/Ollama/GeminiCli fields based on AI model selection
 aiModelSelect.addEventListener('change', () => {
     const v = aiModelSelect.value;
-    const isOllama = (v === 'llama' || v === 'ollamaLocal');
+    const isOllama = (v === 'llama' || v === 'llama-stream' || v === 'ollamaLocal');
     const isCli = (v === 'geminiCli' || v === 'claudeCli');
+    const disableHelperTools = (v === 'geminiCli' || v === 'claudeCli' || v === 'llama' || v === 'llama-stream');
     openIaTokenContainer.style.display = (v === 'openIa') ? 'flex' : 'none';
     openAiModelContainer.style.display = (v === 'openIa') ? 'flex' : 'none';
     if (openAiReasoningEffortContainer) openAiReasoningEffortContainer.style.display = (v === 'openIa') ? 'flex' : 'none';
@@ -485,18 +549,21 @@ aiModelSelect.addEventListener('change', () => {
     if (claudeCliInfo) claudeCliInfo.style.display = (v === 'claudeCli') ? 'block' : 'none';
     const backendApiKeyContainer = document.getElementById('backend-api-key-container');
     if (backendApiKeyContainer) backendApiKeyContainer.style.display = isOllama ? 'flex' : 'none';
-    // CLI providers gerenciam suas próprias ferramentas — helperTools fica desabilitado.
+    // CLI/backend providers gerenciam/não suportam ferramentas — helperTools fica desabilitado.
     if (helperToolsToggle) {
-      helperToolsToggle.disabled = isCli;
+      helperToolsToggle.disabled = disableHelperTools;
       helperToolsToggle.closest && helperToolsToggle.closest('.setting-item') &&
-        (helperToolsToggle.closest('.setting-item').style.opacity = isCli ? '0.4' : '');
-      if (isCli && helperToolsToggle.checked) {
+        (helperToolsToggle.closest('.setting-item').style.opacity = disableHelperTools ? '0.4' : '');
+      if (disableHelperTools && helperToolsToggle.checked) {
         helperToolsToggle.checked = false;
         updateHelperToolsStatus(false);
       }
     }
     applyWorkspaceAccessVisibility(v);
-    if (v === 'ollamaLocal') applyOllamaLocalExclusivity();
+    if (v === 'ollamaLocal') {
+      populateOllamaLocalModels();
+      applyOllamaLocalExclusivity();
+    }
     else releaseOllamaLocalExclusivity();
     applyBackendUrlVisibility();
 });
@@ -510,6 +577,7 @@ if (checkOllamaBtn) {
         ollamaStatusResult.textContent = 'Verificando...';
         ollamaStatusResult.style.color = '#888';
         try {
+            await populateOllamaLocalModels();
             const res = await ipcRenderer.invoke('check-ollama-local-status');
             if (!res || !res.running) {
                 ollamaStatusResult.innerHTML = '<span style="color:#ff6b6b">Ollama não está rodando.</span> Rode <code style="background:#0d0d0d;padding:2px 5px;border-radius:3px;color:#9ef0a8;">ollama serve</code> no terminal.';
@@ -518,10 +586,12 @@ if (checkOllamaBtn) {
             const selected = ollamaLocalModelSelect.value;
             const installed = res.models || [];
             const hasIt = installed.some(m => m === selected || m.startsWith(selected.split(':')[0] + ':'));
-            if (hasIt) {
+            if (hasIt && selected) {
                 ollamaStatusResult.innerHTML = `<span style="color:#9ef0a8">Ollama rodando.</span> Modelo <code style="color:#9ef0a8">${selected}</code> está baixado. Pronto pra uso!`;
-            } else {
+            } else if (selected) {
                 ollamaStatusResult.innerHTML = `<span style="color:#ffb74d">Ollama rodando, mas modelo <code>${selected}</code> não está baixado.</span><br>Modelos disponíveis: ${installed.length ? installed.join(', ') : '(nenhum)'}<br>Rode: <code style="background:#0d0d0d;padding:2px 5px;border-radius:3px;color:#9ef0a8;">ollama pull ${selected}</code>`;
+            } else {
+                ollamaStatusResult.innerHTML = `<span style="color:#ffb74d">Ollama rodando, mas nenhum modelo foi encontrado.</span> Instale um com <code style="background:#0d0d0d;padding:2px 5px;border-radius:3px;color:#9ef0a8;">ollama pull qwen2.5-coder:7b</code> no terminal.`;
             }
         } catch (e) {
             ollamaStatusResult.innerHTML = `Erro ao verificar: ${e.message}`;
