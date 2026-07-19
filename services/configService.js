@@ -334,26 +334,21 @@ function setAiModel(aiModel) {
     currentConfig = loadConfig();
   }
   currentConfig.aiModel = aiModel;
-  // CLIs externos: desliga helperTools (o CLI gerencia suas próprias ferramentas),
-  // mas mantém workspaceAccess — ele controla o painel de projeto/diretório, que
-  // os CLIs usam como cwd e contexto de qual repositório trabalhar.
-  if (aiModel === 'geminiCli' || aiModel === 'claudeCli') {
+  // CLIs externos e Ollama com backend: desliga helperTools (o CLI gerencia suas próprias ferramentas ou o backend não tem suporte),
+  // mas mantém workspaceAccess para CLIs (ele controla o painel de projeto/diretório que usam como cwd e contexto de repositório).
+  if (aiModel === 'geminiCli' || aiModel === 'claudeCli' || aiModel === 'llama' || aiModel === 'llama-stream') {
     if (currentConfig.helperTools && currentConfig.helperTools.enabled) {
       currentConfig.helperTools.enabled = false;
-      console.log(`[config] ${aiModel} selecionado → helperTools desligado (CLI gerencia ferramentas)`);
+      console.log(`[config] ${aiModel} selecionado → helperTools desligado automaticamente`);
+    }
+    if (aiModel === 'llama' || aiModel === 'llama-stream') {
+      if (currentConfig.workspaceAccess && currentConfig.workspaceAccess.enabled) {
+        currentConfig.workspaceAccess.enabled = false;
+      }
     }
     saveConfig(currentConfig);
     currentConfig = null;
     return;
-  }
-  if (aiModel === 'ollamaLocal') {
-    if (currentConfig.helperTools && currentConfig.helperTools.enabled) {
-      currentConfig.helperTools.enabled = false;
-      console.log('[config] ollamaLocal selecionado → helperTools desligado automaticamente');
-    }
-    if (currentConfig.workspaceAccess && currentConfig.workspaceAccess.enabled) {
-      currentConfig.workspaceAccess.enabled = false;
-    }
   }
   saveConfig(currentConfig);
   currentConfig = null;
@@ -438,8 +433,22 @@ function getOllamaLocalModel() {
 
 function setOllamaLocalModel(model) {
   if (!currentConfig) currentConfig = loadConfig();
-  currentConfig.ollamaLocalModel = model || defaultConfig.ollamaLocalModel;
+  const oldModel = currentConfig.ollamaLocalModel;
+  const newModel = model || defaultConfig.ollamaLocalModel;
+  currentConfig.ollamaLocalModel = newModel;
   saveConfig(currentConfig);
+  
+  if (oldModel !== newModel) {
+    try {
+      const ollamaLocalService = require('./ollamaLocalService');
+      ollamaLocalService.preloadModel(oldModel, newModel).catch(err => {
+        console.error("Erro ao fazer o preload do OllamaLocal:", err);
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  }
+  
   currentConfig = null;
 }
 
