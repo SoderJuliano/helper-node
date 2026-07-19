@@ -207,7 +207,7 @@ Artifacts are written to `dist/`.
 
 ## Usage
 
-- **Push-to-talk (Whisper batch):** press `Ctrl+D` to start recording, press again to transcribe and answer. In OS Integration mode the answer appears in a transparent overlay in the top-right corner and closes itself after a few seconds.
+- **Push-to-talk / Dictation Mode:** In OS Integration mode, press `Ctrl+D` to start recording, press again to transcribe and answer (appears in a transparent overlay). In Window/IDE/CLI mode, `Ctrl+D` acts as a continuous **Dictation Toggle**: it uses Vosk for Voice Activity Detection and Whisper for precise transcription, automatically segmenting your speech by 2 seconds of silence and pasting the transcribed text progressively into the input box until you press `Ctrl+D` again to stop.
 - **Realtime Assistant:** when enabled in settings, `Ctrl+D` toggles continuous listening instead. With OpenAI selected (and always in Lite) the whole pipeline runs online. With a local backend or Ollama selected, transcription runs offline through Vosk with a Whisper correction pass, and the answer goes to the selected provider.
 - **Translation Assistant:** translates the interviewer (system audio), suggests a reply, and shows your own speech transcribed but untranslated. Pick your microphone in Settings; system audio is captured automatically.
 - **Helper Tools:** enable under Settings, "Advanced Tools". The AI then receives read, write, and execution tools through function calling and decides which to call.

@@ -2538,6 +2538,11 @@ function getEffectiveAiModel() {
   return edition.isLite() ? 'openIa' : configService.getAiModel();
 }
 
+let dictationActive = false;
+let dictationPcmChunks = [];
+let dictationPcmBytes = 0;
+let dictationProcessing = false;
+
 async function toggleRecording() {
   try {
     // Realtime existe em todas as edições: na Lite/ChatGPT é 100% online (OpenAI),
@@ -2570,21 +2575,24 @@ async function toggleRecording() {
       const isOsIntegration = configService.getOsIntegrationStatus();
 
       if (isOsIntegration && VoskStreamService.isRunning()) {
-        // OS Integration + Vosk (modo conversa contínua):
-        // Ctrl+D segundo toque = encerra. NAO bloqueia esperando IA: para
-        // Vosk já (sem entrada nova) e fecha o segmento pendente em
-        // background — senão o usuário fica achando que travou.
         const pending = osLiveSegment;
-        // Para captura ANTES de mexer em segmento, pra não nascer novo
         VoskStreamService.stop();
         isRecording = false;
         clearOsVoskSilenceTimer();
         console.log("OS Integration: conversa contínua encerrada");
         if (pending && pending.hasSpeech && !pending.closing) {
-          // Reanexa pra closeOsLiveSegment achar
           osLiveSegment = pending;
-          console.log('[os-live] stop manual — fechando segmento pendente em background');
           closeOsLiveSegment().catch(e => console.error('[os-live] flush on stop:', e.message));
+        }
+        return;
+      }
+
+      if (dictationActive) {
+        VoskStreamService.stop();
+        dictationActive = false;
+        isRecording = false;
+        if (!isOsIntegration) {
+          mainWindow.webContents.send("toggle-recording", { isRecording: false, audioFilePath: null, isIdeMode: true });
         }
         return;
       }
@@ -2595,7 +2603,6 @@ async function toggleRecording() {
       }
       isRecording = false;
       console.log("Recording stopped");
-      // A partir daqui processamos o áudio — trava o Ctrl+D até mostrar a resposta.
       recordingBusy = true;
 
       if (!isOsIntegration) {
@@ -2616,13 +2623,9 @@ async function toggleRecording() {
           mainWindow.webContents.send("transcription-start", { audioFilePath });
         }
 
-        // Converter áudio para formato compatível com Whisper.
-        // pw-record gera WAV com header valido no sample rate/format do device
-        // (geralmente 48kHz, s32le). Whisper exige 16kHz mono s16, entao convertemos aqui.
         const convertedAudioPath = path.join(AUDIO_TMP_DIR, "output_converted.wav");
         await execPromise(`ffmpeg -i ${audioFilePath} -ar 16000 -ac 1 -sample_fmt s16 -y ${convertedAudioPath}`);
 
-        // Lite (100% online): transcreve via OpenAI cloud. Full: whisper-cli local.
         const audioText = edition.isLite()
           ? await cloudTranscribeAudio(convertedAudioPath, configService.getOpenIaToken())
           : await transcribeAudio(convertedAudioPath);
@@ -2640,14 +2643,9 @@ async function toggleRecording() {
         }
 
         const aiModel = getEffectiveAiModel();
-        // Modo IDE (pasta/arquivo anexado no sidebar, com ou sem helperTools):
-        // Ctrl+D transcreve mas NÃO auto-envia pra IA. O texto vai pro composer
-        // pra o usuário revisar/editar e mandar com Shift+Enter ou o botão de
-        // enviar — igual o fluxo de digitar manualmente.
         const isIdeModeNow = (workspace.list() || []).length > 0;
         if (isIdeModeNow) {
-          console.log("[ide-audio] Modo IDE — transcrição enviada pro composer, sem auto-envio pra IA.");
-          mainWindow.webContents.send("ide-audio-transcribed", { text: audioText });
+          mainWindow.webContents.send("ide-audio-transcribed", { text: audioText + " " });
         } else if (isOsIntegration) {
           await processOsQuestion(audioText);
         } else if (aiModel === 'llama-stream') {
@@ -2656,75 +2654,81 @@ async function toggleRecording() {
           getIaResponse(audioText);
         }
       } catch (error) {
-        isRecording = false;
         console.error("Audio processing failed:", error);
-        try { await fs.unlink(audioFilePath).catch(() => {}); } catch (_) {}
-        try { await fs.unlink(path.join(AUDIO_TMP_DIR, "output_converted.wav")).catch(() => {}); } catch (_) {}
       } finally {
-        // Libera o Ctrl+D — áudio processado (com sucesso ou erro).
         recordingBusy = false;
       }
     } else {
       // === START RECORDING ===
       const isOsIntegration = configService.getOsIntegrationStatus();
       const isIdeMode = (workspace.list() || []).length > 0;
-      const effModelForAudio = getEffectiveAiModel();
-      const isCliProvider = (effModelForAudio === 'geminiCli' || effModelForAudio === 'claudeCli');
 
-      // Modo IDE (pasta/arquivo anexado) + provider via CLI (Claude Code /
-      // Gemini CLI): esses providers não tem como receber áudio — o processo
-      // CLI trava/não devolve erro tratável. Em vez de deixar quebrar
-      // silenciosamente, avisa o usuário e não inicia a gravação.
-      if (isIdeMode && isCliProvider) {
-        console.log(`[ide-audio] Ctrl+D bloqueado — provider "${effModelForAudio}" (CLI) não suporta áudio no modo IDE.`);
-        mainWindow.webContents.send(
-          "transcription-error",
-          "Este modelo (CLI) não suporta transcrição de áudio. Troque para ChatGPT ou Ollama nas Configurações pra usar o Ctrl+D."
-        );
-        return;
-      }
-
-      // Mutex: em modo integrado, se o Translation Assistant está ativo ele já
-      // escuta mic+sys e responde sozinho — não sobe gravação em paralelo.
       if (isOsIntegration && translationAssistant.isActive()) {
         console.log("OS Integration: Translation Assistant ativo — Ctrl+D ignorado (mutex).");
         return;
       }
 
-      // Ctrl+D = gravação CURTA transcrita por Whisper — tanto no modo janela
-      // quanto no integrado com SO. O Vosk "conversa contínua" NÃO pertence ao
-      // Ctrl+D: isso é o Assistente em Tempo Real, um modo separado.
-      // pw-record grava WAV com header válido (sample rate/format do device).
-      // Evita o problema do parec --raw que precisava de header forçado no ffmpeg
-      // e silenciosamente perdia áudio na conversão 48kHz s32le -> 16kHz s16le.
+      if (!isOsIntegration) {
+        // App Full / Janela / CLI -> Modo Ditado com 2s de silêncio (Vosk + Whisper Progressivo)
+        dictationActive = true;
+        dictationPcmChunks = [];
+        dictationPcmBytes = 0;
+        dictationProcessing = false;
+
+        mainWindow.webContents.send("toggle-recording", { isRecording: true, audioFilePath: null, isIdeMode: true });
+
+        VoskStreamService.start({
+          audioSources: ['@DEFAULT_SOURCE@'],
+          onEvent: async (event) => {
+            if (event.type === 'audio') {
+              dictationPcmChunks.push(event.data);
+              dictationPcmBytes += event.data.length;
+            } else if (event.type === 'result') {
+              if (dictationPcmBytes > 0 && !dictationProcessing) {
+                dictationProcessing = true;
+                const pcm = Buffer.concat(dictationPcmChunks, dictationPcmBytes);
+                dictationPcmChunks = [];
+                dictationPcmBytes = 0;
+                const wavPath = path.join(AUDIO_TMP_DIR, `dictation_${Date.now()}.wav`);
+                try {
+                  fs2.mkdirSync(AUDIO_TMP_DIR, { recursive: true });
+                  fs2.writeFileSync(wavPath, _buildWavFile(pcm, 16000, 1, 16));
+                  
+                  const text = edition.isLite() 
+                    ? await cloudTranscribeAudio(wavPath, configService.getOpenIaToken()) 
+                    : await transcribeAudio(wavPath, { emitRenderer: false, emitNotifications: false });
+                    
+                  if (text && text.trim() && text !== "[BLANK_AUDIO]") {
+                    // Manda colar no input
+                    mainWindow.webContents.send("ide-audio-transcribed", { text: text + " " });
+                    // Garante que o icone 'listening' volte após colar, pois o frontend esconde
+                    mainWindow.webContents.send("toggle-recording", { isRecording: true, audioFilePath: null, isIdeMode: true });
+                  }
+                } catch (e) {
+                  console.error("[dictation] error:", e.message);
+                } finally {
+                  try { await fs.unlink(wavPath); } catch (_) {}
+                  dictationProcessing = false;
+                }
+              }
+            }
+          }
+        });
+        isRecording = true;
+        return;
+      }
+
+      // OS Integration Legacy Start
       await fs.unlink(audioFilePath).catch(() => {});
       const command = `pw-record "${audioFilePath}"`;
-      console.log("Executing:", command);
-      recordingProcess = exec(command, (error) => {
-        if (error && error.signal !== "SIGTERM" && error.code !== 0) {
-          console.error("Recording error:", error);
-        }
-      });
+      recordingProcess = exec(command, (error) => {});
       isRecording = true;
-      console.log("Recording started");
 
-      if (isOsIntegration) {
-        // Feedback de GRAVANDO: mesma overlay transparente/sem moldura do robot.gif
-        // (loading), porém com as bolinhas de "ouvindo". Assim o usuário sabe que
-        // está gravando, e o robot.gif só aparece depois (processando). Mesma posição.
-        destroyNotificationWindow();
-        createOsNotificationWindow('recording', '');
-      } else if (appConfig.notificationsEnabled && Notification.isSupported()) {
-        new Notification({ title: "Helper-Node", body: "Gravando...", silent: true }).show();
-      }
-      mainWindow.webContents.send("toggle-recording", { isRecording, audioFilePath, isIdeMode });
+      destroyNotificationWindow();
+      createOsNotificationWindow('recording', '');
     }
   } catch (error) {
     console.error("Error toggling recording:", error);
-    mainWindow.webContents.send(
-      "transcription-error",
-      "Failed to toggle recording"
-    );
   }
 }
 
