@@ -227,41 +227,81 @@ SCRIPT_DIR="\$(cd "\$(dirname "\$(readlink -f "\$0")")" && pwd)"
 DEB="\$SCRIPT_DIR/$(basename "${DEB_OUTPUT}")"
 INSTALLER_HEAD
     cat >> "${INSTALLER_SH}" << 'INSTALLER_EOF'
-# Em terminal usa sudo (PAM/tty, senha de login normal); sem terminal cai pro pkexec.
-# Feedback gráfico via notify-send: essencial no COSMIC/Wayland, onde Terminal=true NÃO
-# abre terminal e o script roda headless (senão o usuário não vê NADA acontecendo).
+# Se executado via duplo-clique na GUI (sem TTY), tenta abrir uma janela de terminal
+if [ ! -t 0 ] && [ "${HELPER_NODE_GUI_RUN:-0}" != "1" ]; then
+    export HELPER_NODE_GUI_RUN=1
+    for term in cosmic-terminal gnome-terminal ptyxis x-terminal-emulator konsole xfce4-terminal alacritty kitty xterm; do
+        if command -v "$term" >/dev/null 2>&1; then
+            case "$term" in
+                cosmic-terminal|gnome-terminal|ptyxis)
+                    exec "$term" -- bash -c "exec \"$0\" \"$@\"" && exit 0
+                    ;;
+                konsole|xfce4-terminal|alacritty|kitty|xterm|x-terminal-emulator)
+                    exec "$term" -e bash -c "exec \"$0\" \"$@\"" && exit 0
+                    ;;
+            esac
+        fi
+    done
+fi
+
 notify() { command -v notify-send >/dev/null 2>&1 && notify-send "Helper Node" "$1" 2>/dev/null || true; }
 
+show_gui_dialog() {
+    local msg_type="$1" title="$2" msg="$3"
+    python3 -c "
+import gi
+gi.require_version('Gtk', '3.0')
+from gi.repository import Gtk
+m = Gtk.MessageType.INFO if '$msg_type' == 'info' else Gtk.MessageType.ERROR
+d = Gtk.MessageDialog(flags=0, message_type=m, buttons=Gtk.ButtonsType.OK, text='$title')
+d.format_secondary_text('$msg')
+d.run(); d.destroy()
+" 2>/dev/null || true
+}
+
 if [ ! -f "$DEB" ]; then
-    echo "ERRO: arquivo .deb não encontrado: $DEB"
-    notify "✗ .deb não encontrado em $(dirname "$DEB")"
-    [ -t 0 ] && read -rp "Pressione Enter..."; exit 1
+    msg="ERRO: arquivo .deb não encontrado:\n$DEB"
+    echo -e "$msg"
+    notify "✗ .deb não encontrado"
+    show_gui_dialog "error" "Helper Node — Erro" "$msg"
+    [ -t 0 ] && read -rp "Pressione Enter para fechar..."; exit 1
 fi
+
+echo "=================================================="
+echo "    Instalador do Helper Node (edição deb)"
+echo "=================================================="
+echo ""
+echo "Instalando: $(basename "$DEB")"
+echo ""
 
 if [ -t 0 ] && command -v sudo >/dev/null 2>&1; then
-    SUDO="sudo"; echo "(será pedida sua senha de sudo)"
+    echo "(será pedida sua senha de sudo)"
+    sudo bash -c "apt-get remove -y helper-node helper-node-full helper-node-lite 2>/dev/null || true; apt-get install -y \"$DEB\""
+    EXIT=$?
 else
-    SUDO="pkexec"
+    notify "Instalando… digite sua senha de permissão."
+    pkexec bash -c "apt-get remove -y helper-node helper-node-full helper-node-lite 2>/dev/null || true; apt-get install -y \"$DEB\""
+    EXIT=$?
 fi
-
-notify "Instalando… confirme a senha se aparecer."
-echo "Removendo versão anterior (se houver)..."
-# Remove qualquer edição (legado sem sufixo + full + lite) pra não coexistirem.
-$SUDO apt-get remove -y helper-node helper-node-full helper-node-lite 2>/dev/null
-
-echo "Instalando $(basename "$DEB")..."
-$SUDO apt-get install -y "$DEB"; EXIT=$?
 
 echo ""
 if [ "$EXIT" -eq 0 ]; then
-    echo "✓ Instalado! Execute: helper-node"
-    notify "✓ Instalado! Procure 'Helper Node' no menu, ou rode: helper-node"
+    echo "✓ Helper Node instalado com sucesso!"
+    echo "  Procure 'Helper Node' no menu de aplicativos ou rode: helper-node"
+    notify "✓ Instalado! Procure 'Helper Node' no menu."
+    show_gui_dialog "info" "Helper Node" "✓ Instalado com sucesso!\n\nProcure por 'Helper Node' no seu menu de aplicativos ou execute: helper-node"
 else
-    echo "✗ Falhou (código $EXIT)"
-    echo "  Tente manualmente:  sudo apt install \"$DEB\""
-    notify "✗ Falhou (código $EXIT). No terminal: sudo apt install o arquivo .deb"
+    echo "✗ Falha na instalação (código de erro: $EXIT)"
+    echo "  Para ver detalhes, execute no terminal:"
+    echo "  sudo apt install \"$DEB\""
+    notify "✗ Falha na instalação (código $EXIT)."
+    show_gui_dialog "error" "Helper Node — Erro" "✗ Falha ao instalar o pacote (código $EXIT).\n\nTente instalar manualmente abrindo o terminal e digitando:\nsudo apt install \"$DEB\""
 fi
-[ -t 0 ] && read -rp "Pressione Enter..."
+
+if [ -t 0 ]; then
+    echo ""
+    read -rp "Pressione Enter para fechar..."
+fi
 INSTALLER_EOF
     chmod +x "${INSTALLER_SH}"
 
@@ -284,51 +324,91 @@ DESKTOP_EOF
     echo -e "${GREEN}✓${NC} Instalador gráfico: ${INSTALLER_SH}"
 }
 
-# Gera o instalador gráfico (pacman -U) do pacote Arch desta edição.
-# Um por pacote: instalar-<edição>-arch.sh — espelha o instalador .deb.
 gen_arch_installer() {
     local ZST_NAME="${PKG_NAME}-${VERSION}-1-x86_64.pkg.tar.zst"
     local INST="${DIST_DIR}/instalar-${EDITION}-arch.sh"
     cat > "${INST}" << ARCH_INST_HEAD
 #!/usr/bin/env bash
-# Instalador do Helper Node (edição: ${EDITION}, formato: Arch/pacman). Aponta para
-# o .pkg.tar.zst desta build, remove edição anterior e instala (pacman -U).
+# Instalador do Helper Node (edição: ${EDITION}, formato: Arch/pacman).
 SCRIPT_DIR="\$(cd "\$(dirname "\$(readlink -f "\$0")")" && pwd)"
 ZST="\$SCRIPT_DIR/${ZST_NAME}"
 ARCH_INST_HEAD
     cat >> "${INST}" << 'ARCH_INST_EOF'
+# Se executado via duplo-clique na GUI (sem TTY), tenta abrir uma janela de terminal
+if [ ! -t 0 ] && [ "${HELPER_NODE_GUI_RUN:-0}" != "1" ]; then
+    export HELPER_NODE_GUI_RUN=1
+    for term in cosmic-terminal gnome-terminal ptyxis x-terminal-emulator konsole xfce4-terminal alacritty kitty xterm; do
+        if command -v "$term" >/dev/null 2>&1; then
+            case "$term" in
+                cosmic-terminal|gnome-terminal|ptyxis)
+                    exec "$term" -- bash -c "exec \"$0\" \"$@\"" && exit 0
+                    ;;
+                konsole|xfce4-terminal|alacritty|kitty|xterm|x-terminal-emulator)
+                    exec "$term" -e bash -c "exec \"$0\" \"$@\"" && exit 0
+                    ;;
+            esac
+        fi
+    done
+fi
+
 notify() { command -v notify-send >/dev/null 2>&1 && notify-send "Helper Node" "$1" 2>/dev/null || true; }
 
+show_gui_dialog() {
+    local msg_type="$1" title="$2" msg="$3"
+    python3 -c "
+import gi
+gi.require_version('Gtk', '3.0')
+from gi.repository import Gtk
+m = Gtk.MessageType.INFO if '$msg_type' == 'info' else Gtk.MessageType.ERROR
+d = Gtk.MessageDialog(flags=0, message_type=m, buttons=Gtk.ButtonsType.OK, text='$title')
+d.format_secondary_text('$msg')
+d.run(); d.destroy()
+" 2>/dev/null || true
+}
+
 if [ ! -f "$ZST" ]; then
-    echo "ERRO: pacote não encontrado: $ZST"
-    notify "✗ pacote .pkg.tar.zst não encontrado em $(dirname "$ZST")"
-    [ -t 0 ] && read -rp "Pressione Enter..."; exit 1
+    msg="ERRO: pacote não encontrado:\n$ZST"
+    echo -e "$msg"
+    notify "✗ Pacote Arch não encontrado"
+    show_gui_dialog "error" "Helper Node — Erro" "$msg"
+    [ -t 0 ] && read -rp "Pressione Enter para fechar..."; exit 1
 fi
+
+echo "=================================================="
+echo "    Instalador do Helper Node (edição Arch)"
+echo "=================================================="
+echo ""
+echo "Instalando: $(basename "$ZST")"
+echo ""
 
 if [ -t 0 ] && command -v sudo >/dev/null 2>&1; then
-    SUDO="sudo"; echo "(será pedida sua senha de sudo)"
+    echo "(será pedida sua senha de sudo)"
+    sudo bash -c "pacman -Rns --noconfirm helper-node helper-node-full helper-node-lite 2>/dev/null || true; pacman -U --noconfirm \"$ZST\""
+    EXIT=$?
 else
-    SUDO="pkexec"
+    notify "Instalando… digite sua senha de permissão."
+    pkexec bash -c "pacman -Rns --noconfirm helper-node helper-node-full helper-node-lite 2>/dev/null || true; pacman -U --noconfirm \"$ZST\""
+    EXIT=$?
 fi
-
-notify "Instalando… confirme a senha se aparecer."
-echo "Removendo versão anterior (se houver)..."
-# Remove qualquer edição (legado + full + lite) pra não coexistirem.
-$SUDO pacman -Rns --noconfirm helper-node helper-node-full helper-node-lite 2>/dev/null
-
-echo "Instalando $(basename "$ZST")..."
-$SUDO pacman -U --noconfirm "$ZST"; EXIT=$?
 
 echo ""
 if [ "$EXIT" -eq 0 ]; then
-    echo "✓ Instalado! Execute: helper-node"
-    notify "✓ Instalado! Procure 'Helper Node' no menu, ou rode: helper-node"
+    echo "✓ Helper Node instalado com sucesso!"
+    echo "  Procure 'Helper Node' no menu de aplicativos ou rode: helper-node"
+    notify "✓ Instalado! Procure 'Helper Node' no menu."
+    show_gui_dialog "info" "Helper Node" "✓ Instalado com sucesso!\n\nProcure por 'Helper Node' no seu menu de aplicativos ou execute: helper-node"
 else
-    echo "✗ Falhou (código $EXIT)"
-    echo "  Tente manualmente:  sudo pacman -U \"$ZST\""
-    notify "✗ Falhou (código $EXIT). No terminal: sudo pacman -U o arquivo .zst"
+    echo "✗ Falha na instalação (código de erro: $EXIT)"
+    echo "  Para ver detalhes, execute no terminal:"
+    echo "  sudo pacman -U \"$ZST\""
+    notify "✗ Falha na instalação (código $EXIT)."
+    show_gui_dialog "error" "Helper Node — Erro" "✗ Falha ao instalar o pacote (código $EXIT).\n\nTente instalar manualmente abrindo o terminal e digitando:\nsudo pacman -U \"$ZST\""
 fi
-[ -t 0 ] && read -rp "Pressione Enter..."
+
+if [ -t 0 ]; then
+    echo ""
+    read -rp "Pressione Enter para fechar..."
+fi
 ARCH_INST_EOF
     chmod +x "${INST}"
 

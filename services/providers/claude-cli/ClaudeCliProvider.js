@@ -57,7 +57,12 @@ class ClaudeCliProvider {
 
   // Main entry point called from main.js.
   async send(prompt, projectPath, sender) {
-    const cwd = projectPath || process.cwd();
+    const os = require('os');
+    const fs = require('fs');
+    let cwd = projectPath;
+    if (!cwd || cwd === '/' || !fs.existsSync(cwd)) {
+      cwd = (process.cwd() && process.cwd() !== '/') ? process.cwd() : os.homedir();
+    }
     const session = this._getOrCreateSession(cwd);
 
     this._emitStatus(sender, { state: 'busy', projectPath: cwd });

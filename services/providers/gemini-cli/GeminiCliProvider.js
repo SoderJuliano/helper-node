@@ -81,7 +81,12 @@ class GeminiCliProvider {
   // projectPath: absolute directory the CLI should run in
   // sender:      Electron webContents (event.sender) — we emit IPC events through it
   async send(prompt, projectPath, sender, sessionId, history = []) {
-    const cwd = projectPath || process.cwd();
+    const os = require('os');
+    const fs = require('fs');
+    let cwd = projectPath;
+    if (!cwd || cwd === '/' || !fs.existsSync(cwd)) {
+      cwd = (process.cwd() && process.cwd() !== '/') ? process.cwd() : os.homedir();
+    }
 
     // If project changed, stop old session
     await this._ensureSessionForProject(cwd);
