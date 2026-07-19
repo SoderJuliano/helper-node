@@ -132,8 +132,7 @@ module.exports = {
     let cwd = args && args.cwd ? path.resolve(expandHome(args.cwd)) : null;
     if (!cwd) {
       try {
-        const list = workspace.list();
-        if (list && list.length) cwd = list[0].path;
+        cwd = workspace.getProjectPath ? workspace.getProjectPath() : null;
       } catch (_) {}
       if (!cwd) cwd = os.homedir();
     }

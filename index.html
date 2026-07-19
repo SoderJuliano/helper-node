@@ -384,7 +384,7 @@
         /* Projeto aberto (modelo IDE): header discreto + dropdown da árvore */
         .ws-project-row { display: flex; align-items: center; gap: 2px; }
         .ws-project-main {
-            flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
+            flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px;
             padding: 7px 9px; background: rgba(255,255,255,0.03);
             border: 1px solid var(--border); border-radius: var(--radius-sm);
             color: var(--text); font-size: 12px; font-family: var(--font-ui);
@@ -393,7 +393,7 @@
         }
         .ws-project-main:hover { background: rgba(255,255,255,0.06); border-color: var(--border-strong); }
         .ws-project-main .ws-folder-ic { width: 15px; height: 15px; opacity: .85; flex-shrink: 0; }
-        .ws-project-main span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ws-project-main #ws-project-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .ws-tree-toggle {
             flex-shrink: 0; width: 28px; height: 30px; padding: 0;
             display: inline-flex; align-items: center; justify-content: center;
@@ -460,18 +460,19 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            padding: 2px 6px;
-            margin-left: 4px;
-            background: rgba(248, 81, 73, 0.15);
+            padding: 1px 5px;
+            margin-left: auto;
+            background: rgba(248, 81, 73, 0.18);
             border: 1px solid rgba(248, 81, 73, 0.35);
             color: #ff6b6b;
             font-family: var(--font-mono);
             font-size: 10px;
-            font-weight: 600;
-            border-radius: 10px;
+            font-weight: 700;
+            border-radius: 8px;
             flex-shrink: 0;
             user-select: none;
             white-space: nowrap;
+            line-height: 1.3;
         }
         .ws-tree-node.git-modified {
             color: #ff6b6b !important;
@@ -1661,8 +1662,8 @@
                             <button class="ws-project-main" id="ws-project-main" type="button" title="Trocar / fechar projeto">
                                 <svg class="ws-folder-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
                                 <span id="ws-project-name">projeto</span>
+                                <span class="ws-git-changes-badge" id="ws-git-changes-badge" style="display:none;" title="Arquivos com alterações não comitadas no Git"></span>
                             </button>
-                            <span class="ws-git-changes-badge" id="ws-git-changes-badge" style="display:none;" title="Arquivos com alterações não comitadas no Git"></span>
                             <button class="ws-tree-trash-btn" id="ws-tree-trash-btn" type="button" title="Excluir itens selecionados (Delete)" style="display:none;">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
                             </button>
@@ -3144,7 +3145,7 @@
                 const badge = document.getElementById('ws-git-changes-badge');
                 if (badge) {
                     if (currentGitStatus.isGit && currentGitStatus.changesCount > 0) {
-                        badge.textContent = `+${currentGitStatus.changesCount} changes`;
+                        badge.textContent = `${currentGitStatus.changesCount}+`;
                         badge.style.display = 'inline-flex';
                     } else {
                         badge.style.display = 'none';
@@ -6400,6 +6401,12 @@
                         if (val.trim()) {
                             terminalHistory.push(val);
                             terminalHistoryIdx = terminalHistory.length;
+                            if (val.trim().startsWith('git ')) {
+                                setTimeout(() => {
+                                    if (typeof fetchAndUpdateGitStatus === 'function') fetchAndUpdateGitStatus();
+                                    if (typeof refreshProjectTree === 'function') refreshProjectTree();
+                                }, 350);
+                            }
                         }
                         termInput.value = '';
                     } else if (e.key === 'ArrowUp') {

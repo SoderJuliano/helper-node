@@ -65,9 +65,31 @@ async function compactHistoryIfNeeded(messages, opts) {
   return await summarizer.compactIfNeeded(messages, opts);
 }
 
+const os = require("os");
+
+function getProjectPath() {
+  const items = store.list();
+  // 1. Procura primeiro um item de diretório que exista no disco
+  const dirItem = items.find(a => a.type === "dir" && a.path && fs.existsSync(a.path));
+  if (dirItem) return dirItem.path;
+
+  // 2. Se houver apenas arquivos anexados, pega a pasta pai do primeiro arquivo que exista
+  const fileItem = items.find(a => a.path && fs.existsSync(a.path));
+  if (fileItem) {
+    const parent = path.dirname(fileItem.path);
+    if (parent && parent !== "/" && fs.existsSync(parent)) return parent;
+  }
+
+  // 3. Fallback seguro: se process.cwd() for válido e NÃO for a raiz "/", usa process.cwd(), senão home do usuário
+  const cwd = process.cwd();
+  if (cwd && cwd !== "/" && fs.existsSync(cwd)) return cwd;
+  return os.homedir();
+}
+
 module.exports = {
   addPath, removePath, list, clear, isPathAllowed, tree, openProject,
   buildContextIfNeeded, markContextSent, resetContextSent,
-  compactHistoryIfNeeded,
+  compactHistoryIfNeeded, getProjectPath,
   budgetFor,
 };
+

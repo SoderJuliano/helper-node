@@ -3403,7 +3403,7 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
 
     // ── Gemini CLI provider ──────────────────────────────────────────────────
     if (aiModel === 'geminiCli') {
-      const projectPath = (workspace.list()[0] || {}).path || process.cwd();
+      const projectPath = workspace.getProjectPath();
       const geminiModel = configService.getGeminiCliModel();
       GeminiCliProvider.setModel(geminiModel);
       try {
@@ -3416,7 +3416,7 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
 
     // ── Claude Code CLI provider ─────────────────────────────────────────────
     if (aiModel === 'claudeCli') {
-      const projectPath = (workspace.list()[0] || {}).path || process.cwd();
+      const projectPath = workspace.getProjectPath();
       const claudeModel = configService.getClaudeCliModel();
       ClaudeCliProvider.setModel(claudeModel);
       try {
@@ -3587,7 +3587,7 @@ ipcMain.on("stop-agentic-workflow", (event, sessionId) => {
     ollamaAgenticWorkflow.stop(sessionId);
   }
   // Para CLIs: aborta o processo em curso para o projeto ativo.
-  const projectPath = (workspace.list()[0] || {}).path || process.cwd();
+  const projectPath = workspace.getProjectPath();
   ClaudeCliProvider.abortCurrent(projectPath).catch(() => {});
   GeminiCliProvider.abortCurrent && GeminiCliProvider.abortCurrent(projectPath).catch(() => {});
 });
@@ -4535,27 +4535,40 @@ ipcMain.handle("terminal:init", async (event) => {
   currentTerminalProjectPath = projectPath;
 
   const shell = process.env.SHELL || "/bin/bash";
-  
-  terminalProcess = spawn(shell, [], {
-    env: {
-      ...process.env,
-      TERM: "xterm-256color",
-      COLORTERM: "truecolor",
-      CLICOLOR: "1",
-      CLICOLOR_FORCE: "1",
-      FORCE_COLOR: "1",
-      GIT_CONFIG_PARAMETERS: "'color.ui=always'",
-    },
-    cwd: projectPath,
-    stdio: ["pipe", "pipe", "pipe"],
-  });
+  const env = {
+    ...process.env,
+    TERM: "xterm-256color",
+    COLORTERM: "truecolor",
+    CLICOLOR: "1",
+    CLICOLOR_FORCE: "1",
+    FORCE_COLOR: "1",
+    PYTHONUNBUFFERED: "1",
+    GIT_CONFIG_PARAMETERS: "'color.ui=always'",
+  };
+
+  const ptyCode = `import pty, os; os.environ['TERM']='xterm-256color'; pty.spawn(['${shell}', '-i'])`;
+
+  try {
+    terminalProcess = spawn("python3", ["-c", ptyCode], {
+      env,
+      cwd: projectPath,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+  } catch (_) {
+    terminalProcess = spawn(shell, ["-i"], {
+      env,
+      cwd: projectPath,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+  }
 
   terminalProcess.stdout.setEncoding("utf8");
   terminalProcess.stderr.setEncoding("utf8");
 
-  // Injeta função cd personalizada para imprimir o caminho sempre que o usuário navegar entre pastas (ex: cd .., cd /caminho)
+  // Injeta função cd personalizada e helper do git para feedback visual de 'git add' e 'git commit'
   if (terminalProcess.stdin && terminalProcess.stdin.writable) {
     terminalProcess.stdin.write('cd() { builtin cd "$@" && printf "\\033[32m📁 Pasta atual: %s\\033[0m\\n" "$(pwd)"; }\n');
+    terminalProcess.stdin.write('git() { if [ "$1" = "add" ]; then command git "$@" && command git status -s; else command git "$@"; fi; }\n');
   }
 
   terminalProcess.stdout.on("data", (chunk) => {
@@ -5064,7 +5077,7 @@ ipcMain.handle("check-gemini-cli-installed", async () => {
 
 // Force session restart (e.g. user clicks "Reconectar" in UI).
 ipcMain.handle("gemini-cli-restart-session", async () => {
-  const projectPath = (workspace.list()[0] || {}).path || process.cwd();
+  const projectPath = workspace.getProjectPath();
   await GeminiCliProvider.changeProject(projectPath, projectPath).catch(() => {});
   return { ok: true };
 });
@@ -5090,7 +5103,7 @@ ipcMain.handle("check-claude-cli-installed", async () => {
 });
 
 ipcMain.handle("claude-cli-restart-session", async () => {
-  const projectPath = (workspace.list()[0] || {}).path || process.cwd();
+  const projectPath = workspace.getProjectPath();
   await ClaudeCliProvider.changeProject(projectPath, projectPath).catch(() => {});
   return { ok: true };
 });

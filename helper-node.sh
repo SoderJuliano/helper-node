@@ -35,8 +35,16 @@ fi
 CONFIG_FLAG="$HOME/.config/helper-node/.setup-done"
 USER_APP_CONFIG_DIR="$HOME/.config/meu-electron-app"
 USER_APP_CONFIG_PATH="$USER_APP_CONFIG_DIR/config.json"
-DEFAULT_CONFIG_PATH="$APP_DIR/config-default.json"
-ELECTRON_BIN="$APP_DIR/node_modules/.bin/electron"
+# Export PATH comum (caso o app seja lançado pela GUI sem carregar .bashrc)
+export PATH="$HOME/.nvm/versions/node/$(ls "$HOME/.nvm/versions/node" 2>/dev/null | tail -n 1)/bin:$HOME/.local/bin:$PATH"
+
+if [ -x "$APP_DIR/node_modules/electron/dist/electron" ]; then
+    ELECTRON_BIN="$APP_DIR/node_modules/electron/dist/electron"
+elif [ -x "$APP_DIR/node_modules/.bin/electron" ]; then
+    ELECTRON_BIN="$APP_DIR/node_modules/.bin/electron"
+else
+    ELECTRON_BIN="$APP_DIR/node_modules/electron/dist/electron"
+fi
 RUN_HOTKEY_SETUP=false
 
 # Change to app directory
@@ -105,7 +113,7 @@ fi
 ELECTRON_ARGS=()
 
 # Wayland support (COSMIC/Hyprland/KDE Wayland)
-if [ -n "${WAYLAND_DISPLAY:-}" ] && [ -z "${DISPLAY:-}" ]; then
+if [ -n "${WAYLAND_DISPLAY:-}" ] || [ "${XDG_SESSION_TYPE:-}" = "wayland" ]; then
     ELECTRON_ARGS+=("--ozone-platform=wayland" "--enable-features=UseOzonePlatform")
 fi
 
