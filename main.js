@@ -4619,6 +4619,15 @@ ipcMain.handle("terminal:init", async (event) => {
   }
 
   terminalProcess.stdout.on("data", (chunk) => {
+    // Intercept terminal queries to prevent shells like fish from hanging for 10s
+    if (terminalProcess && terminalProcess.stdin && terminalProcess.stdin.writable) {
+      if (chunk.includes('\x1b[c') || chunk.includes('\x1b[0c')) {
+        try { terminalProcess.stdin.write('\x1b[?1;0c'); } catch (_) {}
+      }
+      if (chunk.includes('\x1b]11;?')) {
+        try { terminalProcess.stdin.write('\x1b]11;rgb:0000/0000/0000\x1b\\'); } catch (_) {}
+      }
+    }
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send("terminal:output", { type: "stdout", data: chunk });
     }

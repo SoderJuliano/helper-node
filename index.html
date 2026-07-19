@@ -6354,6 +6354,14 @@
                 return result;
             });
 
+            // Clean up any remaining non-color ANSI escape sequences that pollute the terminal output
+            // 1. Remove DCS, OSC, PM, APC sequences (typically terminate with ESC \ or BEL)
+            html = html.replace(/\x1b[P\]^_][\s\S]*?(?:\x1b\\|\x07)/g, '');
+            // 2. Remove remaining CSI sequences (e.g. bracketed paste [?2004h, alt screen [?1049h)
+            html = html.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '');
+            // 3. Remove any other leftover ESC sequences (2-byte)
+            html = html.replace(/\x1b./g, '');
+
             if (openSpan) {
                 html += '</span>';
             }
