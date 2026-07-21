@@ -4826,6 +4826,19 @@
             if (!data) return;
             toggleAnimation(data.isRecording);
 
+            // CHOKE-POINT ÚNICO do hero: sempre que QUALQUER áudio é ligado
+            // (Assistente em Tempo Real, Tradutor ou gravação) em modo janela,
+            // o hero de boas-vindas TEM que sumir. Ele bloqueava a tela e, pior,
+            // enquanto visível mantém #main.is-empty → #transcription {display:none},
+            // então nada era transcrito. Não acople isso a eventos downstream
+            // (realtime 'started', onTranslationStatus): eles falham/atrasam e o
+            // bug volta. Este é o ponto que dispara pra TODOS os modos de áudio.
+            // Ver memória: hero-window-mode-audio-blocker.
+            if (data.isRecording) {
+                const hero = document.getElementById('welcome-hero');
+                if (hero) hero.classList.add('hidden');
+            }
+
             // Modo IDE: em vez do robot/loading padrão, mostra a bolinha em
             // pulso acima do composer avisando que o áudio está sendo
             // capturado — a transcrição vai pro composer, não direto pra IA.
