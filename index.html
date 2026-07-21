@@ -6476,6 +6476,26 @@
 
             if (termInput) {
                 termInput.addEventListener('keydown', (e) => {
+                    // === Caracteres de controle (terminal nativo) ===
+                    // Encaminha sinais reais ao PTY: Ctrl+C interrompe (SIGINT),
+                    // Ctrl+D EOF, Ctrl+Z suspende, Ctrl+\ SIGQUIT. Sem isso, npm/git
+                    // e qualquer processo em foreground ficavam travados sem forma de parar.
+                    if (e.ctrlKey && !e.altKey && !e.metaKey && e.key.length === 1) {
+                        const k = e.key.toLowerCase();
+                        // Ctrl+C: se há texto selecionado, deixa copiar; senão manda SIGINT.
+                        if (k === 'c') {
+                            const sel = window.getSelection && window.getSelection().toString();
+                            if (sel && sel.trim()) return; // permite copiar seleção
+                            e.preventDefault();
+                            window.electronAPI.terminalInput('\x03');
+                            termInput.value = '';
+                            return;
+                        }
+                        if (k === 'd') { e.preventDefault(); window.electronAPI.terminalInput('\x04'); return; }
+                        if (k === 'z') { e.preventDefault(); window.electronAPI.terminalInput('\x1a'); return; }
+                        if (k === '\\') { e.preventDefault(); window.electronAPI.terminalInput('\x1c'); return; }
+                        if (k === 'u') { e.preventDefault(); termInput.value = ''; window.electronAPI.terminalInput('\x15'); return; }
+                    }
                     if (e.key === 'Enter') {
                         const val = termInput.value;
                         if (val.trim() === 'clear') {

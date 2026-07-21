@@ -93,22 +93,32 @@
             border-radius: 5px;
             padding: 10px;
             margin: 10px 0;
+            /* Quebra linhas longas dentro do bloco em vez de cortá-las fora da
+               janela — antes usava overflow-x:hidden + white-space:pre (padrão)
+               e parte do código ficava invisível. */
+            white-space: pre-wrap;
+            word-break: break-word;
+            overflow-wrap: anywhere;
             overflow-x: hidden;
             position: relative;
             border: 1px solid rgba(255, 255, 255, 0.1);
             max-width: 100%;
             box-sizing: border-box;
         }
-        
+
         code {
             font-family: "Source Code Pro", monospace;
-            font-size: 13px;
+            font-size: 12px;
         }
-        
+
         pre code {
             background: none;
             padding: 0;
             cursor: pointer;
+            /* Herda a quebra do <pre> pra não estourar a largura */
+            white-space: pre-wrap;
+            word-break: break-word;
+            overflow-wrap: anywhere;
         }
         
         /* Código inline */

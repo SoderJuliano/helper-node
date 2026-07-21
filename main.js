@@ -391,6 +391,22 @@ async function prependWorkspaceContextIfNeeded(text, modelKey) {
 // Improve global shortcut reliability on Linux Wayland compositors
 if (process.platform === "linux") {
   app.commandLine.appendSwitch("enable-features", "GlobalShortcutsPortal");
+
+  // ─── Overlay flutuante x Wayland nativo ────────────────────────────────
+  // No Wayland nativo (COSMIC/Garuda) um client NÃO pode definir a própria
+  // posição global, é "tiled" pelo compositor e não fica de forma confiável
+  // acima das outras janelas. Isso quebra os botões de posição do overlay de
+  // tradução, o arraste e o "sempre na frente". Sob XWayland (X11) tudo isso
+  // volta a funcionar: setPosition/setBounds são honrados, alwaysOnTop é
+  // respeitado e a janela flutua em vez de entrar no tiling.
+  // Permite desligar com HELPER_FORCE_WAYLAND=1 caso o usuário prefira.
+  if (
+    process.env.XDG_SESSION_TYPE === "wayland" &&
+    process.env.HELPER_FORCE_WAYLAND !== "1"
+  ) {
+    app.commandLine.appendSwitch("ozone-platform-hint", "x11");
+    console.log("[platform] Wayland detectado → forçando XWayland (x11) para overlay flutuante confiável. HELPER_FORCE_WAYLAND=1 para desligar.");
+  }
 }
 
 // Function to calculate image hash for duplicate detection
@@ -785,7 +801,23 @@ function createTranslationOverlay() {
   // o mapping. Aplica setBounds uma vez depois desse delay.
   setTimeout(() => forceTranslationOverlayPosition('delayed-500ms'), 500);
 
+  // Mantém "sempre na frente" mesmo se o compositor rebaixar a janela ao trocar
+  // de área de trabalho ou abrir outra janela. Barato: só reafirma o topo.
+  const keepOnTop = setInterval(() => {
+    if (!translationOverlayWindow || translationOverlayWindow.isDestroyed()) {
+      clearInterval(keepOnTop);
+      return;
+    }
+    try {
+      if (!translationOverlayWindow.isAlwaysOnTop()) {
+        translationOverlayWindow.setAlwaysOnTop(true, 'screen-saver');
+      }
+      translationOverlayWindow.moveTop();
+    } catch (_) {}
+  }, 2000);
+
   translationOverlayWindow.on('closed', () => {
+    clearInterval(keepOnTop);
     translationOverlayWindow = null;
   });
 
@@ -907,6 +939,12 @@ function createOsInputWindow() {
     Math.floor(height / 3)
   );
 
+  // STEALTH: a caixa onde o usuário digita a pergunta não pode vazar em
+  // gravação/compartilhamento (era a única overlay do fluxo sem proteção).
+  applyStealthProtection(osInputWindow);
+  try { osInputWindow.setAlwaysOnTop(true, 'screen-saver'); } catch (_) {}
+  try { osInputWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true }); } catch (_) {}
+
   const inputHtml = path.join(__dirname, 'os-integration', 'notifications', 'integratedInput.html');
 
   osInputWindow.loadFile(inputHtml);
@@ -981,13 +1019,10 @@ function startResponseAutoClose() {
   const POLL_MS = 200;
   let remaining = AUTO_CLOSE_MS;
   let last = Date.now();
-  let prevInside = null; // null = ainda não decidido; força envio do 1º estado
+  let started = false; // já enviamos o 1º estado 'running'?
   osNotifAutoCloseTimer = setInterval(() => {
     const win = osNotificationWindow;
     if (!win || win.isDestroyed()) { clearOsNotifAutoClose(); return; }
-
-    const now = Date.now();
-    const dt = now - last; last = now;
 
     let inside = false;
     try {
@@ -996,25 +1031,28 @@ function startResponseAutoClose() {
       inside = p.x >= b.x && p.x < b.x + b.width && p.y >= b.y && p.y < b.y + b.height;
     } catch (_) {}
 
+    // Passar o mouse por cima UMA vez desabilita o auto-close DE VEZ:
+    // a resposta fica aberta até o usuário fechar no X. (Antes só resetava
+    // o contador e ele voltava a correr quando o mouse saía.)
     if (inside) {
-      remaining = AUTO_CLOSE_MS; // mouse em cima: mantém aberta (contador cheio)
-      if (prevInside !== true) {
-        prevInside = true;
-        try { win.webContents.send('autoclose-state', { state: 'paused' }); } catch (_) {}
-      }
-    } else {
-      if (prevInside !== false) {
-        // Acabou de sair (ou primeira leitura fora): reinicia 10s do zero.
-        prevInside = false;
-        remaining = AUTO_CLOSE_MS;
-        try { win.webContents.send('autoclose-state', { state: 'running', ms: AUTO_CLOSE_MS }); } catch (_) {}
-      } else {
-        remaining -= dt;
-      }
-      if (remaining <= 0) {
-        clearOsNotifAutoClose();
-        try { win.close(); } catch (_) {}
-      }
+      try { win.webContents.send('autoclose-state', { state: 'paused' }); } catch (_) {}
+      clearOsNotifAutoClose(); // para o poll de vez — não fecha mais sozinho
+      return;
+    }
+
+    // Mouse fora: conta o tempo regressivo. Se nunca passar por cima, some.
+    const now = Date.now();
+    if (!started) {
+      started = true;
+      last = now;
+      try { win.webContents.send('autoclose-state', { state: 'running', ms: AUTO_CLOSE_MS }); } catch (_) {}
+      return;
+    }
+    remaining -= (now - last);
+    last = now;
+    if (remaining <= 0) {
+      clearOsNotifAutoClose();
+      try { win.close(); } catch (_) {}
     }
   }, POLL_MS);
 }
@@ -1053,8 +1091,9 @@ function createOsNotificationWindow(type, content) {
   if (type === 'response') {
     // 2x mais alta — entrevistas têm respostas longas (TRADUÇÃO + RESPOSTA + código)
     // Forçada no canto direito (posY baixo + posX = direita) — não centralizar.
-    windowWidth = 440;
-    windowHeight = 520;
+    // 500px: largura maior pra blocos de código não cortarem palavras/linhas.
+    windowWidth = 500;
+    windowHeight = 560;
   } else if (type === 'recording-live') {
     // Tamanho inicial confortável: cabe header + 1 linha de fala
     // sem precisar de scrollbar. Cresce dinamicamente via resize-overlay.
@@ -1246,6 +1285,12 @@ function createCaptureWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
   const windowWidth = 120;
   osCaptureWindow.setPosition(width - windowWidth - 20, 60);
+
+  // STEALTH: a janela de captura também não pode vazar em gravação/compartilhamento
+  // (antes era a única overlay sem proteção — leak em Teams/Meet/OBS).
+  applyStealthProtection(osCaptureWindow);
+  try { osCaptureWindow.setAlwaysOnTop(true, 'screen-saver'); } catch (_) {}
+  try { osCaptureWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true }); } catch (_) {}
 
   // Load capture animation
   const capturePath = path.join(__dirname, 'os-integration', 'notifications', 'capture.html');
@@ -4595,6 +4640,12 @@ ipcMain.handle("terminal:init", async (event) => {
     FORCE_COLOR: "1",
     PYTHONUNBUFFERED: "1",
     GIT_CONFIG_PARAMETERS: "'color.ui=always'",
+    // Desativa pagers interativos (less) que travavam git log/diff/branch,
+    // systemctl, man etc. num terminal line-buffered sem como enviar 'q'.
+    GIT_PAGER: "cat",
+    PAGER: "cat",
+    SYSTEMD_PAGER: "cat",
+    MANPAGER: "cat",
   };
 
   const ptyCode = `import pty, os; os.environ['TERM']='linux'; pty.spawn(['${shell}', '-i'])`;
@@ -5041,7 +5092,20 @@ function positionTranslationOverlay(position) {
   }
 
   console.log(`[overlay-position] ${position} → display ${display.id} x=${newX} y=${newY}`);
-  try { translationOverlayWindow.setBounds({ x: newX, y: newY, width: winW, height: winH }, true); } catch (_) {}
+  try { translationOverlayWindow.setBounds({ x: newX, y: newY, width: winW, height: winH }); } catch (_) {}
+  try { translationOverlayWindow.setPosition(newX, newY); } catch (_) {}
+  // Reafirma flutuar acima de tudo: o compositor pode ter rebaixado/encaixado
+  // a janela ao movê-la entre monitores/áreas de trabalho.
+  try {
+    translationOverlayWindow.setAlwaysOnTop(true, 'screen-saver');
+    translationOverlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    translationOverlayWindow.moveTop();
+  } catch (_) {}
+  // Confere o resultado real (útil pra diagnosticar Wayland ignorando posição).
+  try {
+    const got = translationOverlayWindow.getBounds();
+    console.log(`[overlay-position] real=${got.x},${got.y} ${got.width}x${got.height}`);
+  } catch (_) {}
 }
 
 ipcMain.on('overlay-position', (_event, position) => {
