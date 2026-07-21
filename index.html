@@ -4523,6 +4523,16 @@
         async function openFileViewer(filePath) {
             if (window.EditorController) await window.EditorController.openFile(filePath);
         }
+        // Ctrl+Shift+F → Enter: abre todos os arquivos que bateram a busca por
+        // conteúdo, cada um como uma aba. Abre em ordem reversa para o PRIMEIRO
+        // match terminar como aba ativa. (Sem isto, o Enter só dava ReferenceError
+        // — openMatchingFiles não existia — e nada abria.)
+        async function openMatchingFiles(paths) {
+            if (!Array.isArray(paths) || !paths.length) return;
+            for (let i = paths.length - 1; i >= 0; i--) {
+                await openFileViewer(paths[i]);
+            }
+        }
         function closeFileViewer() {
             const v = document.getElementById('file-viewer');
             if (v) v.classList.remove('open');
