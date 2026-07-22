@@ -6,6 +6,7 @@ yarn-error.log*
 
 # ===== Build outputs =====
 dist/
+out/
 build/deb-root/
 build/arch/*.tar.gz
 build/arch/*.pkg.tar.zst

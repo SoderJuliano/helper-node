@@ -2,19 +2,22 @@
   "name": "meu-electron-app",
   "version": "0.6.0",
   "main": "main.js",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node launch.js",
     "start:linux": "bash ./helper-node.sh --local",
     "setup-hotkeys": "bash ./setup-hotkey.sh",
     "fix-hotkeys": "rm -f $HOME/.config/helper-node/.setup-done && HELPER_NODE_FORCE_HOTKEY_SETUP=1 bash ./setup-hotkey.sh",
+    "icon:win": "node ./scripts/generate-windows-icon.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "devDependencies": {
-    "electron": "^36.2.1"
-  },
+  "devDependencies": {},
   "dependencies": {
     "@ricky0123/vad-web": "^0.0.30",
     "axios": "^1.9.0",
+    "electron": "^36.2.1",
     "express": "^5.1.0",
     "form-data": "^4.0.5",
     "lottie-web": "^5.12.2",
