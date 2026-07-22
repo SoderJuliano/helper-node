@@ -60,11 +60,54 @@ Windows (janela sumir do OBS) tem que ser feito por você no Windows 11.
 
 ---
 
-## Etapa 2 — Áudio cross-platform (Tradutor + Assistente)  ⏳ PENDENTE
+## Etapa 2 — Áudio cross-platform (Tradutor + Assistente)  ✅ CONCLUÍDA
 
-Hoje `services/realtimeAudioCapture.js` usa `parec` + `pactl` (PulseAudio). No
-Windows precisa de loopback WASAPI. Plano: abstrair a captura atrás de
-`services/platform/audioCapture.js` com backend por plataforma.
+**Problema:** os DOIS motores de VAD usavam `parec` + `pactl` (PulseAudio, Linux):
+- `services/realtimeAudioCapture.js` (Assistente em tempo real)
+- `services/translationAssistant/vadEngine.js` (Tradutor)
 
-## Etapa 3 — Tradutor em tempo real  ⏳ PENDENTE (depende da Etapa 2)
-## Etapa 4 — Assistente em tempo real  ⏳ PENDENTE (depende da Etapa 2)
+**Solução — bridge de PCM cross-platform** (`services/platform/nativeAudio.js`
++ `nativeAudioRenderer.html`):
+- Janela **oculta** (`show:false`, `backgroundThrottling:false`) captura via
+  Chromium: mic (`getUserMedia`) + sistema (`getDisplayMedia` com
+  `audio:'loopback'` — WASAPI no Windows).
+- Faz resample p/ **s16le / 16 kHz / mono** — MESMO formato do `parec` — e
+  envia os chunks PCM via IPC. Os motores reaproveitam TODA a lógica de
+  VAD/segmentação/WAV **sem alteração**.
+- `setDisplayMediaRequestHandler` auto-aprova o loopback (sem diálogo).
+
+**Edições nos motores (risco mínimo):** só o `startStream()` ganhou um branch
+`if (process.platform !== 'linux')` que assina o bridge em vez de spawnar parec.
+O path **Linux ficou byte-idêntico**. Follower de sink (pactl) guardado p/ Linux.
+
+**Transcrição:** ambos usam a **API OpenAI** (`/audio/transcriptions`,
+`gpt-4o-transcribe`) — HTTP puro, cross-platform. ✅
+
+**Requisito no Windows:** usar o modelo **OpenAI** (online). `pickRealtimeService`
+só cai no pipeline local (Vosk+Whisper, binários Linux) quando o modelo NÃO é
+`openIa`. Com a chave OpenAI do usuário, cai no caminho cross-platform correto.
+
+**macOS:** loopback de sistema não é suportado pelo Chromium sem driver virtual
+(BlackHole). Mic funciona; áudio do sistema fica mudo — mesma limitação de
+sempre (no Linux era parec; no Mac nunca houve captura de sistema).
+
+## Etapa 3 — Tradutor em tempo real  ✅ HABILITADA pela Etapa 2
+
+`vadEngine.js` agora recebe PCM do bridge no Windows. Transcrição/tradução via
+OpenAI (HTTP). Falta apenas o **teste real no Windows 11**.
+
+## Etapa 4 — Assistente em tempo real  ✅ HABILITADA pela Etapa 2
+
+`realtimeAudioCapture.js` agora recebe PCM do bridge no Windows (via
+`realtimeOpenAiService`, modelo OpenAI). Falta apenas o **teste real no Win 11**.
+
+---
+
+## Gaps conhecidos (NÃO fazem parte dos 3 recursos-núcleo)
+
+- **Ctrl+D legado** (gravação-arquivo com Realtime Assistant DESLIGADO): usa
+  `pw-record` + `ffmpeg` (Linux). No Windows, ligue "Assistente em Tempo Real"
+  (usa o caminho cross-platform). Portar o legado é trabalho futuro.
+- **`captureOneAnswer`** (`vadEngine`, só usado no testMode): usa `pw-record`.
+- **Pipeline local Vosk+Whisper** (edição full sem OpenAI): binários Linux/Python.
+  No Windows use o modelo OpenAI.
