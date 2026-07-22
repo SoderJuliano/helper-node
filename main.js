@@ -408,6 +408,13 @@ if (process.platform === "linux") {
     console.log("[platform] Wayland detectado → forçando XWayland (x11) para overlay flutuante confiável. HELPER_FORCE_WAYLAND=1 para desligar.");
   }
 
+  // WM_CLASS de TODAS as janelas X11/XWayland → "helper-node".
+  // setName() sozinho só marcava a 1ª janela; as janelas flutuantes/overlay
+  // nasciam com WM_CLASS="electron" e por isso o match stealth do compositor
+  // (app_id.contains("helper-node")) NÃO pegava nelas — apareciam na gravação.
+  // A switch --class força o WM_CLASS no nível do Chromium para todo top-level.
+  app.commandLine.appendSwitch("class", "helper-node");
+
   // Identidade estável para o compositor. Sob XWayland o cosmic-comp lê o
   // WM_CLASS do X11 como "app_id"; o modo stealth do compositor casa por
   // app_id.contains("helper-node"). Sem isto, o Electron reporta o nome do
