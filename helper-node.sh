@@ -112,10 +112,12 @@ fi
 
 ELECTRON_ARGS=()
 
-# Wayland support (COSMIC/Hyprland/KDE Wayland)
-if [ -n "${WAYLAND_DISPLAY:-}" ] || [ "${XDG_SESSION_TYPE:-}" = "wayland" ]; then
-    ELECTRON_ARGS+=("--ozone-platform=wayland" "--enable-features=UseOzonePlatform")
-fi
+# Ozone platform (X11/XWayland vs Wayland nativo) é decidido pelo main.js via
+# app.commandLine.appendSwitch("ozone-platform-hint", ...). Passar
+# --ozone-platform=wayland aqui, explícito, sobrescreve esse hint e força
+# Wayland nativo mesmo quando main.js pediu XWayland — quebrando o
+# posicionamento do overlay flutuante e o casamento de app_id do modo
+# stealth no compositor. Não definir a plataforma aqui.
 
 # If chrome-sandbox is not configured with SUID, fallback to no-sandbox
 if [ ! -u "$APP_DIR/node_modules/electron/dist/chrome-sandbox" ]; then

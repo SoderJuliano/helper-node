@@ -407,6 +407,20 @@ if (process.platform === "linux") {
     app.commandLine.appendSwitch("ozone-platform-hint", "x11");
     console.log("[platform] Wayland detectado → forçando XWayland (x11) para overlay flutuante confiável. HELPER_FORCE_WAYLAND=1 para desligar.");
   }
+
+  // Identidade estável para o compositor. Sob XWayland o cosmic-comp lê o
+  // WM_CLASS do X11 como "app_id"; o modo stealth do compositor casa por
+  // app_id.contains("helper-node"). Sem isto, o Electron reporta o nome do
+  // package ("meu-electron-app"), a regra nunca casa e a janela aparece na
+  // gravação. setName define o WM_CLASS que o cosmic-comp enxerga.
+  app.setName("helper-node");
+
+  // EFEITO COLATERAL do setName acima: app.getPath("userData") passa a apontar
+  // para ~/.config/helper-node/ em vez de ~/.config/meu-electron-app/. Isso
+  // "some" com o config (e a API key) no modo dev (npm start), porque o app
+  // instalado usa "meu-electron-app". Fixamos o userData no caminho histórico
+  // para que app_id=helper-node (stealth) NÃO mude onde o config é lido/salvo.
+  app.setPath("userData", path.join(app.getPath("appData"), "meu-electron-app"));
 }
 
 // Function to calculate image hash for duplicate detection
