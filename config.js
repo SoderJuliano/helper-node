@@ -695,9 +695,15 @@ saveButton.addEventListener("click", async () => {
     ipcRenderer.send("set-gemini-cli-model", geminiCliModelSelect.value);
   }
 
-  // Always save OpenAI token, regardless of current model
-  // This ensures the token persists even when switching to other models
-  ipcRenderer.send("set-open-ia-token", openIaTokenInput.value);
+  // Salva o token OpenAI de forma NÃO-destrutiva: só grava quando o campo tem
+  // conteúdo. Se o campo estiver vazio (ex.: o load falhou, ou outra janela/
+  // sessão abriu o config sem preencher), NÃO reenviamos "" — isso apagaria a
+  // chave já salva. Limpar a chave é feito exclusivamente pelo botão "clear"
+  // (set-open-ia-token com "" explícito). Bug já queimou a chave do usuário.
+  const _tokenVal = (openIaTokenInput.value || "").trim();
+  if (_tokenVal) {
+    ipcRenderer.send("set-open-ia-token", _tokenVal);
+  }
 
   // Salvar API key do backend (qwen3.6-17b)
   const backendApiKeyInput = document.getElementById("backend-api-key");

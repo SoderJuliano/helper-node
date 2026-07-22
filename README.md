@@ -6,10 +6,14 @@
 [![Latest release](https://img.shields.io/github/v/release/SoderJuliano/helper-node?label=latest%20release&style=flat-square)](https://github.com/SoderJuliano/helper-node/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](#license)
 [![Platform](https://img.shields.io/badge/platform-Linux-333333?style=flat-square&logo=linux&logoColor=white)](#prerequisites)
+[![Windows](https://img.shields.io/badge/Windows-community%20install-0078D6?style=flat-square&logo=windows&logoColor=white)](#windows)
 
 <p align="center"><img src="assets/helper-node-img.jpg" width="800"></p>
 
 A stealth AI copilot for Linux: live transcription, screen OCR, and on-screen answers during meetings, interviews, and study sessions, powered by your own API key.
+
+> **Windows (community, unsigned):** one-line PowerShell install, no packaged
+> `.exe` — see [Windows](#windows) below for why and how.
 
 ## Overview
 
@@ -204,6 +208,40 @@ The Debian `postinst` step builds a Python venv at `/opt/helper-node/venv` with 
 ```
 
 Artifacts are written to `dist/`.
+
+### Windows
+
+> **Requires Node.js 18+** (check with `node -v`; install from
+> [nodejs.org](https://nodejs.org) if missing) and, ideally, `git` in `PATH`
+> (falls back to downloading a `.zip` if `git` is absent). No admin rights
+> needed.
+
+There is intentionally **no packaged `.exe` installer**. A compiled Electron
+Forge/Squirrel binary was tried first and got flagged by Windows Defender's
+cloud ML as `Trojan:Win32/Cinjo.O!cl` — a behavioral false positive (the app
+does global hotkeys + screen-capture evasion by design, combined with a
+freshly-built, unsigned, zero-reputation binary — a textbook trigger for that
+heuristic). See [`WINDOWS-PORT.md`](WINDOWS-PORT.md) (Etapa 5) for the full
+story, including code-signing price research kept for later.
+
+Instead, these scripts do what `install.sh` already does on Linux: no new
+binary gets compiled. They clone/update the source, run `npm install` (which
+pulls the **official** `electron.exe` — the same binary thousands of other
+apps use, not a freshly repackaged one), and register a shortcut + a
+`helper-node` command in your user `PATH`:
+
+```powershell
+# Full — enables Ollama / Claude CLI / Gemini CLI provider options (bring your own):
+irm https://raw.githubusercontent.com/SoderJuliano/helper-node/master/install-windows-full.ps1 | iex
+
+# Lite — 100% online via OpenAI, same as the Linux Lite edition:
+irm https://raw.githubusercontent.com/SoderJuliano/helper-node/master/install-windows-lite.ps1 | iex
+```
+
+Installs to `%LOCALAPPDATA%\helper-node`. Re-run the same command to update
+(it `git pull`s and re-runs `npm install`). Local offline transcription
+(Whisper.cpp/Vosk) isn't ported to Windows yet — use the OpenAI model there
+(see "Gaps conhecidos" in `WINDOWS-PORT.md`).
 
 ## Usage
 

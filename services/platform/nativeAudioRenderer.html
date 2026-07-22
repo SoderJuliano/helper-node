@@ -1,0 +1,113 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>native-audio</title></head>
+<body>
+<script>
+// Renderer OCULTO de captura de áudio (Windows/macOS).
+// Captura mic (getUserMedia) e áudio do sistema (getDisplayMedia + loopback),
+// converte cada um para PCM s16le / 16 kHz / mono e envia ao main via IPC,
+// marcado por source ('mic'|'sys'). O main roteia pros motores de VAD.
+
+const { ipcRenderer } = require('electron');
+
+const TARGET_RATE = 16000;
+const active = {};   // source -> { stream, ctx, node }
+
+function log(msg) { try { ipcRenderer.send('native-audio-log', msg); } catch (_) {} }
+
+// Downsample linear de Float32 (srcRate) -> Int16 (16 kHz mono).
+function floatTo16kInt16(float32, srcRate) {
+  if (srcRate === TARGET_RATE) {
+    const out = new Int16Array(float32.length);
+    for (let i = 0; i < float32.length; i++) {
+      let s = Math.max(-1, Math.min(1, float32[i]));
+      out[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+    }
+    return out;
+  }
+  const ratio = srcRate / TARGET_RATE;
+  const outLen = Math.floor(float32.length / ratio);
+  const out = new Int16Array(outLen);
+  for (let i = 0; i < outLen; i++) {
+    const idx = i * ratio;
+    const i0 = Math.floor(idx);
+    const i1 = Math.min(i0 + 1, float32.length - 1);
+    const frac = idx - i0;
+    let s = float32[i0] * (1 - frac) + float32[i1] * frac; // interpolação linear
+    s = Math.max(-1, Math.min(1, s));
+    out[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+  }
+  return out;
+}
+
+function attach(source, stream) {
+  // Descarta trilhas de vídeo (getDisplayMedia exige vídeo, mas só queremos áudio).
+  stream.getVideoTracks().forEach((t) => t.stop());
+  if (stream.getAudioTracks().length === 0) {
+    log(`${source}: sem trilha de áudio (loopback indisponível?)`);
+  }
+
+  const ctx = new AudioContext();
+  const srcNode = ctx.createMediaStreamSource(stream);
+  // ScriptProcessor: deprecated mas confiável e simples (sem AudioWorklet).
+  const node = ctx.createScriptProcessor(4096, 1, 1);
+
+  node.onaudioprocess = (e) => {
+    const input = e.inputBuffer.getChannelData(0); // Float32 mono
+    const pcm16 = floatTo16kInt16(input, ctx.sampleRate);
+    // Envia os bytes (Uint8Array sobre o mesmo buffer) — main faz Buffer.from.
+    const bytes = new Uint8Array(pcm16.buffer, pcm16.byteOffset, pcm16.byteLength);
+    ipcRenderer.send('native-audio-pcm', { source, bytes });
+  };
+
+  srcNode.connect(node);
+  node.connect(ctx.destination); // necessário p/ o ScriptProcessor disparar
+  active[source] = { stream, ctx, node, srcNode };
+  log(`${source}: capturando @ ${ctx.sampleRate}Hz -> 16kHz`);
+}
+
+async function startSource(source) {
+  if (active[source]) return;
+  try {
+    let stream;
+    if (source === 'mic') {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
+        video: false,
+      });
+    } else {
+      // sys: loopback do sistema (o main aprova via setDisplayMediaRequestHandler).
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: true,
+      });
+    }
+    attach(source, stream);
+  } catch (err) {
+    log(`${source}: falha ao capturar — ${err && err.message ? err.message : err}`);
+  }
+}
+
+function stopSource(source) {
+  const a = active[source];
+  if (!a) return;
+  try { a.node.disconnect(); } catch (_) {}
+  try { a.srcNode.disconnect(); } catch (_) {}
+  try { a.ctx.close(); } catch (_) {}
+  try { a.stream.getTracks().forEach((t) => t.stop()); } catch (_) {}
+  delete active[source];
+  log(`${source}: parado`);
+}
+
+ipcRenderer.on('native-audio-start', (_e, { source }) => { startSource(source); });
+ipcRenderer.on('native-audio-stop', (_e, { source }) => { stopSource(source); });
+
+log('renderer pronto');
+</script>
+</body>
+</html>

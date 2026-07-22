@@ -5,6 +5,7 @@
 // captura de monitor via `pw-record --target` é instável no PipeWire.
 
 const { spawn, exec } = require('child_process');
+const nativeAudio = require('../platform/nativeAudio'); // fonte PCM Win/Mac (não-Linux)
 const util = require('util');
 const execPromise = util.promisify(exec);
 const fs = require('fs');
@@ -181,6 +182,22 @@ function processChunk(pcm, st, source) {
 }
 
 function startStream(target, source, st) {
+  // Win/Mac: PCM vem do bridge de renderer (nativeAudio), não do parec.
+  // Mesmo formato (s16le/16k/mono) → o pipeline de VAD abaixo é idêntico.
+  if (process.platform !== 'linux') {
+    const onChunk = (chunk) => {
+      if (!active) return;
+      st.pcmRemainder = Buffer.concat([st.pcmRemainder, chunk]);
+      while (st.pcmRemainder.length >= CHUNK_SIZE) {
+        processChunk(st.pcmRemainder.slice(0, CHUNK_SIZE), st, source);
+        st.pcmRemainder = st.pcmRemainder.slice(CHUNK_SIZE);
+      }
+    };
+    nativeAudio.subscribe(source, onChunk).catch((e) =>
+      console.error(`[TranslationAssistant] nativeAudio.subscribe(${source}) falhou:`, e.message));
+    return { kill: () => nativeAudio.unsubscribe(source, onChunk) };
+  }
+
   // Usa parec (camada PulseAudio), NÃO pw-record. Captura de MONITOR via
   // `pw-record --target` é instável no PipeWire (cai no mic / capta picotado);
   // parec --device=<monitor> capta o áudio do sistema de forma confiável — é o
@@ -250,7 +267,8 @@ async function startVAD({ onSpeechEnd, onLevel, micTarget, sysTarget } = {}) {
   console.log(`[TranslationAssistant] VAD iniciado — mic: ${micT} | sys: ${sysT}`);
 
   // Segue a saída ativa automaticamente — exceto quando o chamador FIXOU o sink.
-  if (!sysTarget) {
+  // Follower usa pactl (PulseAudio) → só faz sentido no Linux.
+  if (!sysTarget && process.platform === 'linux') {
     sysFollowInterval = setInterval(() => { followActiveSink().catch(() => {}); }, SYS_FOLLOW_MS);
   }
 }

@@ -83,6 +83,7 @@ const workspace = require("./services/workspace");
 const agenticWorkflow = require("./services/agenticWorkflowService");
 const ollamaAgenticWorkflow = require("./services/ollamaAgenticWorkflowService");
 const translationAssistant = require("./services/translationAssistant");
+const platformScreenCapture = require("./services/platform/screenCapture.js");
 const { runTestMode } = require("./services/translationAssistant/testMode");
 const { analyzeInterviewImage } = require("./services/translationAssistant/imageAnalysis");
 // Transcrição cloud (gpt-4o-mini-transcribe) — usada no Ctrl+D da edição Lite.
@@ -407,6 +408,27 @@ if (process.platform === "linux") {
     app.commandLine.appendSwitch("ozone-platform-hint", "x11");
     console.log("[platform] Wayland detectado → forçando XWayland (x11) para overlay flutuante confiável. HELPER_FORCE_WAYLAND=1 para desligar.");
   }
+
+  // WM_CLASS de TODAS as janelas X11/XWayland → "helper-node".
+  // setName() sozinho só marcava a 1ª janela; as janelas flutuantes/overlay
+  // nasciam com WM_CLASS="electron" e por isso o match stealth do compositor
+  // (app_id.contains("helper-node")) NÃO pegava nelas — apareciam na gravação.
+  // A switch --class força o WM_CLASS no nível do Chromium para todo top-level.
+  app.commandLine.appendSwitch("class", "helper-node");
+
+  // Identidade estável para o compositor. Sob XWayland o cosmic-comp lê o
+  // WM_CLASS do X11 como "app_id"; o modo stealth do compositor casa por
+  // app_id.contains("helper-node"). Sem isto, o Electron reporta o nome do
+  // package ("meu-electron-app"), a regra nunca casa e a janela aparece na
+  // gravação. setName define o WM_CLASS que o cosmic-comp enxerga.
+  app.setName("helper-node");
+
+  // EFEITO COLATERAL do setName acima: app.getPath("userData") passa a apontar
+  // para ~/.config/helper-node/ em vez de ~/.config/meu-electron-app/. Isso
+  // "some" com o config (e a API key) no modo dev (npm start), porque o app
+  // instalado usa "meu-electron-app". Fixamos o userData no caminho histórico
+  // para que app_id=helper-node (stealth) NÃO mude onde o config é lido/salvo.
+  app.setPath("userData", path.join(app.getPath("appData"), "meu-electron-app"));
 }
 
 // Function to calculate image hash for duplicate detection
@@ -971,6 +993,14 @@ function isTranslationOnlyMode() {
 // Proteção contra captura de tela — stealth window
 // Chamada após criar qualquer janela overlay que não deve aparecer em gravações/compartilhamentos.
 function applyStealthProtection(win) {
+  if (process.platform === 'win32') {
+    // Windows 10 2004+ / 11: setContentProtection chama
+    // SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE) — a janela é excluída
+    // de TODA captura de tela (OBS, Zoom, Meet, PrintScreen). Stealth real,
+    // ao contrário do Linux onde essa chamada é no-op.
+    try { win.setContentProtection(true); } catch (_) {}
+    return;
+  }
   if (process.platform === 'darwin') {
     try { win.setContentProtection(true); } catch (_) {}
     return;
@@ -5453,6 +5483,19 @@ async function captureFullScreenAuto() {
 
   try {
     // === ORDEM DE PRIORIDADE — TODAS STEALTH (sem prompt do portal) ===
+
+    // 0) Windows/macOS: desktopCapturer captura SILENCIOSAMENTE (sem diálogo do
+    //    portal, que só existe no Linux/Wayland). A janela do helper fica fora
+    //    da gravação via setContentProtection — efetivo aqui, diferente do Linux.
+    //    Este é o caminho stealth NATIVO dessas plataformas.
+    if (process.platform !== 'linux') {
+      try {
+        capturedPath = await platformScreenCapture.captureFullScreenToFile(tmpPng);
+        success = !!capturedPath;
+      } catch (e) {
+        console.warn('📸 desktopCapturer (win/mac) falhou:', (e && e.message) || e);
+      }
+    }
 
     // 1) COSMIC: cosmic-screenshot
     //    Sintaxe correta: --interactive=false --notify=false --save-dir <dir>

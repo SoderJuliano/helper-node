@@ -13,6 +13,7 @@ const execPromise = util.promisify(exec);
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const nativeAudio = require('./platform/nativeAudio'); // fonte PCM Win/Mac (não-Linux)
 
 const SAMPLE_RATE = 16000;
 const BYTES_PER_SAMPLE = 2;                              // s16le
@@ -176,6 +177,23 @@ function processChunk(pcm, st, source) {
 // ---------- Streams ----------
 
 function startStream(target, source, st) {
+  // Win/Mac: PCM vem do bridge de renderer (nativeAudio), não do parec.
+  // Mesmo formato (s16le/16k/mono) → o pipeline de VAD abaixo é idêntico.
+  if (process.platform !== 'linux') {
+    const onChunk = (chunk) => {
+      if (!active) return;
+      st.pcmRemainder = Buffer.concat([st.pcmRemainder, chunk]);
+      while (st.pcmRemainder.length >= CHUNK_SIZE) {
+        processChunk(st.pcmRemainder.slice(0, CHUNK_SIZE), st, source);
+        st.pcmRemainder = st.pcmRemainder.slice(CHUNK_SIZE);
+      }
+    };
+    nativeAudio.subscribe(source, onChunk).catch((e) =>
+      console.error(`[realtime-audio] nativeAudio.subscribe(${source}) falhou:`, e.message));
+    // Objeto compatível com a interface de processo esperada (kill()).
+    return { kill: () => nativeAudio.unsubscribe(source, onChunk) };
+  }
+
   const proc = spawn('parec', [
     '--device=' + target,
     '--rate=16000',
@@ -260,7 +278,8 @@ async function startCapture({ onSpeechEnd, onInterim, micTarget, sysTarget } = {
   procs.sys = startStream(sysT, 'sys', sysSt);
   console.log(`[realtime-audio] captura iniciada — mic: ${micT} | sys: ${sysT}`);
 
-  if (!sysTarget) {
+  // Follower da saída ativa é específico do PulseAudio (pactl) — só no Linux.
+  if (!sysTarget && process.platform === 'linux') {
     sysFollowInterval = setInterval(() => { followActiveSink().catch(() => {}); }, SYS_FOLLOW_MS);
   }
   diagInterval = setInterval(logLevels, DIAG_MS);
