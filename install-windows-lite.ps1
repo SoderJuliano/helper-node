@@ -97,10 +97,40 @@ Pop-Location
 if ($npmExit -ne 0) { Write-Fatal "npm install falhou (codigo $npmExit)." }
 Write-Ok "Dependencias instaladas"
 
-$electronExe = Join-Path $InstallDir 'node_modules\electron\dist\electron.exe'
+$electronDir = Join-Path $InstallDir 'node_modules\electron'
+$electronExe = Join-Path $electronDir 'dist\electron.exe'
+
+# O postinstall do Electron extrai o .zip usando a lib 'extract-zip'. Em algumas
+# versoes recentes do Node no Windows (visto no Node 24) ela morre em silencio
+# depois do 1o arquivo do zip: o download funciona, mas o dist fica so com a
+# pasta 'locales' e sem o electron.exe - e como o pacote ja esta em node_modules,
+# rodar 'npm install' de novo NAO re-executa o postinstall, entao o estado quebrado
+# gruda. Fallback confiavel: extrair o zip na mao com o Expand-Archive nativo.
 if (-not (Test-Path $electronExe)) {
-    Write-Fatal "electron.exe nao foi baixado (node_modules\electron\dist\electron.exe ausente). Rode 'npm install' manualmente em $InstallDir pra ver o erro completo."
+    Write-Step "electron.exe ausente - extraindo o Electron na mao (fallback do Expand-Archive)..."
+    $ver = (Get-Content (Join-Path $electronDir 'package.json') -Raw | ConvertFrom-Json).version
+    $arch = (& node -p 'process.arch').Trim()
+    $zipName = "electron-v$ver-win32-$arch.zip"
+    $cacheRoot = Join-Path $env:LOCALAPPDATA 'electron\Cache'
+    $zip = $null
+    if (Test-Path $cacheRoot) {
+        $zip = Get-ChildItem $cacheRoot -Recurse -Filter $zipName -ErrorAction SilentlyContinue | Select-Object -First 1
+    }
+    if (-not $zip) {
+        Write-Step "Zip nao estava no cache - baixando $zipName do release oficial do Electron..."
+        $tmpZip = Join-Path $env:TEMP $zipName
+        Invoke-WebRequest -Uri "https://github.com/electron/electron/releases/download/v$ver/$zipName" -OutFile $tmpZip
+        $zip = Get-Item $tmpZip
+    }
+    $distDir = Join-Path $electronDir 'dist'
+    if (Test-Path $distDir) { Remove-Item -Recurse -Force $distDir }
+    Expand-Archive -Path $zip.FullName -DestinationPath $distDir -Force
+    Set-Content -Path (Join-Path $electronDir 'path.txt') -Value 'electron.exe' -NoNewline -Encoding ASCII
 }
+if (-not (Test-Path $electronExe)) {
+    Write-Fatal "electron.exe ainda ausente apos o fallback. Rode 'npm install' manualmente em $InstallDir pra ver o erro completo."
+}
+Write-Ok "Electron pronto"
 
 # 5) comando `helper-node` no PATH do usuario atual - sem precisar de admin
 New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
