@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Vision Guide</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      height: 100%;
+      font-family: 'DM Sans', 'Inter', system-ui, sans-serif;
+      color: #ececec;
+      user-select: none;
+      overflow: hidden;
+    }
+
+    body {
+      background: rgba(18, 18, 24, 0.72);
+      -webkit-backdrop-filter: blur(14px) saturate(140%);
+      backdrop-filter: blur(14px) saturate(140%);
+      display: flex;
+      flex-direction: column;
+      border-radius: 10px;
+      border: 1px solid rgba(139, 92, 246, 0.18);
+    }
+    @supports not (backdrop-filter: blur(1px)) {
+      body { background: #16161c; }
+    }
+
+    /* ---------- HEADER ---------- */
+    #pos-header {
+      height: 26px;
+      min-height: 26px;
+      background: rgba(139, 92, 246, 0.08);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 1px;
+      padding: 0 4px;
+      flex-shrink: 0;
+      -webkit-app-region: drag;
+      cursor: move;
+    }
+    #pos-header .title {
+      margin-right: auto;
+      padding-left: 6px;
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #c4b5fd;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .pos-btn {
+      background: transparent;
+      border: none;
+      color: rgba(255, 255, 255, 0.30);
+      font-size: 10px;
+      width: 20px;
+      height: 18px;
+      border-radius: 3px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.12s, color 0.12s;
+      padding: 0;
+      line-height: 1;
+      -webkit-app-region: no-drag;
+    }
+    .pos-btn:hover  { background: rgba(255,255,255,0.09); color: rgba(255,255,255,0.85); }
+    .pos-btn:active { background: rgba(255,255,255,0.16); }
+
+    /* ---------- STATUS ---------- */
+    #status-bar {
+      padding: 7px 14px;
+      font-size: 11px;
+      letter-spacing: 0.05em;
+      color: rgba(255, 255, 255, 0.45);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    #status-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: #555;
+      transition: background 0.3s;
+      flex-shrink: 0;
+    }
+    #status-dot.watching { background: #a78bfa; animation: pulse 2.4s infinite; }
+    #status-dot.thinking { background: #facc15; animation: pulse 1s infinite; }
+    #status-dot.error    { background: #f87171; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%      { opacity: 0.35; transform: scale(0.85); }
+    }
+
+    /* ---------- MESSAGES ---------- */
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      scroll-behavior: smooth;
+    }
+    #messages::-webkit-scrollbar       { width: 5px; }
+    #messages::-webkit-scrollbar-track { background: transparent; }
+    #messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
+    #messages::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); }
+
+    .tip-block {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      padding: 10px 12px;
+      border-left: 2px solid #a78bfa;
+      background: rgba(167, 139, 250, 0.06);
+      border-radius: 0 8px 8px 0;
+      animation: fadein 0.25s ease;
+    }
+    @keyframes fadein {
+      from { opacity: 0; transform: translateY(4px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .tip-time {
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      color: rgba(196,181,253,0.6);
+      text-transform: uppercase;
+    }
+    .tip-body {
+      font-size: 14px;
+      line-height: 1.6;
+      color: #f3f4f6;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+    }
+    .tip-body p { margin: 0 0 6px 0; }
+    .tip-body p:last-child { margin-bottom: 0; }
+    .tip-body strong { color: #fff; font-weight: 700; }
+
+    .tip-body pre {
+      background: rgba(0,0,0,0.45);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin: 8px 0 4px 0;
+      overflow-x: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12.5px;
+      line-height: 1.55;
+      position: relative;
+    }
+    .tip-body pre code { font-family: inherit; color: #86efac; white-space: pre; }
+    .tip-body code:not(pre code) {
+      background: rgba(255,255,255,0.1);
+      padding: 2px 5px;
+      border-radius: 3px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.92em;
+    }
+
+    .copy-btn {
+      position: absolute;
+      top: 6px; right: 6px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      color: rgba(255,255,255,0.7);
+      font-size: 10px;
+      font-family: inherit;
+      letter-spacing: 0.05em;
+      padding: 2px 7px;
+      border-radius: 3px;
+      cursor: pointer;
+      -webkit-app-region: no-drag;
+    }
+    .copy-btn:hover  { background: rgba(255,255,255,0.14); color: #fff; }
+    .copy-btn.copied { background: rgba(74,222,128,0.25); border-color: rgba(74,222,128,0.4); color: #4ade80; }
+
+    /* ---------- EMPTY ---------- */
+    #empty {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: rgba(255,255,255,0.28);
+      font-size: 12px;
+      letter-spacing: 0.05em;
+      text-align: center;
+      padding: 24px;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+  <div id="pos-header">
+    <span class="title">👁 Tutor</span>
+    <button class="pos-btn" id="btn-left"    title="Esquerda">◀</button>
+    <button class="pos-btn" id="btn-center"  title="Centro">◉</button>
+    <button class="pos-btn" id="btn-right"   title="Direita">▶</button>
+    <button class="pos-btn" id="btn-monitor" title="Próximo monitor">⊞</button>
+    <button class="pos-btn" id="btn-clear"   title="Limpar">🗑</button>
+  </div>
+
+  <div id="status-bar">
+    <div id="status-dot" class="watching"></div>
+    <span id="status-text">Observando…</span>
+  </div>
+
+  <div id="messages">
+    <div id="empty">Observando sua tela.<br>Vou te dar uma dica só quando fizer diferença — pode escrever à vontade.</div>
+  </div>
+
+  <script>
+    const api = window.electronAPI || {};
+
+    function updateStatus(status) {
+      const dot  = document.getElementById('status-dot');
+      const text = document.getElementById('status-text');
+      const map = {
+        watching: { cls: 'watching', txt: 'Observando…' },
+        thinking: { cls: 'thinking', txt: 'Analisando…' },
+        error:    { cls: 'error',    txt: 'Erro na análise' },
+        idle:     { cls: '',         txt: 'Pausado' },
+      };
+      const s = map[status] || map.watching;
+      dot.className = '';
+      if (s.cls) dot.classList.add(s.cls);
+      text.textContent = s.txt;
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    // Markdown leve: ```lang\ncode\n``` → <pre><code>+copy; **bold**; `inline`; \n → <br>
+    function renderHtml(text) {
+      if (!text) return '';
+      let html = '';
+      const codeRe = /```(\w*)\n([\s\S]*?)```/g;
+      let lastIdx = 0, m;
+      const inline = (t) => escapeHtml(t)
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/`([^`\n]+?)`/g, '<code>$1</code>')
+        .replace(/\n/g, '<br>');
+      while ((m = codeRe.exec(text)) !== null) {
+        const before = text.slice(lastIdx, m.index);
+        if (before.trim()) html += '<p>' + inline(before) + '</p>';
+        const lang = (m[1] || 'text').toLowerCase();
+        const code = m[2].replace(/\n$/, '');
+        html += '<pre><button class="copy-btn">copy</button><code class="lang-' + lang + '">' + escapeHtml(code) + '</code></pre>';
+        lastIdx = codeRe.lastIndex;
+      }
+      const tail = text.slice(lastIdx);
+      if (tail.trim()) html += '<p>' + inline(tail) + '</p>';
+      return html;
+    }
+
+    function addTip(data) {
+      const text = (data && data.text) || '';
+      if (!text) return;
+      const empty = document.getElementById('empty');
+      if (empty) empty.remove();
+
+      const container = document.getElementById('messages');
+      const block = document.createElement('div');
+      block.className = 'tip-block';
+
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2,'0');
+      const mm = String(now.getMinutes()).padStart(2,'0');
+      const ts = document.createElement('div');
+      ts.className = 'tip-time';
+      ts.textContent = 'Dica · ' + hh + ':' + mm;
+      block.appendChild(ts);
+
+      const body = document.createElement('div');
+      body.className = 'tip-body';
+      body.innerHTML = renderHtml(text);
+      block.appendChild(body);
+
+      container.appendChild(block);
+      container.scrollTop = container.scrollHeight;
+      requestAnimationFrame(() => { if (api.requestVisionGuideResize) api.requestVisionGuideResize(); });
+    }
+
+    function clearTips() {
+      const container = document.getElementById('messages');
+      container.innerHTML = '<div id="empty">Histórico limpo.<br>Continuo observando.</div>';
+    }
+
+    // Botões de posição
+    document.getElementById('btn-left').addEventListener('click', () => api.overlayPosition?.('left'));
+    document.getElementById('btn-center').addEventListener('click', () => api.overlayPosition?.('center'));
+    document.getElementById('btn-right').addEventListener('click', () => api.overlayPosition?.('right'));
+    document.getElementById('btn-monitor').addEventListener('click', () => api.overlayPosition?.('next-monitor'));
+    document.getElementById('btn-clear').addEventListener('click', () => clearTips());
+
+    // Drag manual (Windows/macOS) — no Linux o app-region nativo funciona.
+    (function () {
+      if (!api.startWindowDrag || api.platform === 'linux') return;
+      const noDrag = (el) => el && el.style.setProperty('-webkit-app-region', 'no-drag');
+      noDrag(document.body);
+      [document.getElementById('pos-header'), document.getElementById('status-bar')].filter(Boolean).forEach((h) => {
+        noDrag(h);
+        h.style.cursor = 'move';
+        h.addEventListener('mousedown', (e) => {
+          if (e.target.closest('button, a, input, textarea, pre, code')) return;
+          e.preventDefault();
+          api.startWindowDrag();
+        });
+      });
+      const end = () => api.endWindowDrag && api.endWindowDrag();
+      window.addEventListener('mouseup', end);
+      window.addEventListener('blur', end);
+    })();
+
+    // Copy buttons (delegado)
+    document.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.copy-btn');
+      if (!btn) return;
+      const pre = btn.closest('pre');
+      const code = pre ? pre.querySelector('code') : null;
+      if (!code) return;
+      try {
+        if (api.copyToClipboard) api.copyToClipboard(code.textContent);
+        else await navigator.clipboard.writeText(code.textContent);
+        btn.classList.add('copied');
+        btn.textContent = '✓ copiado';
+        setTimeout(() => { btn.classList.remove('copied'); btn.textContent = 'copy'; }, 1300);
+      } catch (_) {}
+    });
+
+    // Wiring IPC
+    if (api.onVisionGuideMessage) api.onVisionGuideMessage((data) => addTip(data));
+    if (api.onVisionGuideStatus)  api.onVisionGuideStatus((status) => updateStatus(status));
+    if (api.onVisionGuideClear)   api.onVisionGuideClear(() => clearTips());
+
+    updateStatus('watching');
+  </script>
+</body>
+</html>

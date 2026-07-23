@@ -176,6 +176,19 @@ const defaultConfig = {
     enabled: true,
     minScore: 4, // só salva respostas com nota >= 4 (de 5)
   },
+  // Assistente Guiado por Visão (RAG + Vision). Tutor em tempo real que observa a
+  // tela por prints periódicos (economia de token — não é vídeo), opcionalmente
+  // ouve mic + áudio do sistema, ACUMULA contexto e só intervém em pontos
+  // estratégicos (não responde a cada print). Guia o dev a escrever o código ele
+  // mesmo — nunca entrega a tarefa inteira pronta. Windows-first (a captura no
+  // Linux será plugada no port). Motor de visão = OpenAI (getOpenAiVisionModel).
+  visionGuide: {
+    enabled: false,
+    intervalSeconds: 5,          // cadência dos prints periódicos
+    minInterventionSeconds: 12,  // silêncio mínimo entre intervenções (não enche a tela)
+    listenAudio: true,           // ouvir mic + áudio do sistema pra contexto (Win/mac)
+    useKnowledgeBase: true,      // injeta RAG (docs recentes) quando relevante
+  },
 };
 
 let configPath;
@@ -659,6 +672,21 @@ function setAnswerBankConfig(partial) {
   currentConfig = null;
 }
 
+function getVisionGuideConfig() {
+  if (!currentConfig) currentConfig = loadConfig();
+  return { ...defaultConfig.visionGuide, ...(currentConfig.visionGuide || {}) };
+}
+
+function setVisionGuideConfig(partial) {
+  if (!currentConfig) currentConfig = loadConfig();
+  currentConfig.visionGuide = {
+    ...(currentConfig.visionGuide || defaultConfig.visionGuide),
+    ...(partial || {}),
+  };
+  saveConfig(currentConfig);
+  currentConfig = null;
+}
+
 function getTranslationAssistantConfig() {
   if (!currentConfig) currentConfig = loadConfig();
   return { ...defaultConfig.translationAssistant, ...(currentConfig.translationAssistant || {}) };
@@ -758,6 +786,8 @@ module.exports = {
   getTranslationAssistantConfig,
   getUserContextBlock,
   setTranslationAssistantConfig,
+  getVisionGuideConfig,
+  setVisionGuideConfig,
   getKnowledgeBaseConfig,
   setKnowledgeBaseConfig,
   getAnswerBankConfig,

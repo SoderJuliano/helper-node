@@ -2,6 +2,46 @@
 
 > **Arquitetura detalhada em `ARCHITECTURE.md`.**
 
+## 🚧 Em desenvolvimento: Assistente Guiado por Visão (RAG + Vision)
+
+**Decisão de plataforma: NASCE NATIVO NO WINDOWS.** Implementar primeiro pro
+Windows, portar pro Linux depois. Motivo: as únicas peças específicas de
+plataforma são a **captura de tela periódica** e a **captura de áudio (mic + sys)**
+— e as duas já têm implementação nos dois SOs no app (Windows: `desktopCapturer`
++ bridge `nativeAudio.js`; Linux: `grim`/`cosmic-screenshot` + `parec`). Todo o
+resto (overlay translúcido, chamada de visão, RAG, acúmulo de contexto,
+intervenção estratégica, roteamento pra janela) é **platform-neutral**.
+
+> **Regra de arquitetura pra não criar dívida:** o serviço de orquestração
+> (`visionGuideService.js`) é escrito platform-neutral e consome a captura por
+> trás de uma interface. O backend do Windows é ligado agora; o do Linux fica
+> atrás de um gate `if (isLinux)` e será plugado no port (poucas linhas — o
+> cérebro da feature já roda igual nos dois).
+
+**Conceito:** tutor em tempo real que observa a tela (prints periódicos, ~5s, por
+economia de token — não vídeo), ouve mic + áudio da máquina, ACUMULA contexto e só
+intervém em **pontos estratégicos** (não responde a cada print). Guia o dev a
+escrever o código ele mesmo — nunca entrega a tarefa inteira pronta. Overlay
+translúcido tipo o do Tradutor, com blocos de código e botão de copiar.
+
+**Escopo por modo:**
+- **Integrado com SO:** overlay translúcido observando a tela + áudio, dando
+  orientações pontuais e sugestões de resposta ("pra essa pergunta responda X; o
+  erro no cód resolve com `public void ...`").
+- **Modo janela:** observa a tela principal e escreve as orientações na janela.
+- **Modo IDE:** janela + acesso a arquivos/comandos + folder anexado no contexto.
+
+**RAG:** reaproveita `knowledgeBase.js` carregado com documentações atualizadas
+(ex: Java 26) pra reconhecer sintaxe/recursos novos sem conflitar com o
+treino estático do modelo.
+
+**Adiado (roadmap futuro) — autocomplete dentro do arquivo:** sugestão inline na
+linha de baixo aceita com Tab enquanto o user digita num arquivo aberto (modo IDE),
+disparada só quando a IA tem o contexto inteiro OU quando o user pergunta por voz
+("como faz herança mesmo?"). Também: notificação da IA ancorada em trecho do
+arquivo aberto (ex: `@Controller` → "Errado, usa `@RestController`"). Fora do
+escopo da primeira entrega; fica marcado aqui.
+
 ## ✅ Lançado em v0.5.0 / v0.5.1: Claude Code CLI + Redesign IDE + UX
 
 **Novo provider: Claude Code CLI** — mesmo padrão do Gemini CLI, selecionável em Configurações.
