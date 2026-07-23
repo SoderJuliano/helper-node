@@ -32,7 +32,13 @@ process.on("unhandledRejection", (reason) => {
 const originalEmit = ipcMain.emit;
 ipcMain.emit = function (event, ...args) {
   if (typeof event === 'string' && !event.startsWith('__')) {
-    console.log(`[IPC LOG] Channel: ${event}, Args:`, JSON.stringify(args.slice(1)).slice(0, 400));
+    if (event !== 'native-audio-pcm' && event !== 'native-audio-log' && event !== 'terminal:input' && event !== 'terminal:output') {
+      try {
+        console.log(`[IPC LOG] Channel: ${event}, Args:`, JSON.stringify(args.slice(1)).slice(0, 400));
+      } catch (e) {
+        console.log(`[IPC LOG] Channel: ${event} (Args serialization failed)`);
+      }
+    }
   }
   return originalEmit.apply(ipcMain, arguments);
 };
@@ -1135,6 +1141,20 @@ ipcMain.on("window-toggle-maximize", (event) => {
     if (win.isMaximized()) win.unmaximize();
     else win.maximize();
   } catch (_) {}
+});
+
+ipcMain.on("window-minimize", (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win && !win.isDestroyed()) {
+    try { win.minimize(); } catch (_) {}
+  }
+});
+
+ipcMain.on("window-close", (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win && !win.isDestroyed()) {
+    try { win.close(); } catch (_) {}
+  }
 });
 
 // OS Integration Mode Functions

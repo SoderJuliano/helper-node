@@ -370,6 +370,8 @@ async function stop() {
   stopAudio();
   emitStatus('idle');
   console.log('[vision-guide] parado.');
+}
+
 async function getIdeAutocomplete(prefix, suffix, lang, apiKey) {
   const model = configService.getOpenAiVisionModel() || 'gpt-4o-mini';
   // Use config apiKey or provided apiKey
@@ -378,7 +380,11 @@ async function getIdeAutocomplete(prefix, suffix, lang, apiKey) {
 
   const systemPrompt = `Você é um assistente de autocomplete de código.
 Complete o código onde o cursor está. O usuário enviará o prefixo e o sufixo.
-Retorne APENAS o trecho de código exato que deve ser inserido entre o prefixo e o sufixo, sem blocos markdown (\`\`\`), sem explicações, sem texto extra.`;
+Retorne APENAS o trecho de código exato que deve ser inserido entre o prefixo e o sufixo, sem blocos markdown (\`\`\`), sem explicações, sem texto extra.
+
+REGRAS DE IDIOMA E NOMEAÇÃO (críticas):
+- Mantenha rigorosamente a mesma linguagem de programação e o mesmo idioma de identificadores, variáveis, funções e comentários que o usuário já está escrevendo no prefixo e sufixo. A escolha dele tem prioridade máxima.
+- Se o usuário estiver escrevendo em inglês (comentários ou variáveis em inglês), complete em inglês. Se estiver escrevendo em português, complete em português. Se for inglês no enunciado, use inglês.`;
 
   const userPrompt = `Prefixo (antes do cursor):
 ${prefix}

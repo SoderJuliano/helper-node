@@ -221,6 +221,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // instável em janelas transparent+frameless no Windows. Ver main.js.
   startWindowDrag: () => ipcRenderer.send('frameless-drag-start'),
   endWindowDrag: () => ipcRenderer.send('frameless-drag-end'),
+  minimizeWindow: () => ipcRenderer.send("window-minimize"),
+  maximizeWindow: () => ipcRenderer.send("window-toggle-maximize"),
+  closeWindow: () => ipcRenderer.send("window-close"),
 
   // === Terminal Connection ===
   terminalInit: () => ipcRenderer.invoke("terminal:init"),

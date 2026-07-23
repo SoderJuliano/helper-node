@@ -1323,6 +1323,42 @@
         .drag-area { position: absolute; top: 0; left: 0; width: 100%; height: 30px; -webkit-app-region: drag; z-index: 1001; }
         .hidden { opacity: 0; pointer-events: none; }
 
+        /* Custom Window Controls */
+        .win-controls-overlay {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            display: flex;
+            gap: 6px;
+            z-index: 9999;
+            -webkit-app-region: no-drag;
+        }
+        .win-controls-overlay button {
+            background: rgba(255, 255, 255, 0.08);
+            border: none;
+            color: var(--text-2);
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 11px;
+            transition: background 0.2s, color 0.2s;
+            padding: 0;
+            margin: 0;
+            outline: none;
+        }
+        .win-controls-overlay button:hover {
+            background: rgba(255, 255, 255, 0.16);
+            color: var(--text);
+        }
+        .win-controls-overlay button.win-close-btn:hover {
+            background: #f87171;
+            color: #fff;
+        }
+
         /* Painel de atalhos (commands) legado — escondido: usamos a sidebar.
            Mas mantemos o container no DOM (contrato). */
         .commands { display: none !important; }
@@ -1683,6 +1719,12 @@
 </head>
 <body>
     <div id="app-shell">
+        <!-- Custom Window Controls (Windows/macOS) -->
+        <div class="win-controls-overlay" id="win-controls-overlay">
+            <button class="win-btn win-min-btn" id="main-win-min-btn" title="Minimizar">&#9472;</button>
+            <button class="win-btn win-max-btn" id="main-win-max-btn" title="Maximizar">&#9633;</button>
+            <button class="win-btn win-close-btn" id="main-win-close-btn" title="Fechar">&#10005;</button>
+        </div>
         <!-- ===================== SIDEBAR ===================== -->
         <aside id="sidebar">
             <button class="sidebar-collapse-btn" id="sidebar-collapse-btn" title="Esconder sidebar (Ctrl+B)">
@@ -1973,6 +2015,42 @@
 
 
         document.addEventListener('DOMContentLoaded', async () => {
+            // === Custom Window Dragging & Controls (Windows/macOS) ===
+            const minBtn = document.getElementById('main-win-min-btn');
+            const maxBtn = document.getElementById('main-win-max-btn');
+            const closeBtn = document.getElementById('main-win-close-btn');
+            const controlsOverlay = document.getElementById('win-controls-overlay');
+
+            if (window.electronAPI) {
+                // Hide custom controls on Linux since it has native titlebars/borders
+                if (window.electronAPI.platform === 'linux') {
+                    if (controlsOverlay) controlsOverlay.style.display = 'none';
+                } else {
+                    // Expose functionality on Windows/macOS
+                    if (minBtn) minBtn.addEventListener('click', () => window.electronAPI.minimizeWindow && window.electronAPI.minimizeWindow());
+                    if (maxBtn) maxBtn.addEventListener('click', () => window.electronAPI.maximizeWindow && window.electronAPI.maximizeWindow());
+                    if (closeBtn) closeBtn.addEventListener('click', () => window.electronAPI.closeWindow && window.electronAPI.closeWindow());
+
+                    // Manual Dragging for Windows/macOS frameless transparent window
+                    const dragArea = document.querySelector('.drag-area');
+                    if (dragArea && window.electronAPI.startWindowDrag) {
+                        dragArea.style.setProperty('-webkit-app-region', 'no-drag');
+                        dragArea.style.cursor = 'move';
+                        dragArea.addEventListener('mousedown', (e) => {
+                            if (e.button === 0) { // Left click only
+                                e.preventDefault();
+                                window.electronAPI.startWindowDrag();
+                            }
+                        });
+                        const endDrag = () => {
+                            if (window.electronAPI.endWindowDrag) window.electronAPI.endWindowDrag();
+                        };
+                        window.addEventListener('mouseup', endDrag);
+                        window.addEventListener('blur', endDrag);
+                    }
+                }
+            }
+
             const transcriptionElement = document.getElementById('transcription');
             const shortcutPanel = document.getElementById('shortcut-panel');
             const shortcutToggle = document.getElementById('shortcut-toggle');

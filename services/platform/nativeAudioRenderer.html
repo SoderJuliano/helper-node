@@ -55,8 +55,8 @@ function attach(source, stream) {
   node.onaudioprocess = (e) => {
     const input = e.inputBuffer.getChannelData(0); // Float32 mono
     const pcm16 = floatTo16kInt16(input, ctx.sampleRate);
-    // Envia os bytes (Uint8Array sobre o mesmo buffer) — main faz Buffer.from.
-    const bytes = new Uint8Array(pcm16.buffer, pcm16.byteOffset, pcm16.byteLength);
+    // Envia os bytes (Node Buffer sobre o mesmo buffer) — muito mais rápido no IPC.
+    const bytes = Buffer.from(pcm16.buffer, pcm16.byteOffset, pcm16.byteLength);
     ipcRenderer.send('native-audio-pcm', { source, bytes });
   };
 
