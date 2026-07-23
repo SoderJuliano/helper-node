@@ -99,8 +99,29 @@ const { analyzeInterviewImage } = require("./services/translationAssistant/image
 // Transcrição cloud (gpt-4o-mini-transcribe) — usada no Ctrl+D da edição Lite.
 const { transcribeAudio: cloudTranscribeAudio } = require("./services/translationAssistant/openaiClient");
 
-let terminalProcess = null;
+let terminalProcess = null;   // child_process (Linux: python-pty)
+let terminalPty = null;       // node-pty ConPTY (Windows/macOS)
 let currentTerminalProjectPath = null;
+
+// Escreve no terminal ativo, seja ele o pty (node-pty) ou o child_process.
+function writeToTerminal(data) {
+  try {
+    if (terminalPty) { terminalPty.write(data); return true; }
+    if (terminalProcess && terminalProcess.stdin && terminalProcess.stdin.writable) {
+      terminalProcess.stdin.write(data);
+      return true;
+    }
+  } catch (e) {
+    console.error("[terminal write] error:", e.message);
+  }
+  return false;
+}
+
+// Encerra qualquer terminal ativo (pty ou child_process).
+function killTerminal() {
+  if (terminalPty) { try { terminalPty.kill(); } catch (_) {} terminalPty = null; }
+  if (terminalProcess) { try { terminalProcess.kill(); } catch (_) {} terminalProcess = null; }
+}
 
 function getActiveProjectPath() {
   const workspace = require("./services/workspace");
@@ -119,9 +140,11 @@ function syncTerminalCwd(forceMessage = false) {
   const newProjectPath = getActiveProjectPath();
   if (currentTerminalProjectPath !== newProjectPath || forceMessage) {
     currentTerminalProjectPath = newProjectPath;
-    if (terminalProcess && terminalProcess.stdin && terminalProcess.stdin.writable) {
+    if (terminalPty || (terminalProcess && terminalProcess.stdin && terminalProcess.stdin.writable)) {
       try {
-        terminalProcess.stdin.write(`cd "${newProjectPath.replace(/"/g, '\\"')}"\n`);
+        // `cd "caminho"` funciona tanto em bash/zsh quanto em cmd.exe/PowerShell.
+        const nl = terminalPty ? "\r" : "\n";
+        writeToTerminal(`cd "${newProjectPath.replace(/"/g, '\\"')}"${nl}`);
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send("terminal:output", {
             type: "stdout",
@@ -4778,17 +4801,12 @@ ipcMain.handle("workspace:open-external", async (event, p) => {
 });
 
 ipcMain.handle("terminal:init", async (event) => {
-  if (terminalProcess) {
-    try {
-      terminalProcess.kill();
-    } catch (_) {}
-    terminalProcess = null;
-  }
+  killTerminal();
 
   const projectPath = getActiveProjectPath();
   currentTerminalProjectPath = projectPath;
 
-  const shell = process.env.SHELL || "/bin/bash";
+  const isWin = process.platform === "win32";
   const env = {
     ...process.env,
     TERM: "linux", // Evita que o fish mande queries de DA1 que causam timeout em terminais simples
@@ -4807,8 +4825,51 @@ ipcMain.handle("terminal:init", async (event) => {
     MANPAGER: "cat",
   };
 
-  const ptyCode = `import pty, os; os.environ['TERM']='linux'; pty.spawn(['${shell}', '-i'])`;
+  // === Windows: ConPTY de verdade via node-pty ===
+  // O `import pty` do Python é Unix-only; no Windows usamos node-pty, que expõe
+  // o ConPTY (mesmo motor do terminal do VS Code). Assim Ctrl+C, prompt vivo,
+  // cores e programas interativos funcionam. O binário é N-API (prebuild
+  // win32-x64/arm64), então carrega no Electron sem recompilar.
+  if (isWin) {
+    try {
+      const pty = require("node-pty");
+      const shell = process.env.COMSPEC || "cmd.exe";
+      terminalPty = pty.spawn(shell, [], {
+        name: "xterm-256color",
+        cols: 120,
+        rows: 30,
+        cwd: projectPath,
+        env: { ...env, TERM: "xterm-256color" },
+      });
 
+      terminalPty.onData((chunk) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("terminal:output", { type: "stdout", data: chunk });
+        }
+      });
+
+      terminalPty.onExit(({ exitCode }) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("terminal:closed", { code: exitCode });
+        }
+        terminalPty = null;
+      });
+
+      return { ok: true, shell, projectPath, pty: true };
+    } catch (e) {
+      console.error("[terminal:init] node-pty falhou:", e.message);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("terminal:output", { type: "stderr", data: `Falha ao iniciar o terminal (node-pty): ${e.message}\r\n` });
+        mainWindow.webContents.send("terminal:closed", { code: -1 });
+      }
+      terminalPty = null;
+      return { ok: false, error: e.message };
+    }
+  }
+
+  // === Linux/macOS: pty via Python (comportamento original, intocado) ===
+  const shell = process.env.SHELL || "/bin/bash";
+  const ptyCode = `import pty, os; os.environ['TERM']='linux'; pty.spawn(['${shell}', '-i'])`;
   try {
     terminalProcess = spawn("python3", ["-c", ptyCode], {
       env,
@@ -4823,10 +4884,21 @@ ipcMain.handle("terminal:init", async (event) => {
     });
   }
 
+  // `spawn` não lança pra shell inexistente/ENOENT — emite 'error' de forma
+  // assíncrona. Sem este handler, o terminal ficava morto sem avisar.
+  terminalProcess.on("error", (err) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("terminal:output", { type: "stderr", data: `Erro no terminal: ${err.message}\r\n` });
+      mainWindow.webContents.send("terminal:closed", { code: -1 });
+    }
+    terminalProcess = null;
+  });
+
   terminalProcess.stdout.setEncoding("utf8");
   terminalProcess.stderr.setEncoding("utf8");
 
-  // Injeta função cd personalizada e helper do git para feedback visual de 'git add' e 'git commit'
+  // Injeta função cd personalizada e helper do git (feedback visual de 'git
+  // add'/'commit') — sintaxe bash, só faz sentido em shell POSIX.
   if (terminalProcess.stdin && terminalProcess.stdin.writable) {
     terminalProcess.stdin.write('cd() { builtin cd "$@" && printf "\\033[32m📁 Pasta atual: %s\\033[0m\\n" "$(pwd)"; }\n');
     terminalProcess.stdin.write('git() { if [ "$1" = "add" ]; then command git "$@" && command git status -s; else command git "$@"; fi; }\n');
@@ -4864,13 +4936,11 @@ ipcMain.handle("terminal:init", async (event) => {
 });
 
 ipcMain.on("terminal:input", (event, data) => {
-  if (terminalProcess && terminalProcess.stdin.writable) {
-    try {
-      terminalProcess.stdin.write(data);
-    } catch (e) {
-      console.error("[terminal:input] error:", e.message);
-    }
-  }
+  // ConPTY (node-pty) espera CR (\r) como Enter; o front-end manda \n. Os chars
+  // de controle (Ctrl+C = \x03 etc.) passam intactos. No child_process (Linux)
+  // manda como está.
+  const payload = terminalPty ? String(data).replace(/\n/g, "\r") : data;
+  writeToTerminal(payload);
 });
 
 ipcMain.on("save-os-integration-status", (event, status) => {

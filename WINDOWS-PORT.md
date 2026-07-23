@@ -219,6 +219,16 @@ compartilhar entre devs, não pra distribuição tipo usuário final via loja.
 - **Ctrl+D no modo INTEGRADO (OS Integration) no Windows**: ainda usa `pw-record`
   (Linux). Trabalho futuro — no modo integrado a entrada principal é o print
   (Ctrl+Shift+S), que já funciona no Windows.
+- **Terminal integrado no Windows** ✅ CORRIGIDO: antes rodava
+  `python3 -c "import pty..."` (pty do Python é Unix-only + `python3` inexistente
+  → mensagem da Store + código 9009) com fallback pra `/bin/bash`. Agora, no
+  Windows, usa **`node-pty` (ConPTY real)** — Ctrl+C, prompt vivo, cores e
+  programas interativos funcionam (mesmo motor do terminal do VS Code).
+  `node-pty` está em `optionalDependencies` porque só tem prebuild pra
+  win32/darwin (N-API, carrega no Electron sem recompilar); no Linux ele
+  compilaria — mas o Linux nem usa node-pty (segue no pty via Python), então se
+  a build falhar o `npm install` não quebra. Ver `terminal:init` em `main.js`
+  (branch `isWin`) + helpers `writeToTerminal`/`killTerminal`.
 - **`captureOneAnswer`** (`vadEngine`, só usado no testMode): usa `pw-record`.
 - **Pipeline local Vosk+Whisper** (edição full sem OpenAI): binários Linux/Python.
   No Windows use o modelo OpenAI.
