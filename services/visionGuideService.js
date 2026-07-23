@@ -34,6 +34,7 @@ const { maxTokensParam } = require('./openAiRealtimeModels');
 const NOOP = '[AGUARDAR]';
 
 let running = false;
+let needsIntroduction = false; // controla o envio da mensagem inicial de introdução
 let cfg = {};                 // { apiKey, intervalMs, minInterventionMs, listenAudio, useKnowledgeBase }
 let captureTimer = null;
 let inFlight = false;         // evita chamadas de visão sobrepostas
@@ -255,7 +256,7 @@ function visionDetailFor(model) {
   return /mini|nano/i.test(model || '') ? 'low' : 'high';
 }
 
-async function askTutor(base64Image, editorState) {
+async function askTutor(base64Image, editorState, isIntro = false) {
   const apiKey = cfg.apiKey;
   const model = configService.getOpenAiVisionModel();
   const detail = visionDetailFor(model);
@@ -290,13 +291,15 @@ async function askTutor(base64Image, editorState) {
     ``,
     `REGRAS (críticas):`,
     `- NUNCA entregue a tarefa inteira pronta nem escreva o código completo por ele. Dê o PRÓXIMO passo, uma correção pontual, ou o TRECHO MÍNIMO que destrava. O objetivo é o dev ESCREVER, não copiar.`,
-    `- Só intervenha em PONTOS ESTRATÉGICOS: erro de sintaxe/lógica visível na tela, o dev claramente travado/parado, um passo importante prestes a ser feito errado, ou uma PERGUNTA dirigida a ele ou a você (na tela ou no áudio).`,
-    `- Se NÃO há nada estratégico agora (o dev está escrevendo normalmente, sem erro, sem dúvida), responda EXATAMENTE com ${NOOP} e mais nada. NUNCA descreva a tela.`,
+    `- Só intervenha em PONTOS ESTRATÉGICOS: erro de sintaxe/lógica visível na tela, o dev claramente travado/parado, um passo importante prestes a ser feito errado, ou uma PERGUNTA/COMENTÁRIO dirigido a ele ou a você (na tela ou no áudio) ou saudações/testes de áudio direcionados a você ("oi", "olá", "você me ouve", "testando", "tudo bem").`,
+    isIntro
+      ? `- Esta é a sua mensagem inicial de boas-vindas (introdução). Você DEVE saudar o usuário amigavelmente e descrever de forma breve o que vê na tela dele (por exemplo, quais ferramentas, sites ou arquivos estão abertos). NÃO responda com [AGUARDAR] ou NOOP de jeito nenhum.`
+      : `- Se NÃO há nada estratégico agora (o dev está escrevendo normalmente, sem erro, sem dúvida), responda EXATAMENTE com ${NOOP} e mais nada. NUNCA descreva a tela.`,
     `- Seja CURTO: no máximo 2-3 frases + no máximo 1 bloco de código pequeno.`,
     `- IDIOMA DO CÓDIGO (crítico): mantenha a MESMA linguagem de programação e o MESMO idioma de identificadores/nomes/comentários que o USUÁRIO já está escrevendo na tela — a escolha DELE tem prioridade máxima. Se ele ainda não escreveu nada, siga o idioma do enunciado/problema. Nunca troque a linguagem nem "traduza" os nomes que ele já usou.`,
     `- IDIOMA DA CONVERSA/PERGUNTA (crítico): responda EXATAMENTE no idioma da pergunta/enunciado. Pergunta em inglês → responda em inglês. Pergunta em pt-br → responda em pt-br. Não force pt-br quando o contexto está em inglês.`,
     `- Se houver uma pergunta de entrevista na tela ou dita pelo entrevistador no áudio, ajude o desenvolvedor a responder (diga COMO responder, em primeira pessoa, fornecendo um exemplo curto).`,
-    `- Se o próprio DESENVOLVEDOR estiver fazendo uma pergunta direta para você no áudio ou tela (ex: "o que você acha?", "como resolver?", "me ajuda", "o que fazer?"), responda DIRETAMENTE a ele com sugestões ou correções concretas (ex: "Eu faria diferente, assim: ...").`,
+    `- Se o próprio DESENVOLVEDOR estiver fazendo uma pergunta direta para você no áudio ou tela (ex: "o que você acha?", "como resolver?", "me ajuda", "o que fazer?", "você me ouve?", "olá", "oi", "tudo bem?"), responda DIRETAMENTE a ele de forma natural e amigável (ex: "Estou te ouvindo perfeitamente!", "Olá! Como posso ajudar?", "Tudo ótimo por aqui, e com você?"). Perguntas diretas do usuário ou saudações/testes de áudio direcionados a você NUNCA devem ser silenciadas com [AGUARDAR].`,
     `- Aja com paciência: corrija e oriente, deixe o dev conduzir a tarefa.`,
   ];
   if (userCtx) parts.push('', userCtx);
@@ -309,9 +312,9 @@ async function askTutor(base64Image, editorState) {
 
   const systemPrompt = parts.join('\n');
 
-  // Detecta se há uma pergunta direta do dev no áudio recente
+  // Detecta se há uma pergunta direta do dev no áudio recente (ou saudação/teste de áudio)
   const audioText = recentAudio.map(a => a.text).join(' ').toLowerCase();
-  const hasDirectQuestion = /o que (voc[êe]|vc) acha|o que acha|como resolver|me ajuda|como fa[çc]o|como implementar/i.test(audioText);
+  const hasDirectQuestion = /o que (voc[êe]|vc) acha|o que acha|como resolver|me ajuda|como fa[çc]o|como implementar|me ouve|me ouvindo|me escuta|oi|ol[aá]|tudo bem/i.test(audioText);
 
   const userContent = [];
   
@@ -366,6 +369,8 @@ async function tick() {
   // Após um 429, segura as chamadas até o backoff expirar (evita marteladas).
   if (Date.now() < visionBackoffUntil) return;
 
+  const isIntro = needsIntroduction;
+
   let base64, hash, editorState;
   
   try {
@@ -396,28 +401,35 @@ async function tick() {
   const frameChanged = hash !== lastFrameHash;
   const withinCooldown = (Date.now() - lastInterventionAt) < cfg.minInterventionMs;
 
-  // Economia de token: nada mudou na tela e nenhuma fala nova → não chama a API.
-  if (!frameChanged && !newAudio) return;
-  // Descansando logo após uma dica e sem áudio urgente → também pula a chamada.
-  if (withinCooldown && !newAudio) { lastFrameHash = hash; lastFrameBase64 = base64; return; }
+  if (!isIntro) {
+    // Economia de token: nada mudou na tela e nenhuma fala nova → não chama a API.
+    if (!frameChanged && !newAudio) return;
+    // Descansando logo após uma dica e sem áudio urgente → também pula a chamada.
+    if (withinCooldown && !newAudio) { lastFrameHash = hash; lastFrameBase64 = base64; return; }
+  }
 
   inFlight = true;
   emitStatus('thinking');
   try {
-    const answer = await askTutor(base64, editorState);
+    const answer = await askTutor(base64, editorState, isIntro);
     lastFrameHash = hash;
     lastFrameBase64 = base64;
     lastAudioMarkerSeen = audioMarker;
 
-    const isNoop = !answer || answer === NOOP || answer.replace(/[\[\]]/g, '').trim().toUpperCase() === 'AGUARDAR';
+    const isNoop = !isIntro && (!answer || answer === NOOP || answer.replace(/[\[\]]/g, '').trim().toUpperCase() === 'AGUARDAR');
     if (isNoop) { emitStatus('watching'); return; }
 
-    // Respeita o cooldown (a menos que seja disparado por fala nova — pergunta é urgente).
-    if (withinCooldown && !newAudio) { emitStatus('watching'); return; }
+    // Respeita o cooldown (a menos que seja disparado por fala nova — pergunta é urgente, ou se for introdução).
+    if (!isIntro && withinCooldown && !newAudio) { emitStatus('watching'); return; }
 
     lastInterventionAt = Date.now();
     recentGuidance.push(answer.slice(0, 240));
     if (recentGuidance.length > 6) recentGuidance.shift();
+    
+    if (isIntro) {
+      needsIntroduction = false;
+    }
+
     if (guidanceCb) guidanceCb({ text: answer, ts: Date.now() });
     emitStatus('watching');
   } catch (e) {
@@ -455,6 +467,7 @@ async function start(options = {}) {
   if (!cfg.apiKey) throw new Error('API key OpenAI não configurada');
 
   running = true;
+  needsIntroduction = true; // Habilita a introdução para esta nova sessão
   lastFrameHash = null;
   lastFrameBase64 = null;
   lastInterventionAt = 0;
@@ -469,13 +482,20 @@ async function start(options = {}) {
     try { await startAudio(cfg.apiKey); } catch (e) { console.warn('[vision-guide] startAudio falhou:', e.message); }
   }
 
-  // Primeiro tick imediato, depois periódico.
-  tick();
-  captureTimer = setInterval(tick, cfg.intervalMs);
+  // Primeiro tick de introdução agendado para 5 segundos, para dar tempo do usuário focar a tela
+  setTimeout(() => {
+    if (running && needsIntroduction) {
+      tick();
+      if (running && !captureTimer) {
+        captureTimer = setInterval(tick, cfg.intervalMs);
+      }
+    }
+  }, 5000);
 }
 
 async function stop() {
   running = false;
+  needsIntroduction = false; // Cancela introdução pendente se houver
   if (captureTimer) { clearInterval(captureTimer); captureTimer = null; }
   stopAudio();
   emitStatus('idle');
