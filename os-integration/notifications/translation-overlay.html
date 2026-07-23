@@ -3,6 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <title>Translation Assistant</title>
+  <script>
+    // Windows/macOS: desliga o -webkit-app-region:drag (instável em janelas
+    // transparentes) antes do primeiro paint. Linux fica sem a classe e usa o
+    // drag nativo do app-region.
+    try {
+      if (window.electronAPI && window.electronAPI.platform !== 'linux') {
+        document.documentElement.classList.add('manual-drag');
+      }
+    } catch (_) {}
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Roboto:ital,wght@0,100..900;1,100..900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -48,6 +58,10 @@
       -webkit-app-region: drag;
       cursor: move;
     }
+    /* Windows/macOS: desliga a região de arraste nativa (engolia mousedown e
+       mostrava o cursor de "proibido"). O drag vira 100% manual via JS. */
+    html.manual-drag #pos-header,
+    html.manual-drag #pos-header::before { -webkit-app-region: no-drag !important; }
     /* Um "grip" à esquerda deixa claro que dá pra arrastar. */
     #pos-header::before {
       content: "⠿";
@@ -281,16 +295,16 @@
   </style>
 </head>
 <body>
-  <div id="pos-header">
-    <button class="pos-btn" id="btn-left"    title="Esquerda">◀</button>
-    <button class="pos-btn" id="btn-center"  title="Centro">◉</button>
-    <button class="pos-btn" id="btn-right"   title="Direita">▶</button>
-    <button class="pos-btn" id="btn-monitor" title="Próximo monitor">⊞</button>
+  <div id="pos-header" draggable="false">
+    <button class="pos-btn" id="btn-left"    title="Esquerda" draggable="false">◀</button>
+    <button class="pos-btn" id="btn-center"  title="Centro" draggable="false">◉</button>
+    <button class="pos-btn" id="btn-right"   title="Direita" draggable="false">▶</button>
+    <button class="pos-btn" id="btn-monitor" title="Próximo monitor" draggable="false">⊞</button>
   </div>
 
-  <div id="status-bar">
-    <div id="status-dot"></div>
-    <span id="status-text">Aguardando...</span>
+  <div id="status-bar" draggable="false">
+    <div id="status-dot" draggable="false"></div>
+    <span id="status-text" draggable="false">Aguardando...</span>
   </div>
 
   <div id="messages">
@@ -460,16 +474,16 @@
     // No Linux, o -webkit-app-region:drag nativo funciona — mantém-se. No
     // Windows/macOS ele é instável em janelas transparent+frameless, então
     // neutralizamos o app-region e arrastamos seguindo o cursor global (main).
+    // Mata o drag-and-drop nativo do HTML5 (cursor de "proibido") em todo o overlay.
+    document.addEventListener('dragstart', (e) => e.preventDefault());
     (function () {
       const api = window.electronAPI || {};
-      if (!api.startWindowDrag || api.platform === 'linux') return;
-      const noDrag = (el) => el && el.style.setProperty('-webkit-app-region', 'no-drag');
-      noDrag(document.body);
+      if (api.platform === 'linux' || !api.startWindowDrag) return;
       const handles = [document.getElementById('pos-header'), document.getElementById('status-bar')].filter(Boolean);
       handles.forEach((h) => {
-        noDrag(h);
         h.style.cursor = 'move';
         h.addEventListener('mousedown', (e) => {
+          if (e.button !== 0) return;
           if (e.target.closest('button, a, input, textarea, pre, code')) return;
           e.preventDefault();
           api.startWindowDrag();
@@ -478,6 +492,20 @@
       const end = () => api.endWindowDrag && api.endWindowDrag();
       window.addEventListener('mouseup', end);
       window.addEventListener('blur', end);
+    })();
+
+    // Toggle ignore mouse events on hover (Windows/macOS)
+    (function () {
+      const api = window.electronAPI || {};
+      if (!api.setIgnoreMouseEvents || api.platform === 'linux') return;
+      window.addEventListener('mousemove', (e) => {
+        const isInteractive = e.target.closest('#pos-header, .pos-btn, #status-bar, #messages, pre, code, button, a');
+        if (isInteractive) {
+          api.setIgnoreMouseEvents(false);
+        } else {
+          api.setIgnoreMouseEvents(true, { forward: true });
+        }
+      });
     })();
 
     // Copy buttons (delegated)

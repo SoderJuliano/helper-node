@@ -213,6 +213,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("get-vision-guide-config"),
   getIdeAutocomplete: (payload) => 
     ipcRenderer.invoke("ide-autocomplete", payload),
+  setEditorState: (state) => ipcRenderer.send("set-editor-state", state),
 
   // Plataforma (renderer decide se usa drag manual — só Win/mac; Linux usa
   // -webkit-app-region:drag nativo que funciona bem lá).
@@ -221,6 +222,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // instável em janelas transparent+frameless no Windows. Ver main.js.
   startWindowDrag: () => ipcRenderer.send('frameless-drag-start'),
   endWindowDrag: () => ipcRenderer.send('frameless-drag-end'),
+  setIgnoreMouseEvents: (ignore, options) => ipcRenderer.send('set-ignore-mouse-events', ignore, options),
   minimizeWindow: () => ipcRenderer.send("window-minimize"),
   maximizeWindow: () => ipcRenderer.send("window-toggle-maximize"),
   closeWindow: () => ipcRenderer.send("window-close"),

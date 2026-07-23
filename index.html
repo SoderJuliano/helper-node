@@ -5215,6 +5215,47 @@
 
             });
 
+            if (window.electronAPI.onVisionGuideMessage) {
+                window.electronAPI.onVisionGuideMessage((data) => {
+                    if (!data || !data.text) return;
+                    
+                    const fileViewer = document.getElementById('file-viewer');
+                    const isEditorVisible = fileViewer && fileViewer.classList.contains('open');
+                    
+                    if (isEditorVisible) {
+                        const notif = document.getElementById('ide-tutor-notif');
+                        const msgEl = document.getElementById('ide-tutor-msg');
+                        if (notif && msgEl) {
+                            msgEl.innerHTML = data.text;
+                            notif.classList.add('visible');
+                            notif.style.pointerEvents = 'auto';
+                            notif.style.cursor = 'pointer';
+                            notif.onclick = () => notif.classList.remove('visible');
+                            
+                            if (window.ideTutorTimeout) clearTimeout(window.ideTutorTimeout);
+                            window.ideTutorTimeout = setTimeout(() => {
+                                notif.classList.remove('visible');
+                            }, 10000);
+                        }
+                    } else {
+                        const transcriptionElement = document.getElementById('transcription');
+                        
+                        const hero = document.getElementById('welcome-hero');
+                        if (hero) hero.classList.add('hidden');
+                        
+                        const newResponse = document.createElement('div');
+                        newResponse.className = 'ia-response';
+                        newResponse.style.borderLeft = '3px solid var(--accent-2)';
+                        newResponse.style.paddingLeft = '10px';
+                        newResponse.style.marginTop = '10px';
+                        newResponse.innerHTML = `<strong>Tutor:</strong> ${data.text}`;
+                        
+                        transcriptionElement.appendChild(newResponse);
+                        scrollTranscriptionToBottom();
+                    }
+                });
+            }
+
             window.electronAPI.onOcrResult(async ({ text, screenshotPath, base64Image, error }) => {
                 const preview = document.getElementById('screenshot-preview');
                 const robot = document.getElementById('robot');

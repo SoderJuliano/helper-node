@@ -128,7 +128,7 @@ const defaultConfig = {
   // Modelo dedicado pra modo VISÃO. nano é fraco demais em visão (confunde
   // 11x2 com 11x²). gpt-4o-mini ainda é barato e MUITO mais preciso em
   // imagens (~US$ 0.15 / 1M tokens input + ~150 tokens por imagem high).
-  openAiVisionModel: "gpt-4o-mini",
+  openAiVisionModel: "gpt-5-nano",
   openIaToken: "",
   // Configurações do módulo helperTools (leitura/edição de arquivos +
   // execução de comandos). DESLIGADO por padrão. Quando ligado, desativa

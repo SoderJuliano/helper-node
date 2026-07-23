@@ -4,6 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Resposta</title>
+    <script>
+      try {
+        if (window.electronAPI && window.electronAPI.platform !== 'linux') {
+          document.documentElement.classList.add('manual-drag');
+        }
+      } catch (_) {}
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,200..900;1,200..900&display=swap" rel="stylesheet">
@@ -198,13 +205,17 @@
         #drag-strip {
             position: fixed; top: 0; left: 0; width: 100%; height: 24px;
             -webkit-app-region: drag; cursor: move; z-index: 5;
+            background: rgba(255, 255, 255, 0.01) !important;
+            -webkit-user-select: none;
+            user-select: none;
         }
+        html.manual-drag #drag-strip { -webkit-app-region: no-drag !important; }
         .close-btn, .copy-all-btn { z-index: 10; -webkit-app-region: no-drag; }
     </style>
 </head>
 <body>
     <div id="autoclose-bar"></div>
-    <div id="drag-strip" title="Arraste para mover a janela"></div>
+    <div id="drag-strip" title="Arraste para mover a janela" draggable="false"></div>
     <button class="copy-all-btn" id="copy-all-btn" onclick="copyAllText()" title="Copiar resposta inteira">⧉ Copiar</button>
     <button class="close-btn" onclick="closeWindow()">×</button>
     
@@ -433,12 +444,16 @@
         // No Linux o -webkit-app-region:drag da faixa do topo já move a janela.
         // No Windows/macOS ele é instável em janelas transparent+frameless, então
         // a faixa arrasta seguindo o cursor global (via main).
+        document.addEventListener('dragstart', (e) => e.preventDefault());
         (function () {
             const api = window.electronAPI || {};
             const strip = document.getElementById('drag-strip');
-            if (!api.startWindowDrag || api.platform === 'linux' || !strip) return;
-            strip.style.setProperty('-webkit-app-region', 'no-drag');
-            strip.addEventListener('mousedown', (e) => { e.preventDefault(); api.startWindowDrag(); });
+            if (api.platform === 'linux' || !api.startWindowDrag || !strip) return;
+            strip.addEventListener('mousedown', (e) => {
+                if (e.button !== 0) return;
+                e.preventDefault();
+                api.startWindowDrag();
+            });
             const end = () => api.endWindowDrag && api.endWindowDrag();
             window.addEventListener('mouseup', end);
             window.addEventListener('blur', end);

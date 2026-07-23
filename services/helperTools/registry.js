@@ -53,6 +53,7 @@ function loadBuiltins() {
     require("./tools/patchFile"),
     require("./tools/runCommand"),
     require("./tools/runShellAdvanced"),
+    require("./tools/captureScreenHd"),
   ];
   for (const t of builtins) register(t);
   _loaded = true;

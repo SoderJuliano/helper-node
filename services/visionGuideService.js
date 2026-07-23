@@ -21,6 +21,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
+const { nativeImage } = require('electron');
 
 const configService = require('./configService');
 const knowledgeBase = require('./knowledgeBase');
@@ -43,6 +44,7 @@ const recentGuidance = [];    // últimas dicas dadas (pra não repetir)
 const recentAudio = [];       // { source, text, ts } — falas recentes (contexto)
 let audioMarker = 0;          // muda quando chega fala nova (detecta "novo áudio")
 let lastAudioMarkerSeen = 0;
+let visionBackoffUntil = 0;   // após um 429, segura as chamadas por um tempo
 
 // Callbacks (registrados pelo main).
 let guidanceCb = null;
@@ -211,15 +213,67 @@ function buildRecentGuidanceBlock() {
   return `[DICAS QUE VOCÊ JÁ DEU (não repita, não volte a explicar o mesmo)]\n${recentGuidance.slice(-3).map((g) => `- ${g}`).join('\n')}`;
 }
 
-async function askTutor(base64Image) {
+// Reduz o screenshot antes de enviar: cai a resolução (menos "tiles" na conta de
+// tokens) e re-codifica em JPEG (payload menor, upload mais rápido). Usa o
+// nativeImage do Electron — zero dependência nativa.
+const MAX_IMG_WIDTH = 900;
+function optimizeToJpegBase64(pngPath) {
+  try {
+    let img = nativeImage.createFromPath(pngPath);
+    const size = img.getSize();
+    
+    // Crop chrome (top bar, bottom bar, small side margins)
+    const cutTop = Math.min(120, Math.floor(size.height * 0.1));
+    const cutBottom = Math.min(80, Math.floor(size.height * 0.08));
+    const cutSides = Math.min(60, Math.floor(size.width * 0.05));
+    
+    if (size.width > cutSides * 2 && size.height > cutTop + cutBottom) {
+      const rect = {
+        x: cutSides,
+        y: cutTop,
+        width: size.width - cutSides * 2,
+        height: size.height - cutTop - cutBottom
+      };
+      img = img.crop(rect);
+    }
+    
+    const newSize = img.getSize();
+    if (newSize.width > MAX_IMG_WIDTH) {
+      img = img.resize({ width: MAX_IMG_WIDTH, quality: 'good' });
+    }
+    const jpeg = img.toJPEG(72);
+    if (jpeg && jpeg.length) return jpeg.toString('base64');
+  } catch (_) {}
+  return fs.readFileSync(pngPath).toString('base64');
+}
+
+// gpt-4o-mini / -nano cobram imagem ~33× mais caro que os modelos normais: em
+// `detail:high` um screenshot de tela cheia passa de 25k tokens e estoura o TPM.
+// Nesses modelos forçamos `detail:low` (~2.8k tokens, custo fixo). Nos demais
+// (gpt-4o, gpt-4.1-mini…) `high` é barato e legível.
+function visionDetailFor(model) {
+  return /mini|nano/i.test(model || '') ? 'low' : 'high';
+}
+
+async function askTutor(base64Image, editorState) {
   const apiKey = cfg.apiKey;
   const model = configService.getOpenAiVisionModel();
+  const detail = visionDetailFor(model);
 
   let userCtx = '';
   try { userCtx = configService.getUserContextBlock ? configService.getUserContextBlock() : ''; } catch (_) {}
 
   let editorMeta = '';
-  try { if (contextProvider) editorMeta = (contextProvider() || '').toString(); } catch (_) {}
+  try { 
+    if (contextProvider) {
+      const ctx = contextProvider();
+      if (typeof ctx === 'object') {
+        editorMeta = ctx.text;
+      } else {
+        editorMeta = (ctx || '').toString();
+      }
+    } 
+  } catch (_) {}
 
   // RAG: usa o áudio recente como query (é onde costuma aparecer a dúvida). Sem
   // áudio, não temos texto de query confiável (não fazemos OCR aqui) → pula.
@@ -232,7 +286,7 @@ async function askTutor(base64Image) {
   }
 
   const parts = [
-    `Você é um TUTOR de programação em tempo real que observa a tela do desenvolvedor por prints periódicos. Seu papel é GUIAR, nunca resolver por ele.`,
+    `Você é um TUTOR de programação em tempo real que observa a tela do desenvolvedor por prints periódicos ou pelo conteúdo do editor atual. Seu papel é GUIAR, nunca resolver por ele.`,
     ``,
     `REGRAS (críticas):`,
     `- NUNCA entregue a tarefa inteira pronta nem escreva o código completo por ele. Dê o PRÓXIMO passo, uma correção pontual, ou o TRECHO MÍNIMO que destrava. O objetivo é o dev ESCREVER, não copiar.`,
@@ -260,21 +314,27 @@ async function askTutor(base64Image) {
   const hasDirectQuestion = /o que (voc[êe]|vc) acha|o que acha|como resolver|me ajuda|como fa[çc]o|como implementar/i.test(audioText);
 
   const userContent = [];
-  if (hasDirectQuestion && lastFrameBase64) {
-    userContent.push(
-      { type: 'text', text: 'Print da tela anterior (antes da pergunta):' },
-      { type: 'image_url', image_url: { url: `data:image/png;base64,${lastFrameBase64}`, detail: 'low' } }, // low res para economizar tokens
-      { type: 'text', text: 'Print da tela atual (momento da pergunta):' },
-      { type: 'image_url', image_url: { url: `data:image/png;base64,${base64Image}`, detail: 'high' } }
-    );
+  
+  if (editorState) {
+    const textContext = `[ARQUIVO: ${editorState.path}]\n<cursor_position>${editorState.cursorIndex}</cursor_position>\n<content>\n${editorState.content}\n</content>`;
+    userContent.push({ type: 'text', text: textContext });
   } else {
-    userContent.push(
-      { type: 'image_url', image_url: { url: `data:image/png;base64,${base64Image}`, detail: 'high' } }
-    );
+    if (hasDirectQuestion && lastFrameBase64) {
+      userContent.push(
+        { type: 'text', text: 'Print da tela anterior (antes da pergunta):' },
+        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${lastFrameBase64}`, detail: 'low' } }, // sempre low: só serve p/ comparar o que mudou
+        { type: 'text', text: 'Print da tela atual (momento da pergunta):' },
+        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}`, detail } }
+      );
+    } else {
+      userContent.push(
+        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}`, detail } }
+      );
+    }
   }
 
   userContent.push(
-    { type: 'text', text: `Print da tela agora. Intervenha SÓ se for estratégico (erro, dev travado, ou pergunta pra responder). Senão responda exatamente ${NOOP}.` }
+    { type: 'text', text: `Print da tela ou conteúdo do editor agora. Intervenha SÓ se for estratégico (erro, dev travado, ou pergunta pra responder). Senão responda exatamente ${NOOP}.` }
   );
 
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -303,13 +363,30 @@ async function askTutor(base64Image) {
 // ---------------------------------------------------------------------------
 async function tick() {
   if (!running || inFlight) return;
+  // Após um 429, segura as chamadas até o backoff expirar (evita marteladas).
+  if (Date.now() < visionBackoffUntil) return;
 
-  let base64, hash;
+  let base64, hash, editorState;
+  
   try {
-    await captureFullScreenToFile(tmpShot);
-    const buf = fs.readFileSync(tmpShot);
-    hash = crypto.createHash('md5').update(buf).digest('hex');
-    base64 = buf.toString('base64');
+    if (contextProvider) {
+      const ctx = contextProvider();
+      if (typeof ctx === 'object' && ctx.editorState) {
+        editorState = ctx.editorState;
+      }
+    }
+  } catch (_) {}
+
+  try {
+    if (editorState) {
+      hash = crypto.createHash('md5').update(editorState.content).digest('hex');
+      base64 = null; // não precisa de imagem no modo texto
+    } else {
+      await captureFullScreenToFile(tmpShot);
+      const buf = fs.readFileSync(tmpShot);
+      hash = crypto.createHash('md5').update(buf).digest('hex');
+      base64 = optimizeToJpegBase64(tmpShot);   // downscale + JPEG (menos tokens/payload)
+    }
   } catch (e) {
     console.warn('[vision-guide] captura falhou:', e.message);
     return;
@@ -327,7 +404,7 @@ async function tick() {
   inFlight = true;
   emitStatus('thinking');
   try {
-    const answer = await askTutor(base64);
+    const answer = await askTutor(base64, editorState);
     lastFrameHash = hash;
     lastFrameBase64 = base64;
     lastAudioMarkerSeen = audioMarker;
@@ -345,6 +422,11 @@ async function tick() {
     emitStatus('watching');
   } catch (e) {
     console.warn('[vision-guide] tutor falhou:', e.message);
+    // Rate limit (429): recua ~20s em vez de martelar a API a cada tick.
+    if (/rate limit|429|tokens per min|TPM/i.test(e.message || '')) {
+      visionBackoffUntil = Date.now() + 20000;
+      console.warn('[vision-guide] rate limit → pausando chamadas por 20s.');
+    }
     emitStatus('error');
   } finally {
     inFlight = false;

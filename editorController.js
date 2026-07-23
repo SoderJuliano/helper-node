@@ -225,6 +225,22 @@
       }
     });
 
+    function syncEditorStateToMain() {
+      if (!window.electronAPI || !window.electronAPI.setEditorState) return;
+      if (!cm || !activePath) {
+        window.electronAPI.setEditorState(null);
+        return;
+      }
+      const doc = cm.getDoc();
+      const cursor = doc.getCursor();
+      const cursorIndex = doc.indexFromPos(cursor);
+      window.electronAPI.setEditorState({
+        path: activePath,
+        content: doc.getValue(),
+        cursorIndex: cursorIndex
+      });
+    }
+
     cm.on('change', (editor, change) => {
       const doc = openFiles.get(activePath);
       if (!doc) return;
@@ -233,6 +249,7 @@
       doc.dirty = (val !== doc.originalContent);
       updateDirtyIndicator();
       renderTabs();
+      syncEditorStateToMain();
       
       // Lógica de cancelamento / debouce do ghost text
       if (change.origin === '+input' || change.origin === '+delete') {
@@ -253,6 +270,11 @@
          clearGhostText();
       }
     });
+
+    cm.on('cursorActivity', () => {
+      syncEditorStateToMain();
+    });
+
     return cm;
   }
 

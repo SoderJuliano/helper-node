@@ -1043,15 +1043,19 @@ visionGuide.onGuidance(({ text }) => {
   if (configService.getOsIntegrationStatus()) {
     if (!visionGuideOverlayWindow || visionGuideOverlayWindow.isDestroyed()) createVisionGuideOverlay();
     sendToVisionGuideOverlay('vision-guide-message', { text });
-  } else {
-    // Modo janela/IDE: o overlay flutua sobre o app (observa a tela principal).
-    if (!visionGuideOverlayWindow || visionGuideOverlayWindow.isDestroyed()) createVisionGuideOverlay();
-    sendToVisionGuideOverlay('vision-guide-message', { text });
+  } else if (mainWindow && !mainWindow.isDestroyed()) {
+    // Modo janela/IDE: envia para o renderer da janela principal!
+    mainWindow.webContents.send('vision-guide-message', { text });
   }
 });
 
 visionGuide.onStatus((status) => {
   sendToVisionGuideOverlay('vision-guide-status', status);
+});
+
+let currentEditorState = null;
+ipcMain.on("set-editor-state", (event, state) => {
+  currentEditorState = state;
 });
 
 // Metadados do editor/modo pro contexto do tutor (modo IDE: arquivo/pasta anexada).
@@ -1067,8 +1071,11 @@ visionGuide.setContextProvider(() => {
         if (ctx) parts.push(ctx);
       } catch (_) {}
     }
-    return parts.join('\n');
-  } catch (_) { return ''; }
+    return {
+      text: parts.join('\n'),
+      editorState: currentEditorState
+    };
+  } catch (_) { return { text: '', editorState: null }; }
 });
 
 function createConfigWindow() {
@@ -1329,6 +1336,11 @@ function destroyNotificationWindow() {
 }
 
 function createOsNotificationWindow(type, content) {
+  const isOsOn = configService.getOsIntegrationStatus();
+  if (!isOsOn) {
+    console.log(`⚠️ Blocked createOsNotificationWindow of type ${type} because OS Integration is disabled.`);
+    return;
+  }
   console.log(`🔔 Creating OS notification - Type: ${type}, Content: ${content ? content.substring(0, 50) + '...' : 'no content'}`);
   
   // FORCE CLOSE existing notification using new helper function
@@ -5555,6 +5567,12 @@ ipcMain.on('frameless-drag-start', (event) => {
   _framelessDrag = { win, timer };
 });
 ipcMain.on('frameless-drag-end', () => stopFramelessDrag());
+ipcMain.on('set-ignore-mouse-events', (event, ignore, options) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win && !win.isDestroyed()) {
+    try { win.setIgnoreMouseEvents(ignore, options); } catch (_) {}
+  }
+});
 
 // Pedido de expansão de largura (+200px até 40% da tela) — chamado depois de
 // renderizar cada nova mensagem.
@@ -6118,7 +6136,7 @@ async function captureFullScreenAuto() {
           try { osNotificationWindow.close(); } catch (_) {}
           osNotificationWindow = null;
         }
-        createOsNotificationWindow('response', '❌ API key não configurada. Configure em Ajustes.');
+        mainWindow.webContents.send('transcription-error', '❌ API key não configurada. Configure em Ajustes.');
         return;
       }
       // Mantém a notificação de loading visível como feedback enquanto analisa
@@ -6135,7 +6153,7 @@ async function captureFullScreenAuto() {
           try { osNotificationWindow.close(); } catch (_) {}
           osNotificationWindow = null;
         }
-        createOsNotificationWindow('response', `❌ Erro ao analisar imagem: ${err.message}`);
+        mainWindow.webContents.send('transcription-error', `❌ Erro ao analisar imagem: ${err.message}`);
       }
       return;
     }
@@ -6191,11 +6209,21 @@ async function captureRegionNative() {
     });
   } catch (e) {
     console.error('desktopCapturer falhou:', e);
-    createOsNotificationWindow('response', 'Não foi possível acessar a captura de tela.');
+    const isOsIntegration = configService.getOsIntegrationStatus();
+    if (isOsIntegration) {
+      createOsNotificationWindow('response', 'Não foi possível acessar a captura de tela.');
+    } else if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('transcription-error', 'Não foi possível acessar a captura de tela.');
+    }
     return;
   }
   if (!sources || sources.length === 0) {
-    createOsNotificationWindow('response', 'Nenhuma fonte de tela disponível.');
+    const isOsIntegration = configService.getOsIntegrationStatus();
+    if (isOsIntegration) {
+      createOsNotificationWindow('response', 'Nenhuma fonte de tela disponível.');
+    } else if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('transcription-error', 'Nenhuma fonte de tela disponível.');
+    }
     return;
   }
   // Pega a primária (Linux geralmente devolve a principal primeiro)
@@ -6268,12 +6296,16 @@ ipcMain.on('region-selected', async (event, rect) => {
     const compressed = await compressImageForVision(pngBuf, 'region');
     const base64 = compressed.dataUrl;
 
-    // Mostra loading discreto
-    createOsNotificationWindow('loading', 'Analisando captura...');
+    // Mostra loading discreto se integrado
+    const isOsIntegration = configService.getOsIntegrationStatus();
+    if (isOsIntegration) {
+      createOsNotificationWindow('loading', 'Analisando captura...');
+    } else if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('screen-capturing', true);
+    }
 
     // Delega tudo a processOsQuestion (faz OCR + roteamento internamente)
     try {
-      const isOsIntegration = configService.getOsIntegrationStatus();
       if (isOsIntegration) {
         await processOsQuestion('', base64, { forceVision: true });
       } else if (mainWindow && !mainWindow.isDestroyed()) {
@@ -6284,7 +6316,12 @@ ipcMain.on('region-selected', async (event, rect) => {
       }
     } catch (e) {
       console.error('Erro OCR/IA na captura nativa:', e);
-      createOsNotificationWindow('response', 'Erro ao processar a captura.');
+      if (isOsIntegration) {
+        createOsNotificationWindow('response', 'Erro ao processar a captura.');
+      } else if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('screen-capturing', false);
+        mainWindow.webContents.send('transcription-error', 'Erro ao processar a captura.');
+      }
     }
   } catch (e) {
     console.error('region-selected handler error:', e);

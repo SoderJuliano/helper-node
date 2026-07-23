@@ -4,6 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gravando...</title>
+    <script>
+      try {
+        if (window.electronAPI && window.electronAPI.platform !== 'linux') {
+          document.documentElement.classList.add('manual-drag');
+        }
+      } catch (_) {}
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@300;400;600&display=swap" rel="stylesheet">
@@ -40,7 +47,11 @@
             -webkit-app-region: drag;
             cursor: move;
             padding-right: 22px; /* espaço para o X */
+            background: rgba(255, 255, 255, 0.01) !important;
+            -webkit-user-select: none;
+            user-select: none;
         }
+        html.manual-drag .header { -webkit-app-region: no-drag !important; }
         .header > * { -webkit-app-region: no-drag; }
 
         .rec-dot {
@@ -176,7 +187,7 @@
     <div id="wrap">
         <button class="close-btn" onclick="window.close()">×</button>
 
-        <div class="header">
+        <div class="header" draggable="false">
             <div class="rec-dot" id="rec-indicator"></div>
             <span class="header-text" id="header-label">Ouvindo...</span>
         </div>
@@ -308,13 +319,14 @@
 
         // === DRAG MANUAL (Windows/macOS) ===
         // Linux usa o -webkit-app-region:drag do .header. Win/mac usa drag manual.
+        document.addEventListener('dragstart', (e) => e.preventDefault());
         (function () {
             const api = window.electronAPI || {};
             const header = document.querySelector('.header');
-            if (!api.startWindowDrag || api.platform === 'linux' || !header) return;
-            header.style.setProperty('-webkit-app-region', 'no-drag');
+            if (api.platform === 'linux' || !api.startWindowDrag || !header) return;
             header.style.cursor = 'move';
             header.addEventListener('mousedown', (e) => {
+                if (e.button !== 0) return;
                 if (e.target.closest('button, a, input, textarea')) return;
                 e.preventDefault();
                 api.startWindowDrag();
