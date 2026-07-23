@@ -37,6 +37,7 @@ let cfg = {};                 // { apiKey, intervalMs, minInterventionMs, listen
 let captureTimer = null;
 let inFlight = false;         // evita chamadas de visão sobrepostas
 let lastFrameHash = null;     // pula chamada quando a tela não mudou
+let lastFrameBase64 = null;   // guarda o base64 do frame anterior
 let lastInterventionAt = 0;   // cooldown entre intervenções
 const recentGuidance = [];    // últimas dicas dadas (pra não repetir)
 const recentAudio = [];       // { source, text, ts } — falas recentes (contexto)
@@ -131,7 +132,12 @@ function makeSegmenter(source, apiKey) {
         this.chunks.push(buf);
       } else if (this.collecting) {
         this.silenceMs += durMs;
-        this.chunks.push(buf); // segura um pouco do rabo do silêncio
+        // Economia/otimização de áudio: mantemos apenas os primeiros 200ms de silêncio (padding) 
+        // para não cortar as palavras abruptamente. Silêncios subsequentes são cortados do buffer,
+        // mas continuam incrementando silenceMs para estourar o SILENCE_HANGOVER_MS e finalizar o trecho.
+        if (this.silenceMs <= 200) {
+          this.chunks.push(buf);
+        }
         if (this.silenceMs >= SILENCE_HANGOVER_MS) this.finalize(apiKey, source);
       }
       // Trava de segurança: trecho longo demais fecha na marra.
@@ -230,12 +236,13 @@ async function askTutor(base64Image) {
     ``,
     `REGRAS (críticas):`,
     `- NUNCA entregue a tarefa inteira pronta nem escreva o código completo por ele. Dê o PRÓXIMO passo, uma correção pontual, ou o TRECHO MÍNIMO que destrava. O objetivo é o dev ESCREVER, não copiar.`,
-    `- Só intervenha em PONTOS ESTRATÉGICOS: erro de sintaxe/lógica visível na tela, o dev claramente travado/parado, um passo importante prestes a ser feito errado, ou uma PERGUNTA dirigida a ele (na tela ou no áudio).`,
+    `- Só intervenha em PONTOS ESTRATÉGICOS: erro de sintaxe/lógica visível na tela, o dev claramente travado/parado, um passo importante prestes a ser feito errado, ou uma PERGUNTA dirigida a ele ou a você (na tela ou no áudio).`,
     `- Se NÃO há nada estratégico agora (o dev está escrevendo normalmente, sem erro, sem dúvida), responda EXATAMENTE com ${NOOP} e mais nada. NUNCA descreva a tela.`,
     `- Seja CURTO: no máximo 2-3 frases + no máximo 1 bloco de código pequeno.`,
     `- IDIOMA DO CÓDIGO (crítico): mantenha a MESMA linguagem de programação e o MESMO idioma de identificadores/nomes/comentários que o USUÁRIO já está escrevendo na tela — a escolha DELE tem prioridade máxima. Se ele ainda não escreveu nada, siga o idioma do enunciado/problema. Nunca troque a linguagem nem "traduza" os nomes que ele já usou.`,
     `- IDIOMA DA CONVERSA/PERGUNTA (crítico): responda EXATAMENTE no idioma da pergunta/enunciado. Pergunta em inglês → responda em inglês. Pergunta em pt-br → responda em pt-br. Não force pt-br quando o contexto está em inglês.`,
-    `- Se houver uma PERGUNTA (na tela ou dita no áudio), diga COMO responder, com um exemplo curto, no idioma dela. Ex.: "Pra essa pergunta, responde algo tipo: ... ; e o erro no código você resolve com \`public void exemplo()\`".`,
+    `- Se houver uma pergunta de entrevista na tela ou dita pelo entrevistador no áudio, ajude o desenvolvedor a responder (diga COMO responder, em primeira pessoa, fornecendo um exemplo curto).`,
+    `- Se o próprio DESENVOLVEDOR estiver fazendo uma pergunta direta para você no áudio ou tela (ex: "o que você acha?", "como resolver?", "me ajuda", "o que fazer?"), responda DIRETAMENTE a ele com sugestões ou correções concretas (ex: "Eu faria diferente, assim: ...").`,
     `- Aja com paciência: corrija e oriente, deixe o dev conduzir a tarefa.`,
   ];
   if (userCtx) parts.push('', userCtx);
@@ -248,6 +255,28 @@ async function askTutor(base64Image) {
 
   const systemPrompt = parts.join('\n');
 
+  // Detecta se há uma pergunta direta do dev no áudio recente
+  const audioText = recentAudio.map(a => a.text).join(' ').toLowerCase();
+  const hasDirectQuestion = /o que (voc[êe]|vc) acha|o que acha|como resolver|me ajuda|como fa[çc]o|como implementar/i.test(audioText);
+
+  const userContent = [];
+  if (hasDirectQuestion && lastFrameBase64) {
+    userContent.push(
+      { type: 'text', text: 'Print da tela anterior (antes da pergunta):' },
+      { type: 'image_url', image_url: { url: `data:image/png;base64,${lastFrameBase64}`, detail: 'low' } }, // low res para economizar tokens
+      { type: 'text', text: 'Print da tela atual (momento da pergunta):' },
+      { type: 'image_url', image_url: { url: `data:image/png;base64,${base64Image}`, detail: 'high' } }
+    );
+  } else {
+    userContent.push(
+      { type: 'image_url', image_url: { url: `data:image/png;base64,${base64Image}`, detail: 'high' } }
+    );
+  }
+
+  userContent.push(
+    { type: 'text', text: `Print da tela agora. Intervenha SÓ se for estratégico (erro, dev travado, ou pergunta pra responder). Senão responda exatamente ${NOOP}.` }
+  );
+
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -258,10 +287,7 @@ async function askTutor(base64Image) {
         { role: 'system', content: systemPrompt },
         {
           role: 'user',
-          content: [
-            { type: 'image_url', image_url: { url: `data:image/png;base64,${base64Image}`, detail: 'high' } },
-            { type: 'text', text: `Print da tela agora. Intervenha SÓ se for estratégico (erro, dev travado, ou pergunta pra responder). Senão responda exatamente ${NOOP}.` },
-          ],
+          content: userContent,
         },
       ],
     }),
@@ -296,13 +322,14 @@ async function tick() {
   // Economia de token: nada mudou na tela e nenhuma fala nova → não chama a API.
   if (!frameChanged && !newAudio) return;
   // Descansando logo após uma dica e sem áudio urgente → também pula a chamada.
-  if (withinCooldown && !newAudio) { lastFrameHash = hash; return; }
+  if (withinCooldown && !newAudio) { lastFrameHash = hash; lastFrameBase64 = base64; return; }
 
   inFlight = true;
   emitStatus('thinking');
   try {
     const answer = await askTutor(base64);
     lastFrameHash = hash;
+    lastFrameBase64 = base64;
     lastAudioMarkerSeen = audioMarker;
 
     const isNoop = !answer || answer === NOOP || answer.replace(/[\[\]]/g, '').trim().toUpperCase() === 'AGUARDAR';
@@ -347,6 +374,7 @@ async function start(options = {}) {
 
   running = true;
   lastFrameHash = null;
+  lastFrameBase64 = null;
   lastInterventionAt = 0;
   audioMarker = 0; lastAudioMarkerSeen = 0;
   recentGuidance.length = 0;
