@@ -489,6 +489,7 @@ if (!gotTheLock) {
     // Focus existing window if a second instance is started
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
+      if (!mainWindow.isVisible()) mainWindow.show();
       mainWindow.focus();
     }
   });
@@ -1489,6 +1490,11 @@ function switchToOsIntegrationMode() {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.hide();
   }
+  // Se o tutor estiver ativo, abre o overlay no modo integrado
+  if (visionGuide.isActive()) {
+    createVisionGuideOverlay();
+    sendToVisionGuideOverlay('vision-guide-status', 'watching');
+  }
 }
 
 function switchToNormalMode() {
@@ -1504,6 +1510,7 @@ function switchToNormalMode() {
   destroyNotificationWindow(); // Use helper function instead
   destroyCaptureWindow(); // Close capture window
   destroyTranslationOverlay(); // Fecha overlay dedicado do tradutor se aberto
+  destroyVisionGuideOverlay(); // Fecha overlay dedicado do tutor se aberto
 
   // Stop capture tool monitoring when leaving OS integration mode
   stopCaptureToolMonitoring();
@@ -1681,22 +1688,18 @@ async function createWindow() {
       height: 600,
       backgroundColor: "#00000000",
       transparent: true,
-      titleBarStyle: "hidden",
-      titleBarOverlay: {
-        color: "#222222",
-        symbolColor: "#ffffff",
-      },
+      frame: process.platform === "linux",
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
         preload: path.join(__dirname, "preload.js"),
+        backgroundThrottling: false,
       },
       focusable: true,
       alwaysOnTop: false,
       show: false,
       skipTaskbar: true,
       icon: APP_ICON,
-      titleBarStyle: "hidden",
       nodeIntegration: false,
     });
 
@@ -5619,8 +5622,10 @@ ipcMain.on("set-vision-guide-config", (event, partial) => {
           listenAudio: vg.listenAudio,
           useKnowledgeBase: vg.useKnowledgeBase,
         }).then(() => {
-          createVisionGuideOverlay();
-          sendToVisionGuideOverlay('vision-guide-status', 'watching');
+          if (configService.getOsIntegrationStatus()) {
+            createVisionGuideOverlay();
+            sendToVisionGuideOverlay('vision-guide-status', 'watching');
+          }
         }).catch((e) => {
           console.error('[vision-guide] falha ao iniciar:', e.message);
           configService.setVisionGuideConfig({ enabled: false });

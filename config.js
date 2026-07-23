@@ -44,6 +44,7 @@ const openIaTokenInput = document.getElementById("openai-token");
 const openAiModelContainer = document.getElementById("openai-model-container");
 const openAiModelSelect = document.getElementById("openai-model-select");
 const realtimeFastModelNote = document.getElementById("realtime-fast-model-note");
+const visionGuideSection = document.getElementById("vision-guide-section");
 
 function updateRealtimeFastModelNote() {
   if (!realtimeFastModelNote) return;
@@ -367,7 +368,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   } catch (e) { console.warn("gemini-cli model load failed:", e); }
 
   // Show/hide provider fields based on saved model
-  if (aiModelSelect.value === 'openIa') {
+  const isChatGPT = (aiModelSelect.value === 'openIa');
+  if (visionGuideSection) {
+    visionGuideSection.style.display = isChatGPT ? 'block' : 'none';
+  }
+  if (!isChatGPT && visionGuideEnabledToggle && visionGuideEnabledToggle.checked) {
+    visionGuideEnabledToggle.checked = false;
+    updateVisionGuideEnabledStatus(false);
+    ipcRenderer.send('set-vision-guide-config', { enabled: false });
+  }
+
+  if (isChatGPT) {
     openIaTokenContainer.style.display = 'flex';
     openAiModelContainer.style.display = 'flex';
     if (openAiReasoningEffortContainer) openAiReasoningEffortContainer.style.display = 'flex';
@@ -457,6 +468,12 @@ if (helperToolsToggle) {
     updateHelperToolsStatus(helperToolsToggle.checked);
     if (helperToolsToggle.checked) {
       applyHelperToolsExclusivity();
+    } else {
+      // Se helperTools desliga, workspaceAccess deve desligar também (dependência)
+      if (workspaceAccessToggle && workspaceAccessToggle.checked) {
+        workspaceAccessToggle.checked = false;
+        updateWorkspaceAccessStatus(false);
+      }
     }
   });
 }
@@ -464,6 +481,16 @@ if (helperToolsToggle) {
 if (workspaceAccessToggle) {
   workspaceAccessToggle.addEventListener("change", () => {
     updateWorkspaceAccessStatus(workspaceAccessToggle.checked);
+    if (workspaceAccessToggle.checked) {
+      // Se ligar o workspaceAccess, e não for CLI, requer helperTools ligado!
+      const model = aiModelSelect ? aiModelSelect.value : 'openIa';
+      const isCli = model === 'geminiCli' || model === 'claudeCli';
+      if (!isCli && helperToolsToggle && !helperToolsToggle.checked) {
+        helperToolsToggle.checked = true;
+        updateHelperToolsStatus(true);
+        applyHelperToolsExclusivity();
+      }
+    }
   });
 }
 
@@ -553,6 +580,15 @@ function releaseOllamaLocalExclusivity() {
 // Show/hide OpenAI/Ollama/GeminiCli fields based on AI model selection
 aiModelSelect.addEventListener('change', () => {
     const v = aiModelSelect.value;
+    const isChatGPT = (v === 'openIa');
+    if (visionGuideSection) {
+      visionGuideSection.style.display = isChatGPT ? 'block' : 'none';
+      if (!isChatGPT && visionGuideEnabledToggle && visionGuideEnabledToggle.checked) {
+        visionGuideEnabledToggle.checked = false;
+        updateVisionGuideEnabledStatus(false);
+        ipcRenderer.send('set-vision-guide-config', { enabled: false });
+      }
+    }
     const isOllama = (v === 'llama' || v === 'llama-stream' || v === 'ollamaLocal');
     const isCli = (v === 'geminiCli' || v === 'claudeCli');
     const disableHelperTools = (v === 'geminiCli' || v === 'claudeCli' || v === 'llama' || v === 'llama-stream');
