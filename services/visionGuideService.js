@@ -281,6 +281,7 @@ async function askTutor(base64Image, editorState, options = {}) {
     `- NUNCA entregue a tarefa inteira pronta nem escreva o código completo por ele. Dê o PRÓXIMO passo, uma correção pontual, ou o TRECHO MÍNIMO que destrava. O objetivo é o dev ESCREVER, não copiar.`,
     `- NUNCA encerre suas mensagens com perguntas redundantes ou robóticas de preenchimento de chat (ex: "Posso ajudar com algo mais?", "Quer ajuda em mais alguma coisa?", "Posso ajudar em algo mais?"). Você é um tutor sempre assistindo, então apenas dê a orientação/dica direta de forma natural e silencie. O usuário já sabe que você continuará assistindo.`,
     `- Só intervenha em PONTOS ESTRATÉGICOS: erro de sintaxe/lógica visível na tela, o dev claramente travado/parado, um passo importante prestes a ser feito errado, ou uma PERGUNTA/COMENTÁRIO dirigido a você (por voz ou na tela).`,
+    `- EVITE loops de repetição e redundância (crítico): se a fala transcrita do usuário (ou o áudio recente) for apenas ele lendo/repetindo a sua própria dica anterior (ou a captura do seu próprio áudio sendo reproduzido no ambiente), IGNORE essa entrada. NUNCA responda repetindo a mesma orientação ou elaborando sobre algo que você acabou de falar, a menos que o usuário tenha feito uma pergunta genuinamente nova. Nesse caso, se não houver mais nada a adicionar, responda EXATAMENTE com [AGUARDAR].`,
   ];
 
   if (isIntro) {
@@ -295,9 +296,9 @@ async function askTutor(base64Image, editorState, options = {}) {
     `- Seja CURTO: no máximo 2-3 frases + no máximo 1 bloco de código pequeno.`,
     `- Sempre use formatação de código com crases inline (\`valor\`) para nomes de pacotes, identificadores, comandos de terminal, chaves de configuração, links ou valores que o usuário precise copiar ou digitar. Isso é CRÍTICO para que o usuário possa copiar esses valores simplesmente clicando neles na interface.`,
     `- IDIOMA DO CÓDIGO (crítico): mantenha a MESMA linguagem de programação e o MESMO idioma de identificadores/nomes/comentários que o USUÁRIO já está escrevendo na tela — a escolha DELE tem prioridade máxima. Se ele ainda não escreveu nada, siga o idioma do enunciado/problema. Nunca troque a linguagem nem "traduza" os nomes que ele já usou.`,
-    `- IDIOMA DA CONVERSA/PERGUNTA (crítico): responda EXATAMENTE no idioma da pergunta/enunciado. Pergunta em inglês → responda em inglês. Pergunta em pt-br → responda em pt-br. Não force pt-br quando o contexto está em inglês.`,
+    `- IDIOMA DA CONVERSA/PERGUNTA (crítico): responda EXATAMENTE no idioma da pergunta/enunciado. Pergunta in inglês → responda em inglês. Pergunta em pt-br → responda em pt-br. Não force pt-br quando o contexto está em inglês.`,
     `- Se houver uma pergunta de entrevista na tela ou dita pelo entrevistador no áudio, ajude o desenvolvedor a responder (diga COMO responder, em primeira pessoa, fornecendo um exemplo curto).`,
-    `- Se o próprio DESENVOLVEDOR estiver fazendo uma pergunta direta para você (ex: "o que você acha?", "como resolver?", "me ajuda", "o que fazer?", "você me ouve?", "olá", "oi", "tudo bem?"), responda DIRETAMENTE a ele de forma natural e amigável (ex: "Estou te ouvindo perfeitamente!", "Olá! Como posso ajudar?", "Tudo ótimo por aqui, e com você?"). Perguntas diretas do usuário ou saudações/testes de áudio direcionados a você NUNCA devem ser silenciadas com [AGUARDAR].`,
+    `- Se o próprio DESENVOLVEDOR estiver fazendo uma pergunta direta para você (ex: "o que você acha?", "como resolver?", "me ajuda", "o que fazer?", "você me ouve?", "olá", "oi", "tudo bem?"), responda DIRETAMENTE a ele de forma natural e amigável (ex: "Estou te ouvindo perfeitamente!", "Olá! Como posso ajudar?", "Tudo ótimo por aqui, e com você?"). Perguntas diretas do usuário ou saudações/testes de áudio direcionados a você NUNCA devem ser silenciadas com [AGUARDAR], a menos que seja a mera leitura ou repetição redundante de sua própria resposta anterior.`,
     `- Aja com paciência: corrija e oriente, deixe o dev conduzir a tarefa.`
   );
 
@@ -365,6 +366,51 @@ async function askTutor(base64Image, editorState, options = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// HELPER — Verifica se o áudio transcrito é muito similar a alguma dica recente
+// ---------------------------------------------------------------------------
+function isSimilarToRecentGuidance(text, recentGuidanceList) {
+  if (!text || !recentGuidanceList || !recentGuidanceList.length) return false;
+
+  const cleanWords = (str) => {
+    return str
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "") // remove acentos
+      .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"']/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .split(" ")
+      .filter(w => w.length > 2); // ignora palavras de 1 ou 2 letras
+  };
+
+  const userWords = cleanWords(text);
+  if (userWords.length === 0) return false;
+
+  for (const guidance of recentGuidanceList) {
+    const guidanceWords = cleanWords(guidance);
+    if (guidanceWords.length === 0) continue;
+
+    let matches = 0;
+    for (const word of userWords) {
+      if (guidanceWords.includes(word)) {
+        matches++;
+      }
+    }
+
+    // Se a frase dita for média/longa (3 ou mais palavras significativas)
+    if (userWords.length >= 3) {
+      const userRatio = matches / userWords.length;
+      if (userRatio > 0.70) return true;
+    } else {
+      // Se for muito curta, só bate se coincidir 100% e a dica anterior também for muito curta (<= 4 palavras)
+      if (matches === userWords.length && guidanceWords.length <= 4) return true;
+    }
+  }
+
+  return false;
+}
+
+// ---------------------------------------------------------------------------
 // LOOP — captura periódica + decisão de intervir.
 // ---------------------------------------------------------------------------
 async function tick() {
@@ -406,8 +452,12 @@ async function tick() {
 
   // Filtra as falas do usuário (mic) que surgiram desde o último processamento
   const newMicUtterances = recentAudio.filter(a => a.ts > lastAudioTimestampProcessed && a.source === 'você');
-  const userSpeech = newMicUtterances.map(a => a.text).join(' ');
-  const hasNewMicSpeech = newMicUtterances.length > 0;
+  
+  // Filtra falas que são leituras ou repetições da sugestão recente dada pelo Tutor para evitar loops de eco
+  const filteredMicUtterances = newMicUtterances.filter(a => !isSimilarToRecentGuidance(a.text, recentGuidance));
+  
+  const userSpeech = filteredMicUtterances.map(a => a.text).join(' ');
+  const hasNewMicSpeech = filteredMicUtterances.length > 0;
 
   if (!isIntro) {
     // Economia de token: nada mudou na tela e nenhuma fala nova do usuário ou sistema → não chama a API.
@@ -436,7 +486,7 @@ async function tick() {
     if (!isIntro && withinCooldown && !hasNewMicSpeech) { emitStatus('watching'); return; }
 
     lastInterventionAt = Date.now();
-    recentGuidance.push(answer.slice(0, 240));
+    recentGuidance.push(answer.slice(0, 500));
     if (recentGuidance.length > 6) recentGuidance.shift();
     
     if (isIntro) {
