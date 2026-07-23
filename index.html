@@ -996,9 +996,10 @@
             background: #090a0f;
             border: 1px solid var(--border-strong);
             border-radius: var(--radius);
-            padding: 10px;
+            padding: 12px;
             font-family: var(--font-mono);
-            font-size: 11.5px;
+            font-size: 13px;
+            line-height: 1.45;
             height: 280px;
             min-height: 120px;
             max-height: 85vh;
@@ -6770,6 +6771,10 @@
 
             if (termContainer && termInput) {
                 termContainer.addEventListener('click', () => {
+                    const sel = window.getSelection ? window.getSelection().toString() : '';
+                    if (sel && sel.trim()) {
+                        return; // Se houver texto selecionado, não altera o foco para não cancelar a seleção
+                    }
                     termInput.focus();
                 });
             }
