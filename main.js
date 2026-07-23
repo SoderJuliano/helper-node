@@ -1072,9 +1072,14 @@ visionGuide.setContextProvider(() => {
         if (ctx) parts.push(ctx);
       } catch (_) {}
     }
+
+    // Só envia o editorState se a janela principal estiver visível, não estiver minimizada e não estivermos no modo integrado
+    const isMainActive = mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized();
+    const useEditorState = !osOn && isMainActive && currentEditorState;
+
     return {
       text: parts.join('\n'),
-      editorState: currentEditorState
+      editorState: useEditorState ? currentEditorState : null
     };
   } catch (_) { return { text: '', editorState: null }; }
 });
@@ -1482,6 +1487,7 @@ function createOsNotificationWindow(type, content) {
 
 function switchToOsIntegrationMode() {
   isOsIntegrationMode = true;
+  currentEditorState = null; // Evita que estado antigo do editor bloqueie os prints de tela
   // Start capture tool monitoring when entering OS integration mode
   startCaptureToolMonitoring();
   // Monitora pasta de screenshots do COSMIC (captura via PrintScreen nativo)
@@ -1494,6 +1500,7 @@ function switchToOsIntegrationMode() {
   if (visionGuide.isActive()) {
     createVisionGuideOverlay();
     sendToVisionGuideOverlay('vision-guide-status', 'watching');
+    try { visionGuide.triggerIntroduction(); } catch (e) { console.warn('[vision-guide] falha ao triggar intro:', e.message); }
   }
 }
 

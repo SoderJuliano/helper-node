@@ -293,6 +293,7 @@ async function askTutor(base64Image, editorState, options = {}) {
 
   parts.push(
     `- Seja CURTO: no máximo 2-3 frases + no máximo 1 bloco de código pequeno.`,
+    `- Sempre use formatação de código com crases inline (\`valor\`) para nomes de pacotes, identificadores, comandos de terminal, chaves de configuração, links ou valores que o usuário precise copiar ou digitar. Isso é CRÍTICO para que o usuário possa copiar esses valores simplesmente clicando neles na interface.`,
     `- IDIOMA DO CÓDIGO (crítico): mantenha a MESMA linguagem de programação e o MESMO idioma de identificadores/nomes/comentários que o USUÁRIO já está escrevendo na tela — a escolha DELE tem prioridade máxima. Se ele ainda não escreveu nada, siga o idioma do enunciado/problema. Nunca troque a linguagem nem "traduza" os nomes que ele já usou.`,
     `- IDIOMA DA CONVERSA/PERGUNTA (crítico): responda EXATAMENTE no idioma da pergunta/enunciado. Pergunta em inglês → responda em inglês. Pergunta em pt-br → responda em pt-br. Não force pt-br quando o contexto está em inglês.`,
     `- Se houver uma pergunta de entrevista na tela ou dita pelo entrevistador no áudio, ajude o desenvolvedor a responder (diga COMO responder, em primeira pessoa, fornecendo um exemplo curto).`,
@@ -562,4 +563,13 @@ Linguagem: ${lang || 'text'}`;
   }
 }
 
-module.exports = { start, stop, isActive, onGuidance, onStatus, setContextProvider, getIdeAutocomplete };
+function triggerIntroduction() {
+  if (running) {
+    needsIntroduction = true;
+    if (!inFlight) {
+      tick();
+    }
+  }
+}
+
+module.exports = { start, stop, isActive, onGuidance, onStatus, setContextProvider, getIdeAutocomplete, triggerIntroduction };

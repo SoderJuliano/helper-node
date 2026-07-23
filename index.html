@@ -4475,6 +4475,24 @@
                     setTimeout(() => { button.classList.remove('copied'); }, 1200);
                     return; // Stop further processing
                 }
+
+                const inlineCode = event.target.closest('.inline-code');
+                if (inlineCode) {
+                    const textToCopy = inlineCode.textContent.trim();
+                    copyTextReliable(textToCopy);
+                    showCopyToast();
+
+                    // Efeito visual temporário (piscar verde)
+                    const originalBg = inlineCode.style.backgroundColor;
+                    const originalColor = inlineCode.style.color;
+                    inlineCode.style.backgroundColor = 'rgba(74, 222, 128, 0.35)'; // Fundo verde transparente
+                    inlineCode.style.color = '#4ade80';
+                    setTimeout(() => {
+                        inlineCode.style.backgroundColor = originalBg;
+                        inlineCode.style.color = originalColor;
+                    }, 1000);
+                    return; // Stop further processing
+                }
             });
 
             // Renderiza tooltip de atalhos dinamicamente.
@@ -5248,7 +5266,7 @@
                         newResponse.style.borderLeft = '3px solid var(--accent-2)';
                         newResponse.style.paddingLeft = '10px';
                         newResponse.style.marginTop = '10px';
-                        newResponse.innerHTML = `<strong>Tutor:</strong> ${data.text}`;
+                        newResponse.innerHTML = `<strong>Tutor:</strong> ${formatOpenAIResponse(data.text)}`;
                         
                         transcriptionElement.appendChild(newResponse);
                         scrollTranscriptionToBottom();
@@ -5633,7 +5651,7 @@
 
             // 2. Código inline `x` → <code> inline (NÃO bloco)
             out = out.replace(/`([^`\n]+)`/g, (_, code) =>
-                `<code class="inline-code">${escapeHTML(code)}</code>`
+                `<code class="inline-code" title="Clique para copiar">${escapeHTML(code)}</code>`
             );
 
             // 3. Negrito e itálico
