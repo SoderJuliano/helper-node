@@ -55,6 +55,16 @@ class Notification {
 }
 const path = require("path");
 const os = require("os");
+
+// Icone da janela por plataforma. No Windows usar o .ico - senao o Electron cai
+// no default e/ou no linux.png (pinguim), que aparece na barra de tarefas.
+const APP_ICON = path.join(
+  __dirname,
+  "assets",
+  process.platform === "win32" ? "windows.ico" : "linux.png"
+);
+// Stealth: no Windows nenhuma janela deve aparecer na barra de tarefas.
+const HIDE_FROM_TASKBAR = process.platform === "win32";
 const crypto = require("crypto");
 const { exec, spawn } = require("child_process");
 const util = require("util");
@@ -893,8 +903,8 @@ function createConfigWindow() {
       nodeIntegration: true,
       contextIsolation: false,
     },
-    skipTaskbar: false,
-    icon: path.join(__dirname, "assets", "linux.png"),
+    skipTaskbar: HIDE_FROM_TASKBAR,
+    icon: APP_ICON,
   });
 
   configWindow.loadFile("config.html");
@@ -921,8 +931,8 @@ function createPreferencesWindow() {
       nodeIntegration: true,
       contextIsolation: false,
     },
-    skipTaskbar: false,
-    icon: path.join(__dirname, "assets", "linux.png"),
+    skipTaskbar: HIDE_FROM_TASKBAR,
+    icon: APP_ICON,
   });
 
   preferencesWindow.loadFile("preferences.html");
@@ -1458,7 +1468,7 @@ async function createWindow() {
       alwaysOnTop: false,
       show: false,
       skipTaskbar: true,
-      icon: path.join(__dirname, "assets", "linux.png"),
+      icon: APP_ICON,
       titleBarStyle: "hidden",
       nodeIntegration: false,
     });

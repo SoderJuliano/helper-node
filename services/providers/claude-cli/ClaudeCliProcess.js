@@ -5,19 +5,31 @@ const { spawn, execFile } = require('child_process');
 
 const CANDIDATE_BINARIES = ['claude'];
 
+// No Windows o comando de localização é `where` (não existe `which`); no
+// restante (Linux/macOS) é `which`. Retornamos o caminho completo resolvido
+// para que o spawn saiba se está lidando com um .exe ou um shim .cmd/.bat.
 async function resolveBinary() {
+  const locator = process.platform === 'win32' ? 'where' : 'which';
   for (const cmd of CANDIDATE_BINARIES) {
     try {
-      await new Promise((resolve, reject) => {
-        execFile('which', [cmd], (err, stdout) => {
-          if (err || !stdout.trim()) return reject(err || new Error('not found'));
-          resolve(stdout.trim());
+      const fullPath = await new Promise((resolve, reject) => {
+        execFile(locator, [cmd], (err, stdout) => {
+          const first = stdout && stdout.split(/\r?\n/).map(s => s.trim()).find(Boolean);
+          if (err || !first) return reject(err || new Error('not found'));
+          resolve(first);
         });
       });
-      return cmd;
+      return fullPath;
     } catch (_) {}
   }
   return null;
+}
+
+// No Windows, o binário instalado via `npm install -g` costuma ser um shim
+// `claude.cmd`/`claude.bat`, que o spawn só consegue executar com `shell: true`.
+// Um `.exe` (instalação nativa) roda direto sem shell.
+function needsShell(bin) {
+  return process.platform === 'win32' && /\.(cmd|bat)$/i.test(bin);
 }
 
 class ClaudeCliProcess {
@@ -73,6 +85,8 @@ class ClaudeCliProcess {
       cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
       env,
+      // shim .cmd/.bat no Windows exige shell para ser executável pelo spawn.
+      shell: needsShell(bin),
     });
 
     this.alive = true;
