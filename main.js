@@ -4387,6 +4387,19 @@ ipcMain.handle("workspace:pick-dir", async () => {
   return { ok: true, added, attachments: workspace.list() };
 });
 
+ipcMain.handle("workspace:add-path", async (event, { path, type }) => {
+  try {
+    await workspace.addPath(path, type || "file");
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("workspace-changed", { attachments: workspace.list() });
+    }
+    return { ok: true, attachments: workspace.list() };
+  } catch (e) {
+    console.warn("[workspace] add path falhou:", e.message);
+    return { ok: false, error: e.message };
+  }
+});
+
 ipcMain.handle("workspace:list", () => workspace.list());
 
 ipcMain.handle("workspace:rename-item", async (event, { oldPath, newPath }) => {
@@ -4920,7 +4933,7 @@ ipcMain.handle("read-file-content", async (event, filePath) => {
     if (!fs2.existsSync(filePath)) return { ok: false, error: "arquivo não existe" };
     const st = fs2.statSync(filePath);
     if (!st.isFile()) return { ok: false, error: "não é um arquivo" };
-    if (st.size > 2 * 1024 * 1024) return { ok: false, error: "arquivo grande demais (>2MB)" };
+    if (st.size > 20 * 1024 * 1024) return { ok: false, error: "arquivo grande demais (>20MB)" };
     const content = fs2.readFileSync(filePath, "utf8");
     // mtimeMs: o editor guarda esse valor como "baseline" pra detectar conflito
     // (arquivo mudou por fora entre abrir e salvar) — ver fileEditService.writeFile.

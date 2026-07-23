@@ -135,6 +135,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   workspacePickFile: () => ipcRenderer.invoke("workspace:pick-file"),
   workspacePickDir: () => ipcRenderer.invoke("workspace:pick-dir"),
   workspaceList: () => ipcRenderer.invoke("workspace:list"),
+  workspaceAddPath: (path, type) => ipcRenderer.invoke("workspace:add-path", { path, type }),
   getProjectContext: () => ipcRenderer.invoke("get-project-context"),
   getProjectGitStatus: () => ipcRenderer.invoke("get-project-git-status"),
   getProjectTree: () => ipcRenderer.invoke("get-project-tree"),

@@ -404,11 +404,15 @@
       } catch (_) {}
 
       if (!res || !res.ok) {
+        const errorMsg = (res && res.error) || 'erro desconhecido';
         const cmInstErr = ensureCm();
         if (cmInstErr) {
           cmInstErr.setOption('mode', null);
-          cmInstErr.setValue('// Não foi possível abrir: ' + ((res && res.error) || 'erro desconhecido'));
+          cmInstErr.setValue('// Não foi possível abrir: ' + errorMsg);
         }
+        doc = { content: '// Não foi possível abrir: ' + errorMsg, originalContent: '', mtimeMs: 0, dirty: false };
+        openFiles.set(filePath, doc);
+        renderTabs();
         return;
       }
       doc = { content: res.content, originalContent: res.content, mtimeMs: res.mtimeMs, dirty: false };

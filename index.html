@@ -392,8 +392,8 @@
             transition: background .15s var(--ease), border-color .15s var(--ease);
         }
         .ws-project-main:hover { background: rgba(255,255,255,0.06); border-color: var(--border-strong); }
-        .ws-project-main .ws-folder-ic { width: 15px; height: 15px; opacity: .85; flex-shrink: 0; }
-        .ws-project-main #ws-project-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ws-project-main .ws-folder-ic { width: 15px; height: 15px; opacity: .85; flex-shrink: 0; pointer-events: none; }
+        .ws-project-main #ws-project-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
         .ws-tree-toggle {
             flex-shrink: 0; width: 28px; height: 30px; padding: 0;
             display: inline-flex; align-items: center; justify-content: center;
@@ -1125,9 +1125,9 @@
             font-size: 11.5px; font-family: var(--font-ui);
             max-width: 240px; line-height: 1.2;
         }
-        .ctx-pill svg { width: 13px; height: 13px; opacity: .75; flex-shrink: 0; }
-        .ctx-pill .ctx-caret { width: 11px; height: 11px; opacity: .55; margin-left: 1px; }
-        .ctx-pill span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ctx-pill svg { width: 13px; height: 13px; opacity: .75; flex-shrink: 0; pointer-events: none; }
+        .ctx-pill .ctx-caret { width: 11px; height: 11px; opacity: .55; margin-left: 1px; pointer-events: none; }
+        .ctx-pill span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
         button.ctx-pill {
             cursor: pointer;
             transition: background .15s var(--ease), border-color .15s var(--ease), color .15s var(--ease);
@@ -1945,11 +1945,11 @@
                 </div>
 
                 <div class="fv-header">
+                    <button class="fv-close" id="fv-close" title="Fechar (Esc)" style="margin-right: 8px;">×</button>
                     <div class="fv-tabs-container" id="fv-tabs-container"></div>
                     <span class="fv-lang" id="fv-lang"></span>
                     <span class="fv-conflict" id="fv-conflict"></span>
                     <span class="fv-save-status" id="fv-save-status"></span>
-                    <button class="fv-close" id="fv-close" title="Fechar (Esc)">×</button>
                 </div>
                 <div class="fv-body" id="fv-body"></div>
             </div>
@@ -2236,8 +2236,12 @@
                 menu.className = 'ctx-project-menu';
                 menu.style.cssText = 'position:absolute; z-index:9999; background:var(--bg-elevated); border:1px solid var(--border-strong); border-radius:8px; padding:4px; box-shadow:0 10px 30px rgba(0,0,0,0.55); min-width:188px;';
                 
+                const projectPath = anchor.dataset.path || (ctxProject && ctxProject.path);
+                const projectId = anchor.dataset.id || (ctxProject && ctxProject.id);
+
                 const SVGI_SWITCH_PROJECT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; margin-right:8px; opacity:0.8; display:inline-block; vertical-align:middle;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
                 const SVGI_NEW_PROJECT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; margin-right:8px; opacity:0.8; display:inline-block; vertical-align:middle;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>';
+                const SVGI_ADD_FILE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; margin-right:8px; opacity:0.8; display:inline-block; vertical-align:middle;"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>';
                 const SVGI_OPEN_EXTERNAL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; margin-right:8px; opacity:0.8; display:inline-block; vertical-align:middle;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
                 const SVGI_CLOSE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; margin-right:8px; opacity:0.8; color:#ff5252; display:inline-block; vertical-align:middle;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
 
@@ -2253,14 +2257,24 @@
                 
                 menu.appendChild(mkItem(SVGI_SWITCH_PROJECT, 'Trocar projeto…', () => pickProjectFolder()));
                 menu.appendChild(mkItem(SVGI_NEW_PROJECT, 'Criar Novo Projeto…', () => createNewProject()));
+                menu.appendChild(mkItem(SVGI_ADD_FILE, 'Anexar arquivo ao contexto…', async () => {
+                    if (window.electronAPI && window.electronAPI.workspacePickFile) {
+                        const r = await window.electronAPI.workspacePickFile();
+                        if (r && r.attachments && typeof renderWorkspacePanel === 'function') {
+                            renderWorkspacePanel(r.attachments);
+                        }
+                        if (typeof refreshProjectContext === 'function') refreshProjectContext();
+                    }
+                }));
                 
                 const hr = document.createElement('div');
                 hr.style.cssText = 'height:1px; background:var(--border, #2d2d38); margin:4px 0;';
                 menu.appendChild(hr);
 
                 menu.appendChild(mkItem(SVGI_OPEN_EXTERNAL, 'Abrir no gerenciador de arquivos', () => {
-                    if (ctxProject && ctxProject.path && window.electronAPI.workspaceOpenExternal) {
-                        window.electronAPI.workspaceOpenExternal(ctxProject.path);
+                    if (projectPath && window.electronAPI.workspaceOpenExternal) {
+                        const pathToSend = process.platform === 'win32' ? projectPath.replace(/\//g, '\\') : projectPath;
+                        window.electronAPI.workspaceOpenExternal(pathToSend);
                     }
                 }));
                 
@@ -2269,8 +2283,8 @@
                 menu.appendChild(hr2);
 
                 menu.appendChild(mkItem(SVGI_CLOSE, 'Fechar projeto', async () => {
-                    if (ctxProject && ctxProject.id != null && window.electronAPI.workspaceRemove) {
-                        const updated = await window.electronAPI.workspaceRemove(ctxProject.id);
+                    if (projectId != null && projectId !== '' && window.electronAPI.workspaceRemove) {
+                        const updated = await window.electronAPI.workspaceRemove(projectId);
                         if (typeof renderWorkspacePanel === 'function') renderWorkspacePanel(updated);
                         await refreshProjectContext();
                     }
@@ -2693,11 +2707,18 @@
                     if (wsActions) wsActions.style.display = 'none';
                     if (wsProject) wsProject.style.display = '';
                     if (wsProjectName) wsProjectName.textContent = name;
-                    if (wsProjectMain) { wsProjectMain.dataset.path = dir.path; wsProjectMain.title = dir.path; }
+                    if (wsProjectMain) { 
+                        wsProjectMain.dataset.path = dir.path; 
+                        wsProjectMain.dataset.id = dir.id; 
+                        wsProjectMain.title = dir.path; 
+                    }
                 } else {
                     if (wsActions) wsActions.style.display = '';
                     if (wsProject) wsProject.style.display = 'none';
-                    if (wsProjectMain) wsProjectMain.dataset.path = '';
+                    if (wsProjectMain) { 
+                        wsProjectMain.dataset.path = ''; 
+                        wsProjectMain.dataset.id = ''; 
+                    }
                     collapseProjectTree();
                 }
 
@@ -3446,6 +3467,18 @@
                 }
 
                 if (!item.isRoot) {
+                    if (!item.isDir) {
+                        menu.appendChild(mkItem(SVGI_LINK, 'Anexar ao contexto', async () => {
+                            if (window.electronAPI && window.electronAPI.workspaceAddPath) {
+                                const res = await window.electronAPI.workspaceAddPath(item.path, 'file');
+                                if (res && res.attachments && typeof renderWorkspacePanel === 'function') {
+                                    renderWorkspacePanel(res.attachments);
+                                    if (typeof showToast === 'function') showToast('Arquivo anexado ao contexto!');
+                                }
+                            }
+                        }));
+                    }
+                    
                     menu.appendChild(mkItem(SVGI_CLIPBOARD, 'Copiar Caminho Absoluto', () => {
                         window.electronAPI.copyToClipboard(item.path);
                         if (typeof showToast === 'function') showToast('Caminho absoluto copiado!');
