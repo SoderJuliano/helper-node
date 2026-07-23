@@ -130,12 +130,21 @@ class ClaudeCliProvider {
         onRateLimit: (info) => {
           if (info && info.status && info.status !== 'allowed') {
             const kind = info.rateLimitType ? ` (${info.rateLimitType})` : '';
+            // Mostra QUANDO libera e quanto já foi usado — senão o usuário só vê
+            // a tarefa "travar do nada" sem entender que é limite de cota da conta
+            // Claude (não é bug do app; o Claude Code pausa em silêncio até liberar).
+            let when = '';
+            if (info.resetsAt) {
+              try { when = ` — libera em ${new Date(info.resetsAt * 1000).toLocaleString()}`; } catch (_) {}
+            }
+            const pct = (typeof info.utilization === 'number')
+              ? ` (${Math.round(info.utilization * 100)}% da cota)` : '';
             emitProgress(true);
             this._thinkingEmitted = true;
             try {
               sender.send('agentic-phase-update', {
                 phase: 'thinking',
-                status: `Limite de uso atingido${kind}: ${info.status} — aguardando liberação…`,
+                status: `Limite de uso do Claude atingido${kind}${pct}${when}. O Claude pausa até liberar — troque pro Gemini CLI (agy) pra continuar agora.`,
                 sessionId: cwd,
               });
             } catch (_) {}

@@ -4852,6 +4852,9 @@
             // Ctrl+F busca por nome e Ctrl+Shift+F busca por conteúdo no projeto.
             const fv = document.getElementById('file-viewer');
             if (fv && fv.classList.contains('open')) {
+                if (window.EditorController && window.EditorController.hasFocus()) {
+                    return;
+                }
                 e.preventDefault(); e.stopPropagation();
                 if (window.EditorController) window.EditorController.focusSearch();
                 return;

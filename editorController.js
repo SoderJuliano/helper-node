@@ -246,7 +246,7 @@
       if (!doc) return;
       const val = cm.getValue();
       doc.content = val;
-      doc.dirty = (val !== doc.originalContent);
+      doc.dirty = (val.replace(/\r\n/g, '\n') !== doc.originalContent.replace(/\r\n/g, '\n'));
       updateDirtyIndicator();
       renderTabs();
       syncEditorStateToMain();
@@ -348,11 +348,6 @@
 
     if (cm && filePath === activePath) {
       doc.content = cm.getValue();
-    }
-
-    if (doc.dirty) {
-      const confirm = window.confirm(`O arquivo "${String(filePath).split('/').pop()}" possui alterações não salvas. Deseja fechar e descartar?`);
-      if (!confirm) return;
     }
 
     openFiles.delete(filePath);
@@ -546,7 +541,11 @@
     }
   }
 
-  window.EditorController = { openFile, saveActive, closeEditor, isDirty, focusSearch, hasOpenFile, renamePath };
+  function hasFocus() {
+    return !!(cm && cm.hasFocus());
+  }
+
+  window.EditorController = { openFile, saveActive, closeEditor, isDirty, focusSearch, hasOpenFile, renamePath, hasFocus };
 
   if (window.electronAPI && window.electronAPI.onFileMutated) {
     window.electronAPI.onFileMutated(onFileMutated);
