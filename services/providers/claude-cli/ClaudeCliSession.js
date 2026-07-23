@@ -48,13 +48,19 @@ class ClaudeCliSession {
       // avisa a UI a cada verificação e mata depois de 10 min sem NENHUM output.
       let lastActivity = Date.now();
       let watchdogKilled = false;
-      const STALL_WARN_MS = 45 * 1000;
-      const STALL_KILL_MS = 10 * 60 * 1000;
+      // O pior pro usuário é encarar a tela achando que a IA trabalha e, quando
+      // desconfia e pergunta "como foi", ela recomeça do zero. Então avisamos
+      // CEDO que o Claude parou de produzir saída e encerramos rápido com erro
+      // claro, em vez de fingir progresso por 10 min. (Com --include-partial-
+      // messages o texto/thinking streama continuamente enquanto ele realmente
+      // trabalha; silêncio longo = travou de verdade, não é progresso.)
+      const STALL_WARN_MS = 25 * 1000;   // avisa em 25s que não está recebendo nada
+      const STALL_KILL_MS = 150 * 1000;  // encerra em 2,5min (era 10min)
       const watchdog = setInterval(() => {
         const silent = Date.now() - lastActivity;
         if (silent > STALL_KILL_MS) {
           clearInterval(watchdog);
-          console.warn('[claude-cli] 10min sem output — matando processo travado');
+          console.warn('[claude-cli] sem output além do limite — encerrando processo travado');
           watchdogKilled = true;
           this._aborted = false; // não é abort do usuário: queremos o erro na UI
           if (this._activeProc === proc) {
@@ -62,9 +68,10 @@ class ClaudeCliSession {
           }
         } else if (silent > STALL_WARN_MS && opts.onStatus) {
           const s = Math.round(silent / 1000);
-          opts.onStatus(`Aguardando resposta da API há ${s}s… (servidor pode estar sobrecarregado)`);
+          const left = Math.max(0, Math.round((STALL_KILL_MS - silent) / 1000));
+          opts.onStatus(`⚠️ Claude sem responder há ${s}s — parado, NÃO está trabalhando. Encerro em ${left}s se não voltar.`);
         }
-      }, 15 * 1000);
+      }, 5 * 1000);
 
       const finish = () => { clearInterval(watchdog); };
 
@@ -128,7 +135,7 @@ class ClaudeCliSession {
             return;
           }
           const errMsg = watchdogKilled
-            ? 'Claude CLI ficou 10 minutos sem responder (servidor sobrecarregado?). Tente novamente.'
+            ? 'O Claude parou de responder e a tarefa foi encerrada. Reenvie a mensagem para continuar de onde parou, ou troque para o Gemini CLI.'
             : code !== 0
               ? `Claude CLI encerrou com código ${code}. Se não estiver autenticado: claude auth login`
               : 'Claude CLI encerrou sem resposta.';

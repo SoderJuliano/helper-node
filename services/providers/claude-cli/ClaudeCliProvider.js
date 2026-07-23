@@ -144,7 +144,7 @@ class ClaudeCliProvider {
             try {
               sender.send('agentic-phase-update', {
                 phase: 'thinking',
-                status: `Limite de uso do Claude atingido${kind}${pct}${when}. O Claude pausa até liberar — troque pro Gemini CLI (agy) pra continuar agora.`,
+                status: `Limite de uso do Claude atingido${kind}${pct}${when}. O Claude pausa até liberar — troque para o Gemini CLI para continuar agora.`,
                 sessionId: cwd,
               });
             } catch (_) {}
