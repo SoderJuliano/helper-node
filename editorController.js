@@ -337,8 +337,99 @@
         }
       });
 
+      tab.addEventListener('contextmenu', (ev) => {
+        showTabContextMenu(ev, filePath);
+      });
+
       container.appendChild(tab);
     });
+  }
+
+  function showTabContextMenu(event, filePath) {
+    event.preventDefault();
+    event.stopPropagation();
+    document.querySelectorAll('.fv-tab-context-menu').forEach(m => m.remove());
+    const menu = document.createElement('div');
+    menu.className = 'fv-tab-context-menu';
+    menu.style.cssText = 'position:fixed; z-index:10000; background:var(--bg-elevated, #1b1e24); border:1px solid var(--border, #2d2d38); border-radius:var(--radius-sm, 4px); padding:4px; box-shadow:0 4px 12px rgba(0,0,0,0.55); min-width:180px; font-family:var(--font-ui); font-size:12px; color:var(--text, #e3e3e6);';
+    
+    const mkItem = (label, fn) => {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.style.cssText = 'display:block; width:100%; text-align:left; background:transparent; border:none; color:inherit; font-size:inherit; font-family:inherit; padding:6px 10px; cursor:pointer; border-radius:4px; transition:background .15s;';
+      b.addEventListener('mouseenter', () => b.style.background = 'rgba(255,255,255,0.06)');
+      b.addEventListener('mouseleave', () => b.style.background = 'transparent');
+      b.addEventListener('click', () => { menu.remove(); fn(); });
+      return b;
+    };
+    
+    menu.appendChild(mkItem('Fechar outros arquivos', () => {
+      closeOtherTabs(filePath);
+    }));
+    
+    menu.appendChild(mkItem('Fechar não modificados', () => {
+      closeUnmodifiedTabs();
+    }));
+    
+    document.body.appendChild(menu);
+    const menuWidth = menu.offsetWidth || 180;
+    const menuHeight = menu.offsetHeight || 80;
+    let x = event.clientX;
+    let y = event.clientY;
+    if (x + menuWidth > window.innerWidth) x = window.innerWidth - menuWidth - 8;
+    if (y + menuHeight > window.innerHeight) y = window.innerHeight - menuHeight - 8;
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
+    
+    const closer = (ev) => {
+      if (!menu.contains(ev.target)) {
+        menu.remove();
+        document.removeEventListener('mousedown', closer, true);
+      }
+    };
+    setTimeout(() => document.addEventListener('mousedown', closer, true), 0);
+  }
+
+  async function closeOtherTabs(keepPath) {
+    const pathsToClose = [];
+    openFiles.forEach((doc, filePath) => {
+      if (filePath !== keepPath) {
+        pathsToClose.push(filePath);
+      }
+    });
+    for (const filePath of pathsToClose) {
+      openFiles.delete(filePath);
+    }
+    if (activePath !== keepPath) {
+      await openFile(keepPath);
+    } else {
+      renderTabs();
+    }
+  }
+
+  async function closeUnmodifiedTabs() {
+    const pathsToClose = [];
+    openFiles.forEach((doc, filePath) => {
+      if (!doc.dirty) {
+        pathsToClose.push(filePath);
+      }
+    });
+    for (const filePath of pathsToClose) {
+      openFiles.delete(filePath);
+    }
+    if (!openFiles.has(activePath)) {
+      if (openFiles.size > 0) {
+        const nextPath = openFiles.keys().next().value;
+        await openFile(nextPath);
+      } else {
+        const viewer = document.getElementById('file-viewer');
+        if (viewer) viewer.classList.remove('open');
+        activePath = null;
+        closeEditor();
+      }
+    } else {
+      renderTabs();
+    }
   }
 
   // Fecha uma aba específica

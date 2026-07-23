@@ -1416,7 +1416,8 @@
             background: var(--bg-sidebar); flex-shrink: 0;
         }
         .diff-file-ic { width: 14px; height: 14px; opacity: .7; flex-shrink: 0; }
-        .diff-file { font-family: var(--font-mono); font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .diff-file { font-family: var(--font-mono); font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; transition: color .15s; }
+        .diff-file:hover { color: var(--accent-2); text-decoration: underline; }
         .diff-stats { font-family: var(--font-mono); font-size: 11px; margin-left: 4px; flex-shrink: 0; }
         .diff-stats .d-add { color: var(--accent-2); }
         .diff-stats .d-del { color: var(--danger); margin-left: 6px; }
@@ -4665,6 +4666,7 @@
             if (!viewer || !body) return;
             fileEl.textContent = String(filePath || '').split('/').slice(-2).join('/');
             fileEl.title = filePath || '';
+            fileEl.dataset.path = filePath || '';
             statsEl.innerHTML = '';
             body.innerHTML = '<div class="diff-empty">Carregando diff…</div>';
             viewer.classList.add('open');
@@ -4727,6 +4729,18 @@
         (function wireDiffViewer() {
             const closeBtn = document.getElementById('diff-close');
             if (closeBtn) closeBtn.addEventListener('click', closeFileDiff);
+            
+            const fileEl = document.getElementById('diff-file');
+            if (fileEl) {
+                fileEl.addEventListener('click', () => {
+                    const path = fileEl.dataset.path;
+                    if (path) {
+                        closeFileDiff();
+                        openFileViewer(path);
+                    }
+                });
+            }
+
             document.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape') {
                     const v = document.getElementById('diff-viewer');
