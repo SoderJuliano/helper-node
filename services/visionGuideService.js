@@ -33,6 +33,31 @@ const { maxTokensParam } = require('./openAiRealtimeModels');
 // Suprimimos essas respostas — é o que evita encher a tela.
 const NOOP = '[AGUARDAR]';
 
+// fetch com timeout via AbortController. SEM isto, uma conexão pendurada na
+// OpenAI deixa o `await` preso pra sempre → `inFlight` nunca zera → o tutor
+// para de responder em silêncio ("trava do nada") até reiniciar o app. Com o
+// abort, o pendurado vira um erro tratável e o loop segue vivo.
+async function fetchWithTimeout(url, options = {}, timeoutMs = 30000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Corrida com timeout p/ promessas que não dá pra abortar (ex.: captura de
+// tela). Não cancela o trabalho subjacente, mas impede que o `tick()` fique
+// pendurado esperando uma captura que travou.
+function withTimeout(promise, timeoutMs, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} excedeu ${timeoutMs}ms`)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 let running = false;
 let needsIntroduction = false; // controla o envio da mensagem inicial de introdução
 let cfg = {};                 // { apiKey, intervalMs, minInterventionMs, listenAudio, useKnowledgeBase }
@@ -344,7 +369,7 @@ async function askTutor(base64Image, editorState, options = {}) {
     });
   }
 
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+  const res = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -358,7 +383,7 @@ async function askTutor(base64Image, editorState, options = {}) {
         },
       ],
     }),
-  });
+  }, 30000);
 
   const data = await res.json();
   if (!res.ok) throw new Error(data.error?.message || 'OpenAI vision error');
@@ -436,7 +461,7 @@ async function tick() {
       hash = crypto.createHash('md5').update(editorState.content).digest('hex');
       base64 = null; // não precisa de imagem no modo texto
     } else {
-      await captureFullScreenToFile(tmpShot);
+      await withTimeout(captureFullScreenToFile(tmpShot), 15000, 'captura de tela');
       const buf = fs.readFileSync(tmpShot);
       hash = crypto.createHash('md5').update(buf).digest('hex');
       base64 = optimizeToJpegBase64(tmpShot);   // downscale + JPEG (menos tokens/payload)
@@ -589,7 +614,7 @@ ${suffix}
 Linguagem: ${lang || 'text'}`;
 
   try {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    const res = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -601,7 +626,7 @@ Linguagem: ${lang || 'text'}`;
           { role: 'user', content: userPrompt }
         ]
       })
-    });
+    }, 20000);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error?.message || 'OpenAI autocomplete error');
     let suggestion = data.choices?.[0]?.message?.content || '';
