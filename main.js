@@ -3812,6 +3812,34 @@ async function bringWindowToFocus() {
   mainWindow.webContents.send("manual-input");
 }
 
+function appendAttachmentsContext(prompt) {
+  try {
+    const attachments = workspace.list().filter(a => a.type === 'file');
+    if (attachments.length > 0) {
+      let contextHeader = "=== ARQUIVOS ANEXADOS AO CONTEXTO ===\n";
+      contextHeader += "O usuário selecionou e anexou manualmente os seguintes arquivos no workspace:\n";
+      for (const att of attachments) {
+        contextHeader += `- Caminho: ${att.path}\n`;
+        try {
+          const fs = require('fs');
+          if (fs.existsSync(att.path)) {
+            const stat = fs.statSync(att.path);
+            if (stat.isFile() && stat.size < 150 * 1024) {
+              const content = fs.readFileSync(att.path, 'utf8');
+              contextHeader += `\n--- Conteúdo do arquivo (${att.path}) ---\n${content}\n--- Fim do arquivo ---\n\n`;
+            }
+          }
+        } catch (_) {}
+      }
+      contextHeader += "=== FIM DO CONTEXTO DE ANEXOS ===\n\nPor favor, utilize os caminhos e conteúdos acima para responder à pergunta atual.\n\nPergunta:\n";
+      return contextHeader + prompt;
+    }
+  } catch (err) {
+    console.warn("Falhou ao anexar contexto de arquivos para o CLI:", err.message);
+  }
+  return prompt;
+}
+
 ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
   try {
     const aiModel = getEffectiveAiModel();
@@ -3842,8 +3870,9 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
       const projectPath = workspace.getProjectPath();
       const geminiModel = configService.getGeminiCliModel();
       GeminiCliProvider.setModel(geminiModel);
+      const finalPrompt = appendAttachmentsContext(text);
       try {
-        await GeminiCliProvider.send(text, projectPath, event.sender, sessionId, pastMessages);
+        await GeminiCliProvider.send(finalPrompt, projectPath, event.sender, sessionId, pastMessages);
       } catch (gcliErr) {
         console.error('[gemini-cli] send error:', gcliErr.message);
       }
@@ -3855,8 +3884,9 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
       const projectPath = workspace.getProjectPath();
       const claudeModel = configService.getClaudeCliModel();
       ClaudeCliProvider.setModel(claudeModel);
+      const finalPrompt = appendAttachmentsContext(promptWithHistory);
       try {
-        await ClaudeCliProvider.send(promptWithHistory, projectPath, event.sender);
+        await ClaudeCliProvider.send(finalPrompt, projectPath, event.sender);
       } catch (ccliErr) {
         console.error('[claude-cli] send error:', ccliErr.message);
         // Garante que o loading fecha mesmo que o provider não tenha emitido gemini-stream-complete
