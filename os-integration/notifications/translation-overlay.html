@@ -456,6 +456,30 @@
       window.electronAPI?.overlayPosition?.('next-monitor');
     });
 
+    // === DRAG MANUAL (Windows/macOS) ===
+    // No Linux, o -webkit-app-region:drag nativo funciona — mantém-se. No
+    // Windows/macOS ele é instável em janelas transparent+frameless, então
+    // neutralizamos o app-region e arrastamos seguindo o cursor global (main).
+    (function () {
+      const api = window.electronAPI || {};
+      if (!api.startWindowDrag || api.platform === 'linux') return;
+      const noDrag = (el) => el && el.style.setProperty('-webkit-app-region', 'no-drag');
+      noDrag(document.body);
+      const handles = [document.getElementById('pos-header'), document.getElementById('status-bar')].filter(Boolean);
+      handles.forEach((h) => {
+        noDrag(h);
+        h.style.cursor = 'move';
+        h.addEventListener('mousedown', (e) => {
+          if (e.target.closest('button, a, input, textarea, pre, code')) return;
+          e.preventDefault();
+          api.startWindowDrag();
+        });
+      });
+      const end = () => api.endWindowDrag && api.endWindowDrag();
+      window.addEventListener('mouseup', end);
+      window.addEventListener('blur', end);
+    })();
+
     // Copy buttons (delegated)
     document.addEventListener('click', async (e) => {
       const btn = e.target.closest('.copy-btn');

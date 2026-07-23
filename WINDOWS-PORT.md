@@ -208,9 +208,17 @@ compartilhar entre devs, não pra distribuição tipo usuário final via loja.
 
 ## Gaps conhecidos (NÃO fazem parte dos 3 recursos-núcleo)
 
-- **Ctrl+D legado** (gravação-arquivo com Realtime Assistant DESLIGADO): usa
-  `pw-record` + `ffmpeg` (Linux). No Windows, ligue "Assistente em Tempo Real"
-  (usa o caminho cross-platform). Portar o legado é trabalho futuro.
+- **Ctrl+D modo janela no Windows/macOS** ✅ CORRIGIDO: antes usava
+  `VoskStreamService` (parec + Python, Linux-only) → mostrava "ouvindo" e nunca
+  transcrevia. Agora, fora do Linux, o modo janela grava o PCM do bridge
+  cross-platform (`services/platform/nativeAudio`) em **press-to-talk**: Ctrl+D
+  grava, Ctrl+D de novo transcreve via OpenAI (`cloudTranscribeAudio`) e roteia
+  (composer no modo IDE / `getIaResponse` no modo janela). Ver `startWinDictation`
+  / `stopWinDictationAndTranscribe` em `main.js`. Requer chave OpenAI configurada.
+  O caminho Linux (Vosk contínuo) ficou intocado.
+- **Ctrl+D no modo INTEGRADO (OS Integration) no Windows**: ainda usa `pw-record`
+  (Linux). Trabalho futuro — no modo integrado a entrada principal é o print
+  (Ctrl+Shift+S), que já funciona no Windows.
 - **`captureOneAnswer`** (`vadEngine`, só usado no testMode): usa `pw-record`.
 - **Pipeline local Vosk+Whisper** (edição full sem OpenAI): binários Linux/Python.
   No Windows use o modelo OpenAI.

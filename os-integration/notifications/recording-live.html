@@ -305,6 +305,24 @@
                 .filter(Boolean)
                 .join(' ');
         };
+
+        // === DRAG MANUAL (Windows/macOS) ===
+        // Linux usa o -webkit-app-region:drag do .header. Win/mac usa drag manual.
+        (function () {
+            const api = window.electronAPI || {};
+            const header = document.querySelector('.header');
+            if (!api.startWindowDrag || api.platform === 'linux' || !header) return;
+            header.style.setProperty('-webkit-app-region', 'no-drag');
+            header.style.cursor = 'move';
+            header.addEventListener('mousedown', (e) => {
+                if (e.target.closest('button, a, input, textarea')) return;
+                e.preventDefault();
+                api.startWindowDrag();
+            });
+            const end = () => api.endWindowDrag && api.endWindowDrag();
+            window.addEventListener('mouseup', end);
+            window.addEventListener('blur', end);
+        })();
     </script>
 </body>
 </html>

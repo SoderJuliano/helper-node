@@ -1,5 +1,24 @@
 const { ipcRenderer } = require("electron");
 
+// Botão de tela cheia (janela frameless não tem o botão de maximizar do SO).
+document.getElementById('win-maximize-btn')?.addEventListener('click', () => {
+  ipcRenderer.send('window-toggle-maximize');
+});
+
+// Drag manual no Windows/macOS (app-region:drag é instável em janelas
+// transparent+frameless nesses SOs). No Linux o app-region nativo já funciona.
+if (process.platform !== 'linux') {
+  const dragHandle = document.querySelector('h1');
+  if (dragHandle) {
+    dragHandle.style.setProperty('-webkit-app-region', 'no-drag');
+    dragHandle.style.cursor = 'move';
+    dragHandle.addEventListener('mousedown', (e) => { e.preventDefault(); ipcRenderer.send('frameless-drag-start'); });
+    const end = () => ipcRenderer.send('frameless-drag-end');
+    window.addEventListener('mouseup', end);
+    window.addEventListener('blur', end);
+  }
+}
+
 // === Dados pessoais (nome/background) ===
 const usernameInput = document.getElementById('pref-username');
 const backgroundInput = document.getElementById('pref-background');

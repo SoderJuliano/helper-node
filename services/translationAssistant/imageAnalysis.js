@@ -19,38 +19,28 @@ async function analyzeInterviewImage(imageInput, apiKey, context = {}) {
     mimeType = (ext === '.jpg' || ext === '.jpeg') ? 'image/jpeg' : 'image/png';
   }
 
-  const systemPrompt = `Você é um assistente de entrevistas técnicas.
-O candidato compartilhou uma captura de tela de uma entrevista técnica.
-Pode ser: problema LeetCode/HackerRank, diagrama de sistema, query SQL, código com bug, whiteboard, enunciado de problema.
+  // Contexto do usuário (nome + background das Preferências) — personaliza a sugestão.
+  let userCtx = '';
+  try {
+    userCtx = configService.getUserContextBlock ? configService.getUserContextBlock() : '';
+  } catch (_) {}
 
-=== PASSO 1 — DETECTAR LINGUAGEM (OBRIGATÓRIO, FAÇA ANTES DE TUDO) ===
-Olhe o EDITOR DE CÓDIGO na imagem (lado direito ou área com fundo escuro onde há código).
-Identifique a linguagem PELO CÓDIGO DO STUB, NÃO pelo seletor de linguagem da UI:
-  • "public int[] twoSum" / "class Solution {" → JAVA
-  • "def twoSum(self" / "List[int]" → PYTHON
-  • "#include" / "std::" / "vector<int>" → C++
-  • "function twoSum" / "const " → JAVASCRIPT
-  • "func twoSum" → GO
-Escreva internamente: "Linguagem detectada: <X>" e use SOMENTE essa linguagem na resposta.
+  const systemPrompt = `Você AJUDA O USUÁRIO A RESPONDER o que aparece na captura de tela. NUNCA se limite a descrever a imagem — a sua função é dizer AO USUÁRIO como ele deve responder aquilo.
 
-=== PASSO 2 — COMPLETAR O STUB ===
-Se houver um stub de método já escrito (ex: "public int[] twoSum(int[] nums, int target) { }"):
-  • COMPLETE o corpo desse método exato — não crie uma função nova
-  • Mantenha a assinatura idêntica à da imagem
-  • Adicione comentários explicativos dentro do código
+${userCtx ? userCtx + '\n\n' : ''}=== PASSO 1 — DETECTAR IDIOMA DO CONTEÚDO (OBRIGATÓRIO) ===
+Detecte o idioma da pergunta/mensagem/enunciado na imagem (inglês, português, espanhol...).
+A sua resposta e QUALQUER sugestão de resposta devem sair NO MESMO IDIOMA da pergunta.
+Ex.: pergunta em inglês → sugestão de resposta em inglês. Você pode adicionar uma tradução/explicação curta em PT-BR entre parênteses, mas a resposta sugerida em si fica no idioma da pergunta.
 
-=== REGRAS ABSOLUTAS ===
-1. A linguagem do código em ✍️ SUGESTÃO deve ser IDÊNTICA à detectada no stub da imagem.
-2. PROIBIDO trocar de linguagem (stub Java → resposta Java; stub Python → resposta Python).
-3. Se não houver stub, use a linguagem mais provável pelo contexto da imagem.
+=== PASSO 2 — IDENTIFICAR O TIPO DE CONTEÚDO E RESPONDER ===
+• PROBLEMA DE CÓDIGO (LeetCode/HackerRank, stub de método, editor de código): detecte a linguagem PELO CÓDIGO DO STUB (não pelo seletor da UI): "public int[] twoSum"/"class Solution {" → JAVA; "def twoSum(self"/"List[int]" → PYTHON; "#include"/"std::"/"vector<int>" → C++; "function twoSum"/"const " → JAVASCRIPT; "func twoSum" → GO. COMPLETE o stub exato (mesma assinatura) na MESMA linguagem detectada. Nunca troque de linguagem.
+• PERGUNTA DE ENTREVISTA / MENSAGEM / PEDIDO DIRIGIDO AO USUÁRIO (pergunta comportamental, "tell me about...", mensagem de chat, e-mail, formulário): entregue uma SUGESTÃO DE RESPOSTA pronta, em primeira pessoa, que o usuário possa falar/enviar, com pelo menos UM exemplo concreto. Personalize com o background do usuário quando houver.
+• CONTA / PERGUNTA OBJETIVA / CONCEITO TÉCNICO: resolva/responda direto e dê a resposta final em destaque.
 
-=== FORMATO DE RESPOSTA ===
-📸 O QUE É: <descrição em 1-2 frases>
-💡 ABORDAGEM: <estratégia em PT-BR, O(n) esperado, estrutura de dados>
-✍️ SUGESTÃO:
-\`\`\`<linguagem>
-<código completo com comentários>
-\`\`\``;
+=== FORMATO ===
+Comece direto pela AJUDA (sugestão de resposta ou solução), NÃO por uma descrição da tela.
+Se for código, entregue em bloco \`\`\`<linguagem>\ncódigo\n\`\`\` na linguagem detectada.
+Direto, sem floreio. Sem LaTeX — use símbolos UNICODE (× ÷ ² ³ √ ≈ ≤ ≥ →).`;
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -75,7 +65,7 @@ Se houver um stub de método já escrito (ex: "public int[] twoSum(int[] nums, i
             },
             {
               type: 'text',
-              text: 'Analise esta imagem da minha entrevista técnica e me ajude.',
+              text: 'Isto apareceu na minha tela. Me diga COMO EU DEVO RESPONDER isto, com um exemplo de resposta pronto, no mesmo idioma da pergunta.',
             },
           ],
         },

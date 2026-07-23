@@ -198,6 +198,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.send("request-translation-resize"),
   overlayPosition: (pos) => ipcRenderer.send('overlay-position', pos),
 
+  // Plataforma (renderer decide se usa drag manual — só Win/mac; Linux usa
+  // -webkit-app-region:drag nativo que funciona bem lá).
+  platform: process.platform,
+  // Drag manual de janelas frameless (Windows/macOS): o app-region:drag é
+  // instável em janelas transparent+frameless no Windows. Ver main.js.
+  startWindowDrag: () => ipcRenderer.send('frameless-drag-start'),
+  endWindowDrag: () => ipcRenderer.send('frameless-drag-end'),
+
   // === Terminal Connection ===
   terminalInit: () => ipcRenderer.invoke("terminal:init"),
   terminalInput: (data) => ipcRenderer.send("terminal:input", data),

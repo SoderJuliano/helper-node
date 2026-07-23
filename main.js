@@ -893,8 +893,10 @@ function createConfigWindow() {
   }
 
   configWindow = new BrowserWindow({
-    width: 500,
-    height: 420,
+    width: 640,
+    height: 680,
+    minWidth: 480,
+    minHeight: 420,
     title: "Configurações",
     backgroundColor: "#00000000",
     transparent: true,
@@ -921,8 +923,10 @@ function createPreferencesWindow() {
   }
 
   preferencesWindow = new BrowserWindow({
-    width: 520,
-    height: 560,
+    width: 640,
+    height: 720,
+    minWidth: 480,
+    minHeight: 460,
     title: "Preferências do Usuário",
     backgroundColor: "#00000000",
     transparent: true,
@@ -941,6 +945,18 @@ function createPreferencesWindow() {
     preferencesWindow = null;
   });
 }
+
+// Botão de tela cheia/maximizar das janelas frameless (Configurações e
+// Preferências abrem sem moldura nativa, então não têm o botão de maximizar
+// do sistema). Alterna maximizado ↔ tamanho normal na janela que enviou o IPC.
+ipcMain.on("window-toggle-maximize", (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || win.isDestroyed()) return;
+  try {
+    if (win.isMaximized()) win.unmaximize();
+    else win.maximize();
+  } catch (_) {}
+});
 
 // OS Integration Mode Functions
 function createOsInputWindow() {
@@ -2628,6 +2644,89 @@ let dictationPcmChunks = [];
 let dictationPcmBytes = 0;
 let dictationProcessing = false;
 
+// ── Ditado em janela no Windows/macOS (press-to-talk) ──────────────────────
+// O caminho de janela (Ctrl+D fora do modo integrado) usava VoskStreamService,
+// que depende de `parec` (PulseAudio) + Python — Linux-only. No Windows/macOS
+// isso nunca capturava áudio: mostrava o "ouvindo" e nunca transcrevia.
+// Aqui gravamos o PCM do bridge cross-platform (services/platform/nativeAudio),
+// e transcrevemos via OpenAI ao apertar Ctrl+D de novo (press-to-talk). Gated
+// a !linux — o caminho Vosk do Linux fica byte-idêntico.
+let winDictationActive = false;
+let winDictationChunks = [];
+let winDictationBytes = 0;
+let winDictationMicCb = null;
+
+async function startWinDictation() {
+  const nativeAudio = require('./services/platform/nativeAudio');
+  winDictationChunks = [];
+  winDictationBytes = 0;
+  winDictationMicCb = (buf) => { winDictationChunks.push(buf); winDictationBytes += buf.length; };
+  await nativeAudio.subscribe('mic', winDictationMicCb);
+  winDictationActive = true;
+  isRecording = true;
+  try { mainWindow.webContents.send('toggle-recording', { isRecording: true, audioFilePath: null, isIdeMode: true }); } catch (_) {}
+}
+
+async function stopWinDictationAndTranscribe() {
+  const nativeAudio = require('./services/platform/nativeAudio');
+  try { if (winDictationMicCb) nativeAudio.unsubscribe('mic', winDictationMicCb); } catch (_) {}
+  winDictationMicCb = null;
+  winDictationActive = false;
+  isRecording = false;
+
+  const pcm = Buffer.concat(winDictationChunks, winDictationBytes);
+  winDictationChunks = [];
+  winDictationBytes = 0;
+
+  // Esconde o "ouvindo" no renderer.
+  try { mainWindow.webContents.send('toggle-recording', { isRecording: false, audioFilePath: null, isIdeMode: true }); } catch (_) {}
+
+  if (!pcm || pcm.length < 3200) { // < ~0.1s de áudio útil
+    try { mainWindow.webContents.send('transcription-error', 'Nenhum áudio detectado. Tente de novo.'); } catch (_) {}
+    return;
+  }
+
+  const token = configService.getOpenIaToken();
+  if (!token) {
+    try { mainWindow.webContents.send('transcription-error', 'Configure a chave da OpenAI (Configurações) para transcrever no Windows.'); } catch (_) {}
+    return;
+  }
+
+  recordingBusy = true;
+  try {
+    fs2.mkdirSync(AUDIO_TMP_DIR, { recursive: true });
+    const wavPath = path.join(AUDIO_TMP_DIR, `windict_${Date.now()}.wav`);
+    fs2.writeFileSync(wavPath, _buildWavFile(pcm, 16000, 1, 16));
+
+    let text = '';
+    try {
+      text = await cloudTranscribeAudio(wavPath, token);
+    } finally {
+      try { await fs.unlink(wavPath); } catch (_) {}
+    }
+
+    if (!text || !text.trim() || text === '[BLANK_AUDIO]') {
+      mainWindow.webContents.send('transcription-error', 'Nenhum áudio detectado. Tente de novo.');
+      return;
+    }
+
+    const isIdeModeNow = (workspace.list() || []).length > 0;
+    const aiModel = getEffectiveAiModel();
+    if (isIdeModeNow) {
+      mainWindow.webContents.send('ide-audio-transcribed', { text: text + ' ' });
+    } else if (aiModel === 'llama-stream') {
+      mainWindow.webContents.send('send-to-gemini-stream-auto', text);
+    } else {
+      getIaResponse(text);
+    }
+  } catch (e) {
+    console.error('[win-dictation] erro:', e.message);
+    try { mainWindow.webContents.send('transcription-error', 'Falha ao transcrever o áudio: ' + e.message); } catch (_) {}
+  } finally {
+    recordingBusy = false;
+  }
+}
+
 async function toggleRecording() {
   try {
     // Realtime existe em todas as edições: na Lite/ChatGPT é 100% online (OpenAI),
@@ -2658,6 +2757,12 @@ async function toggleRecording() {
     if (isRecording) {
       // === STOP RECORDING ===
       const isOsIntegration = configService.getOsIntegrationStatus();
+
+      // Windows/macOS modo janela: para o press-to-talk e transcreve.
+      if (winDictationActive) {
+        await stopWinDictationAndTranscribe();
+        return;
+      }
 
       if (isOsIntegration && VoskStreamService.isRunning()) {
         const pending = osLiveSegment;
@@ -2750,6 +2855,20 @@ async function toggleRecording() {
 
       if (isOsIntegration && translationAssistant.isActive()) {
         console.log("OS Integration: Translation Assistant ativo — Ctrl+D ignorado (mutex).");
+        return;
+      }
+
+      // Windows/macOS modo janela: Vosk/parec não existem fora do Linux. Usa o
+      // bridge nativo (press-to-talk): Ctrl+D grava, Ctrl+D de novo transcreve.
+      if (!isOsIntegration && process.platform !== 'linux') {
+        try {
+          await startWinDictation();
+        } catch (e) {
+          console.error('[win-dictation] falha ao iniciar:', e.message);
+          try { mainWindow.webContents.send('transcription-error', 'Falha ao acessar o microfone: ' + e.message); } catch (_) {}
+          winDictationActive = false;
+          isRecording = false;
+        }
         return;
       }
 
@@ -5152,6 +5271,38 @@ ipcMain.on('overlay-position', (_event, position) => {
   positionTranslationOverlay(position);
 });
 
+// === Arrastar janelas frameless (drag manual, cross-platform) ===
+// No Windows/macOS, `-webkit-app-region: drag` é instável em janelas
+// transparent+frameless (bug antigo do Electron — a região de arraste engole
+// o mousedown mas o compositor não move a janela). Este drag manual funciona
+// em todos os SOs: o renderer avisa início (mousedown) e fim (mouseup); o main
+// segue o cursor global (screen.getCursorScreenPoint) e reposiciona a janela
+// mantendo o offset do ponto onde o usuário clicou. Só é acionado no renderer
+// quando platform !== 'linux' — no Linux o app-region nativo continua no comando.
+let _framelessDrag = null;
+function stopFramelessDrag() {
+  if (_framelessDrag) {
+    try { clearInterval(_framelessDrag.timer); } catch (_) {}
+    _framelessDrag = null;
+  }
+}
+ipcMain.on('frameless-drag-start', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || win.isDestroyed()) return;
+  stopFramelessDrag();
+  const cursor = screen.getCursorScreenPoint();
+  const [wx, wy] = win.getPosition();
+  const offsetX = cursor.x - wx;
+  const offsetY = cursor.y - wy;
+  const timer = setInterval(() => {
+    if (!win || win.isDestroyed()) { stopFramelessDrag(); return; }
+    const c = screen.getCursorScreenPoint();
+    try { win.setPosition(c.x - offsetX, c.y - offsetY); } catch (_) {}
+  }, 16);
+  _framelessDrag = { win, timer };
+});
+ipcMain.on('frameless-drag-end', () => stopFramelessDrag());
+
 // Pedido de expansão de largura (+200px até 40% da tela) — chamado depois de
 // renderizar cada nova mensagem.
 ipcMain.on("request-translation-resize", () => {
@@ -6252,6 +6403,17 @@ function showImageResponseInSecondaryWindow(htmlContent) {
   osImageResponseWindow.on('closed', () => { osImageResponseWindow = null; });
 }
 
+// Prepende o contexto do usuário (nome + background das Preferências) à
+// instrução de sistema. Antes só o Tradutor personalizava; agora o modo
+// integrado / print / paste de imagem também usa o background configurado.
+function withUserContext(instruction) {
+  try {
+    const ctx = configService.getUserContextBlock ? configService.getUserContextBlock() : '';
+    if (ctx && ctx.trim()) return `${ctx}\n\n${instruction}`;
+  } catch (_) {}
+  return instruction;
+}
+
 async function processOsQuestion(text, image = null, opts = {}) {
   // opts.forceVision = true  →  pula o roteador, manda imagem sempre.
   //   Use isto quando a imagem é a FONTE da pergunta (capturas de tela,
@@ -6316,7 +6478,7 @@ async function processOsQuestion(text, image = null, opts = {}) {
 
     if (aiModel === 'openIa') {
       const token = configService.getOpenIaToken();
-      const instruction = configService.getPromptInstruction();
+      const instruction = withUserContext(configService.getPromptInstruction());
       if (!token) {
         console.log(`🔔 No OpenAI token, closing notification and showing error`);
         // Immediately close any loading notification and wait
@@ -6372,7 +6534,7 @@ async function processOsQuestion(text, image = null, opts = {}) {
     } else if (aiModel === 'ollamaLocal') {
       try {
         const OllamaLocalService = require('./services/ollamaLocalService');
-        const instructionO3 = configService.getPromptInstruction();
+        const instructionO3 = withUserContext(configService.getPromptInstruction());
         const _wsTxtO3 = await prependWorkspaceContextIfNeeded(text, 'ollama');
 
         const htEnabled = configService.getHelperToolsEnabled && configService.getHelperToolsEnabled();
@@ -6389,7 +6551,7 @@ async function processOsQuestion(text, image = null, opts = {}) {
     } else {
       // Backends sem visão (Ollama): só TEXTO. Mas com tool calling agora.
       try {
-        const instructionO3 = configService.getPromptInstruction();
+        const instructionO3 = withUserContext(configService.getPromptInstruction());
         const useAgentic = shouldUseAgentic(text);
         if (useAgentic) { try { workspace.resetContextSent(); } catch (_) {} }
         const _wsTxtO3 = await prependWorkspaceContextIfNeeded(text, 'ollama');
