@@ -216,12 +216,19 @@
       color: #f5f5f5;
       white-space: pre;
     }
-    .response code:not(pre code) {
+    .response code.inline-code {
       background: rgba(255,255,255,0.1);
       padding: 2px 5px;
       border-radius: 3px;
       font-family: 'JetBrains Mono', monospace;
       font-size: 0.92em;
+      cursor: pointer;
+      user-select: all;
+      transition: background 0.15s, color 0.15s;
+    }
+    .response code.inline-code:hover {
+      background: rgba(139, 92, 246, 0.25);
+      color: #fff;
     }
 
     .copy-btn {
@@ -344,7 +351,7 @@
       let lastIdx = 0, m;
       const renderInline = (t) => escapeHtml(t)
         .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/`([^`\n]+?)`/g, '<code>$1</code>')
+        .replace(/`([^`\n]+?)`/g, '<code class="inline-code" title="Clique para copiar">$1</code>')
         .replace(/\n/g, '<br>');
       while ((m = codeRe.exec(text)) !== null) {
         const before = text.slice(lastIdx, m.index);
@@ -508,20 +515,46 @@
       });
     })();
 
-    // Copy buttons (delegated)
+    // Copy buttons and inline code click-to-copy (delegated)
     document.addEventListener('click', async (e) => {
+      // 1. Botão de copiar em blocos <pre>
       const btn = e.target.closest('.copy-btn');
-      if (!btn) return;
-      const pre = btn.closest('pre');
-      const code = pre ? pre.querySelector('code') : null;
-      if (!code) return;
-      try {
-        if (api.copyToClipboard) api.copyToClipboard(code.textContent);
-        else await navigator.clipboard.writeText(code.textContent);
-        btn.classList.add('copied');
-        btn.textContent = '✓ copiado';
-        setTimeout(() => { btn.classList.remove('copied'); btn.textContent = 'copy'; }, 1300);
-      } catch (_) {}
+      if (btn) {
+        const pre = btn.closest('pre');
+        const code = pre ? pre.querySelector('code') : null;
+        if (!code) return;
+        try {
+          if (api.copyToClipboard) api.copyToClipboard(code.textContent);
+          else await navigator.clipboard.writeText(code.textContent);
+          btn.classList.add('copied');
+          btn.textContent = '✓ copiado';
+          setTimeout(() => { btn.classList.remove('copied'); btn.textContent = 'copy'; }, 1300);
+        } catch (_) {}
+        return;
+      }
+
+      // 2. Clique em código inline <code> (fora de <pre>)
+      const inlineCode = e.target.closest('.response code.inline-code');
+      if (inlineCode) {
+        try {
+          const originalText = inlineCode.textContent;
+          if (api.copyToClipboard) api.copyToClipboard(originalText);
+          else await navigator.clipboard.writeText(originalText);
+          
+          // Efeito visual temporário (piscar verde)
+          const originalBg = inlineCode.style.background;
+          inlineCode.style.background = 'rgba(74, 222, 128, 0.35)'; // Fundo verde transparente
+          inlineCode.style.color = '#4ade80';
+          const originalTitle = inlineCode.title;
+          inlineCode.title = 'Copiado!';
+          
+          setTimeout(() => {
+            inlineCode.style.background = originalBg;
+            inlineCode.style.color = '';
+            inlineCode.title = originalTitle;
+          }, 1000);
+        } catch (_) {}
+      }
     });
 
     // === WIRING IPC ===
