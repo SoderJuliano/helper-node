@@ -3652,9 +3652,10 @@
                 wsTreeFilterInput.style.display = 'block';
                 if (wsTreeFilterHint) wsTreeFilterHint.style.display = 'block';
                 wsTreeFilterInput.value = '';
-                wsTreeFilterInput.focus();
                 updateTreeFilterHint();
                 renderTree();
+                wsTreeFilterInput.focus();
+                setTimeout(() => wsTreeFilterInput.focus(), 50);
             }
             async function openTreeContentFilter() {
                 if (!wsTreeContentFilterInput) return;
@@ -3666,9 +3667,10 @@
                 wsTreeContentFilterInput.style.display = 'block';
                 if (wsTreeContentFilterHint) wsTreeContentFilterHint.style.display = 'block';
                 wsTreeContentFilterInput.value = '';
-                wsTreeContentFilterInput.focus();
                 updateTreeContentFilterHint();
                 renderTree();
+                wsTreeContentFilterInput.focus();
+                setTimeout(() => wsTreeContentFilterInput.focus(), 50);
             }
             // Exposto em window: os listeners globais vivem em outro escopo.
             window.openTreeFilter = openTreeFilter;
