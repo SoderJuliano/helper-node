@@ -93,6 +93,7 @@ const workspace = require("./services/workspace");
 const agenticWorkflow = require("./services/agenticWorkflowService");
 const ollamaAgenticWorkflow = require("./services/ollamaAgenticWorkflowService");
 const translationAssistant = require("./services/translationAssistant");
+const visionGuide = require("./services/visionGuideService");
 const platformScreenCapture = require("./services/platform/screenCapture.js");
 const { runTestMode } = require("./services/translationAssistant/testMode");
 const { analyzeInterviewImage } = require("./services/translationAssistant/imageAnalysis");
@@ -908,6 +909,161 @@ function expandTranslationOverlayIfNeeded() {
     translationOverlayWindow.setBounds({ x, y: bounds.y, width: newW, height: bounds.height });
   } catch (_) {}
 }
+
+// =========================================================================
+// OVERLAY DO ASSISTENTE GUIADO POR VISÃO (vision-guide-overlay.html)
+// Mesmo padrão da translation-overlay: translúcido, always-on-top, stealth,
+// arrasta pelo header. Fica na ESQUERDA por padrão (o do tradutor fica na
+// direita) pra não colidir quando os dois estiverem abertos.
+// =========================================================================
+let visionGuideOverlayWindow = null;
+
+function computeVisionGuideOverlayBounds() {
+  let display;
+  try {
+    const cursor = screen.getCursorScreenPoint();
+    display = screen.getDisplayNearestPoint(cursor);
+  } catch (_) {
+    display = screen.getPrimaryDisplay();
+  }
+  const wa = display.workArea;
+  const winWidth = Math.max(400, Math.round(wa.width * 0.22));
+  const winHeight = Math.round(wa.height * 0.72);
+  const posX = Math.max(wa.x, wa.x + 12);              // encostado à esquerda
+  const posY = Math.max(wa.y, wa.y + Math.round((wa.height - winHeight) / 2));
+  return { x: posX, y: posY, width: winWidth, height: winHeight };
+}
+
+function createVisionGuideOverlay() {
+  if (visionGuideOverlayWindow && !visionGuideOverlayWindow.isDestroyed()) {
+    return visionGuideOverlayWindow;
+  }
+  const b = computeVisionGuideOverlayBounds();
+  console.log(`[vision-guide-overlay] criando: x=${b.x} y=${b.y} w=${b.width} h=${b.height}`);
+
+  visionGuideOverlayWindow = new BrowserWindow({
+    width: b.width, height: b.height, x: b.x, y: b.y,
+    useContentSize: false,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    movable: true,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    focusable: false,
+    hasShadow: false,
+    show: false,
+    title: 'helper-node-vision-guide-overlay',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  visionGuideOverlayWindow.setAlwaysOnTop(true, 'screen-saver');
+  visionGuideOverlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  applyStealthProtection(visionGuideOverlayWindow);
+
+  visionGuideOverlayWindow.loadFile(
+    path.join(__dirname, 'os-integration', 'notifications', 'vision-guide-overlay.html')
+  );
+
+  visionGuideOverlayWindow.once('ready-to-show', () => {
+    try { visionGuideOverlayWindow.setBounds(computeVisionGuideOverlayBounds()); } catch (_) {}
+    try { visionGuideOverlayWindow.show(); } catch (_) {}
+  });
+
+  visionGuideOverlayWindow.webContents.on('did-finish-load', () => {
+    if (process.platform !== 'linux') {
+      try { visionGuideOverlayWindow.setIgnoreMouseEvents(true, { forward: true }); } catch (_) {}
+    }
+  });
+
+  const keepOnTop = setInterval(() => {
+    if (!visionGuideOverlayWindow || visionGuideOverlayWindow.isDestroyed()) {
+      clearInterval(keepOnTop);
+      return;
+    }
+    try {
+      if (!visionGuideOverlayWindow.isAlwaysOnTop()) {
+        visionGuideOverlayWindow.setAlwaysOnTop(true, 'screen-saver');
+      }
+      visionGuideOverlayWindow.moveTop();
+    } catch (_) {}
+  }, 2000);
+
+  visionGuideOverlayWindow.on('closed', () => {
+    clearInterval(keepOnTop);
+    visionGuideOverlayWindow = null;
+  });
+
+  return visionGuideOverlayWindow;
+}
+
+function destroyVisionGuideOverlay() {
+  if (visionGuideOverlayWindow && !visionGuideOverlayWindow.isDestroyed()) {
+    try { visionGuideOverlayWindow.close(); } catch (_) {}
+  }
+  visionGuideOverlayWindow = null;
+}
+
+function sendToVisionGuideOverlay(channel, payload) {
+  if (visionGuideOverlayWindow && !visionGuideOverlayWindow.isDestroyed()) {
+    try { visionGuideOverlayWindow.webContents.send(channel, payload); } catch (_) {}
+  }
+}
+
+// Estica a janela do tutor +200px quando o conteúdo cresce, até 42% da tela.
+function expandVisionGuideOverlayIfNeeded() {
+  if (!visionGuideOverlayWindow || visionGuideOverlayWindow.isDestroyed()) return;
+  const bounds = visionGuideOverlayWindow.getBounds();
+  const display = screen.getDisplayMatching(bounds);
+  const wa = display.workArea;
+  const maxW = Math.round(wa.width * 0.42);
+  if (bounds.width >= maxW) return;
+  const newW = Math.min(bounds.width + 200, maxW);
+  try {
+    visionGuideOverlayWindow.setBounds({ x: bounds.x, y: bounds.y, width: newW, height: bounds.height });
+  } catch (_) {}
+}
+
+// Roteia guidance/status do serviço → overlay (modo integrado OU janela) + main.
+visionGuide.onGuidance(({ text }) => {
+  if (!text) return;
+  if (configService.getOsIntegrationStatus()) {
+    if (!visionGuideOverlayWindow || visionGuideOverlayWindow.isDestroyed()) createVisionGuideOverlay();
+    sendToVisionGuideOverlay('vision-guide-message', { text });
+  } else {
+    // Modo janela/IDE: o overlay flutua sobre o app (observa a tela principal).
+    if (!visionGuideOverlayWindow || visionGuideOverlayWindow.isDestroyed()) createVisionGuideOverlay();
+    sendToVisionGuideOverlay('vision-guide-message', { text });
+  }
+});
+
+visionGuide.onStatus((status) => {
+  sendToVisionGuideOverlay('vision-guide-status', status);
+});
+
+// Metadados do editor/modo pro contexto do tutor (modo IDE: arquivo/pasta anexada).
+visionGuide.setContextProvider(() => {
+  try {
+    const parts = [];
+    const osOn = configService.getOsIntegrationStatus();
+    const wsOn = configService.getWorkspaceAccessEnabled && configService.getWorkspaceAccessEnabled();
+    parts.push(`Modo: ${osOn ? 'integrado com SO' : (wsOn ? 'IDE (pasta anexada)' : 'janela')}.`);
+    if (wsOn) {
+      try {
+        const ctx = typeof getProjectContextSummary === 'function' ? getProjectContextSummary() : '';
+        if (ctx) parts.push(ctx);
+      } catch (_) {}
+    }
+    return parts.join('\n');
+  } catch (_) { return ''; }
+});
 
 function createConfigWindow() {
   if (configWindow) {
@@ -5288,10 +5444,11 @@ ipcMain.handle("translation-stop", async () => {
   return { ok: true };
 });
 
-function positionTranslationOverlay(position) {
-  if (!translationOverlayWindow || translationOverlayWindow.isDestroyed()) return;
+function positionTranslationOverlay(position, targetWin) {
+  const win = targetWin || translationOverlayWindow;
+  if (!win || win.isDestroyed()) return;
 
-  const currentBounds = translationOverlayWindow.getBounds();
+  const currentBounds = win.getBounds();
   const currentCenter = {
     x: currentBounds.x + Math.round(currentBounds.width / 2),
     y: currentBounds.y + Math.round(currentBounds.height / 2),
@@ -5308,7 +5465,7 @@ function positionTranslationOverlay(position) {
   }
 
   const { x: dX, y: dY, width: dW, height: dH } = display.workArea;
-  const [winW, winH] = translationOverlayWindow.getSize();
+  const [winW, winH] = win.getSize();
 
   const newY = dY + Math.round((dH - winH) / 2);
   let newX;
@@ -5321,24 +5478,30 @@ function positionTranslationOverlay(position) {
   }
 
   console.log(`[overlay-position] ${position} → display ${display.id} x=${newX} y=${newY}`);
-  try { translationOverlayWindow.setBounds({ x: newX, y: newY, width: winW, height: winH }); } catch (_) {}
-  try { translationOverlayWindow.setPosition(newX, newY); } catch (_) {}
+  try { win.setBounds({ x: newX, y: newY, width: winW, height: winH }); } catch (_) {}
+  try { win.setPosition(newX, newY); } catch (_) {}
   // Reafirma flutuar acima de tudo: o compositor pode ter rebaixado/encaixado
   // a janela ao movê-la entre monitores/áreas de trabalho.
   try {
-    translationOverlayWindow.setAlwaysOnTop(true, 'screen-saver');
-    translationOverlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-    translationOverlayWindow.moveTop();
+    win.setAlwaysOnTop(true, 'screen-saver');
+    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    win.moveTop();
   } catch (_) {}
   // Confere o resultado real (útil pra diagnosticar Wayland ignorando posição).
   try {
-    const got = translationOverlayWindow.getBounds();
+    const got = win.getBounds();
     console.log(`[overlay-position] real=${got.x},${got.y} ${got.width}x${got.height}`);
   } catch (_) {}
 }
 
-ipcMain.on('overlay-position', (_event, position) => {
-  positionTranslationOverlay(position);
+ipcMain.on('overlay-position', (event, position) => {
+  // Resolve a janela que pediu (tradutor OU tutor de visão) pelo sender.
+  const sender = BrowserWindow.fromWebContents(event.sender);
+  if (sender && visionGuideOverlayWindow && sender === visionGuideOverlayWindow) {
+    positionTranslationOverlay(position, visionGuideOverlayWindow);
+  } else {
+    positionTranslationOverlay(position, translationOverlayWindow);
+  }
 });
 
 // === Arrastar janelas frameless (drag manual, cross-platform) ===
@@ -5377,6 +5540,64 @@ ipcMain.on('frameless-drag-end', () => stopFramelessDrag());
 // renderizar cada nova mensagem.
 ipcMain.on("request-translation-resize", () => {
   expandTranslationOverlayIfNeeded();
+});
+
+ipcMain.on("request-vision-guide-resize", () => {
+  expandVisionGuideOverlayIfNeeded();
+});
+
+ipcMain.handle("get-vision-guide-config", () => {
+  return configService.getVisionGuideConfig();
+});
+
+ipcMain.handle("ide-autocomplete", async (event, { prefix, suffix, lang }) => {
+  const vg = configService.getVisionGuideConfig();
+  if (!vg || !vg.enabled) return null; // Só funciona se Tutor estiver ligado
+  return await visionGuide.getIdeAutocomplete(prefix, suffix, lang);
+});
+
+// Liga/desliga o Assistente Guiado por Visão pelo toggle das Configurações.
+ipcMain.on("set-vision-guide-config", (event, partial) => {
+  configService.setVisionGuideConfig(partial || {});
+
+  if (typeof partial?.enabled === 'boolean') {
+    const cfg = configService.getConfig();
+    if (partial.enabled) {
+      if (!cfg.openIaToken) {
+        const msg = '❌ Configure sua API key da OpenAI antes de usar o Assistente Guiado por Visão.';
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('translation-result', { transcript: '', response: msg });
+        }
+        // Reverte o toggle salvo (não ficou ativo de fato).
+        configService.setVisionGuideConfig({ enabled: false });
+        return;
+      }
+      if (!visionGuide.isActive()) {
+        const vg = cfg.visionGuide || {};
+        visionGuide.start({
+          apiKey: cfg.openIaToken,
+          intervalSeconds: vg.intervalSeconds,
+          minInterventionSeconds: vg.minInterventionSeconds,
+          listenAudio: vg.listenAudio,
+          useKnowledgeBase: vg.useKnowledgeBase,
+        }).then(() => {
+          createVisionGuideOverlay();
+          sendToVisionGuideOverlay('vision-guide-status', 'watching');
+        }).catch((e) => {
+          console.error('[vision-guide] falha ao iniciar:', e.message);
+          configService.setVisionGuideConfig({ enabled: false });
+        });
+      }
+    } else {
+      if (visionGuide.isActive()) {
+        visionGuide.stop().then(() => {
+          destroyVisionGuideOverlay();
+        }).catch(() => {});
+      } else {
+        destroyVisionGuideOverlay();
+      }
+    }
+  }
 });
 
 // IPC Handlers for AI Model

@@ -834,6 +834,75 @@ if (translationMicRefresh) {
   }
 })();
 
+// === Assistente Guiado por Visão (Tutor) ===
+const visionGuideEnabledToggle  = document.getElementById('vision-guide-enabled');
+const visionGuideEnabledStatus  = document.getElementById('vision-guide-enabled-status');
+const visionGuideIntervalSelect = document.getElementById('vision-guide-interval');
+const visionGuideCooldownSelect = document.getElementById('vision-guide-cooldown');
+const visionGuideAudioInput     = document.getElementById('vision-guide-audio');
+const visionGuideRagInput       = document.getElementById('vision-guide-rag');
+
+function updateVisionGuideEnabledStatus(v) {
+  if (visionGuideEnabledStatus) visionGuideEnabledStatus.textContent = v ? 'ON' : 'OFF';
+}
+
+if (visionGuideEnabledToggle) {
+  visionGuideEnabledToggle.addEventListener('change', () => {
+    updateVisionGuideEnabledStatus(visionGuideEnabledToggle.checked);
+    // Exclusivo com o Tradutor e o Assistente em tempo real (concorrência de mic/tela).
+    if (visionGuideEnabledToggle.checked) {
+      if (translationEnabledToggle && translationEnabledToggle.checked) {
+        translationEnabledToggle.checked = false;
+        updateTranslationEnabledStatus(false);
+        ipcRenderer.send('set-translation-assistant-config', { enabled: false });
+      }
+      if (typeof realtimeAssistantToggle !== 'undefined' && realtimeAssistantToggle && realtimeAssistantToggle.checked) {
+        realtimeAssistantToggle.checked = false;
+        if (typeof updateRealtimeAssistantStatus === 'function') updateRealtimeAssistantStatus(false);
+      }
+    }
+    ipcRenderer.send('set-vision-guide-config', { enabled: visionGuideEnabledToggle.checked });
+  });
+}
+if (visionGuideIntervalSelect) {
+  visionGuideIntervalSelect.addEventListener('change', () => {
+    ipcRenderer.send('set-vision-guide-config', { intervalSeconds: parseInt(visionGuideIntervalSelect.value, 10) });
+  });
+}
+if (visionGuideCooldownSelect) {
+  visionGuideCooldownSelect.addEventListener('change', () => {
+    ipcRenderer.send('set-vision-guide-config', { minInterventionSeconds: parseInt(visionGuideCooldownSelect.value, 10) });
+  });
+}
+if (visionGuideAudioInput) {
+  visionGuideAudioInput.addEventListener('change', () => {
+    ipcRenderer.send('set-vision-guide-config', { listenAudio: visionGuideAudioInput.checked });
+  });
+}
+if (visionGuideRagInput) {
+  visionGuideRagInput.addEventListener('change', () => {
+    ipcRenderer.send('set-vision-guide-config', { useKnowledgeBase: visionGuideRagInput.checked });
+  });
+}
+
+// Carrega valores salvos do Assistente Guiado por Visão ao abrir config
+(async () => {
+  try {
+    const vg = await ipcRenderer.invoke('get-vision-guide-config');
+    if (!vg) return;
+    if (visionGuideEnabledToggle) {
+      visionGuideEnabledToggle.checked = !!vg.enabled;
+      updateVisionGuideEnabledStatus(!!vg.enabled);
+    }
+    if (visionGuideIntervalSelect) visionGuideIntervalSelect.value = String(vg.intervalSeconds || 5);
+    if (visionGuideCooldownSelect) visionGuideCooldownSelect.value = String(vg.minInterventionSeconds || 12);
+    if (visionGuideAudioInput) visionGuideAudioInput.checked = vg.listenAudio !== false;
+    if (visionGuideRagInput) visionGuideRagInput.checked = vg.useKnowledgeBase !== false;
+  } catch (e) {
+    console.warn('[VisionGuide] load config failed:', e.message);
+  }
+})();
+
 // Base de Conhecimento (RAG) e dados pessoais (nome/background) moraram pra
 // preferences.js — ver "Preferências do Usuário".
 const openPreferencesBtn = document.getElementById('open-preferences-btn');

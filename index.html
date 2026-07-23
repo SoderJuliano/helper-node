@@ -1647,6 +1647,37 @@
             #app-shell { grid-template-columns: 0 1fr; }
             #sidebar { display: none; }
         }
+        
+        /* Notificação Tutor IDE */
+        .ide-tutor-notif {
+            position: absolute;
+            bottom: 16px;
+            right: 16px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--accent-border);
+            color: var(--text-2);
+            padding: 10px 14px;
+            border-radius: var(--radius);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            z-index: 1000;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: opacity 0.3s var(--ease), transform 0.3s var(--ease);
+            pointer-events: none;
+            font-size: 12px;
+        }
+        .ide-tutor-notif.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .ide-tutor-notif .tutor-ic {
+            color: var(--accent-2);
+            display: flex;
+            align-items: center;
+        }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js"></script>
 </head>
@@ -1860,6 +1891,14 @@
                  Fonte única de edição — humano (tree/clique manual) e IA (chip de
                  arquivo alterado) abrem pelo mesmo caminho. Ver editorController.js. -->
             <div id="file-viewer">
+                <!-- Notificação do Tutor Autocomplete -->
+                <div id="ide-tutor-notif" class="ide-tutor-notif">
+                    <div class="tutor-ic">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10H12V2z"></path><path d="M12 12 2.1 7.1"></path><path d="m12 12 7.1 7.1"></path></svg>
+                    </div>
+                    <span id="ide-tutor-msg">Analisando contexto...</span>
+                </div>
+
                 <div class="fv-header">
                     <div class="fv-tabs-container" id="fv-tabs-container"></div>
                     <span class="fv-lang" id="fv-lang"></span>

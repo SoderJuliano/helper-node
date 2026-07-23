@@ -198,6 +198,22 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.send("request-translation-resize"),
   overlayPosition: (pos) => ipcRenderer.send('overlay-position', pos),
 
+  // === Assistente Guiado por Visão (vision-guide-overlay.html) ===
+  onVisionGuideMessage: (cb) =>
+    ipcRenderer.on("vision-guide-message", (_e, data) => cb(data)),
+  onVisionGuideStatus: (cb) =>
+    ipcRenderer.on("vision-guide-status", (_e, status) => cb(status)),
+  onVisionGuideClear: (cb) =>
+    ipcRenderer.on("vision-guide-clear", () => cb()),
+  requestVisionGuideResize: () =>
+    ipcRenderer.send("request-vision-guide-resize"),
+  setVisionGuideConfig: (partial) =>
+    ipcRenderer.send("set-vision-guide-config", partial),
+  getVisionGuideConfig: () =>
+    ipcRenderer.invoke("get-vision-guide-config"),
+  getIdeAutocomplete: (payload) => 
+    ipcRenderer.invoke("ide-autocomplete", payload),
+
   // Plataforma (renderer decide se usa drag manual — só Win/mac; Linux usa
   // -webkit-app-region:drag nativo que funciona bem lá).
   platform: process.platform,

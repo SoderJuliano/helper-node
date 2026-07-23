@@ -615,6 +615,69 @@
             </div>
         </div>
 
+        <!-- Assistente Guiado por Visão (RAG + Vision) -->
+        <div id="vision-guide-section" style="margin-top: 14px; padding: 14px; background-color: rgba(0,0,0,0.35); border-radius: 5px; -webkit-app-region: no-drag;">
+            <div style="font-weight: bold; color: #a78bfa; margin-bottom: 8px;">👁 Assistente Guiado por Visão (Tutor)</div>
+            <p style="font-size: 12px; color: #ccc; margin: 0 0 8px 0; line-height: 1.5;">
+                Um <strong>tutor em tempo real</strong> que observa sua tela por <strong>prints periódicos</strong>
+                (não é vídeo — economiza tokens) e, opcionalmente, ouve seu microfone e o áudio da máquina.
+                Ele <strong>acumula o contexto</strong> e só te dá uma dica em <strong>pontos estratégicos</strong>
+                (erro na tela, você travado, ou uma pergunta pra responder) — não responde a cada print, pra não
+                te encher de coisa pra ler. A ideia é <strong>você escrever o código</strong>; ele guia, corrige e
+                nunca entrega a tarefa inteira pronta. Numa janelinha translúcida (como a do Tradutor), com botão de
+                copiar nos blocos de código.
+            </p>
+            <p style="font-size: 11.5px; color: #ffb74d; margin: 0 0 10px 0;">
+                Consome créditos da API OpenAI (visão + transcrição). A chave deve estar configurada acima.
+                Nesta versão nasce nativo no <strong>Windows</strong> (áudio no Linux vem no port).
+            </p>
+
+            <div class="setting-item" style="margin-bottom: 10px;">
+                <label for="vision-guide-enabled">Habilitar Assistente Guiado por Visão</label>
+                <span id="vision-guide-enabled-status" style="font-weight: bold; margin-left: 10px; min-width: 30px; text-align: center; -webkit-app-region: no-drag;">OFF</span>
+                <label class="switch">
+                    <input type="checkbox" id="vision-guide-enabled" hidden>
+                    <div class="switch__wrapper">
+                        <div class="switch__toggle"></div>
+                    </div>
+                </label>
+            </div>
+
+            <div class="setting-item" style="margin-bottom: 10px;">
+                <label for="vision-guide-interval">Intervalo entre prints (segundos)</label>
+                <select id="vision-guide-interval" class="custom-select">
+                    <option value="3">3s (mais responsivo, mais tokens)</option>
+                    <option value="5">5s (equilibrado)</option>
+                    <option value="8">8s</option>
+                    <option value="12">12s (mais econômico)</option>
+                </select>
+            </div>
+
+            <div class="setting-item" style="margin-bottom: 10px;">
+                <label for="vision-guide-cooldown">Silêncio mínimo entre dicas (segundos)</label>
+                <select id="vision-guide-cooldown" class="custom-select">
+                    <option value="8">8s</option>
+                    <option value="12">12s</option>
+                    <option value="20">20s</option>
+                    <option value="30">30s (bem discreto)</option>
+                </select>
+            </div>
+
+            <div style="-webkit-app-region: no-drag; margin-bottom: 8px;">
+                <label for="vision-guide-audio" style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer; font-size: 13px;">
+                    <input type="checkbox" id="vision-guide-audio" style="margin-top: 2px; flex-shrink: 0;">
+                    <span><strong>Ouvir microfone + áudio do sistema</strong> — capta o que você ou alguém pergunta por perto, pra sugerir como responder (Windows/macOS)</span>
+                </label>
+            </div>
+
+            <div style="-webkit-app-region: no-drag;">
+                <label for="vision-guide-rag" style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer; font-size: 13px;">
+                    <input type="checkbox" id="vision-guide-rag" style="margin-top: 2px; flex-shrink: 0;">
+                    <span><strong>Usar Base de Conhecimento (RAG)</strong> — injeta docs recentes que você cadastrou (ex: Java 26) pra reconhecer sintaxe/recursos novos</span>
+                </label>
+            </div>
+        </div>
+
     </div>
     <div style="display:flex; gap:10px; align-items:center; -webkit-app-region:no-drag;">
         <button id="save-btn" style="flex:1;">Salvar e Fechar</button>

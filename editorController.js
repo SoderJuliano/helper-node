@@ -36,6 +36,89 @@
   const openFiles = new Map();
   let activePath = null;
   let cm = null; // instância única do CodeMirror, reaproveitada entre arquivos
+  
+  let autocompleteTimer = null;
+  let ghostTextMarker = null;
+  let ghostSuggestion = '';
+  let charsTypedSinceSuggestion = 0;
+  
+  function showIdeNotification(msg) {
+    const notif = document.getElementById('ide-tutor-notif');
+    const msgEl = document.getElementById('ide-tutor-msg');
+    if (!notif || !msgEl) return;
+    msgEl.textContent = msg;
+    notif.classList.add('visible');
+  }
+  
+  function hideIdeNotification() {
+    const notif = document.getElementById('ide-tutor-notif');
+    if (notif) notif.classList.remove('visible');
+  }
+
+  function clearGhostText() {
+    if (ghostTextMarker) {
+      ghostTextMarker.clear();
+      ghostTextMarker = null;
+    }
+    ghostSuggestion = '';
+    charsTypedSinceSuggestion = 0;
+    hideIdeNotification();
+  }
+
+  function acceptGhostText(editor) {
+    if (!ghostTextMarker || !ghostSuggestion) return;
+    const pos = ghostTextMarker.find();
+    if (pos) {
+      const suggestion = ghostSuggestion;
+      clearGhostText();
+      editor.replaceRange(suggestion, pos);
+      editor.setCursor(editor.posFromIndex(editor.indexFromPos(pos) + suggestion.length));
+    } else {
+      clearGhostText();
+    }
+  }
+
+  async function requestAutocomplete(editor) {
+    if (!window.electronAPI || !window.electronAPI.getIdeAutocomplete) return;
+    const cursor = editor.getCursor();
+    const doc = editor.getDoc();
+    
+    // Pegar ~500 chars antes e depois
+    const content = doc.getValue();
+    const cursorIndex = doc.indexFromPos(cursor);
+    const prefix = content.slice(Math.max(0, cursorIndex - 500), cursorIndex);
+    const suffix = content.slice(cursorIndex, Math.min(content.length, cursorIndex + 500));
+    const lang = editor.getOption('mode') || 'text';
+
+    showIdeNotification('Tutor: Analisando contexto...');
+    
+    const suggestion = await window.electronAPI.getIdeAutocomplete({ prefix, suffix, lang });
+    if (!suggestion) {
+      hideIdeNotification();
+      return;
+    }
+    
+    // Checar se o cursor ainda é o mesmo
+    const newCursor = editor.getCursor();
+    if (newCursor.line !== cursor.line || newCursor.ch !== cursor.ch) {
+      hideIdeNotification();
+      return; // Usuário moveu o cursor
+    }
+    
+    // Aplicar ghost text
+    clearGhostText();
+    ghostSuggestion = suggestion;
+    charsTypedSinceSuggestion = 0;
+    
+    const span = document.createElement('span');
+    span.style.opacity = '0.5';
+    span.style.fontStyle = 'italic';
+    span.textContent = suggestion;
+    span.className = 'ghost-text';
+    
+    ghostTextMarker = editor.setBookmark(cursor, { widget: span, insertLeft: true });
+    showIdeNotification('Tutor: Sugestão (Tab para aceitar, Esc para cancelar)');
+  }
 
   function extOf(p) {
     const m = /\.([a-zA-Z0-9]+)$/.exec(p || '');
@@ -108,6 +191,20 @@
         'Cmd-G': 'findNext',
         'Shift-Cmd-G': 'findPrev',
         'Ctrl-Space': 'autocomplete',
+        'Tab': (editor) => {
+          if (ghostTextMarker) {
+            acceptGhostText(editor);
+          } else {
+            return window.CodeMirror.Pass;
+          }
+        },
+        'Esc': (editor) => {
+          if (ghostTextMarker) {
+            clearGhostText();
+          } else {
+            return window.CodeMirror.Pass;
+          }
+        }
       },
     });
 
@@ -128,7 +225,7 @@
       }
     });
 
-    cm.on('change', () => {
+    cm.on('change', (editor, change) => {
       const doc = openFiles.get(activePath);
       if (!doc) return;
       const val = cm.getValue();
@@ -136,6 +233,25 @@
       doc.dirty = (val !== doc.originalContent);
       updateDirtyIndicator();
       renderTabs();
+      
+      // Lógica de cancelamento / debouce do ghost text
+      if (change.origin === '+input' || change.origin === '+delete') {
+        if (ghostTextMarker) {
+           charsTypedSinceSuggestion++;
+           if (charsTypedSinceSuggestion > 3) {
+             clearGhostText();
+           }
+        }
+        
+        if (autocompleteTimer) clearTimeout(autocompleteTimer);
+        if (!ghostTextMarker) {
+          autocompleteTimer = setTimeout(() => {
+            requestAutocomplete(editor);
+          }, 800);
+        }
+      } else if (change.origin === 'setValue') {
+         clearGhostText();
+      }
     });
     return cm;
   }
