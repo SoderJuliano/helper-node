@@ -53,7 +53,7 @@ class GeminiCliProcess {
 
   // Start the process in the given working directory.
   // opts: { cwd, model, prompt, isContinue }
-  async start({ cwd, model, prompt, isContinue }) {
+  async start({ cwd, model, prompt, isContinue, conversationId }) {
     if (this.alive) throw new Error('GeminiCliProcess already running');
 
     if (!this._binary) {
@@ -73,6 +73,13 @@ class GeminiCliProcess {
     
     // Automatically approve tool use in print mode
     args.push('--dangerously-skip-permissions');
+    // O agy >=1.1.x mudou os defaults: em modo não-interativo ele fica em modo
+    // PLANO (só planeja, não escreve). `--mode accept-edits` reabilita a escrita
+    // de arquivos. Sem isso o CLI "enrola" e não aplica nenhuma mudança.
+    args.push('--mode', 'accept-edits');
+    // Default do agy é 5m0s: em tarefa grande ele explora/planeja, estoura os 5
+    // min e "desiste" antes de escrever. Timeout generoso p/ concluir a tarefa.
+    args.push('--print-timeout', '30m');
     // No Unix, `/dev/stderr` faz a CLI escrever os logs na própria stderr do
     // processo, que capturamos pelo pipe. Esse caminho não existe no Windows,
     // então logamos para um arquivo temporário e fazemos "tail" dele para o
@@ -86,7 +93,14 @@ class GeminiCliProcess {
     }
     args.push('--log-file', logFilePath);
 
-    if (isContinue) {
+    // Continuidade da conversa. `--continue` retoma a conversa MAIS RECENTE do
+    // agy no sistema inteiro — o que quebra quando o usuário roda a IDE do agy
+    // por fora (as duas brigam pela "mais recente" e o helper-node recomeça do
+    // zero). Retomar pela conversa ESPECÍFICA (--conversation <id>) isola a
+    // sessão do projeto. Caímos em --continue só quando ainda não capturamos o id.
+    if (conversationId) {
+      args.push('--conversation', conversationId);
+    } else if (isContinue) {
       args.push('--continue');
     }
 
@@ -114,6 +128,13 @@ class GeminiCliProcess {
       }
     }
     resolvedCwd = path.resolve(resolvedCwd);
+
+    // O agy >=1.1.x roda num sandbox e, por padrão, escreve num diretório de
+    // "scratch" (~/.gemini/antigravity-cli/scratch) em vez do projeto. Registrar
+    // explicitamente o cwd como workspace com --add-dir faz a escrita cair no
+    // projeto de verdade (foi o que o usuário anexou). Sem isso os arquivos são
+    // criados fora do projeto e "somem" da visão do usuário.
+    spawnArgs.push('--add-dir', resolvedCwd);
 
     this._proc = spawn(spawnBin, spawnArgs, {
       cwd: resolvedCwd,

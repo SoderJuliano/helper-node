@@ -354,17 +354,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Load saved Claude Code CLI model
   try {
     const savedClaudeCliModel = await ipcRenderer.invoke("get-claude-cli-model");
-    if (savedClaudeCliModel && claudeCliModelSelect) {
-      claudeCliModelSelect.value = savedClaudeCliModel;
-    }
+    await populateClaudeCliModels(savedClaudeCliModel);
   } catch (e) { console.warn("claude-cli model load failed:", e); }
 
   // Load saved Gemini CLI model
   try {
     const savedGeminiCliModel = await ipcRenderer.invoke("get-gemini-cli-model");
-    if (savedGeminiCliModel && geminiCliModelSelect) {
-      geminiCliModelSelect.value = savedGeminiCliModel;
-    }
+    await populateGeminiCliModels(savedGeminiCliModel);
   } catch (e) { console.warn("gemini-cli model load failed:", e); }
 
   // Show/hide provider fields based on saved model
@@ -570,6 +566,106 @@ async function populateOllamaLocalModels(savedModel = null) {
   updateOllamaPullCmd();
 }
 
+async function populateGeminiCliModels(savedModel = null) {
+  if (!geminiCliModelSelect) return;
+  const currentVal = savedModel || geminiCliModelSelect.value;
+  try {
+    const models = await ipcRenderer.invoke('get-gemini-cli-models');
+    geminiCliModelSelect.innerHTML = '';
+    if (models && models.length) {
+      models.forEach(m => {
+        const option = document.createElement('option');
+        const val = m.id || m.value || m;
+        const text = m.label || val;
+        option.value = val;
+        option.textContent = text;
+        geminiCliModelSelect.appendChild(option);
+      });
+      
+      const hasModel = models.some(m => (m.id || m.value || m) === currentVal);
+      if (currentVal && !hasModel) {
+        const option = document.createElement('option');
+        option.value = currentVal;
+        option.textContent = `${currentVal} (indisponível)`;
+        geminiCliModelSelect.appendChild(option);
+      }
+      
+      if (currentVal) {
+        geminiCliModelSelect.value = currentVal;
+      } else {
+        geminiCliModelSelect.selectedIndex = 0;
+      }
+    } else {
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = 'Nenhum modelo Gemini CLI encontrado';
+      option.disabled = true;
+      geminiCliModelSelect.appendChild(option);
+    }
+  } catch (e) {
+    console.error("Failed to populate Gemini CLI models:", e);
+    if (currentVal) {
+      const option = document.createElement('option');
+      option.value = currentVal;
+      option.textContent = currentVal;
+      geminiCliModelSelect.appendChild(option);
+      geminiCliModelSelect.value = currentVal;
+    } else {
+      geminiCliModelSelect.innerHTML = '<option value="" disabled>Erro ao carregar modelos</option>';
+    }
+  }
+}
+
+async function populateClaudeCliModels(savedModel = null) {
+  if (!claudeCliModelSelect) return;
+  const currentVal = savedModel || claudeCliModelSelect.value;
+  try {
+    const models = await ipcRenderer.invoke('get-claude-cli-models');
+    claudeCliModelSelect.innerHTML = '';
+    if (models && models.length) {
+      models.forEach(m => {
+        const option = document.createElement('option');
+        const val = m.id || m.value || m;
+        const text = m.label || val;
+        option.value = val;
+        option.textContent = text;
+        claudeCliModelSelect.appendChild(option);
+      });
+      
+      const hasModel = models.some(m => (m.id || m.value || m) === currentVal);
+      if (currentVal && !hasModel) {
+        const option = document.createElement('option');
+        option.value = currentVal;
+        option.textContent = `${currentVal} (indisponível)`;
+        claudeCliModelSelect.appendChild(option);
+      }
+      
+      if (currentVal) {
+        claudeCliModelSelect.value = currentVal;
+      } else {
+        claudeCliModelSelect.selectedIndex = 0;
+      }
+    } else {
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = 'Nenhum modelo Claude CLI encontrado';
+      option.disabled = true;
+      claudeCliModelSelect.appendChild(option);
+    }
+  } catch (e) {
+    console.error("Failed to populate Claude CLI models:", e);
+    if (currentVal) {
+      const option = document.createElement('option');
+      option.value = currentVal;
+      option.textContent = currentVal;
+      claudeCliModelSelect.appendChild(option);
+      claudeCliModelSelect.value = currentVal;
+    } else {
+      claudeCliModelSelect.innerHTML = '<option value="" disabled>Erro ao carregar modelos</option>';
+    }
+  }
+}
+
 // Quando ollamaLocal selecionado, nada a fazer extra
 function applyOllamaLocalExclusivity() {
 }
@@ -618,8 +714,14 @@ aiModelSelect.addEventListener('change', () => {
     if (v === 'ollamaLocal') {
       populateOllamaLocalModels();
       applyOllamaLocalExclusivity();
+    } else {
+      releaseOllamaLocalExclusivity();
+      if (v === 'geminiCli') {
+        populateGeminiCliModels();
+      } else if (v === 'claudeCli') {
+        populateClaudeCliModels();
+      }
     }
-    else releaseOllamaLocalExclusivity();
     applyBackendUrlVisibility();
 });
 

@@ -1100,6 +1100,9 @@
             align-items: center;
             justify-content: center;
             transition: all 0.2s ease;
+            width: 24px;
+            height: 24px;
+            max-width: none;
         }
         #composer #composer-collapse-toggle:hover {
             color: var(--text-2);
@@ -2313,8 +2316,8 @@
                 'llama-stream': 'Backend (stream)', ollamaLocal: 'Ollama Local',
                 geminiCli: 'Gemini CLI', claudeCli: 'Claude CLI',
             };
-            // Claude Code CLI model list (mirrored from ClaudeCliModels.js)
-            const CLAUDE_CLI_MODELS = [
+            // Claude Code CLI model list (initially mirrored, loaded dynamically later)
+            let CLAUDE_CLI_MODELS = [
                 { value: 'claude-fable-5',            label: 'Fable 5'          },
                 { value: 'claude-opus-4-8',           label: 'Opus 4.8'         },
                 { value: 'claude-sonnet-4-6',         label: 'Sonnet 4.6'       },
@@ -2323,20 +2326,49 @@
                 { value: 'opus',                      label: 'Opus (latest)'    },
                 { value: 'haiku',                     label: 'Haiku (latest)'   },
             ];
-            // Gemini CLI model list (mirrored from GeminiCliModels.js)
-            const GEMINI_CLI_MODELS = [
-                { value: 'gemini-2.5-pro',        label: 'Gemini 2.5 Pro' },
-                { value: 'gemini-2.5-flash',      label: 'Gemini 2.5 Flash' },
-                { value: 'gemini-2.0-flash',      label: 'Gemini 2.0 Flash' },
-                { value: 'gemini-2.0-flash-lite', label: 'Gemini 2.0 Flash Lite' },
-                { value: 'gemini-1.5-pro',        label: 'Gemini 1.5 Pro' },
-                { value: 'gemini-1.5-flash',      label: 'Gemini 1.5 Flash' },
+            // Gemini CLI model list (initially mirrored, loaded dynamically later)
+            let GEMINI_CLI_MODELS = [
+                { value: 'Gemini 3.5 Flash (High)',      label: 'Gemini 3.5 Flash (High)'      },
+                { value: 'Gemini 3.5 Flash (Medium)',    label: 'Gemini 3.5 Flash (Medium)'    },
+                { value: 'Gemini 3.5 Flash (Low)',       label: 'Gemini 3.5 Flash (Low)'       },
+                { value: 'Gemini 3.1 Pro (High)',        label: 'Gemini 3.1 Pro (High)'        },
+                { value: 'Gemini 3.1 Pro (Low)',         label: 'Gemini 3.1 Pro (Low)'         },
+                { value: 'Claude Sonnet 4.6 (Thinking)', label: 'Claude Sonnet 4.6 (Thinking)' },
+                { value: 'Claude Opus 4.6 (Thinking)',   label: 'Claude Opus 4.6 (Thinking)'   },
+                { value: 'GPT-OSS 120B (Medium)',        label: 'GPT-OSS 120B (Medium)'        },
             ];
+
+            async function loadCliModels() {
+                try {
+                    const claudeRes = await window.electronAPI.getClaudeCliModels();
+                    if (Array.isArray(claudeRes) && claudeRes.length) {
+                        CLAUDE_CLI_MODELS = claudeRes.map(m => ({
+                            value: m.id || m.value || m,
+                            label: m.label || m.id || m.value || m
+                        }));
+                    }
+                } catch (e) {
+                    console.warn('Failed to load dynamic Claude CLI models:', e);
+                }
+                try {
+                    const geminiRes = await window.electronAPI.getGeminiCliModels();
+                    if (Array.isArray(geminiRes) && geminiRes.length) {
+                        GEMINI_CLI_MODELS = geminiRes.map(m => ({
+                            value: m.id || m.value || m,
+                            label: m.label || m.id || m.value || m
+                        }));
+                    }
+                } catch (e) {
+                    console.warn('Failed to load dynamic Gemini CLI models:', e);
+                }
+            }
+
             const composerModelBtn = document.getElementById('composer-model');
             const composerModelName = document.getElementById('composer-model-name');
 
             async function refreshComposerModel() {
                 if (!composerModelBtn || !composerModelName) return;
+                await loadCliModels();
                 let provider = 'openIa';
                 try { provider = (await window.electronAPI.getAiModel()) || 'openIa'; } catch (_) {}
                 composerModelBtn.dataset.provider = provider;
@@ -2346,7 +2378,7 @@
                     const found = OPENAI_MODELS.find(x => x.value === m);
                     composerModelName.textContent = found ? found.label : m;
                 } else if (provider === 'geminiCli') {
-                    let m = 'gemini-2.5-flash';
+                    let m = 'Gemini 3.5 Flash (Medium)';
                     try { m = (await window.electronAPI.getGeminiCliModel()) || m; } catch (_) {}
                     const found = GEMINI_CLI_MODELS.find(x => x.value === m);
                     composerModelName.textContent = found ? found.label : m;
@@ -2393,8 +2425,9 @@
                 setTimeout(() => document.addEventListener('click', closer, true), 0);
             }
 
-            function showModelMenu(anchor) {
+            async function showModelMenu(anchor) {
                 const provider = anchor.dataset.provider || 'openIa';
+                await loadCliModels();
                 if (provider === 'openIa') {
                     let currentVal = '';
                     _buildModelMenu(anchor, OPENAI_MODELS, () => currentVal, (opt) => {

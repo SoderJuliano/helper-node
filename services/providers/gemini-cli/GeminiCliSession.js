@@ -41,6 +41,7 @@ class GeminiCliSession extends EventEmitter {
     this._projectPath = projectPath;
     this._model       = model;
     this._sessionId   = null;
+    this._agyConvId   = null;   // id da conversa interna do agy, p/ retomar via --conversation
     this._hasStarted  = false;
     this._activeProc  = null;
     this._aborted     = false;
@@ -58,9 +59,11 @@ class GeminiCliSession extends EventEmitter {
       if (saved && saved.sessionId === sessionId) {
         console.log(`[gemini-cli][${this._projectPath}] sessionId matches last saved session. Restoring CLI continuation state.`);
         this._hasStarted = true;
+        this._agyConvId = saved.agyConvId || null;
       } else {
         console.log(`[gemini-cli][${this._projectPath}] sessionId is new/mismatched. Resetting CLI continuation state (will rehydrate).`);
         this._hasStarted = false;
+        this._agyConvId = null;
       }
       
       if (this._activeProc) {
@@ -133,10 +136,12 @@ class GeminiCliSession extends EventEmitter {
             completed = true;
 
             this._hasStarted = true;
+            if (parser._agyConvId) this._agyConvId = parser._agyConvId;
             if (this._sessionId) {
               const sessions = loadSessions();
               sessions[this._projectPath] = {
                 sessionId: this._sessionId,
+                agyConvId: this._agyConvId,
                 lastUsed: Date.now()
               };
               saveSessions(sessions);
@@ -154,6 +159,7 @@ class GeminiCliSession extends EventEmitter {
               console.warn(`[gemini-cli] Process error: ${err.message}. Retrying...`);
               if (parser._agyConvId) {
                 this._hasStarted = true;
+                this._agyConvId = parser._agyConvId;
               }
               parser.reset();
               if (opts.onThinking) {
@@ -223,6 +229,7 @@ class GeminiCliSession extends EventEmitter {
 
               if (parser._agyConvId) {
                 this._hasStarted = true;
+                this._agyConvId = parser._agyConvId;
               }
               parser.reset();
 
@@ -250,10 +257,12 @@ class GeminiCliSession extends EventEmitter {
 
             // Process exited successfully
             this._hasStarted = true;
+            if (parser._agyConvId) this._agyConvId = parser._agyConvId;
             if (this._sessionId) {
               const sessions = loadSessions();
               sessions[this._projectPath] = {
                 sessionId: this._sessionId,
+                agyConvId: this._agyConvId,
                 lastUsed: Date.now()
               };
               saveSessions(sessions);
@@ -272,6 +281,9 @@ class GeminiCliSession extends EventEmitter {
           model: this._model,
           prompt: currentPrompt,
           isContinue: currentIsContinue,
+          // Retoma a conversa ESPECÍFICA quando já a capturamos (isola de outras
+          // sessões do agy). Sem id ainda, o processo cai em --continue.
+          conversationId: currentIsContinue ? this._agyConvId : null,
         }).catch((startErr) => {
           if (completed) return;
           completed = true;
@@ -280,6 +292,7 @@ class GeminiCliSession extends EventEmitter {
             console.warn(`[gemini-cli] Falha ao iniciar processo: ${startErr.message}. Retentando...`);
             if (parser._agyConvId) {
               this._hasStarted = true;
+              this._agyConvId = parser._agyConvId;
             }
             parser.reset();
             if (opts.onThinking) {
@@ -313,6 +326,7 @@ class GeminiCliSession extends EventEmitter {
   async stop() {
     await this.abort();
     this._hasStarted = false;
+    this._agyConvId = null;
     const sessions = loadSessions();
     delete sessions[this._projectPath];
     saveSessions(sessions);
