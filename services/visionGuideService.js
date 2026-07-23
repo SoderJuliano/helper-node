@@ -45,6 +45,7 @@ const recentGuidance = [];    // últimas dicas dadas (pra não repetir)
 const recentAudio = [];       // { source, text, ts } — falas recentes (contexto)
 let audioMarker = 0;          // muda quando chega fala nova (detecta "novo áudio")
 let lastAudioMarkerSeen = 0;
+let lastAudioTimestampProcessed = 0; // timestamp do último áudio processado
 let visionBackoffUntil = 0;   // após um 429, segura as chamadas por um tempo
 
 // Callbacks (registrados pelo main).
@@ -217,32 +218,15 @@ function buildRecentGuidanceBlock() {
 // Reduz o screenshot antes de enviar: cai a resolução (menos "tiles" na conta de
 // tokens) e re-codifica em JPEG (payload menor, upload mais rápido). Usa o
 // nativeImage do Electron — zero dependência nativa.
-const MAX_IMG_WIDTH = 900;
+const MAX_IMG_WIDTH = 1600;
 function optimizeToJpegBase64(pngPath) {
   try {
     let img = nativeImage.createFromPath(pngPath);
     const size = img.getSize();
-    
-    // Crop chrome (top bar, bottom bar, small side margins)
-    const cutTop = Math.min(120, Math.floor(size.height * 0.1));
-    const cutBottom = Math.min(80, Math.floor(size.height * 0.08));
-    const cutSides = Math.min(60, Math.floor(size.width * 0.05));
-    
-    if (size.width > cutSides * 2 && size.height > cutTop + cutBottom) {
-      const rect = {
-        x: cutSides,
-        y: cutTop,
-        width: size.width - cutSides * 2,
-        height: size.height - cutTop - cutBottom
-      };
-      img = img.crop(rect);
-    }
-    
-    const newSize = img.getSize();
-    if (newSize.width > MAX_IMG_WIDTH) {
+    if (size.width > MAX_IMG_WIDTH) {
       img = img.resize({ width: MAX_IMG_WIDTH, quality: 'good' });
     }
-    const jpeg = img.toJPEG(72);
+    const jpeg = img.toJPEG(75);
     if (jpeg && jpeg.length) return jpeg.toString('base64');
   } catch (_) {}
   return fs.readFileSync(pngPath).toString('base64');
@@ -256,7 +240,11 @@ function visionDetailFor(model) {
   return /mini|nano/i.test(model || '') ? 'low' : 'high';
 }
 
-async function askTutor(base64Image, editorState, isIntro = false) {
+async function askTutor(base64Image, editorState, options = {}) {
+  const isIntro = options.isIntro || false;
+  const userSpeech = options.userSpeech || '';
+  const hasUserSpeech = !!userSpeech.trim();
+
   const apiKey = cfg.apiKey;
   const model = configService.getOpenAiVisionModel();
   const detail = visionDetailFor(model);
@@ -291,17 +279,27 @@ async function askTutor(base64Image, editorState, isIntro = false) {
     ``,
     `REGRAS (críticas):`,
     `- NUNCA entregue a tarefa inteira pronta nem escreva o código completo por ele. Dê o PRÓXIMO passo, uma correção pontual, ou o TRECHO MÍNIMO que destrava. O objetivo é o dev ESCREVER, não copiar.`,
-    `- Só intervenha em PONTOS ESTRATÉGICOS: erro de sintaxe/lógica visível na tela, o dev claramente travado/parado, um passo importante prestes a ser feito errado, ou uma PERGUNTA/COMENTÁRIO dirigido a ele ou a você (na tela ou no áudio) ou saudações/testes de áudio direcionados a você ("oi", "olá", "você me ouve", "testando", "tudo bem").`,
-    isIntro
-      ? `- Esta é a sua mensagem inicial de boas-vindas (introdução). Você DEVE saudar o usuário amigavelmente e descrever de forma breve o que vê na tela dele (por exemplo, quais ferramentas, sites ou arquivos estão abertos). NÃO responda com [AGUARDAR] ou NOOP de jeito nenhum.`
-      : `- Se NÃO há nada estratégico agora (o dev está escrevendo normalmente, sem erro, sem dúvida), responda EXATAMENTE com ${NOOP} e mais nada. NUNCA descreva a tela.`,
+    `- NUNCA encerre suas mensagens com perguntas redundantes ou robóticas de preenchimento de chat (ex: "Posso ajudar com algo mais?", "Quer ajuda em mais alguma coisa?", "Posso ajudar em algo mais?"). Você é um tutor sempre assistindo, então apenas dê a orientação/dica direta de forma natural e silencie. O usuário já sabe que você continuará assistindo.`,
+    `- Só intervenha em PONTOS ESTRATÉGICOS: erro de sintaxe/lógica visível na tela, o dev claramente travado/parado, um passo importante prestes a ser feito errado, ou uma PERGUNTA/COMENTÁRIO dirigido a você (por voz ou na tela).`,
+  ];
+
+  if (isIntro) {
+    parts.push(`- Esta é a sua mensagem inicial de boas-vindas (introdução). Você DEVE saudar o usuário amigavelmente e descrever de forma breve o que vê na tela dele (por exemplo, quais ferramentas, sites ou arquivos estão abertos). NÃO responda com [AGUARDAR] ou NOOP de jeito nenhum.`);
+  } else if (hasUserSpeech) {
+    parts.push(`- O usuário acabou de falar algo direcionado a você por voz/microfone. Você DEVE responder diretamente, de forma concisa e amigável, ajudando-o com base na imagem da tela. NÃO responda com [AGUARDAR] de jeito nenhum.`);
+  } else {
+    parts.push(`- Se NÃO há nada estratégico agora (o dev está escrevendo normalmente, sem erro, sem dúvida), responda EXATAMENTE com ${NOOP} e mais nada. NUNCA descreva a tela.`);
+  }
+
+  parts.push(
     `- Seja CURTO: no máximo 2-3 frases + no máximo 1 bloco de código pequeno.`,
     `- IDIOMA DO CÓDIGO (crítico): mantenha a MESMA linguagem de programação e o MESMO idioma de identificadores/nomes/comentários que o USUÁRIO já está escrevendo na tela — a escolha DELE tem prioridade máxima. Se ele ainda não escreveu nada, siga o idioma do enunciado/problema. Nunca troque a linguagem nem "traduza" os nomes que ele já usou.`,
     `- IDIOMA DA CONVERSA/PERGUNTA (crítico): responda EXATAMENTE no idioma da pergunta/enunciado. Pergunta em inglês → responda em inglês. Pergunta em pt-br → responda em pt-br. Não force pt-br quando o contexto está em inglês.`,
     `- Se houver uma pergunta de entrevista na tela ou dita pelo entrevistador no áudio, ajude o desenvolvedor a responder (diga COMO responder, em primeira pessoa, fornecendo um exemplo curto).`,
-    `- Se o próprio DESENVOLVEDOR estiver fazendo uma pergunta direta para você no áudio ou tela (ex: "o que você acha?", "como resolver?", "me ajuda", "o que fazer?", "você me ouve?", "olá", "oi", "tudo bem?"), responda DIRETAMENTE a ele de forma natural e amigável (ex: "Estou te ouvindo perfeitamente!", "Olá! Como posso ajudar?", "Tudo ótimo por aqui, e com você?"). Perguntas diretas do usuário ou saudações/testes de áudio direcionados a você NUNCA devem ser silenciadas com [AGUARDAR].`,
-    `- Aja com paciência: corrija e oriente, deixe o dev conduzir a tarefa.`,
-  ];
+    `- Se o próprio DESENVOLVEDOR estiver fazendo uma pergunta direta para você (ex: "o que você acha?", "como resolver?", "me ajuda", "o que fazer?", "você me ouve?", "olá", "oi", "tudo bem?"), responda DIRETAMENTE a ele de forma natural e amigável (ex: "Estou te ouvindo perfeitamente!", "Olá! Como posso ajudar?", "Tudo ótimo por aqui, e com você?"). Perguntas diretas do usuário ou saudações/testes de áudio direcionados a você NUNCA devem ser silenciadas com [AGUARDAR].`,
+    `- Aja com paciência: corrija e oriente, deixe o dev conduzir a tarefa.`
+  );
+
   if (userCtx) parts.push('', userCtx);
   if (editorMeta) parts.push('', `[CONTEXTO DO EDITOR/MODO]\n${editorMeta}`);
   if (ragBlock) parts.push('', ragBlock);
@@ -312,17 +310,13 @@ async function askTutor(base64Image, editorState, isIntro = false) {
 
   const systemPrompt = parts.join('\n');
 
-  // Detecta se há uma pergunta direta do dev no áudio recente (ou saudação/teste de áudio)
-  const audioText = recentAudio.map(a => a.text).join(' ').toLowerCase();
-  const hasDirectQuestion = /o que (voc[êe]|vc) acha|o que acha|como resolver|me ajuda|como fa[çc]o|como implementar|me ouve|me ouvindo|me escuta|oi|ol[aá]|tudo bem/i.test(audioText);
-
   const userContent = [];
   
   if (editorState) {
     const textContext = `[ARQUIVO: ${editorState.path}]\n<cursor_position>${editorState.cursorIndex}</cursor_position>\n<content>\n${editorState.content}\n</content>`;
     userContent.push({ type: 'text', text: textContext });
   } else {
-    if (hasDirectQuestion && lastFrameBase64) {
+    if (hasUserSpeech && lastFrameBase64) {
       userContent.push(
         { type: 'text', text: 'Print da tela anterior (antes da pergunta):' },
         { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${lastFrameBase64}`, detail: 'low' } }, // sempre low: só serve p/ comparar o que mudou
@@ -336,9 +330,17 @@ async function askTutor(base64Image, editorState, isIntro = false) {
     }
   }
 
-  userContent.push(
-    { type: 'text', text: `Print da tela ou conteúdo do editor agora. Intervenha SÓ se for estratégico (erro, dev travado, ou pergunta pra responder). Senão responda exatamente ${NOOP}.` }
-  );
+  if (hasUserSpeech) {
+    userContent.push({
+      type: 'text',
+      text: `O usuário disse no microfone: "${userSpeech}"\n\nResponda diretamente a essa fala do usuário com base no print da tela ou conteúdo do editor. NÃO responda com [AGUARDAR].`
+    });
+  } else {
+    userContent.push({
+      type: 'text',
+      text: `Print da tela ou conteúdo do editor agora. Intervenha SÓ se for estratégico (erro, dev travado, ou pergunta pra responder). Senão responda exatamente ${NOOP}.`
+    });
+  }
 
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -401,17 +403,27 @@ async function tick() {
   const frameChanged = hash !== lastFrameHash;
   const withinCooldown = (Date.now() - lastInterventionAt) < cfg.minInterventionMs;
 
+  // Filtra as falas do usuário (mic) que surgiram desde o último processamento
+  const newMicUtterances = recentAudio.filter(a => a.ts > lastAudioTimestampProcessed && a.source === 'você');
+  const userSpeech = newMicUtterances.map(a => a.text).join(' ');
+  const hasNewMicSpeech = newMicUtterances.length > 0;
+
   if (!isIntro) {
-    // Economia de token: nada mudou na tela e nenhuma fala nova → não chama a API.
+    // Economia de token: nada mudou na tela e nenhuma fala nova do usuário ou sistema → não chama a API.
     if (!frameChanged && !newAudio) return;
-    // Descansando logo após uma dica e sem áudio urgente → também pula a chamada.
-    if (withinCooldown && !newAudio) { lastFrameHash = hash; lastFrameBase64 = base64; return; }
+    // Descansando logo após uma dica e sem pergunta direta do usuário (mic) → pula a chamada.
+    if (withinCooldown && !hasNewMicSpeech) { lastFrameHash = hash; lastFrameBase64 = base64; return; }
+  }
+
+  // Atualiza a marcação de áudio processado antes de chamar a API
+  if (recentAudio.length > 0) {
+    lastAudioTimestampProcessed = Math.max(...recentAudio.map(a => a.ts));
   }
 
   inFlight = true;
   emitStatus('thinking');
   try {
-    const answer = await askTutor(base64, editorState, isIntro);
+    const answer = await askTutor(base64, editorState, { isIntro, userSpeech });
     lastFrameHash = hash;
     lastFrameBase64 = base64;
     lastAudioMarkerSeen = audioMarker;
@@ -419,8 +431,8 @@ async function tick() {
     const isNoop = !isIntro && (!answer || answer === NOOP || answer.replace(/[\[\]]/g, '').trim().toUpperCase() === 'AGUARDAR');
     if (isNoop) { emitStatus('watching'); return; }
 
-    // Respeita o cooldown (a menos que seja disparado por fala nova — pergunta é urgente, ou se for introdução).
-    if (!isIntro && withinCooldown && !newAudio) { emitStatus('watching'); return; }
+    // Respeita o cooldown (a menos que seja disparado por fala nova do mic ou introdução)
+    if (!isIntro && withinCooldown && !hasNewMicSpeech) { emitStatus('watching'); return; }
 
     lastInterventionAt = Date.now();
     recentGuidance.push(answer.slice(0, 240));
@@ -472,6 +484,7 @@ async function start(options = {}) {
   lastFrameBase64 = null;
   lastInterventionAt = 0;
   audioMarker = 0; lastAudioMarkerSeen = 0;
+  lastAudioTimestampProcessed = Date.now(); // Ignora áudios gravados antes de iniciar o Tutor
   recentGuidance.length = 0;
   recentAudio.length = 0;
 
