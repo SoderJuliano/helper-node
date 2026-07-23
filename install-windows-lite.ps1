@@ -20,6 +20,12 @@
 # Linux. Não precisa de Ollama/Claude CLI/Gemini CLI nem de modelos locais.
 
 $ErrorActionPreference = 'Stop'
+
+# Libera a execucao de scripts SO para este processo (nao mexe na maquina, nao
+# precisa de admin). Sem isso, chamar `npm` no Windows quebra quando a
+# ExecutionPolicy esta Restricted/AllSigned, porque o npm e um script .ps1.
+try { Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force } catch {}
+
 $Edition = 'lite'
 $RepoUrl = 'https://github.com/SoderJuliano/helper-node.git'
 $ZipUrl = 'https://github.com/SoderJuliano/helper-node/archive/refs/heads/master.zip'
