@@ -1099,6 +1099,7 @@ function createConfigWindow() {
     backgroundColor: "#00000000",
     transparent: true,
     frame: false,
+    hasShadow: process.platform !== 'win32',
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -1129,6 +1130,7 @@ function createPreferencesWindow() {
     backgroundColor: "#00000000",
     transparent: true,
     frame: false,
+    hasShadow: process.platform !== 'win32',
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -1185,6 +1187,7 @@ function createOsInputWindow() {
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: false,
+    hasShadow: process.platform !== 'win32',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -1556,6 +1559,7 @@ function createCaptureWindow() {
     skipTaskbar: true,
     resizable: false,
     focusable: false,
+    hasShadow: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -1696,6 +1700,7 @@ async function createWindow() {
       backgroundColor: "#00000000",
       transparent: true,
       frame: process.platform === "linux",
+      hasShadow: process.platform !== 'win32',
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
