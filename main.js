@@ -809,6 +809,7 @@ function createTranslationOverlay() {
     height: b.height,
     x: b.x,
     y: b.y,
+    backgroundColor: '#00000000',
     useContentSize: false,
     frame: false,
     transparent: true,
@@ -957,6 +958,7 @@ function createVisionGuideOverlay() {
 
   visionGuideOverlayWindow = new BrowserWindow({
     width: b.width, height: b.height, x: b.x, y: b.y,
+    backgroundColor: '#00000000',
     useContentSize: false,
     frame: false,
     transparent: true,
@@ -1224,6 +1226,7 @@ function createOsInputWindow() {
   osInputWindow = new BrowserWindow({
     width: 600,
     height: 50,
+    backgroundColor: '#00000000',
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -1438,6 +1441,7 @@ function createOsNotificationWindow(type, content) {
     // x/y nas options é mais respeitado pelo COSMIC/Wayland do que setPosition()
     x: posX,
     y: posY,
+    backgroundColor: '#00000000',
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -1595,6 +1599,7 @@ function createCaptureWindow() {
   osCaptureWindow = new BrowserWindow({
     width: 120,
     height: 120,
+    backgroundColor: '#00000000',
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -1741,8 +1746,9 @@ async function createWindow() {
       height: 600,
       backgroundColor: "#00000000",
       transparent: true,
-      frame: process.platform === "linux",
-      hasShadow: process.platform !== 'win32',
+      frame: false,
+      titleBarStyle: "hidden",
+      hasShadow: false,
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
@@ -6362,6 +6368,7 @@ async function captureRegionNative() {
     y: display.bounds.y,
     width: dw,
     height: dh,
+    backgroundColor: '#00000000',
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -6852,6 +6859,7 @@ function showImageResponseInSecondaryWindow(htmlContent) {
   osImageResponseWindow = new BrowserWindow({
     width: winW, height: winH,
     x: posX, y: posY,
+    backgroundColor: '#00000000',
     frame: false, transparent: true, alwaysOnTop: true,
     skipTaskbar: true, resizable: false, movable: true,
     minimizable: false, maximizable: false, fullscreenable: false,

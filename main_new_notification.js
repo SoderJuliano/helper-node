@@ -23,6 +23,7 @@ function createOsNotificationWindow(type, content) {
   osNotificationWindow = new BrowserWindow({
     width: windowWidth,
     height: windowHeight,
+    backgroundColor: '#00000000',
     frame: false,
     transparent: true,
     alwaysOnTop: true,
