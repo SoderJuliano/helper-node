@@ -62,13 +62,13 @@ const SILENCE_RMS = 300;
 
 // Silêncio contínuo necessário para fechar o segmento (ms)
 // 'mic' = microfone do candidato, 'sys' = áudio do sistema (entrevistador)
-const SILENCE_DURATION = { mic: 1500, sys: 800 };
+const SILENCE_DURATION = { mic: 1500, sys: 500 };
 
 // Fala mínima para considerar o segmento válido (evita enviar só ruído)
 const MIN_SPEECH_MS = 400;
 
 // Limite máximo de duração de um segmento
-const MAX_SEGMENT_MS = 60000;
+const MAX_SEGMENT_DURATION = { mic: 60000, sys: 12000 };
 
 const pwProcs = { mic: null, sys: null };
 let active = false;
@@ -144,7 +144,7 @@ function resetState(st) {
   st.speechMs = 0;
 }
 
-function flushSegment(st, source) {
+function flushSegment(st, source, forceCut = false) {
   if (!st.hasSpeech || st.speechMs < MIN_SPEECH_MS) {
     resetState(st);
     return;
@@ -154,7 +154,7 @@ function flushSegment(st, source) {
   try {
     const tmpPath = path.join(os.tmpdir(), `ta_vad_${source}_${Date.now()}.wav`);
     fs.writeFileSync(tmpPath, pcmToWav(buf));
-    if (onSpeechEndCb) onSpeechEndCb(tmpPath, source);
+    if (onSpeechEndCb) onSpeechEndCb(tmpPath, source, { forceCut });
   } catch (e) {
     console.error('[TranslationAssistant] erro ao salvar segmento VAD:', e.message);
   }
@@ -165,18 +165,19 @@ function processChunk(pcm, st, source) {
   if (onLevelCb) onLevelCb(source, rms); // barra de volume em tempo real (~10x/s)
   const chunkMs = (pcm.length / BYTES_PER_SEC) * 1000;
   const silenceLimit = SILENCE_DURATION[source] || 1200;
+  const maxSegmentLimit = MAX_SEGMENT_DURATION[source] || 60000;
 
   if (rms > SILENCE_RMS) {
     st.hasSpeech = true;
     st.silenceMs = 0;
     st.speechMs += chunkMs;
     st.speechBuf = Buffer.concat([st.speechBuf, pcm]);
-    if (st.speechMs > MAX_SEGMENT_MS) flushSegment(st, source);
+    if (st.speechMs > maxSegmentLimit) flushSegment(st, source, true);
   } else {
     if (st.hasSpeech) {
       st.silenceMs += chunkMs;
       st.speechBuf = Buffer.concat([st.speechBuf, pcm]);
-      if (st.silenceMs >= silenceLimit) flushSegment(st, source);
+      if (st.silenceMs >= silenceLimit) flushSegment(st, source, false);
     }
   }
 }
@@ -352,7 +353,7 @@ function captureOneAnswer({ timeoutMs = 25000, silenceMs: silenceLimit = 2000 } 
           localSilenceMs = 0;
           localSpeechMs += chunkMs;
           localSpeechBuf = Buffer.concat([localSpeechBuf, pcm]);
-          if (localSpeechMs > MAX_SEGMENT_MS) {
+          if (localSpeechMs > MAX_SEGMENT_DURATION.mic) {
             const tmpPath = path.join(os.tmpdir(), `ta_ans_${Date.now()}.wav`);
             try { fs.writeFileSync(tmpPath, pcmToWav(localSpeechBuf)); done(tmpPath); }
             catch (_) { done(null); }

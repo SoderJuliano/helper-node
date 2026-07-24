@@ -6462,6 +6462,17 @@
                             block.appendChild(orig);
                         }
                         el.appendChild(block);
+                    } else {
+                        if (data.transcript && data.transcript.trim()) {
+                            let orig = block.querySelector('.ta-original');
+                            if (!orig) {
+                                orig = document.createElement('div');
+                                orig.className = 'ta-original';
+                                block.insertBefore(orig, block.firstChild);
+                            }
+                            const who = data.mode === 'candidate' ? '👤 Você: ' : '🎧 Entrevistador: ';
+                            orig.textContent = who + data.transcript;
+                        }
                     }
                     if (data.response && data.response.trim()) {
                         let resp = block.querySelector('.ia-response');

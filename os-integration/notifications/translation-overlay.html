@@ -421,6 +421,16 @@
           block.appendChild(t);
         }
         container.appendChild(block);
+      } else {
+        if (transcript) {
+          let t = block.querySelector('.transcript');
+          if (!t) {
+            t = document.createElement('div');
+            t.className = 'transcript';
+            block.appendChild(t);
+          }
+          t.textContent = transcript;
+        }
       }
 
       // (Re)renderiza a parte dinâmica (tradução + resposta). No update, limpa a anterior.

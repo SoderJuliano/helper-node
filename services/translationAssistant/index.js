@@ -94,7 +94,7 @@ async function start(cfg) {
     // Nível de áudio em tempo real → barra de volume na UI.
     onLevel: (source, rms) => { if (levelCallback) levelCallback(source, rms); },
     // source: 'mic' = microfone do candidato, 'sys' = monitor do sistema (entrevistador)
-    onSpeechEnd: async (audioPath, source) => {
+    onSpeechEnd: async (audioPath, source, metadata = {}) => {
       // "Processando" = tem requisição em voo (transcrição/tradução na OpenAI).
       // Liga o loading na UI enquanto a resposta daquele trecho não chega.
       inFlight++;
@@ -124,17 +124,27 @@ async function start(cfg) {
         lastInterviewerQuestion = trimmed;
 
         // Continuacao de fala: se o ultimo trecho do entrevistador fechou ha pouco
-        // tempo (pausa pra respirar, nao fim de pergunta), junta os textos e reprocessa
-        // a pergunta INTEIRA — em vez de responder so o pedaco novo fragmentado.
+        // tempo (pausa pra respirar, nao fim de pergunta) ou se o trecho anterior foi
+        // forçado por limite de tempo, junta os textos e reprocessa a pergunta INTEIRA.
         const prevClosed = lastClosedSys;
-        const isContinuation = !!(prevClosed && (Date.now() - prevClosed.closedAt) <= CONTINUATION_WINDOW_MS);
+        const isContinuation = !!(
+          prevClosed &&
+          (metadata.forceCut || prevClosed.forceCut || (Date.now() - prevClosed.closedAt) <= CONTINUATION_WINDOW_MS)
+        );
         const transcript = isContinuation ? `${prevClosed.text} ${trimmed}`.trim() : trimmed;
 
         console.log(`[TranslationAssistant] sys (entrevistador): ${transcript.substring(0, 80)}...`);
 
-        // id estável do turno: o streaming manda vários resultados com o MESMO id
-        // (texto acumulado) e a UI atualiza o bloco no lugar em vez de criar outro.
-        const turnId = `ta-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        // id estável do turno: reutiliza o id anterior se for uma continuação,
+        // permitindo que os renderizadores atualizem a transcrição e resposta inline.
+        const turnId = isContinuation && prevClosed ? prevClosed.turnId : `ta-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+        // Manda o transcrito IMEDIATAMENTE após terminar a transcrição (Prioridade 3 na UI).
+        // Isso faz com que a pergunta apareça em <1.5s, mesmo antes do GPT gerar a resposta.
+        if (resultCallback) {
+          resultCallback({ id: turnId, transcript, response: '', mode: 'interviewer', streaming: true });
+        }
+
         const response = await getTranslationAndSuggestion(
           transcript,
           {
@@ -144,24 +154,19 @@ async function start(cfg) {
           },
           config.apiKey,
           {
-            // Streaming: emite o texto acumulado a cada pedaço (sensação "bate pronto").
+            // Streaming: emite o texto acumulado a cada pedaço.
             onDelta: (partial) => {
               if (resultCallback) resultCallback({ id: turnId, transcript, response: partial, mode: 'interviewer', streaming: true });
             },
           }
         );
 
-        if (isContinuation && resultCallback) {
-          // Marca o bloco do trecho anterior como superado — a pergunta continuava.
-          resultCallback({ id: prevClosed.turnId, response: '↳ pergunta continuou no trecho seguinte — veja a resposta completa abaixo.', mode: 'interviewer' });
-        }
-
         // response === null → filler já descartado no openaiClient (nada renderizado).
         // Senão, manda o resultado FINAL (streaming:false) pra fechar o bloco.
         if (response && resultCallback) {
           resultCallback({ id: turnId, transcript, response, mode: 'interviewer', streaming: false });
         }
-        lastClosedSys = { turnId, text: transcript, closedAt: Date.now() };
+        lastClosedSys = { turnId, text: transcript, closedAt: Date.now(), forceCut: !!metadata.forceCut };
       } catch (err) {
         console.error('[TranslationAssistant] erro no processamento:', err.message);
       } finally {

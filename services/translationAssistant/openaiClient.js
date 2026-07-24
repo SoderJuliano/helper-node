@@ -48,15 +48,69 @@ async function transcribeAudio(audioPath, apiKey) {
 // "Tell me about yourself, experience with React" → NÃO é pedido de código.
 // "Write a function in React that..." / "Show me a code example" → É pedido.
 // Mencionar tecnologia (Java, React) sozinho NÃO ativa o modo código.
-const CODE_REQUEST_RE = /\b(write (a |an |the )?(function|method|class|snippet|code|example|program|query|component|test|loop|algorithm)|escreva (uma |um |o )?(fun[çc][ãa]o|m[ée]todo|classe|c[oó]digo|exemplo|programa|consulta|componente|teste|loop|algoritmo)|implement (a |an |the )?|implementa (uma |um )?|give (me )?(a |an )?(code|example|snippet|implementation)|me d[êe] (um |o )?(exemplo|c[oó]digo|trecho)|show me (a |an |the |some )?(code|example|snippet|implementation)|me mostre? (um |o |a )?(c[oó]digo|exemplo|trecho)|como (escrever|implementar|fazer) (uma? |um )?(fun[çc][ãa]o|c[oó]digo|m[ée]todo|classe|algoritmo)|how (would|do|to) (you |i )?(write|implement|code|build|create)|c[oó]digo (de|para|que)|exemplo de c[oó]digo|code example|coding (challenge|question|exercise)|leetcode|live coding)\b/i;
+const CODE_REQUEST_RE = /\b(write (a |an |the )?(function|method|class|snippet|code|example|program|query|component|test|loop|algorithm)|escreva (uma |um |o )?(fun[çc][ãa]o|m[ée]todo|classe|c[oó]digo|exemplo|programa|consulta|componente|teste|loop|algoritmo)|implement (a |an |the )?|implementa (uma |um )?|give (me )?(a |an )?(code|example|snippet|implementation)|me d[êe] (um |o )?(exemplo|c[oó]digo|trecho)|show me (a |an |the |some )?(code|example|snippet|implementation)|me mostre? (um |o |a )?(c[oó]digo|exemplo|trecho)|como (escrever|implementar|fazer) (uma? |um )?(fun[çc][ãa]o|c[oó]digo|m[ée]todo|classe|algoritmo)|how (would|do|to) (you |i )?(write|implement|code|build|create)|c[oó]digo (de|para|que)|exemplo de c[oó]digo|code example|coding (chalasync function callGPT(systemPrompt, userContent, model, apiKey, onDelta = null) {
+  const chatPayload = {
+    model,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userContent },
+    ],
+    ...maxTokensParam(model, 400),
+    stream: !!onDelta,
+  };
+  if (supportsReasoningEffort(model)) chatPayload.reasoning_effort = 'low';
+
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(chatPayload),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error?.message || 'GPT call failed');
+  }
+
+  if (!onDelta) {
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content || '';
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let content = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let nl;
+    while ((nl = buffer.indexOf('\n')) >= 0) {
+      const line = buffer.slice(0, nl).trim();
+      buffer = buffer.slice(nl + 1);
+      if (!line.startsWith('data:')) continue;
+      const payload = line.slice(5).trim();
+      if (payload === '[DONE]') continue;
+      try {
+        const delta = JSON.parse(payload).choices?.[0]?.delta?.content || '';
+        if (delta) {
+          content += delta;
+          onDelta(content);
+        }
+      } catch (_) {}
+    }
+  }
+  return content;
+}
 
 async function getTranslationAndSuggestion(transcript, { userName, userBackground, targetLanguage }, apiKey, opts = {}) {
   const isCodeRequest = CODE_REQUEST_RE.test(transcript);
 
   // RAG: base de conhecimento (fatos atuais) + banco de respostas (suas respostas boas).
-  // Embeda a query UMA vez e compartilha entre os dois → 0 chamada de rede a mais.
-  // Tempo real: isso NUNCA pode segurar a resposta além de RAG_TIMEOUT_MS — se
-  // a busca (embeddings, chamada de rede) demorar demais, segue sem esse contexto.
   let kbBlock = '', bankHint = '';
   try {
     const kbOn = configService.getKnowledgeBaseConfig().enabled;
@@ -74,17 +128,14 @@ async function getTranslationAndSuggestion(transcript, { userName, userBackgroun
   } catch (_) {}
   const ragBlock = [bankHint, kbBlock].filter(Boolean).join('\n\n');
   const userContent = ragBlock ? `${ragBlock}\n\n---\n\n${transcript}` : transcript;
-  // opts.forceModel é usado pelo fallback — sem ele a recursão re-detectaria
-  // codeRequest e voltaria pro mesmo modelo quebrado, criando loop infinito.
+  
   const model = opts.forceModel || (isCodeRequest ? 'gpt-4.1' : 'gpt-4o-mini');
 
-  const systemPrompt = `Você é um ASSISTENTE DE ENTREVISTAS DE EMPREGO.
+  const suggestionPrompt = `Você é um ASSISTENTE DE ENTREVISTAS DE EMPREGO.
 Usuário: ${userName || 'o candidato'}
 Background: ${userBackground || 'não informado'}
 
-Sua tarefa ao receber uma fala transcrita do entrevistador:
-1. Traduza para ${targetLanguage}.
-2. Sugira uma resposta direta NO IDIOMA ORIGINAL do texto.
+Sua tarefa é sugerir uma resposta direta no idioma original da pergunta (geralmente inglês).
 
 Regras para a sugestão de resposta:
 - Use inglês simples. Nível B2, palavras comuns do dia a dia.
@@ -96,103 +147,64 @@ Regras para a sugestão de resposta:
 - Quando NÃO houver pedido de código: 2-3 frases curtas em texto puro, sem código.
 - Não comece com "Certainly!" ou "Of course!".
 - Destaque em **negrito** os termos técnicos-chave (tecnologias, conceitos) na RESPOSTA — facilita o candidato bater o olho.
-- Formato obrigatório:
-TRADUÇÃO: <texto traduzido>
-RESPOSTA: <resposta em inglês — texto puro, OU texto + código apenas se pedido>`;
 
-  // Marcador do formato válido. Filtro anti-filler: em fragmentos/ruído ([Música],
-  // frases cortadas) o modelo às vezes "quebra o personagem" e responde "Por favor,
-  // forneça a fala transcrita..." / "Entendido. Posso ajudar com..." em vez do formato
-  // TRADUÇÃO/RESPOSTA. Quem decide quando responder é o usuário — descartamos qualquer
-  // saída sem o marcador do formato (vale nos dois modos, streaming ou não).
-  const FORMAT_RE = /TRADU[ÇC][ÃA]O\s*:/i;
+Responda APENAS com a sugestão de resposta direta no idioma original. NÃO adicione nenhum prefixo como "RESPOSTA:".`;
+
+  const translationPrompt = `Você é um tradutor especialista em entrevistas de emprego.
+Sua tarefa é traduzir a fala do entrevistador para o idioma-alvo: ${targetLanguage}.
+
+Regras para a tradução:
+- Traduza o texto de forma clara, natural e direta.
+- Responda APENAS com o texto traduzido para ${targetLanguage}. NÃO adicione nenhum prefixo como "TRADUÇÃO:", introduções, explicações ou notas de rodapé.`;
+
   const onDelta = typeof opts.onDelta === 'function' ? opts.onDelta : null;
 
-  const chatPayload = {
-    model,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userContent },
-    ],
-    ...maxTokensParam(model, 400),
-    stream: !!onDelta,
-  };
-  // Tradutor: velocidade é inegociável, sempre esforço de raciocínio mínimo
-  // (se o modelo aceitar — gpt-4.1/gpt-4o-mini de hoje não aceitam, é no-op).
-  if (supportsReasoningEffort(model)) chatPayload.reasoning_effort = 'low';
+  try {
+    if (!onDelta) {
+      // Modo não-streaming (Promise.all simples)
+      const [suggestionText, translationText] = await Promise.all([
+        callGPT(suggestionPrompt, userContent, model, apiKey),
+        callGPT(translationPrompt, transcript, model, apiKey),
+      ]);
+      console.log(`[TranslationAssistant] modelo usado: ${model} (codeRequest=${isCodeRequest}, stream=off, parallel=on)`);
+      return `TRADUÇÃO: ${translationText.trim()}\n\nRESPOSTA: ${suggestionText.trim()}`;
+    }
 
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(chatPayload),
-  });
+    // Modo streaming (SSE paralelo)
+    let currentResponse = '';
+    let currentTranslation = '';
+    let lastEmit = 0;
 
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    // Fallback para gpt-4o-mini se o modelo escolhido não estiver disponível.
+    const emit = (force = false) => {
+      const now = Date.now();
+      if (force || now - lastEmit > 60) {
+        lastEmit = now;
+        const combined = `TRADUÇÃO: ${currentTranslation}\n\nRESPOSTA: ${currentResponse}`;
+        onDelta(combined);
+      }
+    };
+
+    await Promise.all([
+      callGPT(suggestionPrompt, userContent, model, apiKey, (delta) => {
+        currentResponse = delta;
+        emit();
+      }),
+      callGPT(translationPrompt, transcript, model, apiKey, (delta) => {
+        currentTranslation = delta;
+        emit();
+      }),
+    ]);
+
+    emit(true); // flush final
+    console.log(`[TranslationAssistant] modelo usado: ${model} (codeRequest=${isCodeRequest}, stream=on, parallel=on)`);
+    return `TRADUÇÃO: ${currentTranslation}\n\nRESPOSTA: ${currentResponse}`;
+  } catch (err) {
     if (model !== 'gpt-4o-mini') {
-      console.warn(`[TranslationAssistant] ${model} indisponível (${data.error?.message || 'erro'}), fallback para gpt-4o-mini`);
+      console.warn(`[TranslationAssistant] ${model} indisponível, fallback para gpt-4o-mini (parallel)`);
       return getTranslationAndSuggestion(transcript, { userName, userBackground, targetLanguage }, apiKey, { ...opts, forceModel: 'gpt-4o-mini' });
     }
-    throw new Error(data.error?.message || 'GPT failed');
+    throw err;
   }
-
-  // --- modo NÃO-streaming (compatível) ---
-  if (!onDelta) {
-    const data = await res.json();
-    const content = data.choices?.[0]?.message?.content || '';
-    if (!FORMAT_RE.test(content)) {
-      console.log('[TranslationAssistant] resposta fora do formato (filler) — descartada');
-      return null;
-    }
-    console.log(`[TranslationAssistant] modelo usado: ${model} (codeRequest=${isCodeRequest}, stream=off)`);
-    return content;
-  }
-
-  // --- modo STREAMING (SSE) ---
-  // Acumula tokens e só começa a emitir DEPOIS que o marcador TRADUÇÃO: aparece —
-  // assim filler nunca chega a renderizar. Emissão throttled (~60ms) pra não floodar IPC.
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let content = '';
-  let started = false;
-  let lastEmit = 0;
-  const emit = (force) => {
-    if (!started) {
-      if (!FORMAT_RE.test(content)) return;
-      started = true;
-    }
-    const now = Date.now();
-    if (force || now - lastEmit > 60) { lastEmit = now; onDelta(content); }
-  };
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let nl;
-    while ((nl = buffer.indexOf('\n')) >= 0) {
-      const line = buffer.slice(0, nl).trim();
-      buffer = buffer.slice(nl + 1);
-      if (!line.startsWith('data:')) continue;
-      const payload = line.slice(5).trim();
-      if (payload === '[DONE]') continue;
-      try {
-        const delta = JSON.parse(payload).choices?.[0]?.delta?.content || '';
-        if (delta) { content += delta; emit(false); }
-      } catch (_) {}
-    }
-  }
-  if (!started) {
-    console.log('[TranslationAssistant] resposta fora do formato (filler) — descartada (stream)');
-    return null;
-  }
-  emit(true); // flush final
-  console.log(`[TranslationAssistant] modelo usado: ${model} (codeRequest=${isCodeRequest}, stream=on)`);
-  return content;
 }
 
 /**
