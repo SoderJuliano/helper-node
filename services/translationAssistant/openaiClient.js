@@ -48,7 +48,9 @@ async function transcribeAudio(audioPath, apiKey) {
 // "Tell me about yourself, experience with React" → NÃO é pedido de código.
 // "Write a function in React that..." / "Show me a code example" → É pedido.
 // Mencionar tecnologia (Java, React) sozinho NÃO ativa o modo código.
-const CODE_REQUEST_RE = /\b(write (a |an |the )?(function|method|class|snippet|code|example|program|query|component|test|loop|algorithm)|escreva (uma |um |o )?(fun[çc][ãa]o|m[ée]todo|classe|c[oó]digo|exemplo|programa|consulta|componente|teste|loop|algoritmo)|implement (a |an |the )?|implementa (uma |um )?|give (me )?(a |an )?(code|example|snippet|implementation)|me d[êe] (um |o )?(exemplo|c[oó]digo|trecho)|show me (a |an |the |some )?(code|example|snippet|implementation)|me mostre? (um |o |a )?(c[oó]digo|exemplo|trecho)|como (escrever|implementar|fazer) (uma? |um )?(fun[çc][ãa]o|c[oó]digo|m[ée]todo|classe|algoritmo)|how (would|do|to) (you |i )?(write|implement|code|build|create)|c[oó]digo (de|para|que)|exemplo de c[oó]digo|code example|coding (chalasync function callGPT(systemPrompt, userContent, model, apiKey, onDelta = null) {
+const CODE_REQUEST_RE = /\b(write (a |an |the )?(function|method|class|snippet|code|example|program|query|component|test|loop|algorithm)|escreva (uma |um |o )?(fun[çc][ãa]o|m[ée]todo|classe|c[oó]digo|exemplo|programa|consulta|componente|teste|loop|algoritmo)|implement (a |an |the )?|implementa (uma |um )?|give (me )?(a |an )?(code|example|snippet|implementation)|me d[êe] (um |o )?(exemplo|c[oó]digo|trecho)|show me (a |an |the |some )?(code|example|snippet|implementation)|me mostre? (um |o |a )?(c[oó]digo|exemplo|trecho)|como (escrever|implementar|fazer) (uma? |um )?(fun[çc][ãa]o|c[oó]digo|m[ée]todo|classe|algoritmo)|how (would|do|to) (you |i )?(write|implement|code|build|create)|c[oó]digo (de|para|que)|exemplo de c[oó]digo|code example|coding (challenge|question|exercise)|leetcode|live coding)\b/i;
+
+async function callGPT(systemPrompt, userContent, model, apiKey, onDelta = null) {
   const chatPayload = {
     model,
     messages: [
@@ -138,8 +140,10 @@ Background: ${userBackground || 'não informado'}
 Sua tarefa é sugerir uma resposta direta no idioma original da pergunta (geralmente inglês).
 
 Regras para a sugestão de resposta:
-- Use inglês simples. Nível B2, palavras comuns do dia a dia.
-- Evite: leverage → use, thrive → do well, robust → solid, utilize → use.
+- Responda OBRIGATORIAMENTE na PRIMEIRA PESSOA ("I", "my", "in my experience"). A resposta deve ser escrita para o candidato ler em voz alta falando de si mesmo, e NUNCA em terceira pessoa sobre desenvolvedores/programadores em geral.
+- Use inglês conversacional simples e falado (casual, fácil de ler/pronunciar e direto ao ponto).
+- Evite palavras difíceis, pomposas ou formais demais (evite: leverage -> use, utilize -> use, robust -> solid, implement -> build/write, comprehensive -> complete, execute -> do/run, specialize in -> work with).
+- Mantenha os termos técnicos reais intactos, mas mantenha todo o vocabulário e construções ao redor no inglês falado e informal.
 - Use as versões MODERNAS das tecnologias (Java 21+, Node.js 22+, React 19, Spring Boot 3, etc.). Nunca mencione versões antigas (Java 8, Node 12, etc.) como se fossem atuais.
 - NUNCA inclua bloco de código a menos que o entrevistador PEÇA EXPLICITAMENTE um exemplo, implementação ou trecho de código (palavras como: "show me code", "write a function", "example of", "how would you implement", "give me an example", "código de", "exemplo de", "escreva uma função").
 - Mencionar uma tecnologia (Java, React, Spring) NÃO é pedido de código — responda apenas com texto.
