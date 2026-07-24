@@ -198,7 +198,7 @@ class GeminiCliProvider {
                 // antes da nossa leitura periódica do transcript.
                 try {
                   const execSync = require('child_process').execSync;
-                  const relPath = path.relative(cwd, absPath);
+                  const relPath = path.relative(cwd, absPath).replace(/\\/g, '/');
                   content = execSync(`git show :"${relPath}"`, { cwd, stdio: ['pipe', 'pipe', 'ignore'], timeout: 1500 }).toString('utf8');
                 } catch (_) {
                   // Fallback para leitura direta do disco
