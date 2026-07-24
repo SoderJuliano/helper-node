@@ -1064,6 +1064,14 @@ ipcMain.on('vision-guide-minimize', () => {
   }
 });
 
+// Botão [h] "me ajuda, travei" (modo integrado): força o tutor a olhar a tela
+// agora, revisar o que já foi feito e refazer o plano só com o que falta (ou
+// resolver o bug da tela), sem quebrar o que já funciona.
+ipcMain.on('vision-guide-help', () => {
+  if (!visionGuide.isActive || !visionGuide.isActive()) return;
+  try { visionGuide.askHelp(); } catch (e) { console.warn('[vision-guide] askHelp falhou:', e.message); }
+});
+
 // Botão pause/continuar: para/retoma prints + coleta de áudio (mantém a sessão).
 // Responde ao overlay o novo estado pra ele atualizar o rótulo do botão.
 ipcMain.on('vision-guide-toggle-pause', () => {

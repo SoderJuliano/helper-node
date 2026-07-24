@@ -92,6 +92,16 @@
     .pos-btn:hover  { background: rgba(255,255,255,0.09); color: rgba(255,255,255,0.85); }
     .pos-btn:active { background: rgba(255,255,255,0.16); }
 
+    /* Botão [h] de ajuda: um pouco mais visível — é a ação de "me destrava". */
+    .pos-btn-help {
+      color: #c4b5fd;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+    }
+    .pos-btn-help:hover { background: rgba(139, 92, 246, 0.28); color: #fff; }
+    .pos-btn-help.asked { background: rgba(74, 222, 128, 0.28); color: #4ade80; }
+
     /* ---------- STATUS ---------- */
     #status-bar {
       padding: 7px 14px;
@@ -234,6 +244,7 @@
     <button class="pos-btn" id="btn-right"   title="Direita" draggable="false">▶</button>
     <button class="pos-btn" id="btn-monitor" title="Próximo monitor" draggable="false">⊞</button>
     <button class="pos-btn" id="btn-clear"   title="Limpar" draggable="false">🗑</button>
+    <button class="pos-btn pos-btn-help" id="btn-help" title="Me ajuda! Fiquei travado — refaz o plano do que falta" draggable="false">h</button>
     <button class="pos-btn" id="btn-pause"   title="Pausar assistente" draggable="false">⏸</button>
     <button class="pos-btn" id="btn-min"     title="Minimizar (volta sozinho na próxima dica)" draggable="false">–</button>
   </div>
@@ -332,6 +343,17 @@
     document.getElementById('btn-monitor').addEventListener('click', () => api.overlayPosition?.('next-monitor'));
     document.getElementById('btn-clear').addEventListener('click', () => clearTips());
     document.getElementById('btn-min')?.addEventListener('click', () => api.visionGuideMinimize?.());
+
+    // Botão [h] "me ajuda, travei": tira um print agora e pede pro tutor revisar o
+    // que já foi feito e refazer o plano só com o que falta (ou resolver o bug da
+    // tela). Feedback verde rápido pra confirmar que o pedido foi enviado.
+    const btnHelp = document.getElementById('btn-help');
+    btnHelp?.addEventListener('click', () => {
+      api.visionGuideHelp?.();
+      btnHelp.classList.add('asked');
+      updateStatus('thinking');
+      setTimeout(() => btnHelp.classList.remove('asked'), 1200);
+    });
 
     // Pausar / continuar o assistente (para prints + áudio). O main confirma o
     // novo estado por 'vision-guide-paused' e aí trocamos o ícone e o status.

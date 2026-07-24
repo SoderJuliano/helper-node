@@ -88,6 +88,7 @@ let paused = false;           // pausa temporária (botão): para prints + áudi
 let lastErrorEmit = 0;        // throttle p/ mostrar falhas na telinha sem poluir
 let pendingQuestion = null;   // pergunta de texto direto (Ctrl+I) a responder já
 let forceAnalyze = false;     // print explícito (Ctrl+Shift+S): força análise agora
+let pendingHelp = false;      // botão [h] "me ajuda": refaz o plano do que falta
 
 let pauseCb = null;           // notifica mudança de pausa (manual OU auto por custo)
 let needsIntroduction = false; // controla o envio da mensagem inicial de introdução
@@ -343,7 +344,19 @@ async function askTutor(base64Image, editorState, options = {}) {
 
   const phase = options.phase || (isIntro ? 'intro' : 'guide');
 
-  if (hasUserSpeech) {
+  if (phase === 'help') {
+    // Botão [h] "me ajuda, travei": o dev está perdido no meio do desafio que o
+    // tutor já leu. Reavalia o estado, refaz o plano SÓ com o que falta e, se a
+    // tela mostrar erro/bug, foca em resolvê-lo — sem quebrar o que já funciona.
+    parts.push(
+      `- O usuário apertou o botão de AJUDA ("me ajuda, fiquei perdido/travado"). Ele está no MEIO do desenvolvimento do último enunciado que você leu e não sabe como prosseguir DESTE exato ponto. Faça, NESTA ordem e SEM enrolação:`,
+      `  1) Revise mentalmente o que JÁ FOI FEITO (suas dicas anteriores + o print anterior + o plano) e o estado ATUAL da tela.`,
+      `  2) Dê uma análise MUITO curta (1-2 linhas no máximo) do ponto exato em que ele está.`,
+      `  3) REFAÇA o plano apenas com o que FALTA para concluir a tarefa (as próximas etapas objetivas). NÃO repita o que já está pronto e NÃO mande refazer o que já funciona.`,
+      `  • SE o print atual mostrar um ERRO/BUG (stack trace, exceção, marcação vermelha da IDE, teste falhando): FOQUE primeiro em resolver esse erro — aponte a causa provável e mostre o trecho corrigido — SEM quebrar a parte que já funciona. Só depois, se couber, indique o próximo passo.`,
+      `- Seja direto e prático. NÃO responda com [AGUARDAR] de jeito nenhum.`
+    );
+  } else if (hasUserSpeech) {
     parts.push(`- O usuário acabou de falar algo direcionado a você por voz/microfone. Você DEVE responder diretamente, de forma concisa e amigável, com base na imagem da tela ou conteúdo do editor. Responda no MESMO idioma da fala dele. NÃO responda com [AGUARDAR] de jeito nenhum.`);
   } else if (phase === 'intro') {
     parts.push(
@@ -354,7 +367,13 @@ async function askTutor(base64Image, editorState, options = {}) {
       `- NÃO responda com [AGUARDAR]. O marcador é obrigatório e será removido antes de exibir.`
     );
   } else if (phase === 'plan') {
-    parts.push(`- Você já avisou que ia montar o plano. AGORA entregue o PLANO por etapas, mas RESUMIDO: só as PRIMEIRAS 2-3 etapas, curtas (1 linha cada), SEM código ainda, sem poluir a tela. O dev vai executando e você revela o resto conforme ele avança. NÃO responda com [AGUARDAR].`);
+    parts.push(
+      `- Você já avisou que ia montar o plano. AGORA entregue um RESUMO SIMPLIFICADO do desafio inteiro, pro dev ter a VISÃO GERAL e confirmar que entendeu. Estruture assim:`,
+      `  1) Em 1 frase: o que o desafio pede / aonde vamos chegar no final.`,
+      `  2) Os passos principais em bullets CURTOS (o que fazer, que arquivos/estruturas criar, o que usar em cada etapa) — visão geral, SEM código e sem detalhar demais.`,
+      `  3) Feche dizendo, de forma natural, que vai te guiar durante o processo, passo a passo.`,
+      `- No máximo ~5-6 linhas no total. É um resumo pra ele ler e dizer "entendi" — não é a solução. NÃO responda com [AGUARDAR].`
+    );
   } else if (options.forceHelp) {
     parts.push(`- O usuário pediu ajuda AGORA (apertou o atalho de captura). Olhe a tela atual e dê a orientação mais útil pro que ele está fazendo/vendo — o próximo passo, uma correção pontual, ou como destravar. NÃO responda com [AGUARDAR].`);
   } else {
@@ -378,7 +397,7 @@ async function askTutor(base64Image, editorState, options = {}) {
     `- Aja com paciência: corrija e oriente, deixe o dev conduzir a tarefa. Ele muitas vezes está falando com OUTRA pessoa (entrevistador), não com você — não exija explicação nem atenção; infira a intenção pela ação.`
   );
 
-  if (lesson.plan && phase === 'guide') {
+  if (lesson.plan && (phase === 'guide' || phase === 'help')) {
     parts.push('', `[PLANO SUGERIDO — é um GUIA, NÃO uma regra]\n${lesson.plan}\n\nAcompanhe o dev, mas se ele mudar de abordagem (por voz ou pela ação na tela), ADAPTE o plano ao que ELE está fazendo — não force o original nem mande apagar. Quando ele criar os primeiros arquivos/estruturas, mostre o CONTEÚDO MÍNIMO que ajuda (trecho pequeno, não o arquivo inteiro). Se algo estiver errado, mostre o JEITO CERTO — nunca só "apaga". Avance sem repetir o que já foi dito.`);
   }
 
@@ -398,7 +417,9 @@ async function askTutor(base64Image, editorState, options = {}) {
     const textContext = `[ARQUIVO: ${editorState.path}]\n<cursor_position>${editorState.cursorIndex}</cursor_position>\n<content>\n${editorState.content}\n</content>`;
     userContent.push({ type: 'text', text: textContext });
   } else {
-    if (hasUserSpeech && lastFrameBase64) {
+    // Print anterior + atual quando há fala do usuário OU quando ele pediu ajuda
+    // ([h]): comparar os dois deixa o tutor "ver" o que já foi feito e o ponto atual.
+    if ((hasUserSpeech || phase === 'help') && lastFrameBase64) {
       userContent.push(
         { type: 'text', text: 'Print da tela anterior (antes da pergunta):' },
         { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${lastFrameBase64}`, detail: 'low' } }, // sempre low: só serve p/ comparar o que mudou
@@ -416,6 +437,11 @@ async function askTutor(base64Image, editorState, options = {}) {
     userContent.push({
       type: 'text',
       text: `O usuário disse no microfone: "${userSpeech}"\n\nResponda diretamente a essa fala do usuário com base no print da tela ou conteúdo do editor. NÃO responda com [AGUARDAR].`
+    });
+  } else if (phase === 'help') {
+    userContent.push({
+      type: 'text',
+      text: `O usuário apertou AJUDA: "me ajuda, fiquei perdido/travado". Ele está no meio do desafio que você já leu e não sabe como prosseguir deste ponto. Analise a tela ATUAL, compare com o print anterior e suas dicas, dê a análise curtíssima (1-2 linhas) e refaça o plano só com o que FALTA. Se a tela mostrar um erro/bug, resolva-o primeiro sem quebrar o que já funciona. NÃO responda com [AGUARDAR].`
     });
   } else {
     userContent.push({
@@ -509,8 +535,9 @@ async function tick() {
   // mudança de tela/cooldown), logo após o anúncio na intro. Depois, guia normal.
   const deliverPlan = !isIntro && lesson.isTask && lesson.planAnnounced && !lesson.planDelivered;
   const doForceHelp = forceAnalyze; forceAnalyze = false; // print explícito (Ctrl+Shift+S)
-  const forced = isIntro || deliverPlan || doForceHelp;
-  const phase = isIntro ? 'intro' : (deliverPlan ? 'plan' : 'guide');
+  const doHelp = pendingHelp; pendingHelp = false;        // botão [h] "me ajuda, travei"
+  const forced = isIntro || deliverPlan || doForceHelp || doHelp;
+  const phase = isIntro ? 'intro' : (deliverPlan ? 'plan' : (doHelp ? 'help' : 'guide'));
 
   let base64, hash, editorState;
   
@@ -553,6 +580,9 @@ async function tick() {
   // Pergunta de TEXTO direta (Ctrl+I) tem prioridade e não passa pelos filtros
   // de eco/filler — é uma pergunta explícita do usuário pro tutor.
   if (pendingQuestion) { userSpeech = pendingQuestion; hasNewMicSpeech = true; pendingQuestion = null; }
+  // Botão [h] tem intenção própria ("refaz o plano do que falta") — se o usuário
+  // por acaso falou no mesmo tick, a ajuda tem prioridade e ignora a fala.
+  if (doHelp) { userSpeech = ''; hasNewMicSpeech = false; }
 
   if (!forced) {
     // Economia de token: nada mudou na tela e nenhuma fala/pergunta nova → não chama a API.
@@ -666,6 +696,7 @@ async function start(options = {}) {
   paused = false;
   pendingQuestion = null;
   forceAnalyze = false;
+  pendingHelp = false;
 
   needsIntroduction = true; // Habilita a introdução para esta nova sessão
   lastFrameHash = null;
@@ -700,6 +731,7 @@ async function stop() {
   paused = false;
   pendingQuestion = null;
   forceAnalyze = false;
+  pendingHelp = false;
   needsIntroduction = false; // Cancela introdução pendente se houver
   if (captureTimer) { clearInterval(captureTimer); captureTimer = null; }
   stopAudio();
@@ -751,6 +783,16 @@ function askQuestion(text) {
 function analyzeNow() {
   if (!running || paused) return;
   forceAnalyze = true;
+  if (!inFlight) tick();
+}
+
+// Botão [h] "me ajuda, fiquei perdido/travado" (modo integrado): tira um print
+// AGORA, revisa o que já foi feito (dicas anteriores + print anterior + plano),
+// dá uma análise curtíssima e REFAZ o plano só com o que falta. Se a tela tiver
+// um erro/bug, foca em resolvê-lo sem quebrar o que já funciona.
+function askHelp() {
+  if (!running || paused) return;
+  pendingHelp = true;
   if (!inFlight) tick();
 }
 
@@ -810,4 +852,4 @@ function triggerIntroduction() {
   }
 }
 
-module.exports = { start, stop, pause, resume, isPaused, isActive, askQuestion, analyzeNow, onGuidance, onStatus, onPauseChange, setContextProvider, getIdeAutocomplete, triggerIntroduction };
+module.exports = { start, stop, pause, resume, isPaused, isActive, askQuestion, analyzeNow, askHelp, onGuidance, onStatus, onPauseChange, setContextProvider, getIdeAutocomplete, triggerIntroduction };

@@ -212,6 +212,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // sozinho na posição original quando a IA manda uma nova dica.
   visionGuideMinimize: () =>
     ipcRenderer.send("vision-guide-minimize"),
+  // Botão [h] "me ajuda, travei": tira print agora e refaz o plano do que falta.
+  visionGuideHelp: () =>
+    ipcRenderer.send("vision-guide-help"),
   // Pausa/retoma o assistente (para prints + áudio). O main responde o novo
   // estado por 'vision-guide-paused' pra o overlay atualizar o botão.
   visionGuideTogglePause: () =>
