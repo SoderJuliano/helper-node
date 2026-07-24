@@ -33,10 +33,16 @@ const originalEmit = ipcMain.emit;
 ipcMain.emit = function (event, ...args) {
   if (typeof event === 'string' && !event.startsWith('__')) {
     if (event !== 'native-audio-pcm' && event !== 'native-audio-log' && event !== 'terminal:input' && event !== 'terminal:output') {
-      try {
-        console.log(`[IPC LOG] Channel: ${event}, Args:`, JSON.stringify(args.slice(1)).slice(0, 400));
-      } catch (e) {
-        console.log(`[IPC LOG] Channel: ${event} (Args serialization failed)`);
+      // NUNCA logar os args de canais sensíveis (chaves/tokens/segredos) — senão
+      // a API key vaza em texto puro no terminal/logs que o usuário cola por aí.
+      if (/token|api-?key|secret|password|senha|auth/i.test(event)) {
+        console.log(`[IPC LOG] Channel: ${event}, Args: [redacted]`);
+      } else {
+        try {
+          console.log(`[IPC LOG] Channel: ${event}, Args:`, JSON.stringify(args.slice(1)).slice(0, 400));
+        } catch (e) {
+          console.log(`[IPC LOG] Channel: ${event} (Args serialization failed)`);
+        }
       }
     }
   }
@@ -924,6 +930,7 @@ function expandTranslationOverlayIfNeeded() {
 // direita) pra não colidir quando os dois estiverem abertos.
 // =========================================================================
 let visionGuideOverlayWindow = null;
+let visionGuideMinimized = false;   // "-" temporário; restaura ao chegar dica nova
 
 function computeVisionGuideOverlayBounds() {
   let display;
@@ -995,6 +1002,8 @@ function createVisionGuideOverlay() {
       clearInterval(keepOnTop);
       return;
     }
+    // Enquanto minimizado (botão "-"), não força topo/reexibição.
+    if (visionGuideMinimized) return;
     try {
       if (!visionGuideOverlayWindow.isAlwaysOnTop()) {
         visionGuideOverlayWindow.setAlwaysOnTop(true, 'screen-saver');
@@ -1024,25 +1033,52 @@ function sendToVisionGuideOverlay(channel, payload) {
   }
 }
 
-// Estica a janela do tutor +200px quando o conteúdo cresce, até 42% da tela.
-function expandVisionGuideOverlayIfNeeded() {
+// Tutor usa tamanho FIXO. Antes crescia +200px a cada dica, o que fazia a
+// janela ocupar meia tela e "inchar" enquanto o usuário a arrastava (dicas
+// chegavam durante o arraste). Agora o histórico rola verticalmente dentro de
+// #messages e a janela mantém o tamanho de abertura. No-op proposital (mantido
+// pra não quebrar o IPC request-vision-guide-resize).
+function expandVisionGuideOverlayIfNeeded() { /* no-op: tamanho fixo */ }
+
+// Restaura o overlay do tutor ao tamanho/posição ORIGINAL de abertura. Serve
+// tanto pro botão "-" (quando volta) quanto como "safe point" pra sair de
+// qualquer bug de tamanho/posição.
+function restoreVisionGuideOverlay() {
   if (!visionGuideOverlayWindow || visionGuideOverlayWindow.isDestroyed()) return;
-  const bounds = visionGuideOverlayWindow.getBounds();
-  const display = screen.getDisplayMatching(bounds);
-  const wa = display.workArea;
-  const maxW = Math.round(wa.width * 0.42);
-  if (bounds.width >= maxW) return;
-  const newW = Math.min(bounds.width + 200, maxW);
+  try { visionGuideOverlayWindow.setBounds(computeVisionGuideOverlayBounds()); } catch (_) {}
   try {
-    visionGuideOverlayWindow.setBounds({ x: bounds.x, y: bounds.y, width: newW, height: bounds.height });
+    if (typeof visionGuideOverlayWindow.showInactive === 'function') visionGuideOverlayWindow.showInactive();
+    else visionGuideOverlayWindow.show();
   } catch (_) {}
+  try { visionGuideOverlayWindow.setAlwaysOnTop(true, 'screen-saver'); } catch (_) {}
+  visionGuideMinimized = false;
 }
+
+// Botão "-": minimiza temporariamente (esconde). Restaura sozinho na próxima dica.
+ipcMain.on('vision-guide-minimize', () => {
+  if (visionGuideOverlayWindow && !visionGuideOverlayWindow.isDestroyed()) {
+    try { visionGuideOverlayWindow.hide(); } catch (_) {}
+    visionGuideMinimized = true;
+  }
+});
+
+// Botão pause/continuar: para/retoma prints + coleta de áudio (mantém a sessão).
+// Responde ao overlay o novo estado pra ele atualizar o rótulo do botão.
+ipcMain.on('vision-guide-toggle-pause', () => {
+  if (!visionGuide.isActive || !visionGuide.isActive()) return;
+  const willPause = !(visionGuide.isPaused && visionGuide.isPaused());
+  // pause()/resume() já avisam o overlay via onPauseChange → não precisa enviar aqui.
+  if (willPause) { try { visionGuide.pause(); } catch (_) {} }
+  else { try { visionGuide.resume(); } catch (_) {} }
+});
 
 // Roteia guidance/status do serviço → overlay (modo integrado OU janela) + main.
 visionGuide.onGuidance(({ text }) => {
   if (!text) return;
   if (configService.getOsIntegrationStatus()) {
     if (!visionGuideOverlayWindow || visionGuideOverlayWindow.isDestroyed()) createVisionGuideOverlay();
+    // Dica nova chegou: se estava minimizado (botão "-"), volta na posição original.
+    if (visionGuideMinimized) restoreVisionGuideOverlay();
     sendToVisionGuideOverlay('vision-guide-message', { text });
   } else if (mainWindow && !mainWindow.isDestroyed()) {
     // Modo janela/IDE: envia para o renderer da janela principal!
@@ -1052,6 +1088,12 @@ visionGuide.onGuidance(({ text }) => {
 
 visionGuide.onStatus((status) => {
   sendToVisionGuideOverlay('vision-guide-status', status);
+});
+
+// Mudança de pausa (manual pelo botão OU automática pelo guardrail de custo):
+// avisa o overlay pra ele atualizar o botão ⏸/▶ e o status.
+visionGuide.onPauseChange((paused) => {
+  sendToVisionGuideOverlay('vision-guide-paused', paused);
 });
 
 let currentEditorState = null;
@@ -2740,6 +2782,13 @@ async function registerGlobalShortcuts() {
 
       // Captura full-screen automática (sem seleção, sem prompt) → OCR → IA
       if (action === "capture-region-native") {
+        // Com o Tutor ligado no modo integrado, o print silencioso vira um pedido
+        // de ajuda AO TUTOR (ele já enxerga a tela) — responde na telinha dele,
+        // em vez de abrir a janela separada de OCR sem contexto.
+        if (configService.getOsIntegrationStatus() && visionGuide.isActive()) {
+          try { visionGuide.analyzeNow(); } catch (e) { console.warn('[vision-guide] analyzeNow falhou:', e.message); }
+          return;
+        }
         try { await captureFullScreenAuto(); } catch (e) { console.error('captureFullScreenAuto failed:', e); }
         return;
       }
@@ -5615,12 +5664,19 @@ ipcMain.on('frameless-drag-start', (event) => {
   stopFramelessDrag();
   const cursor = screen.getCursorScreenPoint();
   const [wx, wy] = win.getPosition();
+  const [ww, wh] = win.getSize();            // trava o tamanho no início do arraste
   const offsetX = cursor.x - wx;
   const offsetY = cursor.y - wy;
   const timer = setInterval(() => {
     if (!win || win.isDestroyed()) { stopFramelessDrag(); return; }
     const c = screen.getCursorScreenPoint();
-    try { win.setPosition(c.x - offsetX, c.y - offsetY); } catch (_) {}
+    // setBounds com largura/altura FIXAS (não setPosition): em telas com DPI
+    // fracionário (125%/150%), setPosition repetido numa janela transparent
+    // acumula erro de arredondamento e a janela vai CRESCENDO enquanto arrasta.
+    // Reafirmar o tamanho + arredondar as coordenadas a cada frame trava isso.
+    try {
+      win.setBounds({ x: Math.round(c.x - offsetX), y: Math.round(c.y - offsetY), width: ww, height: wh });
+    } catch (_) {}
   }, 16);
   _framelessDrag = { win, timer };
 });
@@ -5849,7 +5905,16 @@ ipcMain.on("send-os-question", async (event, data) => {
   if (osInputWindow && !osInputWindow.isDestroyed()) {
     osInputWindow.close();
   }
-  
+
+  // Com o Tutor ligado no modo integrado, uma pergunta de TEXTO (Ctrl+I) vai
+  // direto PRO TUTOR — ele responde na própria telinha, com o contexto da tela,
+  // em vez de abrir uma janela separada sem contexto. (Com imagem colada segue
+  // o fluxo normal de visão abaixo.)
+  if (!image && text && text.trim() && configService.getOsIntegrationStatus() && visionGuide.isActive()) {
+    try { visionGuide.askQuestion(text.trim()); } catch (e) { console.warn('[vision-guide] askQuestion falhou:', e.message); }
+    return;
+  }
+
   // Show loading notification
   createOsNotificationWindow('loading', 'Processando pergunta...');
   

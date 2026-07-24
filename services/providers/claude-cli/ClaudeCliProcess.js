@@ -73,6 +73,8 @@ class ClaudeCliProcess {
 
     if (model) args.push('--model', model);
 
+
+
     if (sessionId) {
       // Resume existing conversation
       args.push('--resume', sessionId);

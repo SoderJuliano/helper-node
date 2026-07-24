@@ -58,7 +58,38 @@ function withTimeout(promise, timeoutMs, label) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
+// ── Estado da "aula" (guiar por etapas) ─────────────────────────────────────
+// Quando o tutor detecta um DESAFIO/PROJETO/TAREFA inteira na tela, ele:
+//   1) anuncia que leu e vai montar um plano (mencionando o idioma do enunciado);
+//   2) no turno seguinte entrega o plano RESUMIDO (só as primeiras etapas);
+//   3) acompanha o progresso — quando o dev cria os primeiros arquivos, mostra o
+//      conteúdo mínimo a escrever; aponta erros e possíveis soluções; etapa a etapa.
+// Para telas casuais (não é tarefa) fica no modo oportunista de sempre.
+let lesson = { isTask: false, planAnnounced: false, planDelivered: false, plan: '' };
+function resetLesson() { lesson = { isTask: false, planAnnounced: false, planDelivered: false, plan: '' }; }
+
+// Falas curtas sem conteúdo acionável NÃO disparam o tutor ("hum", "é", "idk"…).
+// Musings PRODUTIVOS ("wondering how", "maybe this…", "stuck") NÃO são filler —
+// têm conteúdo e devem provocar dica — por isso o filtro é conservador.
+const FILLER_RE = /^(hu?m+|a+h+|e+h+|é|uh+|hmm+|ok|okay|tá|ta|sei la|idk|nada|deixa|pera|entao|então|tipo|isso|é isso|blz|beleza|uhum|aham|ãn|hein|so|so\.\.\.)$/i;
+function isFiller(text) {
+  const t = (text || '').trim().toLowerCase().replace(/[.…,!?]+$/g, '').trim();
+  if (t.length < 2) return true;
+  if (FILLER_RE.test(t)) return true;
+  const words = t.split(/\s+/).filter(Boolean);
+  // 1-2 palavras e sem sinal de conteúdo (pergunta/dúvida/erro) → filler.
+  const hasContent = /\?|como|how|why|por ?qu|what|onde|where|qual|erro|error|bug|stuck|travad|help|ajud|faz|fazer|make|fix|conserta|wondering|maybe|should|stack/i.test(t);
+  if (words.length <= 2 && !hasContent) return true;
+  return false;
+}
+
 let running = false;
+let paused = false;           // pausa temporária (botão): para prints + áudio, mantém a sessão
+let lastErrorEmit = 0;        // throttle p/ mostrar falhas na telinha sem poluir
+let pendingQuestion = null;   // pergunta de texto direto (Ctrl+I) a responder já
+let forceAnalyze = false;     // print explícito (Ctrl+Shift+S): força análise agora
+
+let pauseCb = null;           // notifica mudança de pausa (manual OU auto por custo)
 let needsIntroduction = false; // controla o envio da mensagem inicial de introdução
 let cfg = {};                 // { apiKey, intervalMs, minInterventionMs, listenAudio, useKnowledgeBase }
 let captureTimer = null;
@@ -82,6 +113,7 @@ const tmpShot = path.join(os.tmpdir(), 'helper-vision-guide.png');
 
 function onGuidance(cb) { guidanceCb = cb; }
 function onStatus(cb) { statusCb = cb; }
+function onPauseChange(cb) { pauseCb = cb; }
 function setContextProvider(fn) { contextProvider = fn; }
 function isActive() { return running; }
 
@@ -309,10 +341,22 @@ async function askTutor(base64Image, editorState, options = {}) {
     `- EVITE loops de repetição e redundância (crítico): se a fala transcrita do usuário (ou o áudio recente) for apenas ele lendo/repetindo a sua própria dica anterior (ou a captura do seu próprio áudio sendo reproduzido no ambiente), IGNORE essa entrada. NUNCA responda repetindo a mesma orientação ou elaborando sobre algo que você acabou de falar, a menos que o usuário tenha feito uma pergunta genuinamente nova. Nesse caso, se não houver mais nada a adicionar, responda EXATAMENTE com [AGUARDAR].`,
   ];
 
-  if (isIntro) {
-    parts.push(`- Esta é a sua mensagem inicial de boas-vindas (introdução). Você DEVE saudar o usuário amigavelmente e descrever de forma breve o que vê na tela dele (por exemplo, quais ferramentas, sites ou arquivos estão abertos). NÃO responda com [AGUARDAR] ou NOOP de jeito nenhum.`);
-  } else if (hasUserSpeech) {
-    parts.push(`- O usuário acabou de falar algo direcionado a você por voz/microfone. Você DEVE responder diretamente, de forma concisa e amigável, ajudando-o com base na imagem da tela. NÃO responda com [AGUARDAR] de jeito nenhum.`);
+  const phase = options.phase || (isIntro ? 'intro' : 'guide');
+
+  if (hasUserSpeech) {
+    parts.push(`- O usuário acabou de falar algo direcionado a você por voz/microfone. Você DEVE responder diretamente, de forma concisa e amigável, com base na imagem da tela ou conteúdo do editor. Responda no MESMO idioma da fala dele. NÃO responda com [AGUARDAR] de jeito nenhum.`);
+  } else if (phase === 'intro') {
+    parts.push(
+      `- Esta é a sua mensagem inicial. Saúde o usuário e descreva BREVEMENTE o que vê na tela.`,
+      `- AVALIE se a tela mostra um DESAFIO/PROBLEMA de código, uma TAREFA/FEATURE ou um PROJETO inteiro a desenvolver (ex.: LeetCode, desafio técnico, um enunciado a implementar):`,
+      `  • SE FOR: diga que LEU o enunciado, mencione em que IDIOMA ele está, e avise que vai montar um PLANO por etapas pra guiar. NÃO dê o plano nem código agora. Na ÚLTIMA linha coloque APENAS o marcador [[TASK]].`,
+      `  • SE NÃO FOR (tela casual: editor vazio, navegador, configurações, etc.): só saúde e descreva em 1 frase. Na ÚLTIMA linha coloque APENAS o marcador [[CASUAL]].`,
+      `- NÃO responda com [AGUARDAR]. O marcador é obrigatório e será removido antes de exibir.`
+    );
+  } else if (phase === 'plan') {
+    parts.push(`- Você já avisou que ia montar o plano. AGORA entregue o PLANO por etapas, mas RESUMIDO: só as PRIMEIRAS 2-3 etapas, curtas (1 linha cada), SEM código ainda, sem poluir a tela. O dev vai executando e você revela o resto conforme ele avança. NÃO responda com [AGUARDAR].`);
+  } else if (options.forceHelp) {
+    parts.push(`- O usuário pediu ajuda AGORA (apertou o atalho de captura). Olhe a tela atual e dê a orientação mais útil pro que ele está fazendo/vendo — o próximo passo, uma correção pontual, ou como destravar. NÃO responda com [AGUARDAR].`);
   } else {
     parts.push(`- Se NÃO há nada estratégico agora (o dev está escrevendo normalmente, sem erro, sem dúvida), responda EXATAMENTE com ${NOOP} e mais nada. NUNCA descreva a tela.`);
   }
@@ -324,8 +368,19 @@ async function askTutor(base64Image, editorState, options = {}) {
     `- IDIOMA DA CONVERSA/PERGUNTA (crítico): responda EXATAMENTE no idioma da pergunta/enunciado. Pergunta in inglês → responda em inglês. Pergunta em pt-br → responda em pt-br. Não force pt-br quando o contexto está em inglês.`,
     `- Se houver uma pergunta de entrevista na tela ou dita pelo entrevistador no áudio, ajude o desenvolvedor a responder (diga COMO responder, em primeira pessoa, fornecendo um exemplo curto).`,
     `- Se o próprio DESENVOLVEDOR estiver fazendo uma pergunta direta para você (ex: "o que você acha?", "como resolver?", "me ajuda", "o que fazer?", "você me ouve?", "olá", "oi", "tudo bem?"), responda DIRETAMENTE a ele de forma natural e amigável (ex: "Estou te ouvindo perfeitamente!", "Olá! Como posso ajudar?", "Tudo ótimo por aqui, e com você?"). Perguntas diretas do usuário ou saudações/testes de áudio direcionados a você NUNCA devem ser silenciadas com [AGUARDAR], a menos que seja a mera leitura ou repetição redundante de sua própria resposta anterior.`,
-    `- Aja com paciência: corrija e oriente, deixe o dev conduzir a tarefa.`
+    `- FLEXIBILIDADE (crítico): o DEV conduz, você acompanha. Se ele DECIDIR ou ANUNCIAR um caminho (por voz ou pela ação na tela) — ex.: "vou usar Mongo", "vou criar a interface antes da service" — ACEITE e adapte: "boa, dá pra fazer assim — então o próximo passo é…". NUNCA insista no SEU caminho.`,
+    `- OBSERVE ANTES DE CORRIGIR: quando o dev faz algo cujo objetivo ainda não está claro, PREFIRA esperar e acompanhar ("vejo que você está criando esse arquivo — vou acompanhar pra ver aonde você vai") em vez de corrigir na hora. Dê alguns frames antes de intervir.`,
+    `- SUGIRA, NUNCA MANDE: jamais dê ordens tipo "apaga isso" ou "cancela essa janela". No máximo SUGIRA com ressalva ("se isso não for proposital, dá pra desfazer — mas se for de propósito, pode seguir"). A decisão é sempre dele.`,
+    `- PERGUNTE quando precisar entender: se você realmente precisa saber a intenção pra ajudar bem, faça UMA pergunta curta ("qual a ideia aqui — uma service ou um repository?"). O dev responde discretamente por voz ou digitando (Ctrl+I). Não avance chutando errado — pergunte.`,
+    `- Reconheça padrões legítimos de devs experientes SEM ele precisar explicar (interface antes da implementação, repository pattern, usar DUAS tecnologias juntas como Mongo + Redis, etc.). Desvio do seu plano NÃO é erro. Tecnologias podem coexistir — nunca force exclusividade ("apaga o Mongo e usa Redis" é proibido se ele quer os dois).`,
+    `- O plano é uma SUGESTÃO, não uma regra. Se o dev muda de ideia, ATUALIZE o plano pro que ele está fazendo. Só se o caminho dele realmente não funcionar, ajude-o a concluí-lo do jeito dele e SÓ ENTÃO ofereça a alternativa — sem "eu avisei".`,
+    `- ERRO SEMPRE COM SOLUÇÃO (crítico): se algo está genuinamente errado (erro de sintaxe, marcação vermelha da IDE), NUNCA diga apenas "está errado" ou "apaga". SEMPRE mostre O JEITO CERTO — o trecho corrigido ou o próximo passo exato (ex.: se ele travou no \`extends\`, mostre a linha \`class X extends Y\` certa). Apontar erro sem dar o exemplo certo é proibido.`,
+    `- Aja com paciência: corrija e oriente, deixe o dev conduzir a tarefa. Ele muitas vezes está falando com OUTRA pessoa (entrevistador), não com você — não exija explicação nem atenção; infira a intenção pela ação.`
   );
+
+  if (lesson.plan && phase === 'guide') {
+    parts.push('', `[PLANO SUGERIDO — é um GUIA, NÃO uma regra]\n${lesson.plan}\n\nAcompanhe o dev, mas se ele mudar de abordagem (por voz ou pela ação na tela), ADAPTE o plano ao que ELE está fazendo — não force o original nem mande apagar. Quando ele criar os primeiros arquivos/estruturas, mostre o CONTEÚDO MÍNIMO que ajuda (trecho pequeno, não o arquivo inteiro). Se algo estiver errado, mostre o JEITO CERTO — nunca só "apaga". Avance sem repetir o que já foi dito.`);
+  }
 
   if (userCtx) parts.push('', userCtx);
   if (editorMeta) parts.push('', `[CONTEXTO DO EDITOR/MODO]\n${editorMeta}`);
@@ -374,7 +429,10 @@ async function askTutor(base64Image, editorState, options = {}) {
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model,
-      ...maxTokensParam(model, 500),
+      // 1500 (não 500): modelos de VISÃO com raciocínio (gpt-5.x) gastam tokens
+      // "pensando" antes de escrever — com orçamento curto o raciocínio consome
+      // tudo e a resposta vem VAZIA (que o main descarta em silêncio → tutor mudo).
+      ...maxTokensParam(model, 1500),
       messages: [
         { role: 'system', content: systemPrompt },
         {
@@ -383,10 +441,13 @@ async function askTutor(base64Image, editorState, options = {}) {
         },
       ],
     }),
-  }, 30000);
+  }, 120000); // 120s: modelos de VISÃO com raciocínio (gpt-5.x) pensam antes de
+              // responder e passam fácil de 30s. Timeout curto abortava a
+              // chamada boa e o tutor ficava mudo. 120s ainda evita hang eterno.
 
   const data = await res.json();
   if (!res.ok) throw new Error(data.error?.message || 'OpenAI vision error');
+
   return (data.choices?.[0]?.message?.content || '').trim();
 }
 
@@ -439,11 +500,17 @@ function isSimilarToRecentGuidance(text, recentGuidanceList) {
 // LOOP — captura periódica + decisão de intervir.
 // ---------------------------------------------------------------------------
 async function tick() {
-  if (!running || inFlight) return;
+  if (!running || paused || inFlight) return;
   // Após um 429, segura as chamadas até o backoff expirar (evita marteladas).
   if (Date.now() < visionBackoffUntil) return;
 
   const isIntro = needsIntroduction;
+  // Fases da aula. A entrega do plano é um turno "forçado" (fala mesmo sem
+  // mudança de tela/cooldown), logo após o anúncio na intro. Depois, guia normal.
+  const deliverPlan = !isIntro && lesson.isTask && lesson.planAnnounced && !lesson.planDelivered;
+  const doForceHelp = forceAnalyze; forceAnalyze = false; // print explícito (Ctrl+Shift+S)
+  const forced = isIntro || deliverPlan || doForceHelp;
+  const phase = isIntro ? 'intro' : (deliverPlan ? 'plan' : 'guide');
 
   let base64, hash, editorState;
   
@@ -479,14 +546,17 @@ async function tick() {
   const newMicUtterances = recentAudio.filter(a => a.ts > lastAudioTimestampProcessed && a.source === 'você');
   
   // Filtra falas que são leituras ou repetições da sugestão recente dada pelo Tutor para evitar loops de eco
-  const filteredMicUtterances = newMicUtterances.filter(a => !isSimilarToRecentGuidance(a.text, recentGuidance));
+  const filteredMicUtterances = newMicUtterances.filter(a => !isSimilarToRecentGuidance(a.text, recentGuidance) && !isFiller(a.text));
   
-  const userSpeech = filteredMicUtterances.map(a => a.text).join(' ');
-  const hasNewMicSpeech = filteredMicUtterances.length > 0;
+  let userSpeech = filteredMicUtterances.map(a => a.text).join(' ');
+  let hasNewMicSpeech = filteredMicUtterances.length > 0;
+  // Pergunta de TEXTO direta (Ctrl+I) tem prioridade e não passa pelos filtros
+  // de eco/filler — é uma pergunta explícita do usuário pro tutor.
+  if (pendingQuestion) { userSpeech = pendingQuestion; hasNewMicSpeech = true; pendingQuestion = null; }
 
-  if (!isIntro) {
-    // Economia de token: nada mudou na tela e nenhuma fala nova do usuário ou sistema → não chama a API.
-    if (!frameChanged && !newAudio) return;
+  if (!forced) {
+    // Economia de token: nada mudou na tela e nenhuma fala/pergunta nova → não chama a API.
+    if (!frameChanged && !newAudio && !hasNewMicSpeech) return;
     // Descansando logo após uma dica e sem pergunta direta do usuário (mic) → pula a chamada.
     if (withinCooldown && !hasNewMicSpeech) { lastFrameHash = hash; lastFrameBase64 = base64; return; }
   }
@@ -499,33 +569,70 @@ async function tick() {
   inFlight = true;
   emitStatus('thinking');
   try {
-    const answer = await askTutor(base64, editorState, { isIntro, userSpeech });
+    const answer = await askTutor(base64, editorState, { isIntro, userSpeech, phase, forceHelp: doForceHelp });
     lastFrameHash = hash;
     lastFrameBase64 = base64;
     lastAudioMarkerSeen = audioMarker;
 
-    const isNoop = !isIntro && (!answer || answer === NOOP || answer.replace(/[\[\]]/g, '').trim().toUpperCase() === 'AGUARDAR');
-    if (isNoop) { emitStatus('watching'); return; }
 
-    // Respeita o cooldown (a menos que seja disparado por fala nova do mic ou introdução)
-    if (!isIntro && withinCooldown && !hasNewMicSpeech) { emitStatus('watching'); return; }
 
-    lastInterventionAt = Date.now();
-    recentGuidance.push(answer.slice(0, 500));
-    if (recentGuidance.length > 6) recentGuidance.shift();
-    
-    if (isIntro) {
-      needsIntroduction = false;
+    // Resposta VAZIA num turno forçado (intro/plano): o modelo não produziu texto
+    // (ex.: raciocínio consumiu o orçamento). Torna visível e NÃO consome a intro
+    // (needsIntroduction segue true) — tenta de novo no próximo tick.
+    if (forced && !(answer && answer.trim())) {
+      if (guidanceCb && Date.now() - lastErrorEmit > 60000) {
+        lastErrorEmit = Date.now();
+        guidanceCb({ text: '⚠️ O modelo de visão respondeu vazio (pode estar lento ou sem orçamento de tokens). Tentando de novo…', ts: Date.now() });
+      }
+      emitStatus('watching');
+      return;
     }
 
-    if (guidanceCb) guidanceCb({ text: answer, ts: Date.now() });
+    const isNoop = !forced && (!answer || answer === NOOP || answer.replace(/[\[\]]/g, '').trim().toUpperCase() === 'AGUARDAR');
+    if (isNoop) { emitStatus('watching'); return; }
+
+    // Respeita o cooldown (a menos que seja turno forçado — intro/plano — ou fala nova do mic)
+    if (!forced && withinCooldown && !hasNewMicSpeech) { emitStatus('watching'); return; }
+
+    // Transições da máquina de estados da aula + limpeza do marcador da intro.
+    // Se o usuário falou neste turno, o modelo respondeu a ELE (prioridade) — não
+    // é a intro/plano esperado, então não fazemos a transição de fase com isso.
+    let outText = answer;
+    if (phase === 'intro') {
+      needsIntroduction = false;
+      if (!hasNewMicSpeech) {
+        lesson.isTask = /\[\[\s*TASK\s*\]\]/i.test(answer);
+        if (lesson.isTask) lesson.planAnnounced = true;
+        outText = answer.replace(/\[\[\s*(TASK|CASUAL)\s*\]\]/ig, '').trim();
+      }
+    } else if (phase === 'plan' && !hasNewMicSpeech) {
+      lesson.planDelivered = true;
+      lesson.plan = outText.slice(0, 800);
+    }
+
+    lastInterventionAt = Date.now();
+    recentGuidance.push(outText.slice(0, 500));
+    if (recentGuidance.length > 6) recentGuidance.shift();
+
+    if (guidanceCb) guidanceCb({ text: outText, ts: Date.now() });
     emitStatus('watching');
   } catch (e) {
-    console.warn('[vision-guide] tutor falhou:', e.message);
+    const msg = e && e.message || '';
+    console.warn('[vision-guide] tutor falhou:', msg);
+    const isRate = /rate limit|429|tokens per min|TPM/i.test(msg);
     // Rate limit (429): recua ~20s em vez de martelar a API a cada tick.
-    if (/rate limit|429|tokens per min|TPM/i.test(e.message || '')) {
+    if (isRate) {
       visionBackoffUntil = Date.now() + 20000;
       console.warn('[vision-guide] rate limit → pausando chamadas por 20s.');
+    }
+    // Torna a falha VISÍVEL na telinha (antes era silenciosa e parecia "tutor
+    // morto"). Throttle de 60s pra não poluir. Abort de timeout cai aqui também.
+    if (guidanceCb && Date.now() - lastErrorEmit > 60000) {
+      lastErrorEmit = Date.now();
+      const reason = /abort/i.test(msg)
+        ? 'a análise passou do tempo limite (o modelo de visão pode estar lento — tente um modelo de visão mais rápido nas Configurações)'
+        : isRate ? 'limite de uso da API da OpenAI' : (msg || 'erro desconhecido');
+      guidanceCb({ text: `⚠️ Não consegui analisar a tela agora: ${reason}. Sigo tentando.`, ts: Date.now() });
     }
     emitStatus('error');
   } finally {
@@ -551,10 +658,15 @@ async function start(options = {}) {
     minInterventionMs: Math.max(4000, (options.minInterventionSeconds || vg.minInterventionSeconds || 12) * 1000),
     listenAudio: options.listenAudio !== undefined ? options.listenAudio : vg.listenAudio,
     useKnowledgeBase: options.useKnowledgeBase !== undefined ? options.useKnowledgeBase : vg.useKnowledgeBase,
+
   };
   if (!cfg.apiKey) throw new Error('API key OpenAI não configurada');
 
   running = true;
+  paused = false;
+  pendingQuestion = null;
+  forceAnalyze = false;
+
   needsIntroduction = true; // Habilita a introdução para esta nova sessão
   lastFrameHash = null;
   lastFrameBase64 = null;
@@ -563,6 +675,7 @@ async function start(options = {}) {
   lastAudioTimestampProcessed = Date.now(); // Ignora áudios gravados antes de iniciar o Tutor
   recentGuidance.length = 0;
   recentAudio.length = 0;
+  resetLesson();
 
   console.log(`[vision-guide] iniciando (intervalo=${cfg.intervalMs}ms, áudio=${cfg.listenAudio}, RAG=${cfg.useKnowledgeBase})`);
   emitStatus('watching');
@@ -584,11 +697,61 @@ async function start(options = {}) {
 
 async function stop() {
   running = false;
+  paused = false;
+  pendingQuestion = null;
+  forceAnalyze = false;
   needsIntroduction = false; // Cancela introdução pendente se houver
   if (captureTimer) { clearInterval(captureTimer); captureTimer = null; }
   stopAudio();
   emitStatus('idle');
   console.log('[vision-guide] parado.');
+}
+
+// Pausa TEMPORÁRIA (botão): para de tirar prints e de colher áudio, mas mantém
+// a sessão viva (plano, histórico, contexto) — resume() volta de onde parou.
+async function pause() {
+  if (!running || paused) return;
+  paused = true;
+  if (captureTimer) { clearInterval(captureTimer); captureTimer = null; }
+  stopAudio();
+  emitStatus('idle');
+  if (pauseCb) { try { pauseCb(true); } catch (_) {} }
+  console.log('[vision-guide] pausado.');
+}
+
+async function resume() {
+  if (!running || !paused) return;
+  paused = false;
+
+  if (pauseCb) { try { pauseCb(false); } catch (_) {} }
+  emitStatus('watching');
+  if (cfg.listenAudio) {
+    try { await startAudio(cfg.apiKey); } catch (e) { console.warn('[vision-guide] startAudio (resume) falhou:', e.message); }
+  }
+  // Ignora áudio/tela capturados durante a pausa; retoma a cadência normal.
+  lastAudioTimestampProcessed = Date.now();
+  if (!captureTimer) captureTimer = setInterval(tick, cfg.intervalMs);
+  console.log('[vision-guide] retomado.');
+}
+
+function isPaused() { return paused; }
+
+// Pergunta de TEXTO direto pro tutor (Ctrl+I no modo integrado): responde na
+// própria telinha, com o contexto que ele já tem da tela, em vez de abrir uma
+// janela separada sem contexto.
+function askQuestion(text) {
+  const t = (text || '').trim();
+  if (!running || paused || !t) return;
+  pendingQuestion = t;
+  if (!inFlight) tick();
+}
+
+// Print explícito (Ctrl+Shift+S) com o tutor ligado: força olhar a tela AGORA e
+// dar a orientação mais útil (não silencia com [AGUARDAR]).
+function analyzeNow() {
+  if (!running || paused) return;
+  forceAnalyze = true;
+  if (!inFlight) tick();
 }
 
 async function getIdeAutocomplete(prefix, suffix, lang, apiKey) {
@@ -647,4 +810,4 @@ function triggerIntroduction() {
   }
 }
 
-module.exports = { start, stop, isActive, onGuidance, onStatus, setContextProvider, getIdeAutocomplete, triggerIntroduction };
+module.exports = { start, stop, pause, resume, isPaused, isActive, askQuestion, analyzeNow, onGuidance, onStatus, onPauseChange, setContextProvider, getIdeAutocomplete, triggerIntroduction };

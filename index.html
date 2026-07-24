@@ -1049,8 +1049,8 @@
             padding: 0;
             margin: 0;
         }
-        body.terminal-active #composer > *,
-        body.split-active #composer > * {
+        body.terminal-active #composer > *:not(#composer-collapse-toggle),
+        body.split-active #composer > *:not(#composer-collapse-toggle) {
             max-width: 100%;
         }
 
@@ -1120,7 +1120,7 @@
             color: var(--text-2);
             background: rgba(255, 255, 255, 0.05);
         }
-        #composer > * { width: 100%; max-width: 760px; }
+        #composer > *:not(#composer-collapse-toggle) { width: 100%; max-width: 760px; }
 
         /* === Contexto ativo do projeto (pills discretos acima do input) === */
         .composer-context {
@@ -6864,6 +6864,8 @@
                         }
                         
                         if (chunk) {
+                            // Normalize newlines (carriage returns \r or \r\n to standard \n) so HTML's white-space: pre-wrap renders them correctly
+                            chunk = chunk.replace(/\r+\n/g, '\n').replace(/\r/g, '\n');
                             const span = document.createElement('span');
                             span.innerHTML = ansiToHtml(chunk);
                             termScreen.appendChild(span);

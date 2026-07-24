@@ -208,6 +208,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("vision-guide-clear", () => cb()),
   requestVisionGuideResize: () =>
     ipcRenderer.send("request-vision-guide-resize"),
+  // Minimiza o overlay do tutor temporariamente (safe point). Ele restaura
+  // sozinho na posição original quando a IA manda uma nova dica.
+  visionGuideMinimize: () =>
+    ipcRenderer.send("vision-guide-minimize"),
+  // Pausa/retoma o assistente (para prints + áudio). O main responde o novo
+  // estado por 'vision-guide-paused' pra o overlay atualizar o botão.
+  visionGuideTogglePause: () =>
+    ipcRenderer.send("vision-guide-toggle-pause"),
+  onVisionGuidePaused: (cb) =>
+    ipcRenderer.on("vision-guide-paused", (_e, paused) => cb(paused)),
   setVisionGuideConfig: (partial) =>
     ipcRenderer.send("set-vision-guide-config", partial),
   getVisionGuideConfig: () =>

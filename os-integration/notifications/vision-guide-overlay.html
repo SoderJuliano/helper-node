@@ -234,6 +234,8 @@
     <button class="pos-btn" id="btn-right"   title="Direita" draggable="false">▶</button>
     <button class="pos-btn" id="btn-monitor" title="Próximo monitor" draggable="false">⊞</button>
     <button class="pos-btn" id="btn-clear"   title="Limpar" draggable="false">🗑</button>
+    <button class="pos-btn" id="btn-pause"   title="Pausar assistente" draggable="false">⏸</button>
+    <button class="pos-btn" id="btn-min"     title="Minimizar (volta sozinho na próxima dica)" draggable="false">–</button>
   </div>
 
   <div id="status-bar" draggable="false">
@@ -329,6 +331,19 @@
     document.getElementById('btn-right').addEventListener('click', () => api.overlayPosition?.('right'));
     document.getElementById('btn-monitor').addEventListener('click', () => api.overlayPosition?.('next-monitor'));
     document.getElementById('btn-clear').addEventListener('click', () => clearTips());
+    document.getElementById('btn-min')?.addEventListener('click', () => api.visionGuideMinimize?.());
+
+    // Pausar / continuar o assistente (para prints + áudio). O main confirma o
+    // novo estado por 'vision-guide-paused' e aí trocamos o ícone e o status.
+    const btnPause = document.getElementById('btn-pause');
+    btnPause?.addEventListener('click', () => api.visionGuideTogglePause?.());
+    if (api.onVisionGuidePaused) api.onVisionGuidePaused((paused) => {
+      if (btnPause) {
+        btnPause.textContent = paused ? '▶' : '⏸';
+        btnPause.title = paused ? 'Continuar assistente' : 'Pausar assistente';
+      }
+      updateStatus(paused ? 'idle' : 'watching');
+    });
 
     // Mata o drag-and-drop nativo do HTML5 (o cursor de "proibido" que aparecia
     // ao arrastar) em qualquer parte do overlay.
@@ -356,8 +371,13 @@
     (function () {
       const api = window.electronAPI || {};
       if (!api.setIgnoreMouseEvents || api.platform === 'linux') return;
+      // CLICK-THROUGH: só capturam o mouse (1) as áreas de ARRASTE — header e
+      // status-bar — e (2) as áreas de CÓPIA — botões, blocos <pre>, botão copy
+      // e código inline. Todo o resto (texto das dicas, vazios) deixa o clique
+      // passar PRA TRÁS, pra tela real. Assim o mouse nunca fica "preso" no
+      // overlay. (No Linux o app-region nativo cuida do arraste; isto é Win/mac.)
       window.addEventListener('mousemove', (e) => {
-        const isInteractive = e.target.closest('#pos-header, .pos-btn, #status-bar, #messages, pre, code, button, a');
+        const isInteractive = e.target.closest('#pos-header, #status-bar, .pos-btn, pre, .copy-btn, code.inline-code');
         if (isInteractive) {
           api.setIgnoreMouseEvents(false);
         } else {

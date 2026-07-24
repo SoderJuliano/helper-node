@@ -147,6 +147,7 @@ const defaultConfig = {
   geminiCliModel: "gemini-2.5-flash",
   // Claude Code CLI provider.
   claudeCliModel: "claude-sonnet-4-6",
+
   // API Key do backend remoto. Necessário para endpoints pesados (ex: qwen3.6-17b).
   // Endpoints leves (llama3, qwen25) usam o Bearer token fixo hardcoded.
   backendApiKey: "",
@@ -188,6 +189,7 @@ const defaultConfig = {
     minInterventionSeconds: 12,  // silêncio mínimo entre intervenções (não enche a tela)
     listenAudio: true,           // ouvir mic + áudio do sistema pra contexto (Win/mac)
     useKnowledgeBase: true,      // injeta RAG (docs recentes) quando relevante
+
   },
 };
 
@@ -445,6 +447,7 @@ function getClaudeCliModel() {
   if (!currentConfig) currentConfig = loadConfig();
   return currentConfig.claudeCliModel || defaultConfig.claudeCliModel;
 }
+
 
 function setClaudeCliModel(model) {
   if (!currentConfig) currentConfig = loadConfig();
