@@ -25,6 +25,7 @@ const { nativeImage } = require('electron');
 
 const configService = require('./configService');
 const knowledgeBase = require('./knowledgeBase');
+const historyService = require('./historyService');
 const { captureFullScreenToFile } = require('./platform/screenCapture');
 const { transcribeAudio } = require('./translationAssistant/openaiClient');
 const { maxTokensParam } = require('./openAiRealtimeModels');
@@ -90,6 +91,7 @@ let pendingQuestion = null;   // pergunta de texto direto (Ctrl+I) a responder j
 let forceAnalyze = false;     // print explícito (Ctrl+Shift+S): força análise agora
 let pendingHelp = false;      // botão [h] "me ajuda": refaz o plano do que falta
 
+let historySessionId = null;  // sessão de histórico da "aula" atual (uma por start())
 let pauseCb = null;           // notifica mudança de pausa (manual OU auto por custo)
 let needsIntroduction = false; // controla o envio da mensagem inicial de introdução
 let cfg = {};                 // { apiKey, intervalMs, minInterventionMs, listenAudio, useKnowledgeBase }
@@ -119,6 +121,18 @@ function setContextProvider(fn) { contextProvider = fn; }
 function isActive() { return running; }
 
 function emitStatus(s) { try { if (statusCb) statusCb(s); } catch (_) {} }
+
+// Registra a conversa da "aula" no histórico (mesmo store do chat): a fala/pergunta
+// do dev entra como 'user' e cada orientação do tutor como 'assistant'. addMessage
+// devolve o id final (recria a sessão se ela tiver sido apagada) — guardamos de volta.
+async function logToHistory(role, content) {
+  if (!historySessionId || !content || !content.trim()) return;
+  try {
+    historySessionId = await historyService.addMessage(historySessionId, role, content.trim());
+  } catch (e) {
+    console.warn('[vision-guide] falha ao registrar no histórico:', e.message);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // ÁUDIO (Windows/macOS via bridge). Segmentador simples por energia (RMS): junta
@@ -645,6 +659,12 @@ async function tick() {
     if (recentGuidance.length > 6) recentGuidance.shift();
 
     if (guidanceCb) guidanceCb({ text: outText, ts: Date.now() });
+
+    // Registra a conversa no histórico: fala/pergunta do dev (quando houve) como
+    // 'user' e a orientação do tutor como 'assistant'. Não bloqueia o loop se falhar.
+    if (userSpeech && userSpeech.trim()) await logToHistory('user', userSpeech);
+    await logToHistory('assistant', outText);
+
     emitStatus('watching');
   } catch (e) {
     const msg = e && e.message || '';
@@ -708,6 +728,18 @@ async function start(options = {}) {
   recentAudio.length = 0;
   resetLesson();
 
+  // Cria uma sessão de histórico nova pra ESTA aula: registra a conversa entre o
+  // dev (user) e o tutor (assistant) no mesmo histórico do resto do app.
+  historySessionId = null;
+  try {
+    const now = new Date();
+    const title = `👁 Tutor — ${now.toLocaleDateString('pt-BR')} ${now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+    const session = await historyService.createNewSession(title);
+    historySessionId = session.id;
+  } catch (e) {
+    console.warn('[vision-guide] não consegui criar sessão de histórico:', e.message);
+  }
+
   console.log(`[vision-guide] iniciando (intervalo=${cfg.intervalMs}ms, áudio=${cfg.listenAudio}, RAG=${cfg.useKnowledgeBase})`);
   emitStatus('watching');
 
@@ -732,6 +764,7 @@ async function stop() {
   pendingQuestion = null;
   forceAnalyze = false;
   pendingHelp = false;
+  historySessionId = null;   // encerra o registro desta aula (nova sessão no próximo start)
   needsIntroduction = false; // Cancela introdução pendente se houver
   if (captureTimer) { clearInterval(captureTimer); captureTimer = null; }
   stopAudio();
