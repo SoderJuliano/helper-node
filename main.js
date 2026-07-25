@@ -1161,6 +1161,7 @@ function createConfigWindow() {
   });
 
   configWindow.loadFile("config.html");
+  applyStealthProtection(configWindow);
 
   configWindow.on("closed", () => {
     configWindow = null;
@@ -1192,6 +1193,7 @@ function createPreferencesWindow() {
   });
 
   preferencesWindow.loadFile("preferences.html");
+  applyStealthProtection(preferencesWindow);
 
   preferencesWindow.on("closed", () => {
     preferencesWindow = null;
