@@ -285,7 +285,7 @@ function buildRecentAudioBlock() {
 
 function buildRecentGuidanceBlock() {
   if (!recentGuidance.length) return '';
-  return `[DICAS QUE VOCÊ JÁ DEU (não repita, não volte a explicar o mesmo)]\n${recentGuidance.slice(-3).map((g) => `- ${g}`).join('\n')}`;
+  return `[DICAS QUE VOCÊ JÁ DEU (não repita, não volte a explicar o mesmo)]\n${recentGuidance.slice(-3).map((g) => `- ${g.slice(0, 400)}${g.length > 400 ? '...' : ''}`).join('\n')}`;
 }
 
 // Reduz o screenshot antes de enviar: cai a resolução (menos "tiles" na conta de
@@ -423,7 +423,7 @@ async function askTutor(base64Image, editorState, options = {}) {
     `- Sempre use formatação de código com crases inline (\`valor\`) para nomes de pacotes, identificadores, comandos de terminal, chaves de configuração, links ou valores que o usuário precise copiar ou digitar. Isso é CRÍTICO para que o usuário possa copiar esses valores simplesmente clicando neles na interface.`,
     `- IDIOMA — SEGUE A TELA, SEMPRE (crítico, vale pra TUDO: linguagem de programação, texto da explicação, comentários, nomes): o idioma é o que está NAS FOTOS/PRINTS — enunciado em inglês → você escreve E explica em inglês; enunciado/tela em pt-br → você escreve E explica em pt-br. Isso vale igual pra qualquer linguagem de programação (Java, Python, JS, etc.) e pro texto da sua resposta — os dois seguem JUNTOS o idioma da tela, nunca um em pt-br e outro em inglês. Mantenha também a MESMA linguagem de programação e o MESMO idioma de identificadores/nomes/comentários que o USUÁRIO já está escrevendo — a escolha dele tem prioridade sobre o enunciado se ele já começou a escrever. Se ele falar por voz num idioma diferente da tela, responda no idioma DELE só naquela resposta pontual — sem mudar o idioma dos exemplos de código, que continua o da tela.`,
     `- Se houver uma pergunta de entrevista na tela ou dita pelo entrevistador no áudio, ajude o desenvolvedor a responder (diga COMO responder, em primeira pessoa, fornecendo um exemplo curto).`,
-    `- Se o próprio DESENVOLVEDOR estiver fazendo uma pergunta direta para você (ex: "o que você acha?", "como resolver?", "me ajuda", "o que fazer?", "você me ouve?", "olá", "oi", "tudo bem?"), responda DIRETAMENTE a ele de forma natural e amigável (ex: "Estou te ouvindo perfeitamente!", "Olá! Como posso ajudar?", "Tudo ótimo por aqui, e com você?"). Perguntas diretas do usuário ou saudações/testes de áudio direcionados a você NUNCA devem ser silenciadas com [AGUARDAR], a menos que seja a mera leitura ou repetição redundante de sua própria resposta anterior.`,
+    `- Se o DESENVOLVEDOR fizer uma pergunta direta, ou expressar um pensamento em voz alta, comentário ou dúvida técnica sobre o código (ex: "talvez preciso de um log aqui", "deveria usar um map?", "como fazer tal coisa?", "estou com dúvida"), você DEVE responder proativamente. Ajude-o a validar, debugar ou complementar a ideia (ex: onde colocar o log e como, comparar map vs set, etc.). Não se silencie com [AGUARDAR] diante de reflexões técnicas ou dúvidas faladas do dev. Se for uma pergunta/saudação direta (ex: "o que você acha?", "me ajuda", "olá", "oi"), responda amigavelmente (ex: "Estou te ouvindo!", "Olá! Como posso ajudar?"). Perguntas e musings técnicos do usuário NUNCA devem ser silenciados com [AGUARDAR], a menos que seja a mera repetição de sua própria dica anterior.`,
     `- FLEXIBILIDADE (crítico): o DEV conduz, você acompanha. Se ele DECIDIR ou ANUNCIAR um caminho (por voz ou pela ação na tela) — ex.: "vou usar Mongo", "vou criar a interface antes da service" — ACEITE e adapte: "boa, dá pra fazer assim — então o próximo passo é…". NUNCA insista no SEU caminho.`,
     `- OBSERVE ANTES DE CORRIGIR (crítico): compare o print atual com o anterior SÓ pra saber se o dev está PROGREDINDO no arquivo atual (código mudando, avançando — fique em silêncio, é trabalho normal) ou PARADO/travado no mesmo estado por vários prints seguidos NUM ARQUIVO INTEIRO (aí sim, ofereça ajuda nesse arquivo). Nunca julgue pelo conteúdo de uma linha isolada.`,
     `- SUGIRA, NUNCA MANDE: jamais dê ordens tipo "apaga isso" ou "cancela essa janela". No máximo SUGIRA com ressalva ("se isso não for proposital, dá pra desfazer — mas se for de propósito, pode seguir"). A decisão é sempre dele.`,
@@ -581,6 +581,71 @@ function isSimilarToRecentGuidance(text, recentGuidanceList) {
 }
 
 // ---------------------------------------------------------------------------
+// HELPER — Verifica se a nova resposta contém um bloco de código idêntico a
+// alguma dica recente (para evitar loops de repetição de código)
+// ---------------------------------------------------------------------------
+function containsDuplicateCodeBlock(newText, recentList) {
+  if (!newText || !recentList || !recentList.length) return false;
+
+  const extractCodeBlocks = (text) => {
+    const blocks = [];
+    const regex = /```[\s\S]*?```/g;
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+      blocks.push(match[0].replace(/```[a-zA-Z]*\n?|```/g, '').trim());
+    }
+    return blocks;
+  };
+
+  const newBlocks = extractCodeBlocks(newText);
+  if (newBlocks.length === 0) return false;
+
+  for (const recentText of recentList) {
+    const recentBlocks = extractCodeBlocks(recentText);
+    for (const nb of newBlocks) {
+      if (recentBlocks.includes(nb)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// HELPER — Verifica se a explicação textual é muito similar à última dica
+// ---------------------------------------------------------------------------
+function isSimilarToLastTip(newText, lastTip) {
+  if (!newText || !lastTip) return false;
+
+  const clean = (str) => {
+    return str
+      .toLowerCase()
+      .replace(/```[\s\S]*?```/g, '') // remove blocos de código
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"']/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .split(" ")
+      .filter(w => w.length > 2);
+  };
+
+  const newWords = clean(newText);
+  const lastWords = clean(lastTip);
+  if (newWords.length === 0 || lastWords.length === 0) return false;
+
+  let matches = 0;
+  for (const word of newWords) {
+    if (lastWords.includes(word)) {
+      matches++;
+    }
+  }
+
+  const ratio = matches / Math.max(newWords.length, lastWords.length);
+  return ratio > 0.75;
+}
+
+// ---------------------------------------------------------------------------
 // LOOP — captura periódica + decisão de intervir.
 // ---------------------------------------------------------------------------
 async function tick() {
@@ -668,11 +733,20 @@ async function tick() {
     lastFrameBase64 = base64;
     lastAudioMarkerSeen = audioMarker;
 
-
-
     const answerIsNoop = !answer || answer === NOOP || answer.replace(/[\[\]]/g, '').trim().toUpperCase() === 'AGUARDAR';
 
     const requiresResponse = forced || isDirectQuestion;
+
+    // Evita loops de repetição de dicas idênticas ou códigos duplicados
+    const isDuplicate = !requiresResponse && (
+      containsDuplicateCodeBlock(answer, recentGuidance) ||
+      (recentGuidance.length > 0 && isSimilarToLastTip(answer, recentGuidance[recentGuidance.length - 1]))
+    );
+
+    if (isDuplicate) {
+      emitStatus('watching');
+      return;
+    }
 
     // Turno que EXIGE resposta de verdade (forçado: intro/plano/ajuda — OU
     // pergunta direta do usuário por texto) mas o modelo respondeu vazio
@@ -725,7 +799,7 @@ async function tick() {
     }
 
     lastInterventionAt = Date.now();
-    recentGuidance.push(outText.slice(0, 500));
+    recentGuidance.push(outText);
     if (recentGuidance.length > 6) recentGuidance.shift();
 
     if (guidanceCb) guidanceCb({ text: outText, ts: Date.now() });
