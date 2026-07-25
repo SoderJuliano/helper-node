@@ -393,13 +393,15 @@
     (function () {
       const api = window.electronAPI || {};
       if (!api.setIgnoreMouseEvents || api.platform === 'linux') return;
-      // CLICK-THROUGH: só capturam o mouse (1) as áreas de ARRASTE — header e
-      // status-bar — e (2) as áreas de CÓPIA — botões, blocos <pre>, botão copy
-      // e código inline. Todo o resto (texto das dicas, vazios) deixa o clique
-      // passar PRA TRÁS, pra tela real. Assim o mouse nunca fica "preso" no
-      // overlay. (No Linux o app-region nativo cuida do arraste; isto é Win/mac.)
+      // CLICK-THROUGH: capturam o mouse (1) as áreas de ARRASTE — header e
+      // status-bar —, (2) as áreas de CÓPIA — botões, blocos <pre>, botão copy
+      // e código inline — e (3) a área de MENSAGENS (#messages), pra dar pra
+      // rolar com a roda do mouse e ler dicas anteriores. Só o que sobra fora
+      // da janela em si passa o clique PRA TRÁS, pra tela real — a janela nunca
+      // é maior que o próprio conteúdo, então isso é raro na prática. (No Linux
+      // o app-region nativo cuida do arraste; isto é Win/mac.)
       window.addEventListener('mousemove', (e) => {
-        const isInteractive = e.target.closest('#pos-header, #status-bar, .pos-btn, pre, .copy-btn, code.inline-code');
+        const isInteractive = e.target.closest('#pos-header, #status-bar, .pos-btn, pre, .copy-btn, code.inline-code, #messages');
         if (isInteractive) {
           api.setIgnoreMouseEvents(false);
         } else {

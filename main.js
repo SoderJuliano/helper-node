@@ -7369,6 +7369,33 @@ app.whenReady().then(async () => {
     startCaptureToolMonitoring();
   }
 
+  // Retoma o Tutor (Vision Guide) se ele estava ligado quando o app fechou. Sem
+  // isto, o checkbox das Configurações fica marcado (config salva) mas o
+  // processo de verdade nunca reinicia — parecia "sumido" a cada reabertura.
+  try {
+    const vgCfg = configService.getVisionGuideConfig();
+    const bootCfg = configService.getConfig();
+    if (vgCfg.enabled && bootCfg.openIaToken && !visionGuide.isActive()) {
+      setTimeout(() => {
+        visionGuide.start({
+          apiKey: bootCfg.openIaToken,
+          intervalSeconds: vgCfg.intervalSeconds,
+          minInterventionSeconds: vgCfg.minInterventionSeconds,
+          listenAudio: vgCfg.listenAudio,
+          useKnowledgeBase: vgCfg.useKnowledgeBase,
+        }).then(() => {
+          if (configService.getOsIntegrationStatus()) {
+            createVisionGuideOverlay();
+            sendToVisionGuideOverlay('vision-guide-status', 'watching');
+          }
+        }).catch((e) => {
+          console.error('[vision-guide] falha ao retomar no boot:', e.message);
+          configService.setVisionGuideConfig({ enabled: false });
+        });
+      }, 1500);
+    }
+  } catch (e) { console.error('[vision-guide] erro ao checar auto-start:', e.message); }
+
   // Verifica o status do backend ao iniciar e depois periodicamente
   checkBackendStatus();
   setInterval(checkBackendStatus, 60000); // Verifica a cada 60 segundos

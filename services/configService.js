@@ -186,7 +186,7 @@ const defaultConfig = {
   visionGuide: {
     enabled: false,
     intervalSeconds: 5,          // cadência dos prints periódicos
-    minInterventionSeconds: 12,  // silêncio mínimo entre intervenções (não enche a tela)
+    minInterventionSeconds: 0,   // 0 = a IA decide quando falar (sem piso de silêncio fixo)
     listenAudio: true,           // ouvir mic + áudio do sistema pra contexto (Win/mac)
     useKnowledgeBase: true,      // injeta RAG (docs recentes) quando relevante
 
@@ -241,6 +241,15 @@ function loadConfig() {
         (!loadedConfig.promptInstruction.includes('MESMO IDIOMA') && !loadedConfig.promptInstruction.includes('SAME LANGUAGE'));
       if (isLegacy) {
         loadedConfig.promptInstruction = getDefaultPromptInstruction(lang);
+      }
+
+      // Migração: instalações antigas gravaram minInterventionSeconds=12 em disco
+      // (era o default de antes). Como o merge abaixo é raso, um valor salvo
+      // sobrescreve o default do código pra sempre — sem isto, o "12s" nunca sai
+      // pra quem já rodou o app uma vez. 12 nunca foi escolha explícita do
+      // usuário (era só o valor de fábrica antigo), então é seguro migrar pra 0.
+      if (loadedConfig.visionGuide && loadedConfig.visionGuide.minInterventionSeconds === 12) {
+        loadedConfig.visionGuide = { ...loadedConfig.visionGuide, minInterventionSeconds: 0 };
       }
 
       return { ...defaultConfig, ...loadedConfig };

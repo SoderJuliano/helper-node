@@ -1033,7 +1033,7 @@ if (visionGuideRagInput) {
       updateVisionGuideEnabledStatus(!!vg.enabled);
     }
     if (visionGuideIntervalSelect) visionGuideIntervalSelect.value = String(vg.intervalSeconds || 5);
-    if (visionGuideCooldownSelect) visionGuideCooldownSelect.value = String(vg.minInterventionSeconds || 12);
+    if (visionGuideCooldownSelect) visionGuideCooldownSelect.value = String(vg.minInterventionSeconds ?? 0);
     if (visionGuideAudioInput) visionGuideAudioInput.checked = vg.listenAudio !== false;
     if (visionGuideRagInput) visionGuideRagInput.checked = vg.useKnowledgeBase !== false;
   } catch (e) {

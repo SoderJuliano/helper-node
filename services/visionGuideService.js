@@ -106,6 +106,7 @@ let audioMarker = 0;          // muda quando chega fala nova (detecta "novo áud
 let lastAudioMarkerSeen = 0;
 let lastAudioTimestampProcessed = 0; // timestamp do último áudio processado
 let visionBackoffUntil = 0;   // após um 429, segura as chamadas por um tempo
+let lastVisionDiag = '';      // motivo real da última resposta vazia (modelo/finish/tokens)
 
 // Callbacks (registrados pelo main).
 let guidanceCb = null;
@@ -350,44 +351,58 @@ async function askTutor(base64Image, editorState, options = {}) {
     `Você é um TUTOR de programação em tempo real que observa a tela do desenvolvedor por prints periódicos ou pelo conteúdo do editor atual. Seu papel é GUIAR, nunca resolver por ele.`,
     ``,
     `REGRAS (críticas):`,
-    `- NUNCA entregue a tarefa inteira pronta nem escreva o código completo por ele. Dê o PRÓXIMO passo, uma correção pontual, ou o TRECHO MÍNIMO que destrava. O objetivo é o dev ESCREVER, não copiar.`,
+    `- NUNCA entregue o desafio/projeto INTEIRO pronto de uma vez (todos os arquivos). Mas para o ARQUIVO/COMPONENTE da etapa ATUAL do plano, você PODE e DEVE dar um EXEMPLO COMPLETO desse arquivo quando fizer sentido (ele vai começar aquele arquivo, ou está travado nele) — isso é o fluxo normal de dev, não é "entregar pronto". Terminado aquele arquivo, ajude com o PRÓXIMO da lista. A unidade de trabalho é o ARQUIVO/ETAPA, não a linha.`,
     `- NUNCA encerre suas mensagens com perguntas redundantes ou robóticas de preenchimento de chat (ex: "Posso ajudar com algo mais?", "Quer ajuda em mais alguma coisa?", "Posso ajudar em algo mais?"). Você é um tutor sempre assistindo, então apenas dê a orientação/dica direta de forma natural e silencie. O usuário já sabe que você continuará assistindo.`,
-    `- Só intervenha em PONTOS ESTRATÉGICOS: erro de sintaxe/lógica visível na tela, o dev claramente travado/parado, um passo importante prestes a ser feito errado, ou uma PERGUNTA/COMENTÁRIO dirigido a você (por voz ou na tela).`,
+    `- Só intervenha em PONTOS ESTRATÉGICOS, no nível do ARQUIVO/ETAPA (crítico, NUNCA no nível de linha/token): ele vai começar um arquivo da etapa atual e ainda não tem exemplo, ele está claramente travado/parado NUM ARQUIVO (várias telas seguidas sem progresso nele — não uma linha isolada), um arquivo inteiro ficou quebrado de um jeito que trava o avanço, ou uma PERGUNTA/COMENTÁRIO dirigido a você (por voz ou na tela). NUNCA comente sintaxe/token/linha isolada em andamento (\`Map<\`, import pela metade, parêntese ainda aberto, etc.) — o dev sabe escrever, isso é digitação normal, fique em silêncio.`,
     `- EVITE loops de repetição e redundância (crítico): se a fala transcrita do usuário (ou o áudio recente) for apenas ele lendo/repetindo a sua própria dica anterior (ou a captura do seu próprio áudio sendo reproduzido no ambiente), IGNORE essa entrada. NUNCA responda repetindo a mesma orientação ou elaborando sobre algo que você acabou de falar, a menos que o usuário tenha feito uma pergunta genuinamente nova. Nesse caso, se não houver mais nada a adicionar, responda EXATAMENTE com [AGUARDAR].`,
+    `- SÓ FALE DO QUE ESTÁ LITERALMENTE VISÍVEL no print ATUAL (crítico): nunca cite número de linha, nome de arquivo, framework ou trecho de código que você não consegue realmente ver na imagem AGORA. Se o plano ou suas dicas anteriores mencionam algo (ex.: outro arquivo/projeto) que não bate mais com a tela atual, IGNORE essa referência antiga — a tela atual é a verdade, não sua memória. Pode haver música/ruído de fundo sendo transcrito como "fala" — se o texto não fizer sentido como algo dito PRA você, ignore-o.`,
   ];
 
   const phase = options.phase || (isIntro ? 'intro' : 'guide');
 
-  if (phase === 'help') {
-    // Botão [h] "me ajuda, travei": o dev está perdido no meio do desafio que o
-    // tutor já leu. Reavalia o estado, refaz o plano SÓ com o que falta e, se a
-    // tela mostrar erro/bug, foca em resolvê-lo — sem quebrar o que já funciona.
-    parts.push(
-      `- O usuário apertou o botão de AJUDA ("me ajuda, fiquei perdido/travado"). Ele está no MEIO do desenvolvimento do último enunciado que você leu e não sabe como prosseguir DESTE exato ponto. Faça, NESTA ordem e SEM enrolação:`,
-      `  1) Revise mentalmente o que JÁ FOI FEITO (suas dicas anteriores + o print anterior + o plano) e o estado ATUAL da tela.`,
-      `  2) Dê uma análise MUITO curta (1-2 linhas no máximo) do ponto exato em que ele está.`,
-      `  3) REFAÇA o plano apenas com o que FALTA para concluir a tarefa (as próximas etapas objetivas). NÃO repita o que já está pronto e NÃO mande refazer o que já funciona.`,
-      `  • SE o print atual mostrar um ERRO/BUG (stack trace, exceção, marcação vermelha da IDE, teste falhando): FOQUE primeiro em resolver esse erro — aponte a causa provável e mostre o trecho corrigido — SEM quebrar a parte que já funciona. Só depois, se couber, indique o próximo passo.`,
-      `- Seja direto e prático. NÃO responda com [AGUARDAR] de jeito nenhum.`
-    );
-  } else if (hasUserSpeech) {
-    parts.push(`- O usuário acabou de falar algo direcionado a você por voz/microfone. Você DEVE responder diretamente, de forma concisa e amigável, com base na imagem da tela ou conteúdo do editor. Responda no MESMO idioma da fala dele. NÃO responda com [AGUARDAR] de jeito nenhum.`);
-  } else if (phase === 'intro') {
+  if (phase === 'intro') {
+    // CRÍTICO: a classificação TASK/CASUAL roda SEMPRE na intro, mesmo que o
+    // usuário tenha falado algo nesse meio-tempo (ex.: ruído do mic captado nos
+    // primeiros segundos). Antes, quando havia fala do usuário nesse momento,
+    // esse bloco inteiro era pulado — matando a detecção de desafio pra sessão
+    // INTEIRA (nunca montava plano nenhum, mesmo sendo claramente um desafio).
     parts.push(
       `- Esta é a sua mensagem inicial. Saúde o usuário e descreva BREVEMENTE o que vê na tela.`,
       `- AVALIE se a tela mostra um DESAFIO/PROBLEMA de código, uma TAREFA/FEATURE ou um PROJETO inteiro a desenvolver (ex.: LeetCode, desafio técnico, um enunciado a implementar):`,
       `  • SE FOR: diga que LEU o enunciado, mencione em que IDIOMA ele está, e avise que vai montar um PLANO por etapas pra guiar. NÃO dê o plano nem código agora. Na ÚLTIMA linha coloque APENAS o marcador [[TASK]].`,
       `  • SE NÃO FOR (tela casual: editor vazio, navegador, configurações, etc.): só saúde e descreva em 1 frase. Na ÚLTIMA linha coloque APENAS o marcador [[CASUAL]].`,
-      `- NÃO responda com [AGUARDAR]. O marcador é obrigatório e será removido antes de exibir.`
+      `- O marcador ([[TASK]] ou [[CASUAL]]) é OBRIGATÓRIO nesta mensagem e será removido antes de exibir — inclua um dos dois SEMPRE, mesmo que o usuário tenha falado algo.`
     );
+    if (hasUserSpeech) {
+      parts.push(`- O usuário também disse algo no microfone: "${userSpeech}". Responda a ele brevemente ANTES da avaliação da tela, no mesmo idioma da fala dele — mas NÃO pule a avaliação nem o marcador final.`);
+    }
+    parts.push(`- NÃO responda com [AGUARDAR].`);
+  } else if (hasUserSpeech) {
+    parts.push(`- O usuário acabou de falar algo direcionado a você por voz/microfone. Você DEVE responder diretamente, de forma concisa e amigável, com base na imagem da tela ou conteúdo do editor. Responda no MESMO idioma da fala dele. NÃO responda com [AGUARDAR] de jeito nenhum.`);
   } else if (phase === 'plan') {
     parts.push(
       `- Você já avisou que ia montar o plano. AGORA entregue um RESUMO SIMPLIFICADO do desafio inteiro, pro dev ter a VISÃO GERAL e confirmar que entendeu. Estruture assim:`,
       `  1) Em 1 frase: o que o desafio pede / aonde vamos chegar no final.`,
-      `  2) Os passos principais em bullets CURTOS (o que fazer, que arquivos/estruturas criar, o que usar em cada etapa) — visão geral, SEM código e sem detalhar demais.`,
-      `  3) Feche dizendo, de forma natural, que vai te guiar durante o processo, passo a passo.`,
-      `- No máximo ~5-6 linhas no total. É um resumo pra ele ler e dizer "entendi" — não é a solução. NÃO responda com [AGUARDAR].`
+      `  2) Os passos principais em bullets CURTOS, na ordem — que arquivos/componentes criar, um por um. Visão geral, SEM código completo aqui (isso vem depois, arquivo por arquivo).`,
+      `  3) Feche dizendo, de forma natural, que vai te guiar arquivo por arquivo durante o processo.`,
+      `- No máximo ~6-7 linhas no total. É um resumo pra ele ler e dizer "entendi" — não é a solução nem o primeiro arquivo ainda. NÃO responda com [AGUARDAR].`
     );
+  } else if (phase === 'help') {
+    // Botão [h] "me ajuda, travei": o dev está perdido no meio do desafio que o
+    // tutor já leu. Reavalia o estado, dá um EXEMPLO COMPLETO do arquivo da etapa
+    // atual e refaz o plano SÓ com o que falta — sem repetir o que já funciona.
+    parts.push(
+      `- O usuário apertou o botão de AJUDA ("me ajuda, fiquei perdido/travado"). Ele está no MEIO do desenvolvimento do último desafio que você leu e não sabe como prosseguir DESTE exato ponto. Faça, NESTA ordem e SEM enrolação:`,
+      `  1) Revise mentalmente o que JÁ FOI FEITO (suas dicas anteriores + o print anterior + o plano) e o estado ATUAL da tela.`,
+      `  2) Dê uma análise MUITO curta (1-2 linhas) do ponto exato em que ele está — qual arquivo/etapa.`,
+      `  3) Entregue um EXEMPLO COMPLETO do arquivo dessa etapa (não uma linha solta), e diga qual é o PRÓXIMO arquivo do plano depois desse.`,
+      `  • SE o print atual mostrar um ERRO/BUG (stack trace, exceção, teste falhando): FOQUE primeiro em resolver esse erro — mostre o arquivo corrigido completo — SEM quebrar o que já funciona. Só depois, se couber, indique o próximo passo.`,
+      `- Seja direto e prático. NÃO responda com [AGUARDAR] de jeito nenhum.`,
+      `- OBRIGATÓRIO (crítico): sua resposta TEM que conter um bloco de código (entre \`\`\`) com o exemplo completo. Uma resposta que só EXPLICA o que fazer, sem o bloco de código, é INVÁLIDA e inútil pro usuário — ele já sabe o que precisa ser feito, ele quer VER o código. NÃO narre a solução em prosa ("defina um método separado", "mantenha um mapa de frequências") — ESCREVA o método/arquivo de verdade, completo, dentro de um bloco de código.`
+    );
+    if (options.retryNoCode) {
+      parts.push(`- ATENÇÃO: sua resposta ANTERIOR a este mesmo pedido não continha bloco de código — foi rejeitada por não ser útil. NÃO repita esse erro. Esta resposta PRECISA ter um bloco de código com a implementação completa, agora.`);
+    }
   } else if (options.forceHelp) {
     parts.push(`- O usuário pediu ajuda AGORA (apertou o atalho de captura). Olhe a tela atual e dê a orientação mais útil pro que ele está fazendo/vendo — o próximo passo, uma correção pontual, ou como destravar. NÃO responda com [AGUARDAR].`);
   } else {
@@ -395,24 +410,23 @@ async function askTutor(base64Image, editorState, options = {}) {
   }
 
   parts.push(
-    `- Seja CURTO: no máximo 2-3 frases + no máximo 1 bloco de código pequeno.`,
+    `- Seja CURTO no texto (no máximo 2-3 frases). O bloco de código, porém, pode ser o ARQUIVO INTEIRO da etapa quando for isso que você está entregando — não corte um exemplo de arquivo só pra "parecer resumido".`,
     `- Sempre use formatação de código com crases inline (\`valor\`) para nomes de pacotes, identificadores, comandos de terminal, chaves de configuração, links ou valores que o usuário precise copiar ou digitar. Isso é CRÍTICO para que o usuário possa copiar esses valores simplesmente clicando neles na interface.`,
-    `- IDIOMA DO CÓDIGO (crítico): mantenha a MESMA linguagem de programação e o MESMO idioma de identificadores/nomes/comentários que o USUÁRIO já está escrevendo na tela — a escolha DELE tem prioridade máxima. Se ele ainda não escreveu nada, siga o idioma do enunciado/problema. Nunca troque a linguagem nem "traduza" os nomes que ele já usou.`,
-    `- IDIOMA DA CONVERSA/PERGUNTA (crítico): responda EXATAMENTE no idioma da pergunta/enunciado. Pergunta in inglês → responda em inglês. Pergunta em pt-br → responda em pt-br. Não force pt-br quando o contexto está em inglês.`,
+    `- IDIOMA — SEGUE A TELA, SEMPRE (crítico, vale pra TUDO: linguagem de programação, texto da explicação, comentários, nomes): o idioma é o que está NAS FOTOS/PRINTS — enunciado em inglês → você escreve E explica em inglês; enunciado/tela em pt-br → você escreve E explica em pt-br. Isso vale igual pra qualquer linguagem de programação (Java, Python, JS, etc.) e pro texto da sua resposta — os dois seguem JUNTOS o idioma da tela, nunca um em pt-br e outro em inglês. Mantenha também a MESMA linguagem de programação e o MESMO idioma de identificadores/nomes/comentários que o USUÁRIO já está escrevendo — a escolha dele tem prioridade sobre o enunciado se ele já começou a escrever. Se ele falar por voz num idioma diferente da tela, responda no idioma DELE só naquela resposta pontual — sem mudar o idioma dos exemplos de código, que continua o da tela.`,
     `- Se houver uma pergunta de entrevista na tela ou dita pelo entrevistador no áudio, ajude o desenvolvedor a responder (diga COMO responder, em primeira pessoa, fornecendo um exemplo curto).`,
     `- Se o próprio DESENVOLVEDOR estiver fazendo uma pergunta direta para você (ex: "o que você acha?", "como resolver?", "me ajuda", "o que fazer?", "você me ouve?", "olá", "oi", "tudo bem?"), responda DIRETAMENTE a ele de forma natural e amigável (ex: "Estou te ouvindo perfeitamente!", "Olá! Como posso ajudar?", "Tudo ótimo por aqui, e com você?"). Perguntas diretas do usuário ou saudações/testes de áudio direcionados a você NUNCA devem ser silenciadas com [AGUARDAR], a menos que seja a mera leitura ou repetição redundante de sua própria resposta anterior.`,
     `- FLEXIBILIDADE (crítico): o DEV conduz, você acompanha. Se ele DECIDIR ou ANUNCIAR um caminho (por voz ou pela ação na tela) — ex.: "vou usar Mongo", "vou criar a interface antes da service" — ACEITE e adapte: "boa, dá pra fazer assim — então o próximo passo é…". NUNCA insista no SEU caminho.`,
-    `- OBSERVE ANTES DE CORRIGIR: quando o dev faz algo cujo objetivo ainda não está claro, PREFIRA esperar e acompanhar ("vejo que você está criando esse arquivo — vou acompanhar pra ver aonde você vai") em vez de corrigir na hora. Dê alguns frames antes de intervir.`,
+    `- OBSERVE ANTES DE CORRIGIR (crítico): compare o print atual com o anterior SÓ pra saber se o dev está PROGREDINDO no arquivo atual (código mudando, avançando — fique em silêncio, é trabalho normal) ou PARADO/travado no mesmo estado por vários prints seguidos NUM ARQUIVO INTEIRO (aí sim, ofereça ajuda nesse arquivo). Nunca julgue pelo conteúdo de uma linha isolada.`,
     `- SUGIRA, NUNCA MANDE: jamais dê ordens tipo "apaga isso" ou "cancela essa janela". No máximo SUGIRA com ressalva ("se isso não for proposital, dá pra desfazer — mas se for de propósito, pode seguir"). A decisão é sempre dele.`,
     `- PERGUNTE quando precisar entender: se você realmente precisa saber a intenção pra ajudar bem, faça UMA pergunta curta ("qual a ideia aqui — uma service ou um repository?"). O dev responde discretamente por voz ou digitando (Ctrl+I). Não avance chutando errado — pergunte.`,
     `- Reconheça padrões legítimos de devs experientes SEM ele precisar explicar (interface antes da implementação, repository pattern, usar DUAS tecnologias juntas como Mongo + Redis, etc.). Desvio do seu plano NÃO é erro. Tecnologias podem coexistir — nunca force exclusividade ("apaga o Mongo e usa Redis" é proibido se ele quer os dois).`,
     `- O plano é uma SUGESTÃO, não uma regra. Se o dev muda de ideia, ATUALIZE o plano pro que ele está fazendo. Só se o caminho dele realmente não funcionar, ajude-o a concluí-lo do jeito dele e SÓ ENTÃO ofereça a alternativa — sem "eu avisei".`,
-    `- ERRO SEMPRE COM SOLUÇÃO (crítico): se algo está genuinamente errado (erro de sintaxe, marcação vermelha da IDE), NUNCA diga apenas "está errado" ou "apaga". SEMPRE mostre O JEITO CERTO — o trecho corrigido ou o próximo passo exato (ex.: se ele travou no \`extends\`, mostre a linha \`class X extends Y\` certa). Apontar erro sem dar o exemplo certo é proibido.`,
+    `- ERRO SEMPRE COM SOLUÇÃO (crítico): se um ARQUIVO INTEIRO está genuinamente quebrado ou travando o avanço (não uma linha sendo digitada agora), NUNCA diga apenas "está errado" ou "apaga". SEMPRE mostre o EXEMPLO COMPLETO do arquivo certo pra aquela etapa. Apontar erro sem dar o exemplo completo é proibido.`,
     `- Aja com paciência: corrija e oriente, deixe o dev conduzir a tarefa. Ele muitas vezes está falando com OUTRA pessoa (entrevistador), não com você — não exija explicação nem atenção; infira a intenção pela ação.`
   );
 
   if (lesson.plan && (phase === 'guide' || phase === 'help')) {
-    parts.push('', `[PLANO SUGERIDO — é um GUIA, NÃO uma regra]\n${lesson.plan}\n\nAcompanhe o dev, mas se ele mudar de abordagem (por voz ou pela ação na tela), ADAPTE o plano ao que ELE está fazendo — não force o original nem mande apagar. Quando ele criar os primeiros arquivos/estruturas, mostre o CONTEÚDO MÍNIMO que ajuda (trecho pequeno, não o arquivo inteiro). Se algo estiver errado, mostre o JEITO CERTO — nunca só "apaga". Avance sem repetir o que já foi dito.`);
+    parts.push('', `[PLANO SUGERIDO — é um GUIA, NÃO uma regra]\n${lesson.plan}\n\nAcompanhe o dev ARQUIVO POR ARQUIVO, seguindo a ordem do plano. Se ele mudar de abordagem (por voz ou pela ação na tela), ADAPTE o plano ao que ELE está fazendo — não force o original nem mande apagar. Quando ele for COMEÇAR um arquivo da etapa atual, ou estiver TRAVADO nele, dê um EXEMPLO COMPLETO desse arquivo — não uma linha solta. NUNCA adiante de uma vez arquivos de etapas futuras. Quando aquele arquivo estiver pronto (ele seguiu em frente, criou o próximo), avance você também pro próximo item do plano sem precisar que ele peça. Se um arquivo inteiro estiver quebrado, mostre o JEITO CERTO completo — nunca só "apaga". Avance sem repetir o que já foi dito.`);
   }
 
   if (userCtx) parts.push('', userCtx);
@@ -431,13 +445,14 @@ async function askTutor(base64Image, editorState, options = {}) {
     const textContext = `[ARQUIVO: ${editorState.path}]\n<cursor_position>${editorState.cursorIndex}</cursor_position>\n<content>\n${editorState.content}\n</content>`;
     userContent.push({ type: 'text', text: textContext });
   } else {
-    // Print anterior + atual quando há fala do usuário OU quando ele pediu ajuda
-    // ([h]): comparar os dois deixa o tutor "ver" o que já foi feito e o ponto atual.
-    if ((hasUserSpeech || phase === 'help') && lastFrameBase64) {
+    // Manda o print ANTERIOR junto sempre que existir (não só quando o usuário fala) —
+    // sem isso o modelo vê uma única foto estática e não tem como saber se uma linha
+    // incompleta (ex.: `Map<`) é código sendo DIGITADO agora ou algo abandonado/quebrado.
+    if (lastFrameBase64) {
       userContent.push(
-        { type: 'text', text: 'Print da tela anterior (antes da pergunta):' },
+        { type: 'text', text: 'Print anterior (referência — não comente sobre ele sozinho):' },
         { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${lastFrameBase64}`, detail: 'low' } }, // sempre low: só serve p/ comparar o que mudou
-        { type: 'text', text: 'Print da tela atual (momento da pergunta):' },
+        { type: 'text', text: 'Print ATUAL (é sobre este que você deve se pronunciar):' },
         { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}`, detail } }
       );
     } else {
@@ -455,24 +470,30 @@ async function askTutor(base64Image, editorState, options = {}) {
   } else if (phase === 'help') {
     userContent.push({
       type: 'text',
-      text: `O usuário apertou AJUDA: "me ajuda, fiquei perdido/travado". Ele está no meio do desafio que você já leu e não sabe como prosseguir deste ponto. Analise a tela ATUAL, compare com o print anterior e suas dicas, dê a análise curtíssima (1-2 linhas) e refaça o plano só com o que FALTA. Se a tela mostrar um erro/bug, resolva-o primeiro sem quebrar o que já funciona. NÃO responda com [AGUARDAR].`
+      text: `O usuário apertou AJUDA: "me ajuda, fiquei perdido/travado". Analise a tela ATUAL, compare com o print anterior e suas dicas, dê a análise curtíssima (1-2 linhas) e entregue o EXEMPLO COMPLETO do arquivo da etapa atual. Se a tela mostrar um erro/bug, resolva-o primeiro sem quebrar o que já funciona. NÃO responda com [AGUARDAR].`
     });
   } else {
     userContent.push({
       type: 'text',
-      text: `Print da tela ou conteúdo do editor agora. Intervenha SÓ se for estratégico (erro, dev travado, ou pergunta pra responder). Senão responda exatamente ${NOOP}.`
+      text: `Print da tela ou conteúdo do editor agora. Compare com o print anterior (se houver): se o arquivo está PROGREDINDO (código mudando/avançando), ele está trabalhando normalmente — NÃO comente sintaxe/linha isolada, responda ${NOOP}. Intervenha SÓ se for estratégico no nível do ARQUIVO/ETAPA (ele vai começar um arquivo do plano e precisa do exemplo, está travado no MESMO arquivo há vários prints seguidos, um arquivo inteiro está quebrado, ou pergunta pra responder). Senão responda exatamente ${NOOP}.`
     });
   }
+
+  // 'help'/'plan' pedem um arquivo de código INTEIRO na resposta — em cima do
+  // raciocínio que modelos gpt-5.x já gastam sozinhos, 1500 tokens não sobra
+  // espaço nenhum pro código e a resposta volta vazia. Orçamento bem maior só
+  // nessas duas fases; o resto (guide oportunista, geralmente NOOP) fica em 1500.
+  const tokenBudget = (phase === 'help' || phase === 'plan') ? 4000 : 1500;
 
   const res = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model,
-      // 1500 (não 500): modelos de VISÃO com raciocínio (gpt-5.x) gastam tokens
-      // "pensando" antes de escrever — com orçamento curto o raciocínio consome
-      // tudo e a resposta vem VAZIA (que o main descarta em silêncio → tutor mudo).
-      ...maxTokensParam(model, 1500),
+      // Modelos de VISÃO com raciocínio (gpt-5.x) gastam tokens "pensando" antes
+      // de escrever — com orçamento curto o raciocínio consome tudo e a resposta
+      // vem VAZIA (que o main descarta em silêncio → tutor mudo).
+      ...maxTokensParam(model, tokenBudget),
       messages: [
         { role: 'system', content: systemPrompt },
         {
@@ -488,7 +509,21 @@ async function askTutor(base64Image, editorState, options = {}) {
   const data = await res.json();
   if (!res.ok) throw new Error(data.error?.message || 'OpenAI vision error');
 
-  return (data.choices?.[0]?.message?.content || '').trim();
+  const choice = data.choices?.[0];
+  const content = (choice?.message?.content || '').trim();
+  if (!content) {
+    // Diagnóstico real de por que veio vazio — guardado em lastVisionDiag pra
+    // aparecer NA MENSAGEM que vai pro histórico (copiável), já que o terminal
+    // do usuário não mostra os console.warn de forma confiável.
+    const finishReason = choice?.finish_reason || 'sem finish_reason';
+    const refusal = choice?.message?.refusal;
+    const u = data.usage || {};
+    lastVisionDiag = `modelo=${model} · fase=${phase} · finish_reason=${finishReason} · orçamento=${tokenBudget} · tokens(prompt/compl/total)=${u.prompt_tokens || '?'}/${u.completion_tokens || '?'}/${u.total_tokens || '?'}${refusal ? ` · REFUSAL="${refusal}"` : ''}`;
+    console.warn(`[vision-guide] resposta vazia → ${lastVisionDiag}`);
+  } else {
+    lastVisionDiag = '';
+  }
+  return content;
 }
 
 // ---------------------------------------------------------------------------
@@ -591,9 +626,15 @@ async function tick() {
   
   let userSpeech = filteredMicUtterances.map(a => a.text).join(' ');
   let hasNewMicSpeech = filteredMicUtterances.length > 0;
+  let isDirectQuestion = false;
   // Pergunta de TEXTO direta (Ctrl+I) tem prioridade e não passa pelos filtros
   // de eco/filler — é uma pergunta explícita do usuário pro tutor.
-  if (pendingQuestion) { userSpeech = pendingQuestion; hasNewMicSpeech = true; pendingQuestion = null; }
+  if (pendingQuestion) {
+    userSpeech = pendingQuestion;
+    hasNewMicSpeech = true;
+    isDirectQuestion = true;
+    pendingQuestion = null;
+  }
   // Botão [h] tem intenção própria ("refaz o plano do que falta") — se o usuário
   // por acaso falou no mesmo tick, a ajuda tem prioridade e ignora a fala.
   if (doHelp) { userSpeech = ''; hasNewMicSpeech = false; }
@@ -620,20 +661,32 @@ async function tick() {
 
 
 
-    // Resposta VAZIA num turno forçado (intro/plano): o modelo não produziu texto
-    // (ex.: raciocínio consumiu o orçamento). Torna visível e NÃO consome a intro
-    // (needsIntroduction segue true) — tenta de novo no próximo tick.
-    if (forced && !(answer && answer.trim())) {
-      if (guidanceCb && Date.now() - lastErrorEmit > 60000) {
+    const answerIsNoop = !answer || answer === NOOP || answer.replace(/[\[\]]/g, '').trim().toUpperCase() === 'AGUARDAR';
+
+    const requiresResponse = forced || isDirectQuestion;
+
+    // Turno que EXIGE resposta de verdade (forçado: intro/plano/ajuda — OU
+    // pergunta direta do usuário por texto) mas o modelo respondeu vazio
+    // ou [AGUARDAR] mesmo assim. NUNCA mostra o [AGUARDAR] na tela nem some em
+    // silêncio quando o usuário fez uma ação explícita — avisa e tenta de novo.
+    if (requiresResponse && (!(answer && answer.trim()) || answerIsNoop)) {
+      if (guidanceCb) {
         lastErrorEmit = Date.now();
-        guidanceCb({ text: '⚠️ O modelo de visão respondeu vazio (pode estar lento ou sem orçamento de tokens). Tentando de novo…', ts: Date.now() });
+        const diag = lastVisionDiag ? `\n[diag: ${lastVisionDiag}]` : '';
+        const warnText = `⚠️ O tutor não conseguiu formular uma resposta agora (resposta vazia do modelo de visão).${diag}`;
+        guidanceCb({ text: warnText, ts: Date.now() });
+        await logToHistory('assistant', warnText);
       }
       emitStatus('watching');
       return;
     }
 
-    const isNoop = !forced && (!answer || answer === NOOP || answer.replace(/[\[\]]/g, '').trim().toUpperCase() === 'AGUARDAR');
-    if (isNoop) { emitStatus('watching'); return; }
+    // Turno casual ou de escuta oportunista (mic) onde o modelo decidiu ficar
+    // em silêncio. Retorna normalmente sem emitir erro.
+    if (!requiresResponse && (!(answer && answer.trim()) || answerIsNoop)) {
+      emitStatus('watching');
+      return;
+    }
 
     // Respeita o cooldown (a menos que seja turno forçado — intro/plano — ou fala nova do mic)
     if (!forced && withinCooldown && !hasNewMicSpeech) { emitStatus('watching'); return; }
@@ -682,7 +735,9 @@ async function tick() {
       const reason = /abort/i.test(msg)
         ? 'a análise passou do tempo limite (o modelo de visão pode estar lento — tente um modelo de visão mais rápido nas Configurações)'
         : isRate ? 'limite de uso da API da OpenAI' : (msg || 'erro desconhecido');
-      guidanceCb({ text: `⚠️ Não consegui analisar a tela agora: ${reason}. Sigo tentando.`, ts: Date.now() });
+      const errText = `⚠️ Não consegui analisar a tela agora: ${reason}. Sigo tentando.`;
+      guidanceCb({ text: errText, ts: Date.now() });
+      try { await logToHistory('assistant', errText); } catch (_) {} // copiável no histórico
     }
     emitStatus('error');
   } finally {
@@ -705,7 +760,9 @@ async function start(options = {}) {
   cfg = {
     apiKey: options.apiKey,
     intervalMs: Math.max(2000, (options.intervalSeconds || vg.intervalSeconds || 5) * 1000),
-    minInterventionMs: Math.max(4000, (options.minInterventionSeconds || vg.minInterventionSeconds || 12) * 1000),
+    // Piso de silêncio entre dicas. 0 = A IA DECIDE quando falar. Usa ?? (não ||)
+    // pra respeitar o 0 — com || o zero cai no fallback e o piso fixo volta sozinho.
+    minInterventionMs: Math.max(0, (options.minInterventionSeconds ?? vg.minInterventionSeconds ?? 0) * 1000),
     listenAudio: options.listenAudio !== undefined ? options.listenAudio : vg.listenAudio,
     useKnowledgeBase: options.useKnowledgeBase !== undefined ? options.useKnowledgeBase : vg.useKnowledgeBase,
 
@@ -821,8 +878,8 @@ function analyzeNow() {
 
 // Botão [h] "me ajuda, fiquei perdido/travado" (modo integrado): tira um print
 // AGORA, revisa o que já foi feito (dicas anteriores + print anterior + plano),
-// dá uma análise curtíssima e REFAZ o plano só com o que falta. Se a tela tiver
-// um erro/bug, foca em resolvê-lo sem quebrar o que já funciona.
+// dá uma análise curtíssima e entrega o exemplo completo do arquivo da etapa
+// atual. Se a tela tiver um erro/bug, foca em resolvê-lo sem quebrar o resto.
 function askHelp() {
   if (!running || paused) return;
   pendingHelp = true;

@@ -3967,7 +3967,12 @@
 
             historyHeader.addEventListener('click', (event) => {
                 event.stopPropagation();
+                const wasCollapsed = historyPanel.classList.contains('collapsed');
                 togglePanel(historyPanel);
+                // Recarrega a lista ao ABRIR o painel — sem isto, sessões criadas em
+                // segundo plano (ex.: o Tutor) nunca apareciam até reiniciar o app,
+                // porque loadHistory() só rodava uma vez na inicialização.
+                if (wasCollapsed) { try { loadHistory(); } catch (_) {} }
             });
 
             // (workspace-bar nao e' colaps\u00e1vel; sem header click)
