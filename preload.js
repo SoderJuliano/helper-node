@@ -93,6 +93,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getAvailableShortcuts: () => ipcRenderer.invoke("get-available-shortcuts"),
   onShortcutsChanged: (callback) => ipcRenderer.on("shortcuts-changed", () => callback()),
   getDebugModeStatus: () => ipcRenderer.invoke("get-debug-mode-status"), // Added for debug mode access
+  getStealthModeStatus: () => ipcRenderer.invoke("get-stealth-mode-status"),
+  saveStealthModeStatus: (status) => ipcRenderer.send("save-stealth-mode-status", status),
   getPromptInstruction: () => ipcRenderer.invoke("get-prompt-instruction"), // Added for prompt instruction access
   getBackendApiKey: () => ipcRenderer.invoke("get-backend-api-key"),
   saveBackendApiKey: (key) => ipcRenderer.send("save-backend-api-key", key),

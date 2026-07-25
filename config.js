@@ -35,6 +35,8 @@ const helperToolsStatus = document.getElementById("helper-tools-status");
 const workspaceAccessToggle = document.getElementById("workspace-access-toggle");
 const workspaceAccessStatus = document.getElementById("workspace-access-status");
 const workspaceAccessItem = document.getElementById("workspace-access-item");
+const stealthModeToggle = document.getElementById("stealth-mode-toggle");
+const stealthModeStatus = document.getElementById("stealth-mode-status");
 const langSelect = document.getElementById("language-select");
 const backendUrlValue = document.getElementById("backend-url-value");
 const appVersionValue = document.getElementById("app-version-value");
@@ -105,6 +107,11 @@ function updateHelperToolsStatus(isEnabled) {
 function updateWorkspaceAccessStatus(isEnabled) {
   if (!workspaceAccessStatus) return;
   workspaceAccessStatus.textContent = isEnabled ? "ON" : "OFF";
+}
+
+function updateStealthModeStatus(isEnabled) {
+  if (!stealthModeStatus) return;
+  stealthModeStatus.textContent = isEnabled ? "ON" : "OFF";
 }
 
 // Mostra/oculta workspaceAccess.
@@ -234,6 +241,19 @@ document.addEventListener("DOMContentLoaded", async () => {
   const isOsIntegration = await ipcRenderer.invoke("get-os-integration-status");
   osIntegrationToggle.checked = isOsIntegration;
   updateOsIntegrationStatus(isOsIntegration);
+
+  // -------------------------
+  // Load stealth mode
+  // -------------------------
+  try {
+    const isStealth = await ipcRenderer.invoke("get-stealth-mode-status");
+    if (stealthModeToggle) {
+      stealthModeToggle.checked = isStealth;
+      updateStealthModeStatus(isStealth);
+    }
+  } catch (e) {
+    console.warn("stealth mode load failed:", e);
+  }
 
   // -------------------------
   // Load realtime assistant mode
@@ -450,6 +470,13 @@ osIntegrationToggle.addEventListener("change", () => {
   disableHelperToolsIfOtherEnabled(osIntegrationToggle);
   updateOsIntegrationStatus(osIntegrationToggle.checked);
 });
+
+// Handle stealth mode toggle live update
+if (stealthModeToggle) {
+  stealthModeToggle.addEventListener("change", () => {
+    updateStealthModeStatus(stealthModeToggle.checked);
+  });
+}
 
 realtimeAssistantToggle.addEventListener("change", () => {
   updateRealtimeAssistantStatus(realtimeAssistantToggle.checked);
@@ -818,6 +845,11 @@ saveButton.addEventListener("click", async () => {
   // Save workspace access
   if (workspaceAccessToggle) {
     ipcRenderer.send("set-workspace-access-enabled", workspaceAccessToggle.checked);
+  }
+
+  // Save stealth mode
+  if (stealthModeToggle) {
+    ipcRenderer.send("save-stealth-mode-status", stealthModeToggle.checked);
   }
 
   // Save language

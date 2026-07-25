@@ -113,6 +113,7 @@ const defaultConfig = {
   printMode: false,
   osIntegration: false,
   realtimeAssistant: false,
+  stealthMode: true,
   language: "pt-br",
   aiModel: "llama",
   openAiModel: "gpt-4.1-nano",
@@ -753,8 +754,26 @@ function setConfigValue(dotPath, value) {
   currentConfig = null;
 }
 
+function getStealthModeStatus() {
+  if (!currentConfig) {
+    currentConfig = loadConfig();
+  }
+  return currentConfig.stealthMode !== false;
+}
+
+function setStealthModeStatus(status) {
+  if (!currentConfig) {
+    currentConfig = loadConfig();
+  }
+  currentConfig.stealthMode = !!status;
+  saveConfig(currentConfig);
+  currentConfig = null;
+}
+
 module.exports = {
   initialize,
+  getStealthModeStatus,
+  setStealthModeStatus,
   getPromptInstruction,
   setPromptInstruction,
   getDebugModeStatus,

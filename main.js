@@ -1289,6 +1289,12 @@ function isTranslationOnlyMode() {
 // Proteção contra captura de tela — stealth window
 // Chamada após criar qualquer janela overlay que não deve aparecer em gravações/compartilhamentos.
 function applyStealthProtection(win) {
+  if (!win || win.isDestroyed()) return;
+  const isStealth = configService.getStealthModeStatus();
+  if (!isStealth) {
+    try { win.setContentProtection(false); } catch (_) {}
+    return;
+  }
   if (process.platform === 'win32') {
     // Windows 10 2004+ / 11: setContentProtection chama
     // SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE) — a janela é excluída
@@ -1324,6 +1330,25 @@ function applyStealthProtection(win) {
         console.log('[stealth] proteção X11 não aplicada:', e.message);
       }
     });
+  }
+}
+
+function updateAllWindowsStealthProtection() {
+  try {
+    const isStealth = configService.getStealthModeStatus();
+    const { BrowserWindow } = require('electron');
+    const windows = BrowserWindow.getAllWindows();
+    console.log(`[stealth] Atualizando proteção stealth para todas as janelas: ${isStealth}`);
+    for (const win of windows) {
+      if (!win || win.isDestroyed()) continue;
+      try {
+        win.setContentProtection(isStealth);
+      } catch (e) {
+        console.log(`[stealth] Erro ao definir setContentProtection em janela:`, e.message);
+      }
+    }
+  } catch (err) {
+    console.error(`[stealth] Erro no updateAllWindowsStealthProtection:`, err);
   }
 }
 
@@ -1773,7 +1798,7 @@ async function createWindow() {
       nodeIntegration: false,
     });
 
-    mainWindow.setContentProtection(true);
+    applyStealthProtection(mainWindow);
 
     // macOS específico - oculta o ícone da Dock
     if (process.platform === "darwin") {
@@ -3748,7 +3773,7 @@ function handleScreenSharing() {
     if (sharingActive && mainWindow && !mainWindow.isDestroyed()) {
       console.log("Screen sharing active, updating position");
       updateWindowPosition();
-      mainWindow.setContentProtection(true);
+      applyStealthProtection(mainWindow);
     } else {
       console.log("No screen sharing, showing window");
       mainWindow.show();
@@ -4324,6 +4349,15 @@ ipcMain.on("save-backend-api-key", (event, key) => {
 
 ipcMain.handle("get-debug-mode-status", () => {
   return configService.getDebugModeStatus();
+});
+
+ipcMain.handle("get-stealth-mode-status", () => {
+  return configService.getStealthModeStatus();
+});
+
+ipcMain.on("save-stealth-mode-status", (event, status) => {
+  configService.setStealthModeStatus(status);
+  updateAllWindowsStealthProtection();
 });
 
 ipcMain.on("save-debug-mode-status", (event, status) => {
@@ -5998,7 +6032,7 @@ function showConfirmActionOverlay(opts) {
     });
     win.setAlwaysOnTop(true, 'screen-saver');
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-    try { win.setContentProtection(true); } catch (_) {}
+    applyStealthProtection(win);
 
     const filePath = path.join(__dirname, 'os-integration', 'notifications', 'confirmAction.html');
     win.loadFile(filePath, { search: `json=${json}` }).catch(err =>
@@ -6395,7 +6429,7 @@ async function captureRegionNative() {
     },
   });
   // Stealth no screen-share
-  try { regionSelectWindow.setContentProtection(true); } catch (_) {}
+  applyStealthProtection(regionSelectWindow);
   regionSelectWindow.setAlwaysOnTop(true, 'screen-saver');
 
   await regionSelectWindow.loadFile(path.join(__dirname, 'os-integration', 'notifications', 'regionSelect.html'));
@@ -6876,7 +6910,7 @@ function showImageResponseInSecondaryWindow(htmlContent) {
     focusable: false, type: 'toolbar', hasShadow: false,
     webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, 'preload.js') },
   });
-  try { osImageResponseWindow.setContentProtection(true); } catch (_) {}
+  applyStealthProtection(osImageResponseWindow);
   osImageResponseWindow.setAlwaysOnTop(true, 'screen-saver');
   osImageResponseWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
