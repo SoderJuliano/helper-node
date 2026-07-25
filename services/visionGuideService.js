@@ -406,7 +406,16 @@ async function askTutor(base64Image, editorState, options = {}) {
   } else if (options.forceHelp) {
     parts.push(`- O usuário pediu ajuda AGORA (apertou o atalho de captura). Olhe a tela atual e dê a orientação mais útil pro que ele está fazendo/vendo — o próximo passo, uma correção pontual, ou como destravar. NÃO responda com [AGUARDAR].`);
   } else {
-    parts.push(`- Se NÃO há nada estratégico agora (o dev está escrevendo normalmente, sem erro, sem dúvida), responda EXATAMENTE com ${NOOP} e mais nada. NUNCA descreva a tela.`);
+    if (!lesson.isTask) {
+      parts.push(
+        `- Você está em uma sessão CASUAL de programação (nenhum plano ou desafio ativo).`,
+        `- AVALIE cuidadosamente se a tela ou o código agora passou a mostrar um DESAFIO/PROBLEMA de código, uma TAREFA/FEATURE ou um enunciado de projeto/desafio técnico a desenvolver (por exemplo: um enunciado em comentário do arquivo, uma aba de LeetCode/Hackerrank, etc.):`,
+        `  • SE DETECTOU UM DESAFIO: cumprimente o usuário, diga que leu o enunciado, mencione em que idioma ele está, e avise que identificou o desafio e vai montar um PLANO para guiá-lo. Na última linha da resposta, adicione OBRIGATORIAMENTE o marcador [[TASK]].`,
+        `  • SE NÃO HÁ DESAFIO ATIVO: se não há nada estratégico agora (o dev está escrevendo normalmente, sem erro, sem dúvida), responda EXATAMENTE com ${NOOP} e mais nada. NUNCA descreva a tela.`
+      );
+    } else {
+      parts.push(`- Se NÃO há nada estratégico agora (o dev está escrevendo normalmente, sem erro, sem dúvida), responda EXATAMENTE com ${NOOP} e mais nada. NUNCA descreva a tela.`);
+    }
   }
 
   parts.push(
@@ -701,6 +710,14 @@ async function tick() {
         lesson.isTask = /\[\[\s*TASK\s*\]\]/i.test(answer);
         if (lesson.isTask) lesson.planAnnounced = true;
         outText = answer.replace(/\[\[\s*(TASK|CASUAL)\s*\]\]/ig, '').trim();
+      }
+    } else if (phase === 'guide' && !lesson.isTask) {
+      const hasNewTask = /\[\[\s*TASK\s*\]\]/i.test(answer);
+      if (hasNewTask) {
+        lesson.isTask = true;
+        lesson.planAnnounced = true;
+        lesson.planDelivered = false; // força a geração do plano no próximo tick
+        outText = answer.replace(/\[\[\s*TASK\s*\]\]/ig, '').trim();
       }
     } else if (phase === 'plan' && !hasNewMicSpeech) {
       lesson.planDelivered = true;
