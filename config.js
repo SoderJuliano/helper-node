@@ -120,7 +120,7 @@ function updateStealthModeStatus(isEnabled) {
 // Backends genéricos e Ollama não suportam — esconde e desliga.
 function applyWorkspaceAccessVisibility(model) {
   if (!workspaceAccessItem) return;
-  const supportsWorkspace = model === 'openIa' || model === 'geminiCli' || model === 'claudeCli' || model === 'ollamaLocal';
+  const supportsWorkspace = model === 'openIa' || model === 'geminiCli' || model === 'claudeCli' || model === 'ollamaLocal' || model === 'llama' || model === 'llama-stream';
   workspaceAccessItem.style.display = supportsWorkspace ? '' : 'none';
   if (!supportsWorkspace && workspaceAccessToggle) {
     workspaceAccessToggle.checked = false;
@@ -307,8 +307,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     aiModelSelect.value = savedAiModel;
   }
   applyWorkspaceAccessVisibility(aiModelSelect.value);
-  // Se já está num provider CLI ou Ollama com backend, desabilita helperTools visualmente.
-  const _disableHelperToolsInit = (aiModelSelect.value === 'geminiCli' || aiModelSelect.value === 'claudeCli' || aiModelSelect.value === 'llama' || aiModelSelect.value === 'llama-stream');
+  // Se já está num provider CLI, desabilita helperTools visualmente.
+  // Para Ollama backend, deixamos `checkBackendToolsAvailability` decidir após carregar o backend model.
+  const _disableHelperToolsInit = (aiModelSelect.value === 'geminiCli' || aiModelSelect.value === 'claudeCli');
   if (_disableHelperToolsInit && helperToolsToggle) {
     helperToolsToggle.disabled = true;
     helperToolsToggle.checked = false;
@@ -409,9 +410,11 @@ document.addEventListener("DOMContentLoaded", async () => {
           backendModelSelect.selectedIndex = 0;
         }
       }
+      checkBackendToolsAvailability();
     } catch (e) {
       console.warn("Failed to populate backend models:", e);
       backendModelSelect.innerHTML = '<option value="" disabled>Erro ao carregar do servidor</option>';
+      checkBackendToolsAvailability();
     }
   }
 
@@ -446,7 +449,20 @@ document.addEventListener("DOMContentLoaded", async () => {
        if (disableHelperTools && helperToolsToggle.checked) {
            helperToolsToggle.checked = false;
            updateHelperToolsStatus(false);
-           alert("Ferramentas desabilitadas: O modelo remoto (" + (modelName || 'desconhecido') + ") é pequeno (<= 10b) e não suporta ferramentas adequadamente.");
+           alert("Ferramentas de escrita desabilitadas: O modelo remoto (" + (modelName || 'desconhecido') + ") é pequeno (<= 10b) e não suporta edição adequadamente.");
+       }
+    }
+    
+    if (workspaceAccessToggle) {
+       const disableWorkspace = !allowTools;
+       workspaceAccessToggle.disabled = disableWorkspace;
+       if (workspaceAccessToggle.closest('.setting-item')) {
+           workspaceAccessToggle.closest('.setting-item').style.opacity = disableWorkspace ? '0.4' : '';
+       }
+       if (disableWorkspace && workspaceAccessToggle.checked) {
+           workspaceAccessToggle.checked = false;
+           updateWorkspaceAccessStatus(false);
+           alert("Anexar diretório desabilitado: O modelo remoto (" + (modelName || 'desconhecido') + ") é pequeno (<= 10b) e não suporta navegação adequadamente.");
        }
     }
   }
