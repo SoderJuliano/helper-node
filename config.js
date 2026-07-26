@@ -371,7 +371,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       const res = await fetch(`${baseUrl}/models`, {
         method: 'GET',
         headers: {
-          'x-api-key': apiKey
+          'x-api-key': apiKey,
+          'ngrok-skip-browser-warning': 'true'
         }
       });
       
