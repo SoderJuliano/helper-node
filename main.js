@@ -4762,7 +4762,50 @@ function computeLineDiff(oldText, newText) {
   const a = String(oldText || "").split("\n");
   const b = String(newText || "").split("\n");
   const n = a.length, m = b.length;
-  if (n > 4000 || m > 4000) return null; // grande demais p/ exibir
+  
+  if (n > 2000 || m > 2000) {
+      // Se for muito grande, tenta usar git diff --no-index temporariamente no disco para não estourar memória O(N^2)
+      try {
+          const fs = require('fs');
+          const path = require('path');
+          const tmpO = path.join(require('os').tmpdir(), 'old_diff_' + Date.now());
+          const tmpN = path.join(require('os').tmpdir(), 'new_diff_' + Date.now());
+          fs.writeFileSync(tmpO, oldText || "");
+          fs.writeFileSync(tmpN, newText || "");
+          let diffOut = "";
+          try {
+              require('child_process').execSync(`git diff --no-index -U99999 "${tmpO}" "${tmpN}"`, { encoding: 'utf8', maxBuffer: 1024*1024*50 });
+          } catch(err) {
+              diffOut = err.stdout || "";
+          }
+          fs.unlinkSync(tmpO);
+          fs.unlinkSync(tmpN);
+          
+          if (diffOut) {
+              const diffLines = diffOut.split('\n');
+              const lines = [];
+              let ln = 1;
+              let inHunk = false;
+              for (const line of diffLines) {
+                  if (line.startsWith('@@ ')) { inHunk = true; continue; }
+                  if (!inHunk) continue;
+                  
+                  if (line.startsWith('-')) {
+                      lines.push({ t: "del", text: line.substring(1) });
+                  } else if (line.startsWith('+')) {
+                      lines.push({ t: "add", text: line.substring(1), ln: ln++ });
+                  } else if (line.startsWith(' ')) {
+                      lines.push({ t: "ctx", text: line.substring(1), ln: ln++ });
+                  }
+              }
+              return lines.length > 0 ? lines : null;
+          }
+      } catch(e) {
+          console.warn("git diff no-index fallback failed:", e.message);
+      }
+      return null;
+  }
+  
   const dp = [];
   for (let i = 0; i <= n; i++) dp.push(new Int32Array(m + 1));
   for (let i = n - 1; i >= 0; i--) {

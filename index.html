@@ -5658,6 +5658,7 @@
                 const transcriptionElement = document.getElementById('transcription');
                 const isElementInDOM = streamingElement && transcriptionElement.contains(streamingElement);
                 
+
                 console.log('Stream complete state check:', {
                     hasStreamingElement: !!streamingElement,
                     hasStreamingText: !!streamingText,
@@ -5682,6 +5683,17 @@
                     console.log('Texto formatado:', formatted.substring(0, 200) + '...');
                     
                     streamingElement.innerHTML = thinkHTML + formatted;
+                    
+                    // Adiciona contagem estimada de tokens
+                    const estimatedTokens = Math.ceil(streamingText.length / 4);
+                    const tokenBadge = document.createElement('div');
+                    tokenBadge.className = 'response-token-badge';
+                    tokenBadge.style.fontSize = '0.75rem';
+                    tokenBadge.style.color = '#888';
+                    tokenBadge.style.marginTop = '8px';
+                    tokenBadge.style.textAlign = 'right';
+                    tokenBadge.textContent = `~${estimatedTokens} tokens`;
+                    streamingElement.appendChild(tokenBadge);
                     
                     console.log('Stream formatting completed successfully');
                 } else {

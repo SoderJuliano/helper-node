@@ -200,8 +200,9 @@ function buildToolFirstSystemPrompt(toolsSchema, wsPaths = []) {
   lines.push('2. Use o caminho ABSOLUTO do workspace anexado.');
   lines.push('3. Para writeFile, monte o conteudo COMPLETO em "content" (escape \\n para quebras).');
   lines.push('4. NAO use ```markdown ao redor. NAO explique. Apenas emita o TOOL_CALL.');
-  lines.push('5. CRITICO: writeFile APAGA O ARQUIVO INTEIRO. Para EDITAR arquivo existente,');
-  lines.push('   use patchFile (substitui trecho exato). So use writeFile para CRIAR arquivo NOVO.');
+  lines.push('5. CRITICO: writeFile APAGA O ARQUIVO INTEIRO. Para EDITAR arquivo existente (principalmente arquivos grandes),');
+  lines.push('   use patchFile (substitui trecho exato via regex). SÓ use writeFile para CRIAR arquivo NOVO ou pequenos scripts do 0.');
+  lines.push('6. Ao terminar as edições de arquivos, VOCÊ DEVE checar a integridade para ter certeza de que nada foi corrompido (ex: runCommand -> npm run build / test, etc).');
   lines.push('');
   lines.push('═══ CRITICO: TAREFAS MULTI-ARQUIVO ═══');
   lines.push('Se o usuario pediu pra criar VARIOS arquivos, emita UM TOOL_CALL writeFile POR ARQUIVO, em iteracoes sucessivas.');
@@ -594,14 +595,22 @@ class BackendService {
       // Use custom instruction if provided, otherwise use the default one
       let promptInstruction = customInstruction || configService.getPromptInstruction();
 
-      // Tools de escrita de arquivo são exclusivas do OpenAI.
-      // No Ollama só passamos read-only + comandos.
+      // Descobre o nome do modelo para saber o tamanho em params
+      let modelNameStr = aiModelConf === 'qwen-stream' ? 'qwen3.6:35b' : (backendModel || baseEndpoint || '');
+      let allowWriteTools = false;
+      const sizeMatch = modelNameStr.match(/(\d+(?:\.\d+)?)b/i);
+      if (sizeMatch && parseFloat(sizeMatch[1]) > 10) {
+          allowWriteTools = true;
+      }
+
+      // Tools de escrita de arquivo são exclusivas para modelos >10b no backend.
       const OLLAMA_WRITE_TOOLS_BLOCKED = new Set(['writeFile', 'appendToFile', 'deleteFile', 'patchFile']);
       let effectiveTools = tools;
       if (tools) {
         effectiveTools = tools.filter(t => {
           const name = (t.function || t).name;
-          return !OLLAMA_WRITE_TOOLS_BLOCKED.has(name);
+          if (!allowWriteTools && OLLAMA_WRITE_TOOLS_BLOCKED.has(name)) return false;
+          return true;
         });
       }
 

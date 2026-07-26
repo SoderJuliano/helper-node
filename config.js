@@ -418,7 +418,37 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (backendModelSelect) {
     backendModelSelect.addEventListener('change', () => {
       ipcRenderer.send('set-backend-model', backendModelSelect.value);
+      checkBackendToolsAvailability();
     });
+  }
+
+  function checkBackendToolsAvailability() {
+    const v = aiModelSelect.value;
+    if (v !== 'llama' && v !== 'llama-stream') return;
+    
+    let allowTools = false;
+    let modelName = backendModelSelect.value || '';
+    if (v === 'qwen-stream') {
+       allowTools = true;
+    } else if (modelName) {
+       const sizeMatch = modelName.match(/(\d+(?:\.\d+)?)b/i);
+       if (sizeMatch && parseFloat(sizeMatch[1]) > 10) {
+           allowTools = true;
+       }
+    }
+    
+    if (helperToolsToggle) {
+       const disableHelperTools = !allowTools;
+       helperToolsToggle.disabled = disableHelperTools;
+       if (helperToolsToggle.closest('.setting-item')) {
+           helperToolsToggle.closest('.setting-item').style.opacity = disableHelperTools ? '0.4' : '';
+       }
+       if (disableHelperTools && helperToolsToggle.checked) {
+           helperToolsToggle.checked = false;
+           updateHelperToolsStatus(false);
+           alert("Ferramentas desabilitadas: O modelo remoto (" + (modelName || 'desconhecido') + ") é pequeno (<= 10b) e não suporta ferramentas adequadamente.");
+       }
+    }
   }
 
   // Load saved backend model when initializing config
@@ -799,7 +829,19 @@ aiModelSelect.addEventListener('change', () => {
     }
     const isOllama = (v === 'llama' || v === 'llama-stream' || v === 'ollamaLocal');
     const isCli = (v === 'geminiCli' || v === 'claudeCli');
-    const disableHelperTools = (v === 'geminiCli' || v === 'claudeCli' || v === 'llama' || v === 'llama-stream');
+    let disableHelperTools = (v === 'geminiCli' || v === 'claudeCli');
+    const isRemoteBackend = (v === 'llama' || v === 'llama-stream');
+    if (isRemoteBackend) {
+       // Evaluate if remote backend allows tools based on model size
+       let modelName = backendModelSelect ? backendModelSelect.value : '';
+       let allowTools = false;
+       if (v === 'qwen-stream') allowTools = true;
+       else if (modelName) {
+           const sizeMatch = modelName.match(/(\d+(?:\.\d+)?)b/i);
+           if (sizeMatch && parseFloat(sizeMatch[1]) > 10) allowTools = true;
+       }
+       disableHelperTools = disableHelperTools || !allowTools;
+    }
     openIaTokenContainer.style.display = (v === 'openIa') ? 'flex' : 'none';
     openAiModelContainer.style.display = (v === 'openIa') ? 'flex' : 'none';
     if (openAiReasoningEffortContainer) openAiReasoningEffortContainer.style.display = (v === 'openIa') ? 'flex' : 'none';
@@ -812,7 +854,6 @@ aiModelSelect.addEventListener('change', () => {
     if (claudeCliInfo) claudeCliInfo.style.display = (v === 'claudeCli') ? 'block' : 'none';
     const backendApiKeyContainer = document.getElementById('backend-api-key-container');
     if (backendApiKeyContainer) backendApiKeyContainer.style.display = isOllama ? 'flex' : 'none';
-    const isRemoteBackend = (v === 'llama' || v === 'llama-stream');
     const backendModelContainerEl = document.getElementById('backend-model-container');
     if (backendModelContainerEl) backendModelContainerEl.style.display = isRemoteBackend ? 'flex' : 'none';
     // CLI/backend providers gerenciam/não suportam ferramentas — helperTools fica desabilitado.
