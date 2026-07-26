@@ -1045,7 +1045,6 @@ class BackendService {
           : `${promptInstruction}${texto}`;
       }
 
-      const body = {
       const payload = {
         prompt: promptWithContext,
         language: mappedLang,
