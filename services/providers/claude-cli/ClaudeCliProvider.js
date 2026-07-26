@@ -195,7 +195,8 @@ class ClaudeCliProvider {
               try {
                 const execSync = require('child_process').execSync;
                 const fileDir = path.dirname(absPath);
-                const gitRoot = execSync('git rev-parse --show-toplevel', { cwd: fileDir, encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+                const rawGitRoot = execSync('git rev-parse --show-toplevel', { cwd: fileDir, encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+                const gitRoot = path.normalize(rawGitRoot);
                 const relPath = path.relative(gitRoot, absPath).replace(/\\/g, '/');
                 content = execSync(`git show :"${relPath}"`, { cwd: gitRoot, stdio: ['pipe', 'pipe', 'ignore'], timeout: 1500 }).toString('utf8');
               } catch (errFallback) {
