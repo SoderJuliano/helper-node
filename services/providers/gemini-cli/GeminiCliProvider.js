@@ -198,10 +198,14 @@ class GeminiCliProvider {
                 // antes da nossa leitura periódica do transcript.
                 try {
                   const execSync = require('child_process').execSync;
-                  const relPath = path.relative(cwd, absPath).replace(/\\/g, '/');
-                  content = execSync(`git show :"${relPath}"`, { cwd, stdio: ['pipe', 'pipe', 'ignore'], timeout: 1500 }).toString('utf8');
-                } catch (_) {
+                  const fileDir = path.dirname(absPath);
+                  // Descobre a raiz do git para este arquivo específico (resolve multi-workspace)
+                  const gitRoot = execSync('git rev-parse --show-toplevel', { cwd: fileDir, encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+                  const relPath = path.relative(gitRoot, absPath).replace(/\\/g, '/');
+                  content = execSync(`git show :"${relPath}"`, { cwd: gitRoot, stdio: ['pipe', 'pipe', 'ignore'], timeout: 1500 }).toString('utf8');
+                } catch (errFallback) {
                   // Fallback para leitura direta do disco
+                  console.warn('[gemini-cli] git show falhou (untracked, fora do git ou modificado rápido demais):', errFallback.message);
                   content = fs.readFileSync(absPath, 'utf8');
                 }
               }

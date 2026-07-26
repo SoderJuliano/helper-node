@@ -191,10 +191,20 @@ class ClaudeCliProvider {
             // Read current file content as backup
             try {
               const backupPath = makeBackupPath(absPath);
-              const existed = fs.existsSync(absPath);
-              const content = existed ? fs.readFileSync(absPath, 'utf8') : '';
+              let content;
+              try {
+                const execSync = require('child_process').execSync;
+                const fileDir = path.dirname(absPath);
+                const gitRoot = execSync('git rev-parse --show-toplevel', { cwd: fileDir, encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+                const relPath = path.relative(gitRoot, absPath).replace(/\\/g, '/');
+                content = execSync(`git show :"${relPath}"`, { cwd: gitRoot, stdio: ['pipe', 'pipe', 'ignore'], timeout: 1500 }).toString('utf8');
+              } catch (errFallback) {
+                // Fallback para leitura direta do disco
+                console.warn('[claude-cli] git show falhou (untracked, fora do git ou modificado rápido demais):', errFallback.message);
+                content = fs.existsSync(absPath) ? fs.readFileSync(absPath, 'utf8') : '';
+              }
               fs.writeFileSync(backupPath, content, 'utf8');
-              this._pendingBackups.set(id, { filePath: absPath, backupPath, existed });
+              this._pendingBackups.set(id, { filePath: absPath, backupPath, existed: fs.existsSync(absPath) });
             } catch (e) {
               console.warn('[claude-cli] backup falhou para', absPath, e.message);
             }
