@@ -347,6 +347,87 @@ document.addEventListener("DOMContentLoaded", async () => {
     console.warn("get-backend-api-key failed:", e);
   }
 
+  if (ipcRenderer) {
+    ipcRenderer.on('backend-status-update', (event, data) => {
+      // console.log("Status do backend remoto atualizado:", data);
+    });
+  }
+
+  const backendModelContainer = document.getElementById("backend-model-container");
+  const backendModelSelect = document.getElementById("backend-model-select");
+  const backendApiKey = document.getElementById("backend-api-key");
+
+  async function populateBackendModels(savedModel = null) {
+    if (!backendModelSelect) return;
+    const currentVal = savedModel || backendModelSelect.value;
+    try {
+      const url = await ipcRenderer.invoke("get-backend-url");
+      if (!url) throw new Error("URL não definida");
+      
+      // Normalize URL
+      const baseUrl = url.replace(/\/+$/, '');
+      
+      const apiKey = backendApiKey ? backendApiKey.value : '';
+      const res = await fetch(`${baseUrl}/models`, {
+        method: 'GET',
+        headers: {
+          'x-api-key': apiKey
+        }
+      });
+      
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      
+      const data = await res.json();
+      backendModelSelect.innerHTML = '';
+      
+      let models = [];
+      if (data.models && Array.isArray(data.models)) {
+          models = data.models;
+      }
+
+      if (models.length === 0) {
+        backendModelSelect.innerHTML = '<option value="" disabled>Nenhum modelo no servidor</option>';
+      } else {
+        for (const m of models) {
+          const option = document.createElement('option');
+          // Ollama tags return object { name: '...', ... }
+          const name = typeof m === 'object' ? m.name : m;
+          option.value = name;
+          option.textContent = name;
+          backendModelSelect.appendChild(option);
+        }
+        // Re-seleciona se já tinha algo salvo
+        if (currentVal) {
+          let found = false;
+          for (const opt of backendModelSelect.options) {
+            if (opt.value === currentVal) found = true;
+          }
+          if (found) backendModelSelect.value = currentVal;
+          else backendModelSelect.selectedIndex = 0;
+        } else {
+          backendModelSelect.selectedIndex = 0;
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to populate backend models:", e);
+      backendModelSelect.innerHTML = '<option value="" disabled>Erro ao carregar do servidor</option>';
+    }
+  }
+
+  if (backendModelSelect) {
+    backendModelSelect.addEventListener('change', () => {
+      ipcRenderer.send('set-backend-model', backendModelSelect.value);
+    });
+  }
+
+  // Load saved backend model when initializing config
+  setTimeout(async () => {
+    try {
+      const saved = await ipcRenderer.invoke("get-backend-model");
+      await populateBackendModels(saved);
+    } catch(e) {}
+  }, 500);
+
   // Load saved OpenAI model
   const savedOpenAiModel = await ipcRenderer.invoke("get-openai-model");
   if (savedOpenAiModel) {
@@ -410,6 +491,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   } else if (aiModelSelect.value === 'claudeCli') {
     if (claudeCliModelContainer) claudeCliModelContainer.style.display = 'flex';
     if (claudeCliInfo) claudeCliInfo.style.display = 'block';
+  } else if (aiModelSelect.value === 'llama' || aiModelSelect.value === 'llama-stream') {
+    const backendModelContainerEl = document.getElementById('backend-model-container');
+    if (backendModelContainerEl) backendModelContainerEl.style.display = 'flex';
   }
 
   // -------------------------
@@ -727,6 +811,9 @@ aiModelSelect.addEventListener('change', () => {
     if (claudeCliInfo) claudeCliInfo.style.display = (v === 'claudeCli') ? 'block' : 'none';
     const backendApiKeyContainer = document.getElementById('backend-api-key-container');
     if (backendApiKeyContainer) backendApiKeyContainer.style.display = isOllama ? 'flex' : 'none';
+    const isRemoteBackend = (v === 'llama' || v === 'llama-stream');
+    const backendModelContainerEl = document.getElementById('backend-model-container');
+    if (backendModelContainerEl) backendModelContainerEl.style.display = isRemoteBackend ? 'flex' : 'none';
     // CLI/backend providers gerenciam/não suportam ferramentas — helperTools fica desabilitado.
     if (helperToolsToggle) {
       helperToolsToggle.disabled = disableHelperTools;
@@ -747,6 +834,8 @@ aiModelSelect.addEventListener('change', () => {
         populateGeminiCliModels();
       } else if (v === 'claudeCli') {
         populateClaudeCliModels();
+      } else if (v === 'llama' || v === 'llama-stream') {
+        populateBackendModels();
       }
     }
     applyBackendUrlVisibility();

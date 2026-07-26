@@ -5852,6 +5852,15 @@ ipcMain.on("set-openai-vision-model", (event, model) => {
   configService.setOpenAiVisionModel(model);
 });
 
+// IPC Handlers for Remote Backend
+ipcMain.handle("get-backend-model", () => {
+  return configService.getBackendModel ? configService.getBackendModel() : '';
+});
+
+ipcMain.on("set-backend-model", (event, model) => {
+  if (configService.setBackendModel) configService.setBackendModel(model);
+});
+
 // IPC Handlers for Ollama Local
 ipcMain.handle("get-ollama-local-model", () => {
   return configService.getOllamaLocalModel();

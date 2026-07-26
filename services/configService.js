@@ -478,6 +478,18 @@ function setGeminiCliModel(model) {
   currentConfig = null;
 }
 
+function getBackendModel() {
+  if (!currentConfig) currentConfig = loadConfig();
+  return currentConfig.backendModel || '';
+}
+
+function setBackendModel(model) {
+  if (!currentConfig) currentConfig = loadConfig();
+  currentConfig.backendModel = model || '';
+  saveConfig(currentConfig);
+  currentConfig = null;
+}
+
 function getOllamaLocalModel() {
   if (!currentConfig) currentConfig = loadConfig();
   return currentConfig.ollamaLocalModel || defaultConfig.ollamaLocalModel;
@@ -800,6 +812,8 @@ module.exports = {
   setClaudeCliModel,
   getGeminiCliModel,
   setGeminiCliModel,
+  getBackendModel,
+  setBackendModel,
   getOllamaLocalModel,
   setOllamaLocalModel,
   getOllamaLocalHost,

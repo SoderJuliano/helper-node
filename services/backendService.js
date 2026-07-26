@@ -562,7 +562,13 @@ class BackendService {
     try {
       // === Roteamento de modelo Ollama ===
       let aiModelConf = configService.getAiModel();
+      let backendModel = configService.getBackendModel ? configService.getBackendModel() : '';
       let modelEndpoint = aiModelConf === 'qwen-stream' ? '/chat?model=qwen3.6:35b' : pickOllamaEndpoint(texto);
+      
+      if ((aiModelConf === 'llama' || aiModelConf === 'llama-stream') && backendModel) {
+          modelEndpoint = `/chat?model=${encodeURIComponent(backendModel)}`;
+      }
+      
       let workspace = null;
       let wsEnabled = false;
       let attCount = 0;
@@ -571,11 +577,13 @@ class BackendService {
         workspace = require('./workspace');
         wsEnabled = !!(configService.getWorkspaceAccessEnabled && configService.getWorkspaceAccessEnabled());
         attCount = wsEnabled ? workspace.list().length : 0;
-        if (wsEnabled && attCount > 0 && aiModelConf !== 'qwen-stream') {
+        if (wsEnabled && attCount > 0 && aiModelConf !== 'qwen-stream' && !backendModel) {
           wsPaths = workspace.list().map(a => a.path).filter(Boolean);
           modelEndpoint = '/gemma3';
           console.log(`[backend] workspace com anexos (${attCount}) -> forçando ${modelEndpoint}`);
           console.log(`[backend] wsPaths injetados no system prompt: ${wsPaths.join(', ')}`);
+        } else if (wsEnabled && attCount > 0) {
+          wsPaths = workspace.list().map(a => a.path).filter(Boolean);
         }
       } catch (e) {
         console.warn('[backend] falha ao verificar anexos de workspace para roteamento:', e.message);
@@ -1014,9 +1022,15 @@ class BackendService {
       // Roteamento: mesma logica do responder() — escolhe modelo e usa
       // a versao -stream do endpoint (ex.: /qwen25-stream, /llamatiny-stream).
       let aiModelConf = configService.getAiModel();
-      const baseEndpoint = pickOllamaEndpoint(texto);
-      const endpoint = aiModelConf === 'qwen-stream' ? `${apiUrl}/chat?model=qwen3.6:35b` : `${apiUrl}${baseEndpoint}-stream`;
-      console.log(`[backend-stream] roteado para ${baseEndpoint}-stream`);
+      let backendModel = configService.getBackendModel ? configService.getBackendModel() : '';
+      let baseEndpoint = pickOllamaEndpoint(texto);
+      let endpoint = aiModelConf === 'qwen-stream' ? `${apiUrl}/chat?model=qwen3.6:35b` : `${apiUrl}${baseEndpoint}-stream`;
+      
+      if ((aiModelConf === 'llama' || aiModelConf === 'llama-stream') && backendModel) {
+          endpoint = `${apiUrl}/chat?model=${encodeURIComponent(backendModel)}`;
+      }
+      
+      console.log(`[backend-stream] roteado para o endpoint final: ${endpoint}`);
 
       let promptInstruction = customInstruction || configService.getPromptInstruction();
       let promptWithContext;
