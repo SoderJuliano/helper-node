@@ -342,7 +342,12 @@ class OllamaLocalService {
             this.sessions[sessionId].messages[0].content = systemPromptContent;
         }
 
-        this.sessions[sessionId].messages.push({ role: 'user', content: texto });
+        let userMsg = { role: 'user', content: texto };
+        if (opts.imageBase64) {
+            const base64Data = opts.imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
+            userMsg.images = [base64Data];
+        }
+        this.sessions[sessionId].messages.push(userMsg);
         this.sessions[sessionId].lastActivity = now;
 
         if (this.sessions[sessionId].messages.length > 13) {

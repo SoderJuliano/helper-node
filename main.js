@@ -7012,7 +7012,6 @@ async function processOsQuestion(text, image = null, opts = {}) {
         createOsNotificationWindow('response', 'Token da OpenAI não configurado.');
         return;
       }
-      const sendImage = image && useVision;
       // Modelo dedicado pra visão: nano confunde notação básica em imagens.
       // gpt-4o-mini é barato e muito mais preciso em OCR/visual reasoning.
       const openAiModel = sendImage
@@ -7065,9 +7064,9 @@ async function processOsQuestion(text, image = null, opts = {}) {
         const htEnabled = configService.getHelperToolsEnabled && configService.getHelperToolsEnabled();
         if (htEnabled) {
           const _htO3 = buildHelperToolsOpenAIOpts(_wsTxtO3, instructionO3, configService.getOpenAiModel());
-          resposta = await OllamaLocalService.responder(_wsTxtO3, _htO3.opts);
+          resposta = await OllamaLocalService.responder(_wsTxtO3, { ..._htO3.opts, imageBase64: sendImage ? image : null });
         } else {
-          resposta = await OllamaLocalService.responder(_wsTxtO3);
+          resposta = await OllamaLocalService.responder(_wsTxtO3, { imageBase64: sendImage ? image : null });
         }
       } catch (ollamaErr) {
         console.error("Local Ollama falhou:", ollamaErr && ollamaErr.message);
@@ -7095,7 +7094,7 @@ async function processOsQuestion(text, image = null, opts = {}) {
             }
         } else {
             const _htO3 = buildHelperToolsOpenAIOpts(_wsTxtO3, instructionO3, configService.getOpenAiModel());
-            resposta = await BackendService.responder(_wsTxtO3, _htO3.opts);
+            resposta = await BackendService.responder(_wsTxtO3, { ..._htO3.opts, imageBase64: sendImage ? image : null });
         }
         backendIsOnline = true;
       } catch (backendError) {

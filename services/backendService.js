@@ -561,7 +561,8 @@ class BackendService {
 
     try {
       // === Roteamento de modelo Ollama ===
-      let modelEndpoint = pickOllamaEndpoint(texto);
+      let aiModelConf = configService.getAiModel();
+      let modelEndpoint = aiModelConf === 'qwen-stream' ? '/chat?model=qwen3.6:35b' : pickOllamaEndpoint(texto);
       let workspace = null;
       let wsEnabled = false;
       let attCount = 0;
@@ -570,7 +571,7 @@ class BackendService {
         workspace = require('./workspace');
         wsEnabled = !!(configService.getWorkspaceAccessEnabled && configService.getWorkspaceAccessEnabled());
         attCount = wsEnabled ? workspace.list().length : 0;
-        if (wsEnabled && attCount > 0) {
+        if (wsEnabled && attCount > 0 && aiModelConf !== 'qwen-stream') {
           wsPaths = workspace.list().map(a => a.path).filter(Boolean);
           modelEndpoint = '/gemma3';
           console.log(`[backend] workspace com anexos (${attCount}) -> forçando ${modelEndpoint}`);
@@ -658,10 +659,14 @@ class BackendService {
           : `${promptInstruction}${texto}`;
       }
 
-      const body = {
+      const payload = {
         prompt: promptWithContext,
         language: mappedLang,
       };
+
+      if (opts.imageBase64) {
+        payload.imageBase64 = opts.imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
+      }
       const headers = {
         Authorization: "Bearer Y3VzdG9tY3ZvbmxpbmU=",
         "Content-Type": "application/json",
@@ -678,7 +683,7 @@ class BackendService {
 
       let response;
       try {
-        response = await axios.post(`${apiUrl}${effectiveEndpoint}`, body, { 
+        response = await axios.post(`${apiUrl}${effectiveEndpoint}`, payload, { 
           headers,
           timeout: 360000,
           httpAgent,
@@ -688,7 +693,7 @@ class BackendService {
         const is404 = errFirst.response && errFirst.response.status === 404;
         if (is404 && effectiveEndpoint !== '/llama3') {
           console.warn(`[backend] ${effectiveEndpoint} indisponivel (404), caindo pra /llama3`);
-          response = await axios.post(`${apiUrl}/llama3`, body, {
+          response = await axios.post(`${apiUrl}/llama3`, payload, {
             headers,
             timeout: 360000,
             httpAgent,
@@ -711,6 +716,20 @@ class BackendService {
 
       let resposta = response.data.response || response.data;
       if (typeof resposta !== 'string') resposta = String(resposta);
+
+      if (resposta.includes('data: {"response"')) {
+         const parts = [];
+         const lines = resposta.split('\n');
+         for (const line of lines) {
+            if (line.startsWith('data: ')) {
+               try {
+                  const p = JSON.parse(line.slice(6));
+                  if (p.response) parts.push(p.response);
+               } catch (e) {}
+            }
+         }
+         resposta = parts.join('');
+      }
 
       // Remove bloco de "thinking" do qwen3 e similares (<think>...</think>).
       // O modelo raciocina internamente mas o usuario so precisa ver a conclusao.
@@ -994,8 +1013,9 @@ class BackendService {
     try {
       // Roteamento: mesma logica do responder() — escolhe modelo e usa
       // a versao -stream do endpoint (ex.: /qwen25-stream, /llamatiny-stream).
+      let aiModelConf = configService.getAiModel();
       const baseEndpoint = pickOllamaEndpoint(texto);
-      const endpoint = `${apiUrl}${baseEndpoint}-stream`;
+      const endpoint = aiModelConf === 'qwen-stream' ? `${apiUrl}/chat?model=qwen3.6:35b` : `${apiUrl}${baseEndpoint}-stream`;
       console.log(`[backend-stream] roteado para ${baseEndpoint}-stream`);
 
       let promptInstruction = customInstruction || configService.getPromptInstruction();
@@ -1012,10 +1032,14 @@ class BackendService {
       }
 
       const body = {
+      const payload = {
         prompt: promptWithContext,
         language: mappedLang,
       };
 
+      if (opts.imageBase64) {
+        payload.imageBase64 = opts.imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
+      }
 
       const fetchOpts = {
         method: 'POST',
@@ -1024,7 +1048,7 @@ class BackendService {
           'Content-Type': 'application/json',
           'ngrok-skip-browser-warning': 'true',
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify(payload),
       };
 
       let response = await fetch(endpoint, fetchOpts);
@@ -1061,7 +1085,13 @@ class BackendService {
         // Guarda a última linha incompleta
         buffer = lines.pop() || '';
 
+        let currentEvent = 'message';
+
         for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            currentEvent = line.slice(7).trim();
+            continue;
+          }
           if (line.startsWith('data: ')) {
             const data = line.slice(6).trim();
             
@@ -1077,16 +1107,25 @@ class BackendService {
 
             try {
               const parsed = JSON.parse(data);
-              let token = parsed.response || parsed.message || data;
+              let token = parsed.response || parsed.thinking || parsed.message || data;
               
               if (typeof token === 'string' && token) {
-                console.log('Token recebido do backend:', JSON.stringify(token));
+                console.log(`Token recebido do backend [${currentEvent}]:`, JSON.stringify(token));
                 
-                // Track full response
-                fullResponse += token;
+                // Track full response só para a resposta real (ou thinking se quiser manter no histórico)
+                if (currentEvent !== 'thinking-start' && currentEvent !== 'thinking-end') {
+                    fullResponse += token;
+                }
                 
                 // Backend já adiciona espaços, só passa direto
-                if (onChunk) onChunk(token);
+                if (onChunk) {
+                  // O frontend precisa saber se é thinking
+                  if (currentEvent === 'thinking-start' || currentEvent === 'thinking-end' || parsed.thinking) {
+                      onChunk({ type: 'thinking', text: token, event: currentEvent });
+                  } else {
+                      onChunk(token);
+                  }
+                }
               }
             } catch (e) {
               // Se não for JSON, trata como texto direto

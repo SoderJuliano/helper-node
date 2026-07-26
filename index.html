@@ -754,6 +754,26 @@
         .ia-response code:not(pre code) { cursor: pointer; transition: background-color .2s; }
         .ia-response code:not(pre code):hover { background-color: rgba(255,255,255,0.06); }
 
+        .think-block {
+            margin: 10px 0;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border-left: 3px solid #ffb74d;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #ccc;
+        }
+        .think-block summary {
+            cursor: pointer;
+            font-weight: bold;
+            color: #ffb74d;
+            user-select: none;
+            outline: none;
+        }
+        .think-block summary:hover {
+            color: #ffd54f;
+        }
+
         .streaming-response {
             font-family: var(--font-mono); font-weight: 400; line-height: 1.75; font-size: 14px;
             overflow-wrap: break-word; margin-top: 8px; text-align: left; color: var(--text);
@@ -5555,6 +5575,50 @@
                     console.log('Elemento de streaming criado');
                 }
                 
+                let currentThinkBlock = streamingElement.querySelector('details.think-block');
+
+                if (typeof chunk === 'object' && chunk.type === 'thinking') {
+                    if (chunk.event === 'thinking-start') {
+                        if (!currentThinkBlock) {
+                            const details = document.createElement('details');
+                            details.className = 'think-block';
+                            details.open = true;
+                            const summary = document.createElement('summary');
+                            summary.textContent = 'Raciocínio';
+                            details.appendChild(summary);
+                            const content = document.createElement('div');
+                            details.appendChild(content);
+                            streamingElement.insertBefore(details, typingCursor);
+                        }
+                    } else if (chunk.event === 'thinking-end') {
+                        if (currentThinkBlock) {
+                            currentThinkBlock.open = false; // Collapse when done
+                        }
+                    } else {
+                        if (!currentThinkBlock) {
+                            const details = document.createElement('details');
+                            details.className = 'think-block';
+                            details.open = true;
+                            const summary = document.createElement('summary');
+                            summary.textContent = 'Raciocínio';
+                            details.appendChild(summary);
+                            const content = document.createElement('div');
+                            details.appendChild(content);
+                            streamingElement.insertBefore(details, typingCursor);
+                            currentThinkBlock = details;
+                        }
+                        const contentDiv = currentThinkBlock.querySelector('div');
+                        contentDiv.textContent += chunk.text;
+                    }
+                    
+                    // Scroll automático para thinking
+                    transcriptionElement.scrollTo({
+                        top: transcriptionElement.scrollHeight,
+                        behavior: 'smooth'
+                    });
+                    return; // Retorna cedo para não jogar thinking no texto final
+                }
+
                 // SIMPLE RULE: Just concatenate tokens as-is, backend should send spaces
                 // If backend doesn't send spaces between words, they will be joined
                 streamingText += chunk;
@@ -5606,11 +5670,18 @@
                 if (streamingElement && streamingText && isElementInDOM) {
                     console.log('Formatando texto final do stream:', streamingText.substring(0, 100) + '...');
                     
+                    // Salva o think-block se existir
+                    const existingThinkBlock = streamingElement.querySelector('details.think-block');
+                    let thinkHTML = '';
+                    if (existingThinkBlock) {
+                        thinkHTML = existingThinkBlock.outerHTML;
+                    }
+                    
                     // Aplica formatação HTML básica
                     const formatted = formatStreamedText(streamingText);
                     console.log('Texto formatado:', formatted.substring(0, 200) + '...');
                     
-                    streamingElement.innerHTML = formatted;
+                    streamingElement.innerHTML = thinkHTML + formatted;
                     
                     console.log('Stream formatting completed successfully');
                 } else {
@@ -5711,7 +5782,7 @@
 
             const aiModel = await window.electronAPI.getAiModel();
             
-            if (aiModel === 'llama-stream') {
+            if (aiModel === 'llama-stream' || aiModel === 'qwen-stream') {
                 // Usa streaming
                 window.electronAPI.sendTextToGeminiStream(text, activeSessionId);
             } else {
