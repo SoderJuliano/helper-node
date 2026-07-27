@@ -2364,7 +2364,7 @@
                 { value: 'gpt-5.6-sol', label: 'GPT-5.6 Sol' },
             ];
             const PROVIDER_LABELS = {
-                openIa: 'ChatGPT', llama: 'Ollama Backend',
+                openIa: 'ChatGPT', openIaCodex: 'OpenAI Codex', llama: 'Ollama Backend',
                 'llama-stream': 'Ollama Backend (stream)', ollamaLocal: 'Ollama Local',
                 geminiCli: 'Gemini CLI', claudeCli: 'Claude CLI',
             };
@@ -2424,7 +2424,7 @@
                 let provider = 'openIa';
                 try { provider = (await window.electronAPI.getAiModel()) || 'openIa'; } catch (_) {}
                 composerModelBtn.dataset.provider = provider;
-                if (provider === 'openIa') {
+                if (provider === 'openIa' || provider === 'openIaCodex') {
                     let m = 'gpt-4.1-nano';
                     try { m = (await window.electronAPI.getOpenaiModel()) || m; } catch (_) {}
                     const found = OPENAI_MODELS.find(x => x.value === m);
@@ -2484,14 +2484,51 @@
             async function showModelMenu(anchor) {
                 const provider = anchor.dataset.provider || 'openIa';
                 await loadCliModels();
-                if (provider === 'openIa') {
+                if (provider === 'openIa' || provider === 'openIaCodex') {
                     let currentVal = '';
-                    _buildModelMenu(anchor, OPENAI_MODELS, () => currentVal, (opt) => {
-                        currentVal = opt.value;
-                        try { window.electronAPI.setOpenaiModel(opt.value); } catch (_) {}
-                        composerModelName.textContent = opt.label;
-                        if (typeof showToast === 'function') showToast('Modelo: ' + opt.label);
-                    });
+                    try { currentVal = await window.electronAPI.getOpenaiModel(); } catch (_) {}
+                    
+                    const openOpenaiMenu = (modelsList) => {
+                        _buildModelMenu(anchor, modelsList, () => currentVal, (opt) => {
+                            currentVal = opt.value;
+                            try { window.electronAPI.setOpenaiModel(opt.value); } catch (_) {}
+                            composerModelName.textContent = opt.label;
+                            if (typeof showToast === 'function') showToast('Modelo: ' + opt.label);
+                        });
+                    };
+
+                    try {
+                        const token = await window.electronAPI.getOpeniaToken();
+                        if (token) {
+                            if (typeof showToast === 'function') showToast('Carregando modelos OpenAI...');
+                            const res = await fetch("https://api.openai.com/v1/models", {
+                                method: "GET",
+                                headers: {
+                                    "Authorization": `Bearer ${token}`
+                                }
+                            });
+                            if (res.ok) {
+                                const data = await res.json();
+                                if (data.data && Array.isArray(data.data)) {
+                                    const dynamicModels = data.data
+                                        .map(m => m.id)
+                                        .filter(id => id.startsWith('gpt-') || id.startsWith('o1-') || id.startsWith('o3-'))
+                                        .sort()
+                                        .map(id => ({ value: id, label: id }));
+                                    
+                                    if (dynamicModels.length > 0) {
+                                        openOpenaiMenu(dynamicModels);
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.warn("Falha ao buscar modelos OpenAI online:", e);
+                    }
+                    
+                    // Fallback
+                    openOpenaiMenu(OPENAI_MODELS);
                 } else if (provider === 'geminiCli') {
                     let currentVal = '';
                     _buildModelMenu(anchor, GEMINI_CLI_MODELS, () => currentVal, (opt) => {
@@ -5373,8 +5410,8 @@
 
             });
 
-            window.electronAPI.onOpenAIResponse((response, usedKnowledge) => {
-                console.log('OpenAI respondeu:', response, '| base de conhecimento:', !!usedKnowledge);
+            window.electronAPI.onOpenAIResponse((response, usedKnowledge, usage) => {
+                console.log('OpenAI respondeu:', response, '| base de conhecimento:', !!usedKnowledge, '| usage:', usage);
                 if (!response) {
                     document.getElementById('robot').style.display = 'none';
                     console.error('Resposta da OpenAI é undefined ou vazia');
@@ -5397,6 +5434,24 @@
                     kbBadge.className = 'kb-used-badge';
                     kbBadge.textContent = '• base de conhecimento usada';
                     newResponse.insertBefore(kbBadge, newResponse.firstChild);
+                }
+
+                if (usage && usage.total_tokens) {
+                    const tokensBadge = document.createElement('div');
+                    tokensBadge.className = 'kb-used-badge';
+                    tokensBadge.style.color = 'var(--text-3)';
+                    tokensBadge.style.marginTop = '4px';
+                    tokensBadge.style.fontSize = '10px';
+                    
+                    const details = usage.completion_tokens_details || {};
+                    const reasoning = details.reasoning_tokens || 0;
+                    let txt = `• gasto de tokens: ~${usage.total_tokens} (prompt: ${usage.prompt_tokens}, completion: ${usage.completion_tokens}`;
+                    if (reasoning > 0) {
+                        txt += `, raciocínio: ${reasoning}`;
+                    }
+                    txt += ')';
+                    tokensBadge.textContent = txt;
+                    newResponse.appendChild(tokensBadge);
                 }
 
                 const lastBlockOAI = transcriptionElement.querySelector('.interaction-block:last-child');

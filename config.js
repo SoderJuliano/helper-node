@@ -425,6 +425,55 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
+  async function populateOpenAiModels(savedModel = null) {
+    if (!openAiModelSelect) return;
+    const currentVal = savedModel || openAiModelSelect.value;
+    try {
+      const token = await ipcRenderer.invoke("get-open-ia-token");
+      if (!token) throw new Error("Chave da OpenAI não configurada");
+      
+      const res = await fetch("https://api.openai.com/v1/models", {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${token}`
+        }
+      });
+      if (!res.ok) throw new Error("Erro HTTP " + res.status);
+      const data = await res.json();
+      
+      let models = [];
+      if (data.data && Array.isArray(data.data)) {
+        models = data.data
+          .map(m => m.id)
+          .filter(id => id.startsWith('gpt-') || id.startsWith('o1-') || id.startsWith('o3-'))
+          .sort();
+      }
+      
+      if (models.length > 0) {
+        openAiModelSelect.innerHTML = '';
+        for (const m of models) {
+          const option = document.createElement('option');
+          option.value = m;
+          option.textContent = m;
+          openAiModelSelect.appendChild(option);
+        }
+        
+        if (currentVal) {
+          let found = false;
+          for (const opt of openAiModelSelect.options) {
+            if (opt.value === currentVal) found = true;
+          }
+          if (found) openAiModelSelect.value = currentVal;
+          else openAiModelSelect.selectedIndex = 0;
+        } else {
+          openAiModelSelect.selectedIndex = 0;
+        }
+      }
+    } catch (e) {
+      console.warn("Falha ao carregar modelos dinâmicos da OpenAI:", e.message);
+    }
+  }
+
   function checkBackendToolsAvailability() {
     const v = aiModelSelect.value;
     if (v !== 'llama' && v !== 'llama-stream') return;
@@ -479,9 +528,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Load saved OpenAI model
   const savedOpenAiModel = await ipcRenderer.invoke("get-openai-model");
-  if (savedOpenAiModel) {
-    openAiModelSelect.value = savedOpenAiModel;
-  }
+  await populateOpenAiModels(savedOpenAiModel);
   updateRealtimeFastModelNote();
 
   // Load saved reasoning effort e modelo de visão
@@ -514,7 +561,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   } catch (e) { console.warn("gemini-cli model load failed:", e); }
 
   // Show/hide provider fields based on saved model
-  const isChatGPT = (aiModelSelect.value === 'openIa');
+  const isChatGPT = (aiModelSelect.value === 'openIa' || aiModelSelect.value === 'openIaCodex');
   if (visionGuideSection) {
     visionGuideSection.style.display = isChatGPT ? 'block' : 'none';
   }
@@ -832,11 +879,10 @@ function applyOllamaLocalExclusivity() {
 
 function releaseOllamaLocalExclusivity() {
 }
-
-// Show/hide OpenAI/Ollama/GeminiCli fields based on AI model selection
+// Show/hide OpenAI/Ollama/GeminiCli fields based on AI model selection
 aiModelSelect.addEventListener('change', () => {
     const v = aiModelSelect.value;
-    const isChatGPT = (v === 'openIa');
+    const isChatGPT = (v === 'openIa' || v === 'openIaCodex');
     if (visionGuideSection) {
       visionGuideSection.style.display = isChatGPT ? 'block' : 'none';
       if (!isChatGPT && visionGuideEnabledToggle && visionGuideEnabledToggle.checked) {
@@ -859,11 +905,12 @@ aiModelSelect.addEventListener('change', () => {
            if (sizeMatch && parseFloat(sizeMatch[1]) > 10) allowTools = true;
        }
        disableHelperTools = disableHelperTools || !allowTools;
-    }
-    openIaTokenContainer.style.display = (v === 'openIa') ? 'flex' : 'none';
-    openAiModelContainer.style.display = (v === 'openIa') ? 'flex' : 'none';
-    if (openAiReasoningEffortContainer) openAiReasoningEffortContainer.style.display = (v === 'openIa') ? 'flex' : 'none';
-    if (openAiVisionModelContainer) openAiVisionModelContainer.style.display = (v === 'openIa') ? 'flex' : 'none';
+     }
+    const showOpenAi = (v === 'openIa' || v === 'openIaCodex');
+    openIaTokenContainer.style.display = showOpenAi ? 'flex' : 'none';
+    openAiModelContainer.style.display = showOpenAi ? 'flex' : 'none';
+    if (openAiReasoningEffortContainer) openAiReasoningEffortContainer.style.display = showOpenAi ? 'flex' : 'none';
+    if (openAiVisionModelContainer) openAiVisionModelContainer.style.display = showOpenAi ? 'flex' : 'none';
     if (ollamaLocalModelContainer) ollamaLocalModelContainer.style.display = (v === 'ollamaLocal') ? 'flex' : 'none';
     if (ollamaLocalInfo) ollamaLocalInfo.style.display = (v === 'ollamaLocal') ? 'block' : 'none';
     if (geminiCliModelContainer) geminiCliModelContainer.style.display = (v === 'geminiCli') ? 'flex' : 'none';
@@ -894,6 +941,8 @@ aiModelSelect.addEventListener('change', () => {
         populateGeminiCliModels();
       } else if (v === 'claudeCli') {
         populateClaudeCliModels();
+      } else if (v === 'openIa' || v === 'openIaCodex') {
+        populateOpenAiModels();
       } else if (v === 'llama' || v === 'llama-stream') {
         ipcRenderer.invoke("get-backend-model").then(saved => {
           populateBackendModels(saved);

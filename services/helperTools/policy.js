@@ -23,6 +23,10 @@ function expandHome(p) {
 
 function resolveAbs(p) {
   if (typeof p === "string") p = p.trim();
+  if (process.platform === "win32" && typeof p === "string") {
+    p = p.replace(/^\/([a-zA-Z])\//, "$1:/");
+    p = p.replace(/^\/([a-zA-Z]):/, "$1:");
+  }
   const expanded = expandHome(p);
   // Caminho relativo (".", "src/x.js"…) deve resolver contra a RAIZ DO PROJETO
   // ABERTO (workspace), não contra o cwd do app — senão a IA acaba lendo/

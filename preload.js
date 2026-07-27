@@ -98,6 +98,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getStealthModeStatus: () => ipcRenderer.invoke("get-stealth-mode-status"),
   saveStealthModeStatus: (status) => ipcRenderer.send("save-stealth-mode-status", status),
   getPromptInstruction: () => ipcRenderer.invoke("get-prompt-instruction"), // Added for prompt instruction access
+  getOpeniaToken: () => ipcRenderer.invoke("get-open-ia-token"),
   getBackendApiKey: () => ipcRenderer.invoke("get-backend-api-key"),
   saveBackendApiKey: (key) => ipcRenderer.send("save-backend-api-key", key),
   getBackendUrl: () => ipcRenderer.invoke("get-backend-url"),

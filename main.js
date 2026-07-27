@@ -184,7 +184,7 @@ function syncTerminalCwd(forceMessage = false) {
  *   { opts, instruction?, model? }
  *   - opts é sempre seguro pra spread; vazio quando helperTools não engaja.
  */
-function buildHelperToolsOpenAIOpts(userText, baseInstruction, baseModel) {
+function buildHelperToolsOpenAIOpts(userText, baseInstruction, baseModel, bypassConfirm = false) {
   try {
     if (!helperTools.isEnabled || !helperTools.isEnabled()) {
       return { opts: {} };
@@ -353,6 +353,7 @@ function buildHelperToolsOpenAIOpts(userText, baseInstruction, baseModel) {
             }
             const res = await helperTools.executeTool(name, args, {
               source: "openai-tool-call",
+              force: bypassConfirm,
             });
             if (key && res && res.ok !== false) seen.set(key, res);
             emitActivity({ id: callId, name, phase: "done", ok: res && res.ok !== false });
@@ -3992,7 +3993,7 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
       return;
     }
 
-    if (aiModel === 'openIa') {
+    if (aiModel === 'openIa' || aiModel === 'openIaCodex') {
         const token = configService.getOpenIaToken();
         const instruction = configService.getPromptInstruction();
         if (!token) {
@@ -4033,7 +4034,7 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
             const _kb2 = await knowledgeBlockForOpenAI(text);
             if (_kb2) usedKnowledge = true;
             const _augText2 = _kb2 ? _kb2 + "\n\n---\n\n" + _wsText2 : _wsText2;
-            const ht = buildHelperToolsOpenAIOpts(_augText2, instruction, openAiModel);
+            const ht = buildHelperToolsOpenAIOpts(_augText2, instruction, openAiModel, aiModel === 'openIaCodex');
             resposta = await OpenAIService.makeOpenAIRequest(
               _augText2,
               token,
@@ -4043,7 +4044,8 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
               ht.opts
             );
         }
-        event.sender.send("openai-final-response", { resposta, usedKnowledge });
+        const usage = OpenAIService.lastUsage;
+        event.sender.send("openai-final-response", { resposta, usedKnowledge, usage });
         return;
     } else if (aiModel === 'ollamaLocal') {
         try {

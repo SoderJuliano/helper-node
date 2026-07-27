@@ -6,6 +6,7 @@ const { supportsReasoningEffort } = require('./openAiRealtimeModels');
 class OpenAIService {
     constructor() {
         this.sessions = {};
+        this.lastUsage = null;
     }
 
     initialize() {
@@ -147,6 +148,7 @@ class OpenAIService {
             // Caminho simples (sem tools): comportamento original preservado
             if (!tools || !onToolCall) {
                 const response = await postOnce();
+                this.lastUsage = response ? response.data.usage : null;
                 console.log('Received response from OpenAI API.');
                 const assistantResponse = response.data.choices[0].message.content;
                 if (!stateless) {
@@ -168,6 +170,7 @@ class OpenAIService {
             let iterations = 0;
             while (iterations <= maxToolCalls) {
                 const response = await postOnce();
+                this.lastUsage = response ? response.data.usage : null;
                 const choice = response.data.choices[0];
                 const msg = choice.message;
 

@@ -7,6 +7,7 @@ const fss = require("fs");
 const path = require("path");
 const os = require("os");
 const workspace = require("../../workspace");
+const policy = require("../policy");
 
 const BACKUP_ROOT = path.join(os.homedir(), ".config", "helper-node", "backups");
 
@@ -53,7 +54,7 @@ module.exports = {
   setOnFileWritten,
 
   async run(args, ctx) {
-    const target = args && args.path ? path.resolve(args.path) : "";
+    const target = args && args.path ? policy.resolveAbs(args.path) : "";
     if (!target) return { ok: false, error: "path obrigatório" };
     if (!workspace.isPathAllowed(target)) {
       return { ok: false, error: `path "${target}" fora do workspace` };
