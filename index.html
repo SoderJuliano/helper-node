@@ -6831,6 +6831,7 @@
         }
         
         async function submitManualQuestion(text, container) {
+            console.log('[submitManualQuestion] Iniciado! text:', text);
             manualInputActive = false;
             undockComposer(); // restaura o ghost do composer após envio
 
@@ -6848,7 +6849,9 @@
             const _heroSubmit = document.getElementById('welcome-hero');
             if (_heroSubmit) _heroSubmit.classList.add('hidden');
 
+            console.log('[submitManualQuestion] Solicitando getDebugModeStatus...');
             const isDebug = await window.electronAPI.getDebugModeStatus();
+            console.log('[submitManualQuestion] getDebugModeStatus resolvido. isDebug:', isDebug);
 
             if (window.idePendingImage) {
                 // Modo IDE: exibe a imagem anexada de forma premium e envia
