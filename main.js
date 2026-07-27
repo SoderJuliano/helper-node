@@ -3970,6 +3970,8 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
         await GeminiCliProvider.send(finalPrompt, projectPath, event.sender, sessionId, pastMessages);
       } catch (gcliErr) {
         console.error('[gemini-cli] send error:', gcliErr.message);
+        // Garante que o loading fecha mesmo que o provider não tenha emitido gemini-stream-complete
+        try { event.sender.send('gemini-stream-complete'); } catch (_) {}
       }
       return;
     }

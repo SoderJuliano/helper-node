@@ -82,11 +82,9 @@ class ClaudeCliProvider {
     // NADA (o handler nem chegava a mandar o abort pro processo do CLI).
     const safeClose = (isError, extraStatus) => {
       // Garante que o loading sempre fecha, mesmo em erros inesperados
-      if (this._thinkingEmitted) {
-        this._thinkingEmitted = false;
-        const status = isError ? 'Erro' : (extraStatus || 'Concluído');
-        try { sender.send('agentic-phase-update', { phase: 'completed', status, sessionId: cwd }); } catch (_) {}
-      }
+      this._thinkingEmitted = false;
+      const status = isError ? 'Erro' : (extraStatus || 'Concluído');
+      try { sender.send('agentic-phase-update', { phase: isError ? 'error' : 'completed', status, sessionId: cwd }); } catch (_) {}
       try { sender.send('gemini-stream-complete'); } catch (_) {}
     };
 

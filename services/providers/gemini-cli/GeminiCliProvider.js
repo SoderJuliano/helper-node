@@ -109,10 +109,8 @@ class GeminiCliProvider {
     // (setado a partir desse campo) for truthy. Sem ele, o clique não fazia
     // NADA (o handler nem chegava a mandar o abort pro processo do CLI).
     const safeClose = (isError) => {
-      if (this._thinkingEmitted) {
-        this._thinkingEmitted = false;
-        try { sender.send('agentic-phase-update', { phase: isError ? 'error' : 'completed', status: isError ? 'Erro' : 'Concluído', thinking: thinkingAccumulated, sessionId: cwd }); } catch (_) {}
-      }
+      this._thinkingEmitted = false;
+      try { sender.send('agentic-phase-update', { phase: isError ? 'error' : 'completed', status: isError ? 'Erro' : 'Concluído', thinking: thinkingAccumulated, sessionId: cwd }); } catch (_) {}
       try { sender.send('gemini-stream-complete'); } catch (_) {}
     };
 
