@@ -601,6 +601,8 @@ class BackendService {
       const sizeMatch = modelNameStr.match(/(\d+(?:\.\d+)?)b/i);
       if (sizeMatch && parseFloat(sizeMatch[1]) > 10) {
           allowWriteTools = true;
+      } else if (modelNameStr.toLowerCase().includes('pikachu') || modelNameStr.toLowerCase().includes('ollama') || aiModelConf === 'llama' || aiModelConf === 'llama-stream') {
+          allowWriteTools = true;
       }
 
       // Tools de escrita de arquivo são exclusivas para modelos >10b no backend.
@@ -689,10 +691,14 @@ class BackendService {
         "Content-Type": "application/json",
         "ngrok-skip-browser-warning": "true",
       };
-      // qwen3.6-17b é modelo pesado reservado — não rotear por ora
-      if (effectiveEndpoint === '/qwen3.6-17b') {
-        const apiKey = configService.getBackendApiKey() || '123';
+      const apiKey = configService.getBackendApiKey ? configService.getBackendApiKey() : '';
+      if (apiKey) {
         headers['apikey'] = apiKey;
+        headers['x-api-key'] = apiKey;
+      }
+      // qwen3.6-17b é modelo pesado reservado — não rotear por ora
+      if (effectiveEndpoint === '/qwen3.6-17b' && !headers['apikey']) {
+        headers['apikey'] = apiKey || '123';
       }
 
       const _modelName = effectiveEndpoint.replace('/', '');
@@ -1063,13 +1069,20 @@ class BackendService {
         payload.imageBase64 = opts.imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
       }
 
+      const headers = {
+        'Authorization': 'Bearer Y3VzdG9tY3ZvbmxpbmU=',
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true',
+      };
+      const apiKey = configService.getBackendApiKey ? configService.getBackendApiKey() : '';
+      if (apiKey) {
+        headers['apikey'] = apiKey;
+        headers['x-api-key'] = apiKey;
+      }
+
       const fetchOpts = {
         method: 'POST',
-        headers: {
-          'Authorization': 'Bearer Y3VzdG9tY3ZvbmxpbmU=',
-          'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true',
-        },
+        headers,
         body: JSON.stringify(payload),
       };
 

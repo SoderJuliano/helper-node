@@ -2364,8 +2364,8 @@
                 { value: 'gpt-5.6-sol', label: 'GPT-5.6 Sol' },
             ];
             const PROVIDER_LABELS = {
-                openIa: 'ChatGPT', llama: 'Backend (Llama)',
-                'llama-stream': 'Backend (stream)', ollamaLocal: 'Ollama Local',
+                openIa: 'ChatGPT', llama: 'Ollama Backend',
+                'llama-stream': 'Ollama Backend (stream)', ollamaLocal: 'Ollama Local',
                 geminiCli: 'Gemini CLI', claudeCli: 'Claude CLI',
             };
             // Claude Code CLI model list (initially mirrored, loaded dynamically later)
@@ -2439,6 +2439,10 @@
                     try { m = (await window.electronAPI.getClaudeCliModel()) || m; } catch (_) {}
                     const found = CLAUDE_CLI_MODELS.find(x => x.value === m);
                     composerModelName.textContent = found ? found.label : m;
+                } else if (provider === 'llama' || provider === 'llama-stream') {
+                    let m = '';
+                    try { m = (await window.electronAPI.getBackendModel()) || ''; } catch (_) {}
+                    composerModelName.textContent = m || PROVIDER_LABELS[provider] || 'Ollama Backend';
                 } else {
                     composerModelName.textContent = PROVIDER_LABELS[provider] || provider;
                 }
@@ -2504,6 +2508,55 @@
                         composerModelName.textContent = opt.label;
                         if (typeof showToast === 'function') showToast('Modelo: ' + opt.label);
                     });
+                } else if (provider === 'llama' || provider === 'llama-stream') {
+                    try {
+                        const url = await window.electronAPI.getBackendUrl();
+                        if (!url) {
+                            if (typeof showToast === 'function') showToast('URL do backend não configurada');
+                            return;
+                        }
+                        const baseUrl = url.replace(/\/+$/, '');
+                        const apiKey = (await window.electronAPI.getBackendApiKey()) || '';
+                        
+                        if (typeof showToast === 'function') showToast('Carregando modelos do servidor...');
+                        
+                        const res = await fetch(`${baseUrl}/models`, {
+                            method: 'GET',
+                            headers: {
+                                'x-api-key': apiKey,
+                                'ngrok-skip-browser-warning': 'true'
+                            }
+                        });
+                        if (!res.ok) throw new Error("HTTP " + res.status);
+                        const data = await res.json();
+                        let models = [];
+                        if (data.models && Array.isArray(data.models)) {
+                            models = data.models;
+                        }
+                        
+                        if (models.length === 0) {
+                            if (typeof showToast === 'function') showToast('Nenhum modelo no servidor');
+                            return;
+                        }
+                        
+                        const menuModels = models.map(m => {
+                            const name = typeof m === 'object' ? m.name : m;
+                            return { value: name, label: name };
+                        });
+                        
+                        let currentVal = '';
+                        try { currentVal = await window.electronAPI.getBackendModel(); } catch (_) {}
+                        
+                        _buildModelMenu(anchor, menuModels, () => currentVal, (opt) => {
+                            currentVal = opt.value;
+                            try { window.electronAPI.setBackendModel(opt.value); } catch (_) {}
+                            composerModelName.textContent = opt.label;
+                            if (typeof showToast === 'function') showToast('Modelo: ' + opt.label);
+                        });
+                    } catch (err) {
+                        console.error('Erro ao buscar modelos do backend:', err);
+                        if (typeof showToast === 'function') showToast('Erro ao carregar modelos do servidor');
+                    }
                 } else {
                     // Backend/Ollama: abre Configurações.
                     if (window.electronAPI.openConfig) window.electronAPI.openConfig();

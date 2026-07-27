@@ -437,6 +437,8 @@ document.addEventListener("DOMContentLoaded", async () => {
        const sizeMatch = modelName.match(/(\d+(?:\.\d+)?)b/i);
        if (sizeMatch && parseFloat(sizeMatch[1]) > 10) {
            allowTools = true;
+       } else if (modelName.toLowerCase().includes('pikachu') || modelName.toLowerCase().includes('ollama') || modelName.toLowerCase().includes('custom') || modelName.toLowerCase().includes('backend')) {
+           allowTools = true;
        }
     }
     
@@ -893,7 +895,11 @@ aiModelSelect.addEventListener('change', () => {
       } else if (v === 'claudeCli') {
         populateClaudeCliModels();
       } else if (v === 'llama' || v === 'llama-stream') {
-        populateBackendModels();
+        ipcRenderer.invoke("get-backend-model").then(saved => {
+          populateBackendModels(saved);
+        }).catch(() => {
+          populateBackendModels();
+        });
       }
     }
     applyBackendUrlVisibility();

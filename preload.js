@@ -84,6 +84,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   checkGeminiCliInstalled: () => ipcRenderer.invoke("check-gemini-cli-installed"),
   geminiCliRestartSession: () => ipcRenderer.invoke("gemini-cli-restart-session"),
   onGeminiCliStatus: (cb) => ipcRenderer.on("gemini-cli-status", (event, data) => cb(data)),
+  getBackendModel: () => ipcRenderer.invoke("get-backend-model"),
+  setBackendModel: (model) => ipcRenderer.send("set-backend-model", model),
   getEdition: () => ipcRenderer.invoke("get-edition"),
   openConfig: () => ipcRenderer.send("open-config-ui"),
   stopNotifications: () => ipcRenderer.send("stop-notifications"),
