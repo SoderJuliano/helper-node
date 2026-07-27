@@ -4011,19 +4011,25 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId, image) => {
       }
     }
 
-    // Se houver imagem e for CLI ou Agentic workflow, gravamos temporariamente e colocamos aviso no prompt
+    // Se houver imagem e for CLI ou Agentic workflow, gravamos temporariamente na pasta de dados do usuário
+    // (garantindo permissões de leitura/escrita sem root) e colocamos aviso no prompt apontando para o caminho.
     let promptWithImageInfo = promptWithHistory;
     let promptTextForCli = text;
     if (image && (aiModel === 'geminiCli' || aiModel === 'claudeCli' || shouldUseAgentic(text))) {
       try {
         const fs = require('fs');
-        const os = require('os');
         const path = require('path');
+        const { app } = require('electron');
         const base64Data = image.replace(/^data:image\/[a-z]+;base64,/, "");
-        const tempDir = os.tmpdir();
+        const tempDir = path.join(app.getPath('userData'), 'temp_images');
+        if (!fs.existsSync(tempDir)) {
+          fs.mkdirSync(tempDir, { recursive: true });
+        }
         const tempFileName = `helper_node_temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}.png`;
         tempFilePath = path.join(tempDir, tempFileName);
-        fs.writeFileSync(tempFilePath, base64Data, 'base64');
+        
+        // Escreve o arquivo de forma assíncrona para nunca bloquear o Event Loop principal
+        await fs.promises.writeFile(tempFilePath, base64Data, 'base64');
         
         const osPathFormatted = process.platform === 'win32' ? tempFilePath.replace(/\//g, '\\') : tempFilePath;
         const imgNotice = `\n\n[IMAGEM DE CONTEXTO ANEXADA: Existe uma imagem associada a esta pergunta salva em: "${osPathFormatted}". Se necessário, você pode ler ou analisar esta imagem local para responder à pergunta.]`;
@@ -4201,7 +4207,7 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId, image) => {
       try {
         const fs = require('fs');
         if (fs.existsSync(tempFilePath)) {
-          fs.unlinkSync(tempFilePath);
+          await fs.promises.unlink(tempFilePath);
           console.log("Deleted temporary image context file:", tempFilePath);
         }
       } catch (e) {
