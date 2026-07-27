@@ -2170,6 +2170,29 @@
     <script>
 
         // ============================================================
+        // Variáveis globais e funções utilitárias acessíveis em todo o escopo do script
+        // ============================================================
+        let ctxProject = null; // { id, name, path, branch }
+        window.workspaceAccessEnabled = false;
+        window.helperToolsEnabled = false;
+
+        function checkIsIdeMode() {
+            // Modo IDE está ativo se a configuração de Workspace ("Adicionar arquivos e pastas") está ativa,
+            // OU se existe um projeto/pasta aberto.
+            if (window.workspaceAccessEnabled) {
+                return true;
+            }
+            if (ctxProject && ctxProject.path) {
+                return true;
+            }
+            const wsPanel = document.getElementById('workspace-panel');
+            if (wsPanel && wsPanel.style.display !== 'none') {
+                return true;
+            }
+            return false;
+        }
+
+        // ============================================================
         // Colar imagem (Ctrl+V) — registro À PROVA DE FALHAS.
         // Fica AQUI no topo, fora de qualquer DOMContentLoaded, pra NUNCA
         // ficar sem registrar caso algum bloco de init lance erro antes.
@@ -2179,11 +2202,7 @@
         // ============================================================
         (function wireImagePasteEarly() {
             function isIdeModeSafe() {
-                try { if (typeof checkIsIdeMode === 'function') return checkIsIdeMode(); } catch (_) {}
-                const mb = document.getElementById('composer-model');
-                const prov = mb && mb.dataset ? mb.dataset.provider : null;
-                if (prov === 'claudeCli' || prov === 'geminiCli') return true;
-                return !!(window.workspaceAccessEnabled && window.helperToolsEnabled);
+                return checkIsIdeMode();
             }
             function doAttach(base64) {
                 if (!base64) return;
@@ -2449,42 +2468,11 @@
             const ctxProjectName = document.getElementById('ctx-project-name');
             const ctxBranch = document.getElementById('ctx-branch');
             const ctxBranchName = document.getElementById('ctx-branch-name');
-            let ctxProject = null; // { id, name, path, branch }
-            window.workspaceAccessEnabled = false;
-            window.helperToolsEnabled = false;
-
             async function pickProjectFolder() {
                 if (!(window.electronAPI && window.electronAPI.workspacePickDir)) return;
                 const r = await window.electronAPI.workspacePickDir();
                 if (r && r.attachments && typeof renderWorkspacePanel === 'function') renderWorkspacePanel(r.attachments);
                 await refreshProjectContext();
-            }
-
-            function checkIsIdeMode() {
-                // 1. Verifica a IA ativa direto do DOM (síncrono e super confiável)
-                const modelBtn = document.getElementById('composer-model');
-                const aiModel = modelBtn ? modelBtn.dataset.provider : null;
-                if (aiModel === 'geminiCli' || aiModel === 'claudeCli') {
-                    return true;
-                }
-
-                // 2. Verifica se as configurações de Workspace (adicionar arquivos/pastas) E execução de comandos (helperTools) estão ativas
-                if (window.workspaceAccessEnabled && window.helperToolsEnabled) {
-                    return true;
-                }
-
-                // 3. Verifica se existe uma pasta de projeto (ctxProject) carregada/ativa
-                if (typeof ctxProject !== 'undefined' && ctxProject && ctxProject.path) {
-                    return true;
-                }
-
-                // 4. Verifica se o painel do workspace está ativo/visível (ou seja, se há pasta/projeto ou workspace habilitado)
-                const wsPanel = document.getElementById('workspace-panel');
-                if (wsPanel && wsPanel.style.display !== 'none') {
-                    return true;
-                }
-                
-                return false;
             }
 
             async function refreshProjectContext() {
@@ -6220,16 +6208,24 @@
                         return;
                     }
                 }
-                // Ctrl+I: mostra/esconde o composer no modo assistente em tempo real.
-                if (e.key === 'i' && e.ctrlKey && !e.shiftKey && !e.altKey) {
+                // Ctrl+I ou Ctrl+Shift+I: abre o input ou minimiza o chat
+                if (e.key.toLowerCase() === 'i' && (e.ctrlKey || e.metaKey) && !e.altKey) {
                     const active = document.activeElement;
-                    const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
-                    if (!isInput && _realtimeComposerHidden !== undefined) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setComposerVisibility(composerEl && composerEl.classList.contains('collapsed'));
-                        return;
+                    const isInputFocused = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
+
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    if (isInputFocused && manualInputActive) {
+                        // Se o input já está ativo e focado, minimiza o chat!
+                        if (window.electronAPI && window.electronAPI.minimizeWindow) {
+                            window.electronAPI.minimizeWindow();
+                        }
+                    } else {
+                        // Caso contrário, abre o input e dá foco
+                        openManualInput();
                     }
+                    return;
                 }
                 if (e.key === 'Escape' && manualInputActive) {
                     manualInputActive = false;

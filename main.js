@@ -2760,6 +2760,7 @@ async function registerGlobalShortcuts() {
     ? [
         { combo: "Ctrl+D", action: "toggle-recording" },
         { combo: "Ctrl+I", action: "manual-input" },
+        { combo: "Ctrl+Shift+I", action: "manual-input" },
         // Ctrl+A NAO e' registrado: precisa ser livre pra selectAll nativo em textarea/input.
         { combo: "Ctrl+Shift+C", action: "open-config" },
         { combo: "Ctrl+Shift+X", action: "capture-screen" },
@@ -2770,6 +2771,7 @@ async function registerGlobalShortcuts() {
     : [
         { combo: "CommandOrControl+D", action: "toggle-recording" },
         { combo: "CommandOrControl+I", action: "manual-input" },
+        { combo: "CommandOrControl+Shift+I", action: "manual-input" },
         // Cmd/Ctrl+A NAO e' registrado: livre pra selectAll nativo.
         { combo: "CommandOrControl+Shift+C", action: "open-config" },
         { combo: "CommandOrControl+Shift+X", action: "capture-screen" },
@@ -2782,6 +2784,7 @@ async function registerGlobalShortcuts() {
   const fallbackShortcuts = isLinux
     ? [
         { combo: "CommandOrControl+I", action: "manual-input" },
+        { combo: "CommandOrControl+Shift+I", action: "manual-input" },
         { combo: "CommandOrControl+Shift+X", action: "capture-screen" },
         { combo: "CommandOrControl+Shift+1", action: "move-to-display-0" },
         { combo: "CommandOrControl+Shift+2", action: "move-to-display-1" },
@@ -2861,7 +2864,7 @@ async function registerGlobalShortcuts() {
   });
 
   // Log final registration state for key shortcuts
-  ["Ctrl+I", "CommandOrControl+I", "Ctrl+Shift+X", "CommandOrControl+Shift+X", "Ctrl+Shift+1", "CommandOrControl+Shift+1", "Ctrl+Shift+2", "CommandOrControl+Shift+2"].forEach(
+  ["Ctrl+I", "CommandOrControl+I", "Ctrl+Shift+I", "CommandOrControl+Shift+I", "Ctrl+Shift+X", "CommandOrControl+Shift+X", "Ctrl+Shift+1", "CommandOrControl+Shift+1", "Ctrl+Shift+2", "CommandOrControl+Shift+2"].forEach(
     (accel) => {
       try {
         const ok = globalShortcut.isRegistered(accel);
@@ -3851,6 +3854,18 @@ async function bringWindowToFocus() {
   }
   
   if (!mainWindow) return;
+
+  const isFocused = mainWindow.isFocused() && mainWindow.isVisible() && !mainWindow.isMinimized();
+
+  if (isFocused) {
+    console.log("bringWindowToFocus: Janela já está focada. Minimizando.");
+    mainWindow.minimize();
+    return;
+  }
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
+  }
 
   if (isHyprland()) {
     try {
@@ -5943,10 +5958,92 @@ ipcMain.handle("get-ai-model", () => {
 
 ipcMain.handle("read-clipboard-image", () => {
   const { clipboard } = require('electron');
+  const fs = require('fs');
+  const path = require('path');
+
+  // 1. Tenta ler como imagem/bitmap do clipboard (ex: screenshots ou imagens da web)
   const img = clipboard.readImage();
   if (img && !img.isEmpty()) {
     return img.toDataURL(); // Retorna o base64 image data URL
   }
+
+  // 2. Tenta ler caminhos de arquivos copiados do sistema de arquivos
+  try {
+    const uriList = clipboard.read('text/uri-list');
+    if (uriList) {
+      const lines = uriList.split(/[\r\n]+/);
+      for (const line of lines) {
+        if (line.startsWith('file://')) {
+          let filePath = decodeURIComponent(line.substring(7));
+          if (process.platform === 'win32' && filePath.startsWith('/')) {
+            filePath = filePath.substring(1);
+          }
+          if (fs.existsSync(filePath)) {
+            const stat = fs.statSync(filePath);
+            if (stat.isFile()) {
+              const ext = path.extname(filePath).toLowerCase();
+              const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.ico'];
+              if (imageExtensions.includes(ext)) {
+                const buffer = fs.readFileSync(filePath);
+                const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
+                return `data:${mimeType};base64,` + buffer.toString('base64');
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("Erro ao ler text/uri-list do clipboard:", e);
+  }
+
+  try {
+    if (process.platform === 'win32') {
+      const buffer = clipboard.readBuffer('FileNameW');
+      if (buffer && buffer.length > 0) {
+        const pathsStr = buffer.toString('utf16le');
+        const paths = pathsStr.split('\0').filter(p => p.trim().length > 0);
+        for (const filePath of paths) {
+          if (fs.existsSync(filePath)) {
+            const stat = fs.statSync(filePath);
+            if (stat.isFile()) {
+              const ext = path.extname(filePath).toLowerCase();
+              const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.ico'];
+              if (imageExtensions.includes(ext)) {
+                const fileBuffer = fs.readFileSync(filePath);
+                const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
+                return `data:${mimeType};base64,` + fileBuffer.toString('base64');
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("Erro ao ler FileNameW do clipboard:", e);
+  }
+
+  try {
+    const text = clipboard.readText();
+    if (text) {
+      let filePath = text.trim().replace(/^"|"$/g, '');
+      if (path.isAbsolute(filePath) && fs.existsSync(filePath)) {
+        const stat = fs.statSync(filePath);
+        if (stat.isFile()) {
+          const ext = path.extname(filePath).toLowerCase();
+          const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.ico'];
+          if (imageExtensions.includes(ext)) {
+            const buffer = fs.readFileSync(filePath);
+            const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
+            return `data:${mimeType};base64,` + buffer.toString('base64');
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("Erro ao ler fallback text do clipboard:", e);
+  }
+
   return null;
 });
 
