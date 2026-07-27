@@ -2270,6 +2270,34 @@
                 await refreshProjectContext();
             }
 
+            async function checkIsIdeMode() {
+                // 1. Verifica se getWorkspaceAccessEnabled está ativo
+                let workspaceAccessEnabled = false;
+                try {
+                    workspaceAccessEnabled = window.electronAPI && window.electronAPI.getWorkspaceAccessEnabled
+                        ? await window.electronAPI.getWorkspaceAccessEnabled()
+                        : false;
+                } catch (_) {}
+                if (workspaceAccessEnabled) return true;
+
+                // 2. Verifica se a ferramenta de IA atual é uma ferramenta CLI (geminiCli ou claudeCli)
+                try {
+                    const aiModel = window.electronAPI && window.electronAPI.getAiModel
+                        ? await window.electronAPI.getAiModel()
+                        : null;
+                    if (aiModel === 'geminiCli' || aiModel === 'claudeCli') {
+                        return true;
+                    }
+                } catch (_) {}
+
+                // 3. Verifica se existe uma pasta de projeto (ctxProject) carregada/ativa
+                if (typeof ctxProject !== 'undefined' && ctxProject && ctxProject.path) {
+                    return true;
+                }
+                
+                return false;
+            }
+
             async function refreshProjectContext() {
                 if (!composerCtx) return;
                 let enabled = false;
@@ -5312,15 +5340,10 @@
                         reader.onload = async (e) => {
                             const base64Image = e.target.result;
 
-                            // Verifica se o modo IDE está ativo (workspace habilitado)
-                            let isWorkspaceEnabled = false;
-                            try {
-                                isWorkspaceEnabled = window.electronAPI && window.electronAPI.getWorkspaceAccessEnabled
-                                    ? await window.electronAPI.getWorkspaceAccessEnabled()
-                                    : false;
-                            } catch (_) {}
+                            // Verifica se o modo IDE está ativo
+                            const isIdeMode = await checkIsIdeMode();
 
-                            if (isWorkspaceEnabled) {
+                            if (isIdeMode) {
                                 // MODO IDE: Anexar a imagem temporariamente
                                 window.idePendingImage = base64Image;
                                 window.idePendingImageName = "imagem_copiada.png";
@@ -5611,15 +5634,10 @@
                 // Esconde outros elementos de carregamento
                 animationContainer.style.display = 'none';
 
-                // Verifica se o modo IDE está ativo (workspace habilitado)
-                let isWorkspaceEnabled = false;
-                try {
-                    isWorkspaceEnabled = window.electronAPI && window.electronAPI.getWorkspaceAccessEnabled
-                        ? await window.electronAPI.getWorkspaceAccessEnabled()
-                        : false;
-                } catch (_) {}
+                // Verifica se o modo IDE está ativo
+                const isIdeMode = await checkIsIdeMode();
 
-                if (isWorkspaceEnabled) {
+                if (isIdeMode) {
                     const imgData = base64Image || (screenshotPath ? `file://${screenshotPath}` : null);
                     if (imgData) {
                         window.idePendingImage = imgData;
