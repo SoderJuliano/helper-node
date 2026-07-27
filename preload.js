@@ -65,6 +65,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onAutoCloseState: (callback) =>
     ipcRenderer.on("autoclose-state", (event, data) => callback(data)),
   getAiModel: () => ipcRenderer.invoke("get-ai-model"),
+  readClipboardImage: () => ipcRenderer.invoke("read-clipboard-image"),
   getOpenaiModel: () => ipcRenderer.invoke("get-openai-model"),
   setOpenaiModel: (model) => ipcRenderer.send("set-openai-model", model),
   getOpenaiReasoningEffort: () => ipcRenderer.invoke("get-openai-reasoning-effort"),
@@ -166,6 +167,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   workspaceClear: () => ipcRenderer.invoke("workspace:clear"),
   workspaceOpenExternal: (p) => ipcRenderer.invoke("workspace:open-external", p),
   getWorkspaceAccessEnabled: () => ipcRenderer.invoke("get-workspace-access-enabled"),
+  getHelperToolsEnabled: () => ipcRenderer.invoke("get-helper-tools-enabled"),
   onWorkspaceChanged: (cb) =>
     ipcRenderer.on("workspace-changed", (event, data) => cb(data)),
   onWorkspaceFileWritten: (cb) =>

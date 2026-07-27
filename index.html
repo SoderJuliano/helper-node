@@ -676,7 +676,11 @@
             text-align: center; padding: 24px clamp(24px, 7%, 80px);
             gap: 10px; transition: opacity .35s var(--ease);
         }
-        #welcome-hero.hidden { opacity: 0; pointer-events: none; }
+        #welcome-hero.hidden,
+        #welcome-hero.hero-hidden-manual,
+        #welcome-hero.hero-hidden-by-editor {
+            display: none !important;
+        }
         .hero-logo {
             width: 58px; height: 58px; border-radius: 16px;
             background: linear-gradient(145deg, #5fd75f, #2e7d32);
@@ -684,7 +688,63 @@
             color: #06210a; font-weight: 800; font-size: 30px; margin-bottom: 8px;
             box-shadow: 0 0 0 1px rgba(255,255,255,0.10), 0 14px 36px rgba(76,175,80,0.32);
         }
-        .hero-title { font-size: 23px; font-weight: 700; color: var(--text); letter-spacing: -.2px; }
+        .hero-title {
+            position: relative;
+            font-size: 23px;
+            font-weight: 700;
+            color: var(--text);
+            letter-spacing: -.2px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        #hero-close-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-3);
+            font-size: 18px;
+            cursor: pointer;
+            padding: 2px 6px;
+            border-radius: 4px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            line-height: 1;
+            font-weight: normal;
+        }
+        #hero-close-btn:hover {
+            color: var(--text);
+            background: rgba(255, 255, 255, 0.08);
+        }
+        #restore-hero-btn {
+            position: absolute;
+            bottom: 16px;
+            right: 16px;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            color: var(--text-3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 50;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+            transition: all 0.2s ease;
+        }
+        #restore-hero-btn:hover {
+            color: var(--text-1);
+            border-color: var(--accent-border);
+            background: var(--bg-surface-2);
+            transform: scale(1.05);
+        }
+        #restore-hero-btn svg {
+            width: 16px;
+            height: 16px;
+        }
         .hero-sub { font-size: 13.5px; color: var(--text-3); max-width: 440px; line-height: 1.55; }
         .hero-suggestions { display: flex; flex-wrap: wrap; gap: 9px; justify-content: center; margin-top: 14px; max-width: 520px; }
         .hero-chip {
@@ -1937,7 +1997,10 @@
                     <!-- Hero de boas-vindas (onboarding). Some na 1ª mensagem. -->
                     <div id="welcome-hero">
                         <div class="hero-logo">H</div>
-                        <div class="hero-title">Helper Node</div>
+                        <div class="hero-title">
+                            Helper Node
+                            <button id="hero-close-btn" title="Esconder boas-vindas" type="button">×</button>
+                        </div>
                         <div class="hero-sub">Seu copiloto de IA para conversas, entrevistas e código. Comece abaixo ou escolha uma sugestão.</div>
                         <div class="hero-suggestions">
                             <button class="hero-chip" data-prompt="Explique de forma simples o conceito de ">
@@ -1955,6 +2018,9 @@
                     <!-- #transcription: o &lt;script&gt; anexa mensagens aqui (contrato) -->
                     <div id="transcription"></div>
                     <div class="content"></div>
+                    <button id="restore-hero-btn" title="Mostrar boas-vindas" style="display: none;" type="button">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+                    </button>
                 </div>
 
                 <!-- ===================== COMPOSER ===================== -->
@@ -2240,14 +2306,69 @@
             // classe .hidden do hero — que o resto do código já alterna — e
             // espelhamos isso em #main.is-empty.
             const mainEl = document.getElementById('main');
-            function syncEmptyState() {
-                const empty = welcomeHero && !welcomeHero.classList.contains('hidden');
-                if (mainEl) mainEl.classList.toggle('is-empty', !!empty);
+            const fileViewerEl = document.getElementById('file-viewer');
+
+            function updateHeroVisibility() {
+                const hero = document.getElementById('welcome-hero');
+                const restoreBtn = document.getElementById('restore-hero-btn');
+                if (!hero) return;
+
+                const isChatEmpty = mainEl && mainEl.classList.contains('is-empty');
+                const isEditorOpen = fileViewerEl && fileViewerEl.classList.contains('open');
+
+                // Se houver arquivos abertos e o chat estiver vazio, oculta por causa do editor
+                if (isEditorOpen && isChatEmpty) {
+                    hero.classList.add('hero-hidden-by-editor');
+                } else {
+                    hero.classList.remove('hero-hidden-by-editor');
+                }
+
+                // Exibe o botão de restaurar no canto inferior direito se o chat estiver vazio e o hero escondido
+                if (restoreBtn) {
+                    const isHidden = hero.classList.contains('hidden') || 
+                                     hero.classList.contains('hero-hidden-manual') || 
+                                     hero.classList.contains('hero-hidden-by-editor');
+                    restoreBtn.style.display = (isChatEmpty && isHidden) ? 'flex' : 'none';
+                }
             }
+
+            function syncEmptyState() {
+                // A conversa de fato começou se a classe .hidden foi adicionada pelo fluxo de envio
+                const conversationStarted = welcomeHero && welcomeHero.classList.contains('hidden');
+                if (mainEl) mainEl.classList.toggle('is-empty', !conversationStarted);
+                updateHeroVisibility();
+            }
+
             syncEmptyState();
+
             if (welcomeHero) {
                 new MutationObserver(syncEmptyState)
                     .observe(welcomeHero, { attributes: true, attributeFilter: ['class'] });
+            }
+
+            if (fileViewerEl) {
+                new MutationObserver(updateHeroVisibility)
+                    .observe(fileViewerEl, { attributes: true, attributeFilter: ['class'] });
+            }
+
+            // Listeners para os botões de fechar e restaurar
+            const closeHeroBtn = document.getElementById('hero-close-btn');
+            if (closeHeroBtn && welcomeHero) {
+                closeHeroBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    welcomeHero.classList.add('hero-hidden-manual');
+                    updateHeroVisibility();
+                });
+            }
+
+            const restoreHeroBtn = document.getElementById('restore-hero-btn');
+            if (restoreHeroBtn && welcomeHero) {
+                restoreHeroBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    welcomeHero.classList.remove('hero-hidden-manual');
+                    welcomeHero.classList.remove('hero-hidden-by-editor');
+                    updateHeroVisibility();
+                });
             }
 
             // === Contexto ativo do projeto (modo IDE) ===
@@ -2262,6 +2383,8 @@
             const ctxBranch = document.getElementById('ctx-branch');
             const ctxBranchName = document.getElementById('ctx-branch-name');
             let ctxProject = null; // { id, name, path, branch }
+            window.workspaceAccessEnabled = false;
+            window.helperToolsEnabled = false;
 
             async function pickProjectFolder() {
                 if (!(window.electronAPI && window.electronAPI.workspacePickDir)) return;
@@ -2278,12 +2401,17 @@
                     return true;
                 }
 
-                // 2. Verifica se existe uma pasta de projeto (ctxProject) carregada/ativa
+                // 2. Verifica se as configurações de Workspace (adicionar arquivos/pastas) E execução de comandos (helperTools) estão ativas
+                if (window.workspaceAccessEnabled && window.helperToolsEnabled) {
+                    return true;
+                }
+
+                // 3. Verifica se existe uma pasta de projeto (ctxProject) carregada/ativa
                 if (typeof ctxProject !== 'undefined' && ctxProject && ctxProject.path) {
                     return true;
                 }
 
-                // 3. Verifica se o painel do workspace está ativo/visível (ou seja, se há pasta/projeto ou workspace habilitado)
+                // 4. Verifica se o painel do workspace está ativo/visível (ou seja, se há pasta/projeto ou workspace habilitado)
                 const wsPanel = document.getElementById('workspace-panel');
                 if (wsPanel && wsPanel.style.display !== 'none') {
                     return true;
@@ -2677,10 +2805,14 @@
             }
             refreshComposerModel();
             // Reflete mudanças feitas na janela de Configurações ao voltar o foco.
-            window.addEventListener('focus', () => { refreshComposerModel(); });
+            window.addEventListener('focus', () => {
+                refreshComposerModel();
+                if (typeof refreshWorkspacePanel === 'function') refreshWorkspacePanel();
+            });
             if (window.electronAPI && window.electronAPI.onConfigChanged) {
                 window.electronAPI.onConfigChanged(() => {
                     refreshComposerModel();
+                    if (typeof refreshWorkspacePanel === 'function') refreshWorkspacePanel();
                 });
             }
 
@@ -3964,7 +4096,14 @@
                 const enabled = window.electronAPI && window.electronAPI.getWorkspaceAccessEnabled
                     ? await window.electronAPI.getWorkspaceAccessEnabled()
                     : false;
+                window.workspaceAccessEnabled = !!enabled;
                 wsPanel.style.display = enabled ? '' : 'none';
+
+                const htEnabled = window.electronAPI && window.electronAPI.getHelperToolsEnabled
+                    ? await window.electronAPI.getHelperToolsEnabled()
+                    : false;
+                window.helperToolsEnabled = !!htEnabled;
+
                 if (enabled && window.electronAPI && window.electronAPI.workspaceList) {
                     const list = await window.electronAPI.workspaceList();
                     renderWorkspacePanel(list);
@@ -4026,6 +4165,7 @@
                 window.electronAPI.onWorkspaceChanged((data) => {
                     if (typeof data.enabled === 'boolean' && wsPanel) {
                         wsPanel.style.display = data.enabled ? '' : 'none';
+                        window.workspaceAccessEnabled = data.enabled;
                     }
                     if (data.attachments) renderWorkspacePanel(data.attachments);
                     refreshProjectContext();
@@ -5984,6 +6124,62 @@
             });
 
             window.addEventListener('keydown', (e) => {
+                // Ctrl+V: colar imagem com fallback robusto usando a API da main thread
+                if (e.key.toLowerCase() === 'v' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
+                    const active = document.activeElement;
+                    const insideEditor = active && (active.closest('.CodeMirror') || active.closest('#file-viewer'));
+                    if (!insideEditor && window.electronAPI && window.electronAPI.readClipboardImage) {
+                        window.electronAPI.readClipboardImage().then((base64Image) => {
+                            if (base64Image) {
+                                // Evita comportamento padrão se houver imagem a ser colada
+                                e.preventDefault();
+                                e.stopPropagation();
+
+                                const isIdeMode = checkIsIdeMode();
+                                if (isIdeMode) {
+                                    window.idePendingImage = base64Image;
+                                    window.idePendingImageName = "imagem_copiada.png";
+
+                                    const attachmentEl = document.getElementById('composer-attachment');
+                                    const attachmentNameEl = document.getElementById('composer-attachment-name');
+                                    if (attachmentEl && attachmentNameEl) {
+                                        attachmentNameEl.textContent = window.idePendingImageName;
+                                        attachmentEl.style.display = 'flex';
+                                    }
+
+                                    if (manualInputActive) {
+                                        const tInput = document.querySelector('.manual-input-container .terminal-input');
+                                        if (tInput) tInput.focus();
+                                    } else {
+                                        openManualInput();
+                                    }
+                                    console.log('Imagem anexada temporariamente para o modo IDE (via Ctrl+V interceptado).');
+                                } else {
+                                    window.pendingChatImage = base64Image;
+                                    if (manualInputActive) {
+                                        console.log('Input manual ativo, mostrando preview e iniciando OCR da imagem (via Ctrl+V interceptado).');
+                                        pastedImageForManualInput = base64Image;
+                                        const preview = document.getElementById('screenshot-preview');
+                                        preview.src = base64Image;
+                                        preview.style.display = 'block';
+                                        window.electronAPI.processPastedImage(base64Image);
+                                    } else {
+                                        const robot = document.getElementById('robot');
+                                        if (robot) robot.style.display = 'block';
+
+                                        const message = "Image in context";
+                                        appendQuestionEntry(message);
+
+                                        window.electronAPI.processPastedImage(base64Image);
+                                    }
+                                }
+                            }
+                        }).catch(err => {
+                            console.warn("Erro ao ler imagem do clipboard:", err);
+                        });
+                    }
+                }
+
                 // Ctrl+F é tratado em capture-phase no document (ver logo após
                 // wireFileViewer) — não duplica aqui.
                 // Ctrl+D: fallback pra Wayland onde global shortcuts falham.
@@ -6015,6 +6211,10 @@
                     removeManualInputContainer();
                     undockComposer();
                     pastedImageForManualInput = null;
+                    window.idePendingImage = null;
+                    window.idePendingImageName = null;
+                    const attachmentEl = document.getElementById('composer-attachment');
+                    if (attachmentEl) attachmentEl.style.display = 'none';
                     document.getElementById('screenshot-preview').style.display = 'none';
                     e.stopPropagation();
                     e.preventDefault();
@@ -6396,6 +6596,14 @@
         }
 
         function openManualInput(initialText = '') {
+            const wHero = document.getElementById('welcome-hero');
+            const mainEl = document.getElementById('main');
+            if (mainEl && mainEl.classList.contains('is-empty') && wHero) {
+                wHero.classList.remove('hero-hidden-manual');
+                wHero.classList.remove('hero-hidden-by-editor');
+                if (typeof updateHeroVisibility === 'function') updateHeroVisibility();
+            }
+
             if (manualInputActive || isEditingQuestion) {
                 // Se ja esta ativo, apenas garante o foco no input
                 const existingInput = document.querySelector('.manual-input-container .terminal-input');
@@ -6617,6 +6825,11 @@
                 questionSpan.className = 'question-text';
                 setQuestionText(questionSpan, text || "Contexto de imagem anexado");
                 
+                const attPill = document.createElement('div');
+                attPill.className = 'attachment-pill';
+                attPill.style.cssText = "margin-top: 6px; display: inline-flex; align-items: center; gap: 6px; background: rgba(76, 175, 80, 0.12); border: 1px solid rgba(76, 175, 80, 0.3); color: var(--accent-2); padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 500; font-family: var(--font-ui); width: fit-content;";
+                attPill.innerHTML = `<svg class="attachment-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px; opacity: .85;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><span>[Anexo: ${window.idePendingImageName || "imagem_copiada.png"}]</span>`;
+
                 const imgPreview = document.createElement('img');
                 imgPreview.src = window.idePendingImage;
                 imgPreview.style.cssText = "display: block; max-width: 260px; max-height: 180px; margin-top: 8px; border-radius: 8px; border: 1px solid var(--border-strong); box-shadow: 0 4px 12px rgba(0,0,0,0.3);";
@@ -6624,6 +6837,7 @@
                 const ib1 = document.createElement('div');
                 ib1.className = 'interaction-block';
                 ib1.appendChild(questionSpan);
+                ib1.appendChild(attPill);
                 ib1.appendChild(imgPreview);
                 container.replaceWith(ib1);
                 currentQuestionElement = questionSpan;

@@ -4147,6 +4147,18 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId, image) => {
       "transcription-error",
       "Failed to process IA response from any source"
     );
+  } finally {
+    if (tempFilePath) {
+      try {
+        const fs = require('fs');
+        if (fs.existsSync(tempFilePath)) {
+          fs.unlinkSync(tempFilePath);
+          console.log("Deleted temporary image context file:", tempFilePath);
+        }
+      } catch (e) {
+        console.error("Failed to delete temporary image context file:", e);
+      }
+    }
   }
 });
 
@@ -5893,6 +5905,15 @@ ipcMain.on("set-vision-guide-config", (event, partial) => {
 // IPC Handlers for AI Model
 ipcMain.handle("get-ai-model", () => {
   return configService.getAiModel();
+});
+
+ipcMain.handle("read-clipboard-image", () => {
+  const { clipboard } = require('electron');
+  const img = clipboard.readImage();
+  if (img && !img.isEmpty()) {
+    return img.toDataURL(); // Retorna o base64 image data URL
+  }
+  return null;
 });
 
 ipcMain.handle("get-edition", () => {
