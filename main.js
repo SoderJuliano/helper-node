@@ -4550,6 +4550,7 @@ ipcMain.on("save-backend-api-key", (event, key) => {
 });
 
 ipcMain.handle("get-debug-mode-status", () => {
+  console.log('[get-debug-mode-status] IPC recebido no processo principal');
   return configService.getDebugModeStatus();
 });
 
