@@ -6875,22 +6875,27 @@
 
                 startProcessing();
 
+                console.log('[submitManualQuestion] Obtendo instruções de prompt e modelo ativo...');
                 const promptInstruction = await window.electronAPI.getPromptInstruction();
                 const activeModel = await window.electronAPI.getAiModel();
+                console.log('[submitManualQuestion] Modelo ativo:', activeModel);
                 
                 let activeSessionId = null;
                 const promptText = `${promptInstruction}${text}`;
                 if (window.historySession) {
                     const displayPrompt = text ? `${text} [Anexo: ${window.idePendingImageName || "imagem.png"}]` : `[Anexo: ${window.idePendingImageName || "imagem.png"}]`;
+                    console.log('[submitManualQuestion] Adicionando histórico:', displayPrompt);
                     activeSessionId = await window.historySession.ensureSessionForFirstQuestion(displayPrompt);
                     await window.historySession.addMessageToCurrentSession('user', displayPrompt);
                 }
 
+                console.log('[submitManualQuestion] Enviando para o backend IPC. Tamanho da imagem base64:', window.idePendingImage ? window.idePendingImage.length : 0);
                 if (activeModel === 'llama-stream' || activeModel === 'qwen-stream') {
                     window.electronAPI.sendTextToGeminiStream(promptText, activeSessionId, window.idePendingImage);
                 } else {
                     window.electronAPI.sendTextToGemini(promptText, activeSessionId, window.idePendingImage);
                 }
+                console.log('[submitManualQuestion] IPC enviado com sucesso!');
 
                 // Limpa o anexo temporário para o próximo turno
                 window.idePendingImage = null;

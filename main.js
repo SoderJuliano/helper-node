@@ -3994,15 +3994,18 @@ function appendAttachmentsContext(prompt) {
 }
 
 ipcMain.on("send-to-gemini", async (event, text, sessionId, image) => {
+  console.log('--- IPC: send-to-gemini INICIADO ---');
   let tempFilePath = null;
   try {
     const aiModel = getEffectiveAiModel();
+    console.log('[send-to-gemini] Modelo efetivo:', aiModel);
     let resposta;
     let usedKnowledge = false; // base de conhecimento injetada nesta resposta?
 
     let promptWithHistory = text;
     let pastMessages = [];
     if (sessionId) {
+      console.log('[send-to-gemini] Buscando histórico para sessionId:', sessionId);
       const session = historyService.getSessionById(Number(sessionId)) || historyService.getSessionById(sessionId);
       if (session && session.conversations && session.conversations.length > 1) {
         // Exclui a última mensagem, que é o prompt atual que já foi adicionado
@@ -4024,6 +4027,7 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId, image) => {
     let promptWithImageInfo = promptWithHistory;
     let promptTextForCli = text;
     if (image && (aiModel === 'geminiCli' || aiModel === 'claudeCli' || shouldUseAgentic(text))) {
+      console.log('[send-to-gemini] Imagem detectada. Salvando temporariamente...');
       try {
         const fs = require('fs');
         const path = require('path');
@@ -4031,13 +4035,16 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId, image) => {
         const base64Data = image.replace(/^data:image\/[a-z]+;base64,/, "");
         const tempDir = path.join(app.getPath('userData'), 'temp_images');
         if (!fs.existsSync(tempDir)) {
+          console.log('[send-to-gemini] Criando pasta de imagens temporárias:', tempDir);
           fs.mkdirSync(tempDir, { recursive: true });
         }
         const tempFileName = `helper_node_temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}.png`;
         tempFilePath = path.join(tempDir, tempFileName);
         
+        console.log('[send-to-gemini] Gravando arquivo de imagem:', tempFilePath);
         // Escreve o arquivo de forma assíncrona para nunca bloquear o Event Loop principal
         await fs.promises.writeFile(tempFilePath, base64Data, 'base64');
+        console.log('[send-to-gemini] Arquivo gravado com sucesso.');
         
         const osPathFormatted = process.platform === 'win32' ? tempFilePath.replace(/\//g, '\\') : tempFilePath;
         const imgNotice = `\n\n[IMAGEM DE CONTEXTO ANEXADA: Existe uma imagem associada a esta pergunta salva em: "${osPathFormatted}". Se necessário, você pode ler ou analisar esta imagem local para responder à pergunta.]`;
@@ -4050,12 +4057,14 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId, image) => {
 
     // ── Gemini CLI provider ──────────────────────────────────────────────────
     if (aiModel === 'geminiCli') {
+      console.log('[send-to-gemini] Encaminhando para GeminiCliProvider...');
       const projectPath = workspace.getProjectPath();
       const geminiModel = configService.getGeminiCliModel();
       GeminiCliProvider.setModel(geminiModel);
       const finalPrompt = appendAttachmentsContext(promptTextForCli);
       try {
         await GeminiCliProvider.send(finalPrompt, projectPath, event.sender, sessionId, pastMessages);
+        console.log('[send-to-gemini] GeminiCliProvider.send executado.');
       } catch (gcliErr) {
         console.error('[gemini-cli] send error:', gcliErr.message);
         // Garante que o loading fecha mesmo que o provider não tenha emitido gemini-stream-complete
@@ -4066,12 +4075,15 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId, image) => {
 
     // ── Claude Code CLI provider ─────────────────────────────────────────────
     if (aiModel === 'claudeCli') {
+      console.log('[send-to-gemini] Encaminhando para ClaudeCliProvider...');
       const projectPath = workspace.getProjectPath();
       const claudeModel = configService.getClaudeCliModel();
       ClaudeCliProvider.setModel(claudeModel);
       const finalPrompt = appendAttachmentsContext(promptWithImageInfo);
       try {
+        console.log('[send-to-gemini] Chamando ClaudeCliProvider.send...');
         await ClaudeCliProvider.send(finalPrompt, projectPath, event.sender);
+        console.log('[send-to-gemini] ClaudeCliProvider.send concluído.');
       } catch (ccliErr) {
         console.error('[claude-cli] send error:', ccliErr.message);
         // Garante que o loading fecha mesmo que o provider não tenha emitido gemini-stream-complete
