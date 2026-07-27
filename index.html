@@ -26,6 +26,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/markdown/markdown.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/sql/sql.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/go/go.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/mode/simple.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/rust/rust.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/php/php.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/ruby/ruby.min.js"></script>
@@ -5613,7 +5614,8 @@
                 console.log('Texto transcrito:', text);
                 const transcriptionElement = document.getElementById('transcription');
 
-                const isDebug = await window.electronAPI.getDebugModeStatus();
+                const debugIndicator = document.getElementById('debug-indicator');
+                const isDebug = debugIndicator && debugIndicator.style.display !== 'none';
                 let displayText = text;
 
                 if (isDebug) {
@@ -6860,8 +6862,9 @@
             const _heroSubmit = document.getElementById('welcome-hero');
             if (_heroSubmit) _heroSubmit.classList.add('hidden');
 
-            console.log('[submitManualQuestion] Solicitando getDebugModeStatus...');
-            const isDebug = await window.electronAPI.getDebugModeStatus();
+            console.log('[submitManualQuestion] Obtendo getDebugModeStatus via DOM...');
+            const debugIndicator = document.getElementById('debug-indicator');
+            const isDebug = debugIndicator && debugIndicator.style.display !== 'none';
             console.log('[submitManualQuestion] getDebugModeStatus resolvido. isDebug:', isDebug);
 
             if (window.idePendingImagePath) {
@@ -6890,13 +6893,12 @@
 
                 startProcessing();
 
-                console.log('[submitManualQuestion] Obtendo instruções de prompt e modelo ativo...');
-                const promptInstruction = await window.electronAPI.getPromptInstruction();
-                const activeModel = await window.electronAPI.getAiModel();
+                console.log('[submitManualQuestion] Obtendo modelo ativo...');
+                const activeModel = document.getElementById('composer-model')?.dataset?.provider || 'openIa';
                 console.log('[submitManualQuestion] Modelo ativo:', activeModel);
                 
                 let activeSessionId = null;
-                const promptText = `${promptInstruction}${text}`;
+                const promptText = text;
                 if (window.historySession) {
                     const displayPrompt = text ? `${text} [Anexo: ${fileName}]` : `[Anexo: ${fileName}]`;
                     console.log('[submitManualQuestion] Adicionando histórico:', displayPrompt);
@@ -6941,11 +6943,10 @@
                     sentImageToAI(text, window.pendingChatImage);
                 } else {
                     // Backends sem visão: mantém o fluxo antigo de OCR + texto.
-                    const promptInstruction = await window.electronAPI.getPromptInstruction();
                     if (typeof window.lastOcrText === 'string' && window.lastOcrText.length > 0) {
-                        sentToAI(`${promptInstruction}${text}\n${window.lastOcrText}`);
+                        sentToAI(`${text}\n${window.lastOcrText}`);
                     } else {
-                        sentToAI(`${promptInstruction}${text}`);
+                        sentToAI(`${text}`);
                     }
                 }
                 pastedImageForManualInput = null;
@@ -6956,7 +6957,6 @@
 
             // Existing debug/plain flows remain unchanged
             if (isDebug) {
-                const promptInstruction = await window.electronAPI.getPromptInstruction();
                 const backendUrl = (await window.electronAPI.getBackendUrl()) || "URL_INDEFINIDA";
                 //console.log("DEBUG backend URL:", backendUrl);
                 const lang = await window.electronAPI.getLanguage();
@@ -6968,7 +6968,7 @@
                     'HTTP Verb': 'POST',
                     'Backend URL': backendUrl,
                     'Request Body': {
-                        newPrompt: `${promptInstruction}${text}`,
+                        newPrompt: `${text}`,
                         ip: sessionStorage.getItem("user_ip"),
                         email: 'julianosoder.js@gmail.com',
                         agent: false,
