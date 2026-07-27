@@ -3920,9 +3920,27 @@ function appendAttachmentsContext(prompt) {
           const fs = require('fs');
           if (fs.existsSync(att.path)) {
             const stat = fs.statSync(att.path);
-            if (stat.isFile() && stat.size < 150 * 1024) {
-              const content = fs.readFileSync(att.path, 'utf8');
-              contextHeader += `\n--- Conteúdo do arquivo (${att.path}) ---\n${content}\n--- Fim do arquivo ---\n\n`;
+            if (stat.isFile()) {
+              // Verifica se o arquivo é binário antes de ler como texto
+              if (stat.size < 150 * 1024) {
+                const buffer = fs.readFileSync(att.path);
+                let isBinary = false;
+                const limit = Math.min(buffer.length, 8000);
+                for (let i = 0; i < limit; i++) {
+                  if (buffer[i] === 0) {
+                    isBinary = true;
+                    break;
+                  }
+                }
+                if (!isBinary) {
+                  const content = buffer.toString('utf8');
+                  contextHeader += `\n--- Conteúdo do arquivo (${att.path}) ---\n${content}\n--- Fim do arquivo ---\n\n`;
+                } else {
+                  contextHeader += `\n(Arquivo binário anexado: ${att.path})\n`;
+                }
+              } else {
+                contextHeader += `\n(Arquivo ignorado por ser muito grande para o prompt: ${att.path})\n`;
+              }
             }
           }
         } catch (_) {}

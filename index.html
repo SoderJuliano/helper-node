@@ -6124,59 +6124,13 @@
             });
 
             window.addEventListener('keydown', (e) => {
-                // Ctrl+V: colar imagem com fallback robusto usando a API da main thread
+                // Ctrl+V: colar imagem ou texto. Se não estiver focando em nenhum editor ou input de texto, foca no input antes de colar
                 if (e.key.toLowerCase() === 'v' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
                     const active = document.activeElement;
                     const insideEditor = active && (active.closest('.CodeMirror') || active.closest('#file-viewer'));
-                    if (!insideEditor && window.electronAPI && window.electronAPI.readClipboardImage) {
-                        window.electronAPI.readClipboardImage().then((base64Image) => {
-                            if (base64Image) {
-                                // Evita comportamento padrão se houver imagem a ser colada
-                                e.preventDefault();
-                                e.stopPropagation();
-
-                                const isIdeMode = checkIsIdeMode();
-                                if (isIdeMode) {
-                                    window.idePendingImage = base64Image;
-                                    window.idePendingImageName = "imagem_copiada.png";
-
-                                    const attachmentEl = document.getElementById('composer-attachment');
-                                    const attachmentNameEl = document.getElementById('composer-attachment-name');
-                                    if (attachmentEl && attachmentNameEl) {
-                                        attachmentNameEl.textContent = window.idePendingImageName;
-                                        attachmentEl.style.display = 'flex';
-                                    }
-
-                                    if (manualInputActive) {
-                                        const tInput = document.querySelector('.manual-input-container .terminal-input');
-                                        if (tInput) tInput.focus();
-                                    } else {
-                                        openManualInput();
-                                    }
-                                    console.log('Imagem anexada temporariamente para o modo IDE (via Ctrl+V interceptado).');
-                                } else {
-                                    window.pendingChatImage = base64Image;
-                                    if (manualInputActive) {
-                                        console.log('Input manual ativo, mostrando preview e iniciando OCR da imagem (via Ctrl+V interceptado).');
-                                        pastedImageForManualInput = base64Image;
-                                        const preview = document.getElementById('screenshot-preview');
-                                        preview.src = base64Image;
-                                        preview.style.display = 'block';
-                                        window.electronAPI.processPastedImage(base64Image);
-                                    } else {
-                                        const robot = document.getElementById('robot');
-                                        if (robot) robot.style.display = 'block';
-
-                                        const message = "Image in context";
-                                        appendQuestionEntry(message);
-
-                                        window.electronAPI.processPastedImage(base64Image);
-                                    }
-                                }
-                            }
-                        }).catch(err => {
-                            console.warn("Erro ao ler imagem do clipboard:", err);
-                        });
+                    const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
+                    if (!insideEditor && !isInput) {
+                        openManualInput();
                     }
                 }
 
