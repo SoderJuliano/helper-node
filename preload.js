@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("electronAPI", {
   onToggleRecording: (callback) => ipcRenderer.on("toggle-recording", callback),
+  onConfigChanged: (callback) => ipcRenderer.on("config-changed", (event, data) => callback(data)),
   onCapturingScreen: (callback) => ipcRenderer.on("screen-capturing", callback),
   onCaptureScreen: (callback) => ipcRenderer.on("capture-screen", callback),
   onSharingStatus: (callback) => ipcRenderer.on("sharing-status", callback),
@@ -51,12 +52,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onRealtimeAssistantUpdate: (callback) =>
     ipcRenderer.on("realtime-assistant-update", (event, data) => callback(data)),
   // sendTextToLlama: (text) => ipcRenderer.send('send-to-llama', text),
-  sendTextToGemini: (text, sessionId) => ipcRenderer.send("send-to-gemini", text, sessionId),
+  sendTextToGemini: (text, sessionId, image) => ipcRenderer.send("send-to-gemini", text, sessionId, image),
   // Manda a IMAGEM (data URL base64) + enunciado pro modelo de visão (gpt-4o).
   // Usado quando o usuário cola/captura uma imagem no chat e o backend é OpenAI.
   sendVisionToGemini: (text, image) =>
     ipcRenderer.send("send-to-gemini-vision", { text, image }),
-  sendTextToGeminiStream: (text, sessionId) => ipcRenderer.send("send-to-gemini-stream", text, sessionId),
+  sendTextToGeminiStream: (text, sessionId, image) => ipcRenderer.send("send-to-gemini-stream", text, sessionId, image),
   onAutoStream: (callback) =>
     ipcRenderer.on("send-to-gemini-stream-auto", (event, text) => callback(text)),
   // Estado do auto-close da janela 'response', decidido pelo main (cursor por

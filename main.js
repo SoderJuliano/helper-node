@@ -3936,7 +3936,8 @@ function appendAttachmentsContext(prompt) {
   return prompt;
 }
 
-ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
+ipcMain.on("send-to-gemini", async (event, text, sessionId, image) => {
+  let tempFilePath = null;
   try {
     const aiModel = getEffectiveAiModel();
     let resposta;
@@ -3961,12 +3962,35 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
       }
     }
 
+    // Se houver imagem e for CLI ou Agentic workflow, gravamos temporariamente e colocamos aviso no prompt
+    let promptWithImageInfo = promptWithHistory;
+    let promptTextForCli = text;
+    if (image && (aiModel === 'geminiCli' || aiModel === 'claudeCli' || shouldUseAgentic(text))) {
+      try {
+        const fs = require('fs');
+        const os = require('os');
+        const path = require('path');
+        const base64Data = image.replace(/^data:image\/[a-z]+;base64,/, "");
+        const tempDir = os.tmpdir();
+        const tempFileName = `helper_node_temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}.png`;
+        tempFilePath = path.join(tempDir, tempFileName);
+        fs.writeFileSync(tempFilePath, base64Data, 'base64');
+        
+        const osPathFormatted = process.platform === 'win32' ? tempFilePath.replace(/\//g, '\\') : tempFilePath;
+        const imgNotice = `\n\n[IMAGEM DE CONTEXTO ANEXADA: Existe uma imagem associada a esta pergunta salva em: "${osPathFormatted}". Se necessário, você pode ler ou analisar esta imagem local para responder à pergunta.]`;
+        promptWithImageInfo += imgNotice;
+        promptTextForCli += imgNotice;
+      } catch (err) {
+        console.error("Falha ao salvar imagem temporária para o CLI/Agentic:", err);
+      }
+    }
+
     // ── Gemini CLI provider ──────────────────────────────────────────────────
     if (aiModel === 'geminiCli') {
       const projectPath = workspace.getProjectPath();
       const geminiModel = configService.getGeminiCliModel();
       GeminiCliProvider.setModel(geminiModel);
-      const finalPrompt = appendAttachmentsContext(text);
+      const finalPrompt = appendAttachmentsContext(promptTextForCli);
       try {
         await GeminiCliProvider.send(finalPrompt, projectPath, event.sender, sessionId, pastMessages);
       } catch (gcliErr) {
@@ -3982,7 +4006,7 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
       const projectPath = workspace.getProjectPath();
       const claudeModel = configService.getClaudeCliModel();
       ClaudeCliProvider.setModel(claudeModel);
-      const finalPrompt = appendAttachmentsContext(promptWithHistory);
+      const finalPrompt = appendAttachmentsContext(promptWithImageInfo);
       try {
         await ClaudeCliProvider.send(finalPrompt, projectPath, event.sender);
       } catch (ccliErr) {
@@ -4012,7 +4036,7 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
         const useAgentic = shouldUseAgentic(text);
         if (useAgentic) { try { workspace.resetContextSent(); } catch (_) {} }
 
-        const _wsText2 = await prependWorkspaceContextIfNeeded(promptWithHistory, openAiModel);
+        const _wsText2 = await prependWorkspaceContextIfNeeded(promptWithImageInfo, openAiModel);
 
         if (useAgentic) {
             console.log('🤖 IPC: Iniciando AGENTIC WORKFLOW (multi-fase)...');
@@ -4035,12 +4059,13 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
             if (_kb2) usedKnowledge = true;
             const _augText2 = _kb2 ? _kb2 + "\n\n---\n\n" + _wsText2 : _wsText2;
             const ht = buildHelperToolsOpenAIOpts(_augText2, instruction, openAiModel, aiModel === 'openIaCodex');
+            
             resposta = await OpenAIService.makeOpenAIRequest(
               _augText2,
               token,
               ht.instruction || instruction,
               ht.model || openAiModel,
-              null,
+              image || null, // encaminha a imagem de contexto se houver
               ht.opts
             );
         }
@@ -4055,13 +4080,18 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
           const _augTextL = _kbL ? _kbL + "\n\n---\n\n" + promptWithHistory : promptWithHistory;
 
           const htEnabled = configService.getHelperToolsEnabled && configService.getHelperToolsEnabled();
+          const localOpts = {};
+          if (image) {
+            localOpts.imageBase64 = image;
+          }
           if (htEnabled) {
             const instructionO = configService.getPromptInstruction();
             const _wsTxtO = await prependWorkspaceContextIfNeeded(_augTextL, 'ollama');
             const _htO = buildHelperToolsOpenAIOpts(_wsTxtO, instructionO, configService.getOpenAiModel());
-            resposta = await OllamaLocalService.responder(_wsTxtO, _htO.opts);
+            const mergedOpts = Object.assign({}, _htO.opts, localOpts);
+            resposta = await OllamaLocalService.responder(_wsTxtO, mergedOpts);
           } else {
-            resposta = await OllamaLocalService.responder(_augTextL);
+            resposta = await OllamaLocalService.responder(_augTextL, localOpts);
           }
         } catch (ollamaError) {
           console.error("IPC: Ollama Local falhou:", ollamaError && ollamaError.message);
@@ -4075,7 +4105,7 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
           const instructionO2 = configService.getPromptInstruction();
           const useAgentic = shouldUseAgentic(text);
           if (useAgentic) { try { workspace.resetContextSent(); } catch (_) {} }
-          const _wsTxtO2 = await prependWorkspaceContextIfNeeded(promptWithHistory, 'ollama');
+          const _wsTxtO2 = await prependWorkspaceContextIfNeeded(promptWithImageInfo, 'ollama');
 
           if (useAgentic) {
               console.log('🤖 IPC: Iniciando AGENTIC WORKFLOW OLLAMA (multi-fase)...');
@@ -4094,7 +4124,12 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
               if (_kbO2) usedKnowledge = true;
               const _augTxtO2 = _kbO2 ? _kbO2 + "\n\n---\n\n" + _wsTxtO2 : _wsTxtO2;
               const _htO2 = buildHelperToolsOpenAIOpts(_augTxtO2, instructionO2, configService.getOpenAiModel());
-              resposta = await BackendService.responder(_augTxtO2, _htO2.opts);
+              const localOpts = {};
+              if (image) {
+                localOpts.imageBase64 = image;
+              }
+              const mergedOpts = Object.assign({}, _htO2.opts, localOpts);
+              resposta = await BackendService.responder(_augTxtO2, mergedOpts);
           }
           backendIsOnline = true;
         } catch (backendError) {
@@ -4205,10 +4240,13 @@ ipcMain.on("clear-ai-sessions", () => {
   });
 });
 
-ipcMain.on("send-to-gemini-stream", async (event, text) => {
+ipcMain.on("send-to-gemini-stream", async (event, text, sessionId, image) => {
   try {
-    console.log("IPC: Usando Backend Stream Service...");
-    
+    console.log("IPC: Usando Backend Stream Service com imagem...");
+    const opts = {};
+    if (image) {
+      opts.imageBase64 = image;
+    }
     await BackendService.responderStream(
       text,
       // onChunk
@@ -4223,7 +4261,8 @@ ipcMain.on("send-to-gemini-stream", async (event, text) => {
       (error) => {
         console.error("Stream error:", error);
         event.sender.send("transcription-error", error.message);
-      }
+      },
+      opts
     );
   } catch (error) {
     console.error("IPC: Stream service error:", error);
@@ -5870,6 +5909,9 @@ ipcMain.on("open-preferences-ui", () => {
 
 ipcMain.on("set-ai-model", (event, aiModel) => {
   configService.setAiModel(aiModel);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("config-changed", { key: "ai-model", value: aiModel });
+  }
 });
 
 // IPC Handlers for OpenAI Model
@@ -5879,6 +5921,9 @@ ipcMain.handle("get-openai-model", () => {
 
 ipcMain.on("set-openai-model", (event, model) => {
   configService.setOpenAiModel(model);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("config-changed", { key: "openai-model", value: model });
+  }
 });
 
 // IPC Handlers for OpenAI reasoning effort (gpt-5.x/o-series)
@@ -5906,6 +5951,9 @@ ipcMain.handle("get-backend-model", () => {
 
 ipcMain.on("set-backend-model", (event, model) => {
   if (configService.setBackendModel) configService.setBackendModel(model);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("config-changed", { key: "backend-model", value: model });
+  }
 });
 
 // IPC Handlers for Ollama Local
@@ -5915,6 +5963,9 @@ ipcMain.handle("get-ollama-local-model", () => {
 
 ipcMain.on("set-ollama-local-model", (event, model) => {
   configService.setOllamaLocalModel(model);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("config-changed", { key: "ollama-local-model", value: model });
+  }
 });
 
 ipcMain.handle("get-ollama-local-host", () => {
@@ -5928,6 +5979,9 @@ ipcMain.handle("get-gemini-cli-model", () => configService.getGeminiCliModel());
 ipcMain.on("set-gemini-cli-model", (event, model) => {
   configService.setGeminiCliModel(model);
   GeminiCliProvider.setModel(model);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("config-changed", { key: "gemini-cli-model", value: model });
+  }
 });
 
 ipcMain.handle("get-gemini-cli-models", () => GeminiCliProvider.getModels());
@@ -5955,6 +6009,9 @@ ipcMain.handle("get-claude-cli-model", () => configService.getClaudeCliModel());
 ipcMain.on("set-claude-cli-model", (event, model) => {
   configService.setClaudeCliModel(model);
   ClaudeCliProvider.setModel(model);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("config-changed", { key: "claude-cli-model", value: model });
+  }
 });
 
 ipcMain.handle("get-claude-cli-models", () => ClaudeCliProvider.getModels());

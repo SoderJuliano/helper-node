@@ -47,6 +47,9 @@ const openAiModelContainer = document.getElementById("openai-model-container");
 const openAiModelSelect = document.getElementById("openai-model-select");
 const realtimeFastModelNote = document.getElementById("realtime-fast-model-note");
 const visionGuideSection = document.getElementById("vision-guide-section");
+const backendModelContainer = document.getElementById("backend-model-container");
+const backendModelSelect = document.getElementById("backend-model-select");
+const backendApiKey = document.getElementById("backend-api-key");
 
 function updateRealtimeFastModelNote() {
   if (!realtimeFastModelNote) return;
@@ -353,10 +356,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       // console.log("Status do backend remoto atualizado:", data);
     });
   }
-
-  const backendModelContainer = document.getElementById("backend-model-container");
-  const backendModelSelect = document.getElementById("backend-model-select");
-  const backendApiKey = document.getElementById("backend-api-key");
 
   async function populateBackendModels(savedModel = null) {
     if (!backendModelSelect) return;
