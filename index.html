@@ -2169,8 +2169,75 @@
 
     <script>
 
-
-
+        // ============================================================
+        // Colar imagem (Ctrl+V) — registro À PROVA DE FALHAS.
+        // Fica AQUI no topo, fora de qualquer DOMContentLoaded, pra NUNCA
+        // ficar sem registrar caso algum bloco de init lance erro antes.
+        // Colar TEXTO num contenteditable é comportamento padrão do navegador
+        // (não precisa de JS); só a IMAGEM precisa deste handler — por isso
+        // "texto cola, imagem não" era sintoma de listener não registrado.
+        // ============================================================
+        (function wireImagePasteEarly() {
+            function isIdeModeSafe() {
+                try { if (typeof checkIsIdeMode === 'function') return checkIsIdeMode(); } catch (_) {}
+                const mb = document.getElementById('composer-model');
+                const prov = mb && mb.dataset ? mb.dataset.provider : null;
+                if (prov === 'claudeCli' || prov === 'geminiCli') return true;
+                return !!(window.workspaceAccessEnabled && window.helperToolsEnabled);
+            }
+            function doAttach(base64) {
+                if (!base64) return;
+                // Usa a implementação completa (IDE + não-IDE/OCR) quando disponível.
+                if (typeof window.attachPastedImage === 'function') { window.attachPastedImage(base64); return; }
+                // Fallback mínimo (garante o anexo no modo IDE mesmo se o init falhou).
+                if (isIdeModeSafe()) {
+                    window.idePendingImage = base64;
+                    window.idePendingImageName = 'imagem_copiada.png';
+                    const el = document.getElementById('composer-attachment');
+                    const nm = document.getElementById('composer-attachment-name');
+                    if (el && nm) { nm.textContent = window.idePendingImageName; el.style.display = 'flex'; }
+                    if (typeof openManualInput === 'function') { try { openManualInput(); } catch (_) {} }
+                    console.log('[img-paste] anexado via fallback mínimo (modo IDE).');
+                }
+            }
+            // 1) Evento 'paste' nativo (dispara quando há campo editável focado).
+            document.addEventListener('paste', function (event) {
+                const cd = event.clipboardData || window.clipboardData;
+                const items = cd ? cd.items : null;
+                const types = items ? Array.from(items).map(i => i.kind + ':' + i.type).join(', ') : 'null';
+                console.log('[img-paste] evento paste disparou — items:', types);
+                if (!items) return;
+                for (let i = 0; i < items.length; i++) {
+                    if (items[i].type.indexOf('image') !== -1) {
+                        console.log('[img-paste] imagem detectada no clipboardData:', items[i].type);
+                        const f = items[i].getAsFile();
+                        const r = new FileReader();
+                        r.onload = function (e) { doAttach(e.target.result); };
+                        r.readAsDataURL(f);
+                        event.preventDefault();
+                        return;
+                    }
+                }
+                console.log('[img-paste] nenhum item de imagem no clipboardData (tentará readClipboardImage no keydown)');
+            }, true);
+            // 2) Ctrl+V via clipboard do SO (Electron). Cobre o caso em que o
+            //    clipboardData da web NÃO expõe a imagem (bitmap de screenshot no
+            //    Windows), independente de ter campo focado ou não.
+            document.addEventListener('keydown', function (e) {
+                if (!e.key || e.key.toLowerCase() !== 'v') return;
+                if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
+                const active = document.activeElement;
+                const insideEditor = active && active.closest && (active.closest('.CodeMirror') || active.closest('#file-viewer'));
+                if (insideEditor) return; // editor de código lida com o próprio paste
+                if (window.electronAPI && window.electronAPI.readClipboardImage) {
+                    window.electronAPI.readClipboardImage().then(function (img) {
+                        console.log('[img-paste] Ctrl+V readClipboardImage ->', img ? ('imagem ' + img.length + ' chars') : 'null (sem bitmap no clipboard)');
+                        if (img) doAttach(img);
+                    }).catch(function (err) { console.warn('[img-paste] readClipboardImage erro:', err); });
+                }
+            }, true);
+            console.log('[img-paste] handlers registrados no topo do script.');
+        })();
 
         document.addEventListener('DOMContentLoaded', async () => {
             // === Custom Window Dragging & Controls (Windows/macOS) ===
@@ -5508,21 +5575,9 @@
                 }
             }
             window.attachPastedImage = attachPastedImage;
-
-            // Listener para colar imagem da área de transferência (input focado).
-            document.addEventListener('paste', (event) => {
-                const items = (event.clipboardData || window.clipboardData).items;
-                for (let i = 0; i < items.length; i++) {
-                    if (items[i].type.indexOf('image') !== -1) {
-                        const imageFile = items[i].getAsFile();
-                        const reader = new FileReader();
-                        reader.onload = (e) => attachPastedImage(e.target.result);
-                        reader.readAsDataURL(imageFile);
-                        event.preventDefault();
-                        break;
-                    }
-                }
-            });
+            // O listener de 'paste' e o de Ctrl+V ficam no TOPO do script (fora de
+            // qualquer DOMContentLoaded), em wireImagePasteEarly(), pra não morrerem
+            // caso algo neste bloco de init lance erro antes deste ponto.
 
             window.electronAPI.onDebugStatusChanged((status) => {
                 const debugIndicator = document.getElementById('debug-indicator');
