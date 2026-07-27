@@ -1799,6 +1799,14 @@ async function createWindow() {
       nodeIntegration: false,
     });
 
+    // Atalho F12 para abrir o DevTools Console quando a janela principal estiver focada
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+      if (input.key === 'F12' && input.type === 'keyDown') {
+        mainWindow.webContents.toggleDevTools();
+        event.preventDefault();
+      }
+    });
+
     applyStealthProtection(mainWindow);
 
     // macOS específico - oculta o ícone da Dock
