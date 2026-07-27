@@ -2196,50 +2196,71 @@
         // Colar imagem (Ctrl+V) — registro À PROVA DE FALHAS.
         // Fica AQUI no topo, fora de qualquer DOMContentLoaded, pra NUNCA
         // ficar sem registrar caso algum bloco de init lance erro antes.
-        // Colar TEXTO num contenteditable é comportamento padrão do navegador
-        // (não precisa de JS); só a IMAGEM precisa deste handler — por isso
-        // "texto cola, imagem não" era sintoma de listener não registrado.
         // ============================================================
         (function wireImagePasteEarly() {
-            function isIdeModeSafe() {
-                return checkIsIdeMode();
-            }
-            function doAttach(base64) {
-                if (!base64) return;
+            let isPastingImage = false;
+
+            function doAttach(filePath, thumbnail) {
+                if (!filePath || !thumbnail) return;
                 // Usa a implementação completa (IDE + não-IDE/OCR) quando disponível.
-                if (typeof window.attachPastedImage === 'function') { window.attachPastedImage(base64); return; }
+                if (typeof window.attachPastedImage === 'function') {
+                    window.attachPastedImage({ path: filePath, thumbnail: thumbnail });
+                    return;
+                }
                 // Fallback mínimo (garante o anexo no modo IDE mesmo se o init falhou).
-                if (isIdeModeSafe()) {
-                    window.idePendingImage = base64;
-                    window.idePendingImageName = 'imagem_copiada.png';
+                if (checkIsIdeMode()) {
+                    window.idePendingImagePath = filePath;
+                    window.idePendingImageThumbnail = thumbnail;
                     const el = document.getElementById('composer-attachment');
                     const nm = document.getElementById('composer-attachment-name');
-                    if (el && nm) { nm.textContent = window.idePendingImageName; el.style.display = 'flex'; }
-                    if (typeof openManualInput === 'function') { try { openManualInput(); } catch (_) {} }
+                    if (el && nm) {
+                        nm.textContent = filePath.split(/[/\\]/).pop();
+                        el.style.display = 'flex';
+                    }
+                    if (typeof openManualInput === 'function') {
+                        try { openManualInput(); } catch (_) {}
+                    }
                     console.log('[img-paste] anexado via fallback mínimo (modo IDE).');
                 }
             }
+
+            function triggerClipboardImageRead() {
+                if (isPastingImage) {
+                    console.log('[img-paste] Leitura já em andamento, ignorando...');
+                    return;
+                }
+                if (window.electronAPI && window.electronAPI.readClipboardImage) {
+                    isPastingImage = true;
+                    window.electronAPI.readClipboardImage().then(function (result) {
+                        isPastingImage = false;
+                        if (result && result.path && result.thumbnail) {
+                            console.log('[img-paste] Imagem encontrada no clipboard. Path:', result.path);
+                            doAttach(result.path, result.thumbnail);
+                        } else {
+                            console.log('[img-paste] Nenhuma imagem encontrada no clipboard.');
+                        }
+                    }).catch(function (err) {
+                        isPastingImage = false;
+                        console.warn('[img-paste] readClipboardImage erro:', err);
+                    });
+                }
+            }
+
             // 1) Evento 'paste' nativo (dispara quando há campo editável focado).
             document.addEventListener('paste', function (event) {
                 const cd = event.clipboardData || window.clipboardData;
                 const items = cd ? cd.items : null;
-                const types = items ? Array.from(items).map(i => i.kind + ':' + i.type).join(', ') : 'null';
-                console.log('[img-paste] evento paste disparou — items:', types);
                 if (!items) return;
                 for (let i = 0; i < items.length; i++) {
                     if (items[i].type.indexOf('image') !== -1) {
-                        console.log('[img-paste] imagem detectada no clipboardData:', items[i].type);
-                        const f = items[i].getAsFile();
-                        const r = new FileReader();
-                        r.onload = function (e) { doAttach(e.target.result); };
-                        r.readAsDataURL(f);
                         event.preventDefault();
+                        console.log('[img-paste] Imagem interceptada no evento paste nativo.');
+                        triggerClipboardImageRead();
                         return;
                     }
                 }
-                console.log('[img-paste] nenhum item de imagem no clipboardData (tentará readClipboardImage no keydown)');
             }, true);
-            let isPastingImage = false;
+
             // 2) Ctrl+V via clipboard do SO (Electron). Cobre o caso em que o
             //    clipboardData da web NÃO expõe a imagem (bitmap de screenshot no
             //    Windows), independente de ter campo focado ou não.
@@ -2249,21 +2270,10 @@
                 const active = document.activeElement;
                 const insideEditor = active && active.closest && (active.closest('.CodeMirror') || active.closest('#file-viewer'));
                 if (insideEditor) return; // editor de código lida com o próprio paste
-                if (isPastingImage) {
-                    console.log('[img-paste] Ctrl+V ignorado (leitura já em andamento)');
-                    return;
-                }
-                if (window.electronAPI && window.electronAPI.readClipboardImage) {
-                    isPastingImage = true;
-                    window.electronAPI.readClipboardImage().then(function (img) {
-                        isPastingImage = false;
-                        console.log('[img-paste] Ctrl+V readClipboardImage ->', img ? ('imagem ' + img.length + ' chars') : 'null (sem bitmap no clipboard)');
-                        if (img) doAttach(img);
-                    }).catch(function (err) {
-                        isPastingImage = false;
-                        console.warn('[img-paste] readClipboardImage erro:', err);
-                    });
-                }
+                
+                e.preventDefault();
+                console.log('[img-paste] Imagem interceptada via Ctrl+V keydown.');
+                triggerClipboardImageRead();
             }, true);
             console.log('[img-paste] handlers registrados no topo do script.');
         })();
@@ -5531,19 +5541,19 @@
             // do MODO IDE (anexo temporário) e o legado (OCR/visão). Usado tanto
             // pelo evento 'paste' nativo (quando há input focado) quanto pelo
             // fallback de Ctrl+V via clipboard do SO (tela hero / composer fechado).
-            function attachPastedImage(base64Image) {
-                if (!base64Image) return;
+            function attachPastedImage(payload) {
+                if (!payload || !payload.path) return;
                 const isIdeMode = checkIsIdeMode();
 
                 if (isIdeMode) {
                     // MODO IDE: Anexar a imagem temporariamente
-                    window.idePendingImage = base64Image;
-                    window.idePendingImageName = "imagem_copiada.png";
+                    window.idePendingImagePath = payload.path;
+                    window.idePendingImageThumbnail = payload.thumbnail;
 
                     const attachmentEl = document.getElementById('composer-attachment');
                     const attachmentNameEl = document.getElementById('composer-attachment-name');
                     if (attachmentEl && attachmentNameEl) {
-                        attachmentNameEl.textContent = window.idePendingImageName;
+                        attachmentNameEl.textContent = payload.path.split(/[/\\]/).pop();
                         attachmentEl.style.display = 'flex';
                     }
                     console.log('Imagem anexada temporariamente para o modo IDE.');
@@ -5557,18 +5567,19 @@
                     }
                 } else {
                     // MODO NÃO IDE: comportamento antigo preservado (OCR/visão)
-                    window.pendingChatImage = base64Image;
+                    window.pendingChatImagePath = payload.path;
+                    window.pendingChatImageThumbnail = payload.thumbnail;
                     if (manualInputActive) {
-                        pastedImageForManualInput = base64Image;
+                        pastedImageForManualInput = payload.thumbnail;
                         const preview = document.getElementById('screenshot-preview');
-                        preview.src = base64Image;
+                        preview.src = payload.thumbnail;
                         preview.style.display = 'block';
-                        window.electronAPI.processPastedImage(base64Image);
+                        window.electronAPI.processPastedImage(payload.path);
                     } else {
                         const robot = document.getElementById('robot');
                         if (robot) robot.style.display = 'block';
                         appendQuestionEntry("Image in context");
-                        window.electronAPI.processPastedImage(base64Image);
+                        window.electronAPI.processPastedImage(payload.path);
                     }
                 }
             }
@@ -6853,7 +6864,7 @@
             const isDebug = await window.electronAPI.getDebugModeStatus();
             console.log('[submitManualQuestion] getDebugModeStatus resolvido. isDebug:', isDebug);
 
-            if (window.idePendingImage) {
+            if (window.idePendingImagePath) {
                 // Modo IDE: exibe a imagem anexada de forma premium e envia
                 const questionSpan = document.createElement('span');
                 questionSpan.className = 'question-text';
@@ -6862,10 +6873,11 @@
                 const attPill = document.createElement('div');
                 attPill.className = 'attachment-pill';
                 attPill.style.cssText = "margin-top: 6px; display: inline-flex; align-items: center; gap: 6px; background: rgba(76, 175, 80, 0.12); border: 1px solid rgba(76, 175, 80, 0.3); color: var(--accent-2); padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 500; font-family: var(--font-ui); width: fit-content;";
-                attPill.innerHTML = `<svg class="attachment-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px; opacity: .85;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><span>[Anexo: ${window.idePendingImageName || "imagem_copiada.png"}]</span>`;
+                const fileName = window.idePendingImagePath.split(/[/\\]/).pop();
+                attPill.innerHTML = `<svg class="attachment-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px; opacity: .85;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><span>[Anexo: ${fileName}]</span>`;
 
                 const imgPreview = document.createElement('img');
-                imgPreview.src = window.idePendingImage;
+                imgPreview.src = window.idePendingImageThumbnail; // Usa o thumbnail pequeno
                 imgPreview.style.cssText = "display: block; max-width: 260px; max-height: 180px; margin-top: 8px; border-radius: 8px; border: 1px solid var(--border-strong); box-shadow: 0 4px 12px rgba(0,0,0,0.3);";
                 
                 const ib1 = document.createElement('div');
@@ -6886,23 +6898,23 @@
                 let activeSessionId = null;
                 const promptText = `${promptInstruction}${text}`;
                 if (window.historySession) {
-                    const displayPrompt = text ? `${text} [Anexo: ${window.idePendingImageName || "imagem.png"}]` : `[Anexo: ${window.idePendingImageName || "imagem.png"}]`;
+                    const displayPrompt = text ? `${text} [Anexo: ${fileName}]` : `[Anexo: ${fileName}]`;
                     console.log('[submitManualQuestion] Adicionando histórico:', displayPrompt);
                     activeSessionId = await window.historySession.ensureSessionForFirstQuestion(displayPrompt);
                     await window.historySession.addMessageToCurrentSession('user', displayPrompt);
                 }
 
-                console.log('[submitManualQuestion] Enviando para o backend IPC. Tamanho da imagem base64:', window.idePendingImage ? window.idePendingImage.length : 0);
+                console.log('[submitManualQuestion] Enviando para o backend IPC. Path da imagem:', window.idePendingImagePath);
                 if (activeModel === 'llama-stream' || activeModel === 'qwen-stream') {
-                    window.electronAPI.sendTextToGeminiStream(promptText, activeSessionId, window.idePendingImage);
+                    window.electronAPI.sendTextToGeminiStream(promptText, activeSessionId, window.idePendingImagePath);
                 } else {
-                    window.electronAPI.sendTextToGemini(promptText, activeSessionId, window.idePendingImage);
+                    window.electronAPI.sendTextToGemini(promptText, activeSessionId, window.idePendingImagePath);
                 }
                 console.log('[submitManualQuestion] IPC enviado com sucesso!');
 
                 // Limpa o anexo temporário para o próximo turno
-                window.idePendingImage = null;
-                window.idePendingImageName = null;
+                window.idePendingImagePath = null;
+                window.idePendingImageThumbnail = null;
                 const attachmentEl = document.getElementById('composer-attachment');
                 if (attachmentEl) attachmentEl.style.display = 'none';
                 return;

@@ -2103,11 +2103,35 @@ function commandExists(cmd) {
   });
 }
 
-ipcMain.on("process-pasted-image", (event, base64Image) => {
+ipcMain.on("process-pasted-image", (event, imageOrPath) => {
+  const path = require('path');
+  const isPath = typeof imageOrPath === 'string' && !imageOrPath.startsWith('data:') && imageOrPath.includes(path.sep);
+
+  if (isPath) {
+    console.log("Main process received pasted image path:", imageOrPath);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('screen-capturing', true);
+      TesseractService.processImageFileFromPath(imageOrPath, mainWindow).catch(
+        (error) => {
+          console.error("Error processing image path in main process:", error);
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('ocr-result', {
+              text: '',
+              screenshotPath: imageOrPath,
+              base64Image: '',
+              error: 'Erro ao processar imagem'
+            });
+          }
+        }
+      );
+    }
+    return;
+  }
+
   // Dedup compartilhado com clipboard monitor: evita processar 2x
   // (cenario: monitor pegou o screenshot, user da Ctrl+V em seguida)
   try {
-    const stripped = (base64Image || '').replace(/^data:image\/[a-z]+;base64,/, '');
+    const stripped = (imageOrPath || '').replace(/^data:image\/[a-z]+;base64,/, '');
     if (stripped) {
       const currentHash = calculateImageHash(Buffer.from(stripped, 'base64'));
       const now = Date.now();
@@ -2129,7 +2153,7 @@ ipcMain.on("process-pasted-image", (event, base64Image) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     // Feedback visual (idempotente — se JS paste handler ja disparou, vira no-op rapido)
     mainWindow.webContents.send('screen-capturing', true);
-    TesseractService.processPastedImage(base64Image, mainWindow).catch(
+    TesseractService.processPastedImage(imageOrPath, mainWindow).catch(
       (error) => {
         console.error("Error processing pasted image in main process:", error);
         
@@ -2138,7 +2162,7 @@ ipcMain.on("process-pasted-image", (event, base64Image) => {
           mainWindow.webContents.send('ocr-result', {
             text: '',
             screenshotPath: '',
-            base64Image: base64Image,
+            base64Image: imageOrPath,
             error: 'Erro ao processar imagem colada'
           });
         }
@@ -4002,6 +4026,33 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId, image) => {
     let resposta;
     let usedKnowledge = false; // base de conhecimento injetada nesta resposta?
 
+    // 1. Verifica se a imagem é um caminho de arquivo ou base64
+    const path = require('path');
+    const isPath = typeof image === 'string' && !image.startsWith('data:') && image.includes(path.sep);
+    let imageBase64ForVision = null;
+
+    if (image) {
+      if (isPath) {
+        tempFilePath = image;
+        // Se o modelo ativo usa a API de visão baseada em base64 (OpenAI, Ollama, etc)
+        if (aiModel !== 'geminiCli' && aiModel !== 'claudeCli' && !shouldUseAgentic(text)) {
+          console.log('[send-to-gemini] Carregando imagem do disco para envio à API de visão...');
+          try {
+            const fs = require('fs');
+            const fileBuffer = await fs.promises.readFile(tempFilePath);
+            const ext = path.extname(tempFilePath).toLowerCase();
+            const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
+            imageBase64ForVision = `data:${mimeType};base64,` + fileBuffer.toString('base64');
+          } catch (readErr) {
+            console.error('[send-to-gemini] Falha ao ler imagem do disco para a API de visão:', readErr);
+          }
+        }
+      } else {
+        // Compatibilidade de base64 recebido direto
+        imageBase64ForVision = image;
+      }
+    }
+
     let promptWithHistory = text;
     let pastMessages = [];
     if (sessionId) {
@@ -4027,31 +4078,38 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId, image) => {
     let promptWithImageInfo = promptWithHistory;
     let promptTextForCli = text;
     if (image && (aiModel === 'geminiCli' || aiModel === 'claudeCli' || shouldUseAgentic(text))) {
-      console.log('[send-to-gemini] Imagem detectada. Salvando temporariamente...');
-      try {
-        const fs = require('fs');
-        const path = require('path');
-        const { app } = require('electron');
-        const base64Data = image.replace(/^data:image\/[a-z]+;base64,/, "");
-        const tempDir = path.join(app.getPath('userData'), 'temp_images');
-        if (!fs.existsSync(tempDir)) {
-          console.log('[send-to-gemini] Criando pasta de imagens temporárias:', tempDir);
-          fs.mkdirSync(tempDir, { recursive: true });
-        }
-        const tempFileName = `helper_node_temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}.png`;
-        tempFilePath = path.join(tempDir, tempFileName);
-        
-        console.log('[send-to-gemini] Gravando arquivo de imagem:', tempFilePath);
-        // Escreve o arquivo de forma assíncrona para nunca bloquear o Event Loop principal
-        await fs.promises.writeFile(tempFilePath, base64Data, 'base64');
-        console.log('[send-to-gemini] Arquivo gravado com sucesso.');
-        
+      if (isPath) {
+        console.log('[send-to-gemini] Imagem já salva no disco:', tempFilePath);
         const osPathFormatted = process.platform === 'win32' ? tempFilePath.replace(/\//g, '\\') : tempFilePath;
         const imgNotice = `\n\n[IMAGEM DE CONTEXTO ANEXADA: Existe uma imagem associada a esta pergunta salva em: "${osPathFormatted}". Se necessário, você pode ler ou analisar esta imagem local para responder à pergunta.]`;
         promptWithImageInfo += imgNotice;
         promptTextForCli += imgNotice;
-      } catch (err) {
-        console.error("Falha ao salvar imagem temporária para o CLI/Agentic:", err);
+      } else {
+        console.log('[send-to-gemini] Imagem recebida em base64. Salvando temporariamente...');
+        try {
+          const fs = require('fs');
+          const { app } = require('electron');
+          const base64Data = image.replace(/^data:image\/[a-z]+;base64,/, "");
+          const tempDir = path.join(app.getPath('userData'), 'temp_images');
+          if (!fs.existsSync(tempDir)) {
+            console.log('[send-to-gemini] Criando pasta de imagens temporárias:', tempDir);
+            fs.mkdirSync(tempDir, { recursive: true });
+          }
+          const tempFileName = `helper_node_temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}.png`;
+          tempFilePath = path.join(tempDir, tempFileName);
+          
+          console.log('[send-to-gemini] Gravando arquivo de imagem:', tempFilePath);
+          // Escreve o arquivo de forma assíncrona para nunca bloquear o Event Loop principal
+          await fs.promises.writeFile(tempFilePath, base64Data, 'base64');
+          console.log('[send-to-gemini] Arquivo gravado com sucesso.');
+          
+          const osPathFormatted = process.platform === 'win32' ? tempFilePath.replace(/\//g, '\\') : tempFilePath;
+          const imgNotice = `\n\n[IMAGEM DE CONTEXTO ANEXADA: Existe uma imagem associada a esta pergunta salva em: "${osPathFormatted}". Se necessário, você pode ler ou analisar esta imagem local para responder à pergunta.]`;
+          promptWithImageInfo += imgNotice;
+          promptTextForCli += imgNotice;
+        } catch (err) {
+          console.error("Falha ao salvar imagem temporária para o CLI/Agentic:", err);
+        }
       }
     }
 
@@ -4140,7 +4198,7 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId, image) => {
               token,
               ht.instruction || instruction,
               ht.model || openAiModel,
-              image || null, // encaminha a imagem de contexto se houver
+              imageBase64ForVision || null, // encaminha a imagem de contexto se houver
               ht.opts
             );
         }
@@ -4156,8 +4214,8 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId, image) => {
 
           const htEnabled = configService.getHelperToolsEnabled && configService.getHelperToolsEnabled();
           const localOpts = {};
-          if (image) {
-            localOpts.imageBase64 = image;
+          if (imageBase64ForVision) {
+            localOpts.imageBase64 = imageBase64ForVision;
           }
           if (htEnabled) {
             const instructionO = configService.getPromptInstruction();
@@ -4200,8 +4258,8 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId, image) => {
               const _augTxtO2 = _kbO2 ? _kbO2 + "\n\n---\n\n" + _wsTxtO2 : _wsTxtO2;
               const _htO2 = buildHelperToolsOpenAIOpts(_augTxtO2, instructionO2, configService.getOpenAiModel());
               const localOpts = {};
-              if (image) {
-                localOpts.imageBase64 = image;
+              if (imageBase64ForVision) {
+                localOpts.imageBase64 = imageBase64ForVision;
               }
               const mergedOpts = Object.assign({}, _htO2.opts, localOpts);
               resposta = await BackendService.responder(_augTxtO2, mergedOpts);
@@ -4332,7 +4390,21 @@ ipcMain.on("send-to-gemini-stream", async (event, text, sessionId, image) => {
     console.log("IPC: Usando Backend Stream Service com imagem...");
     const opts = {};
     if (image) {
-      opts.imageBase64 = image;
+      const path = require('path');
+      const isPath = typeof image === 'string' && !image.startsWith('data:') && image.includes(path.sep);
+      if (isPath) {
+        try {
+          const fs = require('fs');
+          const fileBuffer = await fs.promises.readFile(image);
+          const ext = path.extname(image).toLowerCase();
+          const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
+          opts.imageBase64 = `data:${mimeType};base64,` + fileBuffer.toString('base64');
+        } catch (readErr) {
+          console.error("Falha ao ler imagem do disco para stream:", readErr);
+        }
+      } else {
+        opts.imageBase64 = image;
+      }
     }
     await BackendService.responderStream(
       text,
@@ -5983,18 +6055,68 @@ ipcMain.handle("get-ai-model", () => {
 });
 
 ipcMain.handle("read-clipboard-image", async () => {
-  const { clipboard } = require('electron');
+  const { clipboard, nativeImage, app } = require('electron');
   const fs = require('fs');
   const path = require('path');
   const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.ico'];
 
+  const tempDir = path.join(app.getPath('userData'), 'temp_images');
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true });
+  }
+
+  const getTempPath = () => {
+    return path.join(tempDir, `helper_node_temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}.png`);
+  };
+
+  const makeThumbnail = (img) => {
+    if (!img || img.isEmpty()) return null;
+    const size = img.getSize();
+    const maxDim = 300;
+    let newWidth = size.width;
+    let newHeight = size.height;
+    if (size.width > maxDim || size.height > maxDim) {
+      if (size.width > size.height) {
+        newWidth = maxDim;
+        newHeight = Math.round((size.height * maxDim) / size.width);
+      } else {
+        newHeight = maxDim;
+        newWidth = Math.round((size.width * maxDim) / size.height);
+      }
+    }
+    return img.resize({ width: newWidth, height: newHeight }).toDataURL();
+  };
+
+  // Helper local para processar arquivos de imagem copiados do disco
+  const processFilePath = async (filePath) => {
+    try {
+      const ext = path.extname(filePath).toLowerCase();
+      if (imageExtensions.includes(ext)) {
+        const stat = await fs.promises.stat(filePath);
+        if (stat.isFile()) {
+          const tempFilePath = getTempPath();
+          await fs.promises.copyFile(filePath, tempFilePath);
+          const imgFromFile = nativeImage.createFromPath(filePath);
+          const thumbnail = makeThumbnail(imgFromFile);
+          return { path: tempFilePath, thumbnail };
+        }
+      }
+    } catch (e) {
+      console.warn("Erro ao processar arquivo para clipboard:", filePath, e.message);
+    }
+    return null;
+  };
+
   // 1. Tenta ler como imagem/bitmap do clipboard (ex: screenshots ou imagens da web)
   const img = clipboard.readImage();
   if (img && !img.isEmpty()) {
-    return img.toDataURL(); // Retorna o base64 image data URL
+    const tempFilePath = getTempPath();
+    await fs.promises.writeFile(tempFilePath, img.toPNG());
+    const thumbnail = makeThumbnail(img);
+    return { path: tempFilePath, thumbnail };
   }
 
-  // 2. Tenta ler caminhos de arquivos copiados do sistema de arquivos
+  // 2. Tenta ler caminhos de arquivos copiados do sistema de arquivos (uri-list)
   try {
     const uriList = clipboard.read('text/uri-list');
     if (uriList) {
@@ -6005,19 +6127,8 @@ ipcMain.handle("read-clipboard-image", async () => {
           if (process.platform === 'win32' && filePath.startsWith('/')) {
             filePath = filePath.substring(1);
           }
-          const ext = path.extname(filePath).toLowerCase();
-          if (imageExtensions.includes(ext)) {
-            try {
-              const stat = await fs.promises.stat(filePath);
-              if (stat.isFile()) {
-                const buffer = await fs.promises.readFile(filePath);
-                const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
-                return `data:${mimeType};base64,` + buffer.toString('base64');
-              }
-            } catch (err) {
-              console.warn("Erro ao acessar arquivo em uri-list:", filePath, err.message);
-            }
-          }
+          const res = await processFilePath(filePath);
+          if (res) return res;
         }
       }
     }
@@ -6025,6 +6136,7 @@ ipcMain.handle("read-clipboard-image", async () => {
     console.warn("Erro ao ler text/uri-list do clipboard:", e);
   }
 
+  // 3. Tenta FileNameW no Windows
   try {
     if (process.platform === 'win32') {
       const buffer = clipboard.readBuffer('FileNameW');
@@ -6032,19 +6144,8 @@ ipcMain.handle("read-clipboard-image", async () => {
         const pathsStr = buffer.toString('utf16le');
         const paths = pathsStr.split('\0').filter(p => p.trim().length > 0);
         for (const filePath of paths) {
-          const ext = path.extname(filePath).toLowerCase();
-          if (imageExtensions.includes(ext)) {
-            try {
-              const stat = await fs.promises.stat(filePath);
-              if (stat.isFile()) {
-                const fileBuffer = await fs.promises.readFile(filePath);
-                const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
-                return `data:${mimeType};base64,` + fileBuffer.toString('base64');
-              }
-            } catch (err) {
-              console.warn("Erro ao acessar arquivo em FileNameW:", filePath, err.message);
-            }
-          }
+          const res = await processFilePath(filePath);
+          if (res) return res;
         }
       }
     }
@@ -6052,28 +6153,18 @@ ipcMain.handle("read-clipboard-image", async () => {
     console.warn("Erro ao ler FileNameW do clipboard:", e);
   }
 
+  // 4. Tenta ler texto puro (caminho absoluto)
   try {
     const text = clipboard.readText();
     if (text) {
       let filePath = text.trim().replace(/^"|"$/g, '');
       if (path.isAbsolute(filePath)) {
-        const ext = path.extname(filePath).toLowerCase();
-        if (imageExtensions.includes(ext)) {
-          try {
-            const stat = await fs.promises.stat(filePath);
-            if (stat.isFile()) {
-              const buffer = await fs.promises.readFile(filePath);
-              const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
-              return `data:${mimeType};base64,` + buffer.toString('base64');
-            }
-          } catch (err) {
-            console.warn("Erro ao acessar arquivo em fallback text:", filePath, err.message);
-          }
-        }
+        const res = await processFilePath(filePath);
+        if (res) return res;
       }
     }
   } catch (e) {
-    console.warn("Erro ao ler fallback text do clipboard:", e);
+    console.warn("Erro ao ler texto puro do clipboard:", e);
   }
 
   return null;
