@@ -5462,66 +5462,64 @@
                 });
             }
 
-            // Listener para colar imagem da área de transferência
+            // Trata uma imagem colada (base64 data URL), decidindo entre o fluxo
+            // do MODO IDE (anexo temporário) e o legado (OCR/visão). Usado tanto
+            // pelo evento 'paste' nativo (quando há input focado) quanto pelo
+            // fallback de Ctrl+V via clipboard do SO (tela hero / composer fechado).
+            function attachPastedImage(base64Image) {
+                if (!base64Image) return;
+                const isIdeMode = checkIsIdeMode();
+
+                if (isIdeMode) {
+                    // MODO IDE: Anexar a imagem temporariamente
+                    window.idePendingImage = base64Image;
+                    window.idePendingImageName = "imagem_copiada.png";
+
+                    const attachmentEl = document.getElementById('composer-attachment');
+                    const attachmentNameEl = document.getElementById('composer-attachment-name');
+                    if (attachmentEl && attachmentNameEl) {
+                        attachmentNameEl.textContent = window.idePendingImageName;
+                        attachmentEl.style.display = 'flex';
+                    }
+                    console.log('Imagem anexada temporariamente para o modo IDE.');
+
+                    // Garante o composer aberto e focado
+                    if (manualInputActive) {
+                        const tInput = document.querySelector('.manual-input-container .terminal-input');
+                        if (tInput) tInput.focus();
+                    } else {
+                        openManualInput();
+                    }
+                } else {
+                    // MODO NÃO IDE: comportamento antigo preservado (OCR/visão)
+                    window.pendingChatImage = base64Image;
+                    if (manualInputActive) {
+                        pastedImageForManualInput = base64Image;
+                        const preview = document.getElementById('screenshot-preview');
+                        preview.src = base64Image;
+                        preview.style.display = 'block';
+                        window.electronAPI.processPastedImage(base64Image);
+                    } else {
+                        const robot = document.getElementById('robot');
+                        if (robot) robot.style.display = 'block';
+                        appendQuestionEntry("Image in context");
+                        window.electronAPI.processPastedImage(base64Image);
+                    }
+                }
+            }
+            window.attachPastedImage = attachPastedImage;
+
+            // Listener para colar imagem da área de transferência (input focado).
             document.addEventListener('paste', (event) => {
                 const items = (event.clipboardData || window.clipboardData).items;
                 for (let i = 0; i < items.length; i++) {
                     if (items[i].type.indexOf('image') !== -1) {
                         const imageFile = items[i].getAsFile();
-                        console.log('Imagem colada detectada!');
-                        
                         const reader = new FileReader();
-                        reader.onload = async (e) => {
-                            const base64Image = e.target.result;
-
-                            // Verifica se o modo IDE está ativo
-                            const isIdeMode = checkIsIdeMode();
-
-                            if (isIdeMode) {
-                                // MODO IDE: Anexar a imagem temporariamente
-                                window.idePendingImage = base64Image;
-                                window.idePendingImageName = "imagem_copiada.png";
-                                
-                                const attachmentEl = document.getElementById('composer-attachment');
-                                const attachmentNameEl = document.getElementById('composer-attachment-name');
-                                if (attachmentEl && attachmentNameEl) {
-                                    attachmentNameEl.textContent = window.idePendingImageName;
-                                    attachmentEl.style.display = 'flex';
-                                }
-                                console.log('Imagem anexada temporariamente para o modo IDE.');
-                                
-                                // Foca no input se manualInputActive estiver aberto
-                                if (manualInputActive) {
-                                    const tInput = document.querySelector('.manual-input-container .terminal-input');
-                                    if (tInput) tInput.focus();
-                                } else {
-                                    openManualInput();
-                                }
-                            } else {
-                                // MODO NÃO IDE: comportamento antigo preservado
-                                window.pendingChatImage = base64Image;
-                                if (manualInputActive) {
-                                    console.log('Input manual ativo, mostrando preview e iniciando OCR da imagem.');
-                                    pastedImageForManualInput = base64Image;
-                                    const preview = document.getElementById('screenshot-preview');
-                                    preview.src = base64Image;
-                                    preview.style.display = 'block';
-                                    window.electronAPI.processPastedImage(base64Image);
-                                } else {
-                                    const robot = document.getElementById('robot');
-                                    if (robot) robot.style.display = 'block';
-
-                                    const message = "Image in context";
-                                    appendQuestionEntry(message);
-
-                                    window.electronAPI.processPastedImage(base64Image);
-                                }
-                            }
-                        };
+                        reader.onload = (e) => attachPastedImage(e.target.result);
                         reader.readAsDataURL(imageFile);
-                        
-                        event.preventDefault(); 
-                        break; 
+                        event.preventDefault();
+                        break;
                     }
                 }
             });
@@ -6124,12 +6122,30 @@
             });
 
             window.addEventListener('keydown', (e) => {
-                // Ctrl+V: colar imagem ou texto. Se não estiver focando em nenhum editor ou input de texto, foca no input antes de colar
+                // Ctrl+V: colar imagem ou texto.
                 if (e.key.toLowerCase() === 'v' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
                     const active = document.activeElement;
                     const insideEditor = active && (active.closest('.CodeMirror') || active.closest('#file-viewer'));
                     const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
-                    if (!insideEditor && !isInput) {
+                    // Editor de código ou input já focado → o evento 'paste' nativo
+                    // cuida (imagem via attachPastedImage, texto direto no campo).
+                    if (insideEditor || isInput) return;
+
+                    // Nenhum campo editável focado (ex.: tela hero, composer fechado):
+                    // o 'paste' nativo NÃO dispara. Lemos o clipboard direto do SO —
+                    // independente de foco — pra anexar a imagem de forma confiável.
+                    if (window.electronAPI && window.electronAPI.readClipboardImage) {
+                        window.electronAPI.readClipboardImage().then((base64Image) => {
+                            if (base64Image) {
+                                attachPastedImage(base64Image);
+                            } else {
+                                openManualInput(); // sem imagem → é texto: abre o composer
+                            }
+                        }).catch((err) => {
+                            console.warn('Falha ao ler imagem do clipboard:', err);
+                            openManualInput();
+                        });
+                    } else {
                         openManualInput();
                     }
                 }

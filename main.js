@@ -3914,10 +3914,26 @@ function appendAttachmentsContext(prompt) {
     if (attachments.length > 0) {
       let contextHeader = "=== ARQUIVOS ANEXADOS AO CONTEXTO ===\n";
       contextHeader += "O usuário selecionou e anexou manualmente os seguintes arquivos no workspace:\n";
+      // Extensões binárias/imagem: nunca lemos o conteúdo (evita despejar bytes
+      // no prompt do CLI e qualquer risco de travamento). O modelo recebe só o
+      // caminho — e, se for CLI/visão, a imagem chega pelo fluxo de anexo próprio.
+      const BINARY_EXTS = new Set([
+        '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.ico', '.tif', '.tiff',
+        '.svg', '.heic', '.avif', '.pdf', '.zip', '.gz', '.tar', '.rar', '.7z',
+        '.exe', '.dll', '.bin', '.dat', '.mp4', '.mp3', '.wav', '.mov', '.avi',
+        '.mkv', '.webm', '.woff', '.woff2', '.ttf', '.otf', '.eot', '.class',
+        '.o', '.so', '.dylib', '.psd', '.ai', '.sketch', '.wasm', '.node'
+      ]);
+      const pathMod = require('path');
       for (const att of attachments) {
         contextHeader += `- Caminho: ${att.path}\n`;
         try {
           const fs = require('fs');
+          const ext = pathMod.extname(att.path || '').toLowerCase();
+          if (BINARY_EXTS.has(ext)) {
+            contextHeader += `\n(Arquivo binário/imagem anexado — conteúdo não incluído no prompt: ${att.path})\n`;
+            continue;
+          }
           if (fs.existsSync(att.path)) {
             const stat = fs.statSync(att.path);
             if (stat.isFile()) {
