@@ -2239,6 +2239,7 @@
                 }
                 console.log('[img-paste] nenhum item de imagem no clipboardData (tentará readClipboardImage no keydown)');
             }, true);
+            let isPastingImage = false;
             // 2) Ctrl+V via clipboard do SO (Electron). Cobre o caso em que o
             //    clipboardData da web NÃO expõe a imagem (bitmap de screenshot no
             //    Windows), independente de ter campo focado ou não.
@@ -2248,11 +2249,20 @@
                 const active = document.activeElement;
                 const insideEditor = active && active.closest && (active.closest('.CodeMirror') || active.closest('#file-viewer'));
                 if (insideEditor) return; // editor de código lida com o próprio paste
+                if (isPastingImage) {
+                    console.log('[img-paste] Ctrl+V ignorado (leitura já em andamento)');
+                    return;
+                }
                 if (window.electronAPI && window.electronAPI.readClipboardImage) {
+                    isPastingImage = true;
                     window.electronAPI.readClipboardImage().then(function (img) {
+                        isPastingImage = false;
                         console.log('[img-paste] Ctrl+V readClipboardImage ->', img ? ('imagem ' + img.length + ' chars') : 'null (sem bitmap no clipboard)');
                         if (img) doAttach(img);
-                    }).catch(function (err) { console.warn('[img-paste] readClipboardImage erro:', err); });
+                    }).catch(function (err) {
+                        isPastingImage = false;
+                        console.warn('[img-paste] readClipboardImage erro:', err);
+                    });
                 }
             }, true);
             console.log('[img-paste] handlers registrados no topo do script.');

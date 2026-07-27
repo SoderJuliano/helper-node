@@ -5962,10 +5962,11 @@ ipcMain.handle("get-ai-model", () => {
   return configService.getAiModel();
 });
 
-ipcMain.handle("read-clipboard-image", () => {
+ipcMain.handle("read-clipboard-image", async () => {
   const { clipboard } = require('electron');
   const fs = require('fs');
   const path = require('path');
+  const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.ico'];
 
   // 1. Tenta ler como imagem/bitmap do clipboard (ex: screenshots ou imagens da web)
   const img = clipboard.readImage();
@@ -5984,16 +5985,17 @@ ipcMain.handle("read-clipboard-image", () => {
           if (process.platform === 'win32' && filePath.startsWith('/')) {
             filePath = filePath.substring(1);
           }
-          if (fs.existsSync(filePath)) {
-            const stat = fs.statSync(filePath);
-            if (stat.isFile()) {
-              const ext = path.extname(filePath).toLowerCase();
-              const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.ico'];
-              if (imageExtensions.includes(ext)) {
-                const buffer = fs.readFileSync(filePath);
+          const ext = path.extname(filePath).toLowerCase();
+          if (imageExtensions.includes(ext)) {
+            try {
+              const stat = await fs.promises.stat(filePath);
+              if (stat.isFile()) {
+                const buffer = await fs.promises.readFile(filePath);
                 const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
                 return `data:${mimeType};base64,` + buffer.toString('base64');
               }
+            } catch (err) {
+              console.warn("Erro ao acessar arquivo em uri-list:", filePath, err.message);
             }
           }
         }
@@ -6010,16 +6012,17 @@ ipcMain.handle("read-clipboard-image", () => {
         const pathsStr = buffer.toString('utf16le');
         const paths = pathsStr.split('\0').filter(p => p.trim().length > 0);
         for (const filePath of paths) {
-          if (fs.existsSync(filePath)) {
-            const stat = fs.statSync(filePath);
-            if (stat.isFile()) {
-              const ext = path.extname(filePath).toLowerCase();
-              const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.ico'];
-              if (imageExtensions.includes(ext)) {
-                const fileBuffer = fs.readFileSync(filePath);
+          const ext = path.extname(filePath).toLowerCase();
+          if (imageExtensions.includes(ext)) {
+            try {
+              const stat = await fs.promises.stat(filePath);
+              if (stat.isFile()) {
+                const fileBuffer = await fs.promises.readFile(filePath);
                 const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
                 return `data:${mimeType};base64,` + fileBuffer.toString('base64');
               }
+            } catch (err) {
+              console.warn("Erro ao acessar arquivo em FileNameW:", filePath, err.message);
             }
           }
         }
@@ -6033,15 +6036,18 @@ ipcMain.handle("read-clipboard-image", () => {
     const text = clipboard.readText();
     if (text) {
       let filePath = text.trim().replace(/^"|"$/g, '');
-      if (path.isAbsolute(filePath) && fs.existsSync(filePath)) {
-        const stat = fs.statSync(filePath);
-        if (stat.isFile()) {
-          const ext = path.extname(filePath).toLowerCase();
-          const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.ico'];
-          if (imageExtensions.includes(ext)) {
-            const buffer = fs.readFileSync(filePath);
-            const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
-            return `data:${mimeType};base64,` + buffer.toString('base64');
+      if (path.isAbsolute(filePath)) {
+        const ext = path.extname(filePath).toLowerCase();
+        if (imageExtensions.includes(ext)) {
+          try {
+            const stat = await fs.promises.stat(filePath);
+            if (stat.isFile()) {
+              const buffer = await fs.promises.readFile(filePath);
+              const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
+              return `data:${mimeType};base64,` + buffer.toString('base64');
+            }
+          } catch (err) {
+            console.warn("Erro ao acessar arquivo em fallback text:", filePath, err.message);
           }
         }
       }
