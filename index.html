@@ -2270,28 +2270,22 @@
                 await refreshProjectContext();
             }
 
-            async function checkIsIdeMode() {
-                // 1. Verifica se getWorkspaceAccessEnabled está ativo
-                let workspaceAccessEnabled = false;
-                try {
-                    workspaceAccessEnabled = window.electronAPI && window.electronAPI.getWorkspaceAccessEnabled
-                        ? await window.electronAPI.getWorkspaceAccessEnabled()
-                        : false;
-                } catch (_) {}
-                if (workspaceAccessEnabled) return true;
+            function checkIsIdeMode() {
+                // 1. Verifica a IA ativa direto do DOM (síncrono e super confiável)
+                const modelBtn = document.getElementById('composer-model');
+                const aiModel = modelBtn ? modelBtn.dataset.provider : null;
+                if (aiModel === 'geminiCli' || aiModel === 'claudeCli') {
+                    return true;
+                }
 
-                // 2. Verifica se a ferramenta de IA atual é uma ferramenta CLI (geminiCli ou claudeCli)
-                try {
-                    const aiModel = window.electronAPI && window.electronAPI.getAiModel
-                        ? await window.electronAPI.getAiModel()
-                        : null;
-                    if (aiModel === 'geminiCli' || aiModel === 'claudeCli') {
-                        return true;
-                    }
-                } catch (_) {}
-
-                // 3. Verifica se existe uma pasta de projeto (ctxProject) carregada/ativa
+                // 2. Verifica se existe uma pasta de projeto (ctxProject) carregada/ativa
                 if (typeof ctxProject !== 'undefined' && ctxProject && ctxProject.path) {
+                    return true;
+                }
+
+                // 3. Verifica se o painel do workspace está ativo/visível (ou seja, se há pasta/projeto ou workspace habilitado)
+                const wsPanel = document.getElementById('workspace-panel');
+                if (wsPanel && wsPanel.style.display !== 'none') {
                     return true;
                 }
                 
@@ -5341,7 +5335,7 @@
                             const base64Image = e.target.result;
 
                             // Verifica se o modo IDE está ativo
-                            const isIdeMode = await checkIsIdeMode();
+                            const isIdeMode = checkIsIdeMode();
 
                             if (isIdeMode) {
                                 // MODO IDE: Anexar a imagem temporariamente
@@ -5635,7 +5629,7 @@
                 animationContainer.style.display = 'none';
 
                 // Verifica se o modo IDE está ativo
-                const isIdeMode = await checkIsIdeMode();
+                const isIdeMode = checkIsIdeMode();
 
                 if (isIdeMode) {
                     const imgData = base64Image || (screenshotPath ? `file://${screenshotPath}` : null);
