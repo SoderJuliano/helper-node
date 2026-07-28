@@ -1,0 +1,235 @@
+// Window Controls & Sidebar Layout Module
+(async function() {
+    // Custom Window Dragging & Controls (Windows/macOS)
+            const minBtn = document.getElementById('main-win-min-btn');
+            const maxBtn = document.getElementById('main-win-max-btn');
+            const closeBtn = document.getElementById('main-win-close-btn');
+            const controlsOverlay = document.getElementById('win-controls-overlay');
+
+            if (window.electronAPI) {
+                // Hide custom controls on Linux since it has native titlebars/borders
+                if (window.electronAPI.platform === 'linux') {
+                    if (controlsOverlay) controlsOverlay.style.display = 'none';
+                } else {
+                    // Expose functionality on Windows/macOS
+                    if (minBtn) minBtn.addEventListener('click', () => window.electronAPI.minimizeWindow && window.electronAPI.minimizeWindow());
+                    if (maxBtn) maxBtn.addEventListener('click', () => window.electronAPI.maximizeWindow && window.electronAPI.maximizeWindow());
+                    if (closeBtn) closeBtn.addEventListener('click', () => window.electronAPI.closeWindow && window.electronAPI.closeWindow());
+
+                    // Manual Dragging for Windows/macOS frameless transparent window
+                    const dragArea = document.querySelector('.drag-area');
+                    if (dragArea && window.electronAPI.startWindowDrag) {
+                        dragArea.style.setProperty('-webkit-app-region', 'no-drag');
+                        dragArea.style.cursor = 'move';
+                        dragArea.addEventListener('mousedown', (e) => {
+                            if (e.button === 0) { // Left click only
+                                e.preventDefault();
+                                window.electronAPI.startWindowDrag();
+                            }
+                        });
+                        const endDrag = () => {
+                            if (window.electronAPI.endWindowDrag) window.electronAPI.endWindowDrag();
+                        };
+                        window.addEventListener('mouseup', endDrag);
+                        window.addEventListener('blur', endDrag);
+                    }
+                }
+            }
+
+    // Sidebar Collapsing
+    window.isSidebarCollapsed = function() {
+        return document.body.classList.contains('sidebar-collapsed');
+    };
+
+    window.setSidebarCollapsed = function(collapsed) {
+        document.body.classList.toggle('sidebar-collapsed', collapsed);
+        const shell = document.getElementById('app-shell');
+        if (shell) shell.classList.toggle('sidebar-collapsed', collapsed);
+        try { localStorage.setItem('sidebar-collapsed', collapsed ? 'true' : 'false'); } catch(_) {}
+    };
+
+        function isSidebarCollapsed() { return document.body.classList.contains('sidebar-collapsed'); }
+        function setSidebarCollapsed(collapsed) {
+            document.body.classList.toggle('sidebar-collapsed', collapsed);
+            try { localStorage.setItem('hn-sidebar-collapsed', collapsed ? '1' : '0'); } catch (_) {}
+        }
+        (function initSidebarCollapse() {
+            const shell = document.getElementById('app-shell');
+            // Restaura o estado salvo SEM animar (evita "piscar" ao carregar a janela).
+            if (shell) shell.classList.add('no-anim');
+            let saved = false;
+            try { saved = localStorage.getItem('hn-sidebar-collapsed') === '1'; } catch (_) {}
+            if (saved) setSidebarCollapsed(true);
+            requestAnimationFrame(() => { if (shell) shell.classList.remove('no-anim'); });
+
+            const collapseBtn = document.getElementById('sidebar-collapse-btn');
+            if (collapseBtn) collapseBtn.addEventListener('click', (e) => { e.stopPropagation(); setSidebarCollapsed(true); });
+            const expandBtn = document.getElementById('sidebar-expand-btn');
+            if (expandBtn) expandBtn.addEventListener('click', (e) => { e.stopPropagation(); setSidebarCollapsed(false); });
+        })();
+
+        // === Sidebar redimensionável (arraste a borda direita) — largura
+        // persiste entre sessões via localStorage, independente do estado de
+        // recolhido/expandido (que continua controlado por setSidebarCollapsed). ===
+        (function initSidebarResize() {
+            const shell = document.getElementById('app-shell');
+            const resizer = document.getElementById('sidebar-resizer');
+            if (!shell || !resizer) return;
+            const MIN_W = 200, MAX_W = 480;
+
+            let saved = null;
+            try { saved = parseInt(localStorage.getItem('hn-sidebar-w'), 10); } catch (_) {}
+            if (saved && saved >= MIN_W && saved <= MAX_W) {
+                shell.style.setProperty('--sidebar-w', saved + 'px');
+            }
+
+            let dragging = false, startX = 0, startW = 0;
+
+            function onMove(e) {
+                if (!dragging) return;
+                const w = Math.min(MAX_W, Math.max(MIN_W, startW + (e.clientX - startX)));
+                shell.style.setProperty('--sidebar-w', w + 'px');
+            }
+            function onUp() {
+                if (!dragging) return;
+                dragging = false;
+                shell.classList.remove('resizing');
+                resizer.classList.remove('dragging');
+                document.body.classList.remove('resizing-sidebar');
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+                const w = parseInt(getComputedStyle(shell).gridTemplateColumns, 10);
+                if (w) { try { localStorage.setItem('hn-sidebar-w', String(w)); } catch (_) {} }
+            }
+            resizer.addEventListener('mousedown', (e) => {
+                if (isSidebarCollapsed()) return;
+                e.preventDefault(); e.stopPropagation();
+                dragging = true;
+                startX = e.clientX;
+                startW = parseInt(getComputedStyle(shell).gridTemplateColumns, 10) || 268;
+                shell.classList.add('resizing');
+                resizer.classList.add('dragging');
+                document.body.classList.add('resizing-sidebar');
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+            });
+        })();
+
+        // Ctrl+F/Ctrl+B global — capture-phase no document (mesmo padrão do Esc
+        // acima), não bubble-phase no window: é o que garante que nada no caminho
+        // (foco em contenteditable, outros listeners) engula a tecla antes de
+        // chegar aqui.
+        document.addEventListener('keydown', (e) => {
+            // Ctrl+B: alterna a sidebar — funciona igual no chat e no editor.
+            if (e.key.toLowerCase() === 'b' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
+                e.preventDefault(); e.stopPropagation();
+                setSidebarCollapsed(!isSidebarCollapsed());
+                return;
+            }
+            if (e.key.toLowerCase() !== 'f' || !(e.ctrlKey || e.metaKey) || e.altKey) return;
+            // Editor aberto → busca dentro do arquivo (CodeMirror). Editor fechado →
+            // Ctrl+F busca por nome e Ctrl+Shift+F busca por conteúdo no projeto.
+            const fv = document.getElementById('file-viewer');
+            if (fv && fv.classList.contains('open')) {
+                if (window.EditorController && window.EditorController.hasFocus()) {
+                    return;
+                }
+                e.preventDefault(); e.stopPropagation();
+                if (window.EditorController) window.EditorController.focusSearch();
+                return;
+            }
+            e.preventDefault(); e.stopPropagation();
+            if (isSidebarCollapsed()) setSidebarCollapsed(false);
+            if (e.shiftKey) {
+                if (window.openTreeContentFilter) window.openTreeContentFilter();
+            } else if (window.openTreeFilter) {
+                window.openTreeFilter();
+            }
+        }, true);
+
+        function removeManualInputContainer() {
+            const existing = document.querySelector('.manual-input-container');
+            if (existing) existing.remove();
+            undockComposer();
+        }
+
+        // Copia SEMPRE via clipboard do Electron (IPC). navigator.clipboard
+        // rejeita com "Document is not focused" quando a janela overlay não
+        // tem foco — era por isso que os botões de copiar "não faziam nada".
+        function copyTextReliable(text) {
+            try {
+                if (window.electronAPI && window.electronAPI.copyToClipboard) {
+                    window.electronAPI.copyToClipboard(text);
+                    return true;
+                }
+            } catch (_) {}
+            try { navigator.clipboard.writeText(text).catch(() => {}); } catch (_) {}
+            return true;
+        }
+
+        const COPY_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+        const CHECK_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+
+        function createBlockActions(transcriptionElement) {
+            // Ícone de copiar a RESPOSTA (vira ✓ ao copiar, estilo ChatGPT).
+            const copyBtn = document.createElement('button');
+            copyBtn.className = 'copy-interaction-btn';
+            copyBtn.title = 'Copiar resposta';
+            copyBtn.setAttribute('aria-label', 'Copiar resposta');
+            copyBtn.innerHTML = COPY_ICON_SVG;
+            copyBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const block = copyBtn.closest('.interaction-block');
+                let aEl = block.querySelector('.ia-response, .streaming-response');
+                // Fallback: resposta pode ter caído fora do bloco (fluxos antigos)
+                if (!aEl && block.nextElementSibling &&
+                    block.nextElementSibling.matches('.ia-response, .streaming-response')) {
+                    aEl = block.nextElementSibling;
+                }
+                const aText = aEl ? (aEl.innerText || aEl.textContent || '').trim() : '';
+                if (!aText) { if (typeof showToast === 'function') showToast('Nada para copiar ainda'); return; }
+                // Clipboard do Electron via IPC: navigator.clipboard falha
+                // silenciosamente quando a janela não está focada (overlay).
+                copyTextReliable(aText);
+                copyBtn.innerHTML = CHECK_ICON_SVG;
+                copyBtn.classList.add('copied');
+                setTimeout(() => { copyBtn.innerHTML = COPY_ICON_SVG; copyBtn.classList.remove('copied'); }, 1500);
+            });
+            return copyBtn;
+        }
+
+    // Panels Toggle Button
+            // === Botão ⌬ — esconde/mostra painéis ===
+            const commandsDiv = document.querySelector('.commands');
+            const panelsToggleBtn = document.getElementById('panels-toggle-btn');
+            const SVG_OPEN  = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8.636 12.5a.5.5 0 0 1-.5.5H1.5A1.5 1.5 0 0 1 0 11.5v-10A1.5 1.5 0 0 1 1.5 0h10A1.5 1.5 0 0 1 13 1.5v6.636a.5.5 0 0 1-1 0V1.5a.5.5 0 0 0-.5-.5h-10a.5.5 0 0 0-.5.5v10a.5.5 0 0 0 .5.5h6.636a.5.5 0 0 1 .5.5"/><path fill-rule="evenodd" d="M16 15.5a.5.5 0 0 1-.5.5h-5a.5.5 0 0 1 0-1h3.793L6.146 6.854a.5.5 0 1 1 .708-.708L15 14.293V10.5a.5.5 0 0 1 1 0z"/></svg>`;
+            const SVG_CLOSE = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M7.364 3.5a.5.5 0 0 1 .5-.5H14.5A1.5 1.5 0 0 1 16 4.5v10a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 3 14.5V7.864a.5.5 0 1 1 1 0V14.5a.5.5 0 0 0 .5.5h10a.5.5 0 0 0 .5-.5v-10a.5.5 0 0 0-.5-.5H7.864a.5.5 0 0 1-.5-.5"/><path fill-rule="evenodd" d="M0 .5A.5.5 0 0 1 .5 0h5a.5.5 0 0 1 0 1H1.707l8.147 8.146a.5.5 0 0 1-.708.708L1 1.707V5.5a.5.5 0 0 1-1 0z"/></svg>`;
+            if (panelsToggleBtn && commandsDiv) {
+                panelsToggleBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const isOpen = commandsDiv.classList.contains('open');
+                    commandsDiv.classList.toggle('open', !isOpen);
+                    panelsToggleBtn.innerHTML = isOpen ? SVG_OPEN : SVG_CLOSE;
+                    panelsToggleBtn.style.color = isOpen ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.75)';
+                });
+            }
+
+    // Config Open Button & Edition Tag
+            // Botão ⚙ Configurações (sidebar)
+            const configOpenBtn = document.getElementById('config-open-btn');
+            if (configOpenBtn && window.electronAPI && window.electronAPI.openConfig) {
+                configOpenBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    window.electronAPI.openConfig();
+                });
+            }
+
+            // Tag de edição na sidebar (full/lite)
+            const editionTag = document.getElementById('app-edition-tag');
+            if (editionTag && window.electronAPI && window.electronAPI.getEdition) {
+                try { editionTag.textContent = await window.electronAPI.getEdition(); } catch(_) {}
+            }
+
+    // Usada por chatInput/chatMessages/chatHistory (IIFEs separadas).
+    window.removeManualInputContainer = removeManualInputContainer;
+})();

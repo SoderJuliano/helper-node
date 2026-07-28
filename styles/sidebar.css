@@ -1,0 +1,295 @@
+/* === Painéis colapsáveis reaproveitados (history/shortcut) === */
+        .panel {
+            background: transparent;
+            padding: 2px 4px;
+            border-radius: var(--radius-sm);
+            margin-bottom: 6px;
+            overflow: hidden;
+            max-height: 320px;
+            transform-origin: top;
+            transition: max-height .22s var(--ease);
+            position: relative;
+        }
+        .panel.collapsed { max-height: 28px; }
+
+        .panel-header {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            min-height: 26px;
+            padding: 5px 6px;
+            border-radius: var(--radius-sm);
+            color: var(--text-3);
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: .6px;
+            cursor: pointer;
+            user-select: none;
+            -webkit-app-region: no-drag;
+            transition: background .15s var(--ease), color .15s var(--ease);
+        }
+        .panel-header:hover { background: rgba(255,255,255,0.04); color: var(--text-2); }
+        .panel-label { white-space: nowrap; }
+        .panel-filler { flex: 1; }
+        .panel:not(.collapsed) .panel-header { color: var(--text-2); }
+
+        .panel-item {
+            padding: 6px 8px;
+            cursor: pointer;
+            color: var(--text-2);
+            font-size: 12px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            border-radius: var(--radius-sm);
+            display: flex; align-items: center; gap: 7px;
+            transition: background .14s var(--ease), color .14s var(--ease);
+        }
+        .panel-item:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+        .panel-item.active { background: var(--accent-soft); color: var(--text); }
+        .panel-item.active .panel-item-title { color: var(--text); }
+        .panel-item-title { flex: 1; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+        .panel-item-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+        .panel-item-action {
+            flex-shrink: 0; background: transparent; border: none;
+            color: var(--text-4); cursor: pointer; padding: 0;
+            width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;
+            border-radius: 4px; opacity: 0; transition: opacity .15s, color .15s, background .15s;
+        }
+        .panel-item-action svg { width: 13px; height: 13px; }
+        .panel-item:hover .panel-item-action { opacity: .7; }
+        .panel-item-action:hover { color: var(--text); background: rgba(255,255,255,0.10); opacity: 1; }
+        .panel-item-delete:hover { color: var(--danger); background: rgba(248,113,113,0.12); opacity: 1; }
+
+        .commands-content {
+            max-height: 280px;
+            opacity: 1;
+            transition: max-height .22s var(--ease), opacity .18s var(--ease);
+            padding: 2px 0;
+        }
+        .panel.collapsed .commands-content { max-height: 0; opacity: 0; overflow: hidden; }
+
+        /* Histórico: lista TODAS as conversas e rola internamente, sem barra
+           visível, aproveitando o espaço da sidebar. */
+        #history-panel { max-height: none; }
+        #history-content { max-height: 46vh; overflow-y: auto; scrollbar-width: none; }
+        #history-content::-webkit-scrollbar { width: 0; height: 0; }
+        #history-panel.collapsed #history-content { max-height: 0; overflow: hidden; }
+
+        .commands-toggle {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 16px; height: 16px; padding: 0; border: none; background: transparent;
+            color: var(--text-3); cursor: pointer; -webkit-app-region: no-drag;
+            transition: transform .2s var(--ease), color .15s var(--ease);
+        }
+        .commands-toggle:hover { color: var(--text); }
+        .commands-toggle svg { width: 12px; height: 12px; display: block; pointer-events: none; }
+        .panel:not(.collapsed) .commands-toggle { transform: rotate(180deg); }
+
+        .command-item {
+            margin: 3px 0;
+            font-size: 11.5px;
+            color: var(--text-2);
+            line-height: 1.5;
+        }
+        .command-item strong { color: var(--accent-2); font-weight: 600; }
+
+        /* === Workspace / Projeto na sidebar === */
+        .ws-section {
+            padding: 4px 4px 6px; margin: 0 4px 6px;
+            -webkit-app-region: no-drag;
+        }
+        .ws-actions { display: flex; flex-direction: column; gap: 4px; }
+        .ws-action {
+            display: flex; align-items: center; gap: 8px;
+            padding: 7px 9px; width: 100%;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text-2); font-size: 12px; font-family: var(--font-ui);
+            cursor: pointer; text-align: left;
+            transition: background .15s var(--ease), border-color .15s var(--ease), color .15s var(--ease);
+        }
+        .ws-action:hover { background: rgba(255,255,255,0.06); border-color: var(--border-strong); color: var(--text); }
+        .ws-action svg { width: 15px; height: 15px; opacity: .8; flex-shrink: 0; }
+        .ws-action-primary { color: var(--text); }
+        .ws-action-primary svg { opacity: .95; }
+
+        /* Projeto aberto (modelo IDE): header discreto + dropdown da árvore */
+        .ws-project-row { display: flex; align-items: center; gap: 2px; }
+        .ws-project-main {
+            flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px;
+            padding: 7px 9px; background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border); border-radius: var(--radius-sm);
+            color: var(--text); font-size: 12px; font-family: var(--font-ui);
+            font-weight: 500; cursor: pointer; text-align: left;
+            transition: background .15s var(--ease), border-color .15s var(--ease);
+        }
+        .ws-project-main:hover { background: rgba(255,255,255,0.06); border-color: var(--border-strong); }
+        .ws-project-main .ws-folder-ic { width: 15px; height: 15px; opacity: .85; flex-shrink: 0; pointer-events: none; }
+        .ws-project-main #ws-project-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
+        .ws-tree-toggle {
+            flex-shrink: 0; width: 28px; height: 30px; padding: 0;
+            display: inline-flex; align-items: center; justify-content: center;
+            background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+            border-radius: var(--radius-sm); color: var(--text-3); cursor: pointer;
+            transition: background .15s, color .15s, border-color .15s;
+        }
+        .ws-tree-toggle:hover { background: rgba(255,255,255,0.06); color: var(--text); border-color: var(--border-strong); }
+        .ws-tree-toggle svg { width: 13px; height: 13px; transition: transform .2s var(--ease); }
+        .ws-tree-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+        .ws-tree-trash-btn {
+            display: none; align-items: center; justify-content: center;
+            background: rgba(255, 82, 82, 0.05); border: 1px solid rgba(255, 82, 82, 0.2);
+            color: #ff5252; width: 28px; height: 30px; border-radius: var(--radius-sm);
+            cursor: pointer; flex-shrink: 0; transition: background 0.15s, color 0.15s, border-color 0.15s;
+        }
+        .ws-tree-trash-btn:hover {
+            background: rgba(255, 82, 82, 0.15);
+            border-color: rgba(255, 82, 82, 0.4);
+            color: #ff1744;
+        }
+        .ws-tree-trash-btn svg {
+            width: 13px; height: 13px;
+        }
+        .ws-tree-checkbox {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 12px;
+            height: 12px;
+            border: 1px solid var(--border-strong, #3d3d4c);
+            border-radius: 2px;
+            margin-right: 6px;
+            flex-shrink: 0;
+            cursor: pointer;
+            background: rgba(0,0,0,0.25);
+            font-size: 8px;
+            font-weight: bold;
+            line-height: 1;
+        }
+        .ws-tree-checkbox.checked {
+            background: var(--accent-2, #64c8ff);
+            border-color: var(--accent-2, #64c8ff);
+            color: #000 !important;
+        }
+        .ws-tree-checkbox.checked::after {
+            content: '✓';
+        }
+        .ws-tree {
+            margin-top: 5px; padding: 7px 9px;
+            background: rgba(0,0,0,0.22); border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            font-family: var(--font-mono); font-size: 12.5px; line-height: 1.65;
+            color: var(--text-3); white-space: pre; overflow: auto;
+            /* Estica até o fim da janela descontando os elementos fixos superiores */
+            max-height: calc(100vh - 210px);
+            scrollbar-width: none;
+        }
+        .ws-tree::-webkit-scrollbar { width: 0; height: 0; }
+        .ws-tree .ws-tree-empty { color: var(--text-4); font-style: italic; white-space: normal; }
+
+        /* Git status no Tree Lateral & Contador de alterações */
+        .ws-git-changes-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1px 5px;
+            margin-left: auto;
+            background: rgba(248, 81, 73, 0.18);
+            border: 1px solid rgba(248, 81, 73, 0.35);
+            color: #ff6b6b;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 700;
+            border-radius: 8px;
+            flex-shrink: 0;
+            user-select: none;
+            white-space: nowrap;
+            line-height: 1.3;
+        }
+        .ws-tree-node.git-modified {
+            color: #ff6b6b !important;
+        }
+        .ws-tree-node.git-modified .ws-tree-ic {
+            color: #ff6b6b !important;
+        }
+        .ws-tree-node.git-untracked {
+            color: #73c991 !important;
+        }
+        .ws-tree-node.git-untracked .ws-tree-ic {
+            color: #73c991 !important;
+        }
+        .ws-tree-node.git-dir-modified > .ws-tree-ic {
+            color: #e5c07b !important;
+        }
+        .ws-tree-git-tag {
+            margin-left: auto;
+            font-size: 9.5px;
+            font-weight: 700;
+            font-family: var(--font-mono);
+            padding: 0 4px;
+            border-radius: 3px;
+            opacity: 0.9;
+            flex-shrink: 0;
+        }
+        .ws-tree-git-tag.tag-m { color: #ff6b6b; background: rgba(248,81,73,0.12); }
+        .ws-tree-git-tag.tag-u { color: #73c991; background: rgba(115,201,145,0.12); }
+        .ws-tree-git-tag.tag-a { color: #50fa7b; background: rgba(80,250,123,0.12); }
+        .ws-tree-git-tag.tag-d { color: #ff5555; background: rgba(255,85,85,0.12); }
+
+        .ws-chips { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; margin-top: 6px; }
+        .ws-chips:empty { display: none; }
+        .ws-chip {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 3px 5px 3px 8px;
+            background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+            border-radius: 6px; font-size: 10.5px; color: var(--text-2); max-width: 170px;
+            cursor: pointer; transition: background .15s, border-color .15s;
+        }
+        .ws-chip:hover { background: rgba(255,255,255,0.08); border-color: var(--border-strong); }
+        .ws-chip-ic { display: inline-flex; align-items: center; flex-shrink: 0; }
+        .ws-chip-ic svg { width: 12px; height: 12px; opacity: .75; }
+        .ws-chip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ws-chip-x {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 14px; height: 14px; padding: 0; background: transparent; border: none;
+            border-radius: 50%; color: rgba(255,255,255,0.6); cursor: pointer; flex-shrink: 0;
+            transition: background .15s, color .15s;
+        }
+        .ws-chip-x:hover { background: rgba(248,113,113,0.5); color: #fff; }
+        .ws-chip-x svg { width: 8px; height: 8px; }
+        .ws-file-event { margin: 4px 0; font-size: 11px; color: var(--text-3); display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; }
+        .ws-file-event-label { color: var(--text-4); }
+        .ws-file-link { color: #9ec5ff; cursor: pointer; text-decoration: none; border-bottom: 1px dashed rgba(158,197,255,0.4); }
+        .ws-file-link:hover { color: #fff; border-bottom-style: solid; }
+
+        /* Estado "explicado" para anexos desativados */
+        .ws-empty-note {
+            font-size: 11px; color: var(--text-4); line-height: 1.45;
+            padding: 4px 8px 2px;
+        }
+        .ws-empty-note b { color: var(--text-3); font-weight: 600; }
+
+        /* Rodapé da sidebar: status + config */
+        .sb-foot {
+            border-top: 1px solid var(--border);
+            padding: 8px 8px 10px;
+            display: flex; flex-direction: column; gap: 2px;
+            -webkit-app-region: no-drag;
+        }
+        .sb-foot-btn {
+            display: flex; align-items: center; gap: 10px;
+            padding: 8px 10px; border: none; background: transparent;
+            color: var(--text-3); font-size: 12.5px; font-family: var(--font-ui);
+            border-radius: var(--radius-sm); cursor: pointer; text-align: left; width: 100%;
+            transition: background .15s var(--ease), color .15s var(--ease);
+        }
+        .sb-foot-btn:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+        .sb-foot-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+        .sb-foot-btn .kbd {
+            margin-left: auto; font-family: var(--font-mono); font-size: 10px;
+            color: var(--text-4); background: rgba(255,255,255,0.04);
+            padding: 1px 5px; border-radius: 4px; border: 1px solid var(--border);
+        }

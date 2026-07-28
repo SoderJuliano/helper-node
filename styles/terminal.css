@@ -1,0 +1,286 @@
+/* ===== Visualizador de arquivo (IDE) — cobre a área principal ===== */
+        #file-viewer {
+            flex: 1 1 55%;
+            min-width: 0;
+            min-height: 0;
+            display: none;
+            flex-direction: column;
+            background: var(--bg-base);
+            border-right: 1px solid var(--border-strong);
+            position: relative;
+            z-index: 10;
+        }
+        #file-viewer.open { display: flex; }
+        .fv-header {
+            display: flex; align-items: center; gap: 8px;
+            padding: 9px 12px; border-bottom: 1px solid var(--border);
+            background: var(--bg-sidebar); flex-shrink: 0;
+        }
+        .fv-ic { width: 14px; height: 14px; opacity: .7; flex-shrink: 0; }
+        /* Sem flex:1 de propósito — o nome fica do tamanho do conteúdo (até um
+           teto, com "…" se passar disso), igual aba de IDE, pra o × ficar logo
+           depois do nome em vez de esticado lá longe na ponta do header. */
+        .fv-path { max-width: 260px; font-family: var(--font-mono); font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 1; }
+        /* Indicador de alteração não salva (dot laranja) — Ctrl+S salva, sem
+           botão explícito: nenhuma IDE tem "botão Salvar" visível o tempo todo. */
+        .fv-dirty { display: none; color: #ffb74d; font-size: 10px; flex-shrink: 0; }
+        .fv-close { flex-shrink: 0; width: 24px; height: 24px; background: transparent; border: none; color: var(--text-3); font-size: 17px; cursor: pointer; border-radius: 5px; display: flex; align-items: center; justify-content: center; }
+        .fv-close:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+        .fv-tabs-container {
+            display: flex;
+            align-items: flex-end;
+            gap: 2px;
+            overflow-x: auto;
+            flex: 1;
+            margin-right: 12px;
+            scrollbar-width: none; /* Hide scrollbar */
+            height: 100%;
+        }
+        .fv-tabs-container::-webkit-scrollbar {
+            display: none;
+        }
+        .fv-tab {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 10px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border);
+            border-bottom: none;
+            border-radius: 6px 6px 0 0;
+            font-family: var(--font-ui);
+            font-size: 12px;
+            color: var(--text-3);
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.15s ease;
+            max-width: 160px;
+            white-space: nowrap;
+            height: 22px;
+            margin-top: 4px;
+        }
+        .fv-tab:hover {
+            background: rgba(255,255,255,0.07);
+            color: var(--text-2);
+        }
+        .fv-tab.active {
+            background: var(--bg-base);
+            border-color: var(--border);
+            border-bottom: 1px solid var(--bg-base);
+            color: var(--text);
+            font-weight: 600;
+            height: 24px;
+            margin-top: 2px;
+            z-index: 2;
+        }
+        .fv-tab-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .fv-tab-dirty {
+            color: #ffb74d;
+            font-size: 8px;
+            display: none;
+        }
+        .fv-tab.dirty .fv-tab-dirty {
+            display: inline;
+        }
+        .fv-tab-close {
+            background: transparent;
+            border: none;
+            color: var(--text-4);
+            font-size: 13px;
+            cursor: pointer;
+            border-radius: 3px;
+            width: 14px;
+            height: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            margin-left: 2px;
+            transition: all 0.1s;
+        }
+        .fv-tab-close:hover {
+            background: rgba(255,255,255,0.15);
+            color: var(--text-2);
+        }
+        /* Info auxiliar (idioma, conflito, status do save) empurrada pro canto
+           direito — separada do grupo nome+×, que fica junto à esquerda. */
+        .fv-lang { margin-left: auto; font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-4); background: rgba(255,255,255,0.05); padding: 2px 7px; border-radius: 5px; flex-shrink: 0; }
+        /* Aviso de concorrência: IA mexeu no mesmo arquivo aberto agora, ou
+           conflito detectado ao salvar (arquivo mudou por fora). Só sinaliza —
+           não bloqueia nada (ver ARCHITECTURE.md > Editor de código). */
+        .fv-conflict { display: none; max-width: 220px; font-size: 11px; color: #ffb74d; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .fv-save-status { font-size: 11px; color: var(--text-4); flex-shrink: 0; white-space: nowrap; }
+        /* Corpo do editor: CodeMirror ocupa 100% da área (troca o antigo <pre><code> read-only) */
+        .fv-body { flex: 1; overflow: hidden; min-height: 0; }
+        .fv-body .CodeMirror {
+            height: 100%; font-family: 'JetBrains Mono', var(--font-mono);
+            font-size: 13px; line-height: 1.6;
+        }
+
+        /* Entradas clicáveis da árvore do projeto (dropdown do workspace) */
+        .ws-tree-node {
+            display: flex; align-items: center; gap: 6px;
+            padding: 3px 6px; border-radius: 4px; cursor: default;
+            white-space: nowrap; color: var(--text-3);
+            font-family: 'JetBrains Mono', var(--font-mono);
+            font-size: 12.5px; line-height: 18px;
+        }
+        .ws-tree-node.file { cursor: pointer; }
+        .ws-tree-node.file:hover { background: rgba(255,255,255,0.07); color: var(--text); }
+        .ws-tree-node:focus-visible { outline: 1px solid var(--accent-2); outline-offset: -1px; background: rgba(255,255,255,0.06); }
+        .ws-tree-node .ws-tree-ic { width: 14px; height: 14px; opacity: .85; flex-shrink: 0; }
+        .ws-tree-node.dir { color: var(--text-2); cursor: pointer; font-weight: 500; }
+        .ws-tree-node.dir:hover { background: rgba(255,255,255,0.06); }
+        .ws-tree-chevron { width: 10px; height: 10px; flex-shrink: 0; opacity: .6; transition: transform .15s var(--ease); }
+        /* Spacer com a MESMA largura+gap do chevron — garante que o nome do
+           arquivo comece exatamente na mesma coluna do nome da pasta
+           (antes ficava "puxado" 16px pra trás por faltar esse espaço). */
+        .ws-tree-chevron-spacer { width: 10px; height: 10px; flex-shrink: 0; display: inline-block; }
+        .ws-tree-node.dir.collapsed .ws-tree-chevron { transform: rotate(-90deg); }
+        .ws-tree-node.drag-over {
+            background: rgba(255, 255, 255, 0.08) !important;
+            outline: 1px dashed var(--accent-2) !important;
+        }
+        /* Auto-complete (CodeMirror hints) Dracula Theme styling */
+        .CodeMirror-hints {
+            position: absolute;
+            z-index: 10000;
+            overflow: hidden;
+            overflow-y: auto;
+            background: #1e1e24 !important;
+            border: 1px solid var(--border, #2d2d38) !important;
+            border-radius: var(--radius-sm, 4px) !important;
+            padding: 4px !important;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5) !important;
+            max-height: 20em;
+            font-family: 'JetBrains Mono', var(--font-mono) !important;
+            font-size: 12.5px !important;
+            color: var(--text, #e3e3e6) !important;
+        }
+        .CodeMirror-hint {
+            padding: 4px 8px !important;
+            border-radius: 3px !important;
+            white-space: pre !important;
+            cursor: pointer !important;
+            color: #b9b9c0 !important;
+        }
+        .CodeMirror-hint-active {
+            background: var(--accent-soft, rgba(100, 200, 255, 0.12)) !important;
+            color: var(--accent-2, #64c8ff) !important;
+        }
+        /* Filtro (Ctrl+F) da árvore: some entradas viram "match" (sublinhadas,
+           destacadas); as demais só ficam um pouco apagadas — não escondemos
+           nada, só sinalizamos, igual pedido pelo usuário. */
+        .ws-tree-node.dim { opacity: .35; }
+        .ws-tree-node.match { color: var(--text); }
+        .ws-tree-node.match span { text-decoration: underline; text-decoration-color: var(--accent-2); text-underline-offset: 2px; }
+        /* Busca flutuante de arquivos (Ctrl+F com o editor FECHADO, de qualquer
+           lugar do app) — abre a árvore do projeto sozinha e sublinha o que
+           bate; Enter abre o arquivo. Ver openTreeFilter() em index.html. */
+        .ws-tree-filter {
+            display: none; position: fixed; top: 50px; left: 12px; width: 260px;
+            padding: 8px 10px; background: var(--bg-elevated, #1b1e24);
+            border: 1px solid var(--accent-border); border-radius: var(--radius-sm);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.55); color: var(--text); font-size: 12.5px;
+            font-family: var(--font-ui); box-sizing: border-box; -webkit-app-region: no-drag;
+            z-index: 6500;
+        }
+        .ws-tree-filter:focus { outline: none; border-color: var(--accent-2); }
+        .ws-tree-filter-hint {
+            display: none; position: fixed; top: 82px; left: 12px; width: 260px;
+            box-sizing: border-box; padding: 4px 10px; font-size: 10.5px; color: var(--text-4);
+            font-family: var(--font-ui); z-index: 6500;
+        }
+        /* Tema do dialog de busca do CodeMirror (Ctrl+F no editor) — combina com o resto da UI */
+        .CodeMirror-dialog { background: var(--bg-sidebar); border-bottom: 1px solid var(--border); color: var(--text); padding: 6px 10px; }
+        .CodeMirror-dialog input { background: rgba(0,0,0,0.3); border: 1px solid var(--border-strong); color: var(--text); border-radius: 4px; padding: 3px 6px; }
+        .CodeMirror-search-hint { color: var(--text-4); }
+        #conversation-content { max-height: calc(66vh - 70px); overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.2) transparent; }
+        .conversation-close-btn { position: absolute; top: 10px; right: 10px; background: transparent; border: none; color: var(--text-2); font-size: 20px; cursor: pointer; padding: 0; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; opacity: .6; transition: opacity .2s; z-index: 5100; border-radius: 5px; }
+        .conversation-close-btn:hover { opacity: 1; background: rgba(255,255,255,0.08); }
+        .conversation-download-btn { position: absolute; top: 10px; right: 40px; background: transparent; border: none; color: var(--text-2); cursor: pointer; padding: 0; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; opacity: .6; transition: opacity .2s, color .2s; border-radius: 5px; }
+        .conversation-download-btn:hover { opacity: 1; color: var(--accent-2); background: rgba(255,255,255,0.08); }
+        .conversation-download-btn svg { width: 15px; height: 15px; display: block; pointer-events: none; }
+        .conversation-message { margin-bottom: 12px; padding: 10px 12px; background: var(--bg-surface); border-left: 3px solid var(--accent-border); border-radius: 6px; }
+        .conversation-message.user { border-left-color: rgba(96,165,250,0.5); }
+        .conversation-message.assistant { border-left-color: var(--accent-border); }
+        .conversation-message-label { font-weight: 700; color: var(--accent-2); margin-bottom: 3px; font-size: 11px; }
+        .conversation-message.user .conversation-message-label { color: #9ec5ff; }
+        .conversation-message-content { white-space: pre-wrap; word-wrap: break-word; text-align: left; }
+
+        /* Agentic status pill */
+        #agentic-status-container { display: none; position: fixed; bottom: 92px; left: 50%; transform: translateX(-50%); background: var(--bg-elevated); border: 1px solid var(--accent-border); border-radius: 10px; padding: 9px 16px; z-index: 10000; align-items: center; gap: 12px; box-shadow: 0 8px 28px rgba(0,0,0,0.55); font-family: var(--font-ui); font-size: 13px; min-width: 300px; pointer-events: auto; }
+        #agentic-status-text { flex: 1; color: var(--text); font-weight: 500; }
+        #agentic-phase-tag { background: var(--accent-soft); color: var(--accent-2); padding: 2px 9px; border-radius: 5px; font-size: 10px; text-transform: uppercase; font-weight: 700; letter-spacing: .5px; }
+        .agentic-stop-btn { background: rgba(248,113,113,0.10); border: 1px solid rgba(248,113,113,0.40); color: var(--danger); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all .2s var(--ease); font-size: 14px; font-weight: 700; padding: 0; line-height: 1; }
+        .agentic-stop-btn:hover { background: rgba(248,113,113,0.30); border-color: rgba(248,113,113,0.80); color: #fff; }
+        .agentic-debug-block { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 6px; padding: 10px; margin: 10px 0; font-size: 11px; max-height: 200px; overflow-y: auto; text-align: left; }
+        .agentic-debug-header { font-weight: 700; color: #ffab40; margin-bottom: 6px; display: flex; justify-content: space-between; }
+
+        /* Indicadores do tradutor (posicionamento fixo herdado) */
+        #ta-live-indicator { display: none; position: fixed; top: 16px; right: 16px; z-index: 9991; width: 45px; height: 45px; align-items: center; justify-content: center; pointer-events: none; transition: opacity .3s; }
+        #ta-live-indicator.visible { display: flex; }
+        #ta-live-indicator.hidden-by-loader { opacity: 0; }
+        #ta-volume { display: none; position: fixed; top: 64px; right: 12px; z-index: 9991; width: 78px; pointer-events: none; font-family: var(--font-mono); }
+        #ta-volume .ta-vol-row { display: flex; align-items: center; gap: 4px; margin-top: 3px; }
+        #ta-volume .ta-vol-tag { font-size: 9px; color: var(--text-4); width: 20px; text-align: right; }
+        #ta-volume .ta-vol-track { flex: 1; height: 6px; background: rgba(255,255,255,0.12); border-radius: 3px; overflow: hidden; }
+        #ta-volume .ta-vol-fill { width: 0%; height: 100%; background: #4a4a4a; border-radius: 3px; transition: width 80ms linear, background 120ms; }
+        #ta-volume .ta-vol-fill.active { background: #00e676; }
+        #ta-loading { display: none; position: fixed; top: 100px; right: 31px; z-index: 9991; width: 40px; height: 40px; pointer-events: none; }
+        #ta-live-pulse { display: none; position: relative; width: 15px; height: 15px; }
+        #ta-live-indicator.state-mic #ta-live-pulse { display: block; }
+        #ta-live-pulse:before { content: ''; position: relative; display: block; width: 300%; height: 300%; box-sizing: border-box; margin-left: -100%; margin-top: -100%; border-radius: 45px; background-color: #01a4e9; animation: pulse-ring 2.5s cubic-bezier(0.215,0.61,0.355,1) infinite; }
+        #ta-live-pulse:after { content: ''; position: absolute; left: 0; top: 0; display: block; width: 100%; height: 100%; background-color: white; border-radius: 15px; box-shadow: 0 0 8px rgba(0,0,0,.3); animation: pulse-dot 2.5s cubic-bezier(0.455,0.03,0.515,0.955) -.4s infinite; }
+        @keyframes pulse-ring { 0%{transform:scale(.33);} 80%,100%{opacity:0;} }
+        @keyframes pulse-dot { 0%{transform:scale(.8);} 50%{transform:scale(1);} 100%{transform:scale(.8);} }
+
+        code { z-index: 1; }
+
+        /* Scrollbars de código finas dentro do chat */
+        .ia-response pre::-webkit-scrollbar, #transcription pre::-webkit-scrollbar { height: 6px; width: 6px; background: transparent; }
+        .ia-response pre::-webkit-scrollbar-track, #transcription pre::-webkit-scrollbar-track { background: transparent; }
+        .ia-response pre::-webkit-scrollbar-thumb, #transcription pre::-webkit-scrollbar-thumb { background: #3a3a42; border-radius: 3px; transition: background .2s; }
+        .ia-response pre:hover::-webkit-scrollbar-thumb, #transcription pre:hover::-webkit-scrollbar-thumb { background: #5a5a62; }
+        .ia-response pre::-webkit-scrollbar-corner, #transcription pre::-webkit-scrollbar-corner { background: transparent; }
+
+        /* Responsividade mínima (janela é 800x600) */
+        @media (max-width: 640px) {
+            #app-shell { grid-template-columns: 0 1fr; }
+            #sidebar { display: none; }
+        }
+        
+        /* Notificação Tutor IDE */
+        .ide-tutor-notif {
+            position: absolute;
+            bottom: 16px;
+            right: 16px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--accent-border);
+            color: var(--text-2);
+            padding: 10px 14px;
+            border-radius: var(--radius);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            z-index: 1000;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: opacity 0.3s var(--ease), transform 0.3s var(--ease);
+            pointer-events: none;
+            font-size: 12px;
+        }
+        .ide-tutor-notif.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .ide-tutor-notif .tutor-ic {
+            color: var(--accent-2);
+            display: flex;
+            align-items: center;
+        }

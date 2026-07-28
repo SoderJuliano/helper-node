@@ -1,0 +1,327 @@
+/* =====================================================================
+           MAIN (chat)
+           ===================================================================== */
+        #main {
+            grid-row: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            min-height: 0;
+            background: var(--bg-base);
+            position: relative;
+        }
+        #main:has(#file-viewer.open) {
+            flex-direction: row;
+        }
+        #chat-container {
+            display: flex;
+            flex-direction: column;
+            flex: 1 1 45%;
+            min-width: 0;
+            min-height: 0;
+            position: relative;
+        }
+
+        .chat-area {
+            position: relative;
+            overflow: hidden;
+            min-height: 0;
+            flex: 1 1 auto;
+        }
+
+        /* =================================================================
+           ESTADO VAZIO (modo chat / boas-vindas) — o composer "respira" no
+           centro vertical junto da saudação, como no Zed/ZCode. Quando a
+           conversa começa (#main perde .is-empty), o composer doca embaixo.
+           ================================================================= */
+        #main.is-empty #chat-container { justify-content: center; }
+        #main.is-empty .chat-area {
+            flex: 0 0 auto;
+            overflow: visible;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #main.is-empty #transcription { display: none; }
+        /* Sem conversa, a topbar (gradiente + "Copiar tudo") não tem função e
+           aparecia como uma "barra fantasma" sobre o título do hero. */
+        #main.is-empty .chat-topbar { display: none; }
+        #main.is-empty #welcome-hero {
+            position: static;
+            inset: auto;
+            padding: 0 24px 4px;
+            min-height: 0;
+        }
+        #main.is-empty #welcome-hero .hero-logo { display: none; }
+        #main.is-empty #composer {
+            border-top: none;
+            background: transparent;
+        }
+        #main.is-empty .composer-hint { opacity: 0; }
+
+        /* Header fino do chat com Copy All */
+        .chat-topbar {
+            position: absolute; top: 0; left: 0; right: 0; z-index: 30;
+            height: 38px; display: flex; align-items: center; justify-content: flex-end;
+            padding: 0 14px;
+            background: linear-gradient(to bottom, var(--bg-base) 55%, rgba(14,17,22,0));
+            pointer-events: none;
+        }
+        .chat-topbar > * { pointer-events: auto; }
+        #copy-all-btn {
+            display: none;
+            background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+            color: var(--text-3); font-size: 11px; font-family: var(--font-ui);
+            padding: 4px 10px; border-radius: 6px; cursor: pointer;
+            transition: background .15s, color .15s, border-color .15s;
+        }
+        #copy-all-btn:hover { background: rgba(255,255,255,0.09); color: var(--text); border-color: var(--border-strong); }
+        #copy-all-btn.copied { color: var(--accent-2); border-color: var(--accent-border); background: var(--accent-soft); }
+
+        /* #transcription — área central rolável de mensagens.
+           O &lt;script&gt; posiciona #transcription com position:fixed via CSS antigo;
+           aqui redefinimos para fluir dentro do layout grid. Mantém o ID. */
+        #transcription {
+            position: absolute;
+            inset: 0;
+            top: 38px;
+            padding: 24px clamp(20px, 6%, 64px) 28px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            color: var(--text);
+            text-align: left;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255,255,255,0.14) transparent;
+            user-select: text;
+            -webkit-user-select: text;
+        }
+        #transcription::-webkit-scrollbar { width: 10px; }
+        #transcription::-webkit-scrollbar-track { background: transparent; }
+        #transcription::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.10); border-radius: 8px; border: 3px solid transparent; background-clip: content-box; }
+        #transcription::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.20); background-clip: content-box; border: 3px solid transparent; }
+        #transcription br { display: block; margin-top: 4px; }
+        #transcription pre {
+            text-align: left; max-width: 100%; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;
+            padding: 12px 14px; background: var(--bg-surface); border: 1px solid var(--border);
+            border-radius: var(--radius); box-sizing: border-box; scrollbar-width: thin; scrollbar-color: #3a3a42 transparent;
+        }
+
+        /* === Hero de boas-vindas (onboarding implícito) === */
+        #welcome-hero {
+            position: absolute;
+            inset: 0;
+            top: 38px;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            text-align: center; padding: 24px clamp(24px, 7%, 80px);
+            gap: 10px; transition: opacity .35s var(--ease);
+        }
+        #welcome-hero.hidden { opacity: 0; pointer-events: none; }
+        .hero-logo {
+            width: 58px; height: 58px; border-radius: 16px;
+            background: linear-gradient(145deg, #5fd75f, #2e7d32);
+            display: flex; align-items: center; justify-content: center;
+            color: #06210a; font-weight: 800; font-size: 30px; margin-bottom: 8px;
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.10), 0 14px 36px rgba(76,175,80,0.32);
+        }
+        .hero-title { font-size: 23px; font-weight: 700; color: var(--text); letter-spacing: -.2px; }
+        .hero-sub { font-size: 13.5px; color: var(--text-3); max-width: 440px; line-height: 1.55; }
+        .hero-suggestions { display: flex; flex-wrap: wrap; gap: 9px; justify-content: center; margin-top: 14px; max-width: 520px; }
+        .hero-chip {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 9px 14px; background: var(--bg-surface); border: 1px solid var(--border);
+            color: var(--text-2); font-size: 12.5px; font-family: var(--font-ui);
+            border-radius: 999px; cursor: pointer; text-align: left;
+            transition: background .16s var(--ease), border-color .16s var(--ease), color .16s var(--ease), transform .1s var(--ease);
+        }
+        .hero-chip:hover { background: var(--bg-surface-2); border-color: var(--accent-border); color: var(--text); transform: translateY(-1px); }
+        .hero-chip:active { transform: translateY(0); }
+        .hero-chip .hero-chip-ic { font-size: 15px; }
+
+        /* Mensagens: blocos pergunta+resposta */
+        .interaction-block {
+            position: relative;
+            border-radius: var(--radius);
+            padding: 14px 16px;
+            margin-top: 18px;
+            transition: background .2s var(--ease);
+        }
+        .interaction-block:first-child { margin-top: 0; }
+        .interaction-block:hover { background: rgba(255,255,255,0.025); }
+
+        .question-text {
+            position: relative; display: block; text-align: left;
+            padding: 9px 13px; border-radius: var(--radius);
+            background: linear-gradient(135deg, rgba(96,165,250,0.10), rgba(96,165,250,0.04));
+            border: 1px solid rgba(96,165,250,0.18);
+            color: var(--text); font-weight: 600; font-size: 14px; line-height: 1.5;
+            margin-bottom: 10px; cursor: default; word-break: break-word;
+            transition: background .2s var(--ease);
+        }
+        /* Elementos de markdown dentro da pergunta do usuário */
+        .question-text p { margin: 4px 0; font-weight: inherit; }
+        .question-text p:first-child { margin-top: 0; }
+        .question-text p:last-of-type { margin-bottom: 0; }
+        .question-text pre { margin: 8px 0; font-weight: 400; }
+        .question-text ul, .question-text ol { margin: 4px 0; padding-left: 20px; font-weight: 400; }
+        .question-text h1, .question-text h2, .question-text h3 { font-weight: 700; margin: 6px 0 3px; }
+        .question-text:hover { background: linear-gradient(135deg, rgba(96,165,250,0.16), rgba(96,165,250,0.07)); }
+        .question-text:hover .edit-icon { display: inline-block; }
+        .edit-icon { display: none; margin-left: 8px; font-size: 13px; opacity: .6; color: var(--text-3); cursor: pointer; }
+        .edit-icon:hover { opacity: 1; color: var(--text); }
+        .edit-cancel-btn { background: transparent; border: 1px solid var(--border-strong); color: var(--text-2); }
+        .edit-cancel-btn:hover { color: var(--text); border-color: var(--text-3); }
+
+        .ia-response {
+            font-family: var(--font-mono);
+            font-weight: 400; font-size: 14px; line-height: 1.75;
+            color: var(--text); overflow-wrap: break-word; margin-top: 6px;
+        }
+        .ia-response p { margin: 8px 0; line-height: 1.7; overflow-wrap: break-word; text-align: left; }
+        .ia-response ul, .ia-response ol { margin: 8px 0; padding-left: 22px; max-width: 100%; overflow-wrap: break-word; text-align: left; }
+        .ia-response li { color: var(--text); margin-bottom: 4px; }
+        .ia-response strong { font-weight: 700; color: var(--accent-2); }
+        .ia-response pre {
+            position: relative; text-align: start; color: var(--text);
+            background: var(--bg-surface); border: 1px solid var(--border);
+            padding: 12px 14px; border-radius: var(--radius);
+            overflow-x: auto; max-width: 100%; box-sizing: border-box; margin: 10px 0;
+            font-family: var(--font-mono); scrollbar-width: thin; scrollbar-color: #3a3a42 transparent;
+        }
+        .ia-response code { text-align: start; color: var(--text); font-family: var(--font-mono); display: inline; white-space: normal; overflow-wrap: break-word; max-width: 100%; }
+        .ia-response pre code { display: block; white-space: pre; overflow-wrap: normal; cursor: pointer; transition: background-color .2s; }
+        .ia-response pre code:hover { background-color: rgba(255,255,255,0.04); }
+        .ia-response code:not(pre code) { cursor: pointer; transition: background-color .2s; }
+        .ia-response code:not(pre code):hover { background-color: rgba(255,255,255,0.06); }
+
+        .think-block {
+            margin: 10px 0;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border-left: 3px solid #ffb74d;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #ccc;
+        }
+        .think-block summary {
+            cursor: pointer;
+            font-weight: bold;
+            color: #ffb74d;
+            user-select: none;
+            outline: none;
+        }
+        .think-block summary:hover {
+            color: #ffd54f;
+        }
+
+        .streaming-response {
+            font-family: var(--font-mono); font-weight: 400; line-height: 1.75; font-size: 14px;
+            overflow-wrap: break-word; margin-top: 8px; text-align: left; color: var(--text);
+        }
+        /* pre > code: bloco separado; code solto: inline */
+        .streaming-response pre code { display: block; white-space: pre; overflow-wrap: normal; cursor: pointer; transition: background-color .2s; }
+        .streaming-response pre code:hover { background-color: rgba(255,255,255,0.04); }
+        .streaming-response code:not(pre code) { display: inline; white-space: normal; overflow-wrap: break-word; }
+        .streaming-response p { margin: 6px 0; line-height: 1.7; overflow-wrap: break-word; }
+        .streaming-response h1, .streaming-response h2, .streaming-response h3 { margin: 14px 0 6px; font-weight: 700; color: var(--text-2); line-height: 1.3; }
+        .streaming-response h1 { font-size: 1.25em; }
+        .streaming-response h2 { font-size: 1.1em; }
+        .streaming-response h3 { font-size: 1em; color: var(--accent-2); }
+        .streaming-response ul, .streaming-response ol { margin: 6px 0; padding-left: 22px; }
+        .streaming-response li { margin-bottom: 3px; }
+        .streaming-response strong { font-weight: 700; color: var(--accent-2); }
+        .streaming-response em { font-style: italic; color: var(--text-2); }
+
+        /* Código inline — aparece dentro do texto, sem quebrar linha */
+        code.inline-code {
+            display: inline; background: rgba(0,0,0,0.35); color: var(--text-2);
+            padding: 1px 5px; border-radius: 3px; font-family: var(--font-mono);
+            font-size: .9em; white-space: nowrap; cursor: pointer;
+            transition: background-color .15s;
+        }
+        code.inline-code:hover { background: rgba(255,255,255,0.08); }
+
+        .typing-cursor { display: inline-block; width: 2px; height: 1em; background-color: var(--accent-2); margin-left: 2px; animation: blink 1s infinite; vertical-align: text-bottom; }
+        @keyframes blink { 0%,49%{opacity:1;} 50%,100%{opacity:0;} }
+
+        /* Botão Copiar dentro de cada interaction-block */
+        /* Copiar a RESPOSTA — ícone discreto no canto inferior do bloco, vira ✓
+           ao copiar (estilo ChatGPT). Fica embaixo p/ ficar claro que é da
+           resposta, não da pergunta. */
+        .copy-interaction-btn {
+            position: absolute; bottom: 8px; right: 8px;
+            width: 26px; height: 26px; padding: 0;
+            display: inline-flex; align-items: center; justify-content: center;
+            background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+            border-radius: 6px; cursor: pointer; color: var(--text-3);
+            opacity: 0; transition: opacity .15s var(--ease), background .15s var(--ease), color .15s var(--ease), border-color .15s var(--ease);
+            z-index: 3; pointer-events: none;
+        }
+        .copy-interaction-btn svg { width: 14px; height: 14px; pointer-events: none; }
+        .interaction-block:hover .copy-interaction-btn { opacity: .55; pointer-events: auto; }
+        .interaction-block:hover .copy-interaction-btn:hover { opacity: 1; background: rgba(255,255,255,0.10); color: var(--text); }
+        .copy-interaction-btn.copied { opacity: 1; color: var(--accent-2); border-color: var(--accent-border); background: var(--accent-soft); }
+
+        /* "Thinking"/ações da IA ao vivo (estilo IDE): lista discreta do que a
+           IA está fazendo — ler arquivo, buscar, rodar comando… */
+        .ai-activity {
+            display: flex; flex-direction: column; gap: 3px;
+            margin: 8px 0 4px; padding: 8px 10px;
+            background: rgba(255,255,255,0.025); border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+        }
+        .ai-activity-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-3); font-family: var(--font-mono); }
+        .ai-activity-ic { width: 13px; height: 13px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
+        .ai-activity-ic svg { width: 13px; height: 13px; }
+        .ai-activity-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ai-activity-item.running .ai-activity-label { color: var(--text-2); }
+        .ai-activity-item.done .ai-activity-label { color: var(--text-3); }
+        .ai-activity-item.fail .ai-activity-label { color: var(--text-3); text-decoration: line-through; opacity: .8; }
+        .ai-activity-check { color: var(--accent-2); }
+        .ai-activity-fail { color: var(--danger); }
+        .ai-activity-spinner {
+            width: 11px; height: 11px; border: 2px solid rgba(255,255,255,0.18);
+            border-top-color: var(--accent-2); border-radius: 50%;
+            animation: ai-spin .7s linear infinite;
+        }
+        @keyframes ai-spin { to { transform: rotate(360deg); } }
+
+        /* Fase do agentic INLINE na conversa (nada de balão flutuante) */
+        .ai-phase { display: flex; flex-direction: column; align-items: flex-start; margin: 8px 0 2px; font-size: 12px; font-family: var(--font-ui); width: 100%; }
+        .ai-phase-header { display: flex; align-items: center; gap: 8px; width: 100%; cursor: pointer; user-select: none; }
+        .ai-phase-spin { width: 12px; height: 12px; border: 2px solid rgba(255,255,255,0.18); border-top-color: var(--accent-2); border-radius: 50%; animation: ai-spin .7s linear infinite; flex-shrink: 0; }
+        .ai-phase-tag { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; font-weight: 700; color: var(--accent-2); background: var(--accent-soft); padding: 2px 7px; border-radius: 5px; flex-shrink: 0; }
+        .ai-phase-text { color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ai-phase-toggle-icon { font-size: 8px; transition: transform .2s ease; margin-left: 4px; color: var(--text-4); }
+        .ai-phase.expanded .ai-phase-toggle-icon { transform: rotate(90deg); color: var(--accent-2); }
+        .ai-thinking-box { display: none; width: 100%; margin-top: 8px; padding: 10px 12px; background: rgba(0, 0, 0, 0.25); border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.05); font-family: monospace; white-space: pre-wrap; font-size: 11px; color: var(--text-3); max-height: 220px; overflow-y: auto; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2); }
+        .ai-phase.expanded .ai-thinking-box { display: block; }
+        .ai-phase-stop { margin-left: auto; flex-shrink: 0; width: 20px; height: 20px; border: 1px solid rgba(248,113,113,0.4); background: rgba(248,113,113,0.1); color: var(--danger); border-radius: 5px; cursor: pointer; font-size: 13px; line-height: 1; display: flex; align-items: center; justify-content: center; padding: 0; }
+        .ai-phase-stop:hover { background: rgba(248,113,113,0.25); color: #fff; }
+        .ai-phase.done .ai-phase-tag { color: var(--text-3); background: rgba(255,255,255,0.06); }
+        .ai-phase.done .ai-phase-text { color: var(--text-4); }
+        .ai-phase.error .ai-phase-tag { color: var(--danger); background: rgba(248,113,113,0.15); }
+
+        /* Balão flutuante de status do agentic: aposentado (tudo é inline agora). */
+        #agentic-status-container { display: none !important; }
+
+        /* Botão copiar de blocos de código (pre > button.copy-button) */
+        .copy-button {
+            position: absolute; top: 8px; right: 8px;
+            background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+            border-radius: 5px; padding: 4px 6px; cursor: pointer; font-size: 0;
+            color: var(--text-3); transition: all .15s var(--ease); z-index: 2;
+            display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px;
+        }
+        .copy-button:hover { background: rgba(255,255,255,0.12); color: var(--text); }
+        .copy-button svg { width: 15px; height: 15px; }
+        .copy-button.copied { background: var(--accent-soft); color: var(--accent-2); border-color: var(--accent-border); }
+        .copy-button.copy-error { background: rgba(248,113,113,0.18); color: var(--danger); }
+        .copy-button:active { transform: scale(.85); }
+
+        .tool-files-list { display: flex; flex-wrap: wrap; gap: 5px; margin: 8px 0 2px; }
+        .tool-file-chip { font-size: 11px; background: rgba(255,255,255,0.04); color: var(--text-2); border: 1px solid var(--border); border-radius: 5px; padding: 2px 7px; font-family: var(--font-mono); cursor: pointer; transition: background .15s, border-color .15s; }
+        .tool-file-chip:hover { background: rgba(255,255,255,0.08); border-color: var(--border-strong); }
+        .kb-used-badge { font-size: 11px; color: var(--accent-2); opacity: .85; margin-bottom: 6px; font-style: italic; }
+
+        /* Palavras-chave em destaque (realtime + tradutor) */
+        .rt-assistant-text strong, .ia-response strong { font-size: 1.12em; font-weight: 700; color: var(--accent-2); letter-spacing: .2px; }

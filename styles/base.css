@@ -1,0 +1,219 @@
+/* =====================================================================
+           HELPER NODE — Design System
+           Cartão flutuante arredondado dentro de janela transparente/frameless.
+           Paleta escura premium + acento verde. Tipografia Inter (UI) +
+           Source Code Pro (código/transcrição). Preserva TODOS os IDs/classes
+           que o &lt;script&gt; referencia.
+           ===================================================================== */
+
+        :root {
+            /* Base / superfícies */
+            --bg-base:        #0e1116;
+            --bg-sidebar:     #0b0e12;
+            --bg-surface:     #161b22;
+            --bg-surface-2:   #1c2230;
+            --bg-elevated:    #21283a;
+
+            /* Bordas */
+            --border:         rgba(255, 255, 255, 0.07);
+            --border-strong:  rgba(255, 255, 255, 0.13);
+
+            /* Texto */
+            --text:           #e6edf3;
+            --text-2:         #b9c2cf;
+            --text-3:         #8b949e;
+            --text-4:         #5b6573;
+
+            /* Acento (verde identidade) */
+            --accent:         #4CAF50;
+            --accent-2:       #5fd75f;
+            --accent-soft:    rgba(76, 175, 80, 0.16);
+            --accent-border:  rgba(76, 175, 80, 0.38);
+
+            /* Auxiliares */
+            --danger:         #f87171;
+            --info:           #60a5fa;
+
+            --radius-sm: 6px;
+            --radius:    10px;
+            --radius-lg: 14px;
+
+            --shadow-card: 0 24px 70px rgba(0,0,0,0.62), 0 2px 0 rgba(255,255,255,0.03) inset;
+            --ease: cubic-bezier(.4, 0, .2, 1);
+
+            --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            --font-mono: 'Source Code Pro', 'JetBrains Mono', ui-monospace, monospace;
+        }
+
+        * { box-sizing: border-box; }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            overflow: hidden;
+            background: transparent;            /* janela transparente do SO */
+            font-family: var(--font-ui);
+            color: var(--text);
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+            user-select: none;
+        }
+
+        /* === Cartão flutuante: o "app" desenhado dentro da janela transparente === */
+        #app-shell {
+            position: fixed;
+            inset: 8px;
+            display: grid;
+            grid-template-columns: var(--sidebar-w, 268px) 1fr;
+            grid-template-rows: 1fr;
+            background: var(--bg-base);
+            border: 1px solid var(--border-strong);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-card);
+            overflow: hidden;
+            transition: grid-template-columns .22s var(--ease);
+        }
+        /* Sidebar recolhida: chat ocupa a tela inteira. .no-anim suprime a
+           transição só no carregamento inicial (restaurar estado salvo sem "piscar"). */
+        body.sidebar-collapsed #app-shell { grid-template-columns: 0px 1fr; }
+        #app-shell.no-anim { transition: none; }
+        /* Enquanto arrasta o resizer, sem transição (senão o redimensionamento
+           fica "atrasado" em relação ao mouse). */
+        #app-shell.resizing { transition: none; }
+        #app-shell.resizing #sidebar { pointer-events: none; }
+
+        /* =====================================================================
+           SIDEBAR
+           ===================================================================== */
+        #sidebar {
+            position: relative;
+            grid-row: 1;
+            background: var(--bg-sidebar);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            transition: opacity .15s var(--ease);
+            min-height: 0;
+            -webkit-app-region: no-drag;
+        }
+        body.sidebar-collapsed #sidebar { opacity: 0; pointer-events: none; }
+
+        /* Botão "<" — recolhe o sidebar. Pequeno, sobre a borda direita,
+           centralizado verticalmente. */
+        .sidebar-collapse-btn {
+            position: absolute; top: 50%; right: -9px; transform: translateY(-50%);
+            width: 18px; height: 34px; padding: 0;
+            background: var(--bg-sidebar); border: 1px solid var(--border);
+            border-radius: 0 6px 6px 0; color: var(--text-4); cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            opacity: .5; z-index: 50; -webkit-app-region: no-drag;
+            transition: opacity .15s var(--ease), background .15s var(--ease), color .15s var(--ease);
+        }
+        .sidebar-collapse-btn:hover { opacity: 1; background: rgba(255,255,255,0.08); color: var(--text); }
+        .sidebar-collapse-btn svg { width: 10px; height: 10px; }
+
+        /* Alça de redimensionar a sidebar: faixa fina sobre a borda direita,
+           mostra cursor de resize e engrossa a linha no hover pra sinalizar
+           que é arrastável (some junto com a sidebar quando recolhida). */
+        .sidebar-resizer {
+            position: absolute; top: 0; right: -3px; bottom: 0; width: 7px;
+            cursor: col-resize; z-index: 45; -webkit-app-region: no-drag;
+        }
+        .sidebar-resizer::before {
+            content: ''; position: absolute; top: 0; bottom: 0; left: 50%;
+            width: 1px; background: transparent; transform: translateX(-50%);
+            transition: background .12s var(--ease), width .12s var(--ease);
+        }
+        .sidebar-resizer:hover::before, .sidebar-resizer.dragging::before {
+            width: 3px; background: var(--accent-2);
+        }
+        body.sidebar-collapsed .sidebar-resizer { display: none; }
+        body.resizing-sidebar { cursor: col-resize; user-select: none; }
+
+        /* Zona de hover na borda esquerda, só existe (via display) quando a
+           sidebar está recolhida — passar o mouse revela o botão ">". */
+        #sidebar-reveal-zone {
+            display: none; position: fixed; left: 8px; top: 8px; bottom: 8px;
+            width: 18px; z-index: 200; -webkit-app-region: no-drag;
+        }
+        body.sidebar-collapsed #sidebar-reveal-zone { display: block; }
+        #sidebar-expand-btn {
+            position: absolute; top: 50%; left: 0; transform: translateY(-50%);
+            width: 18px; height: 34px; padding: 0;
+            background: var(--bg-sidebar); border: 1px solid var(--border-strong);
+            border-radius: 0 6px 6px 0; color: var(--text-3); cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            opacity: 0; transition: opacity .15s var(--ease), background .15s var(--ease), color .15s var(--ease);
+        }
+        #sidebar-reveal-zone:hover #sidebar-expand-btn { opacity: 1; background: rgba(255,255,255,0.08); color: var(--text); }
+        #sidebar-expand-btn svg { width: 10px; height: 10px; }
+
+        .sb-brand {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            padding: 13px 14px 12px;
+            font-weight: 600;
+            font-size: 13.5px;
+            letter-spacing: .1px;
+            color: var(--text);
+            border-bottom: 1px solid var(--border);
+            -webkit-app-region: drag;            /* arrasta a janela pela marca */
+        }
+        .sb-brand .sb-logo {
+            width: 22px; height: 22px;
+            border-radius: 6px;
+            background: linear-gradient(140deg, #5fd75f, #2e7d32);
+            display: inline-flex; align-items: center; justify-content: center;
+            color: #06210a; font-weight: 700; font-size: 13px;
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.10), 0 4px 10px rgba(76,175,80,0.30);
+            flex-shrink: 0;
+        }
+        .sb-brand .sb-ver {
+            margin-left: auto;
+            font-size: 10px; font-weight: 500; color: var(--text-4);
+            font-family: var(--font-mono);
+            -webkit-app-region: no-drag;
+        }
+
+        /* Botão "+ Novo Chat" discreto e elegante */
+        .new-chat-btn {
+            margin: 6px 10px 4px;
+            padding: 6px 10px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border);
+            color: var(--text-2);
+            font-weight: 500;
+            font-size: 11.5px;
+            font-family: var(--font-ui);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: background .15s var(--ease), border-color .15s var(--ease), color .15s var(--ease), transform .1s var(--ease);
+            display: flex; align-items: center; justify-content: center; gap: 6px;
+            -webkit-app-region: no-drag;
+            box-shadow: none;
+        }
+        .new-chat-btn:hover {
+            background: rgba(76, 175, 80, 0.12);
+            border-color: rgba(76, 175, 80, 0.35);
+            color: var(--accent-2);
+        }
+        .new-chat-btn:active { transform: translateY(1px); }
+        .new-chat-btn svg {
+            width: 13px; height: 13px;
+            stroke: var(--accent);
+            transition: stroke .15s var(--ease);
+        }
+        .new-chat-btn:hover svg {
+            stroke: var(--accent-2);
+        }
+
+        .sb-scroll {
+            flex: 1;
+            overflow-y: auto;
+            padding: 6px 8px 8px;
+            min-height: 0;
+            scrollbar-width: none;
+        }
+        .sb-scroll::-webkit-scrollbar { width: 0; height: 0; }
