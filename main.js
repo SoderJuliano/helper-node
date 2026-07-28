@@ -1799,14 +1799,6 @@ async function createWindow() {
       nodeIntegration: false,
     });
 
-    // Atalho F12 para abrir o DevTools Console quando a janela principal estiver focada
-    mainWindow.webContents.on('before-input-event', (event, input) => {
-      if (input.key === 'F12' && input.type === 'keyDown') {
-        mainWindow.webContents.toggleDevTools();
-        event.preventDefault();
-      }
-    });
-
     applyStealthProtection(mainWindow);
 
     // macOS específico - oculta o ícone da Dock
@@ -2103,35 +2095,11 @@ function commandExists(cmd) {
   });
 }
 
-ipcMain.on("process-pasted-image", (event, imageOrPath) => {
-  const path = require('path');
-  const isPath = typeof imageOrPath === 'string' && !imageOrPath.startsWith('data:') && imageOrPath.includes(path.sep);
-
-  if (isPath) {
-    console.log("Main process received pasted image path:", imageOrPath);
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('screen-capturing', true);
-      TesseractService.processImageFileFromPath(imageOrPath, mainWindow).catch(
-        (error) => {
-          console.error("Error processing image path in main process:", error);
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('ocr-result', {
-              text: '',
-              screenshotPath: imageOrPath,
-              base64Image: '',
-              error: 'Erro ao processar imagem'
-            });
-          }
-        }
-      );
-    }
-    return;
-  }
-
+ipcMain.on("process-pasted-image", (event, base64Image) => {
   // Dedup compartilhado com clipboard monitor: evita processar 2x
   // (cenario: monitor pegou o screenshot, user da Ctrl+V em seguida)
   try {
-    const stripped = (imageOrPath || '').replace(/^data:image\/[a-z]+;base64,/, '');
+    const stripped = (base64Image || '').replace(/^data:image\/[a-z]+;base64,/, '');
     if (stripped) {
       const currentHash = calculateImageHash(Buffer.from(stripped, 'base64'));
       const now = Date.now();
@@ -2153,7 +2121,7 @@ ipcMain.on("process-pasted-image", (event, imageOrPath) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     // Feedback visual (idempotente — se JS paste handler ja disparou, vira no-op rapido)
     mainWindow.webContents.send('screen-capturing', true);
-    TesseractService.processPastedImage(imageOrPath, mainWindow).catch(
+    TesseractService.processPastedImage(base64Image, mainWindow).catch(
       (error) => {
         console.error("Error processing pasted image in main process:", error);
         
@@ -2162,7 +2130,7 @@ ipcMain.on("process-pasted-image", (event, imageOrPath) => {
           mainWindow.webContents.send('ocr-result', {
             text: '',
             screenshotPath: '',
-            base64Image: imageOrPath,
+            base64Image: base64Image,
             error: 'Erro ao processar imagem colada'
           });
         }
@@ -2792,7 +2760,6 @@ async function registerGlobalShortcuts() {
     ? [
         { combo: "Ctrl+D", action: "toggle-recording" },
         { combo: "Ctrl+I", action: "manual-input" },
-        { combo: "Ctrl+Shift+I", action: "manual-input" },
         // Ctrl+A NAO e' registrado: precisa ser livre pra selectAll nativo em textarea/input.
         { combo: "Ctrl+Shift+C", action: "open-config" },
         { combo: "Ctrl+Shift+X", action: "capture-screen" },
@@ -2803,7 +2770,6 @@ async function registerGlobalShortcuts() {
     : [
         { combo: "CommandOrControl+D", action: "toggle-recording" },
         { combo: "CommandOrControl+I", action: "manual-input" },
-        { combo: "CommandOrControl+Shift+I", action: "manual-input" },
         // Cmd/Ctrl+A NAO e' registrado: livre pra selectAll nativo.
         { combo: "CommandOrControl+Shift+C", action: "open-config" },
         { combo: "CommandOrControl+Shift+X", action: "capture-screen" },
@@ -2816,7 +2782,6 @@ async function registerGlobalShortcuts() {
   const fallbackShortcuts = isLinux
     ? [
         { combo: "CommandOrControl+I", action: "manual-input" },
-        { combo: "CommandOrControl+Shift+I", action: "manual-input" },
         { combo: "CommandOrControl+Shift+X", action: "capture-screen" },
         { combo: "CommandOrControl+Shift+1", action: "move-to-display-0" },
         { combo: "CommandOrControl+Shift+2", action: "move-to-display-1" },
@@ -2896,7 +2861,7 @@ async function registerGlobalShortcuts() {
   });
 
   // Log final registration state for key shortcuts
-  ["Ctrl+I", "CommandOrControl+I", "Ctrl+Shift+I", "CommandOrControl+Shift+I", "Ctrl+Shift+X", "CommandOrControl+Shift+X", "Ctrl+Shift+1", "CommandOrControl+Shift+1", "Ctrl+Shift+2", "CommandOrControl+Shift+2"].forEach(
+  ["Ctrl+I", "CommandOrControl+I", "Ctrl+Shift+X", "CommandOrControl+Shift+X", "Ctrl+Shift+1", "CommandOrControl+Shift+1", "Ctrl+Shift+2", "CommandOrControl+Shift+2"].forEach(
     (accel) => {
       try {
         const ok = globalShortcut.isRegistered(accel);
@@ -3887,18 +3852,6 @@ async function bringWindowToFocus() {
   
   if (!mainWindow) return;
 
-  const isFocused = mainWindow.isFocused() && mainWindow.isVisible() && !mainWindow.isMinimized();
-
-  if (isFocused) {
-    console.log("bringWindowToFocus: Janela já está focada. Minimizando.");
-    mainWindow.minimize();
-    return;
-  }
-
-  if (mainWindow.isMinimized()) {
-    mainWindow.restore();
-  }
-
   if (isHyprland()) {
     try {
       const pid = process.pid;
@@ -3961,49 +3914,15 @@ function appendAttachmentsContext(prompt) {
     if (attachments.length > 0) {
       let contextHeader = "=== ARQUIVOS ANEXADOS AO CONTEXTO ===\n";
       contextHeader += "O usuário selecionou e anexou manualmente os seguintes arquivos no workspace:\n";
-      // Extensões binárias/imagem: nunca lemos o conteúdo (evita despejar bytes
-      // no prompt do CLI e qualquer risco de travamento). O modelo recebe só o
-      // caminho — e, se for CLI/visão, a imagem chega pelo fluxo de anexo próprio.
-      const BINARY_EXTS = new Set([
-        '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.ico', '.tif', '.tiff',
-        '.svg', '.heic', '.avif', '.pdf', '.zip', '.gz', '.tar', '.rar', '.7z',
-        '.exe', '.dll', '.bin', '.dat', '.mp4', '.mp3', '.wav', '.mov', '.avi',
-        '.mkv', '.webm', '.woff', '.woff2', '.ttf', '.otf', '.eot', '.class',
-        '.o', '.so', '.dylib', '.psd', '.ai', '.sketch', '.wasm', '.node'
-      ]);
-      const pathMod = require('path');
       for (const att of attachments) {
         contextHeader += `- Caminho: ${att.path}\n`;
         try {
           const fs = require('fs');
-          const ext = pathMod.extname(att.path || '').toLowerCase();
-          if (BINARY_EXTS.has(ext)) {
-            contextHeader += `\n(Arquivo binário/imagem anexado — conteúdo não incluído no prompt: ${att.path})\n`;
-            continue;
-          }
           if (fs.existsSync(att.path)) {
             const stat = fs.statSync(att.path);
-            if (stat.isFile()) {
-              // Verifica se o arquivo é binário antes de ler como texto
-              if (stat.size < 150 * 1024) {
-                const buffer = fs.readFileSync(att.path);
-                let isBinary = false;
-                const limit = Math.min(buffer.length, 8000);
-                for (let i = 0; i < limit; i++) {
-                  if (buffer[i] === 0) {
-                    isBinary = true;
-                    break;
-                  }
-                }
-                if (!isBinary) {
-                  const content = buffer.toString('utf8');
-                  contextHeader += `\n--- Conteúdo do arquivo (${att.path}) ---\n${content}\n--- Fim do arquivo ---\n\n`;
-                } else {
-                  contextHeader += `\n(Arquivo binário anexado: ${att.path})\n`;
-                }
-              } else {
-                contextHeader += `\n(Arquivo ignorado por ser muito grande para o prompt: ${att.path})\n`;
-              }
+            if (stat.isFile() && stat.size < 150 * 1024) {
+              const content = fs.readFileSync(att.path, 'utf8');
+              contextHeader += `\n--- Conteúdo do arquivo (${att.path}) ---\n${content}\n--- Fim do arquivo ---\n\n`;
             }
           }
         } catch (_) {}
@@ -4017,46 +3936,15 @@ function appendAttachmentsContext(prompt) {
   return prompt;
 }
 
-ipcMain.on("send-to-gemini", async (event, text, sessionId, image) => {
-  console.log('--- IPC: send-to-gemini INICIADO ---');
-  let tempFilePath = null;
+ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
   try {
     const aiModel = getEffectiveAiModel();
-    console.log('[send-to-gemini] Modelo efetivo:', aiModel);
     let resposta;
     let usedKnowledge = false; // base de conhecimento injetada nesta resposta?
-
-    // 1. Verifica se a imagem é um caminho de arquivo ou base64
-    const path = require('path');
-    const isPath = typeof image === 'string' && !image.startsWith('data:') && image.includes(path.sep);
-    let imageBase64ForVision = null;
-
-    if (image) {
-      if (isPath) {
-        tempFilePath = image;
-        // Se o modelo ativo usa a API de visão baseada em base64 (OpenAI, Ollama, etc)
-        if (aiModel !== 'geminiCli' && aiModel !== 'claudeCli' && !shouldUseAgentic(text)) {
-          console.log('[send-to-gemini] Carregando imagem do disco para envio à API de visão...');
-          try {
-            const fs = require('fs');
-            const fileBuffer = await fs.promises.readFile(tempFilePath);
-            const ext = path.extname(tempFilePath).toLowerCase();
-            const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
-            imageBase64ForVision = `data:${mimeType};base64,` + fileBuffer.toString('base64');
-          } catch (readErr) {
-            console.error('[send-to-gemini] Falha ao ler imagem do disco para a API de visão:', readErr);
-          }
-        }
-      } else {
-        // Compatibilidade de base64 recebido direto
-        imageBase64ForVision = image;
-      }
-    }
 
     let promptWithHistory = text;
     let pastMessages = [];
     if (sessionId) {
-      console.log('[send-to-gemini] Buscando histórico para sessionId:', sessionId);
       const session = historyService.getSessionById(Number(sessionId)) || historyService.getSessionById(sessionId);
       if (session && session.conversations && session.conversations.length > 1) {
         // Exclui a última mensagem, que é o prompt atual que já foi adicionado
@@ -4073,56 +3961,14 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId, image) => {
       }
     }
 
-    // Se houver imagem e for CLI ou Agentic workflow, gravamos temporariamente na pasta de dados do usuário
-    // (garantindo permissões de leitura/escrita sem root) e colocamos aviso no prompt apontando para o caminho.
-    let promptWithImageInfo = promptWithHistory;
-    let promptTextForCli = text;
-    if (image && (aiModel === 'geminiCli' || aiModel === 'claudeCli' || shouldUseAgentic(text))) {
-      if (isPath) {
-        console.log('[send-to-gemini] Imagem já salva no disco:', tempFilePath);
-        const osPathFormatted = process.platform === 'win32' ? tempFilePath.replace(/\//g, '\\') : tempFilePath;
-        const imgNotice = `\n\n[IMAGEM DE CONTEXTO ANEXADA: Existe uma imagem associada a esta pergunta salva em: "${osPathFormatted}". Se necessário, você pode ler ou analisar esta imagem local para responder à pergunta.]`;
-        promptWithImageInfo += imgNotice;
-        promptTextForCli += imgNotice;
-      } else {
-        console.log('[send-to-gemini] Imagem recebida em base64. Salvando temporariamente...');
-        try {
-          const fs = require('fs');
-          const { app } = require('electron');
-          const base64Data = image.replace(/^data:image\/[a-z]+;base64,/, "");
-          const tempDir = path.join(app.getPath('userData'), 'temp_images');
-          if (!fs.existsSync(tempDir)) {
-            console.log('[send-to-gemini] Criando pasta de imagens temporárias:', tempDir);
-            fs.mkdirSync(tempDir, { recursive: true });
-          }
-          const tempFileName = `helper_node_temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}.png`;
-          tempFilePath = path.join(tempDir, tempFileName);
-          
-          console.log('[send-to-gemini] Gravando arquivo de imagem:', tempFilePath);
-          // Escreve o arquivo de forma assíncrona para nunca bloquear o Event Loop principal
-          await fs.promises.writeFile(tempFilePath, base64Data, 'base64');
-          console.log('[send-to-gemini] Arquivo gravado com sucesso.');
-          
-          const osPathFormatted = process.platform === 'win32' ? tempFilePath.replace(/\//g, '\\') : tempFilePath;
-          const imgNotice = `\n\n[IMAGEM DE CONTEXTO ANEXADA: Existe uma imagem associada a esta pergunta salva em: "${osPathFormatted}". Se necessário, você pode ler ou analisar esta imagem local para responder à pergunta.]`;
-          promptWithImageInfo += imgNotice;
-          promptTextForCli += imgNotice;
-        } catch (err) {
-          console.error("Falha ao salvar imagem temporária para o CLI/Agentic:", err);
-        }
-      }
-    }
-
     // ── Gemini CLI provider ──────────────────────────────────────────────────
     if (aiModel === 'geminiCli') {
-      console.log('[send-to-gemini] Encaminhando para GeminiCliProvider...');
       const projectPath = workspace.getProjectPath();
       const geminiModel = configService.getGeminiCliModel();
       GeminiCliProvider.setModel(geminiModel);
-      const finalPrompt = appendAttachmentsContext(promptTextForCli);
+      const finalPrompt = appendAttachmentsContext(text);
       try {
         await GeminiCliProvider.send(finalPrompt, projectPath, event.sender, sessionId, pastMessages);
-        console.log('[send-to-gemini] GeminiCliProvider.send executado.');
       } catch (gcliErr) {
         console.error('[gemini-cli] send error:', gcliErr.message);
         // Garante que o loading fecha mesmo que o provider não tenha emitido gemini-stream-complete
@@ -4133,15 +3979,12 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId, image) => {
 
     // ── Claude Code CLI provider ─────────────────────────────────────────────
     if (aiModel === 'claudeCli') {
-      console.log('[send-to-gemini] Encaminhando para ClaudeCliProvider...');
       const projectPath = workspace.getProjectPath();
       const claudeModel = configService.getClaudeCliModel();
       ClaudeCliProvider.setModel(claudeModel);
-      const finalPrompt = appendAttachmentsContext(promptWithImageInfo);
+      const finalPrompt = appendAttachmentsContext(promptWithHistory);
       try {
-        console.log('[send-to-gemini] Chamando ClaudeCliProvider.send...');
         await ClaudeCliProvider.send(finalPrompt, projectPath, event.sender);
-        console.log('[send-to-gemini] ClaudeCliProvider.send concluído.');
       } catch (ccliErr) {
         console.error('[claude-cli] send error:', ccliErr.message);
         // Garante que o loading fecha mesmo que o provider não tenha emitido gemini-stream-complete
@@ -4169,7 +4012,7 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId, image) => {
         const useAgentic = shouldUseAgentic(text);
         if (useAgentic) { try { workspace.resetContextSent(); } catch (_) {} }
 
-        const _wsText2 = await prependWorkspaceContextIfNeeded(promptWithImageInfo, openAiModel);
+        const _wsText2 = await prependWorkspaceContextIfNeeded(promptWithHistory, openAiModel);
 
         if (useAgentic) {
             console.log('🤖 IPC: Iniciando AGENTIC WORKFLOW (multi-fase)...');
@@ -4192,13 +4035,12 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId, image) => {
             if (_kb2) usedKnowledge = true;
             const _augText2 = _kb2 ? _kb2 + "\n\n---\n\n" + _wsText2 : _wsText2;
             const ht = buildHelperToolsOpenAIOpts(_augText2, instruction, openAiModel, aiModel === 'openIaCodex');
-            
             resposta = await OpenAIService.makeOpenAIRequest(
               _augText2,
               token,
               ht.instruction || instruction,
               ht.model || openAiModel,
-              imageBase64ForVision || null, // encaminha a imagem de contexto se houver
+              null,
               ht.opts
             );
         }
@@ -4213,18 +4055,13 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId, image) => {
           const _augTextL = _kbL ? _kbL + "\n\n---\n\n" + promptWithHistory : promptWithHistory;
 
           const htEnabled = configService.getHelperToolsEnabled && configService.getHelperToolsEnabled();
-          const localOpts = {};
-          if (imageBase64ForVision) {
-            localOpts.imageBase64 = imageBase64ForVision;
-          }
           if (htEnabled) {
             const instructionO = configService.getPromptInstruction();
             const _wsTxtO = await prependWorkspaceContextIfNeeded(_augTextL, 'ollama');
             const _htO = buildHelperToolsOpenAIOpts(_wsTxtO, instructionO, configService.getOpenAiModel());
-            const mergedOpts = Object.assign({}, _htO.opts, localOpts);
-            resposta = await OllamaLocalService.responder(_wsTxtO, mergedOpts);
+            resposta = await OllamaLocalService.responder(_wsTxtO, _htO.opts);
           } else {
-            resposta = await OllamaLocalService.responder(_augTextL, localOpts);
+            resposta = await OllamaLocalService.responder(_augTextL);
           }
         } catch (ollamaError) {
           console.error("IPC: Ollama Local falhou:", ollamaError && ollamaError.message);
@@ -4238,7 +4075,7 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId, image) => {
           const instructionO2 = configService.getPromptInstruction();
           const useAgentic = shouldUseAgentic(text);
           if (useAgentic) { try { workspace.resetContextSent(); } catch (_) {} }
-          const _wsTxtO2 = await prependWorkspaceContextIfNeeded(promptWithImageInfo, 'ollama');
+          const _wsTxtO2 = await prependWorkspaceContextIfNeeded(promptWithHistory, 'ollama');
 
           if (useAgentic) {
               console.log('🤖 IPC: Iniciando AGENTIC WORKFLOW OLLAMA (multi-fase)...');
@@ -4257,12 +4094,7 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId, image) => {
               if (_kbO2) usedKnowledge = true;
               const _augTxtO2 = _kbO2 ? _kbO2 + "\n\n---\n\n" + _wsTxtO2 : _wsTxtO2;
               const _htO2 = buildHelperToolsOpenAIOpts(_augTxtO2, instructionO2, configService.getOpenAiModel());
-              const localOpts = {};
-              if (imageBase64ForVision) {
-                localOpts.imageBase64 = imageBase64ForVision;
-              }
-              const mergedOpts = Object.assign({}, _htO2.opts, localOpts);
-              resposta = await BackendService.responder(_augTxtO2, mergedOpts);
+              resposta = await BackendService.responder(_augTxtO2, _htO2.opts);
           }
           backendIsOnline = true;
         } catch (backendError) {
@@ -4280,18 +4112,6 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId, image) => {
       "transcription-error",
       "Failed to process IA response from any source"
     );
-  } finally {
-    if (tempFilePath) {
-      try {
-        const fs = require('fs');
-        if (fs.existsSync(tempFilePath)) {
-          await fs.promises.unlink(tempFilePath);
-          console.log("Deleted temporary image context file:", tempFilePath);
-        }
-      } catch (e) {
-        console.error("Failed to delete temporary image context file:", e);
-      }
-    }
   }
 });
 
@@ -4385,27 +4205,10 @@ ipcMain.on("clear-ai-sessions", () => {
   });
 });
 
-ipcMain.on("send-to-gemini-stream", async (event, text, sessionId, image) => {
+ipcMain.on("send-to-gemini-stream", async (event, text) => {
   try {
-    console.log("IPC: Usando Backend Stream Service com imagem...");
-    const opts = {};
-    if (image) {
-      const path = require('path');
-      const isPath = typeof image === 'string' && !image.startsWith('data:') && image.includes(path.sep);
-      if (isPath) {
-        try {
-          const fs = require('fs');
-          const fileBuffer = await fs.promises.readFile(image);
-          const ext = path.extname(image).toLowerCase();
-          const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
-          opts.imageBase64 = `data:${mimeType};base64,` + fileBuffer.toString('base64');
-        } catch (readErr) {
-          console.error("Falha ao ler imagem do disco para stream:", readErr);
-        }
-      } else {
-        opts.imageBase64 = image;
-      }
-    }
+    console.log("IPC: Usando Backend Stream Service...");
+    
     await BackendService.responderStream(
       text,
       // onChunk
@@ -4420,8 +4223,7 @@ ipcMain.on("send-to-gemini-stream", async (event, text, sessionId, image) => {
       (error) => {
         console.error("Stream error:", error);
         event.sender.send("transcription-error", error.message);
-      },
-      opts
+      }
     );
   } catch (error) {
     console.error("IPC: Stream service error:", error);
@@ -4550,7 +4352,6 @@ ipcMain.on("save-backend-api-key", (event, key) => {
 });
 
 ipcMain.handle("get-debug-mode-status", () => {
-  console.log('[get-debug-mode-status] IPC recebido no processo principal');
   return configService.getDebugModeStatus();
 });
 
@@ -6055,122 +5856,6 @@ ipcMain.handle("get-ai-model", () => {
   return configService.getAiModel();
 });
 
-ipcMain.handle("read-clipboard-image", async () => {
-  const { clipboard, nativeImage, app } = require('electron');
-  const fs = require('fs');
-  const path = require('path');
-  const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.ico'];
-
-  const tempDir = path.join(app.getPath('userData'), 'temp_images');
-  if (!fs.existsSync(tempDir)) {
-    fs.mkdirSync(tempDir, { recursive: true });
-  }
-
-  const getTempPath = () => {
-    return path.join(tempDir, `helper_node_temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}.png`);
-  };
-
-  const makeThumbnail = (img) => {
-    if (!img || img.isEmpty()) return null;
-    const size = img.getSize();
-    const maxDim = 300;
-    let newWidth = size.width;
-    let newHeight = size.height;
-    if (size.width > maxDim || size.height > maxDim) {
-      if (size.width > size.height) {
-        newWidth = maxDim;
-        newHeight = Math.round((size.height * maxDim) / size.width);
-      } else {
-        newHeight = maxDim;
-        newWidth = Math.round((size.width * maxDim) / size.height);
-      }
-    }
-    return img.resize({ width: newWidth, height: newHeight }).toDataURL();
-  };
-
-  // Helper local para processar arquivos de imagem copiados do disco
-  const processFilePath = async (filePath) => {
-    try {
-      const ext = path.extname(filePath).toLowerCase();
-      if (imageExtensions.includes(ext)) {
-        const stat = await fs.promises.stat(filePath);
-        if (stat.isFile()) {
-          const tempFilePath = getTempPath();
-          await fs.promises.copyFile(filePath, tempFilePath);
-          const imgFromFile = nativeImage.createFromPath(filePath);
-          const thumbnail = makeThumbnail(imgFromFile);
-          return { path: tempFilePath, thumbnail };
-        }
-      }
-    } catch (e) {
-      console.warn("Erro ao processar arquivo para clipboard:", filePath, e.message);
-    }
-    return null;
-  };
-
-  // 1. Tenta ler como imagem/bitmap do clipboard (ex: screenshots ou imagens da web)
-  const img = clipboard.readImage();
-  if (img && !img.isEmpty()) {
-    const tempFilePath = getTempPath();
-    await fs.promises.writeFile(tempFilePath, img.toPNG());
-    const thumbnail = makeThumbnail(img);
-    return { path: tempFilePath, thumbnail };
-  }
-
-  // 2. Tenta ler caminhos de arquivos copiados do sistema de arquivos (uri-list)
-  try {
-    const uriList = clipboard.read('text/uri-list');
-    if (uriList) {
-      const lines = uriList.split(/[\r\n]+/);
-      for (const line of lines) {
-        if (line.startsWith('file://')) {
-          let filePath = decodeURIComponent(line.substring(7));
-          if (process.platform === 'win32' && filePath.startsWith('/')) {
-            filePath = filePath.substring(1);
-          }
-          const res = await processFilePath(filePath);
-          if (res) return res;
-        }
-      }
-    }
-  } catch (e) {
-    console.warn("Erro ao ler text/uri-list do clipboard:", e);
-  }
-
-  // 3. Tenta FileNameW no Windows
-  try {
-    if (process.platform === 'win32') {
-      const buffer = clipboard.readBuffer('FileNameW');
-      if (buffer && buffer.length > 0) {
-        const pathsStr = buffer.toString('utf16le');
-        const paths = pathsStr.split('\0').filter(p => p.trim().length > 0);
-        for (const filePath of paths) {
-          const res = await processFilePath(filePath);
-          if (res) return res;
-        }
-      }
-    }
-  } catch (e) {
-    console.warn("Erro ao ler FileNameW do clipboard:", e);
-  }
-
-  // 4. Tenta ler texto puro (caminho absoluto)
-  try {
-    const text = clipboard.readText();
-    if (text) {
-      let filePath = text.trim().replace(/^"|"$/g, '');
-      if (path.isAbsolute(filePath)) {
-        const res = await processFilePath(filePath);
-        if (res) return res;
-      }
-    }
-  } catch (e) {
-    console.warn("Erro ao ler texto puro do clipboard:", e);
-  }
-
-  return null;
-});
-
 ipcMain.handle("get-edition", () => {
   return edition.getEdition();
 });
@@ -6185,9 +5870,6 @@ ipcMain.on("open-preferences-ui", () => {
 
 ipcMain.on("set-ai-model", (event, aiModel) => {
   configService.setAiModel(aiModel);
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send("config-changed", { key: "ai-model", value: aiModel });
-  }
 });
 
 // IPC Handlers for OpenAI Model
@@ -6197,9 +5879,6 @@ ipcMain.handle("get-openai-model", () => {
 
 ipcMain.on("set-openai-model", (event, model) => {
   configService.setOpenAiModel(model);
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send("config-changed", { key: "openai-model", value: model });
-  }
 });
 
 // IPC Handlers for OpenAI reasoning effort (gpt-5.x/o-series)
@@ -6227,9 +5906,6 @@ ipcMain.handle("get-backend-model", () => {
 
 ipcMain.on("set-backend-model", (event, model) => {
   if (configService.setBackendModel) configService.setBackendModel(model);
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send("config-changed", { key: "backend-model", value: model });
-  }
 });
 
 // IPC Handlers for Ollama Local
@@ -6239,9 +5915,6 @@ ipcMain.handle("get-ollama-local-model", () => {
 
 ipcMain.on("set-ollama-local-model", (event, model) => {
   configService.setOllamaLocalModel(model);
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send("config-changed", { key: "ollama-local-model", value: model });
-  }
 });
 
 ipcMain.handle("get-ollama-local-host", () => {
@@ -6255,9 +5928,6 @@ ipcMain.handle("get-gemini-cli-model", () => configService.getGeminiCliModel());
 ipcMain.on("set-gemini-cli-model", (event, model) => {
   configService.setGeminiCliModel(model);
   GeminiCliProvider.setModel(model);
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send("config-changed", { key: "gemini-cli-model", value: model });
-  }
 });
 
 ipcMain.handle("get-gemini-cli-models", () => GeminiCliProvider.getModels());
@@ -6285,9 +5955,6 @@ ipcMain.handle("get-claude-cli-model", () => configService.getClaudeCliModel());
 ipcMain.on("set-claude-cli-model", (event, model) => {
   configService.setClaudeCliModel(model);
   ClaudeCliProvider.setModel(model);
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send("config-changed", { key: "claude-cli-model", value: model });
-  }
 });
 
 ipcMain.handle("get-claude-cli-models", () => ClaudeCliProvider.getModels());

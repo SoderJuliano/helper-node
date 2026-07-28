@@ -57,19 +57,6 @@ class TesseractService {
         }
     }
 
-    async processImageFileFromPath(filePath, mainWindow) {
-        try {
-            console.log('Processing image from path:', filePath);
-            // Process the saved file, indicating it IS a pasted image (it should NOT be cropped)
-            await this._processImageFile(filePath, mainWindow, true);
-        } catch (error) {
-            console.error('Error processing image path:', error);
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('ocr-error', 'Failed to process image path.');
-            }
-        }
-    }
-
     async getTextFromImage(base64Image) {
         const timestamp = Date.now();
         const imagePath = path.join(__dirname, '..', `screenshot-manual-${timestamp}.png`);

@@ -2,7 +2,6 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("electronAPI", {
   onToggleRecording: (callback) => ipcRenderer.on("toggle-recording", callback),
-  onConfigChanged: (callback) => ipcRenderer.on("config-changed", (event, data) => callback(data)),
   onCapturingScreen: (callback) => ipcRenderer.on("screen-capturing", callback),
   onCaptureScreen: (callback) => ipcRenderer.on("capture-screen", callback),
   onSharingStatus: (callback) => ipcRenderer.on("sharing-status", callback),
@@ -52,12 +51,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onRealtimeAssistantUpdate: (callback) =>
     ipcRenderer.on("realtime-assistant-update", (event, data) => callback(data)),
   // sendTextToLlama: (text) => ipcRenderer.send('send-to-llama', text),
-  sendTextToGemini: (text, sessionId, image) => ipcRenderer.send("send-to-gemini", text, sessionId, image),
+  sendTextToGemini: (text, sessionId) => ipcRenderer.send("send-to-gemini", text, sessionId),
   // Manda a IMAGEM (data URL base64) + enunciado pro modelo de visão (gpt-4o).
   // Usado quando o usuário cola/captura uma imagem no chat e o backend é OpenAI.
   sendVisionToGemini: (text, image) =>
     ipcRenderer.send("send-to-gemini-vision", { text, image }),
-  sendTextToGeminiStream: (text, sessionId, image) => ipcRenderer.send("send-to-gemini-stream", text, sessionId, image),
+  sendTextToGeminiStream: (text, sessionId) => ipcRenderer.send("send-to-gemini-stream", text, sessionId),
   onAutoStream: (callback) =>
     ipcRenderer.on("send-to-gemini-stream-auto", (event, text) => callback(text)),
   // Estado do auto-close da janela 'response', decidido pelo main (cursor por
@@ -65,7 +64,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onAutoCloseState: (callback) =>
     ipcRenderer.on("autoclose-state", (event, data) => callback(data)),
   getAiModel: () => ipcRenderer.invoke("get-ai-model"),
-  readClipboardImage: () => ipcRenderer.invoke("read-clipboard-image"),
   getOpenaiModel: () => ipcRenderer.invoke("get-openai-model"),
   setOpenaiModel: (model) => ipcRenderer.send("set-openai-model", model),
   getOpenaiReasoningEffort: () => ipcRenderer.invoke("get-openai-reasoning-effort"),
@@ -167,7 +165,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   workspaceClear: () => ipcRenderer.invoke("workspace:clear"),
   workspaceOpenExternal: (p) => ipcRenderer.invoke("workspace:open-external", p),
   getWorkspaceAccessEnabled: () => ipcRenderer.invoke("get-workspace-access-enabled"),
-  getHelperToolsEnabled: () => ipcRenderer.invoke("get-helper-tools-enabled"),
   onWorkspaceChanged: (cb) =>
     ipcRenderer.on("workspace-changed", (event, data) => cb(data)),
   onWorkspaceFileWritten: (cb) =>

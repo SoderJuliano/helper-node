@@ -26,7 +26,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/markdown/markdown.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/sql/sql.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/go/go.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/mode/simple.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/rust/rust.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/php/php.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/ruby/ruby.min.js"></script>
@@ -677,11 +676,7 @@
             text-align: center; padding: 24px clamp(24px, 7%, 80px);
             gap: 10px; transition: opacity .35s var(--ease);
         }
-        #welcome-hero.hidden,
-        #welcome-hero.hero-hidden-manual,
-        #welcome-hero.hero-hidden-by-editor {
-            display: none !important;
-        }
+        #welcome-hero.hidden { opacity: 0; pointer-events: none; }
         .hero-logo {
             width: 58px; height: 58px; border-radius: 16px;
             background: linear-gradient(145deg, #5fd75f, #2e7d32);
@@ -689,63 +684,7 @@
             color: #06210a; font-weight: 800; font-size: 30px; margin-bottom: 8px;
             box-shadow: 0 0 0 1px rgba(255,255,255,0.10), 0 14px 36px rgba(76,175,80,0.32);
         }
-        .hero-title {
-            position: relative;
-            font-size: 23px;
-            font-weight: 700;
-            color: var(--text);
-            letter-spacing: -.2px;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-        #hero-close-btn {
-            background: transparent;
-            border: none;
-            color: var(--text-3);
-            font-size: 18px;
-            cursor: pointer;
-            padding: 2px 6px;
-            border-radius: 4px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s ease;
-            line-height: 1;
-            font-weight: normal;
-        }
-        #hero-close-btn:hover {
-            color: var(--text);
-            background: rgba(255, 255, 255, 0.08);
-        }
-        #restore-hero-btn {
-            position: absolute;
-            bottom: 16px;
-            right: 16px;
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            background: var(--bg-surface);
-            border: 1px solid var(--border);
-            color: var(--text-3);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            z-index: 50;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
-            transition: all 0.2s ease;
-        }
-        #restore-hero-btn:hover {
-            color: var(--text-1);
-            border-color: var(--accent-border);
-            background: var(--bg-surface-2);
-            transform: scale(1.05);
-        }
-        #restore-hero-btn svg {
-            width: 16px;
-            height: 16px;
-        }
+        .hero-title { font-size: 23px; font-weight: 700; color: var(--text); letter-spacing: -.2px; }
         .hero-sub { font-size: 13.5px; color: var(--text-3); max-width: 440px; line-height: 1.55; }
         .hero-suggestions { display: flex; flex-wrap: wrap; gap: 9px; justify-content: center; margin-top: 14px; max-width: 520px; }
         .hero-chip {
@@ -1405,50 +1344,6 @@
         .rt-bubble.system { align-self: center; background: rgba(255,255,255,0.06); border: 1px solid var(--border); color: var(--text-3); font-size: 11px; padding: 5px 10px; border-radius: 8px; }
         .rt-bubble.fatal-error { align-self: center; background: rgba(248,113,113,0.18); border: 1px solid rgba(248,113,113,0.55); color: var(--danger); font-size: 13px; font-weight: 600; text-align: center; max-width: 95%; padding: 10px 14px; }
 
-        /* Estilos do Anexo Temporário no Composer (Modo IDE) */
-        .composer-attachment {
-            display: flex;
-            align-items: center;
-            margin-bottom: 8px;
-            font-family: var(--font-ui);
-            font-size: 12px;
-            -webkit-app-region: no-drag;
-        }
-        .attachment-pill {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            background: rgba(76, 175, 80, 0.12);
-            border: 1px solid rgba(76, 175, 80, 0.3);
-            color: var(--accent-2);
-            padding: 4px 10px;
-            border-radius: 6px;
-            font-weight: 500;
-        }
-        .attachment-icon {
-            width: 14px;
-            height: 14px;
-            opacity: .85;
-        }
-        .attachment-remove {
-            background: transparent;
-            border: none;
-            color: var(--accent-2);
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: bold;
-            padding: 0;
-            margin-left: 4px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            opacity: .6;
-            transition: opacity .15s;
-        }
-        .attachment-remove:hover {
-            opacity: 1;
-        }
-
         /* Tradutor */
         .ta-meta { font-size: 11px; color: var(--text-4); margin: 10px 0 3px; letter-spacing: .04em; }
         .ta-original { font-size: 14px; color: rgba(255,255,255,0.65); font-style: italic; margin-bottom: 5px; opacity: .85; }
@@ -1998,10 +1893,7 @@
                     <!-- Hero de boas-vindas (onboarding). Some na 1ª mensagem. -->
                     <div id="welcome-hero">
                         <div class="hero-logo">H</div>
-                        <div class="hero-title">
-                            Helper Node
-                            <button id="hero-close-btn" title="Esconder boas-vindas" type="button">×</button>
-                        </div>
+                        <div class="hero-title">Helper Node</div>
                         <div class="hero-sub">Seu copiloto de IA para conversas, entrevistas e código. Comece abaixo ou escolha uma sugestão.</div>
                         <div class="hero-suggestions">
                             <button class="hero-chip" data-prompt="Explique de forma simples o conceito de ">
@@ -2019,9 +1911,6 @@
                     <!-- #transcription: o &lt;script&gt; anexa mensagens aqui (contrato) -->
                     <div id="transcription"></div>
                     <div class="content"></div>
-                    <button id="restore-hero-btn" title="Mostrar boas-vindas" style="display: none;" type="button">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
-                    </button>
                 </div>
 
                 <!-- ===================== COMPOSER ===================== -->
@@ -2081,13 +1970,6 @@
                             <div class="composer-listening" id="composer-listening" style="display:none;">
                                 <span class="composer-listening-dot"></span>
                                 <span>Ouvindo áudio… Ctrl+D para transcrever</span>
-                            </div>
-                            <div class="composer-attachment" id="composer-attachment" style="display:none; -webkit-app-region: no-drag;">
-                                <span class="attachment-pill">
-                                    <svg class="attachment-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                                    <span id="composer-attachment-name">imagem.png</span>
-                                    <button class="attachment-remove" id="composer-attachment-remove" title="Remover anexo">×</button>
-                                </span>
                             </div>
                             <div class="composer-shell" id="composer-shell">
                                 <div class="composer-ghost idle" id="composer-ghost">Pergunte qualquer coisa…</div>
@@ -2170,114 +2052,8 @@
 
     <script>
 
-        // ============================================================
-        // Variáveis globais e funções utilitárias acessíveis em todo o escopo do script
-        // ============================================================
-        let ctxProject = null; // { id, name, path, branch }
-        window.workspaceAccessEnabled = false;
-        window.helperToolsEnabled = false;
 
-        function checkIsIdeMode() {
-            // Modo IDE está ativo se a configuração de Workspace ("Adicionar arquivos e pastas") está ativa,
-            // OU se existe um projeto/pasta aberto.
-            if (window.workspaceAccessEnabled) {
-                return true;
-            }
-            if (ctxProject && ctxProject.path) {
-                return true;
-            }
-            const wsPanel = document.getElementById('workspace-panel');
-            if (wsPanel && wsPanel.style.display !== 'none') {
-                return true;
-            }
-            return false;
-        }
 
-        // ============================================================
-        // Colar imagem (Ctrl+V) — registro À PROVA DE FALHAS.
-        // Fica AQUI no topo, fora de qualquer DOMContentLoaded, pra NUNCA
-        // ficar sem registrar caso algum bloco de init lance erro antes.
-        // ============================================================
-        (function wireImagePasteEarly() {
-            let isPastingImage = false;
-
-            function doAttach(filePath, thumbnail) {
-                if (!filePath || !thumbnail) return;
-                // Usa a implementação completa (IDE + não-IDE/OCR) quando disponível.
-                if (typeof window.attachPastedImage === 'function') {
-                    window.attachPastedImage({ path: filePath, thumbnail: thumbnail });
-                    return;
-                }
-                // Fallback mínimo (garante o anexo no modo IDE mesmo se o init falhou).
-                if (checkIsIdeMode()) {
-                    window.idePendingImagePath = filePath;
-                    window.idePendingImageThumbnail = thumbnail;
-                    const el = document.getElementById('composer-attachment');
-                    const nm = document.getElementById('composer-attachment-name');
-                    if (el && nm) {
-                        nm.textContent = filePath.split(/[/\\]/).pop();
-                        el.style.display = 'flex';
-                    }
-                    if (typeof openManualInput === 'function') {
-                        try { openManualInput(); } catch (_) {}
-                    }
-                    console.log('[img-paste] anexado via fallback mínimo (modo IDE).');
-                }
-            }
-
-            function triggerClipboardImageRead() {
-                if (isPastingImage) {
-                    console.log('[img-paste] Leitura já em andamento, ignorando...');
-                    return;
-                }
-                if (window.electronAPI && window.electronAPI.readClipboardImage) {
-                    isPastingImage = true;
-                    window.electronAPI.readClipboardImage().then(function (result) {
-                        isPastingImage = false;
-                        if (result && result.path && result.thumbnail) {
-                            console.log('[img-paste] Imagem encontrada no clipboard. Path:', result.path);
-                            doAttach(result.path, result.thumbnail);
-                        } else {
-                            console.log('[img-paste] Nenhuma imagem encontrada no clipboard.');
-                        }
-                    }).catch(function (err) {
-                        isPastingImage = false;
-                        console.warn('[img-paste] readClipboardImage erro:', err);
-                    });
-                }
-            }
-
-            // 1) Evento 'paste' nativo (dispara quando há campo editável focado).
-            document.addEventListener('paste', function (event) {
-                const cd = event.clipboardData || window.clipboardData;
-                const items = cd ? cd.items : null;
-                if (!items) return;
-                for (let i = 0; i < items.length; i++) {
-                    if (items[i].type.indexOf('image') !== -1) {
-                        event.preventDefault();
-                        console.log('[img-paste] Imagem interceptada no evento paste nativo.');
-                        triggerClipboardImageRead();
-                        return;
-                    }
-                }
-            }, true);
-
-            // 2) Ctrl+V via clipboard do SO (Electron). Cobre o caso em que o
-            //    clipboardData da web NÃO expõe a imagem (bitmap de screenshot no
-            //    Windows), independente de ter campo focado ou não.
-            document.addEventListener('keydown', function (e) {
-                if (!e.key || e.key.toLowerCase() !== 'v') return;
-                if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
-                const active = document.activeElement;
-                const insideEditor = active && active.closest && (active.closest('.CodeMirror') || active.closest('#file-viewer'));
-                if (insideEditor) return; // editor de código lida com o próprio paste
-                
-                e.preventDefault();
-                console.log('[img-paste] Imagem interceptada via Ctrl+V keydown.');
-                triggerClipboardImageRead();
-            }, true);
-            console.log('[img-paste] handlers registrados no topo do script.');
-        })();
 
         document.addEventListener('DOMContentLoaded', async () => {
             // === Custom Window Dragging & Controls (Windows/macOS) ===
@@ -2373,7 +2149,7 @@
                     if (input) {
                         const question = (input.value || '').trim();
                         const container = input.closest('.manual-input-container');
-                        if ((question || pastedImageForManualInput || window.idePendingImage) && container) {
+                        if ((question || pastedImageForManualInput) && container) {
                             submitManualQuestion(question, container);
                         }
                     }
@@ -2413,69 +2189,14 @@
             // classe .hidden do hero — que o resto do código já alterna — e
             // espelhamos isso em #main.is-empty.
             const mainEl = document.getElementById('main');
-            const fileViewerEl = document.getElementById('file-viewer');
-
-            function updateHeroVisibility() {
-                const hero = document.getElementById('welcome-hero');
-                const restoreBtn = document.getElementById('restore-hero-btn');
-                if (!hero) return;
-
-                const isChatEmpty = mainEl && mainEl.classList.contains('is-empty');
-                const isEditorOpen = fileViewerEl && fileViewerEl.classList.contains('open');
-
-                // Se houver arquivos abertos e o chat estiver vazio, oculta por causa do editor
-                if (isEditorOpen && isChatEmpty) {
-                    hero.classList.add('hero-hidden-by-editor');
-                } else {
-                    hero.classList.remove('hero-hidden-by-editor');
-                }
-
-                // Exibe o botão de restaurar no canto inferior direito se o chat estiver vazio e o hero escondido
-                if (restoreBtn) {
-                    const isHidden = hero.classList.contains('hidden') || 
-                                     hero.classList.contains('hero-hidden-manual') || 
-                                     hero.classList.contains('hero-hidden-by-editor');
-                    restoreBtn.style.display = (isChatEmpty && isHidden) ? 'flex' : 'none';
-                }
-            }
-
             function syncEmptyState() {
-                // A conversa de fato começou se a classe .hidden foi adicionada pelo fluxo de envio
-                const conversationStarted = welcomeHero && welcomeHero.classList.contains('hidden');
-                if (mainEl) mainEl.classList.toggle('is-empty', !conversationStarted);
-                updateHeroVisibility();
+                const empty = welcomeHero && !welcomeHero.classList.contains('hidden');
+                if (mainEl) mainEl.classList.toggle('is-empty', !!empty);
             }
-
             syncEmptyState();
-
             if (welcomeHero) {
                 new MutationObserver(syncEmptyState)
                     .observe(welcomeHero, { attributes: true, attributeFilter: ['class'] });
-            }
-
-            if (fileViewerEl) {
-                new MutationObserver(updateHeroVisibility)
-                    .observe(fileViewerEl, { attributes: true, attributeFilter: ['class'] });
-            }
-
-            // Listeners para os botões de fechar e restaurar
-            const closeHeroBtn = document.getElementById('hero-close-btn');
-            if (closeHeroBtn && welcomeHero) {
-                closeHeroBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    welcomeHero.classList.add('hero-hidden-manual');
-                    updateHeroVisibility();
-                });
-            }
-
-            const restoreHeroBtn = document.getElementById('restore-hero-btn');
-            if (restoreHeroBtn && welcomeHero) {
-                restoreHeroBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    welcomeHero.classList.remove('hero-hidden-manual');
-                    welcomeHero.classList.remove('hero-hidden-by-editor');
-                    updateHeroVisibility();
-                });
             }
 
             // === Contexto ativo do projeto (modo IDE) ===
@@ -2489,6 +2210,8 @@
             const ctxProjectName = document.getElementById('ctx-project-name');
             const ctxBranch = document.getElementById('ctx-branch');
             const ctxBranchName = document.getElementById('ctx-branch-name');
+            let ctxProject = null; // { id, name, path, branch }
+
             async function pickProjectFolder() {
                 if (!(window.electronAPI && window.electronAPI.workspacePickDir)) return;
                 const r = await window.electronAPI.workspacePickDir();
@@ -2881,16 +2604,7 @@
             }
             refreshComposerModel();
             // Reflete mudanças feitas na janela de Configurações ao voltar o foco.
-            window.addEventListener('focus', () => {
-                refreshComposerModel();
-                if (typeof refreshWorkspacePanel === 'function') refreshWorkspacePanel();
-            });
-            if (window.electronAPI && window.electronAPI.onConfigChanged) {
-                window.electronAPI.onConfigChanged(() => {
-                    refreshComposerModel();
-                    if (typeof refreshWorkspacePanel === 'function') refreshWorkspacePanel();
-                });
-            }
+            window.addEventListener('focus', () => { refreshComposerModel(); });
 
             // ── Token counter ─────────────────────────────────────────────────────
             // Estima tokens do input atual (~4 chars por token) e exibe na toolbar.
@@ -4172,14 +3886,7 @@
                 const enabled = window.electronAPI && window.electronAPI.getWorkspaceAccessEnabled
                     ? await window.electronAPI.getWorkspaceAccessEnabled()
                     : false;
-                window.workspaceAccessEnabled = !!enabled;
                 wsPanel.style.display = enabled ? '' : 'none';
-
-                const htEnabled = window.electronAPI && window.electronAPI.getHelperToolsEnabled
-                    ? await window.electronAPI.getHelperToolsEnabled()
-                    : false;
-                window.helperToolsEnabled = !!htEnabled;
-
                 if (enabled && window.electronAPI && window.electronAPI.workspaceList) {
                     const list = await window.electronAPI.workspaceList();
                     renderWorkspacePanel(list);
@@ -4241,7 +3948,6 @@
                 window.electronAPI.onWorkspaceChanged((data) => {
                     if (typeof data.enabled === 'boolean' && wsPanel) {
                         wsPanel.style.display = data.enabled ? '' : 'none';
-                        window.workspaceAccessEnabled = data.enabled;
                     }
                     if (data.attachments) renderWorkspacePanel(data.attachments);
                     refreshProjectContext();
@@ -5526,68 +5232,49 @@
             loadAnimation();
             setupTerminalUI();
 
-            const removeAttachmentBtn = document.getElementById('composer-attachment-remove');
-            if (removeAttachmentBtn) {
-                removeAttachmentBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    window.idePendingImage = null;
-                    window.idePendingImageName = null;
-                    const attachmentEl = document.getElementById('composer-attachment');
-                    if (attachmentEl) attachmentEl.style.display = 'none';
-                    console.log('Anexo de imagem removido pelo usuário.');
-                });
-            }
+            // Listener para colar imagem da área de transferência
+            document.addEventListener('paste', (event) => {
+                const items = (event.clipboardData || window.clipboardData).items;
+                for (let i = 0; i < items.length; i++) {
+                    if (items[i].type.indexOf('image') !== -1) {
+                        const imageFile = items[i].getAsFile();
+                        console.log('Imagem colada detectada!');
+                        
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            const base64Image = e.target.result;
 
-            // Trata uma imagem colada (base64 data URL), decidindo entre o fluxo
-            // do MODO IDE (anexo temporário) e o legado (OCR/visão). Usado tanto
-            // pelo evento 'paste' nativo (quando há input focado) quanto pelo
-            // fallback de Ctrl+V via clipboard do SO (tela hero / composer fechado).
-            function attachPastedImage(payload) {
-                if (!payload || !payload.path) return;
-                const isIdeMode = checkIsIdeMode();
+                            // Guarda o data URL real da imagem pra mandar pro modelo
+                            // de visão (o OCR/ocr-result não carrega o base64 de volta).
+                            window.pendingChatImage = base64Image;
 
-                if (isIdeMode) {
-                    // MODO IDE: Anexar a imagem temporariamente
-                    window.idePendingImagePath = payload.path;
-                    window.idePendingImageThumbnail = payload.thumbnail;
+                            if (manualInputActive) {
+                                // NOVO FLUXO: Input manual está aberto
+                                console.log('Input manual ativo, mostrando preview e iniciando OCR da imagem.');
+                                pastedImageForManualInput = base64Image;
+                                const preview = document.getElementById('screenshot-preview');
+                                preview.src = base64Image;
+                                preview.style.display = 'block';
+                                // Processa OCR agora para ter o texto pronto no envio
+                                window.electronAPI.processPastedImage(base64Image);
+                            } else {
+                                // FLUXO ANTIGO: Input manual fechado, processa imediatamente
+                                const robot = document.getElementById('robot');
+                                if (robot) robot.style.display = 'block';
 
-                    const attachmentEl = document.getElementById('composer-attachment');
-                    const attachmentNameEl = document.getElementById('composer-attachment-name');
-                    if (attachmentEl && attachmentNameEl) {
-                        attachmentNameEl.textContent = payload.path.split(/[/\\]/).pop();
-                        attachmentEl.style.display = 'flex';
-                    }
-                    console.log('Imagem anexada temporariamente para o modo IDE.');
+                                const message = "Image in context";
+                                appendQuestionEntry(message);
 
-                    // Garante o composer aberto e focado
-                    if (manualInputActive) {
-                        const tInput = document.querySelector('.manual-input-container .terminal-input');
-                        if (tInput) tInput.focus();
-                    } else {
-                        openManualInput();
-                    }
-                } else {
-                    // MODO NÃO IDE: comportamento antigo preservado (OCR/visão)
-                    window.pendingChatImagePath = payload.path;
-                    window.pendingChatImageThumbnail = payload.thumbnail;
-                    if (manualInputActive) {
-                        pastedImageForManualInput = payload.thumbnail;
-                        const preview = document.getElementById('screenshot-preview');
-                        preview.src = payload.thumbnail;
-                        preview.style.display = 'block';
-                        window.electronAPI.processPastedImage(payload.path);
-                    } else {
-                        const robot = document.getElementById('robot');
-                        if (robot) robot.style.display = 'block';
-                        appendQuestionEntry("Image in context");
-                        window.electronAPI.processPastedImage(payload.path);
+                                window.electronAPI.processPastedImage(base64Image);
+                            }
+                        };
+                        reader.readAsDataURL(imageFile);
+                        
+                        event.preventDefault(); 
+                        break; 
                     }
                 }
-            }
-            window.attachPastedImage = attachPastedImage;
-            // O listener de 'paste' e o de Ctrl+V ficam no TOPO do script (fora de
-            // qualquer DOMContentLoaded), em wireImagePasteEarly(), pra não morrerem
-            // caso algo neste bloco de init lance erro antes deste ponto.
+            });
 
             window.electronAPI.onDebugStatusChanged((status) => {
                 const debugIndicator = document.getElementById('debug-indicator');
@@ -5614,8 +5301,7 @@
                 console.log('Texto transcrito:', text);
                 const transcriptionElement = document.getElementById('transcription');
 
-                const debugIndicator = document.getElementById('debug-indicator');
-                const isDebug = debugIndicator && debugIndicator.style.display !== 'none';
+                const isDebug = await window.electronAPI.getDebugModeStatus();
                 let displayText = text;
 
                 if (isDebug) {
@@ -5831,34 +5517,6 @@
 
                 // Esconde outros elementos de carregamento
                 animationContainer.style.display = 'none';
-
-                // Verifica se o modo IDE está ativo
-                const isIdeMode = checkIsIdeMode();
-
-                if (isIdeMode) {
-                    const imgData = base64Image || (screenshotPath ? `file://${screenshotPath}` : null);
-                    if (imgData) {
-                        window.idePendingImage = imgData;
-                        window.idePendingImageName = screenshotPath ? screenshotPath.split(/[\\/]/).pop() : "captura.png";
-                        
-                        const attachmentEl = document.getElementById('composer-attachment');
-                        const attachmentNameEl = document.getElementById('composer-attachment-name');
-                        if (attachmentEl && attachmentNameEl) {
-                            attachmentNameEl.textContent = window.idePendingImageName;
-                            attachmentEl.style.display = 'flex';
-                        }
-                        console.log('Captura de tela anexada temporariamente para o modo IDE.');
-                    }
-                    
-                    if (!manualInputActive) {
-                        openManualInput();
-                    } else {
-                        const tInput = document.querySelector('.manual-input-container .terminal-input');
-                        if (tInput) tInput.focus();
-                    }
-                    robot.style.display = 'none';
-                    return;
-                }
                 
                 // Se houve erro no OCR, exibir mensagem de erro
                 if (error) {
@@ -6188,34 +5846,6 @@
             });
 
             window.addEventListener('keydown', (e) => {
-                // Ctrl+V: colar imagem ou texto.
-                if (e.key.toLowerCase() === 'v' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
-                    const active = document.activeElement;
-                    const insideEditor = active && (active.closest('.CodeMirror') || active.closest('#file-viewer'));
-                    const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
-                    // Editor de código ou input já focado → o evento 'paste' nativo
-                    // cuida (imagem via attachPastedImage, texto direto no campo).
-                    if (insideEditor || isInput) return;
-
-                    // Nenhum campo editável focado (ex.: tela hero, composer fechado):
-                    // o 'paste' nativo NÃO dispara. Lemos o clipboard direto do SO —
-                    // independente de foco — pra anexar a imagem de forma confiável.
-                    if (window.electronAPI && window.electronAPI.readClipboardImage) {
-                        window.electronAPI.readClipboardImage().then((base64Image) => {
-                            if (base64Image) {
-                                attachPastedImage(base64Image);
-                            } else {
-                                openManualInput(); // sem imagem → é texto: abre o composer
-                            }
-                        }).catch((err) => {
-                            console.warn('Falha ao ler imagem do clipboard:', err);
-                            openManualInput();
-                        });
-                    } else {
-                        openManualInput();
-                    }
-                }
-
                 // Ctrl+F é tratado em capture-phase no document (ver logo após
                 // wireFileViewer) — não duplica aqui.
                 // Ctrl+D: fallback pra Wayland onde global shortcuts falham.
@@ -6231,34 +5861,22 @@
                         return;
                     }
                 }
-                // Ctrl+I ou Ctrl+Shift+I: abre o input ou minimiza o chat
-                if (e.key.toLowerCase() === 'i' && (e.ctrlKey || e.metaKey) && !e.altKey) {
+                // Ctrl+I: mostra/esconde o composer no modo assistente em tempo real.
+                if (e.key === 'i' && e.ctrlKey && !e.shiftKey && !e.altKey) {
                     const active = document.activeElement;
-                    const isInputFocused = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
-
-                    e.preventDefault();
-                    e.stopPropagation();
-
-                    if (isInputFocused && manualInputActive) {
-                        // Se o input já está ativo e focado, minimiza o chat!
-                        if (window.electronAPI && window.electronAPI.minimizeWindow) {
-                            window.electronAPI.minimizeWindow();
-                        }
-                    } else {
-                        // Caso contrário, abre o input e dá foco
-                        openManualInput();
+                    const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
+                    if (!isInput && _realtimeComposerHidden !== undefined) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setComposerVisibility(composerEl && composerEl.classList.contains('collapsed'));
+                        return;
                     }
-                    return;
                 }
                 if (e.key === 'Escape' && manualInputActive) {
                     manualInputActive = false;
                     removeManualInputContainer();
                     undockComposer();
                     pastedImageForManualInput = null;
-                    window.idePendingImage = null;
-                    window.idePendingImageName = null;
-                    const attachmentEl = document.getElementById('composer-attachment');
-                    if (attachmentEl) attachmentEl.style.display = 'none';
                     document.getElementById('screenshot-preview').style.display = 'none';
                     e.stopPropagation();
                     e.preventDefault();
@@ -6307,10 +5925,7 @@
 
         // True quando o backend ativo suporta visão (OpenAI). Na Lite é sempre true.
         async function backendSupportsVision() {
-            try { 
-                const model = await window.electronAPI.getAiModel();
-                return model === 'openIa' || model === 'openIaCodex'; 
-            }
+            try { return (await window.electronAPI.getAiModel()) === 'openIa'; }
             catch (_) { return false; }
         }
 
@@ -6640,14 +6255,6 @@
         }
 
         function openManualInput(initialText = '') {
-            const wHero = document.getElementById('welcome-hero');
-            const mainEl = document.getElementById('main');
-            if (mainEl && mainEl.classList.contains('is-empty') && wHero) {
-                wHero.classList.remove('hero-hidden-manual');
-                wHero.classList.remove('hero-hidden-by-editor');
-                if (typeof updateHeroVisibility === 'function') updateHeroVisibility();
-            }
-
             if (manualInputActive || isEditingQuestion) {
                 // Se ja esta ativo, apenas garante o foco no input
                 const existingInput = document.querySelector('.manual-input-container .terminal-input');
@@ -6758,7 +6365,7 @@
             sendButton.textContent = 'Enviar';
             sendButton.onclick = () => {
                 const question = inputField.value.trim();
-                if (question || pastedImageForManualInput || window.idePendingImage) {
+                if (question || pastedImageForManualInput) {
                     submitManualQuestion(question, container);
                 }
             };
@@ -6803,15 +6410,11 @@
                     container.remove();
                     undockComposer();
                     pastedImageForManualInput = null; // Limpa a imagem
-                    window.idePendingImage = null;
-                    window.idePendingImageName = null;
-                    const attachmentEl = document.getElementById('composer-attachment');
-                    if (attachmentEl) attachmentEl.style.display = 'none';
                     document.getElementById('screenshot-preview').style.display = 'none'; // Esconde o preview
                 } else if (e.key === 'Enter' && e.shiftKey) {
                     e.preventDefault(); // Previne nova linha no textarea
                     const question = inputField.value.trim();
-                    if (question || pastedImageForManualInput || window.idePendingImage) {
+                    if (question || pastedImageForManualInput) {
                         submitManualQuestion(question, container);
                     }
                 } else if (e.key === 'ArrowUp' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
@@ -6844,7 +6447,6 @@
         }
         
         async function submitManualQuestion(text, container) {
-            console.log('[submitManualQuestion] Iniciado! text:', text);
             manualInputActive = false;
             undockComposer(); // restaura o ghost do composer após envio
 
@@ -6862,65 +6464,7 @@
             const _heroSubmit = document.getElementById('welcome-hero');
             if (_heroSubmit) _heroSubmit.classList.add('hidden');
 
-            console.log('[submitManualQuestion] Obtendo getDebugModeStatus via DOM...');
-            const debugIndicator = document.getElementById('debug-indicator');
-            const isDebug = debugIndicator && debugIndicator.style.display !== 'none';
-            console.log('[submitManualQuestion] getDebugModeStatus resolvido. isDebug:', isDebug);
-
-            if (window.idePendingImagePath) {
-                // Modo IDE: exibe a imagem anexada de forma premium e envia
-                const questionSpan = document.createElement('span');
-                questionSpan.className = 'question-text';
-                setQuestionText(questionSpan, text || "Contexto de imagem anexado");
-                
-                const attPill = document.createElement('div');
-                attPill.className = 'attachment-pill';
-                attPill.style.cssText = "margin-top: 6px; display: inline-flex; align-items: center; gap: 6px; background: rgba(76, 175, 80, 0.12); border: 1px solid rgba(76, 175, 80, 0.3); color: var(--accent-2); padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 500; font-family: var(--font-ui); width: fit-content;";
-                const fileName = window.idePendingImagePath.split(/[/\\]/).pop();
-                attPill.innerHTML = `<svg class="attachment-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px; opacity: .85;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><span>[Anexo: ${fileName}]</span>`;
-
-                const imgPreview = document.createElement('img');
-                imgPreview.src = window.idePendingImageThumbnail; // Usa o thumbnail pequeno
-                imgPreview.style.cssText = "display: block; max-width: 260px; max-height: 180px; margin-top: 8px; border-radius: 8px; border: 1px solid var(--border-strong); box-shadow: 0 4px 12px rgba(0,0,0,0.3);";
-                
-                const ib1 = document.createElement('div');
-                ib1.className = 'interaction-block';
-                ib1.appendChild(questionSpan);
-                ib1.appendChild(attPill);
-                ib1.appendChild(imgPreview);
-                container.replaceWith(ib1);
-                currentQuestionElement = questionSpan;
-
-                startProcessing();
-
-                console.log('[submitManualQuestion] Obtendo modelo ativo...');
-                const activeModel = document.getElementById('composer-model')?.dataset?.provider || 'openIa';
-                console.log('[submitManualQuestion] Modelo ativo:', activeModel);
-                
-                let activeSessionId = null;
-                const promptText = text;
-                if (window.historySession) {
-                    const displayPrompt = text ? `${text} [Anexo: ${fileName}]` : `[Anexo: ${fileName}]`;
-                    console.log('[submitManualQuestion] Adicionando histórico:', displayPrompt);
-                    activeSessionId = await window.historySession.ensureSessionForFirstQuestion(displayPrompt);
-                    await window.historySession.addMessageToCurrentSession('user', displayPrompt);
-                }
-
-                console.log('[submitManualQuestion] Enviando para o backend IPC. Path da imagem:', window.idePendingImagePath);
-                if (activeModel === 'llama-stream' || activeModel === 'qwen-stream') {
-                    window.electronAPI.sendTextToGeminiStream(promptText, activeSessionId, window.idePendingImagePath);
-                } else {
-                    window.electronAPI.sendTextToGemini(promptText, activeSessionId, window.idePendingImagePath);
-                }
-                console.log('[submitManualQuestion] IPC enviado com sucesso!');
-
-                // Limpa o anexo temporário para o próximo turno
-                window.idePendingImagePath = null;
-                window.idePendingImageThumbnail = null;
-                const attachmentEl = document.getElementById('composer-attachment');
-                if (attachmentEl) attachmentEl.style.display = 'none';
-                return;
-            }
+            const isDebug = await window.electronAPI.getDebugModeStatus();
 
             if (pastedImageForManualInput) {
                 // We already processed image OCR in main and will send combined prompt here
@@ -6943,10 +6487,11 @@
                     sentImageToAI(text, window.pendingChatImage);
                 } else {
                     // Backends sem visão: mantém o fluxo antigo de OCR + texto.
+                    const promptInstruction = await window.electronAPI.getPromptInstruction();
                     if (typeof window.lastOcrText === 'string' && window.lastOcrText.length > 0) {
-                        sentToAI(`${text}\n${window.lastOcrText}`);
+                        sentToAI(`${promptInstruction}${text}\n${window.lastOcrText}`);
                     } else {
-                        sentToAI(`${text}`);
+                        sentToAI(`${promptInstruction}${text}`);
                     }
                 }
                 pastedImageForManualInput = null;
@@ -6957,6 +6502,7 @@
 
             // Existing debug/plain flows remain unchanged
             if (isDebug) {
+                const promptInstruction = await window.electronAPI.getPromptInstruction();
                 const backendUrl = (await window.electronAPI.getBackendUrl()) || "URL_INDEFINIDA";
                 //console.log("DEBUG backend URL:", backendUrl);
                 const lang = await window.electronAPI.getLanguage();
@@ -6968,7 +6514,7 @@
                     'HTTP Verb': 'POST',
                     'Backend URL': backendUrl,
                     'Request Body': {
-                        newPrompt: `${text}`,
+                        newPrompt: `${promptInstruction}${text}`,
                         ip: sessionStorage.getItem("user_ip"),
                         email: 'julianosoder.js@gmail.com',
                         agent: false,
