@@ -64,12 +64,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onAutoCloseState: (callback) =>
     ipcRenderer.on("autoclose-state", (event, data) => callback(data)),
   getAiModel: () => ipcRenderer.invoke("get-ai-model"),
+  setAiModel: (model) => ipcRenderer.send("set-ai-model", model),
   getOpenaiModel: () => ipcRenderer.invoke("get-openai-model"),
   setOpenaiModel: (model) => ipcRenderer.send("set-openai-model", model),
   getOpenaiReasoningEffort: () => ipcRenderer.invoke("get-openai-reasoning-effort"),
   setOpenaiReasoningEffort: (effort) => ipcRenderer.send("set-openai-reasoning-effort", effort),
   getOpenaiVisionModel: () => ipcRenderer.invoke("get-openai-vision-model"),
   setOpenaiVisionModel: (model) => ipcRenderer.send("set-openai-vision-model", model),
+  getOllamaLocalModel: () => ipcRenderer.invoke("get-ollama-local-model"),
+  setOllamaLocalModel: (model) => ipcRenderer.send("set-ollama-local-model", model),
+  checkOllamaLocalStatus: () => ipcRenderer.invoke("check-ollama-local-status"),
+  onAiModelChanged: (cb) => ipcRenderer.on("ai-model-changed", (event, data) => cb(data)),
   // Claude Code CLI provider
   getClaudeCliModel: () => ipcRenderer.invoke("get-claude-cli-model"),
   setClaudeCliModel: (model) => ipcRenderer.send("set-claude-cli-model", model),

@@ -48,6 +48,10 @@ const openAiModelSelect = document.getElementById("openai-model-select");
 const realtimeFastModelNote = document.getElementById("realtime-fast-model-note");
 const visionGuideSection = document.getElementById("vision-guide-section");
 
+const backendModelContainer = document.getElementById("backend-model-container");
+const backendModelSelect = document.getElementById("backend-model-select");
+const backendApiKey = document.getElementById("backend-api-key");
+
 function updateRealtimeFastModelNote() {
   if (!realtimeFastModelNote) return;
   realtimeFastModelNote.style.display = supportsReasoningEffort(openAiModelSelect.value) ? 'block' : 'none';
@@ -354,169 +358,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  const backendModelContainer = document.getElementById("backend-model-container");
-  const backendModelSelect = document.getElementById("backend-model-select");
-  const backendApiKey = document.getElementById("backend-api-key");
 
-  async function populateBackendModels(savedModel = null) {
-    if (!backendModelSelect) return;
-    const currentVal = savedModel || backendModelSelect.value;
-    try {
-      const url = await ipcRenderer.invoke("get-backend-url");
-      if (!url) throw new Error("URL não definida");
-      
-      // Normalize URL
-      const baseUrl = url.replace(/\/+$/, '');
-      
-      const apiKey = backendApiKey ? backendApiKey.value : '';
-      const res = await fetch(`${baseUrl}/models`, {
-        method: 'GET',
-        headers: {
-          'x-api-key': apiKey,
-          'ngrok-skip-browser-warning': 'true'
-        }
-      });
-      
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      
-      const data = await res.json();
-      backendModelSelect.innerHTML = '';
-      
-      let models = [];
-      if (data.models && Array.isArray(data.models)) {
-          models = data.models;
-      }
-
-      if (models.length === 0) {
-        backendModelSelect.innerHTML = '<option value="" disabled>Nenhum modelo no servidor</option>';
-      } else {
-        for (const m of models) {
-          const option = document.createElement('option');
-          // Ollama tags return object { name: '...', ... }
-          const name = typeof m === 'object' ? m.name : m;
-          option.value = name;
-          option.textContent = name;
-          backendModelSelect.appendChild(option);
-        }
-        // Re-seleciona se já tinha algo salvo
-        if (currentVal) {
-          let found = false;
-          for (const opt of backendModelSelect.options) {
-            if (opt.value === currentVal) found = true;
-          }
-          if (found) backendModelSelect.value = currentVal;
-          else backendModelSelect.selectedIndex = 0;
-        } else {
-          backendModelSelect.selectedIndex = 0;
-        }
-      }
-      checkBackendToolsAvailability();
-    } catch (e) {
-      console.warn("Failed to populate backend models:", e);
-      backendModelSelect.innerHTML = '<option value="" disabled>Erro ao carregar do servidor</option>';
-      checkBackendToolsAvailability();
-    }
-  }
-
-  if (backendModelSelect) {
-    backendModelSelect.addEventListener('change', () => {
-      ipcRenderer.send('set-backend-model', backendModelSelect.value);
-      checkBackendToolsAvailability();
-    });
-  }
-
-  async function populateOpenAiModels(savedModel = null) {
-    if (!openAiModelSelect) return;
-    const currentVal = savedModel || openAiModelSelect.value;
-    try {
-      const token = await ipcRenderer.invoke("get-open-ia-token");
-      if (!token) throw new Error("Chave da OpenAI não configurada");
-      
-      const res = await fetch("https://api.openai.com/v1/models", {
-        method: "GET",
-        headers: {
-          "Authorization": `Bearer ${token}`
-        }
-      });
-      if (!res.ok) throw new Error("Erro HTTP " + res.status);
-      const data = await res.json();
-      
-      let models = [];
-      if (data.data && Array.isArray(data.data)) {
-        models = data.data
-          .map(m => m.id)
-          .filter(id => id.startsWith('gpt-') || id.startsWith('o1-') || id.startsWith('o3-'))
-          .sort();
-      }
-      
-      if (models.length > 0) {
-        openAiModelSelect.innerHTML = '';
-        for (const m of models) {
-          const option = document.createElement('option');
-          option.value = m;
-          option.textContent = m;
-          openAiModelSelect.appendChild(option);
-        }
-        
-        if (currentVal) {
-          let found = false;
-          for (const opt of openAiModelSelect.options) {
-            if (opt.value === currentVal) found = true;
-          }
-          if (found) openAiModelSelect.value = currentVal;
-          else openAiModelSelect.selectedIndex = 0;
-        } else {
-          openAiModelSelect.selectedIndex = 0;
-        }
-      }
-    } catch (e) {
-      console.warn("Falha ao carregar modelos dinâmicos da OpenAI:", e.message);
-    }
-  }
-
-  function checkBackendToolsAvailability() {
-    const v = aiModelSelect.value;
-    if (v !== 'llama' && v !== 'llama-stream') return;
-    
-    let allowTools = false;
-    let modelName = backendModelSelect.value || '';
-    if (v === 'qwen-stream') {
-       allowTools = true;
-    } else if (modelName) {
-       const sizeMatch = modelName.match(/(\d+(?:\.\d+)?)b/i);
-       if (sizeMatch && parseFloat(sizeMatch[1]) > 10) {
-           allowTools = true;
-       } else if (modelName.toLowerCase().includes('pikachu') || modelName.toLowerCase().includes('ollama') || modelName.toLowerCase().includes('custom') || modelName.toLowerCase().includes('backend')) {
-           allowTools = true;
-       }
-    }
-    
-    if (helperToolsToggle) {
-       const disableHelperTools = !allowTools;
-       helperToolsToggle.disabled = disableHelperTools;
-       if (helperToolsToggle.closest('.setting-item')) {
-           helperToolsToggle.closest('.setting-item').style.opacity = disableHelperTools ? '0.4' : '';
-       }
-       if (disableHelperTools && helperToolsToggle.checked) {
-           helperToolsToggle.checked = false;
-           updateHelperToolsStatus(false);
-           alert("Ferramentas de escrita desabilitadas: O modelo remoto (" + (modelName || 'desconhecido') + ") é pequeno (<= 10b) e não suporta edição adequadamente.");
-       }
-    }
-    
-    if (workspaceAccessToggle) {
-       const disableWorkspace = !allowTools;
-       workspaceAccessToggle.disabled = disableWorkspace;
-       if (workspaceAccessToggle.closest('.setting-item')) {
-           workspaceAccessToggle.closest('.setting-item').style.opacity = disableWorkspace ? '0.4' : '';
-       }
-       if (disableWorkspace && workspaceAccessToggle.checked) {
-           workspaceAccessToggle.checked = false;
-           updateWorkspaceAccessStatus(false);
-           alert("Anexar diretório desabilitado: O modelo remoto (" + (modelName || 'desconhecido') + ") é pequeno (<= 10b) e não suporta navegação adequadamente.");
-       }
-    }
-  }
 
   // Load saved backend model when initializing config
   setTimeout(async () => {
@@ -628,6 +470,160 @@ document.addEventListener("DOMContentLoaded", async () => {
   } catch (_) {}
   applyBackendUrlVisibility();
 });
+
+async function populateBackendModels(savedModel = null) {
+  if (!backendModelSelect) return;
+  const currentVal = savedModel || backendModelSelect.value;
+  try {
+    const url = await ipcRenderer.invoke("get-backend-url");
+    if (!url) throw new Error("URL não definida");
+    
+    // Normalize URL
+    const baseUrl = url.replace(/\/+$/, '');
+    
+    const apiKey = backendApiKey ? backendApiKey.value : '';
+    const res = await fetch(`${baseUrl}/models`, {
+      method: 'GET',
+      headers: {
+        'x-api-key': apiKey,
+        'ngrok-skip-browser-warning': 'true'
+      }
+    });
+    
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    
+    const data = await res.json();
+    backendModelSelect.innerHTML = '';
+    
+    let models = [];
+    if (data.models && Array.isArray(data.models)) {
+        models = data.models;
+    }
+
+    if (models.length === 0) {
+      backendModelSelect.innerHTML = '<option value="" disabled>Nenhum modelo no servidor</option>';
+    } else {
+      for (const m of models) {
+        const option = document.createElement('option');
+        // Ollama tags return object { name: '...', ... }
+        const name = typeof m === 'object' ? m.name : m;
+        option.value = name;
+        option.textContent = name;
+        backendModelSelect.appendChild(option);
+      }
+      // Re-seleciona se já tinha algo salvo
+      if (currentVal) {
+        let found = false;
+        for (const opt of backendModelSelect.options) {
+          if (opt.value === currentVal) found = true;
+        }
+        if (found) backendModelSelect.value = currentVal;
+        else backendModelSelect.selectedIndex = 0;
+      } else {
+        backendModelSelect.selectedIndex = 0;
+      }
+    }
+    checkBackendToolsAvailability();
+  } catch (e) {
+    console.warn("Failed to populate backend models:", e);
+    backendModelSelect.innerHTML = '<option value="" disabled>Erro ao carregar do servidor</option>';
+    checkBackendToolsAvailability();
+  }
+}
+
+async function populateOpenAiModels(savedModel = null) {
+  if (!openAiModelSelect) return;
+  const currentVal = savedModel || openAiModelSelect.value;
+  try {
+    const token = await ipcRenderer.invoke("get-open-ia-token");
+    if (!token) throw new Error("Chave da OpenAI não configurada");
+    
+    const res = await fetch("https://api.openai.com/v1/models", {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${token}`
+      }
+    });
+    if (!res.ok) throw new Error("Erro HTTP " + res.status);
+    const data = await res.json();
+    
+    let models = [];
+    if (data.data && Array.isArray(data.data)) {
+      models = data.data
+        .map(m => m.id)
+        .filter(id => id.startsWith('gpt-') || id.startsWith('o1-') || id.startsWith('o3-'))
+        .sort();
+    }
+    
+    if (models.length > 0) {
+      openAiModelSelect.innerHTML = '';
+      for (const m of models) {
+        const option = document.createElement('option');
+        option.value = m;
+        option.textContent = m;
+        openAiModelSelect.appendChild(option);
+      }
+      
+      if (currentVal) {
+        let found = false;
+        for (const opt of openAiModelSelect.options) {
+          if (opt.value === currentVal) found = true;
+        }
+        if (found) openAiModelSelect.value = currentVal;
+        else openAiModelSelect.selectedIndex = 0;
+      } else {
+        openAiModelSelect.selectedIndex = 0;
+      }
+    }
+  } catch (e) {
+    console.warn("Falha ao carregar modelos dinâmicos da OpenAI:", e.message);
+  }
+}
+
+function checkBackendToolsAvailability() {
+  const v = aiModelSelect.value;
+  if (v !== 'llama' && v !== 'llama-stream') return;
+  
+  let allowTools = false;
+  let modelName = backendModelSelect.value || '';
+  if (v === 'qwen-stream') {
+     allowTools = true;
+  } else if (modelName) {
+     const sizeMatch = modelName.match(/(\d+(?:\.\d+)?)b/i);
+     if (sizeMatch && parseFloat(sizeMatch[1]) > 10) {
+         allowTools = true;
+     } else if (modelName.toLowerCase().includes('pikachu') || modelName.toLowerCase().includes('ollama') || modelName.toLowerCase().includes('custom') || modelName.toLowerCase().includes('backend')) {
+         allowTools = true;
+     }
+  }
+  
+  if (helperToolsToggle) {
+     const disableHelperTools = !allowTools;
+     helperToolsToggle.disabled = disableHelperTools;
+     if (helperToolsToggle.closest('.setting-item')) {
+         helperToolsToggle.closest('.setting-item').style.opacity = disableHelperTools ? '0.4' : '';
+     }
+     if (disableHelperTools && helperToolsToggle.checked) {
+         helperToolsToggle.checked = false;
+         updateHelperToolsStatus(false);
+         alert("Ferramentas de escrita desabilitadas: O modelo remoto (" + (modelName || 'desconhecido') + ") é pequeno (<= 10b) e não suporta edição adequadamente.");
+     }
+  }
+  
+  if (workspaceAccessToggle) {
+     const disableWorkspace = !allowTools;
+     workspaceAccessToggle.disabled = disableWorkspace;
+     if (workspaceAccessToggle.closest('.setting-item')) {
+         workspaceAccessToggle.closest('.setting-item').style.opacity = disableWorkspace ? '0.4' : '';
+     }
+     if (disableWorkspace && workspaceAccessToggle.checked) {
+         workspaceAccessToggle.checked = false;
+         updateWorkspaceAccessStatus(false);
+         alert("Anexar diretório desabilitado: O modelo remoto (" + (modelName || 'desconhecido') + ") é pequeno (<= 10b) e não suporta navegação adequadamente.");
+     }
+  }
+}
+
 
 // Handle debug toggle live update
 debugModeToggle.addEventListener("change", () => {
@@ -882,6 +878,7 @@ function releaseOllamaLocalExclusivity() {
 // Show/hide OpenAI/Ollama/GeminiCli fields based on AI model selection
 aiModelSelect.addEventListener('change', () => {
     const v = aiModelSelect.value;
+    ipcRenderer.send("set-ai-model", v);
     const isChatGPT = (v === 'openIa' || v === 'openIaCodex');
     if (visionGuideSection) {
       visionGuideSection.style.display = isChatGPT ? 'block' : 'none';
@@ -899,8 +896,7 @@ aiModelSelect.addEventListener('change', () => {
        // Evaluate if remote backend allows tools based on model size
        let modelName = backendModelSelect ? backendModelSelect.value : '';
        let allowTools = false;
-       if (v === 'qwen-stream') allowTools = true;
-       else if (modelName) {
+       if (modelName) {
            const sizeMatch = modelName.match(/(\d+(?:\.\d+)?)b/i);
            if (sizeMatch && parseFloat(sizeMatch[1]) > 10) allowTools = true;
        }
@@ -953,6 +949,33 @@ aiModelSelect.addEventListener('change', () => {
     }
     applyBackendUrlVisibility();
 });
+
+if (openAiModelSelect) {
+  openAiModelSelect.addEventListener('change', () => {
+    ipcRenderer.send("set-openai-model", openAiModelSelect.value);
+  });
+}
+if (geminiCliModelSelect) {
+  geminiCliModelSelect.addEventListener('change', () => {
+    ipcRenderer.send("set-gemini-cli-model", geminiCliModelSelect.value);
+  });
+}
+if (claudeCliModelSelect) {
+  claudeCliModelSelect.addEventListener('change', () => {
+    ipcRenderer.send("set-claude-cli-model", claudeCliModelSelect.value);
+  });
+}
+if (ollamaLocalModelSelect) {
+  ollamaLocalModelSelect.addEventListener('change', () => {
+    ipcRenderer.send("set-ollama-local-model", ollamaLocalModelSelect.value);
+  });
+}
+if (backendModelSelect) {
+  backendModelSelect.addEventListener('change', () => {
+    ipcRenderer.send("set-backend-model", backendModelSelect.value);
+    checkBackendToolsAvailability();
+  });
+}
 
 if (ollamaLocalModelSelect) {
     ollamaLocalModelSelect.addEventListener('change', updateOllamaPullCmd);

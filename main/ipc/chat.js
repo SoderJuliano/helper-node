@@ -339,8 +339,22 @@ ipcMain.on("open-preferences-ui", () => {
   helpers.createPreferencesWindow();
 });
 
+function broadcastAiModelChange(data = {}) {
+  try {
+    const { BrowserWindow } = require("electron");
+    BrowserWindow.getAllWindows().forEach((win) => {
+      if (win && !win.isDestroyed()) {
+        win.webContents.send("ai-model-changed", data);
+      }
+    });
+  } catch (err) {
+    console.warn("Error broadcasting ai-model-changed:", err);
+  }
+}
+
 ipcMain.on("set-ai-model", (event, aiModel) => {
   configService.setAiModel(aiModel);
+  broadcastAiModelChange({ provider: aiModel });
 });
 
 ipcMain.handle("get-openai-model", () => {
@@ -349,6 +363,7 @@ ipcMain.handle("get-openai-model", () => {
 
 ipcMain.on("set-openai-model", (event, model) => {
   configService.setOpenAiModel(model);
+  broadcastAiModelChange({ provider: 'openIa', model });
 });
 
 ipcMain.handle("get-openai-reasoning-effort", () => {
@@ -373,6 +388,7 @@ ipcMain.handle("get-backend-model", () => {
 
 ipcMain.on("set-backend-model", (event, model) => {
   if (configService.setBackendModel) configService.setBackendModel(model);
+  broadcastAiModelChange({ provider: 'llama', model });
 });
 
 ipcMain.handle("get-ollama-local-model", () => {
@@ -381,6 +397,7 @@ ipcMain.handle("get-ollama-local-model", () => {
 
 ipcMain.on("set-ollama-local-model", (event, model) => {
   configService.setOllamaLocalModel(model);
+  broadcastAiModelChange({ provider: 'ollamaLocal', model });
 });
 
 ipcMain.handle("get-ollama-local-host", () => {
@@ -392,6 +409,7 @@ ipcMain.handle("get-gemini-cli-model", () => configService.getGeminiCliModel());
 ipcMain.on("set-gemini-cli-model", (event, model) => {
   configService.setGeminiCliModel(model);
   GeminiCliProvider.setModel(model);
+  broadcastAiModelChange({ provider: 'geminiCli', model });
 });
 
 ipcMain.handle("get-gemini-cli-models", () => GeminiCliProvider.getModels());
@@ -416,6 +434,7 @@ ipcMain.handle("get-claude-cli-model", () => configService.getClaudeCliModel());
 ipcMain.on("set-claude-cli-model", (event, model) => {
   configService.setClaudeCliModel(model);
   ClaudeCliProvider.setModel(model);
+  broadcastAiModelChange({ provider: 'claudeCli', model });
 });
 
 ipcMain.handle("get-claude-cli-models", () => ClaudeCliProvider.getModels());

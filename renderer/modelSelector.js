@@ -245,17 +245,46 @@
                         console.error('Erro ao buscar modelos do backend:', err);
                         if (typeof showToast === 'function') showToast('Erro ao carregar modelos do servidor');
                     }
+                } else if (provider === 'ollamaLocal') {
+                    try {
+                        let currentVal = '';
+                        try { currentVal = await window.electronAPI.getOllamaLocalModel(); } catch (_) {}
+                        const status = await window.electronAPI.checkOllamaLocalStatus();
+                        let models = [];
+                        if (status && status.running && Array.isArray(status.models)) {
+                            models = status.models;
+                        }
+                        if (models.length === 0) {
+                            if (typeof showToast === 'function') showToast('Nenhum modelo baixado no Ollama Local');
+                            if (window.electronAPI.openConfig) window.electronAPI.openConfig();
+                            return;
+                        }
+                        const menuModels = models.map(m => ({ value: m, label: m }));
+                        _buildModelMenu(anchor, menuModels, () => currentVal, (opt) => {
+                            currentVal = opt.value;
+                            try { window.electronAPI.setOllamaLocalModel(opt.value); } catch (_) {}
+                            composerModelName.textContent = opt.label;
+                            if (typeof showToast === 'function') showToast('Modelo: ' + opt.label);
+                        });
+                    } catch (err) {
+                        console.error('Erro ao buscar modelos do Ollama Local:', err);
+                        if (window.electronAPI.openConfig) window.electronAPI.openConfig();
+                    }
                 } else {
-                    // Backend/Ollama: abre Configurações.
+                    // Outro provedor: abre Configurações.
                     if (window.electronAPI.openConfig) window.electronAPI.openConfig();
                 }
             }
-            if (composerModelBtn) {
-                composerModelBtn.addEventListener('click', (e) => { e.stopPropagation(); showModelMenu(composerModelBtn); });
-            }
+
             refreshComposerModel();
-            // Reflete mudanças feitas na janela de Configurações ao voltar o foco.
+
+            // Reflete mudanças feitas na janela de Configurações ao voltar o foco ou via IPC
             window.addEventListener('focus', () => { refreshComposerModel(); });
+            if (window.electronAPI && window.electronAPI.onAiModelChanged) {
+                window.electronAPI.onAiModelChanged(() => {
+                    refreshComposerModel();
+                });
+            }
 
     // Register handlers on window
     window.loadCliModels = loadCliModels;
@@ -266,5 +295,4 @@
     if (composerModelBtn) {
         composerModelBtn.addEventListener('click', (e) => { e.stopPropagation(); showModelMenu(composerModelBtn); });
     }
-    window.addEventListener('focus', () => { refreshComposerModel(); });
 })();
