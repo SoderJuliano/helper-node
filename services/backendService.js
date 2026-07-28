@@ -1047,7 +1047,40 @@ class BackendService {
       
       console.log(`[backend-stream] roteado para o endpoint final: ${endpoint}`);
 
+      let workspace = null;
+      let wsEnabled = false;
+      let attCount = 0;
+      let wsPaths = [];
+      try {
+        workspace = require('./workspace');
+        wsEnabled = !!(configService.getWorkspaceAccessEnabled && configService.getWorkspaceAccessEnabled());
+        attCount = wsEnabled ? workspace.list().length : 0;
+        if (wsEnabled && attCount > 0) {
+          wsPaths = workspace.list().map(a => a.path).filter(Boolean);
+        }
+      } catch (e) {
+        console.warn('[backend-stream] falha ao verificar anexos de workspace:', e.message);
+      }
+
+      let tools = opts.tools;
+      let onToolCall = opts.onToolCall;
+      let effectiveTools = tools;
       let promptInstruction = customInstruction || configService.getPromptInstruction();
+
+      if (effectiveTools && onToolCall) {
+        const wsPathsLine = wsPaths.length
+          ? `WORKSPACE ANEXADO — use EXATAMENTE estes paths absolutos (não invente outros):\n${wsPaths.map(p => `  - ${p}`).join('\n')}`
+          : '';
+        const analysisAddon = customInstruction ? '' : buildDeepAnalysisAddon({
+          toolsEnabled: true,
+          wsEnabled,
+          attCount,
+          texto,
+        });
+        const wsHeader = wsPathsLine ? `${wsPathsLine}\n\n` : '';
+        promptInstruction = `${wsHeader}${promptInstruction}\n\n${buildOllamaToolsAddon(tools, wsPaths)}${analysisAddon}`;
+      }
+
       let promptWithContext;
       if (baseEndpoint === '/llamatiny') {
         const lastMsgs = conversationContext
@@ -1055,8 +1088,11 @@ class BackendService {
           : texto;
         promptWithContext = `${promptInstruction}\n\n${lastMsgs}`;
       } else {
+        const instructionSuffix = (effectiveTools && onToolCall && wsEnabled && attCount > 0)
+          ? "EXECUTE AS AÇÕES PEDIDAS USANDO AS FERRAMENTAS (TOOL_CALL). NÃO RESPONDA COM TEXTO NEM CÓDIGO RAW."
+          : "Please respond to the latest human message.";
         promptWithContext = conversationContext
-          ? `${promptInstruction}\n\nConversation context:\n${conversationContext}\nPlease respond to the latest human message.`
+          ? `${promptInstruction}\n\nConversation context:\n${conversationContext}\n${instructionSuffix}`
           : `${promptInstruction}${texto}`;
       }
 
@@ -1106,9 +1142,30 @@ class BackendService {
         const { done, value } = await reader.read();
         
         if (done) {
-          // Add complete response to session history
           if (fullResponse) {
             this.addAssistantResponse(sessionId, fullResponse);
+          }
+          if (effectiveTools && onToolCall) {
+            const calls = parseOllamaToolCalls(fullResponse);
+            if (calls.length > 0) {
+              console.log(`[backend-stream][tools] ${calls.length} tool call(s) detectada(s)`);
+              for (const c of calls) {
+                const name = c.obj.name;
+                const rawArgs = c.obj.args || c.obj.arguments || {};
+                let args = rawArgs;
+                if (args && args.command && !args.cmd) {
+                  const parts = String(args.command).trim().split(/\s+/);
+                  args = { ...args, cmd: parts[0], args: parts.slice(1) };
+                  delete args.command;
+                }
+                if (onChunk) onChunk(`\n\n⚙️ *Executando ${name}...*\n`);
+                try {
+                  await onToolCall({ name, args });
+                } catch (e) {
+                  console.error(`[backend-stream][tools] Erro em ${name}:`, e.message);
+                }
+              }
+            }
           }
           if (onComplete) onComplete();
           break;
@@ -1132,9 +1189,30 @@ class BackendService {
             
             // Ignora marcadores de fim
             if (data === '[DONE]' || data.toLowerCase() === 'done') {
-              // Add complete response to session history
               if (fullResponse) {
                 this.addAssistantResponse(sessionId, fullResponse);
+              }
+              if (effectiveTools && onToolCall) {
+                const calls = parseOllamaToolCalls(fullResponse);
+                if (calls.length > 0) {
+                  console.log(`[backend-stream][tools] ${calls.length} tool call(s) detectada(s)`);
+                  for (const c of calls) {
+                    const name = c.obj.name;
+                    const rawArgs = c.obj.args || c.obj.arguments || {};
+                    let args = rawArgs;
+                    if (args && args.command && !args.cmd) {
+                      const parts = String(args.command).trim().split(/\s+/);
+                      args = { ...args, cmd: parts[0], args: parts.slice(1) };
+                      delete args.command;
+                    }
+                    if (onChunk) onChunk(`\n\n⚙️ *Executando ${name}...*\n`);
+                    try {
+                      await onToolCall({ name, args });
+                    } catch (e) {
+                      console.error(`[backend-stream][tools] Erro em ${name}:`, e.message);
+                    }
+                  }
+                }
               }
               if (onComplete) onComplete();
               return;

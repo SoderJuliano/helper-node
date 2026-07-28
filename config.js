@@ -581,47 +581,8 @@ async function populateOpenAiModels(savedModel = null) {
 }
 
 function checkBackendToolsAvailability() {
-  const v = aiModelSelect.value;
-  if (v !== 'llama' && v !== 'llama-stream') return;
-  
-  let allowTools = false;
-  let modelName = backendModelSelect.value || '';
-  if (v === 'qwen-stream') {
-     allowTools = true;
-  } else if (modelName) {
-     const sizeMatch = modelName.match(/(\d+(?:\.\d+)?)b/i);
-     if (sizeMatch && parseFloat(sizeMatch[1]) > 10) {
-         allowTools = true;
-     } else if (modelName.toLowerCase().includes('pikachu') || modelName.toLowerCase().includes('ollama') || modelName.toLowerCase().includes('custom') || modelName.toLowerCase().includes('backend')) {
-         allowTools = true;
-     }
-  }
-  
-  if (helperToolsToggle) {
-     const disableHelperTools = !allowTools;
-     helperToolsToggle.disabled = disableHelperTools;
-     if (helperToolsToggle.closest('.setting-item')) {
-         helperToolsToggle.closest('.setting-item').style.opacity = disableHelperTools ? '0.4' : '';
-     }
-     if (disableHelperTools && helperToolsToggle.checked) {
-         helperToolsToggle.checked = false;
-         updateHelperToolsStatus(false);
-         alert("Ferramentas de escrita desabilitadas: O modelo remoto (" + (modelName || 'desconhecido') + ") é pequeno (<= 10b) e não suporta edição adequadamente.");
-     }
-  }
-  
-  if (workspaceAccessToggle) {
-     const disableWorkspace = !allowTools;
-     workspaceAccessToggle.disabled = disableWorkspace;
-     if (workspaceAccessToggle.closest('.setting-item')) {
-         workspaceAccessToggle.closest('.setting-item').style.opacity = disableWorkspace ? '0.4' : '';
-     }
-     if (disableWorkspace && workspaceAccessToggle.checked) {
-         workspaceAccessToggle.checked = false;
-         updateWorkspaceAccessStatus(false);
-         alert("Anexar diretório desabilitado: O modelo remoto (" + (modelName || 'desconhecido') + ") é pequeno (<= 10b) e não suporta navegação adequadamente.");
-     }
-  }
+  // Não desabilita nem desmarca as preferências ativas do usuário.
+  // Permite que o usuário use ferramentas e anexos de workspace em qualquer provedor/modelo.
 }
 
 

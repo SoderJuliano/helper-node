@@ -283,9 +283,14 @@ ipcMain.on("clear-ai-sessions", () => {
 ipcMain.on("send-to-gemini-stream", async (event, text) => {
   try {
     console.log("IPC: Usando Backend Stream Service...");
-    
+    const instructionO2 = configService.getPromptInstruction();
+    const _wsTxtO2 = await helpers.prependWorkspaceContextIfNeeded(text, 'ollama');
+    const _kbO2 = await helpers.knowledgeBlockForOllama(text);
+    const _augTxtO2 = _kbO2 ? _kbO2 + "\n\n---\n\n" + _wsTxtO2 : _wsTxtO2;
+    const _htO2 = helpers.buildHelperToolsOpenAIOpts(_augTxtO2, instructionO2, configService.getOpenAiModel());
+
     await BackendService.responderStream(
-      text,
+      _augTxtO2,
       // onChunk
       (chunk) => {
         event.sender.send("gemini-stream-chunk", chunk);
@@ -298,7 +303,8 @@ ipcMain.on("send-to-gemini-stream", async (event, text) => {
       (error) => {
         console.error("Stream error:", error);
         event.sender.send("transcription-error", error.message);
-      }
+      },
+      _htO2.opts
     );
   } catch (error) {
     console.error("IPC: Stream service error:", error);
