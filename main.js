@@ -134,6 +134,51 @@ app.whenReady().then(async () => {
     openConfig: helpers.createConfigWindow,
   });
 
+  // Roteamento de eventos do Assistente de Tradução (modo ao vivo)
+  if (translationAssistant) {
+    translationAssistant.onResult((data) => {
+      try {
+        const isOsIntegration = configService.getOsIntegrationStatus();
+        if (isOsIntegration) {
+          helpers.sendToTranslationOverlay('translation-result', data);
+        }
+        if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+          state.mainWindow.webContents.send('translation-result', data);
+        }
+      } catch (e) {
+        console.error('[TranslationAssistant] erro no callback onResult:', e.message);
+      }
+    });
+
+    translationAssistant.onLevel((source, rms) => {
+      try {
+        const isOsIntegration = configService.getOsIntegrationStatus();
+        if (isOsIntegration) {
+          helpers.sendToTranslationOverlay('translation-level', { source, rms });
+        }
+        if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+          state.mainWindow.webContents.send('translation-level', { source, rms });
+        }
+      } catch (e) {
+        console.error('[TranslationAssistant] erro no callback onLevel:', e.message);
+      }
+    });
+
+    translationAssistant.onLoading((loading) => {
+      try {
+        const isOsIntegration = configService.getOsIntegrationStatus();
+        if (isOsIntegration) {
+          helpers.sendToTranslationOverlay('translation-loading', loading);
+        }
+        if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+          state.mainWindow.webContents.send('translation-loading', loading);
+        }
+      } catch (e) {
+        console.error('[TranslationAssistant] erro no callback onLoading:', e.message);
+      }
+    });
+  }
+
   // Envia o status inicial do modo debug para a janela principal
   if (state.mainWindow && !state.mainWindow.isDestroyed()) {
     const initialDebugStatus = configService.getDebugModeStatus();
