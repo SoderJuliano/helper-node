@@ -145,6 +145,9 @@ var terminalHistoryIdx = 0;
         async function initTerminalProcess() {
             if (isTerminalInitialized) return;
             isTerminalInitialized = true;
+
+            // Reseta o buffer de tela ao conectar/reconectar
+            if (typeof window._termResetBuffer === 'function') window._termResetBuffer();
             
             const termScreen = document.getElementById('terminal-screen');
             if (termScreen) {
@@ -277,9 +280,7 @@ var terminalHistoryIdx = 0;
                     if (e.key === 'Enter') {
                         const val = termInput.value;
                         if (val.trim() === 'clear') {
-                            if (termScreen) {
-                                termScreen.innerHTML = '';
-                            }
+                            if (typeof window._termResetBuffer === 'function') window._termResetBuffer();
                             window.electronAPI.terminalInput('\n');
                             terminalHistory.push(val);
                             terminalHistoryIdx = terminalHistory.length;
@@ -315,38 +316,202 @@ var terminalHistoryIdx = 0;
                         }
                     } else if (e.key === 'l' && e.ctrlKey) {
                         e.preventDefault();
-                        if (termScreen) {
-                            termScreen.innerHTML = '';
-                        }
+                        if (typeof window._termResetBuffer === 'function') window._termResetBuffer();
                     }
                 });
             }
 
             if (window.electronAPI.onTerminalOutput) {
+                // === Mini screen buffer VT100 ===
+                // O ConPTY (node-pty) envia sequências de cursor reais: \r (CR),
+                // \x1b[K (erase to end of line), \x1b[nA/B (up/down), etc.
+                // Sem isso, git status / npm / qualquer coisa que reescreve linhas
+                // exibe texto grudado (ex: "index.htmlmodified:").
+                //
+                // Dois buffers paralelos por linha:
+                //   plainLines[r] — texto puro (sem ANSI) → usado para slice/pad/cursor
+                //   ansiLines[r]  — texto + escapes ANSI  → usado para renderização
+
+                let plainLines = [''];
+                let ansiLines  = [''];
+                let curRow = 0;
+                let curCol = 0;
+                let currentAnsiState = '';
+
+                function resetScreenBuffer() {
+                    plainLines = [''];
+                    ansiLines  = [''];
+                    curRow = 0;
+                    curCol = 0;
+                    currentAnsiState = '';
+                    if (termScreen) termScreen.innerHTML = '';
+                }
+                window._termResetBuffer = resetScreenBuffer;
+
+                function ensureRow(r) {
+                    while (r >= plainLines.length) { plainLines.push(''); ansiLines.push(''); }
+                }
+
+                function flushScreen() {
+                    termScreen.innerHTML = '';
+                    for (let i = 0; i < ansiLines.length; i++) {
+                        const span = document.createElement('span');
+                        span.innerHTML = ansiToHtml(ansiLines[i]);
+                        termScreen.appendChild(span);
+                        if (i < ansiLines.length - 1) {
+                            termScreen.appendChild(document.createTextNode('\n'));
+                        }
+                    }
+                }
+
+                // Processa um chunk VT100 e atualiza plainLines/ansiLines e cursor.
+                function processChunk(chunk) {
+                    let i = 0;
+                    while (i < chunk.length) {
+                        const ch = chunk[i];
+
+                        // ── Carriage Return: volta ao início da linha atual ──
+                        if (ch === '\r') {
+                            curCol = 0;
+                            i++;
+                            continue;
+                        }
+
+                        // ── Line Feed: nova linha ──
+                        if (ch === '\n' || ch === '\x0b' || ch === '\x0c') {
+                            curRow++;
+                            ensureRow(curRow);
+                            i++;
+                            continue;
+                        }
+
+                        // ── Backspace ──
+                        if (ch === '\x08') {
+                            if (curCol > 0) curCol--;
+                            i++;
+                            continue;
+                        }
+
+                        // ── Escape sequences ──
+                        if (ch === '\x1b' && i + 1 < chunk.length) {
+                            if (chunk[i + 1] === '[') {
+                                const csiMatch = chunk.slice(i).match(/^\x1b\[([0-9;?]*)([A-Za-z@`])/);
+                                if (csiMatch) {
+                                    const params = csiMatch[1];
+                                    const cmd = csiMatch[2];
+                                    const args = params.split(';').map(v => parseInt(v || '0', 10));
+                                    const n = args[0] || 1;
+
+                                    if (cmd === 'A') { curRow = Math.max(0, curRow - n); }
+                                    else if (cmd === 'B' || cmd === 'e') { curRow += n; ensureRow(curRow); }
+                                    else if (cmd === 'C' || cmd === 'a') { curCol += n; }
+                                    else if (cmd === 'D') { curCol = Math.max(0, curCol - n); }
+                                    else if (cmd === 'E') { curRow += n; curCol = 0; ensureRow(curRow); }
+                                    else if (cmd === 'F') { curRow = Math.max(0, curRow - n); curCol = 0; }
+                                    else if (cmd === 'G' || cmd === '`') { curCol = Math.max(0, (args[0] || 1) - 1); }
+                                    else if (cmd === 'H' || cmd === 'f') {
+                                        curRow = Math.max(0, (args[0] || 1) - 1);
+                                        curCol = Math.max(0, (args[1] || 1) - 1);
+                                        ensureRow(curRow);
+                                    }
+                                    else if (cmd === 'J') {
+                                        if (args[0] === 2 || args[0] === 3) {
+                                            plainLines = ['']; ansiLines = [''];
+                                            curRow = 0; curCol = 0;
+                                        } else if (args[0] === 0) {
+                                            plainLines[curRow] = plainLines[curRow].slice(0, curCol);
+                                            ansiLines[curRow] = ansiLines[curRow].slice(0, curCol) + currentAnsiState;
+                                            plainLines.splice(curRow + 1); ansiLines.splice(curRow + 1);
+                                        } else if (args[0] === 1) {
+                                            plainLines[curRow] = ' '.repeat(curCol) + plainLines[curRow].slice(curCol);
+                                            ansiLines[curRow] = ' '.repeat(curCol) + ansiLines[curRow].slice(curCol);
+                                            for (let r = 0; r < curRow; r++) { plainLines[r] = ''; ansiLines[r] = ''; }
+                                        }
+                                    }
+                                    else if (cmd === 'K') {
+                                        const p = plainLines[curRow] || '';
+                                        const a = ansiLines[curRow] || '';
+                                        if (args[0] === 0 || args[0] === undefined || isNaN(args[0])) {
+                                            // Erase cursor→end: trunca o texto puro; no ansi adiciona reset
+                                            plainLines[curRow] = p.slice(0, curCol);
+                                            ansiLines[curRow] = a.slice(0, curCol) + '\x1b[0m';
+                                        } else if (args[0] === 1) {
+                                            plainLines[curRow] = ' '.repeat(curCol) + p.slice(curCol);
+                                            ansiLines[curRow] = ' '.repeat(curCol) + a.slice(curCol);
+                                        } else if (args[0] === 2) {
+                                            plainLines[curRow] = '';
+                                            ansiLines[curRow] = '';
+                                            curCol = 0;
+                                        }
+                                    }
+                                    else if (cmd === 'P') {
+                                        plainLines[curRow] = (plainLines[curRow]||'').slice(0, curCol) + (plainLines[curRow]||'').slice(curCol + n);
+                                        ansiLines[curRow] = (ansiLines[curRow]||'').slice(0, curCol) + (ansiLines[curRow]||'').slice(curCol + n);
+                                    }
+                                    else if (cmd === 'S') {
+                                        for (let s = 0; s < n; s++) { plainLines.shift(); ansiLines.shift(); }
+                                        while (plainLines.length < 1) { plainLines.push(''); ansiLines.push(''); }
+                                    }
+                                    else if (cmd === 'T') {
+                                        for (let s = 0; s < n; s++) { plainLines.unshift(''); ansiLines.unshift(''); }
+                                        curRow += n;
+                                    }
+
+                                    // SGR (m): injeta no ansiLines, atualiza estado de cor atual
+                                    if (cmd === 'm') {
+                                        const raw = csiMatch[0];
+                                        currentAnsiState = raw; // simplificado: último SGR é o estado
+                                        ensureRow(curRow);
+                                        ansiLines[curRow] = (ansiLines[curRow] || '') + raw;
+                                        // plainLines não muda — SGR não é caractere visível
+                                    }
+
+                                    i += csiMatch[0].length;
+                                    continue;
+                                }
+                            }
+
+                            // OSC, DCS, PM, APC — descarta
+                            const oscMatch = chunk.slice(i).match(/^\x1b[P\]^_][\s\S]*?(?:\x1b\\|\x07)/);
+                            if (oscMatch) { i += oscMatch[0].length; continue; }
+
+                            // Outros escapes 2-byte
+                            i += 2;
+                            continue;
+                        }
+
+                        // ── Caracteres imprimíveis ──
+                        ensureRow(curRow);
+                        let plain = plainLines[curRow];
+                        let ansi  = ansiLines[curRow];
+
+                        // Pad com espaços até o cursor (em texto puro)
+                        if (curCol > plain.length) {
+                            const pad = ' '.repeat(curCol - plain.length);
+                            plain += pad;
+                            ansi  += pad;
+                        }
+
+                        // Overwrite o caractere na posição correta (texto puro e ansi separados)
+                        plainLines[curRow] = plain.slice(0, curCol) + ch + plain.slice(curCol + 1);
+                        ansiLines[curRow]  = ansi.slice(0, curCol)  + ch + ansi.slice(curCol + 1);
+                        curCol++;
+                        i++;
+                    }
+                }
+
                 window.electronAPI.onTerminalOutput((payload) => {
-                    if (termScreen) {
-                        const isAtBottom = termScreen.scrollHeight - termScreen.clientHeight <= termScreen.scrollTop + 20;
-                        let chunk = payload.data;
-                        
-                        if (chunk.includes('\x1b[2J') || chunk.includes('\x1b[H') || chunk.includes('\x0c')) {
-                            termScreen.innerHTML = '';
-                            chunk = chunk.replace(/\x1b\[2J/g, '')
-                                         .replace(/\x1b\[H/g, '')
-                                         .replace(/\x0c/g, '')
-                                         .replace(/\x1b\[3J/g, '');
-                        }
-                        
-                        if (chunk) {
-                            // Normalize newlines (carriage returns \r or \r\n to standard \n) so HTML's white-space: pre-wrap renders them correctly
-                            chunk = chunk.replace(/\r+\n/g, '\n').replace(/\r/g, '\n');
-                            const span = document.createElement('span');
-                            span.innerHTML = ansiToHtml(chunk);
-                            termScreen.appendChild(span);
-                        }
-                        
-                        if (isAtBottom) {
-                            termScreen.scrollTop = termScreen.scrollHeight;
-                        }
+                    if (!termScreen) return;
+                    const isAtBottom = termScreen.scrollHeight - termScreen.clientHeight <= termScreen.scrollTop + 20;
+                    const chunk = payload.data;
+
+                    if (!chunk) return;
+
+                    processChunk(chunk);
+                    flushScreen();
+
+                    if (isAtBottom) {
+                        termScreen.scrollTop = termScreen.scrollHeight;
                     }
                 });
             }
