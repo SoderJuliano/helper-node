@@ -13,6 +13,20 @@
 9. Nunca assuma o conteúdo de um arquivo — sempre leia antes de editar.
 10. Nunca instale dependências manualmente no package.json — use apenas `npm install <pacote>`.
 
+## Regra de tamanho de arquivo — OBRIGATÓRIA
+
+11. **Nenhum arquivo JS/CSS pode ultrapassar 500 linhas.**
+    - Antes de criar ou expandir qualquer arquivo, conte as linhas atuais.
+    - Se uma adição faria o arquivo ultrapassar 500 linhas, PARE e extraia a funcionalidade
+      nova (ou a mais isolada existente) para um módulo separado antes de continuar.
+    - Padrão de modularização:
+      - `main/` → módulos do processo principal (Node/Electron)
+      - `renderer/` → módulos do processo renderer (browser)
+      - `styles/` → folhas de estilo separadas por domínio
+    - O novo módulo deve ser importado/requerido de volta no arquivo original.
+    - Após extrair, rode `node --check` em AMBOS os arquivos (original + novo módulo).
+    - Esta regra se aplica a qualquer IA ou desenvolvedor que altere este projeto.
+
 ## Regras de segurança
 
 - Credenciais vivem APENAS em ~/.config/<app>/config.json e são lidas via configService.
