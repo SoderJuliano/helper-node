@@ -36,6 +36,8 @@ var isEditingQuestion = false;
                     copyAllFixedBtn.classList.add('copied');
                     setTimeout(() => { copyAllFixedBtn.textContent = 'Copiar tudo'; copyAllFixedBtn.classList.remove('copied'); }, 1500);
                 });
+            }
+
             // === Botão Cancelar Requisição Fixo ===
             const cancelFixedBtn = document.getElementById('cancel-request-btn');
             if (cancelFixedBtn) {
