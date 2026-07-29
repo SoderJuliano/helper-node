@@ -369,68 +369,40 @@ var promptHistoryDraft = '';
         
         async function submitManualQuestion(text, container) {
             manualInputActive = false;
-            undockComposer(); // restaura o ghost do composer após envio
+            if (container) {
+                try { container.remove(); } catch (_) {}
+            }
+            undockComposer();
 
-            // Registra no histórico de prompts (navegação ArrowUp/ArrowDown, estilo CLI).
             if (text && promptHistory[promptHistory.length - 1] !== text) {
                 promptHistory.push(text);
             }
             promptHistoryIndex = -1;
             promptHistoryDraft = '';
 
-            // Enviar = conversa começou: esconde o hero (→ #main perde .is-empty,
-            // o composer doca embaixo e o #transcription fica visível). Antes isso
-            // dependia do clique no body, que removi pra parar o "pulo" — sem este
-            // hide a pergunta/resposta caíam num #transcription display:none.
             const _heroSubmit = document.getElementById('welcome-hero');
             if (_heroSubmit) _heroSubmit.classList.add('hidden');
 
+            const transcriptionElement = document.getElementById('transcription');
+            if (!transcriptionElement) return;
+
             const isDebug = await window.electronAPI.getDebugModeStatus();
 
-            if (pastedImageForManualInput) {
-                // We already processed image OCR in main and will send combined prompt here
-                // Show the question in UI
-                const questionSpan = document.createElement('span');
-                questionSpan.className = 'question-text';
-                setQuestionText(questionSpan, `${text} (Image in context)`);
-                const ib1 = document.createElement('div');
-                ib1.className = 'interaction-block';
-                ib1.appendChild(questionSpan);
-                container.replaceWith(ib1);
-                currentQuestionElement = questionSpan;
+            const questionSpan = document.createElement('span');
+            questionSpan.className = 'question-text';
+            setQuestionText(questionSpan, pastedImageForManualInput ? `${text} (Image in context)` : text);
+            wireQuestionEdit(questionSpan);
 
-                startProcessing();
+            const ib = document.createElement('div');
+            ib.className = 'interaction-block';
+            ib.appendChild(questionSpan);
+            ib.appendChild(createBlockActions(transcriptionElement));
 
-                // Se o backend tem visão (OpenAI/Lite), manda a IMAGEM real + o
-                // enunciado digitado. O OCR local não basta: quiz/código/canvas
-                // viram OCR vazio e o modelo respondia "envie as opções".
-                if (window.pendingChatImage && await backendSupportsVision()) {
-                    sentImageToAI(text, window.pendingChatImage);
-                } else {
-                    // Backends sem visão: mantém o fluxo antigo de OCR + texto.
-                    const promptInstruction = await window.electronAPI.getPromptInstruction();
-                    if (typeof window.lastOcrText === 'string' && window.lastOcrText.length > 0) {
-                        sentToAI(`${promptInstruction}${text}\n${window.lastOcrText}`);
-                    } else {
-                        sentToAI(`${promptInstruction}${text}`);
-                    }
-                }
-                pastedImageForManualInput = null;
-                window.pendingChatImage = null;
-                document.getElementById('screenshot-preview').style.display = 'none';
-                return;
-            }
-
-            // Existing debug/plain flows remain unchanged
             if (isDebug) {
                 const promptInstruction = await window.electronAPI.getPromptInstruction();
                 const backendUrl = (await window.electronAPI.getBackendUrl()) || "URL_INDEFINIDA";
-                //console.log("DEBUG backend URL:", backendUrl);
                 const lang = await window.electronAPI.getLanguage();
-                const map = {
-                    'pt-br': 'PORTUGUESE',
-                    'en-us': 'ENGLISH'
-                };
+                const map = { 'pt-br': 'PORTUGUESE', 'en-us': 'ENGLISH' };
                 const debugInfo = {
                     'HTTP Verb': 'POST',
                     'Backend URL': backendUrl,
@@ -442,30 +414,34 @@ var promptHistoryDraft = '';
                         language: map[lang] || 'ENGLISH'
                     }
                 };
-                
                 const pre = document.createElement('pre');
                 pre.textContent = JSON.stringify(debugInfo, null, 2);
-                container.replaceWith(pre);
-
-            } else {
-                const questionSpan = document.createElement('span');
-                questionSpan.className = 'question-text';
-                setQuestionText(questionSpan, text);
-                wireQuestionEdit(questionSpan);
-
-                const ib2 = document.createElement('div');
-                ib2.className = 'interaction-block';
-                ib2.appendChild(questionSpan);
-                ib2.appendChild(createBlockActions(document.getElementById('transcription')));
-                container.replaceWith(ib2);
-                currentQuestionElement = questionSpan;
+                ib.appendChild(pre);
             }
-            
-            // Inicia processamento
+
+            transcriptionElement.appendChild(ib);
+            currentQuestionElement = questionSpan;
+            scrollTranscriptionToBottom('force');
+
             startProcessing();
-            
-            // Envia para a IA
-            sentToAI(text);
+
+            if (pastedImageForManualInput) {
+                if (window.pendingChatImage && await backendSupportsVision()) {
+                    sentImageToAI(text, window.pendingChatImage);
+                } else {
+                    const promptInstruction = await window.electronAPI.getPromptInstruction();
+                    if (typeof window.lastOcrText === 'string' && window.lastOcrText.length > 0) {
+                        sentToAI(`${promptInstruction}${text}\n${window.lastOcrText}`);
+                    } else {
+                        sentToAI(`${promptInstruction}${text}`);
+                    }
+                }
+                pastedImageForManualInput = null;
+                window.pendingChatImage = null;
+                document.getElementById('screenshot-preview').style.display = 'none';
+            } else {
+                sentToAI(text);
+            }
         }
 
         window.electronAPI.onOcrResult(({ text }) => { window.lastOcrText = text || ''; });

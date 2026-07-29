@@ -393,22 +393,6 @@ function setAiModel(aiModel) {
     currentConfig = loadConfig();
   }
   currentConfig.aiModel = aiModel;
-  // CLIs externos e Ollama com backend: desliga helperTools (o CLI gerencia suas próprias ferramentas ou o backend não tem suporte),
-  // mas mantém workspaceAccess para CLIs (ele controla o painel de projeto/diretório que usam como cwd e contexto de repositório).
-  if (aiModel === 'geminiCli' || aiModel === 'claudeCli' || aiModel === 'llama' || aiModel === 'llama-stream') {
-    if (currentConfig.helperTools && currentConfig.helperTools.enabled) {
-      currentConfig.helperTools.enabled = false;
-      console.log(`[config] ${aiModel} selecionado → helperTools desligado automaticamente`);
-    }
-    if (aiModel === 'llama' || aiModel === 'llama-stream') {
-      if (currentConfig.workspaceAccess && currentConfig.workspaceAccess.enabled) {
-        currentConfig.workspaceAccess.enabled = false;
-      }
-    }
-    saveConfig(currentConfig);
-    currentConfig = null;
-    return;
-  }
   saveConfig(currentConfig);
   currentConfig = null;
 }
@@ -650,14 +634,6 @@ function getWorkspaceAccessEnabled() {
 function setWorkspaceAccessEnabled(enabled) {
   if (!currentConfig) currentConfig = loadConfig();
   if (!currentConfig.workspaceAccess) currentConfig.workspaceAccess = {};
-  // Para OpenAI, requer helperTools ligado (quem faz a leitura de arquivos).
-  // Para CLIs (geminiCli, claudeCli), o CLI usa o diretório diretamente — sem restrição.
-  const model = currentConfig.aiModel || 'openIa';
-  const isCli = model === 'geminiCli' || model === 'claudeCli';
-  if (enabled && !isCli && !(currentConfig.helperTools && currentConfig.helperTools.enabled)) {
-    console.warn("[config] workspaceAccess requer helperTools ligado — ignorando");
-    return;
-  }
   currentConfig.workspaceAccess.enabled = !!enabled;
   saveConfig(currentConfig);
   currentConfig = null;
