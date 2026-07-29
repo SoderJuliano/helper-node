@@ -19,23 +19,19 @@ module.exports = function registerIpc() {
 ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
   try {
     const aiModel = helpers.getEffectiveAiModel();
-    let resposta;
-    let usedKnowledge = false; // base de conhecimento injetada nesta resposta?
-
+    let resposta, usedKnowledge = false;
     let promptWithHistory = text;
     let pastMessages = [];
     if (sessionId) {
       const session = historyService.getSessionById(Number(sessionId)) || historyService.getSessionById(sessionId);
       if (session && session.conversations && session.conversations.length > 1) {
-        // Exclui a última mensagem, que é o prompt atual que já foi adicionado
         pastMessages = session.conversations.slice(0, -1);
         if (pastMessages.length > 0) {
           let historyContext = "=== HISTÓRICO DA CONVERSA ANTERIOR ===\n";
           for (const msg of pastMessages) {
-            const roleName = msg.role === 'user' ? 'Usuário' : 'IA';
-            historyContext += `[${roleName}]: ${msg.content}\n\n`;
+            historyContext += `[${msg.role === 'user' ? 'Usuário' : 'IA'}]: ${msg.content}\n\n`;
           }
-          historyContext += "=== FIM DO HISTÓRICO ===\n\nUse o histórico acima como contexto para responder à pergunta atual.\n\nPergunta atual: ";
+          historyContext += "=== FIM DO HISTÓRICO ===\n\nPergunta atual: ";
           promptWithHistory = historyContext + text;
         }
       }
@@ -167,6 +163,10 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
                     event.sender
                 );
               } catch (err) {
+                if (err && (err.message === 'Request cancelled' || err.message === 'Cancelado.')) {
+                  event.sender.send("transcription-error", "Request cancelled");
+                  return;
+                }
                 resposta = `[Ollama Agentic] Interrompido ou falhou: ${err.message}`;
               }
           } else {
@@ -301,57 +301,47 @@ ipcMain.on("send-to-gemini-stream", async (event, text) => {
       },
       // onError
       (error) => {
+        if (error && error.message === 'Request cancelled') {
+          console.log('[ipc] Stream cancelado pelo usuário.');
+          event.sender.send("transcription-error", "Request cancelled");
+          return;
+        }
         console.error("Stream error:", error);
         event.sender.send("transcription-error", error.message);
       },
       _htO2.opts
     );
   } catch (error) {
+    if (error && error.message === 'Request cancelled') {
+      event.sender.send("transcription-error", "Request cancelled");
+      return;
+    }
     console.error("IPC: Stream service error:", error);
     event.sender.send("transcription-error", "Failed to process stream response");
   }
 });
 
 ipcMain.on("cancel-ia-request", () => {
-  // Backend Ollama / OpenAI nao tem cancelamento implementado por enquanto.
   if (state.waitingNotificationInterval) {
     clearInterval(state.waitingNotificationInterval);
     state.waitingNotificationInterval = null;
   }
+  try { BackendService.abortCurrentRequest(); } catch (_) {}
   console.log("IA request cancelled");
 });
 
-ipcMain.handle("get-backend-url", async () => {
-  return await BackendService.getApiUrl();
-});
-
-ipcMain.handle("get-backend-api-key", () => {
-  return configService.getBackendApiKey();
-});
-
-ipcMain.handle("get-ai-model", () => {
-  return configService.getAiModel();
-});
-
-ipcMain.handle("get-edition", () => {
-  return edition.getEdition();
-});
-
-ipcMain.on("open-config-ui", () => {
-  helpers.createConfigWindow();
-});
-
-ipcMain.on("open-preferences-ui", () => {
-  helpers.createPreferencesWindow();
-});
+ipcMain.handle("get-backend-url", async () => await BackendService.getApiUrl());
+ipcMain.handle("get-backend-api-key", () => configService.getBackendApiKey());
+ipcMain.handle("get-ai-model", () => configService.getAiModel());
+ipcMain.handle("get-edition", () => edition.getEdition());
+ipcMain.on("open-config-ui", () => helpers.createConfigWindow());
+ipcMain.on("open-preferences-ui", () => helpers.createPreferencesWindow());
 
 function broadcastAiModelChange(data = {}) {
   try {
     const { BrowserWindow } = require("electron");
     BrowserWindow.getAllWindows().forEach((win) => {
-      if (win && !win.isDestroyed()) {
-        win.webContents.send("ai-model-changed", data);
-      }
+      if (win && !win.isDestroyed()) win.webContents.send("ai-model-changed", data);
     });
   } catch (err) {
     console.warn("Error broadcasting ai-model-changed:", err);
@@ -359,56 +349,34 @@ function broadcastAiModelChange(data = {}) {
 }
 
 ipcMain.on("set-ai-model", (event, aiModel) => {
+  try { BackendService.abortCurrentRequest(); } catch (_) {}
   configService.setAiModel(aiModel);
   broadcastAiModelChange({ provider: aiModel });
 });
 
-ipcMain.handle("get-openai-model", () => {
-  return configService.getOpenAiModel();
-});
-
+ipcMain.handle("get-openai-model", () => configService.getOpenAiModel());
 ipcMain.on("set-openai-model", (event, model) => {
   configService.setOpenAiModel(model);
   broadcastAiModelChange({ provider: 'openIa', model });
 });
 
-ipcMain.handle("get-openai-reasoning-effort", () => {
-  return configService.getOpenAiReasoningEffort();
-});
+ipcMain.handle("get-openai-reasoning-effort", () => configService.getOpenAiReasoningEffort());
+ipcMain.on("set-openai-reasoning-effort", (event, effort) => configService.setOpenAiReasoningEffort(effort));
+ipcMain.handle("get-openai-vision-model", () => configService.getOpenAiVisionModel());
+ipcMain.on("set-openai-vision-model", (event, model) => configService.setOpenAiVisionModel(model));
 
-ipcMain.on("set-openai-reasoning-effort", (event, effort) => {
-  configService.setOpenAiReasoningEffort(effort);
-});
-
-ipcMain.handle("get-openai-vision-model", () => {
-  return configService.getOpenAiVisionModel();
-});
-
-ipcMain.on("set-openai-vision-model", (event, model) => {
-  configService.setOpenAiVisionModel(model);
-});
-
-ipcMain.handle("get-backend-model", () => {
-  return configService.getBackendModel ? configService.getBackendModel() : '';
-});
-
+ipcMain.handle("get-backend-model", () => configService.getBackendModel ? configService.getBackendModel() : '');
 ipcMain.on("set-backend-model", (event, model) => {
   if (configService.setBackendModel) configService.setBackendModel(model);
   broadcastAiModelChange({ provider: 'llama', model });
 });
 
-ipcMain.handle("get-ollama-local-model", () => {
-  return configService.getOllamaLocalModel();
-});
-
+ipcMain.handle("get-ollama-local-model", () => configService.getOllamaLocalModel());
 ipcMain.on("set-ollama-local-model", (event, model) => {
   configService.setOllamaLocalModel(model);
   broadcastAiModelChange({ provider: 'ollamaLocal', model });
 });
-
-ipcMain.handle("get-ollama-local-host", () => {
-  return configService.getOllamaLocalHost();
-});
+ipcMain.handle("get-ollama-local-host", () => configService.getOllamaLocalHost());
 
 ipcMain.handle("get-gemini-cli-model", () => configService.getGeminiCliModel());
 

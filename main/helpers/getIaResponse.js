@@ -126,6 +126,7 @@ helpers.getIaResponse = async function(text) {
                     state.mainWindow.webContents
                 );
               } catch (err) {
+                if (err && (err.message === 'Request cancelled' || err.message === 'Cancelado.')) return;
                 resposta = `[Ollama Agentic] Interrompido ou falhou: ${err.message}`;
               }
           } else {

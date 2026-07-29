@@ -36,14 +36,27 @@ var isEditingQuestion = false;
                     copyAllFixedBtn.classList.add('copied');
                     setTimeout(() => { copyAllFixedBtn.textContent = 'Copiar tudo'; copyAllFixedBtn.classList.remove('copied'); }, 1500);
                 });
+            // === Botão Cancelar Requisição Fixo ===
+            const cancelFixedBtn = document.getElementById('cancel-request-btn');
+            if (cancelFixedBtn) {
+                cancelFixedBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    console.log('🛑 Botão Cancelar Fixo Clicado');
+                    if (window.electronAPI && window.electronAPI.cancelIaRequest) {
+                        window.electronAPI.cancelIaRequest();
+                    }
+                    stopProcessing();
+                });
             }
-
- // Copy All Fixed Button
 
         function scrollTranscriptionToBottom(behavior = 'smooth') {
             const el = document.getElementById('transcription');
             if (!el) return;
-            el.scrollTo({ top: el.scrollHeight, behavior });
+            // Se o usuário rolou pra cima manualmente para ler ou clicar em algo (como cancelar), não forçar scroll pra baixo
+            const isNearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 150;
+            if (isNearBottom || behavior === 'force') {
+                el.scrollTo({ top: el.scrollHeight, behavior: behavior === 'force' ? 'smooth' : behavior });
+            }
         }
 
  // scrollTranscriptionToBottom
@@ -383,6 +396,10 @@ var isEditingQuestion = false;
 
         
         function stopProcessing() {
+            // Esconde botão cancelar fixo do topo
+            const cancelFixedBtn = document.getElementById('cancel-request-btn');
+            if (cancelFixedBtn) cancelFixedBtn.style.display = 'none';
+
             // Para animações (instância lottie compartilhada via window.animation)
             const animation = window.animation;
             const animationContainer = document.getElementById('animation-container');
@@ -392,6 +409,20 @@ var isEditingQuestion = false;
             }
             const robot = document.getElementById('robot');
             if (robot) robot.style.display = 'none';
+
+            const transcriptionElement = document.getElementById('transcription');
+            if (transcriptionElement) {
+                const blocks = transcriptionElement.querySelectorAll('.interaction-block');
+                blocks.forEach(block => {
+                    block.classList.remove('is-processing');
+                    const ph = block.querySelector('.ai-phase');
+                    if (ph && !ph.classList.contains('expanded')) {
+                        ph.classList.add('done');
+                        const spin = ph.querySelector('.ai-phase-spin'); if (spin) spin.remove();
+                        const stop = ph.querySelector('.ai-phase-stop'); if (stop) stop.remove();
+                    }
+                });
+            }
             
             // Notifica o backend para parar notificações
             window.electronAPI.stopNotifications();
@@ -399,11 +430,49 @@ var isEditingQuestion = false;
         
         function startProcessing() {
             console.log('startProcessing chamado');
+            // Mostra botão cancelar fixo do topo
+            const cancelFixedBtn = document.getElementById('cancel-request-btn');
+            if (cancelFixedBtn) cancelFixedBtn.style.display = 'inline-flex';
+
             const robot = document.getElementById('robot');
-            
-            // Inicia animação do robô
-            robot.style.display = 'block';
+            if (robot) robot.style.display = 'block';
             console.log('Robô definido como visível');
+
+            const transcriptionElement = document.getElementById('transcription');
+            if (transcriptionElement) {
+                const lastBlock = transcriptionElement.querySelector('.interaction-block:last-child');
+                if (lastBlock) {
+                    lastBlock.classList.add('is-processing');
+                    let ph = lastBlock.querySelector('.ai-phase');
+                    if (!ph) {
+                        ph = document.createElement('div');
+                        ph.className = 'ai-phase';
+                        ph.innerHTML = `
+                            <div class="ai-phase-header">
+                                <span class="ai-phase-spin"></span>
+                                <span class="ai-phase-tag">Pensando</span>
+                                <span class="ai-phase-text">Aguardando resposta...</span>
+                                <button class="ai-phase-stop" title="Interromper">×</button>
+                            </div>
+                        `;
+                        const stop = ph.querySelector('.ai-phase-stop');
+                        if (stop) stop.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            console.log('Botão interromper clicado');
+                            if (window.electronAPI && window.electronAPI.cancelIaRequest) {
+                                window.electronAPI.cancelIaRequest();
+                            }
+                            stopProcessing();
+                            const txt = ph.querySelector('.ai-phase-text');
+                            if (txt) txt.textContent = 'Interrompido pelo usuário';
+                            ph.classList.add('done');
+                            const spin = ph.querySelector('.ai-phase-spin'); if (spin) spin.remove();
+                            if (stop) stop.remove();
+                        });
+                        lastBlock.appendChild(ph);
+                    }
+                }
+            }
             
             // Reinicia notificações
             window.electronAPI.startNotifications();

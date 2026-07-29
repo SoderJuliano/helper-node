@@ -357,8 +357,14 @@ function stripDanglingToolCallFragments(text) {
 }
 
 function stripThinkingBlock(text) {
-  if (!text) return text;
-  return text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  if (!text || typeof text !== 'string') return text;
+  let cleaned = text
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/<think>[\s\S]*$/gi, '')
+    .replace(/(?:[^\n]*thinking\s+process:[\s\S]*?)(?=(?:\n\s*\n[A-Z0-9#\*])|$)/gi, '')
+    .replace(/(?:[^\n]*thinking\s+process:[\s\S]*$)/gi, '')
+    .trim();
+  return cleaned;
 }
 
 module.exports = {

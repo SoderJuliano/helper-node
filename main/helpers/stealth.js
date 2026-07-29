@@ -319,6 +319,7 @@ helpers.processOsQuestion = async function(text, image = null, opts = {}) {
                   state.osNotificationWindow.webContents
               );
             } catch (err) {
+              if (err && (err.message === 'Request cancelled' || err.message === 'Cancelado.')) return;
               resposta = `[Ollama Agentic] Interrompido ou falhou: ${err.message}`;
             }
         } else {

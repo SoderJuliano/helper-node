@@ -24,6 +24,17 @@ let apiUrl = "";
 class BackendService {
   constructor() {
     this.sessions = {};
+    this.activeAbortController = null;
+  }
+
+  abortCurrentRequest() {
+    if (this.activeAbortController) {
+      try {
+        this.activeAbortController.abort();
+        console.log('[backendService] Request cancelada com sucesso via AbortController.');
+      } catch (_) {}
+      this.activeAbortController = null;
+    }
   }
 
   manageSessionContext(sessionId, userMessage) {
@@ -167,49 +178,11 @@ class BackendService {
         console.warn('[backend] falha ao verificar anexos de workspace:', e.message);
       }
 
-      // Regra: modelos não-stream (síncronos) NUNCA usam ferramentas nem diretórios
-      let tools = null;
-      let onToolCall = null;
-      let maxToolCalls = 0;
-
-      const writeIntent = false;
-      const readIntent = false;
-      const shellIntent = false;
-      const forceTools = false;
-
       let promptInstruction = customInstruction || configService.getPromptInstruction();
 
-      if (tools && onToolCall) {
-        const wsPathsLine = wsPaths.length
-          ? `WORKSPACE ANEXADO — use EXATAMENTE estes paths absolutos (não invente outros):\n${wsPaths.map(p => `  - ${p}`).join('\n')}`
-          : '';
-        const analysisAddon = customInstruction ? '' : buildDeepAnalysisAddon({
-          toolsEnabled: true,
-          wsEnabled,
-          attCount,
-          texto,
-        });
-        const wsHeader = wsPathsLine ? `${wsPathsLine}\n\n` : '';
-        promptInstruction = `${wsHeader}${promptInstruction}\n\n${buildOllamaToolsAddon(tools, wsPaths)}${analysisAddon}`;
-      }
-
-      let promptWithContext;
-      if (forceTools && writeIntent) {
-        promptInstruction = buildToolFirstSystemPrompt(tools, wsPaths);
-        promptWithContext = `${promptInstruction}\n\nUser: "${texto}"\nResposta:`;
-      } else if (baseEndpoint === '/llamatiny') {
-        const lastMsgs = conversationContext
-          ? conversationContext.split(/\n/).filter(Boolean).slice(-4).join('\n')
-          : texto;
-        promptWithContext = `${promptInstruction}\n\n${lastMsgs}`;
-      } else {
-        const instructionSuffix = (tools && onToolCall && wsEnabled && attCount > 0)
-          ? "EXECUTE AS AÇÕES PEDIDAS USANDO AS FERRAMENTAS (TOOL_CALL). NÃO RESPONDA COM TEXTO NEM CÓDIGO RAW."
-          : "Please respond to the latest human message.";
-        promptWithContext = conversationContext
-          ? `${promptInstruction}\n\nConversation context:\n${conversationContext}\n${instructionSuffix}`
-          : `${promptInstruction}${texto}`;
-      }
+      let promptWithContext = conversationContext
+        ? `${promptInstruction}\n\nConversation context:\n${conversationContext}\nPlease respond to the latest human message.`
+        : `${promptInstruction}${texto}`;
 
       let payload = { prompt: promptWithContext, language: mappedLang };
       if (opts.imageBase64) {
@@ -250,50 +223,6 @@ class BackendService {
       if (typeof resposta !== 'string') resposta = String(resposta);
 
       resposta = stripThinkingBlock(resposta);
-
-      if (tools && onToolCall) {
-        let workingPrompt = promptWithContext;
-        let iter = 0;
-        const _ranCmds = new Set();
-
-        while (iter < maxToolCalls) {
-          const calls = parseOllamaToolCalls(resposta);
-          if (!calls.length) break;
-
-          for (const c of calls) {
-            const name = c.obj.name;
-            let args = c.obj.args || c.obj.arguments || {};
-            if (args && args.command && !args.cmd) {
-              const parts = String(args.command).trim().split(/\s+/);
-              args = { ...args, cmd: parts[0], args: parts.slice(1) };
-              delete args.command;
-            }
-            let toolResult;
-            try {
-              toolResult = await onToolCall(name, args, { source: 'ollama-tool-loop' });
-            } catch (e) {
-              toolResult = { error: String(e && e.message || e) };
-            }
-            const resStr = typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult);
-            workingPrompt += `\n\nTOOL_RESULT: ${name} ${resStr}\nContinue a tarefa. Se precisar de mais ferramentas, emita TOOL_CALL. Se terminou, responda ao usuário.`;
-          }
-
-          payload.prompt = workingPrompt;
-          try {
-            const nextResp = await axios.post(`${apiUrl}${effectiveEndpoint}`, payload, {
-              headers, timeout: 360000, httpAgent, httpsAgent
-            });
-            resposta = nextResp.data.response || nextResp.data;
-            if (typeof resposta !== 'string') resposta = String(resposta);
-            resposta = stripThinkingBlock(resposta);
-          } catch (e) {
-            console.error('[backend][tools] erro na iteração do tool loop:', e.message);
-            break;
-          }
-          iter++;
-        }
-      }
-
       resposta = stripToolCallBlocks(resposta);
       this.addAssistantResponse(sessionId, resposta);
       return resposta;
@@ -314,6 +243,10 @@ class BackendService {
       if (onError) onError(new Error("Could not retrieve backend URL."));
       return;
     }
+
+    this.abortCurrentRequest();
+    this.activeAbortController = new AbortController();
+    const signal = this.activeAbortController.signal;
 
     const sessionId = opts.sessionId || 'default';
     const customInstruction = opts.instruction;
@@ -388,6 +321,8 @@ class BackendService {
       let currentWorkingPrompt = promptWithContext;
 
       while (iter < maxIters) {
+        if (signal.aborted) throw new Error("Request cancelled");
+
         const payload = { prompt: currentWorkingPrompt, language: mappedLang };
         if (opts.imageBase64) {
           payload.imageBase64 = opts.imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
@@ -397,6 +332,7 @@ class BackendService {
           method: 'POST',
           headers,
           body: JSON.stringify(payload),
+          signal
         });
 
         if (response.status === 404 && baseEndpoint !== '/llama3') {
@@ -404,6 +340,7 @@ class BackendService {
             method: 'POST',
             headers,
             body: JSON.stringify(payload),
+            signal
           });
         }
 
@@ -416,6 +353,11 @@ class BackendService {
         let isStreamingText = false;
 
         while (true) {
+          if (signal.aborted) {
+            try { reader.cancel(); } catch (_) {}
+            throw new Error("Request cancelled");
+          }
+
           const { done, value } = await reader.read();
           if (done) break;
 
@@ -486,6 +428,7 @@ class BackendService {
         if (calls.length > 0 && effectiveTools && onToolCall) {
           console.log(`[backend-stream][tools] ${calls.length} tool call(s) detectada(s) na iter ${iter + 1}`);
           for (const c of calls) {
+            if (signal.aborted) throw new Error("Request cancelled");
             const name = c.obj.name;
             let args = c.obj.args || c.obj.arguments || {};
             if (args && args.command && !args.cmd) {
@@ -524,9 +467,17 @@ class BackendService {
       if (onComplete) onComplete();
 
     } catch (error) {
+      if (error.name === 'AbortError' || error.message === 'Request cancelled' || signal.aborted) {
+        console.log('[backend-stream] Request cancelada pelo usuário');
+        this.removeLastUserMessage(sessionId);
+        if (onError) onError(new Error("Request cancelled"));
+        return;
+      }
       console.error("Erro no backend stream:", error.message);
       this.removeLastUserMessage(sessionId);
       if (onError) onError(error);
+    } finally {
+      this.activeAbortController = null;
     }
   }
 }

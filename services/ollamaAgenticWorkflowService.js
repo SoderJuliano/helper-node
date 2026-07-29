@@ -17,7 +17,8 @@ class OllamaAgenticWorkflowService {
 
         try {
             // === PHASE 0: MAIN CLASSIFICATION ===
-            await this.updatePhase(eventSender, 'classification', 'Analisando intenção...', sessionId);
+            if (this.isAborted(sessionId)) throw new Error('Request cancelled');
+            await this.updatePhase(eventSender, 'classification', 'Classificação: Analisando intenção...', sessionId);
 
             const classification = await BackendService.responder(
                 `Classifique em UMA palavra: "READ_ONLY", "QUERY" ou "WRITE".
@@ -29,6 +30,7 @@ Resposta (UMA palavra):`,
                 { sessionId: `${aiSessionId}-c` }
             );
 
+            if (this.isAborted(sessionId)) throw new Error('Request cancelled');
             const classWord = classification.trim().toUpperCase().split(/\s/)[0];
             const isWrite = classWord === 'WRITE';
             const isQuery = classWord === 'QUERY';
@@ -36,6 +38,7 @@ Resposta (UMA palavra):`,
 
             // === READ_ONLY MODE ===
             if (!isWrite && !isQuery) {
+                if (this.isAborted(sessionId)) throw new Error('Request cancelled');
                 await this.updatePhase(eventSender, 'answer', 'Respondendo...', sessionId);
                 const answer = await BackendService.responder(
                     `${baseInstruction}\n\nResponda: "${userText}"`,
@@ -47,7 +50,8 @@ Resposta (UMA palavra):`,
 
             // === QUERY MODE — pergunta que precisa de tools de leitura/shell ===
             if (isQuery) {
-                await this.updatePhase(eventSender, 'answer', 'Consultando...', sessionId);
+                if (this.isAborted(sessionId)) throw new Error('Request cancelled');
+                await this.updatePhase(eventSender, 'discovery', 'Descoberta: Consultando dados do projeto...', sessionId);
                 const toolsRO = registry.listReadOnly().concat(
                     registry.list().filter(t => ['runCommand', 'runShellAdvanced'].includes(t.name))
                 );
@@ -62,13 +66,16 @@ Resposta (UMA palavra):`,
                 return answer;
             }
 
-            // === PHASE 0.5: SUB-CLASSIFICATION (via llama3 — decision simple) ===
+            // === PHASE 0.5: SUB-CLASSIFICATION ===
+            if (this.isAborted(sessionId)) throw new Error('Request cancelled');
+            await this.updatePhase(eventSender, 'subclassification', 'Sub-classificação: Identificando tipo de alteração...', sessionId);
             const editType = await this.classifyEditType(userText, sessionId);
             console.log(`[OllamaAgentic][${sessionId}] EditType: ${editType}`);
 
             // SHELL: não precisa de 4 fases — executa os comandos direto
             if (editType === 'SHELL') {
-                await this.updatePhase(eventSender, 'implementation', 'Executando...', sessionId);
+                if (this.isAborted(sessionId)) throw new Error('Request cancelled');
+                await this.updatePhase(eventSender, 'implementation', 'Implementação: Executando comandos...', sessionId);
                 const shellTools = registry.listReadOnly().concat(
                     registry.list().filter(t => ['runCommand', 'runShellAdvanced'].includes(t.name))
                 );
@@ -133,7 +140,6 @@ Resposta (UMA palavra):`;
             case 'APPEND':
                 return toolsRO.concat(allTools.filter(t => ['appendToFile', 'runCommand', 'runShellAdvanced'].includes(t.name)));
             case 'SHELL':
-                // SHELL: foco em rodar comandos, ainda tem read tools pra contexto
                 return toolsRO.concat(allTools.filter(t => ['runCommand', 'runShellAdvanced'].includes(t.name)));
             default:
                 return allTools;
@@ -145,7 +151,8 @@ Resposta (UMA palavra):`;
         const toolsFiltered = this.getToolsByEditType(editType);
 
         // Phase 1: Discovery
-        await this.updatePhase(eventSender, 'discovery', 'Descobrindo...', sessionId);
+        if (this.isAborted(sessionId)) throw new Error('Request cancelled');
+        await this.updatePhase(eventSender, 'discovery', 'Descoberta: Explorando arquivos relevantes...', sessionId);
         await BackendService.responder(userText, {
             tools: toolsRO,
             onToolCall: (n, a) => this.handleToolCall(n, a, sessionId, false),
@@ -154,7 +161,8 @@ Resposta (UMA palavra):`;
         });
 
         // Phase 2: Planning
-        await this.updatePhase(eventSender, 'planning', 'Planejando...', sessionId);
+        if (this.isAborted(sessionId)) throw new Error('Request cancelled');
+        await this.updatePhase(eventSender, 'planning', 'Planejamento: Estruturando o plano de mudança...', sessionId);
         await BackendService.responder('Gere o plano.', {
             tools: toolsRO,
             onToolCall: (n, a) => this.handleToolCall(n, a, sessionId, false),
@@ -162,8 +170,9 @@ Resposta (UMA palavra):`;
             instruction: '═══ FASE 2: PLANEJAMENTO ═══\nQuais arquivos? Qual abordagem?'
         });
 
-        // Phase 3: Implementation (com tools filtradas)
-        await this.updatePhase(eventSender, 'implementation', 'Implementando...', sessionId);
+        // Phase 3: Implementation
+        if (this.isAborted(sessionId)) throw new Error('Request cancelled');
+        await this.updatePhase(eventSender, 'implementation', 'Implementação: Aplicando alterações...', sessionId);
         await BackendService.responder('Implemente.', {
             tools: toolsFiltered,
             onToolCall: (n, a) => this.handleToolCall(n, a, sessionId, true),
@@ -172,8 +181,9 @@ Resposta (UMA palavra):`;
             maxToolCalls: 50
         });
 
-        // Phase 4: Review (com tools filtradas)
-        await this.updatePhase(eventSender, 'review', 'Revisando...', sessionId);
+        // Phase 4: Review / Verification
+        if (this.isAborted(sessionId)) throw new Error('Request cancelled');
+        await this.updatePhase(eventSender, 'verification', 'Verificação: Revisando código e testes...', sessionId);
         const result = await BackendService.responder('Revise e finalize.', {
             tools: toolsFiltered,
             onToolCall: (n, a) => this.handleToolCall(n, a, sessionId, true),
@@ -187,7 +197,7 @@ Resposta (UMA palavra):`;
     }
 
     async handleToolCall(name, args, sessionId, force = false) {
-        if (this.isAborted(sessionId)) throw new Error('Cancelado.');
+        if (this.isAborted(sessionId)) throw new Error('Request cancelled');
         return await helperTools.executeTool(name, args, {
             source: "agentic-ollama",
             force
@@ -201,11 +211,13 @@ Resposta (UMA palavra):`;
 
     stop(sessionId) {
         this.activeSessions.delete(sessionId);
+        try { BackendService.abortCurrentRequest(); } catch (_) {}
     }
 
     isAborted(sessionId) {
         return !this.activeSessions.has(sessionId);
     }
+}
 }
 
 module.exports = new OllamaAgenticWorkflowService();
