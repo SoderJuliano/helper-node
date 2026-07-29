@@ -1,0 +1,14 @@
+#!/bin/sh
+# Trava mecânica: nenhum commit entra com o projeto quebrado.
+#
+# Mora em scripts/githooks/ (versionado) e não em .git/hooks/ (que não vai pro
+# repositório e sumiria em qualquer clone novo). Ativado por:
+#   git config core.hooksPath scripts/githooks
+#
+# Valida a ÁRVORE DE TRABALHO, não só o que foi ao `git add` — a pergunta que
+# importa é "o app roda agora?".
+#
+# Válvula de escape: git commit --no-verify
+
+ROOT="$(git rev-parse --show-toplevel)"
+exec node "$ROOT/scripts/check.js"

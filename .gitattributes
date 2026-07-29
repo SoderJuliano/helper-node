@@ -1,0 +1,5 @@
+# Hooks e scripts de shell precisam de LF mesmo em checkout no Windows.
+# Com CRLF o Linux falha com "/bin/sh^M: bad interpreter" e a trava do
+# pre-commit some sem ninguém perceber.
+scripts/githooks/* text eol=lf
+*.sh            text eol=lf

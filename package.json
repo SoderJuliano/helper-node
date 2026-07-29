@@ -11,6 +11,8 @@
     "setup-hotkeys": "bash ./setup-hotkey.sh",
     "fix-hotkeys": "rm -f $HOME/.config/helper-node/.setup-done && HELPER_NODE_FORCE_HOTKEY_SETUP=1 bash ./setup-hotkey.sh",
     "icon:win": "node ./scripts/generate-windows-icon.js",
+    "check": "node ./scripts/check.js",
+    "hooks:install": "git config core.hooksPath scripts/githooks",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
