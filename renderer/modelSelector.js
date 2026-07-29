@@ -93,7 +93,42 @@
                 } else if (provider === 'llama' || provider === 'llama-stream') {
                     let m = '';
                     try { m = (await window.electronAPI.getBackendModel()) || ''; } catch (_) {}
-                    composerModelName.textContent = m || PROVIDER_LABELS[provider] || 'Ollama Backend';
+                    if (!m) {
+                        try {
+                            const url = await window.electronAPI.getBackendUrl();
+                            if (url) {
+                                const baseUrl = url.replace(/\/+$/, '');
+                                const apiKey = (await window.electronAPI.getBackendApiKey()) || '';
+                                const res = await fetch(`${baseUrl}/models`, {
+                                    headers: { 'x-api-key': apiKey, 'ngrok-skip-browser-warning': 'true' }
+                                });
+                                if (res.ok) {
+                                    const data = await res.json();
+                                    if (data.models && data.models.length > 0) {
+                                        const first = typeof data.models[0] === 'object' ? data.models[0].name : data.models[0];
+                                        if (first) {
+                                            m = first;
+                                            try { window.electronAPI.setBackendModel(first); } catch (_) {}
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (_) {}
+                    }
+                    composerModelName.textContent = m || (provider === 'llama-stream' ? 'Ollama Stream' : 'Ollama Backend');
+                } else if (provider === 'ollamaLocal') {
+                    let m = '';
+                    try { m = (await window.electronAPI.getOllamaLocalModel()) || ''; } catch (_) {}
+                    if (!m) {
+                        try {
+                            const status = await window.electronAPI.checkOllamaLocalStatus();
+                            if (status && status.running && Array.isArray(status.models) && status.models.length > 0) {
+                                m = status.models[0];
+                                try { window.electronAPI.setOllamaLocalModel(m); } catch (_) {}
+                            }
+                        } catch (_) {}
+                    }
+                    composerModelName.textContent = m || 'Ollama Local';
                 } else {
                     composerModelName.textContent = PROVIDER_LABELS[provider] || provider;
                 }
