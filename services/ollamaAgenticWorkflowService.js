@@ -218,6 +218,5 @@ Resposta (UMA palavra):`;
         return !this.activeSessions.has(sessionId);
     }
 }
-}
 
 module.exports = new OllamaAgenticWorkflowService();
