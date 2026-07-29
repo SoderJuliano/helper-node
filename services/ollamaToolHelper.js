@@ -234,7 +234,7 @@ function normalizeToolCallObj(obj) {
 function parseOllamaToolCalls(text) {
   if (!text) return [];
   const calls = [];
-  const re = /T\s*O\s*O\s*L[_\s-]*C\s*A\s*L\s*L\s*:?\s*/gi;
+  const re = /TOOL[_\s-]?CALL\s*:?\s*/gi;
   let m;
   while ((m = re.exec(text)) !== null) {
     const start = m.index + m[0].length;
@@ -253,7 +253,7 @@ function parseOllamaToolCalls(text) {
   }
 
   if (calls.length === 0) {
-    const shellRe = /T\s*O\s*O\s*L[_\s-]*C\s*A\s*L\s*L\s*:?\s*([a-z][^\n`{]+)/gi;
+    const shellRe = /TOOL[_\s-]?CALL\s*:?\s*([a-z][^\n`{]+)/gi;
     let sm;
     while ((sm = shellRe.exec(text)) !== null) {
       const raw = sm[1].trim().replace(/^`+|`+$/g, '').trim();
@@ -320,8 +320,8 @@ function stripToolCallBlocks(text) {
 function stripDanglingToolCallFragments(text) {
   if (!text) return text;
 
-  let out = text.replace(/```[\s\S]*?T\s*O\s*O\s*L[_\s-]*C\s*A\s*L\s*L[\s\S]*?```/gi, '');
-  const re = /T\s*O\s*O\s*L[_\s-]*C\s*A\s*L\s*L\s*:?\s*/gi;
+  let out = text.replace(/```[\s\S]*?TOOL[_\s-]?CALL[\s\S]*?```/gi, '');
+  const re = /TOOL[_\s-]?CALL\s*:?\s*/gi;
   let m;
   let cursor = 0;
   let cleaned = '';
@@ -352,7 +352,7 @@ function stripDanglingToolCallFragments(text) {
   }
 
   cleaned += out.slice(cursor);
-  cleaned = cleaned.replace(/^T\s*O\s*O\s*L[_\s-]*C\s*A\s*L\s*L.*$/gm, '');
+  cleaned = cleaned.replace(/^TOOL[_\s-]?CALL.*$/gm, '');
   return cleaned.replace(/\n{3,}/g, '\n\n').trim();
 }
 

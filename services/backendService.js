@@ -6,15 +6,13 @@ const http = require('http');
 const {
   pickOllamaEndpoint,
   buildDeepAnalysisAddon,
-  isWriteIntent,
-  isFileReadIntent,
-  isShellCommandIntent,
   buildOllamaToolsAddon,
-  buildToolFirstSystemPrompt,
   parseOllamaToolCalls,
   stripToolCallBlocks,
   stripThinkingBlock
 } = require('./ollamaToolHelper');
+const { createStreamRouter } = require('./backendStreamRouter');
+const { runToolCalls } = require('./toolLoop');
 
 // Configurar agentes HTTP/HTTPS com keepAlive
 const httpAgent = new http.Agent({ keepAlive: true, keepAliveMsecs: 60000, maxSockets: 50, maxFreeSockets: 10, timeout: 360000 });
@@ -349,8 +347,23 @@ class BackendService {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
-        let fullResponse = '';
-        let isStreamingText = false;
+
+        // Separa raciocínio de resposta — ver services/backendStreamRouter.js
+        // para o porquê (tool call cogitada no thinking não pode ser executada).
+        const router = createStreamRouter({
+          onChunk,
+          hasTools: !!(effectiveTools && onToolCall),
+        });
+        const emitThinking = router.emitThinking;
+        const routeToken = router.routeToken;
+
+        let rawBody = '';           // tudo que chegou, pro fallback não-SSE
+        // "thinking-start" ABRE a fase de raciocínio e "thinking-end" FECHA.
+        // Não dá pra olhar só o nome do último evento: depois do thinking-end
+        // as linhas seguintes continuam com esse nome, e a resposta inteira
+        // (com a tool call) acabava classificada como raciocínio.
+        let inThinkingPhase = false;
+
         // O backend manda "[DONE]" mas NÃO fecha a conexão. Sem sair do laço
         // do reader nesse marcador, o await reader.read() abaixo fica pendurado
         // pra sempre e a resposta nunca volta. (No master isso era um `return`
@@ -368,7 +381,9 @@ class BackendService {
           const { done, value } = await reader.read();
           if (done) break;
 
-          buffer += decoder.decode(value, { stream: true });
+          const decoded = decoder.decode(value, { stream: true });
+          rawBody += decoded;
+          buffer += decoded;
           const lines = buffer.split('\n');
           buffer = lines.pop() || '';
 
@@ -377,53 +392,41 @@ class BackendService {
           for (const line of lines) {
             if (line.startsWith('event: ')) {
               currentEvent = line.slice(7).trim();
+              if (currentEvent === 'thinking-start') inThinkingPhase = true;
+              else if (currentEvent === 'thinking-end') inThinkingPhase = false;
               continue;
             }
             if (line.startsWith('data: ')) {
               const data = line.slice(6).trim();
-              if (data === '[DONE]' || data.toLowerCase() === 'done') { sawDoneMarker = true; break; }
+              // CUIDADO: "data: done" aparece DUAS vezes no protocolo do
+              // pikachu — depois de "event: thinking-end" (fim do raciocínio,
+              // o stream continua) e depois de "event: end" (fim de verdade).
+              // Tratar os dois como fim corta a resposta logo após o thinking,
+              // que é justamente onde a tool call vem.
+              const isRealEnd = data === '[DONE]' ||
+                (currentEvent === 'end' && data.toLowerCase() === 'done');
+              if (isRealEnd) { sawDoneMarker = true; break; }
+              if (data.toLowerCase() === 'done' || data.toLowerCase() === 'start') continue;
 
               try {
                 const parsed = JSON.parse(data);
-                let token = parsed.response || parsed.thinking || parsed.message || data;
-
+                // O backend manda o raciocínio no campo "thinking" e a resposta
+                // no campo "response" (ver qwen36ThinkingStreamResponse no
+                // pikachu). Cada um vai pro seu buffer.
+                if (typeof parsed.thinking === 'string' && parsed.thinking) {
+                  emitThinking(parsed.thinking);
+                }
+                const token = parsed.response || parsed.message ||
+                  (typeof parsed.thinking === 'string' ? '' : data);
                 if (typeof token === 'string' && token) {
-                  if (currentEvent !== 'thinking-start' && currentEvent !== 'thinking-end') {
-                    fullResponse += token;
-                  }
-
-                  if (currentEvent === 'thinking-start' || currentEvent === 'thinking-end' || parsed.thinking) {
-                    if (onChunk) onChunk({ type: 'thinking', text: token, event: currentEvent });
-                    continue;
-                  }
-
-                  const hasToolCallMarker = /T\s*O\s*O\s*L[_\s-]*C\s*A\s*L\s*L/i.test(fullResponse) || /^\s*\{[\s\S]*"name"\s*:/i.test(fullResponse.trim());
-
-                  if (!hasToolCallMarker) {
-                    if (!effectiveTools || fullResponse.length > 80) {
-                      isStreamingText = true;
-                    }
-                  } else {
-                    isStreamingText = false;
-                  }
-
-                  if (isStreamingText && onChunk) {
-                    onChunk(token);
-                  }
+                  if (inThinkingPhase) emitThinking(token);
+                  else routeToken(token);
                 }
               } catch (_) {
-                let token = data;
-                if (typeof token === 'string' && token.toLowerCase() !== 'done' && token) {
-                  fullResponse += token;
-                  const hasToolCallMarker = /T\s*O\s*O\s*L[_\s-]*C\s*A\s*L\s*L/i.test(fullResponse) || /^\s*\{[\s\S]*"name"\s*:/i.test(fullResponse.trim());
-                  if (!hasToolCallMarker) {
-                    if (!effectiveTools || fullResponse.length > 80) {
-                      isStreamingText = true;
-                    }
-                  } else {
-                    isStreamingText = false;
-                  }
-                  if (isStreamingText && onChunk) onChunk(token);
+                const token = data;
+                if (typeof token === 'string' && token && token.toLowerCase() !== 'done') {
+                  if (inThinkingPhase) emitThinking(token);
+                  else routeToken(token);
                 }
               }
             }
@@ -436,38 +439,36 @@ class BackendService {
           }
         }
 
-        const calls = parseOllamaToolCalls(fullResponse);
+        // Fallback: se o endpoint respondeu com corpo simples (ResponseEntity
+        // <String>) em vez de SSE, nenhuma linha "data: " apareceu e o texto
+        // inteiro ficou no buffer bruto. Aproveita ele em vez de descartar —
+        // assim funciona com o /chat streamando OU síncrono, sem depender de
+        // qual versão do pikachu está no ar.
+        if (!router.answer && !router.thinking && rawBody.trim()) {
+          console.log('[backend-stream] resposta não-SSE detectada — usando corpo bruto');
+          routeToken(rawBody.trim());
+          if (!router.streamedAnything && !router.answerIsToolCall && onChunk && router.answer) {
+            onChunk(router.answer);
+            router.markStreamed();
+          }
+        }
+
+        const calls = (effectiveTools && onToolCall) ? parseOllamaToolCalls(router.answer) : [];
 
         if (calls.length > 0 && effectiveTools && onToolCall) {
           console.log(`[backend-stream][tools] ${calls.length} tool call(s) detectada(s) na iter ${iter + 1}`);
-          for (const c of calls) {
-            if (signal.aborted) throw new Error("Request cancelled");
-            const name = c.obj.name;
-            let args = c.obj.args || c.obj.arguments || {};
-            if (args && args.command && !args.cmd) {
-              const parts = String(args.command).trim().split(/\s+/);
-              args = { ...args, cmd: parts[0], args: parts.slice(1) };
-              delete args.command;
-            }
-            if (onChunk) {
-              onChunk({ type: 'thinking', text: `\n⚙️ Executando ${name}...\n` });
-            }
-            let toolResult;
-            try {
-              toolResult = await onToolCall(name, args, { source: 'ollama-stream-tool-loop' });
-            } catch (e) {
-              toolResult = { error: String(e && e.message || e) };
-            }
-            const resStr = typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult);
-            currentWorkingPrompt += `\n\nTOOL_RESULT: ${name} ${resStr}\nContinue a tarefa. Se precisar de mais ferramentas, emita TOOL_CALL. Se terminou, responda em texto normal ao usuário.`;
-          }
+          currentWorkingPrompt += await runToolCalls(calls, onToolCall, {
+            onChunk, signal, source: 'ollama-stream-tool-loop',
+          });
           iter++;
           continue;
         } else {
-          let cleanText = stripThinkingBlock(fullResponse);
-          cleanText = stripToolCallBlocks(cleanText);
+          // router.answer já não tem thinking (foi separado no routeToken).
+          let cleanText = stripToolCallBlocks(router.answer).trim();
 
-          if (!isStreamingText && onChunk && cleanText) {
+          // Se nada foi streamado (era tool call, ou o modelo respondeu em
+          // bloco único), manda o texto final de uma vez.
+          if (!router.streamedAnything && onChunk && cleanText) {
             onChunk(cleanText);
           }
 
