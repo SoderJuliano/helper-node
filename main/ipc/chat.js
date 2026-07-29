@@ -317,7 +317,12 @@ ipcMain.on("send-to-gemini-stream", async (event, text) => {
       return;
     }
     console.error("IPC: Stream service error:", error);
-    event.sender.send("transcription-error", "Failed to process stream response");
+    // Mandar "Failed to process stream response" escondia a causa real (que o
+    // backendSseClient já traduz pra algo acionável). Propaga a mensagem.
+    event.sender.send(
+      "transcription-error",
+      (error && error.message) || "Falha ao processar a resposta em stream."
+    );
   }
 });
 

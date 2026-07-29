@@ -24,7 +24,9 @@ function buildDeepAnalysisAddon({ toolsEnabled, wsEnabled, attCount, texto }) {
   return [
     '',
     '═══ MODO ANÁLISE DE PROJETO (OBRIGATÓRIO) ═══',
-    '- Neste cenário, IGNORE qualquer limite anterior de "máximo 65 palavras".',
+    // Este bloco NÃO fala mais de "ignorar o limite de 65 palavras": o prompt do
+    // modo IDE (services/idePrompt.js) não tem limite nenhum, e citar um limite
+    // aqui só reintroduzia a contradição que travava o modelo em raciocínio.
     '- Responda de forma completa e objetiva (300-900 palavras quando necessário).',
     '- Antes da RESPOSTA FINAL, faça no mínimo 3 TOOL_CALL de leitura para evidência real do código:',
     '  1) listDir do diretório raiz anexado',

@@ -11,8 +11,9 @@ const {
   stripToolCallBlocks,
   stripThinkingBlock
 } = require('./ollamaToolHelper');
-const { createStreamRouter } = require('./backendStreamRouter');
-const { runToolCalls } = require('./toolLoop');
+const { streamOnce } = require('./backendSseClient');
+const { runToolCalls, capPrompt } = require('./toolLoop');
+const { buildIdeAgentPrompt } = require('./idePrompt');
 
 // Configurar agentes HTTP/HTTPS com keepAlive
 const httpAgent = new http.Agent({ keepAlive: true, keepAliveMsecs: 60000, maxSockets: 50, maxFreeSockets: 10, timeout: 360000 });
@@ -289,19 +290,33 @@ class BackendService {
       let promptInstruction = customInstruction || configService.getPromptInstruction();
 
       if (effectiveTools && onToolCall) {
-        const wsPathsLine = wsPaths.length
-          ? `WORKSPACE ANEXADO — use EXATAMENTE estes paths absolutos:\n${wsPaths.map(p => `  - ${p}`).join('\n')}`
-          : '';
         const analysisAddon = customInstruction ? '' : buildDeepAnalysisAddon({
           toolsEnabled: true, wsEnabled, attCount, texto
         });
-        const wsHeader = wsPathsLine ? `${wsPathsLine}\n\n` : '';
-        promptInstruction = `${wsHeader}${promptInstruction}\n\n${buildOllamaToolsAddon(tools, wsPaths)}${analysisAddon}`;
+        if (customInstruction) {
+          // Fluxo agêntico multi-fase: a instrução vem pronta de quem chamou
+          // (ollamaAgenticWorkflowService), então aqui só entra o protocolo de
+          // TOOL_CALL. Não sobrescreve a instrução de fase.
+          const wsHeader = wsPaths.length
+            ? `DIRETÓRIOS LIBERADOS (paths absolutos):\n${wsPaths.map(p => `  - ${p}`).join('\n')}\n\n`
+            : '';
+          promptInstruction = `${wsHeader}${promptInstruction}\n\n${buildOllamaToolsAddon(tools, wsPaths)}`;
+        } else {
+          // MODO IDE: prompt de agente, coerente e único. NÃO empilha o prompt de
+          // copiloto de tela (65 palavras / OCR / entrevista) — essa pilha de
+          // instruções conflitantes é o que fazia o modelo com raciocínio visível
+          // gastar o turno debatendo contradições em vez de ler o projeto.
+          // Ver services/idePrompt.js.
+          promptInstruction = buildIdeAgentPrompt({ toolsSchema: tools, wsPaths }) + analysisAddon;
+        }
       }
 
-      let promptWithContext = conversationContext
+      // capPrompt já na 1ª iteração: o histórico da sessão guarda a árvore do
+      // projeto injetada no 1º turno e a reenvia em todos os seguintes, então dá
+      // pra estourar o contexto antes de existir qualquer tool result.
+      let promptWithContext = capPrompt(conversationContext
         ? `${promptInstruction}\n\nConversation context:\n${conversationContext}\nPlease respond to the latest human message.`
-        : `${promptInstruction}${texto}`;
+        : `${promptInstruction}${texto}`);
 
       const headers = {
         'Authorization': 'Bearer Y3VzdG9tY3ZvbmxpbmU=',
@@ -326,118 +341,16 @@ class BackendService {
           payload.imageBase64 = opts.imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
         }
 
-        let response = await fetch(endpoint, {
-          method: 'POST',
+        // POST + leitura do SSE (com retry e watchdog) — ver backendSseClient.js.
+        const { router, rawBody } = await streamOnce({
+          endpoint,
+          fallbackEndpoint: baseEndpoint !== '/llama3' ? `${apiUrl}/llama3-stream` : null,
           headers,
-          body: JSON.stringify(payload),
-          signal
-        });
-
-        if (response.status === 404 && baseEndpoint !== '/llama3') {
-          response = await fetch(`${apiUrl}/llama3-stream`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(payload),
-            signal
-          });
-        }
-
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        // Separa raciocínio de resposta — ver services/backendStreamRouter.js
-        // para o porquê (tool call cogitada no thinking não pode ser executada).
-        const router = createStreamRouter({
+          payload,
+          signal,
           onChunk,
           hasTools: !!(effectiveTools && onToolCall),
         });
-        const emitThinking = router.emitThinking;
-        const routeToken = router.routeToken;
-
-        let rawBody = '';           // tudo que chegou, pro fallback não-SSE
-        // "thinking-start" ABRE a fase de raciocínio e "thinking-end" FECHA.
-        // Não dá pra olhar só o nome do último evento: depois do thinking-end
-        // as linhas seguintes continuam com esse nome, e a resposta inteira
-        // (com a tool call) acabava classificada como raciocínio.
-        let inThinkingPhase = false;
-
-        // O backend manda "[DONE]" mas NÃO fecha a conexão. Sem sair do laço
-        // do reader nesse marcador, o await reader.read() abaixo fica pendurado
-        // pra sempre e a resposta nunca volta. (No master isso era um `return`
-        // direto; virou `break` na refatoração e o break só saía do `for` das
-        // linhas.) Aqui o flag quebra os DOIS laços e o fluxo segue para a
-        // avaliação de tool calls, que o master não tinha neste caminho.
-        let sawDoneMarker = false;
-
-        while (true) {
-          if (signal.aborted) {
-            try { reader.cancel(); } catch (_) {}
-            throw new Error("Request cancelled");
-          }
-
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const decoded = decoder.decode(value, { stream: true });
-          rawBody += decoded;
-          buffer += decoded;
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
-
-          let currentEvent = 'message';
-
-          for (const line of lines) {
-            if (line.startsWith('event: ')) {
-              currentEvent = line.slice(7).trim();
-              if (currentEvent === 'thinking-start') inThinkingPhase = true;
-              else if (currentEvent === 'thinking-end') inThinkingPhase = false;
-              continue;
-            }
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6).trim();
-              // CUIDADO: "data: done" aparece DUAS vezes no protocolo do
-              // pikachu — depois de "event: thinking-end" (fim do raciocínio,
-              // o stream continua) e depois de "event: end" (fim de verdade).
-              // Tratar os dois como fim corta a resposta logo após o thinking,
-              // que é justamente onde a tool call vem.
-              const isRealEnd = data === '[DONE]' ||
-                (currentEvent === 'end' && data.toLowerCase() === 'done');
-              if (isRealEnd) { sawDoneMarker = true; break; }
-              if (data.toLowerCase() === 'done' || data.toLowerCase() === 'start') continue;
-
-              try {
-                const parsed = JSON.parse(data);
-                // O backend manda o raciocínio no campo "thinking" e a resposta
-                // no campo "response" (ver qwen36ThinkingStreamResponse no
-                // pikachu). Cada um vai pro seu buffer.
-                if (typeof parsed.thinking === 'string' && parsed.thinking) {
-                  emitThinking(parsed.thinking);
-                }
-                const token = parsed.response || parsed.message ||
-                  (typeof parsed.thinking === 'string' ? '' : data);
-                if (typeof token === 'string' && token) {
-                  if (inThinkingPhase) emitThinking(token);
-                  else routeToken(token);
-                }
-              } catch (_) {
-                const token = data;
-                if (typeof token === 'string' && token && token.toLowerCase() !== 'done') {
-                  if (inThinkingPhase) emitThinking(token);
-                  else routeToken(token);
-                }
-              }
-            }
-          }
-
-          if (sawDoneMarker) {
-            // Libera o socket: o servidor não vai fechar sozinho.
-            try { reader.cancel(); } catch (_) {}
-            break;
-          }
-        }
 
         // Fallback: se o endpoint respondeu com corpo simples (ResponseEntity
         // <String>) em vez de SSE, nenhuma linha "data: " apareceu e o texto
@@ -446,7 +359,7 @@ class BackendService {
         // qual versão do pikachu está no ar.
         if (!router.answer && !router.thinking && rawBody.trim()) {
           console.log('[backend-stream] resposta não-SSE detectada — usando corpo bruto');
-          routeToken(rawBody.trim());
+          router.routeToken(rawBody.trim());
           if (!router.streamedAnything && !router.answerIsToolCall && onChunk && router.answer) {
             onChunk(router.answer);
             router.markStreamed();
@@ -457,9 +370,14 @@ class BackendService {
 
         if (calls.length > 0 && effectiveTools && onToolCall) {
           console.log(`[backend-stream][tools] ${calls.length} tool call(s) detectada(s) na iter ${iter + 1}`);
-          currentWorkingPrompt += await runToolCalls(calls, onToolCall, {
+          const results = await runToolCalls(calls, onToolCall, {
             onChunk, signal, source: 'ollama-stream-tool-loop',
           });
+          // capPrompt: o prompt da próxima iteração é este + os resultados. Sem
+          // teto, um readFile grande é reenviado em TODA iteração seguinte até
+          // estourar a janela de contexto — e aí o Ollama trunca o COMEÇO, que é
+          // onde estão as ferramentas e o pedido do usuário.
+          currentWorkingPrompt = capPrompt(currentWorkingPrompt + results);
           iter++;
           continue;
         } else {
@@ -478,6 +396,15 @@ class BackendService {
         }
       }
 
+      // Estourou o limite de iterações sem uma resposta final em texto. Antes
+      // isso fechava o loading em silêncio e o usuário ficava sem nada na tela.
+      console.warn(`[backend-stream] limite de ${maxIters} iterações atingido sem resposta final.`);
+      if (onChunk) {
+        onChunk(
+          `\n\n_Parei após ${maxIters} rodadas de ferramenta sem concluir. ` +
+          `Peça em passos menores ou diga qual arquivo atacar primeiro._`
+        );
+      }
       if (onComplete) onComplete();
 
     } catch (error) {
