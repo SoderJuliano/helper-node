@@ -78,24 +78,6 @@
         #copy-all-btn:hover { background: rgba(255,255,255,0.09); color: var(--text); border-color: var(--border-strong); }
         #copy-all-btn.copied { color: var(--accent-2); border-color: var(--accent-border); background: var(--accent-soft); }
 
-        /* Interromper a geração sem depender do scroll: fica fixo na topbar,
-           ao lado do "Copiar tudo", enquanto houver requisição em andamento. */
-        #cancel-request-btn {
-            background: rgba(248, 113, 113, 0.15);
-            border: 1px solid rgba(248, 113, 113, 0.4);
-            color: var(--danger);
-            font-size: 11px; font-family: var(--font-ui); font-weight: 600;
-            padding: 4px 12px; border-radius: 6px; cursor: pointer;
-            margin-right: 8px;
-            transition: background .15s, color .15s, border-color .15s;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-        }
-        #cancel-request-btn:hover {
-            background: rgba(248, 113, 113, 0.35);
-            color: #ffffff;
-            border-color: rgba(248, 113, 113, 0.6);
-        }
-
         /* #transcription — área central rolável de mensagens.
            O &lt;script&gt; posiciona #transcription com position:fixed via CSS antigo;
            aqui redefinimos para fluir dentro do layout grid. Mantém o ID. */
@@ -318,8 +300,10 @@
         .ai-phase.expanded .ai-phase-toggle-icon { transform: rotate(90deg); color: var(--accent-2); }
         .ai-thinking-box { display: none; width: 100%; margin-top: 8px; padding: 10px 12px; background: rgba(0, 0, 0, 0.25); border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.05); font-family: monospace; white-space: pre-wrap; font-size: 11px; color: var(--text-3); max-height: 220px; overflow-y: auto; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2); }
         .ai-phase.expanded .ai-thinking-box { display: block; }
-        .ai-phase-stop { margin-left: auto; flex-shrink: 0; width: 22px; height: 22px; border: 1px solid rgba(248,113,113,0.4); background: rgba(248,113,113,0.12); color: var(--danger); border-radius: 5px; cursor: pointer; font-size: 14px; line-height: 1; display: flex; align-items: center; justify-content: center; padding: 0; z-index: 10; position: relative; }
-        .ai-phase-stop:hover { background: rgba(248,113,113,0.25); color: #fff; }
+        /* × discreto logo depois da tag de fase. Sem margin-left:auto de
+           propósito — ele acompanha a tag em vez de ser jogado pra borda. */
+        .ai-phase-stop { flex-shrink: 0; width: 16px; height: 16px; border: none; background: transparent; color: var(--text-4); border-radius: 4px; cursor: pointer; font-size: 13px; line-height: 1; display: flex; align-items: center; justify-content: center; padding: 0; position: relative; z-index: 10; opacity: .5; transition: opacity .15s, color .15s, background .15s; }
+        .ai-phase-stop:hover { opacity: 1; color: var(--danger); background: rgba(248,113,113,0.18); }
         .ai-phase.done .ai-phase-tag { color: var(--text-3); background: rgba(255,255,255,0.06); }
         .ai-phase.done .ai-phase-text { color: var(--text-4); }
         .ai-phase.error .ai-phase-tag { color: var(--danger); background: rgba(248,113,113,0.15); }

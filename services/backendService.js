@@ -351,6 +351,13 @@ class BackendService {
         let buffer = '';
         let fullResponse = '';
         let isStreamingText = false;
+        // O backend manda "[DONE]" mas NÃO fecha a conexão. Sem sair do laço
+        // do reader nesse marcador, o await reader.read() abaixo fica pendurado
+        // pra sempre e a resposta nunca volta. (No master isso era um `return`
+        // direto; virou `break` na refatoração e o break só saía do `for` das
+        // linhas.) Aqui o flag quebra os DOIS laços e o fluxo segue para a
+        // avaliação de tool calls, que o master não tinha neste caminho.
+        let sawDoneMarker = false;
 
         while (true) {
           if (signal.aborted) {
@@ -374,7 +381,7 @@ class BackendService {
             }
             if (line.startsWith('data: ')) {
               const data = line.slice(6).trim();
-              if (data === '[DONE]' || data.toLowerCase() === 'done') break;
+              if (data === '[DONE]' || data.toLowerCase() === 'done') { sawDoneMarker = true; break; }
 
               try {
                 const parsed = JSON.parse(data);
@@ -420,6 +427,12 @@ class BackendService {
                 }
               }
             }
+          }
+
+          if (sawDoneMarker) {
+            // Libera o socket: o servidor não vai fechar sozinho.
+            try { reader.cancel(); } catch (_) {}
+            break;
           }
         }
 

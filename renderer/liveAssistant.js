@@ -37,9 +37,9 @@ var activeAgenticSession = null;
                         <div class="ai-phase-header">
                             <span class="ai-phase-spin"></span>
                             <span class="ai-phase-tag"></span>
+                            <button class="ai-phase-stop" title="Interromper">×</button>
                             <span class="ai-phase-text"></span>
                             <span class="ai-phase-toggle-icon">▶</span>
-                            <button class="ai-phase-stop" title="Interromper">×</button>
                         </div>
                         <div class="ai-thinking-box"></div>
                     `;

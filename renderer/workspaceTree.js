@@ -48,16 +48,11 @@ var creatingFolderParent = null;
             }
  // collapseProjectTree
 
-            // currentTreeNameFilter / currentTreeContentFilter vivem em
-            // workspaceSearch.js (expostos em window) — usados via window.* no renderTree.
-            function clearContentSearchState() {
-                contentSearchMatches = [];
-                contentSearchMatchSet = new Set();
-                if (contentSearchDebounce) {
-                    clearTimeout(contentSearchDebounce);
-                    contentSearchDebounce = null;
-                }
-            }
+            // currentTreeNameFilter / currentTreeContentFilter / clearContentSearchState
+            // vivem em workspaceSearch.js (expostos em window) — usados via window.*
+            // no renderTree. Havia uma cópia idêntica de clearContentSearchState aqui;
+            // removida para não existirem duas versões da mesma função.
+
             // Expande/colapsa uma pasta. Pastas "lazy" (node_modules, build,
             // dist, .git, etc. — ver TREE_HEAVY_DIRS no main.js) só aparecem
             // como nó; os filhos são buscados sob demanda na primeira expansão

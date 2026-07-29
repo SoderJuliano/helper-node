@@ -38,18 +38,9 @@ var isEditingQuestion = false;
                 });
             }
 
-            // === Botão Cancelar Requisição Fixo ===
-            const cancelFixedBtn = document.getElementById('cancel-request-btn');
-            if (cancelFixedBtn) {
-                cancelFixedBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    console.log('🛑 Botão Cancelar Fixo Clicado');
-                    if (window.electronAPI && window.electronAPI.cancelIaRequest) {
-                        window.electronAPI.cancelIaRequest();
-                    }
-                    stopProcessing();
-                });
-            }
+            // Interromper a geração é o × dentro do .ai-phase (ao lado da tag),
+            // não um botão na topbar: ali ele cobria os controles de
+            // minimizar/maximizar da janela (.win-controls-overlay).
 
         function scrollTranscriptionToBottom(behavior = 'smooth') {
             const el = document.getElementById('transcription');
@@ -398,10 +389,6 @@ var isEditingQuestion = false;
 
         
         function stopProcessing() {
-            // Esconde botão cancelar fixo do topo
-            const cancelFixedBtn = document.getElementById('cancel-request-btn');
-            if (cancelFixedBtn) cancelFixedBtn.style.display = 'none';
-
             // Para animações (instância lottie compartilhada via window.animation)
             const animation = window.animation;
             const animationContainer = document.getElementById('animation-container');
@@ -432,10 +419,6 @@ var isEditingQuestion = false;
         
         function startProcessing() {
             console.log('startProcessing chamado');
-            // Mostra botão cancelar fixo do topo
-            const cancelFixedBtn = document.getElementById('cancel-request-btn');
-            if (cancelFixedBtn) cancelFixedBtn.style.display = 'inline-flex';
-
             const robot = document.getElementById('robot');
             if (robot) robot.style.display = 'block';
             console.log('Robô definido como visível');
@@ -453,8 +436,8 @@ var isEditingQuestion = false;
                             <div class="ai-phase-header">
                                 <span class="ai-phase-spin"></span>
                                 <span class="ai-phase-tag">Pensando</span>
-                                <span class="ai-phase-text">Aguardando resposta...</span>
                                 <button class="ai-phase-stop" title="Interromper">×</button>
+                                <span class="ai-phase-text">Aguardando resposta...</span>
                             </div>
                         `;
                         const stop = ph.querySelector('.ai-phase-stop');
