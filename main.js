@@ -56,17 +56,27 @@ process.on("unhandledRejection", (reason) => {
 
 // IPC Log Override
 const originalEmit = ipcMain.emit;
+const NOISY_IPC_CHANNELS = new Set([
+  'native-audio-pcm', 'native-audio-log', 'terminal:input', 'terminal:output',
+  'frameless-drag-start', 'frameless-drag-end', 'window-close', 'window-move', 'window-resize',
+  'get-backend-url', 'get-backend-api-key', 'get-ai-model', 'get-edition',
+  'get-openai-model', 'get-gemini-cli-model', 'get-claude-cli-model', 'get-ollama-local-model',
+  'get-backend-model', 'get-open-ia-token', 'get-prompt-instruction', 'get-language',
+  'get-stealth-mode-status', 'get-print-mode-status', 'get-debug-mode-status', 'get-os-integration-status',
+  'get-realtime-assistant-status', 'get-workspace-access-enabled', 'get-helper-tools-enabled',
+  'save-debug-mode-status', 'save-print-mode-status', 'save-os-integration-status',
+  'save-realtime-assistant-status', 'save-stealth-mode-status', 'save-prompt-instruction'
+]);
+
 ipcMain.emit = function (event, ...args) {
-  if (typeof event === 'string' && !event.startsWith('__')) {
-    if (event !== 'native-audio-pcm' && event !== 'native-audio-log' && event !== 'terminal:input' && event !== 'terminal:output') {
-      if (/token|api-?key|secret|password|senha|auth/i.test(event)) {
-        console.log(`[IPC LOG] Channel: ${event}, Args: [redacted]`);
-      } else {
-        try {
-          console.log(`[IPC LOG] Channel: ${event}, Args:`, JSON.stringify(args.slice(1)).slice(0, 400));
-        } catch (e) {
-          console.log(`[IPC LOG] Channel: ${event} (Args serialization failed)`);
-        }
+  if (typeof event === 'string' && !event.startsWith('__') && !NOISY_IPC_CHANNELS.has(event)) {
+    if (/token|api-?key|secret|password|senha|auth/i.test(event)) {
+      console.log(`[IPC LOG] Channel: ${event}, Args: [redacted]`);
+    } else {
+      try {
+        console.log(`[IPC LOG] Channel: ${event}, Args:`, JSON.stringify(args.slice(1)).slice(0, 400));
+      } catch (e) {
+        console.log(`[IPC LOG] Channel: ${event} (Args serialization failed)`);
       }
     }
   }

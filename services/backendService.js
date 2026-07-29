@@ -103,13 +103,13 @@ class BackendService {
 
     try {
       let aiModelConf = configService.getAiModel();
-      let backendModel = configService.getBackendModel ? configService.getBackendModel() : '';
+      let backendModel = (configService.getBackendModel ? configService.getBackendModel() : '') || 'qwen2.5-coder:7b';
       let baseEndpoint = pickOllamaEndpoint(texto);
       let effectiveEndpoint = (aiModelConf === 'qwen-stream' || aiModelConf === 'qwen')
         ? `/chat?model=qwen3.6:35b`
         : baseEndpoint;
 
-      if ((aiModelConf === 'llama' || aiModelConf === 'llama-stream') && backendModel) {
+      if (aiModelConf === 'llama' || aiModelConf === 'llama-stream') {
         effectiveEndpoint = `/chat?model=${encodeURIComponent(backendModel)}`;
       }
 
@@ -286,13 +286,13 @@ class BackendService {
 
     try {
       let aiModelConf = configService.getAiModel();
-      let backendModel = configService.getBackendModel ? configService.getBackendModel() : '';
+      let backendModel = (configService.getBackendModel ? configService.getBackendModel() : '') || 'qwen2.5-coder:7b';
       let baseEndpoint = pickOllamaEndpoint(texto);
       let endpoint = aiModelConf === 'qwen-stream'
         ? `${apiUrl}/chat?model=qwen3.6:35b`
         : `${apiUrl}${baseEndpoint}-stream`;
 
-      if ((aiModelConf === 'llama' || aiModelConf === 'llama-stream') && backendModel) {
+      if (aiModelConf === 'llama' || aiModelConf === 'llama-stream') {
         endpoint = `${apiUrl}/chat?model=${encodeURIComponent(backendModel)}`;
       }
 

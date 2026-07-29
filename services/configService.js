@@ -360,16 +360,24 @@ function initialize() {
   currentConfig = loadConfig();
 }
 
+let _cachedIp = null;
+let _lastIpFetch = 0;
+
 function getIp() {
+  const now = Date.now();
+  if (_cachedIp && (now - _lastIpFetch < 300000)) {
+    return Promise.resolve(_cachedIp);
+  }
   return fetch("https://api.ipify.org?format=json")
     .then((response) => response.json())
     .then((data) => {
-      console.log("O IP do usuário é:", data.ip);
+      _cachedIp = data.ip;
+      _lastIpFetch = now;
       return data.ip;
     })
     .catch((error) => {
-      console.error("Erro ao obter o IP:", error);
-      return null;
+      console.error("Erro ao obter o IP:", error && error.message);
+      return _cachedIp || null;
     });
 }
 

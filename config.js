@@ -474,61 +474,92 @@ document.addEventListener("DOMContentLoaded", async () => {
 async function populateBackendModels(savedModel = null) {
   if (!backendModelSelect) return;
   const currentVal = savedModel || backendModelSelect.value;
+  let models = [];
+  let fetchFailed = false;
+
   try {
     const url = await ipcRenderer.invoke("get-backend-url");
-    if (!url) throw new Error("URL não definida");
-    
-    // Normalize URL
-    const baseUrl = url.replace(/\/+$/, '');
-    
-    const apiKey = backendApiKey ? backendApiKey.value : '';
-    const res = await fetch(`${baseUrl}/models`, {
-      method: 'GET',
-      headers: {
+    if (url) {
+      const baseUrl = url.replace(/\/+$/, '');
+      const apiKey = backendApiKey ? backendApiKey.value : '';
+      const headers = {
         'x-api-key': apiKey,
         'ngrok-skip-browser-warning': 'true'
-      }
-    });
-    
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    
-    const data = await res.json();
-    backendModelSelect.innerHTML = '';
-    
-    let models = [];
-    if (data.models && Array.isArray(data.models)) {
-        models = data.models;
-    }
+      };
 
-    if (models.length === 0) {
-      backendModelSelect.innerHTML = '<option value="" disabled>Nenhum modelo no servidor</option>';
-    } else {
-      for (const m of models) {
-        const option = document.createElement('option');
-        // Ollama tags return object { name: '...', ... }
-        const name = typeof m === 'object' ? m.name : m;
-        option.value = name;
-        option.textContent = name;
-        backendModelSelect.appendChild(option);
+      let data = null;
+      // Try /models, then /api/tags, then /v1/models
+      try {
+        const res = await fetch(`${baseUrl}/models`, { method: 'GET', headers });
+        if (res && res.ok) data = await res.json();
+      } catch (_) {}
+
+      if (!data) {
+        try {
+          const res = await fetch(`${baseUrl}/api/tags`, { method: 'GET', headers });
+          if (res && res.ok) data = await res.json();
+        } catch (_) {}
       }
-      // Re-seleciona se já tinha algo salvo
-      if (currentVal) {
-        let found = false;
-        for (const opt of backendModelSelect.options) {
-          if (opt.value === currentVal) found = true;
+
+      if (!data) {
+        try {
+          const res = await fetch(`${baseUrl}/v1/models`, { method: 'GET', headers });
+          if (res && res.ok) data = await res.json();
+        } catch (_) {}
+      }
+
+      if (data) {
+        if (data.models && Array.isArray(data.models)) {
+          models = data.models;
+        } else if (data.data && Array.isArray(data.data)) {
+          models = data.data;
+        } else if (Array.isArray(data)) {
+          models = data;
         }
-        if (found) backendModelSelect.value = currentVal;
-        else backendModelSelect.selectedIndex = 0;
       } else {
-        backendModelSelect.selectedIndex = 0;
+        fetchFailed = true;
       }
+    } else {
+      fetchFailed = true;
     }
-    checkBackendToolsAvailability();
   } catch (e) {
     console.warn("Failed to populate backend models:", e);
-    backendModelSelect.innerHTML = '<option value="" disabled>Erro ao carregar do servidor</option>';
-    checkBackendToolsAvailability();
+    fetchFailed = true;
   }
+
+  // Parse extracted model names
+  let parsedNames = models.map(m => typeof m === 'object' ? (m.name || m.model || m.id || String(m)) : String(m)).filter(Boolean);
+
+  // If fetch failed or yielded no models, use saved model & fallbacks instead of breaking UI
+  if (parsedNames.length === 0) {
+    const defaultFallbacks = ['qwen2.5-coder:7b', 'llama3.1:8b', 'llama3:8b', 'gemma2:9b'];
+    if (currentVal && !defaultFallbacks.includes(currentVal)) {
+      parsedNames = [currentVal, ...defaultFallbacks];
+    } else {
+      parsedNames = defaultFallbacks;
+    }
+  }
+
+  backendModelSelect.innerHTML = '';
+  for (const name of parsedNames) {
+    const option = document.createElement('option');
+    option.value = name;
+    option.textContent = name;
+    backendModelSelect.appendChild(option);
+  }
+
+  if (currentVal) {
+    let found = false;
+    for (const opt of backendModelSelect.options) {
+      if (opt.value === currentVal) found = true;
+    }
+    if (found) backendModelSelect.value = currentVal;
+    else backendModelSelect.selectedIndex = 0;
+  } else {
+    backendModelSelect.selectedIndex = 0;
+  }
+
+  checkBackendToolsAvailability();
 }
 
 async function populateOpenAiModels(savedModel = null) {

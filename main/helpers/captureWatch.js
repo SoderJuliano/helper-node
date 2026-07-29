@@ -16,6 +16,7 @@ const {
 } = require('../globals.js');
 
 helpers.detectActiveSelectionInterface = async function() {
+  if (process.platform === 'win32') return false;
   try {
     // Check for active screenshot selection processes - don't fail if no matches
     const { stdout } = await execPromise('ps aux | grep -E "(gnome-screenshot|flameshot|spectacle|maim|scrot|grim|slurp|grimshot|ksnip|deepin-screenshot|xfce4-screenshooter)" | grep -v grep || true');

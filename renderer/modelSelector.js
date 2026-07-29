@@ -233,43 +233,64 @@
                     });
                 } else if (provider === 'llama' || provider === 'llama-stream') {
                     try {
-                        const url = await window.electronAPI.getBackendUrl();
-                        if (!url) {
-                            if (typeof showToast === 'function') showToast('URL do backend não configurada');
-                            return;
-                        }
-                        const baseUrl = url.replace(/\/+$/, '');
-                        const apiKey = (await window.electronAPI.getBackendApiKey()) || '';
-                        
-                        if (typeof showToast === 'function') showToast('Carregando modelos do servidor...');
-                        
-                        const res = await fetch(`${baseUrl}/models`, {
-                            method: 'GET',
-                            headers: {
-                                'x-api-key': apiKey,
-                                'ngrok-skip-browser-warning': 'true'
-                            }
-                        });
-                        if (!res.ok) throw new Error("HTTP " + res.status);
-                        const data = await res.json();
-                        let models = [];
-                        if (data.models && Array.isArray(data.models)) {
-                            models = data.models;
-                        }
-                        
-                        if (models.length === 0) {
-                            if (typeof showToast === 'function') showToast('Nenhum modelo no servidor');
-                            return;
-                        }
-                        
-                        const menuModels = models.map(m => {
-                            const name = typeof m === 'object' ? m.name : m;
-                            return { value: name, label: name };
-                        });
-                        
                         let currentVal = '';
                         try { currentVal = await window.electronAPI.getBackendModel(); } catch (_) {}
-                        
+
+                        const url = await window.electronAPI.getBackendUrl();
+                        let models = [];
+
+                        if (url) {
+                            const baseUrl = url.replace(/\/+$/, '');
+                            const apiKey = (await window.electronAPI.getBackendApiKey()) || '';
+                            const headers = {
+                                'x-api-key': apiKey,
+                                'ngrok-skip-browser-warning': 'true'
+                            };
+
+                            let data = null;
+                            try {
+                                const res = await fetch(`${baseUrl}/models`, { method: 'GET', headers });
+                                if (res && res.ok) data = await res.json();
+                            } catch (_) {}
+
+                            if (!data) {
+                                try {
+                                    const res = await fetch(`${baseUrl}/api/tags`, { method: 'GET', headers });
+                                    if (res && res.ok) data = await res.json();
+                                } catch (_) {}
+                            }
+
+                            if (!data) {
+                                try {
+                                    const res = await fetch(`${baseUrl}/v1/models`, { method: 'GET', headers });
+                                    if (res && res.ok) data = await res.json();
+                                } catch (_) {}
+                            }
+
+                            if (data) {
+                                if (data.models && Array.isArray(data.models)) {
+                                    models = data.models;
+                                } else if (data.data && Array.isArray(data.data)) {
+                                    models = data.data;
+                                } else if (Array.isArray(data)) {
+                                    models = data;
+                                }
+                            }
+                        }
+
+                        let parsedNames = models.map(m => typeof m === 'object' ? (m.name || m.model || m.id || String(m)) : String(m)).filter(Boolean);
+
+                        if (parsedNames.length === 0) {
+                            const defaultFallbacks = ['qwen2.5-coder:7b', 'llama3.1:8b', 'llama3:8b', 'gemma2:9b'];
+                            if (currentVal && !defaultFallbacks.includes(currentVal)) {
+                                parsedNames = [currentVal, ...defaultFallbacks];
+                            } else {
+                                parsedNames = defaultFallbacks;
+                            }
+                        }
+
+                        const menuModels = parsedNames.map(name => ({ value: name, label: name }));
+
                         _buildModelMenu(anchor, menuModels, () => currentVal, (opt) => {
                             currentVal = opt.value;
                             try { window.electronAPI.setBackendModel(opt.value); } catch (_) {}

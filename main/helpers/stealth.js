@@ -104,6 +104,7 @@ helpers.checkScreenSharing = async function() {
 }
 
 helpers.detectChromeScreenSharing = async function() {
+  if (process.platform === 'win32') return false;
   try {
     const { stdout } = await execPromise(
       `ps aux | grep '[c]hrome' | grep -E -- '--type=renderer.*(pipewire|screen-capture|WebRTCPipeWireCapturer)'`
@@ -115,12 +116,12 @@ helpers.detectChromeScreenSharing = async function() {
     }
     return isSharing;
   } catch (error) {
-    console.log("No Chrome screen-sharing detected:", error.message);
     return false;
   }
 }
 
 helpers.detectScreenSharing = async function() {
+  if (process.platform === 'win32') return false;
   try {
     const sharingApps = ["chrome", "teams", "zoom", "obs", "discord"];
     const { stdout } = await execPromise(
@@ -140,7 +141,6 @@ helpers.detectScreenSharing = async function() {
       ) || helpers.detectChromeScreenSharing()
     );
   } catch (error) {
-    console.error("Error detecting screen sharing:", error);
     return false;
   }
 }
