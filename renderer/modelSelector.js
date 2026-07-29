@@ -99,9 +99,9 @@
                             if (url) {
                                 const baseUrl = url.replace(/\/+$/, '');
                                 const apiKey = (await window.electronAPI.getBackendApiKey()) || '';
-                                const res = await fetch(`${baseUrl}/models`, {
-                                    headers: { 'x-api-key': apiKey, 'ngrok-skip-browser-warning': 'true' }
-                                });
+                                const headers = { 'ngrok-skip-browser-warning': 'true' };
+                                if (apiKey) headers['x-api-key'] = apiKey;
+                                const res = await fetch(`${baseUrl}/models`, { headers });
                                 if (res.ok) {
                                     const data = await res.json();
                                     if (data.models && data.models.length > 0) {
@@ -243,9 +243,9 @@
                             const baseUrl = url.replace(/\/+$/, '');
                             const apiKey = (await window.electronAPI.getBackendApiKey()) || '';
                             const headers = {
-                                'x-api-key': apiKey,
                                 'ngrok-skip-browser-warning': 'true'
                             };
+                            if (apiKey) headers['x-api-key'] = apiKey;
 
                             let data = null;
                             try {

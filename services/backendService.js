@@ -58,30 +58,69 @@ class BackendService {
   }
 
   async getLastEnvUrl() {
-    const ip = await configService.getIp();
-    if (ip) {
-      apiUrl = `http://${ip}:8080`;
+    const now = Date.now();
+    if (this._cachedApiUrl && (now - (this._lastUrlFetch || 0) < 60000)) {
+      apiUrl = this._cachedApiUrl;
       return apiUrl;
-    } else {
-      console.log("IP não configurado nas configurações.");
-      apiUrl = "";
-      return null;
     }
+    try {
+      const res = await axios.get("https://abra-api.top/notifications/retrieve?key=ngrockurl", {
+        timeout: 5000,
+        headers: { 'Cache-Control': 'no-cache' }
+      });
+      const data = res.data;
+      if (Array.isArray(data) && data.length > 0) {
+        const lastNotification = data[data.length - 1];
+        if (lastNotification && lastNotification.content) {
+          const fetchedUrl = String(lastNotification.content).trim().replace(/\/+$/, '');
+          if (fetchedUrl && fetchedUrl.startsWith('http')) {
+            apiUrl = fetchedUrl;
+            this._cachedApiUrl = fetchedUrl;
+            this._lastUrlFetch = now;
+            return apiUrl;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[backendService] Erro ao buscar URL do abra-api:", e && e.message);
+    }
+
+    try {
+      const ip = await configService.getIp();
+      if (ip) {
+        apiUrl = `http://${ip}:8080`;
+        this._cachedApiUrl = apiUrl;
+        this._lastUrlFetch = now;
+        return apiUrl;
+      }
+    } catch (_) {}
+
+    console.log("[backendService] Nenhuma URL de backend disponível.");
+    apiUrl = "";
+    return null;
   }
 
   async testConnection() {
     try {
       const url = await this.getLastEnvUrl();
-      if (!url) return { ok: false, error: 'IP não configurado' };
-      const res = await fetch(`${url}/chat?model=llama3.1:8b`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: 'ping' }),
+      if (!url) return { ok: false, error: 'URL do backend não configurada' };
+      const res = await fetch(`${url}/models`, {
+        method: 'GET',
+        headers: { 'ngrok-skip-browser-warning': 'true' },
         signal: AbortSignal.timeout(5000)
       });
       return { ok: res.ok, status: res.status };
     } catch (e) {
       return { ok: false, error: e.message };
+    }
+  }
+
+  async ping() {
+    try {
+      const conn = await this.testConnection();
+      return !!conn.ok;
+    } catch (_) {
+      return false;
     }
   }
 

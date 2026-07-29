@@ -483,9 +483,9 @@ async function populateBackendModels(savedModel = null) {
       const baseUrl = url.replace(/\/+$/, '');
       const apiKey = backendApiKey ? backendApiKey.value : '';
       const headers = {
-        'x-api-key': apiKey,
         'ngrok-skip-browser-warning': 'true'
       };
+      if (apiKey) headers['x-api-key'] = apiKey;
 
       let data = null;
       // Try /models, then /api/tags, then /v1/models
