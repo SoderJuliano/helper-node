@@ -352,8 +352,7 @@ function stripDanglingToolCallFragments(text) {
   }
 
   cleaned += out.slice(cursor);
-  return cleaned.replace(/^T\s*O\s*O\s*L[_\s-]*C\s*A\s*L\s*L.*$/gm, '').trim();
-}
+  cleaned = cleaned.replace(/^T\s*O\s*O\s*L[_\s-]*C\s*A\s*L\s*L.*$/gm, '');
   return cleaned.replace(/\n{3,}/g, '\n\n').trim();
 }
 
