@@ -280,8 +280,43 @@ ipcMain.on("clear-ai-sessions", () => {
   });
 });
 
-ipcMain.on("send-to-gemini-stream", async (event, text) => {
+ipcMain.on("send-to-gemini-stream", async (event, text, sessionId) => {
   try {
+    const aiModel = helpers.getEffectiveAiModel();
+    if (aiModel === 'ollamaLocal') {
+      console.log("IPC: Usando Ollama Local Stream Service...");
+      const OllamaLocalService = require('../../services/ollamaLocalService');
+      const instructionO = configService.getPromptInstruction();
+      const _wsTxt = await helpers.prependWorkspaceContextIfNeeded(text, 'ollama');
+      const _kbL = await helpers.knowledgeBlockForOllama(text);
+      const _augTextL = _kbL ? _kbL + "\n\n---\n\n" + _wsTxt : _wsTxt;
+      const _ht = helpers.buildHelperToolsOpenAIOpts(_augTextL, instructionO, configService.getOpenAiModel());
+
+      await OllamaLocalService.responderStream(
+        _augTextL,
+        // onChunk
+        (chunk) => {
+          event.sender.send("gemini-stream-chunk", chunk);
+        },
+        // onComplete
+        () => {
+          event.sender.send("gemini-stream-complete");
+        },
+        // onError
+        (error) => {
+          if (error && (error.message === 'Request cancelled' || error.message === 'Cancelado.')) {
+            console.log('[ipc] Stream local cancelado pelo usuário.');
+            event.sender.send("transcription-error", "Request cancelled");
+            return;
+          }
+          console.error("Stream local error:", error);
+          event.sender.send("transcription-error", error.message);
+        },
+        { ..._ht.opts, sessionId }
+      );
+      return;
+    }
+
     console.log("IPC: Usando Backend Stream Service...");
     const instructionO2 = configService.getPromptInstruction();
     const _wsTxtO2 = await helpers.prependWorkspaceContextIfNeeded(text, 'ollama');
@@ -301,7 +336,7 @@ ipcMain.on("send-to-gemini-stream", async (event, text) => {
       },
       // onError
       (error) => {
-        if (error && error.message === 'Request cancelled') {
+        if (error && (error.message === 'Request cancelled' || error.message === 'Cancelado.')) {
           console.log('[ipc] Stream cancelado pelo usuário.');
           event.sender.send("transcription-error", "Request cancelled");
           return;
@@ -309,16 +344,14 @@ ipcMain.on("send-to-gemini-stream", async (event, text) => {
         console.error("Stream error:", error);
         event.sender.send("transcription-error", error.message);
       },
-      _htO2.opts
+      { ..._htO2.opts, sessionId }
     );
   } catch (error) {
-    if (error && error.message === 'Request cancelled') {
+    if (error && (error.message === 'Request cancelled' || error.message === 'Cancelado.')) {
       event.sender.send("transcription-error", "Request cancelled");
       return;
     }
     console.error("IPC: Stream service error:", error);
-    // Mandar "Failed to process stream response" escondia a causa real (que o
-    // backendSseClient já traduz pra algo acionável). Propaga a mensagem.
     event.sender.send(
       "transcription-error",
       (error && error.message) || "Falha ao processar a resposta em stream."
@@ -332,6 +365,10 @@ ipcMain.on("cancel-ia-request", () => {
     state.waitingNotificationInterval = null;
   }
   try { BackendService.abortCurrentRequest(); } catch (_) {}
+  try {
+    const OllamaLocalService = require('../../services/ollamaLocalService');
+    OllamaLocalService.abortCurrentRequest();
+  } catch (_) {}
   console.log("IA request cancelled");
 });
 

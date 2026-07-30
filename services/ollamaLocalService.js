@@ -206,6 +206,14 @@ function stripThinkingBlock(text) {
 class OllamaLocalService {
     constructor() {
         this.sessions = {};
+        this.activeAbortController = null;
+    }
+
+    abortCurrentRequest() {
+        if (this.activeAbortController) {
+            this.activeAbortController.abort();
+            this.activeAbortController = null;
+        }
     }
 
     _host() {
@@ -279,7 +287,7 @@ class OllamaLocalService {
         }
         if (code === 'ECONNABORTED' || /timeout/i.test(String(err && err.message))) {
             return [
-                `⚠️ **Ollama Local demorou demais pra responder (${REQUEST_TIMEOUT_MS / 1000}s).**`,
+                `⚠️ **Ollama Local demorou demais pra responder.**`,
                 '',
                 'Possíveis causas:',
                 `- Modelo \`${model}\` muito pesado pra sua GPU/CPU`,
@@ -361,6 +369,10 @@ class OllamaLocalService {
             this.sessions[sessionId].messages = [sys, ...this.sessions[sessionId].messages.slice(-12)];
         }
 
+        this.abortCurrentRequest();
+        this.activeAbortController = new AbortController();
+        const signal = this.activeAbortController.signal;
+
         let iter = 0;
         let lastResponseText = '';
         let toolsExecutedOk = 0;
@@ -368,6 +380,7 @@ class OllamaLocalService {
 
         try {
             while (iter < maxToolCalls) {
+                if (signal.aborted) throw new Error("Request cancelled");
                 console.log(`[ollamaLocal] → ${model} @ ${host} (msgs=${this.sessions[sessionId].messages.length}, iter=${iter + 1}/${maxToolCalls})`);
                 const r = await axios.post(
                     `${host}/api/chat`,
@@ -380,7 +393,11 @@ class OllamaLocalService {
                             num_ctx: 8192,
                         },
                     },
-                    { timeout: REQUEST_TIMEOUT_MS, headers: { 'Content-Type': 'application/json' } }
+                    {
+                        timeout: 0, // NO TIMEOUT
+                        signal,
+                        headers: { 'Content-Type': 'application/json' }
+                    }
                 );
                 
                 let content = (r.data && r.data.message && r.data.message.content) || '';
@@ -393,6 +410,7 @@ class OllamaLocalService {
 
                 if (!effectiveTools || !onToolCall) {
                     this.sessions[sessionId].messages.push({ role: 'assistant', content });
+                    this.activeAbortController = null;
                     return content;
                 }
 
@@ -460,6 +478,7 @@ class OllamaLocalService {
                 iter++;
             }
 
+            this.activeAbortController = null;
             if (effectiveTools && onToolCall) {
                 const stripped = stripToolCallBlocks(lastResponseText);
                 if (stripped && stripped.trim()) {
@@ -474,10 +493,299 @@ class OllamaLocalService {
             return lastResponseText;
 
         } catch (err) {
+            this.activeAbortController = null;
             this.sessions[sessionId].messages.pop();
             const friendly = this._classifyError(err, model);
             console.error('[ollamaLocal] erro:', err && err.message);
             return friendly;
+        }
+    }
+
+    async responderStream(texto, onChunk, onComplete, onError, opts = {}) {
+        if (!texto) {
+            if (onError) onError(new Error('Não entendi'));
+            return;
+        }
+        const model = this._model();
+        const host = this._host();
+        const sessionId = opts.sessionId || 'default';
+        const now = Date.now();
+        const twoHours = 2 * 60 * 60 * 1000;
+
+        if (this.sessions[sessionId] && (now - this.sessions[sessionId].lastActivity > twoHours)) {
+            delete this.sessions[sessionId];
+            console.log('[ollamaLocal] sessão expirou');
+        }
+
+        const tools = Array.isArray(opts.tools) && opts.tools.length ? opts.tools : null;
+        const onToolCall = typeof opts.onToolCall === 'function' ? opts.onToolCall : null;
+        const maxToolCalls = Number.isInteger(opts.maxToolCalls) ? opts.maxToolCalls : 50;
+
+        let wsPaths = [];
+        try {
+            const workspace = require('./workspace');
+            const wsEnabled = !!(configService.getWorkspaceAccessEnabled && configService.getWorkspaceAccessEnabled());
+            if (wsEnabled && workspace.list().length > 0) {
+                wsPaths = workspace.list().map(a => a.path).filter(Boolean);
+            }
+        } catch (_) {}
+
+        let effectiveTools = tools;
+        if (tools) {
+            effectiveTools = tools.filter(t => {
+                const name = (t.function || t).name;
+                return !OLLAMA_WRITE_TOOLS_BLOCKED.has(name);
+            });
+        }
+
+        const baseSystemPrompt = opts.instruction || configService.getPromptInstruction() || 'You are a helpful assistant.';
+        let systemPromptContent = baseSystemPrompt;
+        if (effectiveTools && onToolCall) {
+            systemPromptContent = `${systemPromptContent}\n\n${buildOllamaToolsAddon(effectiveTools, wsPaths)}`;
+        }
+
+        if (!this.sessions[sessionId]) {
+            this.sessions[sessionId] = {
+                messages: [
+                    { role: 'system', content: systemPromptContent },
+                ],
+                lastActivity: now,
+            };
+        } else {
+            this.sessions[sessionId].messages[0].content = systemPromptContent;
+        }
+
+        let userMsg = { role: 'user', content: texto };
+        if (opts.imageBase64) {
+            const base64Data = opts.imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
+            userMsg.images = [base64Data];
+        }
+        this.sessions[sessionId].messages.push(userMsg);
+        this.sessions[sessionId].lastActivity = now;
+
+        if (this.sessions[sessionId].messages.length > 13) {
+            const sys = this.sessions[sessionId].messages[0];
+            this.sessions[sessionId].messages = [sys, ...this.sessions[sessionId].messages.slice(-12)];
+        }
+
+        this.abortCurrentRequest();
+        this.activeAbortController = new AbortController();
+        const signal = this.activeAbortController.signal;
+
+        let iter = 0;
+        let lastResponseText = '';
+        let toolsExecutedOk = 0;
+        const ranSummary = [];
+        const callCounts = new Map();
+
+        try {
+            while (iter < maxToolCalls) {
+                if (signal.aborted) throw new Error("Request cancelled");
+                console.log(`[ollamaLocal-stream] → ${model} @ ${host} (msgs=${this.sessions[sessionId].messages.length}, iter=${iter + 1}/${maxToolCalls})`);
+                
+                const { createStreamRouter } = require('./backendStreamRouter');
+                const router = createStreamRouter({ onChunk, hasTools: !!(effectiveTools && onToolCall) });
+
+                const r = await axios.post(
+                    `${host}/api/chat`,
+                    {
+                        model,
+                        messages: this.sessions[sessionId].messages,
+                        stream: true,
+                        options: {
+                            temperature: 0.7,
+                            num_ctx: 8192,
+                        },
+                    },
+                    {
+                        responseType: 'stream',
+                        timeout: 0, // NO TIMEOUT
+                        signal,
+                        headers: { 'Content-Type': 'application/json' }
+                    }
+                );
+
+                await new Promise((resolve, reject) => {
+                    const stream = r.data;
+                    let buffer = '';
+                    
+                    const onStreamData = (chunk) => {
+                        buffer += chunk.toString('utf8');
+                        let lineEndIndex;
+                        while ((lineEndIndex = buffer.indexOf('\n')) !== -1) {
+                            const line = buffer.slice(0, lineEndIndex).trim();
+                            buffer = buffer.slice(lineEndIndex + 1);
+                            if (line) {
+                                try {
+                                    const parsed = JSON.parse(line);
+                                    const token = parsed.message && parsed.message.content;
+                                    if (token) {
+                                        router.routeToken(token);
+                                    }
+                                } catch (err) {
+                                    console.error('Error parsing Ollama stream line:', err);
+                                }
+                            }
+                        }
+                    };
+
+                    const onStreamEnd = () => {
+                        cleanup();
+                        resolve();
+                    };
+
+                    const onStreamError = (err) => {
+                        cleanup();
+                        reject(err);
+                    };
+
+                    const cleanup = () => {
+                        stream.removeListener('data', onStreamData);
+                        stream.removeListener('end', onStreamEnd);
+                        stream.removeListener('error', onStreamError);
+                        signal.removeEventListener('abort', onAbort);
+                    };
+
+                    const onAbort = () => {
+                        cleanup();
+                        reject(new Error("Request cancelled"));
+                    };
+
+                    stream.on('data', onStreamData);
+                    stream.on('end', onStreamEnd);
+                    stream.on('error', onStreamError);
+                    signal.addEventListener('abort', onAbort);
+                });
+
+                let content = router.answer || '';
+                content = stripThinkingBlock(content);
+                
+                if (!content && !router.thinking) {
+                    throw new Error('Resposta vazia do Ollama');
+                }
+
+                lastResponseText = content;
+
+                if (!effectiveTools || !onToolCall) {
+                    this.sessions[sessionId].messages.push({ role: 'assistant', content });
+                    this.activeAbortController = null;
+                    if (onComplete) onComplete();
+                    return;
+                }
+
+                const calls = parseOllamaToolCalls(content);
+                if (!calls.length) {
+                    this.sessions[sessionId].messages.push({ role: 'assistant', content });
+                    const cleanText = stripToolCallBlocks(content).trim();
+                    if (!router.streamedAnything && onChunk && cleanText) {
+                        onChunk(cleanText);
+                    }
+                    this.activeAbortController = null;
+                    if (onComplete) onComplete();
+                    return;
+                }
+
+                console.log(`[ollamaLocal-stream][tools] iter=${iter + 1}/${maxToolCalls} — ${calls.length} tool_call(s) detectada(s)`);
+                this.sessions[sessionId].messages.push({ role: 'assistant', content });
+
+                const results = [];
+                for (const c of calls) {
+                    const name = c.obj.name;
+                    const rawArgs = c.obj.args || c.obj.arguments || {};
+                    let args = rawArgs;
+                    if (args && args.command && !args.cmd) {
+                        const parts = String(args.command).trim().split(/\s+/);
+                        args = { ...args, cmd: parts[0], args: parts.slice(1) };
+                        delete args.command;
+                        c.obj.args = args;
+                    }
+                    console.log(`[ollamaLocal-stream][tools] → ${name}(${JSON.stringify(args).slice(0, 120)})`);
+                    
+                    let toolResult;
+                    const knownToolNames = new Set([
+                        'listDir','fileInfo','readFile','readFileChunk','searchInFiles','findFiles',
+                        'detectShellConfig','listPackages','listDesktopApps','systemPowerAction',
+                        'writeFile','appendToFile','deleteFile','patchFile','runCommand','runShellAdvanced'
+                    ]);
+
+                    if (!knownToolNames.has(name)) {
+                        console.warn(`[ollamaLocal-stream][tools] ⚠️ tool desconhecida ignorada: "${name}"`);
+                        toolResult = { error: `Ferramenta "${name}" não existe. Use apenas as ferramentas listadas. Escreva a RESPOSTA FINAL ao usuário agora.` };
+                    } else {
+                        if (onChunk) {
+                            onChunk({ type: 'thinking', text: `\n⚙️ Executando ${name}...\n` });
+                        }
+                        try {
+                            toolResult = await onToolCall(name, args, { source: 'ollama-tool-loop' });
+                        } catch (e) {
+                            toolResult = { error: String(e && e.message || e) };
+                        }
+                        if (toolResult && toolResult.ok !== false) {
+                            toolsExecutedOk++;
+                            if (name === 'runCommand') {
+                                const cmdline = `${args.cmd || ''} ${(Array.isArray(args.args) ? args.args : []).join(' ')}`.trim();
+                                const exit = toolResult.result && typeof toolResult.result.exitCode === 'number' ? toolResult.result.exitCode : '?';
+                                ranSummary.push(`✓ \`${cmdline}\` (exit=${exit})`);
+                            } else {
+                                ranSummary.push(`✓ ${name}`);
+                            }
+                        }
+                    }
+
+                    let serialized;
+                    try { serialized = typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult); }
+                    catch (_) { serialized = String(toolResult); }
+                    if (serialized.length > 8 * 1024) serialized = serialized.slice(0, 8 * 1024) + '\n…[truncated]';
+                    results.push(`TOOL_RESULT: ${name}\n${serialized}`);
+                }
+
+                let repeticao = '';
+                for (const c of calls) {
+                    const sig = `${c.obj.name}:${JSON.stringify(c.obj.args || {})}`;
+                    const n = (callCounts.get(sig) || 0) + 1;
+                    callCounts.set(sig, n);
+                    if (n >= 3) {
+                        repeticao = '\n\nPARE. Você já chamou ' + c.obj.name + ' com esses ' +
+                            'mesmos argumentos ' + n + ' vezes e o resultado está acima. ' +
+                            'NÃO repita essa chamada. Responda AGORA em texto normal, sem ' +
+                            'nenhum TOOL_CALL, com o que você já descobriu.';
+                    } else if (n === 2) {
+                        repeticao = '\n\nATENÇÃO: essa chamada é repetida — o resultado já ' +
+                            'está no histórico acima. Use o que já tem e dê o PRÓXIMO passo ' +
+                            '(outra ferramenta, outro path) ou responda em texto.';
+                    }
+                }
+                if (repeticao && onChunk) {
+                    onChunk({ type: 'thinking', text: '\n⚠️ Chamada repetida — cobrando o próximo passo.\n' });
+                }
+
+                const followupSuffix = `\n\nCom base nos TOOL_RESULT acima, ou emita novos TOOL_CALL se precisar de mais info, ou escreva a RESPOSTA FINAL ao usuario (sem nenhum TOOL_CALL).`;
+                const userFollowup = `${results.join('\n\n')}${followupSuffix}${repeticao}`;
+                
+                this.sessions[sessionId].messages.push({ role: 'user', content: userFollowup });
+                iter++;
+            }
+
+            this.activeAbortController = null;
+            if (effectiveTools && onToolCall) {
+                const stripped = stripToolCallBlocks(lastResponseText);
+                if (stripped && stripped.trim()) {
+                    if (onChunk) onChunk(stripped);
+                } else if (toolsExecutedOk > 0 && ranSummary.length) {
+                    if (onChunk) onChunk(`Pronto! Comandos executados:\n\n${ranSummary.join('\n')}`);
+                } else {
+                    if (onChunk) onChunk('Não consegui concluir essa tarefa com ferramentas. Tente reformular a pergunta.');
+                }
+            }
+
+            if (onComplete) onComplete();
+
+        } catch (err) {
+            this.activeAbortController = null;
+            this.sessions[sessionId].messages.pop();
+            console.error('[ollamaLocal-stream] erro:', err && err.message);
+            const friendly = this._classifyError(err, model);
+            if (onError) onError(new Error(friendly));
         }
     }
 

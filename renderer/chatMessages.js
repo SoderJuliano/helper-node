@@ -178,7 +178,7 @@ var isEditingQuestion = false;
 
             const aiModel = await window.electronAPI.getAiModel();
             
-            if (aiModel === 'llama-stream' || aiModel === 'qwen-stream') {
+            if (aiModel === 'llama-stream' || aiModel === 'qwen-stream' || aiModel === 'ollamaLocal') {
                 // Usa streaming
                 window.electronAPI.sendTextToGeminiStream(text, activeSessionId);
             } else {
