@@ -343,6 +343,16 @@
 
       container.appendChild(tab);
     });
+
+    const header = document.querySelector('.fv-header');
+    if (header && !header._hasContextMenu) {
+      header._hasContextMenu = true;
+      header.addEventListener('contextmenu', (ev) => {
+        if (openFiles.size > 0) {
+          showTabContextMenu(ev, activePath);
+        }
+      });
+    }
   }
 
   function showTabContextMenu(event, filePath) {
@@ -363,12 +373,18 @@
       return b;
     };
     
-    menu.appendChild(mkItem('Fechar outros arquivos', () => {
-      closeOtherTabs(filePath);
-    }));
+    if (filePath) {
+      menu.appendChild(mkItem('Fechar outros arquivos', () => {
+        closeOtherTabs(filePath);
+      }));
+    }
     
     menu.appendChild(mkItem('Fechar não modificados', () => {
       closeUnmodifiedTabs();
+    }));
+
+    menu.appendChild(mkItem('Fechar todos', () => {
+      closeAllTabs();
     }));
     
     document.body.appendChild(menu);
@@ -388,6 +404,15 @@
       }
     };
     setTimeout(() => document.addEventListener('mousedown', closer, true), 0);
+  }
+
+  async function closeAllTabs() {
+    openFiles.clear();
+    const viewer = document.getElementById('file-viewer');
+    if (viewer) viewer.classList.remove('open');
+    activePath = null;
+    closeEditor();
+    renderTabs();
   }
 
   async function closeOtherTabs(keepPath) {
@@ -643,7 +668,7 @@
     return !!(cm && cm.hasFocus());
   }
 
-  window.EditorController = { openFile, saveActive, closeEditor, isDirty, focusSearch, hasOpenFile, renamePath, hasFocus };
+  window.EditorController = { openFile, saveActive, closeEditor, isDirty, focusSearch, hasOpenFile, renamePath, hasFocus, closeAllTabs };
 
   if (window.electronAPI && window.electronAPI.onFileMutated) {
     window.electronAPI.onFileMutated(onFileMutated);
