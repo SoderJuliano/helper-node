@@ -579,7 +579,11 @@ class OllamaLocalService {
         }, 1500);
 
         try {
-            const psRes = await axios.get(`${host}/api/ps`, { timeout: 1500, signal: psController.signal });
+            const psRes = await axios.get(`${host}/api/ps`, {
+                timeout: 1500,
+                signal: psController.signal,
+                headers: { 'Connection': 'close' }
+            });
             clearTimeout(psTimeout);
             const loadedModels = psRes.data && psRes.data.models;
             if (Array.isArray(loadedModels)) {
@@ -666,11 +670,7 @@ class OllamaLocalService {
                                     if (token) {
                                         router.routeToken(token);
                                     }
-                                    if (parsed.done) {
-                                        cleanup();
-                                        resolve();
-                                        return;
-                                    }
+
                                 } catch (err) {
                                     console.error('Error parsing Ollama stream line:', err);
                                 }
