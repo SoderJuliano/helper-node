@@ -6,12 +6,157 @@
   let currentHoverMarker = null;
   let activeCm = null;
   let currentFilePath = null;
+  let activePopup = null;
 
   function clearHoverMarker() {
     if (currentHoverMarker) {
       currentHoverMarker.clear();
       currentHoverMarker = null;
     }
+  }
+
+  function removeActivePopup() {
+    if (activePopup) {
+      activePopup.remove();
+      activePopup = null;
+    }
+  }
+
+  // Abre todas as ocorrências encontradas em abas do editor
+  async function openAllMatches(matches) {
+    removeActivePopup();
+    if (!Array.isArray(matches) || !matches.length) return;
+    for (let i = matches.length - 1; i >= 0; i--) {
+      if (window.EditorController && matches[i].filePath) {
+        await window.EditorController.openFile(matches[i].filePath, matches[i].line);
+      }
+    }
+  }
+
+  // Renderiza a janela pop-up de seleção quando o símbolo possui múltiplas definições
+  function showDefinitionPopup(matches, symbol, clientX, clientY) {
+    removeActivePopup();
+    if (!Array.isArray(matches) || !matches.length) return;
+
+    const popup = document.createElement('div');
+    popup.className = 'code-nav-popup';
+    activePopup = popup;
+
+    // Cabeçalho
+    const header = document.createElement('div');
+    header.className = 'code-nav-popup-header';
+
+    const title = document.createElement('span');
+    title.className = 'code-nav-popup-title';
+    title.textContent = `📌 ${symbol} (${matches.length})`;
+
+    const sub = document.createElement('span');
+    sub.className = 'code-nav-popup-sub';
+    sub.textContent = 'Enter: abrir todas em abas';
+
+    header.appendChild(title);
+    header.appendChild(sub);
+    popup.appendChild(header);
+
+    let selectedIndex = 0;
+
+    // Lista de ocorrências
+    const itemEls = matches.map((m, idx) => {
+      const item = document.createElement('div');
+      item.className = 'code-nav-popup-item' + (idx === 0 ? ' selected' : '');
+
+      const fileName = m.relativePath ? m.relativePath.split('/').pop() : m.filePath.split('/').pop();
+      const folderPath = m.relativePath || m.filePath;
+
+      const fileSpan = document.createElement('span');
+      fileSpan.className = 'code-nav-popup-file';
+      fileSpan.textContent = `${fileName}:${m.line}`;
+
+      const pathSpan = document.createElement('span');
+      pathSpan.className = 'code-nav-popup-path';
+      pathSpan.textContent = folderPath;
+
+      const badgeSpan = document.createElement('span');
+      badgeSpan.className = 'code-nav-popup-badge';
+      badgeSpan.textContent = m.className ? m.className : (m.kind || 'método');
+
+      const leftDiv = document.createElement('div');
+      leftDiv.style.display = 'flex';
+      leftDiv.style.alignItems = 'center';
+      leftDiv.style.overflow = 'hidden';
+      leftDiv.appendChild(fileSpan);
+      leftDiv.appendChild(pathSpan);
+
+      item.appendChild(leftDiv);
+      item.appendChild(badgeSpan);
+
+      item.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        removeActivePopup();
+        if (window.EditorController && m.filePath) {
+          window.EditorController.openFile(m.filePath, m.line);
+        }
+      });
+
+      popup.appendChild(item);
+      return item;
+    });
+
+    document.body.appendChild(popup);
+
+    // Posicionamento próximo ao ponteiro do mouse
+    const width = popup.offsetWidth || 340;
+    const height = popup.offsetHeight || 200;
+    let x = clientX;
+    let y = clientY + 10;
+    if (x + width > window.innerWidth) x = window.innerWidth - width - 10;
+    if (y + height > window.innerHeight) y = clientY - height - 10;
+    popup.style.left = Math.max(10, x) + 'px';
+    popup.style.top = Math.max(10, y) + 'px';
+
+    // Teclas: Enter abre todas, Esc fecha, Setas navegam
+    const keyHandler = (e) => {
+      if (!activePopup) {
+        document.removeEventListener('keydown', keyHandler, true);
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        document.removeEventListener('keydown', keyHandler, true);
+        if (matches[selectedIndex]) {
+          // Se navegou com as setas para um específico e deu enter, ou se quer abrir todos:
+          // Se não usou as setas (selectedIndex === 0), abre todos em abas conforme solicitado.
+          openAllMatches(matches);
+        }
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        removeActivePopup();
+        document.removeEventListener('keydown', keyHandler, true);
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        selectedIndex = (selectedIndex + 1) % matches.length;
+        itemEls.forEach((el, idx) => el.classList.toggle('selected', idx === selectedIndex));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        selectedIndex = (selectedIndex - 1 + matches.length) % matches.length;
+        itemEls.forEach((el, idx) => el.classList.toggle('selected', idx === selectedIndex));
+      }
+    };
+
+    const clickOutsideHandler = (ev) => {
+      if (popup && !popup.contains(ev.target)) {
+        removeActivePopup();
+        document.removeEventListener('mousedown', clickOutsideHandler, true);
+        document.removeEventListener('keydown', keyHandler, true);
+      }
+    };
+
+    setTimeout(() => {
+      document.addEventListener('keydown', keyHandler, true);
+      document.addEventListener('mousedown', clickOutsideHandler, true);
+    }, 0);
   }
 
   // Atualiza as marcas do gutter para a aba aberta atual
@@ -48,7 +193,7 @@
   }
 
   // Tenta resolver a definição de uma palavra ao clicar com Ctrl
-  async function handleCtrlClick(cm, filePath, pos) {
+  async function handleCtrlClick(cm, filePath, pos, mouseEvent) {
     if (!cm || !filePath || !window.electronAPI || !window.electronAPI.codeNavFindDefinition) return;
 
     const wordRange = cm.findWordAt(pos);
@@ -57,12 +202,16 @@
     if (!symbol || !/^[A-Za-z_$][\w$]*$/.test(symbol)) return;
 
     const lineText = cm.getLine(pos.line) || '';
-    const res = await window.electronAPI.codeNavFindDefinition({ filePath, symbol, lineText });
+    const matches = await window.electronAPI.codeNavFindDefinition({ filePath, symbol, lineText });
 
-    if (res && res.filePath) {
-      if (window.EditorController) {
-        await window.EditorController.openFile(res.filePath, res.line);
+    if (!Array.isArray(matches) || matches.length === 0) return;
+
+    if (matches.length === 1) {
+      if (window.EditorController && matches[0].filePath) {
+        await window.EditorController.openFile(matches[0].filePath, matches[0].line);
       }
+    } else {
+      showDefinitionPopup(matches, symbol, mouseEvent.clientX, mouseEvent.clientY);
     }
   }
 
@@ -115,7 +264,7 @@
           e.preventDefault();
           e.stopPropagation();
           clearHoverMarker();
-          handleCtrlClick(cm, currentFilePath, pos);
+          handleCtrlClick(cm, currentFilePath, pos, e);
         }
       }
     });

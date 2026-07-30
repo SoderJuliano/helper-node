@@ -215,36 +215,43 @@ class SymbolIndexer {
     this.fileMap.delete(normPath);
   }
 
-  // Encontra a definição de um símbolo clicado
+  // Encontra as definições/ocorrências de um símbolo clicado
   findDefinition(currentFilePath, symbolName, lineText = '') {
-    if (!symbolName) return null;
+    if (!symbolName) return [];
     const normCurrent = normalizePath(currentFilePath);
     const candidates = this.symbolMap.get(symbolName) || [];
 
-    if (candidates.length === 0) return null;
+    if (candidates.length === 0) return [];
 
-    // 1. Definição no mesmo arquivo?
-    const sameFileMatch = candidates.find(c => c.filePath === normCurrent);
-    if (sameFileMatch) {
-      return { filePath: sameFileMatch.filePath, line: sameFileMatch.line, col: sameFileMatch.col };
-    }
+    const formatted = candidates.map(c => {
+      const relPath = this.projectPath ? path.relative(this.projectPath, c.filePath).replace(/\\/g, '/') : c.filePath;
+      return {
+        filePath: c.filePath,
+        relativePath: relPath,
+        line: c.line,
+        col: c.col,
+        symbol: c.name,
+        kind: c.kind || 'method',
+        className: c.owner ? c.owner.name : (c.kind === 'class' ? c.name : null)
+      };
+    });
 
-    // 2. Se o arquivo possui imports correspondentes
+    if (formatted.length === 1) return formatted;
+
     const currentData = this.fileMap.get(normCurrent);
-    if (currentData && currentData.imports.length > 0) {
-      for (const imp of currentData.imports) {
-        if (imp.text.includes(symbolName)) {
-          const matchByImport = candidates.find(c => imp.text.includes(path.basename(c.filePath, path.extname(c.filePath))));
-          if (matchByImport) {
-            return { filePath: matchByImport.filePath, line: matchByImport.line, col: matchByImport.col };
-          }
-        }
+    const sorted = [...formatted].sort((a, b) => {
+      if (a.filePath === normCurrent) return -1;
+      if (b.filePath === normCurrent) return 1;
+      if (currentData && currentData.imports.length > 0) {
+        const aImport = currentData.imports.some(imp => imp.text.includes(path.basename(a.filePath, path.extname(a.filePath))));
+        const bImport = currentData.imports.some(imp => imp.text.includes(path.basename(b.filePath, path.extname(b.filePath))));
+        if (aImport && !bImport) return -1;
+        if (!aImport && bImport) return 1;
       }
-    }
+      return 0;
+    });
 
-    // 3. Retorna o candidato mais relevante no projeto
-    const bestMatch = candidates[0];
-    return { filePath: bestMatch.filePath, line: bestMatch.line, col: bestMatch.col };
+    return sorted;
   }
 
   // Encontra implementações para uma interface ou método de interface
