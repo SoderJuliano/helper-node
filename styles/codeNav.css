@@ -1,0 +1,38 @@
+/* styles/codeNav.css - Estilos da Navegação de Código (Code Navigation Addon) */
+
+/* Calha para ícones de implementação de interface */
+.code-nav-gutter {
+  width: 18px;
+  text-align: center;
+}
+
+/* Ícone discreto no gutter (estilo IntelliJ I↓) */
+.code-nav-gutter-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 3px;
+  background: rgba(80, 250, 123, 0.15);
+  color: #50fa7b;
+  font-size: 10px;
+  font-weight: bold;
+  font-family: var(--font-mono, monospace);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.code-nav-gutter-icon:hover {
+  background: rgba(80, 250, 123, 0.4);
+  color: #ffffff;
+  transform: scale(1.15);
+}
+
+/* Link de método/função sob Ctrl + Hover */
+.cm-nav-link {
+  text-decoration: underline !important;
+  color: #50fa7b !important;
+  cursor: pointer !important;
+}

@@ -178,6 +178,7 @@
     body.appendChild(ta);
     cm = window.CodeMirror.fromTextArea(ta, {
       lineNumbers: true,
+      gutters: ['CodeMirror-linenumbers', 'code-nav-gutter'],
       theme: 'dracula',
       indentUnit: 2,
       tabSize: 2,
@@ -539,6 +540,9 @@
     cmInst.clearHistory(); // trocar de arquivo não deve deixar Ctrl+Z voltar pro arquivo anterior
     updateDirtyIndicator();
     renderTabs();
+    if (window.CodeNavigation) {
+      window.CodeNavigation.attach(cmInst, filePath);
+    }
     setTimeout(() => {
       cmInst.refresh();
       if (typeof lineNum === 'number' && lineNum > 0) {

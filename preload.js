@@ -98,6 +98,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   cancelIaRequest: () => ipcRenderer.send("cancel-ia-request"),
   isHyprland: () => ipcRenderer.invoke("is-hyprland"),
   getAvailableShortcuts: () => ipcRenderer.invoke("get-available-shortcuts"),
+  // Navegação de Código (Go to Definition / Implementações)
+  codeNavFindDefinition: (payload) => ipcRenderer.invoke("code-nav-find-definition", payload),
+  codeNavGetImplementations: (payload) => ipcRenderer.invoke("code-nav-get-implementations", payload),
+  codeNavGetGutterInfo: (payload) => ipcRenderer.invoke("code-nav-get-gutter-info", payload),
+  codeNavReindex: (payload) => ipcRenderer.invoke("code-nav-reindex", payload),
   onShortcutsChanged: (callback) => ipcRenderer.on("shortcuts-changed", () => callback()),
   getDebugModeStatus: () => ipcRenderer.invoke("get-debug-mode-status"), // Added for debug mode access
   getStealthModeStatus: () => ipcRenderer.invoke("get-stealth-mode-status"),

@@ -66,10 +66,18 @@ ipcMain.handle("workspace:pick-dir", async () => {
   const oldPath = prevDirs[0] || null;
   const newPath = newDirs[0] || null;
   const activeProvider = configService.getAiModel();
-  if (oldPath !== newPath && activeProvider === 'geminiCli') {
-    GeminiCliProvider.changeProject(oldPath, newPath).catch(e =>
-      console.warn('[gemini-cli] changeProject error:', e.message)
-    );
+  if (oldPath !== newPath) {
+    try {
+      const symbolIndexer = require('../../services/symbolIndexer.js');
+      if (newPath) symbolIndexer.indexWorkspace(newPath);
+    } catch (err) {
+      console.warn('[symbolIndexer] Falha ao indexar novo projeto:', err.message);
+    }
+    if (activeProvider === 'geminiCli') {
+      GeminiCliProvider.changeProject(oldPath, newPath).catch(e =>
+        console.warn('[workspace] GeminiCliProvider.changeProject falhou:', e.message)
+      );
+    }
   }
   if (oldPath !== newPath && activeProvider === 'claudeCli') {
     ClaudeCliProvider.changeProject(oldPath, newPath).catch(e =>
