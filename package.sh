@@ -76,11 +76,9 @@ build_deb() {
         # Marca a edição pro runtime (services/edition.js lê esse arquivo)
         echo "{\"edition\":\"${EDITION}\"}" > "${APP_ROOT}/edition.json"
 
-        # === Modelos LOCAIS (Whisper + Vosk) — só na edição FULL ===
+        # === Modelos LOCAIS (Whisper) — só na edição FULL ===
         # Na Lite (100% online) tudo isso é omitido → pacote ~600MB menor.
         if [ "$EDITION" != "lite" ]; then
-        cp -r vosk-model "${APP_ROOT}/"
-
         # Whisper: copia seletiva (binarios + libs + modelos reais)
         # Evita repo git, fontes C++, examples, tests, bindings e modelos for-tests-
         echo -e "${YELLOW}→${NC} Copying whisper runtime (selective)..."
@@ -95,15 +93,6 @@ build_deb() {
             cp "$m" "${APP_ROOT}/whisper/models/"
         done
 
-        cp vosk-stream.py "${APP_ROOT}/"
-
-        # Bundle vosk wheel so postinst installs offline (no download during install)
-        echo -e "${YELLOW}→${NC} Downloading vosk wheel for offline bundling..."
-        mkdir -p "${APP_ROOT}/python-packages"
-        python3 -m pip download vosk --only-binary :all: --dest "${APP_ROOT}/python-packages/" --quiet 2>&1 \
-            && echo -e "${GREEN}  vosk wheel bundled OK${NC}" \
-            || echo -e "${YELLOW}  WARNING: vosk wheel download failed — will download at install time${NC}"
-        cp vosk-vocab.json "${APP_ROOT}/" 2>/dev/null || true
         fi
         cp package.json package-lock.json "${APP_ROOT}/" 2>/dev/null || true
         cp *.traineddata "${APP_ROOT}/" 2>/dev/null || true
@@ -170,11 +159,8 @@ build_deb() {
     chmod 755 "${DEB_ROOT}/DEBIAN/preinst"
     chmod 755 "${DEB_ROOT}/DEBIAN/prerm"
 
-    # Gera o control: nome e Depends variam por edição. Lite não precisa de python/vosk.
+    # Gera o control: nome e Depends variam por edição.
     DEB_DEPENDS="libgtk-3-0t64 | libgtk-3-0, libnss3, libxss1, libxtst6, libasound2t64 | libasound2, libgbm1, libdrm2, xdg-utils, libatspi2.0-0t64 | libatspi2.0-0, ffmpeg, pipewire-bin, pulseaudio-utils, libnotify4"
-    if [ "$EDITION" != "lite" ]; then
-        DEB_DEPENDS="${DEB_DEPENDS}, python3, python3-venv, python3-pip"
-    fi
     OTHER_EDITION="lite"; [ "$EDITION" == "lite" ] && OTHER_EDITION="full"
     cat > "${DEB_ROOT}/DEBIAN/control" <<CONTROL_EOF
 Package: ${PKG_NAME}
@@ -189,7 +175,7 @@ Conflicts: helper-node, ${APP_NAME}-${OTHER_EDITION}
 Replaces: helper-node, ${APP_NAME}-${OTHER_EDITION}
 Description: Assistente de voz com IA (edição ${EDITION})
  Helper Node — copiloto stealth com IA. Edição ${EDITION}.
- A edição full inclui transcrição offline (Whisper/Vosk + Ollama local);
+ A edição full inclui transcrição offline (Whisper + Ollama local);
  a edição lite é 100% online (somente modelos cloud) e bem menor.
 CONTROL_EOF
     
@@ -444,10 +430,10 @@ build_arch() {
     # Create tarball
     echo -e "${YELLOW}→${NC} Creating source tarball..."
     TARBALL="${ARCH_BUILD}/helper-node-${VERSION}.tar.gz"
-    # Modelos locais (whisper/vosk) só na edição full
+    # Modelos locais (whisper) só na edição full
     LOCAL_AI_FILES=""
     if [ "$EDITION" != "lite" ]; then
-        LOCAL_AI_FILES="whisper/ vosk-model/ vosk-stream.py vosk-vocab.json"
+        LOCAL_AI_FILES="whisper/"
     fi
     tar czf "${TARBALL}" \
         --exclude='node_modules' \
@@ -463,9 +449,9 @@ build_arch() {
         helper-node.sh helper-node.desktop setup-hotkey.sh \
         README.markdown ROADMAP.md 2>/dev/null || true
 
-    # Gera o PKGBUILD por edição (nome, depends, edition.json). Lite não usa python/vosk.
+    # Gera o PKGBUILD por edição (nome, depends, edition.json).
     if [ "$EDITION" != "lite" ]; then
-        ARCH_DEPENDS="'curl' 'ffmpeg' 'nodejs' 'python' 'python-vosk' 'pipewire' 'pipewire-pulse' 'libpulse' 'xorg-xprop' 'wl-clipboard' 'gtk3' 'libnotify' 'nss' 'libxss' 'libxtst' 'xdg-utils' 'at-spi2-core' 'alsa-lib'"
+        ARCH_DEPENDS="'curl' 'ffmpeg' 'nodejs' 'pipewire' 'pipewire-pulse' 'libpulse' 'xorg-xprop' 'wl-clipboard' 'gtk3' 'libnotify' 'nss' 'libxss' 'libxtst' 'xdg-utils' 'at-spi2-core' 'alsa-lib'"
     else
         ARCH_DEPENDS="'ffmpeg' 'nodejs' 'pipewire' 'pipewire-pulse' 'libpulse' 'xorg-xprop' 'wl-clipboard' 'gtk3' 'libnotify' 'nss' 'libxss' 'libxtst' 'xdg-utils' 'at-spi2-core' 'alsa-lib'"
     fi

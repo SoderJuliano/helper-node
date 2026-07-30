@@ -6,7 +6,7 @@ var rtSegments = {};
 
             // ===== Realtime segment-based bubble manager =====
             // Cada segmento tem 1 bolha de usuário + 1 bolha de assistente.
-            // Vosk preenche/atualiza em tempo real; Whisper depois pode reescrever in-place.
+            // A transcrição chega pronta (Whisper local ou OpenAI) e preenche a bolha.
             const rtSegments = new Map(); // id -> { userBubble, userText, userBadge, assistantBubble, assistantText, assistantBadge }
 
             function scrollFeed() {
@@ -143,28 +143,12 @@ var rtSegments = {};
                         return;
                     }
 
-                    case 'segment_vosk_final': {
-                        // Segmento fechou. Texto Vosk eh apenas preview; vamos esperar Whisper.
-                        const seg = ensureSegmentBubbles(payload.id, payload.iteration);
-                        seg.userText.textContent = payload.text || '';
-                        seg.userBadge.textContent = '✍️ transcrevendo com Whisper…';
-                        seg.userBadge.style.color = 'rgba(180,180,255,0.85)';
-                        seg.assistantBadge.textContent = '🤖 aguardando transcrição…';
-                        scrollFeed();
-                        return;
-                    }
-
                     case 'segment_whisper_correction': {
-                        // Texto definitivo (Whisper ou fallback Vosk se whisper falhou)
+                        // Texto definitivo da transcrição (Whisper local ou OpenAI)
                         const seg = rtSegments.get(payload.id) || ensureSegmentBubbles(payload.id, payload.iteration);
                         seg.userText.textContent = payload.text || '';
-                        if (payload.source === 'vosk-fallback') {
-                            seg.userBadge.textContent = '⚠️ transcrição rápida (Whisper falhou)';
-                            seg.userBadge.style.color = 'rgba(255,180,100,0.95)';
-                        } else {
-                            seg.userBadge.textContent = '✅ transcrito';
-                            seg.userBadge.style.color = 'rgba(180,255,180,0.9)';
-                        }
+                        seg.userBadge.textContent = '✅ transcrito';
+                        seg.userBadge.style.color = 'rgba(180,255,180,0.9)';
                         if (payload.noSuggestion) {
                             // Sua própria fala (modo both): só transcrição, sem sugestão repetida.
                             seg.userBadge.textContent = '✅ você falou';

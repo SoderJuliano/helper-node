@@ -19,7 +19,6 @@ require("./main/overlays.js");
 require("./main/helpers/windowPosition.js");
 require("./main/terminal.js");
 require("./main/helpers/audio.js");
-require("./main/helpers/voskStream.js");
 require("./main/helpers/clipboard.js");
 require("./main/helpers/screenshot.js");
 require("./main/helpers/captureWatch.js");
@@ -309,9 +308,7 @@ app.on("browser-window-focus", () => {
 app.on("window-all-closed", () => {
   console.log("All windows closed");
   clearInterval(state.sharingCheckInterval);
-  if (state.recordingProcess) {
-    state.recordingProcess.kill("SIGTERM");
-  }
+  helpers.cancelDictation();
   helpers.stopAllRealtime();
   if (process.platform !== "darwin" && !state.mainWindow) {
     app.quit();

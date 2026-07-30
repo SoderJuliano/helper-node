@@ -196,11 +196,8 @@ ipcMain.on("cancel-recording", () => {
     return;
   }
   
-  if (state.isRecording && state.recordingProcess) {
-    state.recordingProcess.kill("SIGTERM");
-    state.recordingProcess = null;
-    state.isRecording = false;
-    
+  if (helpers.cancelDictation()) {
+
     console.log("Recording cancelled by user");
     
     // Close the recording notification

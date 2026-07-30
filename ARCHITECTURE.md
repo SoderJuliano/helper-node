@@ -192,7 +192,7 @@ Dois caminhos:
 | Modo | Quando | Stack |
 |------|--------|-------|
 | Online | Provider = OpenAI ou edição Lite | `realtimeOpenAiService.js` + `realtimeAudioCapture.js` (parec) |
-| Offline | Provider = Ollama/backend + Full | `realtimeAssistantService.js` (Vosk live + Whisper batch) |
+| Offline | Provider = Ollama/backend + Full | `realtimeAssistantService.js` (local Whisper batch) |
 
 Captura de monitor: **`parec --device=<sink>.monitor`** — nunca `pw-record` (cai no mic no PipeWire).
 
@@ -317,7 +317,7 @@ services/
   knowledgeBase.js               ← RAG embeddings + BM25
   answerBank.js                  ← banco de respostas boas
   historyService.js              ← persistência de sessões
-  realtimeAssistantService.js    ← realtime offline (Vosk + Whisper)
+  realtimeAssistantService.js    ← realtime offline (local Whisper)
   realtimeOpenAiService.js       ← realtime online (OpenAI)
   realtimeAudioCapture.js        ← captura parec + VAD
   openAIService.js               ← client OpenAI (streaming, tools, vision)

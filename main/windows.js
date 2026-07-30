@@ -158,12 +158,6 @@ helpers.createOsNotificationWindow = function(type, content) {
     // 500px: largura maior pra blocos de código não cortarem palavras/linhas.
     windowWidth = 500;
     windowHeight = 560;
-  } else if (type === 'recording-live') {
-    // Tamanho inicial confortável: cabe header + 1 linha de fala
-    // sem precisar de scrollbar. Cresce dinamicamente via resize-overlay.
-    // 380px: largura suficiente pra não cortar palavras grandes em PT-BR.
-    windowWidth = 380;
-    windowHeight = 110;
   }
 
   // Position in top right corner (afasta 30px da borda direita
@@ -172,11 +166,11 @@ helpers.createOsNotificationWindow = function(type, content) {
   const posX = Math.max(0, width - windowWidth - 30);
   const posY = 60;
 
-  const isMovableOverlay = (type === 'recording-live' || type === 'response');
-  // recording-live PRECISA de focusable=true em COSMIC/Wayland pro X fechar
-  // e pra seleção de texto/copy funcionar. Sem foco, eventos de clique e
-  // seleção são dropados pelo compositor.
-  const isFocusable = (type === 'recording-live' || type === 'response');
+  const isMovableOverlay = (type === 'response');
+  // response PRECISA de focusable=true em COSMIC/Wayland pro X fechar e pra
+  // seleção de texto/copy funcionar. Sem foco, eventos de clique e seleção
+  // são dropados pelo compositor.
+  const isFocusable = (type === 'response');
 
   state.osNotificationWindow = new BrowserWindow({
     width: windowWidth,
@@ -198,7 +192,7 @@ helpers.createOsNotificationWindow = function(type, content) {
     // centraliza janelas frameless ao mapear (mesma técnica da translation-overlay).
     show: false,
     // STEALTH OVERLAY: não rouba foco da janela ativa por padrão,
-    // mas habilita pra recording-live/response (X + copy funcionarem)
+    // mas habilita pra response (X + copy funcionarem)
     focusable: isFocusable,
     // Some no compartilhamento de tela (Teams/Meet/Zoom screen-share)
     // — funciona em X11; em Wayland depende do compositor
@@ -246,8 +240,6 @@ helpers.createOsNotificationWindow = function(type, content) {
     filePath = path.join(ROOT_DIR, 'os-integration', 'notifications', 'loading.html');
   } else if (type === 'recording') {
     filePath = path.join(ROOT_DIR, 'os-integration', 'notifications', 'recording.html');
-  } else if (type === 'recording-live') {
-    filePath = path.join(ROOT_DIR, 'os-integration', 'notifications', 'recording-live.html');
   } else if (type === 'response') {
     filePath = path.join(ROOT_DIR, 'os-integration', 'notifications', 'response.html');
   }
@@ -431,45 +423,3 @@ helpers.createWindow = async function() {
   }
 }
 
-helpers.showImageResponseInSecondaryWindow = function(htmlContent) {
-  try {
-    if (state.osImageResponseWindow && !state.osImageResponseWindow.isDestroyed()) {
-      state.osImageResponseWindow.close();
-      state.osImageResponseWindow = null;
-    }
-  } catch (_) {}
-
-  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-  const winW = 420, winH = 320;
-  // Posiciona abaixo da recording-live (~y=60 + h=400 + gap). Se n\u00e3o couber, joga na meia altura.
-  const posX = Math.max(0, width - winW - 30);
-  const desiredY = 60 + 420 + 12;
-  const posY = (desiredY + winH > height - 20) ? Math.max(20, Math.floor(height / 2 - winH / 2)) : desiredY;
-
-  state.osImageResponseWindow = new BrowserWindow({
-    width: winW, height: winH,
-    x: posX, y: posY,
-    backgroundColor: '#00000000',
-    frame: false, transparent: true, alwaysOnTop: true,
-    skipTaskbar: true, resizable: false, movable: true,
-    minimizable: false, maximizable: false, fullscreenable: false,
-    focusable: false, type: 'toolbar', hasShadow: false,
-    webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(ROOT_DIR, 'preload.js') },
-  });
-  helpers.applyStealthProtection(state.osImageResponseWindow);
-  state.osImageResponseWindow.setAlwaysOnTop(true, 'screen-saver');
-  state.osImageResponseWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-
-  const filePath = path.join(ROOT_DIR, 'os-integration', 'notifications', 'response.html');
-  state.osImageResponseWindow.loadFile(filePath).catch(err => console.error('[os-image] load response.html:', err));
-  state.osImageResponseWindow.webContents.once('dom-ready', () => {
-    state.osImageResponseWindow.webContents.executeJavaScript(`
-      if (typeof window.setResponseContent === 'function') {
-        window.setResponseContent(${JSON.stringify(htmlContent)});
-      } else {
-        document.body.innerHTML = ${JSON.stringify(htmlContent)} + '<button class="close-btn" onclick="window.close()" style="position:absolute;top:5px;right:8px;background:none;border:none;color:#fff;font-size:18px;cursor:pointer;padding:0;width:20px;height:20px;z-index:1000;">×</button>';
-      }
-    `).catch(() => {});
-  });
-  state.osImageResponseWindow.on('closed', () => { state.osImageResponseWindow = null; });
-}

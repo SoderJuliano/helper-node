@@ -1,5 +1,5 @@
 // Edição do app: 'lite' (100% online — só modelos cloud) ou 'full' (offline,
-// com Whisper/Vosk/Ollama locais). O build (package.sh) grava `edition.json` na
+// com Whisper/Ollama locais). O build (package.sh) grava `edition.json` na
 // raiz do app com { "edition": "lite" }. Rodando do código-fonte (npm start) o
 // arquivo não existe → assume 'full', então o ambiente de dev mantém TODAS as
 // features. Nada de lógica nova é destrutiva: a Lite só ESCONDE/desvia caminhos.

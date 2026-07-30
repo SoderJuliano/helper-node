@@ -5,7 +5,6 @@ set -euo pipefail
 # - Installs system packages (Git, make/g++, curl, ffmpeg, cmake)
 # - Clones and builds whisper.cpp
 # - Downloads small and medium Whisper models
-# - Installs Vosk speech recognition (Python) and downloads PT-BR model
 # - Optionally sets up Ollama (if requested)
 # - Runs setup-hotkey.sh at the end
 
@@ -178,54 +177,6 @@ maybe_setup_ollama() {
   fi
 }
 
-install_vosk() {
-  warn "Setting up local Python venv for Vosk"
-  local VENV_DIR="$PROJECT_ROOT/venv"
-  if [[ ! -d "$VENV_DIR" ]]; then
-    python3 -m venv "$VENV_DIR" || { err "Failed to create venv"; return 1; }
-    info "venv created at $VENV_DIR"
-  else
-    info "venv already exists"
-  fi
-  warn "Installing Vosk into venv (this may take a minute)"
-  "$VENV_DIR/bin/pip" install --upgrade pip >/dev/null
-  "$VENV_DIR/bin/pip" install vosk || { err "vosk install failed"; return 1; }
-  info "Vosk installed in venv"
-
-  local VOSK_MODEL_DIR="$PROJECT_ROOT/vosk-model"
-  if [[ -d "$VOSK_MODEL_DIR/conf" ]]; then
-    info "Vosk model already present in $VOSK_MODEL_DIR"
-    return 0
-  fi
-
-  # Choose model size: VOSK_MODEL_SIZE=small (40MB, default) | large (1.6GB, FalaBrasil)
-  # NOTE: Em testes reais, o small se saiu MELHOR para áudio comprimido (WhatsApp, calls).
-  # O large só é superior para narração limpa (locução, livros).
-  local VOSK_SIZE="${VOSK_MODEL_SIZE:-small}"
-  local VOSK_URL VOSK_DIRNAME
-  case "$VOSK_SIZE" in
-    large)
-      VOSK_URL="https://alphacephei.com/vosk/models/vosk-model-pt-fb-v0.1.1-20220516_2113.zip"
-      VOSK_DIRNAME="vosk-model-pt-fb-v0.1.1-20220516_2113"
-      warn "Downloading Vosk PT-BR LARGE model (FalaBrasil, ~1.6GB)"
-      ;;
-    small|*)
-      VOSK_URL="https://alphacephei.com/vosk/models/vosk-model-small-pt-0.3.zip"
-      VOSK_DIRNAME="vosk-model-small-pt-0.3"
-      warn "Downloading Vosk PT-BR SMALL model (~40MB)"
-      ;;
-  esac
-
-  mkdir -p "$VOSK_MODEL_DIR"
-  local VOSK_ZIP="$PROJECT_ROOT/vosk-model.zip"
-  curl -L --progress-bar -o "$VOSK_ZIP" "$VOSK_URL" || { err "Vosk model download failed"; return 1; }
-  warn "Extracting Vosk model..."
-  unzip -qo "$VOSK_ZIP" -d "$PROJECT_ROOT" || { err "Failed to unzip Vosk model"; return 1; }
-  mv "$PROJECT_ROOT/$VOSK_DIRNAME"/* "$VOSK_MODEL_DIR/"
-  rm -rf "$PROJECT_ROOT/$VOSK_DIRNAME" "$VOSK_ZIP"
-  info "Vosk PT-BR ($VOSK_SIZE) model installed at $VOSK_MODEL_DIR"
-}
-
 run_hotkey_setup() {
   warn "Running setup-hotkey.sh"
   (cd "$PROJECT_ROOT" && bash ./setup-hotkey.sh) || warn "setup-hotkey.sh failed"
@@ -237,7 +188,6 @@ main() {
   clone_whisper
   build_whisper
   download_models
-  install_vosk
   maybe_setup_ollama
   run_hotkey_setup
   info "All done!"

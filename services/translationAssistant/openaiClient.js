@@ -7,6 +7,7 @@ const configService = require('../configService');
 const knowledgeBase = require('../knowledgeBase');
 const answerBank = require('../answerBank');
 const { supportsReasoningEffort, maxTokensParam, raceWithTimeout, RAG_TIMEOUT_MS } = require('../openAiRealtimeModels');
+const { buildTranscriptionPrompt } = require('../techGlossary');
 
 /**
  * Transcreve um arquivo de audio usando gpt-4o-mini-transcribe.
@@ -23,6 +24,14 @@ async function transcribeAudio(audioPath, apiKey) {
   const form = new FormData();
   form.append('file', blob, fileName);
   form.append('model', 'gpt-4o-mini-transcribe');
+
+  // Vocabulário técnico: enviesa o decoder pros termos da entrevista (SOLID,
+  // Spring, Kafka...). Cacheado — não adiciona rede nem latência perceptível.
+  try {
+    const ta = configService.getTranslationAssistantConfig
+      ? configService.getTranslationAssistantConfig() : {};
+    form.append('prompt', buildTranscriptionPrompt({ background: ta.userBackground || '' }));
+  } catch (_) {}
 
   const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',

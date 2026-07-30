@@ -1,6 +1,6 @@
 # Helper Node — Instruções para Agentes de IA
 
-> Aplicativo Electron de assistente AI stealth (overlay) com captura de tela, gravação contínua, OCR, transcrição via Whisper/Vosk e tool calling. Roda em Linux (foco Pop!_OS COSMIC + Wayland).
+> Aplicativo Electron de assistente AI stealth (overlay) com captura de tela, gravação contínua, OCR, transcrição via Whisper/OpenAI e tool calling. Roda em Linux (foco Pop!_OS COSMIC + Wayland).
 
 ---
 
@@ -46,11 +46,11 @@ services/
   openAIService.js         # GPT chat + visão + tool calling LOOP
   geminiService.js         # Google Gemini (alternativa)
   llamaService.js          # Ollama local
-  realtimeAssistantService.js  # Realtime OFFLINE (Full + backend/Ollama): Vosk live + Whisper correction; resposta via aiResponder (provider selecionado)
-  realtimeOpenAiService.js     # Realtime ONLINE (ChatGPT / toda a Lite): transcrição gpt-4o-transcribe + chat OpenAI; transcrição própria, SEM Vosk/Whisper
+  realtimeAssistantService.js  # Realtime OFFLINE (Full + backend/Ollama): Whisper local; resposta via aiResponder (provider selecionado)
+  realtimeOpenAiService.js     # Realtime ONLINE (ChatGPT / toda a Lite): transcrição gpt-4o-transcribe + chat OpenAI; transcrição própria, SEM Whisper local
   realtimeAudioCapture.js      # Motor de áudio do realtime ONLINE (parec + VAD + segue sink ativo). INDEPENDENTE do tradutor — não compartilha com vadEngine
   translationAssistant/    # Assistente de Tradução (entrevistas): vadEngine (parec) + openaiClient + testMode
-  voskStreamService.js     # mic → PCM (parec) → vosk-stream.py
+  techGlossary.js          # vocabulário técnico injetado no `prompt` do STT
   tesseractService.js      # OCR de screenshots
   historyService.js        # sessões persistidas em ~/.config/helper-node/history.json
   configService.js         # leitura/escrita config (modelos, ativações)
@@ -60,8 +60,6 @@ services/
 os-integration/
   notifications/           # janelas overlay (HTML) — recording, loading, response, capture, integratedInput
 whisper/                   # whisper.cpp clonado (NÃO MEXER)
-vosk-model/                # modelo PT-BR vosk
-vosk-stream.py             # streaming PCM → JSON via stdout
 helper-node.sh             # launcher do .deb
 package.sh                 # build .deb e .pkg.tar.zst
 ```
@@ -69,7 +67,7 @@ package.sh                 # build .deb e .pkg.tar.zst
 ### Fluxos críticos
 
 **Áudio — LIÇÕES DURAS (não quebrar! validado em sessão real com o dono testando):**
-- **Captura do ÁUDIO DO SISTEMA (monitor) = `parec --device=<sink>.monitor --rate=16000 --channels=1 --format=s16le --raw`.** É o método CONFIÁVEL (voskStreamService sempre usou; vadEngine e realtimeAudioCapture usam). NÃO trocar por `pw-record`.
+- **Captura do ÁUDIO DO SISTEMA (monitor) = `parec --device=<sink>.monitor --rate=16000 --channels=1 --format=s16le --raw`.** É o método CONFIÁVEL (vadEngine e realtimeAudioCapture usam). NÃO trocar por `pw-record`.
 - ❌ **`pw-record --target <monitor>` é INSTÁVEL no PipeWire** — não captura o monitor e **cai no microfone** (sintoma: "só pega meu mic, nunca o entrevistador"). Foi a causa-raiz de horas de bug.
 - ❌ NÃO usar o token literal `@DEFAULT_SINK_MONITOR@` no `--target` — pw-record não expande, cai no mic. Resolver o sink REAL em runtime: sink em estado `RUNNING` (saída tocando agora) → `pactl get-default-sink`+`.monitor`.
 - **Seguir a saída ativa:** re-checar a cada ~2s qual sink está `RUNNING` e migrar a captura (ex: trocou monitor→fone com app aberto). Implementado em `realtimeAudioCapture` e `vadEngine`.
@@ -77,8 +75,8 @@ package.sh                 # build .deb e .pkg.tar.zst
 
 **Realtime assistant — DOIS caminhos (roteado por `pickRealtimeService()` em main.js):**
 - `getEffectiveAiModel()` = `edition.isLite() ? 'openIa' : configService.getAiModel()`.
-- **ONLINE** (`getEffectiveAiModel()==='openIa'` → ChatGPT, e SEMPRE na Lite): `realtimeOpenAiService` + `realtimeAudioCapture` (parec). Transcrição `gpt-4o-transcribe` + chat OpenAI. Sem Vosk/Whisper. Default sobe `gpt-4.1-nano`→`gpt-4.1`.
-- **OFFLINE** (Full + backend `llama`/`llama-stream` ou `ollamaLocal`): `realtimeAssistantService` (Vosk live + Whisper correction). A **resposta vai pro provider selecionado** (não OpenAI) via `aiResponder` injetado no main.js. Regra do projeto: sem fallback entre providers.
+- **ONLINE** (`getEffectiveAiModel()==='openIa'` → ChatGPT, e SEMPRE na Lite): `realtimeOpenAiService` + `realtimeAudioCapture` (parec). Transcrição `gpt-4o-transcribe` + chat OpenAI. Sem Whisper local. Default sobe `gpt-4.1-nano`→`gpt-4.1`.
+- **OFFLINE** (Full + backend `llama`/`llama-stream` ou `ollamaLocal`): `realtimeAssistantService` (Whisper local, mesmo motor de captura do online). A **resposta vai pro provider selecionado** (não OpenAI) via `aiResponder` injetado no main.js. Regra do projeto: sem fallback entre providers.
 - UI: ambos emitem `realtime-assistant-update` (`segment_start`/`segment_whisper_correction`/`segment_response`...). O online NÃO emite `segment_partial` (sem preview ao vivo — OpenAI é batch).
 
 **Assistente de Tradução (entrevistas) — `services/translationAssistant/`:**
@@ -148,7 +146,7 @@ flatpak-spawn --host bash -lc '
 ```
 
 ### Particularidades
-- **Tamanho atual:** 627 MB (Electron 200M + modelos Whisper 540M + Vosk 52M).
+- **Tamanho atual:** ~575 MB (Electron 200M + modelos Whisper 540M).
 - **Cópia seletiva do whisper** em [package.sh](../package.sh): só `build/bin/`, libs `.so*`, e `models/ggml-*.bin` (NÃO `for-tests-*`). Sem `.git`/`src`/`examples`/`tests`/`bindings`/`samples`.
 - **LD_LIBRARY_PATH** exportado em [helper-node.sh](../helper-node.sh) — necessário porque `whisper-cli` tem RUNPATH absoluto da máquina de build (`/home/julianosoder/...`). SEM isso, whisper falha silenciosamente em `/opt/helper-node`.
 - Versão atual: **0.2.0** (bumpar em [package.json](../package.json), [package.sh](../package.sh), [build/deb/DEBIAN/control](../build/deb/DEBIAN/control), [build/arch/PKGBUILD](../build/arch/PKGBUILD) juntos).

@@ -1,8 +1,8 @@
 // vadEngine.js — Captura mic + áudio do sistema (monitor) via parec e detecta
 // fim de fala por energia RMS. Substitui @ricky0123/vad-web (browser-only) por
 // implementação Node.js pura, compatível com o processo main do Electron.
-// Usa parec (camada PulseAudio) — mesmo método do voskStreamService — porque
-// captura de monitor via `pw-record --target` é instável no PipeWire.
+// Usa parec (camada PulseAudio) porque captura de monitor via
+// `pw-record --target` é instável no PipeWire.
 
 const { spawn, exec } = require('child_process');
 const nativeAudio = require('../platform/nativeAudio'); // fonte PCM Win/Mac (não-Linux)
@@ -202,7 +202,7 @@ function startStream(target, source, st) {
   // Usa parec (camada PulseAudio), NÃO pw-record. Captura de MONITOR via
   // `pw-record --target` é instável no PipeWire (cai no mic / capta picotado);
   // parec --device=<monitor> capta o áudio do sistema de forma confiável — é o
-  // mesmo método do voskStreamService (pipeline que sempre funcionou).
+  // parec --device=<monitor> é o método que sempre funcionou aqui.
   const proc = spawn('parec', [
     '--device=' + target,
     '--rate=16000',

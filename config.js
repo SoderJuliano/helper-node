@@ -134,7 +134,7 @@ function applyWorkspaceAccessVisibility(model) {
 
 // Edição Lite (100% online): esconde tudo que é local/backend e força OpenAI.
 // O Assistente em tempo real CONTINUA visível — na Lite ele roda 100% online
-// (transcrição + resposta na OpenAI), sem Vosk/Whisper.
+// (transcrição + resposta na OpenAI), sem Whisper local.
 function applyLiteUi() {
   try {
     aiModelSelect.value = 'openIa';

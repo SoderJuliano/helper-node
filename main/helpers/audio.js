@@ -12,66 +12,110 @@ const {
   OS_LIVE_CONTINUATION_WINDOW_MS, OS_LIVE_SAMPLE_RATE, OS_LIVE_SILENCE_RMS,
   OS_LIVE_SILENCE_MS, OS_LIVE_MAX_MS, OS_LIVE_TMP_DIR,
   state, helpers,
-  execPromise, appConfig, Notification, VoskStreamService
+  execPromise, appConfig, Notification
 } = require('../globals.js');
 
-helpers.startWinDictation = async function() {
+// Press-to-talk UNIVERSAL (Linux/Windows/macOS): Ctrl+D grava, Ctrl+D de novo
+// transcreve. O PCM vem do bridge nativo (getUserMedia via Chromium) — o mesmo
+// que alimenta os motores de VAD. Sem parec/pw-record/ffmpeg, sem Vosk.
+helpers.startDictation = async function() {
   const nativeAudio = require('../../services/platform/nativeAudio');
-  state.winDictationChunks = [];
-  state.winDictationBytes = 0;
-  state.winDictationMicCb = (buf) => { state.winDictationChunks.push(buf); state.winDictationBytes += buf.length; };
-  await nativeAudio.subscribe('mic', state.winDictationMicCb);
-  state.winDictationActive = true;
+  state.dictationChunks = [];
+  state.dictationBytes = 0;
+  state.dictationMicCb = (buf) => { state.dictationChunks.push(buf); state.dictationBytes += buf.length; };
+  await nativeAudio.subscribe('mic', state.dictationMicCb);
+  state.dictationActive = true;
   state.isRecording = true;
-  try { state.mainWindow.webContents.send('toggle-recording', { isRecording: true, audioFilePath: null, isIdeMode: true }); } catch (_) {}
+
+  if (configService.getOsIntegrationStatus()) {
+    helpers.destroyNotificationWindow();
+    helpers.createOsNotificationWindow('recording', '');
+  } else {
+    try { state.mainWindow.webContents.send('toggle-recording', { isRecording: true, audioFilePath: null, isIdeMode: true }); } catch (_) {}
+  }
 }
 
-helpers.stopWinDictationAndTranscribe = async function() {
+// Solta o microfone e devolve o PCM acumulado. Usado no cancelamento (X do
+// overlay) e como primeira etapa do stop normal.
+helpers.releaseDictationMic = function() {
   const nativeAudio = require('../../services/platform/nativeAudio');
-  try { if (state.winDictationMicCb) nativeAudio.unsubscribe('mic', state.winDictationMicCb); } catch (_) {}
-  state.winDictationMicCb = null;
-  state.winDictationActive = false;
+  try { if (state.dictationMicCb) nativeAudio.unsubscribe('mic', state.dictationMicCb); } catch (_) {}
+  state.dictationMicCb = null;
+  state.dictationActive = false;
   state.isRecording = false;
+  const pcm = Buffer.concat(state.dictationChunks, state.dictationBytes);
+  state.dictationChunks = [];
+  state.dictationBytes = 0;
+  return pcm;
+}
 
-  const pcm = Buffer.concat(state.winDictationChunks, state.winDictationBytes);
-  state.winDictationChunks = [];
-  state.winDictationBytes = 0;
+helpers.cancelDictation = function() {
+  if (!state.dictationActive) return false;
+  helpers.releaseDictationMic();
+  return true;
+}
 
-  // Esconde o "ouvindo" no renderer.
-  try { state.mainWindow.webContents.send('toggle-recording', { isRecording: false, audioFilePath: null, isIdeMode: true }); } catch (_) {}
+// Transcricao do press-to-talk: Whisper LOCAL na edicao Full (quando o binario
+// existe de fato), OpenAI na Lite ou quando o Whisper local nao esta disponivel.
+helpers.transcribeDictation = async function(wavPath) {
+  const whisperBin = path.join(
+    ROOT_DIR, 'whisper', 'build', 'bin',
+    process.platform === 'win32' ? 'whisper-cli.exe' : 'whisper-cli'
+  );
+  if (!edition.isLite() && fs2.existsSync(whisperBin)) {
+    return await helpers.transcribeAudio(wavPath, { emitRenderer: false, emitNotifications: false });
+  }
+  const token = configService.getOpenIaToken();
+  if (!token) throw new Error('Configure a chave da OpenAI (Configuracoes) para transcrever o audio.');
+  return await cloudTranscribeAudio(wavPath, token);
+}
 
-  if (!pcm || pcm.length < 3200) { // < ~0.1s de áudio útil
-    try { state.mainWindow.webContents.send('transcription-error', 'Nenhum áudio detectado. Tente de novo.'); } catch (_) {}
+helpers.stopDictationAndTranscribe = async function() {
+  const isOsIntegration = configService.getOsIntegrationStatus();
+  const pcm = helpers.releaseDictationMic();
+
+  if (!isOsIntegration) {
+    try { state.mainWindow.webContents.send('toggle-recording', { isRecording: false, audioFilePath: null, isIdeMode: true }); } catch (_) {}
+  }
+
+  if (!pcm || pcm.length < 3200) { // < ~0.1s de audio util
+    if (isOsIntegration) {
+      helpers.destroyNotificationWindow();
+      helpers.createOsNotificationWindow('response', 'Nenhum audio detectado. Tente novamente.');
+    } else {
+      try { state.mainWindow.webContents.send('transcription-error', 'Nenhum audio detectado. Tente de novo.'); } catch (_) {}
+    }
     return;
   }
 
-  const token = configService.getOpenIaToken();
-  if (!token) {
-    try { state.mainWindow.webContents.send('transcription-error', 'Configure a chave da OpenAI (Configurações) para transcrever no Windows.'); } catch (_) {}
-    return;
+  if (isOsIntegration) {
+    helpers.destroyNotificationWindow();
+    helpers.createOsNotificationWindow('loading', 'Processando audio...');
   }
 
   state.recordingBusy = true;
+  let wavPath = null;
   try {
     fs2.mkdirSync(AUDIO_TMP_DIR, { recursive: true });
-    const wavPath = path.join(AUDIO_TMP_DIR, `windict_${Date.now()}.wav`);
+    wavPath = path.join(AUDIO_TMP_DIR, `dictation_${Date.now()}.wav`);
     fs2.writeFileSync(wavPath, helpers._buildWavFile(pcm, 16000, 1, 16));
 
-    let text = '';
-    try {
-      text = await cloudTranscribeAudio(wavPath, token);
-    } finally {
-      try { await fs.unlink(wavPath); } catch (_) {}
-    }
+    const text = await helpers.transcribeDictation(wavPath);
 
     if (!text || !text.trim() || text === '[BLANK_AUDIO]') {
-      state.mainWindow.webContents.send('transcription-error', 'Nenhum áudio detectado. Tente de novo.');
+      if (isOsIntegration) {
+        helpers.createOsNotificationWindow('response', 'Nenhum audio detectado. Tente novamente.');
+      } else {
+        state.mainWindow.webContents.send('transcription-error', 'Nenhum audio detectado. Tente de novo.');
+      }
       return;
     }
 
     const isIdeModeNow = (workspace.list() || []).length > 0;
     const aiModel = helpers.getEffectiveAiModel();
-    if (isIdeModeNow) {
+    if (isOsIntegration) {
+      await helpers.processOsQuestion(text);
+    } else if (isIdeModeNow) {
       state.mainWindow.webContents.send('ide-audio-transcribed', { text: text + ' ' });
     } else if (aiModel === 'llama-stream') {
       state.mainWindow.webContents.send('send-to-gemini-stream-auto', text);
@@ -79,216 +123,57 @@ helpers.stopWinDictationAndTranscribe = async function() {
       helpers.getIaResponse(text);
     }
   } catch (e) {
-    console.error('[win-dictation] erro:', e.message);
-    try { state.mainWindow.webContents.send('transcription-error', 'Falha ao transcrever o áudio: ' + e.message); } catch (_) {}
+    console.error('[dictation] erro:', e.message);
+    if (isOsIntegration) {
+      helpers.createOsNotificationWindow('response', 'Falha ao transcrever o audio: ' + e.message);
+    } else {
+      try { state.mainWindow.webContents.send('transcription-error', 'Falha ao transcrever o audio: ' + e.message); } catch (_) {}
+    }
   } finally {
+    if (wavPath) { try { await fs.unlink(wavPath); } catch (_) {} }
     state.recordingBusy = false;
   }
 }
 
 helpers.toggleRecording = async function() {
   try {
-    // Realtime existe em todas as edições: na Lite/ChatGPT é 100% online (OpenAI),
-    // na Full com backend/Ollama é o pipeline local (Vosk+Whisper). pickRealtimeService decide.
-    const isRealtimeAssistantEnabled = configService.getRealtimeAssistantStatus();
-    if (isRealtimeAssistantEnabled) {
+    // Realtime existe em todas as edicoes: na Lite/ChatGPT e 100% online (OpenAI),
+    // na Full com backend/Ollama e o pipeline local (Whisper). pickRealtimeService decide.
+    if (configService.getRealtimeAssistantStatus()) {
       await helpers.toggleRealtimeAssistantRecording();
       return;
     }
 
-    // Tradutor é um modo exclusivo, sem input de texto — nunca deve gravar/transcrever
-    // via Ctrl+D nem jogar texto no composer (isso é exclusividade do modo IDE).
-    // Sem esse guard, com pasta de projeto aberta (modo IDE) + Tradutor ativo numa
-    // janela normal (não OS Integration), o Ctrl+D caía na rota de baixo e enchia
-    // o composer mesmo com o Tradutor ligado.
+    // Tradutor e um modo exclusivo, sem input de texto — nunca deve gravar/transcrever
+    // via Ctrl+D nem jogar texto no composer (isso e exclusividade do modo IDE).
     if (translationAssistant.isActive()) {
-      console.log("Ctrl+D ignorado — Assistente de Tradução ativo (modo exclusivo, sem input de texto).");
+      console.log("Ctrl+D ignorado — Assistente de Traducao ativo (modo exclusivo, sem input de texto).");
       return;
     }
 
     // Anti-spam: ignora Ctrl+D enquanto ainda estamos transcrevendo/respondendo
-    // o áudio do toque anterior (senão múltiplos toques enviam o mesmo áudio).
+    // o audio do toque anterior (senao multiplos toques enviam o mesmo audio).
     if (state.recordingBusy) {
-      console.log("Ctrl+D ignorado — ainda processando o áudio anterior.");
+      console.log("Ctrl+D ignorado — ainda processando o audio anterior.");
       return;
     }
 
     if (state.isRecording) {
-      // === STOP RECORDING ===
-      const isOsIntegration = configService.getOsIntegrationStatus();
+      await helpers.stopDictationAndTranscribe();
+      return;
+    }
 
-      // Windows/macOS modo janela: para o press-to-talk e transcreve.
-      if (state.winDictationActive) {
-        await helpers.stopWinDictationAndTranscribe();
-        return;
-      }
-
-      if (isOsIntegration && VoskStreamService.isRunning()) {
-        const pending = state.osLiveSegment;
-        VoskStreamService.stop();
-        state.isRecording = false;
-        helpers.clearOsVoskSilenceTimer();
-        console.log("OS Integration: conversa contínua encerrada");
-        if (pending && pending.hasSpeech && !pending.closing) {
-          state.osLiveSegment = pending;
-          helpers.closeOsLiveSegment().catch(e => console.error('[os-live] flush on stop:', e.message));
-        }
-        return;
-      }
-
-      if (state.dictationActive) {
-        VoskStreamService.stop();
-        state.dictationActive = false;
-        state.isRecording = false;
-        if (!isOsIntegration) {
-          state.mainWindow.webContents.send("toggle-recording", { isRecording: false, audioFilePath: null, isIdeMode: true });
-        }
-        return;
-      }
-
-      if (state.recordingProcess) {
-        state.recordingProcess.kill("SIGTERM");
-        state.recordingProcess = null;
-      }
+    try {
+      await helpers.startDictation();
+    } catch (e) {
+      console.error('[dictation] falha ao iniciar:', e.message);
+      state.dictationActive = false;
       state.isRecording = false;
-      console.log("Recording stopped");
-      state.recordingBusy = true;
-
-      if (!isOsIntegration) {
-        if (appConfig.notificationsEnabled && Notification.isSupported()) {
-          new Notification({ title: "Helper-Node", body: "Ok, aguarde...", silent: true }).show();
-        }
-        state.mainWindow.webContents.send("toggle-recording", { isRecording: state.isRecording, audioFilePath });
+      if (configService.getOsIntegrationStatus()) {
+        helpers.createOsNotificationWindow('response', 'Falha ao acessar o microfone: ' + e.message);
       } else {
-        helpers.destroyNotificationWindow();
-        helpers.createOsNotificationWindow('loading', 'Processando áudio...');
+        try { state.mainWindow.webContents.send('transcription-error', 'Falha ao acessar o microfone: ' + e.message); } catch (_) {}
       }
-
-      try {
-        await fs.access(audioFilePath);
-        console.log("Audio file created:", audioFilePath);
-
-        if (!isOsIntegration) {
-          state.mainWindow.webContents.send("transcription-start", { audioFilePath });
-        }
-
-        const convertedAudioPath = path.join(AUDIO_TMP_DIR, "output_converted.wav");
-        await execPromise(`ffmpeg -i ${audioFilePath} -ar 16000 -ac 1 -sample_fmt s16 -y ${convertedAudioPath}`);
-
-        const audioText = edition.isLite()
-          ? await cloudTranscribeAudio(convertedAudioPath, configService.getOpenIaToken())
-          : await helpers.transcribeAudio(convertedAudioPath);
-
-        try { await fs.unlink(audioFilePath); } catch (_) {}
-        try { await fs.unlink(convertedAudioPath); } catch (_) {}
-
-        if (!audioText || !audioText.trim() || audioText === "[BLANK_AUDIO]") {
-          if (isOsIntegration) {
-            helpers.createOsNotificationWindow('response', 'Nenhum áudio detectado. Tente novamente.');
-          } else if (appConfig.notificationsEnabled && Notification.isSupported()) {
-            new Notification({ title: "Helper-Node", body: "Nenhum áudio detectado.", silent: true }).show();
-          }
-          return;
-        }
-
-        const aiModel = helpers.getEffectiveAiModel();
-        const isIdeModeNow = (workspace.list() || []).length > 0;
-        if (isIdeModeNow) {
-          state.mainWindow.webContents.send("ide-audio-transcribed", { text: audioText + " " });
-        } else if (isOsIntegration) {
-          await helpers.processOsQuestion(audioText);
-        } else if (aiModel === 'llama-stream') {
-          state.mainWindow.webContents.send("send-to-gemini-stream-auto", audioText);
-        } else {
-          helpers.getIaResponse(audioText);
-        }
-      } catch (error) {
-        console.error("Audio processing failed:", error);
-      } finally {
-        state.recordingBusy = false;
-      }
-    } else {
-      // === START RECORDING ===
-      const isOsIntegration = configService.getOsIntegrationStatus();
-      const isIdeMode = (workspace.list() || []).length > 0;
-
-      if (isOsIntegration && translationAssistant.isActive()) {
-        console.log("OS Integration: Translation Assistant ativo — Ctrl+D ignorado (mutex).");
-        return;
-      }
-
-      // Windows/macOS modo janela: Vosk/parec não existem fora do Linux. Usa o
-      // bridge nativo (press-to-talk): Ctrl+D grava, Ctrl+D de novo transcreve.
-      if (!isOsIntegration && process.platform !== 'linux') {
-        try {
-          await helpers.startWinDictation();
-        } catch (e) {
-          console.error('[win-dictation] falha ao iniciar:', e.message);
-          try { state.mainWindow.webContents.send('transcription-error', 'Falha ao acessar o microfone: ' + e.message); } catch (_) {}
-          state.winDictationActive = false;
-          state.isRecording = false;
-        }
-        return;
-      }
-
-      if (!isOsIntegration) {
-        // App Full / Janela / CLI -> Modo Ditado com 2s de silêncio (Vosk + Whisper Progressivo)
-        state.dictationActive = true;
-        state.dictationPcmChunks = [];
-        state.dictationPcmBytes = 0;
-        state.dictationProcessing = false;
-
-        state.mainWindow.webContents.send("toggle-recording", { isRecording: true, audioFilePath: null, isIdeMode: true });
-
-        VoskStreamService.start({
-          audioSources: ['@DEFAULT_SOURCE@'],
-          onEvent: async (event) => {
-            if (event.type === 'audio') {
-              state.dictationPcmChunks.push(event.data);
-              state.dictationPcmBytes += event.data.length;
-            } else if (event.type === 'result') {
-              if (state.dictationPcmBytes > 0 && !state.dictationProcessing) {
-                state.dictationProcessing = true;
-                const pcm = Buffer.concat(state.dictationPcmChunks, state.dictationPcmBytes);
-                state.dictationPcmChunks = [];
-                state.dictationPcmBytes = 0;
-                const wavPath = path.join(AUDIO_TMP_DIR, `dictation_${Date.now()}.wav`);
-                try {
-                  fs2.mkdirSync(AUDIO_TMP_DIR, { recursive: true });
-                  fs2.writeFileSync(wavPath, helpers._buildWavFile(pcm, 16000, 1, 16));
-                  
-                  const text = edition.isLite() 
-                    ? await cloudTranscribeAudio(wavPath, configService.getOpenIaToken()) 
-                    : await helpers.transcribeAudio(wavPath, { emitRenderer: false, emitNotifications: false });
-                    
-                  if (text && text.trim() && text !== "[BLANK_AUDIO]") {
-                    // Manda colar no input
-                    state.mainWindow.webContents.send("ide-audio-transcribed", { text: text + " " });
-                    // Garante que o icone 'listening' volte após colar, pois o frontend esconde
-                    state.mainWindow.webContents.send("toggle-recording", { isRecording: true, audioFilePath: null, isIdeMode: true });
-                  }
-                } catch (e) {
-                  console.error("[dictation] error:", e.message);
-                } finally {
-                  try { await fs.unlink(wavPath); } catch (_) {}
-                  state.dictationProcessing = false;
-                }
-              }
-            }
-          }
-        });
-        state.isRecording = true;
-        return;
-      }
-
-      // OS Integration Legacy Start
-      await fs.unlink(audioFilePath).catch(() => {});
-      const command = `pw-record "${audioFilePath}"`;
-      state.recordingProcess = exec(command, (error) => {});
-      state.isRecording = true;
-
-      helpers.destroyNotificationWindow();
-      helpers.createOsNotificationWindow('recording', '');
     }
   } catch (error) {
     console.error("Error toggling recording:", error);
@@ -316,7 +201,10 @@ helpers.transcribeAudio = async function(filePath, options = {}) {
     // Obter a duração do áudio
     const duration = await helpers.getAudioDuration(filePath);
 
-    const whisperPath = path.join(ROOT_DIR, "whisper/build/bin/whisper-cli");
+    const whisperPath = path.join(
+      ROOT_DIR, "whisper", "build", "bin",
+      process.platform === "win32" ? "whisper-cli.exe" : "whisper-cli"
+    );
     const modelPathSmall = path.join(ROOT_DIR, "whisper/models/ggml-small.bin");
     const modelPathMedium = path.join(ROOT_DIR, "whisper/models/ggml-medium.bin");
 

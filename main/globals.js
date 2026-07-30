@@ -20,8 +20,6 @@ const fs = require("fs").promises;
 const fs2 = require("fs");
 const execPromise = util.promisify(exec);
 
-const VoskStreamService = require("../services/voskStreamService.js");
-
 const appConfig = {
   notificationsEnabled: true,
 };
@@ -98,13 +96,6 @@ const TREE_HEAVY_DIRS = new Set([
   'vendor', 'bin', 'obj', '.next', '.nuxt', '.cache', '__pycache__', 'venv', '.venv', 'env',
   'coverage', '.output', 'out', 'temp', 'tmp', 'logs', '.bundle'
 ]);
-const OS_LIVE_CONTINUATION_WINDOW_MS = 1200;
-const OS_LIVE_SAMPLE_RATE = 16000;
-const OS_LIVE_SILENCE_RMS = 0.015;
-const OS_LIVE_SILENCE_MS = 1200;
-const OS_LIVE_MAX_MS = 15000;
-const OS_LIVE_TMP_DIR = path.join(os.tmpdir(), "helper-node-vosk");
-
 const state = {
   terminalProcess: null,
   terminalPty: null,
@@ -115,7 +106,6 @@ const state = {
   shortcutsRegistered: false,
   currentDisplayId: null,
   sharingActive: false,
-  recordingProcess: null,
   isRecording: false,
   waitingNotificationInterval: null,
   clipboardMonitoringInterval: null,
@@ -130,27 +120,17 @@ const state = {
   osInputWindow: null,
   osNotificationWindow: null,
   osNotifAutoCloseTimer: null,
-  osImageResponseWindow: null,
   osCaptureWindow: null,
   isOsIntegrationMode: false,
   captureToolInterval: null,
-  osVoskSilenceTimer: null,
-  osLiveSegment: null,
-  osLiveSilenceInterval: null,
-  osLiveTurnCount: 0,
-  osLiveLastClosed: null,
   translationOverlayWindow: null,
   visionGuideOverlayWindow: null,
   visionGuideMinimized: false,
   currentEditorState: null,
   dictationActive: false,
-  dictationPcmChunks: [],
-  dictationPcmBytes: 0,
-  dictationProcessing: false,
-  winDictationActive: false,
-  winDictationChunks: [],
-  winDictationBytes: 0,
-  winDictationMicCb: null,
+  dictationChunks: [],
+  dictationBytes: 0,
+  dictationMicCb: null,
   _framelessDrag: null,
   regionSelectWindow: null,
   regionCaptureBuffer: null,
@@ -192,7 +172,7 @@ const realtimeAssistantService = new RealtimeAssistantService({
   onFatalStop: onRealtimeFatalStop,
 });
 
-// Realtime ONLINE (100% OpenAI): transcrição + resposta na OpenAI, sem Vosk/Whisper.
+// Realtime ONLINE (100% OpenAI): transcrição + resposta na OpenAI, sem Whisper local.
 // Usado quando o provider selecionado é ChatGPT (openIa) ou na edição Lite.
 const realtimeOpenAiService = new RealtimeOpenAiService({
   configService,
@@ -217,7 +197,6 @@ module.exports = {
   appConfig,
   _confirmActionPending,
   Notification,
-  VoskStreamService,
   path,
   os,
   crypto,
@@ -260,12 +239,6 @@ module.exports = {
   SCREENSHOT_DIRS,
   PROJECT_SEARCH_SKIP_DIRS,
   TREE_HEAVY_DIRS,
-  OS_LIVE_CONTINUATION_WINDOW_MS,
-  OS_LIVE_SAMPLE_RATE,
-  OS_LIVE_SILENCE_RMS,
-  OS_LIVE_SILENCE_MS,
-  OS_LIVE_MAX_MS,
-  OS_LIVE_TMP_DIR,
   REALTIME_COPILOT_INSTRUCTION,
 
   realtimeAssistantService,

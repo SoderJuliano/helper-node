@@ -17,9 +17,6 @@ build/arch/src/
 whisper/build/
 whisper/models/*.bin
 
-# ===== Vosk (modelo grande baixado pelo install-deps.sh) =====
-vosk-model/
-vosk-model.zip
 
 # ===== Python venv local =====
 venv/

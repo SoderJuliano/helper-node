@@ -12,7 +12,7 @@ const {
   OS_LIVE_CONTINUATION_WINDOW_MS, OS_LIVE_SAMPLE_RATE, OS_LIVE_SILENCE_RMS,
   OS_LIVE_SILENCE_MS, OS_LIVE_MAX_MS, OS_LIVE_TMP_DIR,
   state, helpers,
-  BrowserWindow, screen, execPromise, VoskStreamService
+  BrowserWindow, screen, execPromise
 } = require('../globals.js');
 
 helpers.applyStealthProtection = function(win) {
@@ -350,20 +350,13 @@ helpers.processOsQuestion = async function(text, image = null, opts = {}) {
 
     console.log(`🔔 Destroying loading notification and showing response`);
 
-    // Se a recording-live (Vosk) est\u00e1 ativa, NAO destroi essa janela \u2014
-    // mostra a resposta numa janela secund\u00e1ria pra n\u00e3o engolir a conversa.
     const formattedResponse = helpers.formatToHTML(resposta);
-    if (VoskStreamService.isRunning()) {
-      console.log('[os-image] Vosk ativo \u2014 abrindo response em janela secund\u00e1ria');
-      helpers.showImageResponseInSecondaryWindow(formattedResponse);
-    } else {
-      // CRITICAL: Ensure the loading notification is completely destroyed before creating response
-      helpers.destroyNotificationWindow();
-      // Wait a bit longer to ensure the window is fully destroyed
-      await new Promise(resolve => setTimeout(resolve, 300));
-      helpers.createOsNotificationWindow('response', formattedResponse);
-    }
-    
+    // CRITICAL: Ensure the loading notification is completely destroyed before creating response
+    helpers.destroyNotificationWindow();
+    // Wait a bit longer to ensure the window is fully destroyed
+    await new Promise(resolve => setTimeout(resolve, 300));
+    helpers.createOsNotificationWindow('response', formattedResponse);
+
   } catch (error) {
     console.error('Error in processOsQuestion:', error);
     

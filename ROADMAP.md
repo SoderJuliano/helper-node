@@ -75,10 +75,10 @@ Roteado por `pickRealtimeService()`; `getEffectiveAiModel() = isLite() ? 'openIa
 **Realtime — dois caminhos, escolhidos pelo provedor de IA:**
 - **ChatGPT (e SEMPRE na edição Lite)** → `services/realtimeOpenAiService.js` + motor
   próprio `services/realtimeAudioCapture.js` (**`parec`** + VAD + segue sink ativo).
-  Transcrição `gpt-4o-transcribe` + resposta OpenAI. **Sem Vosk/Whisper.** Default
+  Transcrição `gpt-4o-transcribe` + resposta OpenAI. **Sem Whisper local.** Default
   sobe `gpt-4.1-nano` → `gpt-4.1`. Transcrição própria (NÃO importa nada do tradutor).
 - **Full + Backend (LLaMA/Ollama) ou Ollama Local** → `realtimeAssistantService.js`
-  (Vosk live + correção Whisper), com a **resposta no provedor selecionado** (via
+  (Whisper local, mesmo motor de captura do online), com a **resposta no provedor selecionado** (via
   `aiResponder` injetado no main.js), nunca OpenAI. Sem fallback entre providers.
 
 **Áudio (causa-raiz de muito bug):** captura de monitor é **`parec --device=<sink>.monitor`**;
@@ -282,25 +282,30 @@ notificação visível na tela quebra a discrição.
     *   **Zero dependência** de daemon de notificação (`mako`, `dunst`, GNOME Shell, KDE).
     *   **Comportamento idêntico** em qualquer DE/WM/Wayland/X11.
 
-## Arquitetura Atual: Realtime Copilot OFFLINE (Vosk-fast + Whisper-slow)
+## Arquitetura Atual: Realtime Copilot OFFLINE (Whisper local)
 
 > Este é o caminho **OFFLINE** (Full + backend/Ollama). Para ChatGPT/Lite, o realtime
-> é **100% online** (`realtimeOpenAiService` + `realtimeAudioCapture`, parec) — ver a
-> seção "Lançado em v0.4.x" no topo. A resposta aqui vai pro provider selecionado.
+> é **100% online** (`realtimeOpenAiService`) — ver a seção "Lançado em v0.4.x" no
+> topo. A resposta aqui vai pro provider selecionado, nunca pra OpenAI.
 
-Pipeline híbrido implementado no `services/realtimeAssistantService.js`:
+Pipeline implementado no `services/realtimeAssistantService.js`:
 
-1.  **Captura simultânea** de microfone (`@DEFAULT_SOURCE@`) + áudio do sistema
-    (`<sink>.monitor`) via `parec`, mixado em PCM s16le 16kHz mono.
-2.  **Vosk** transcreve em tempo real → atualiza **uma única bolha por segmento**.
-3.  Segmento fecha em **5 s de silêncio** (RMS) OU **25 s contínuos** (corte forçado).
-4.  Ao fechar:
-    *   IA responde com base no Vosk → `segment_response` (rápido).
-    *   `whisper-cli` (`ggml-medium`) re-transcreve o WAV em background.
-    *   Se diferir, emite `segment_whisper_correction` → reescreve a bolha do
-        usuário in-place + re-pergunta à IA → `segment_response_corrected`
-        substitui a bolha do assistente.
-5.  Histórico é **editado in-place** via `historyService.replaceMessage(...)`.
+1.  **Captura simultânea** de microfone + áudio do sistema pelo `realtimeAudioCapture`
+    — o MESMO motor do caminho online. `parec` no Linux, loopback WASAPI /
+    `getUserMedia` no Windows/macOS. Cross-platform.
+2.  O motor entrega **um WAV por segmento de fala** (VAD por energia RMS).
+3.  `whisper-cli` (`ggml-medium`) transcreve o segmento, com `best-of`/`beam`
+    adaptativos por duração e fila de paralelismo limitado (2 processos).
+4.  Emite `segment_whisper_correction` (texto final) e chama o provider UMA vez →
+    `segment_response`.
+5.  Fusão de fala fragmentada por pausa: se o segmento seguinte da MESMA fonte
+    fechar em até 3 s, os textos são juntados e a pergunta inteira é reprocessada.
+
+> **Vosk foi removido** (v0.4.x). O modelo PT-BR não tinha vocabulário técnico nem
+> inglês — só servia de preview palavra-a-palavra e obrigava uma tabela de
+> substituição (`vosk-vocab.json`) pra consertar "claudio" → "cloud". O problema
+> agora é resolvido ANTES do erro, enviesando o decoder do STT com
+> `services/techGlossary.js`. Não há mais preview ao vivo (`segment_partial`).
 
 A IA opera em modo **copiloto**, não resumidor: responde perguntas técnicas,
 sugere respostas (`💬 Sugestão:`), aponta trade-offs, define termos obscuros e

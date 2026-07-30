@@ -17,7 +17,7 @@ A stealth AI copilot for Linux: live transcription, screen OCR, and on-screen an
 
 ## Overview
 
-Helper Node is an Electron desktop assistant for Linux that listens to your microphone and your system audio at the same time, transcribes speech in real time, reads what is on your screen through OCR or vision models, and surfaces concise AI answers in discreet overlay windows. It is built for people who need a second brain during live conversations: interviews in another language, technical meetings, calls, and lectures. Every native operating-system notification is suppressed by design, so nobody watching a screen-share sees that an assistant is running. Transcription and answers run either fully online through OpenAI or fully offline through local Whisper.cpp and Vosk models plus a local Ollama or custom backend. You bring your own OpenAI key or your own local model; no credentials are bundled with the app.
+Helper Node is an Electron desktop assistant for Linux that listens to your microphone and your system audio at the same time, transcribes speech in real time, reads what is on your screen through OCR or vision models, and surfaces concise AI answers in discreet overlay windows. It is built for people who need a second brain during live conversations: interviews in another language, technical meetings, calls, and lectures. Every native operating-system notification is suppressed by design, so nobody watching a screen-share sees that an assistant is running. Transcription and answers run either fully online through OpenAI or fully offline through local Whisper.cpp models plus a local Ollama or custom backend. You bring your own OpenAI key or your own local model; no credentials are bundled with the app.
 
 ## Features
 
@@ -32,8 +32,6 @@ Helper Node is an Electron desktop assistant for Linux that listens to your micr
       <td>High-quality offline transcription on the <code>Ctrl+D</code> push-to-talk flow, using the <code>medium</code> PT-BR/EN model.</td>
     </tr>
     <tr>
-      <td>Vosk (streaming)</td>
-      <td>Live word-by-word transcription via <code>vosk-stream.py</code> with the large FalaBrasil PT-BR model.</td>
     </tr>
     <tr>
       <td>OpenAI transcription</td>
@@ -59,7 +57,7 @@ Helper Node is an Electron desktop assistant for Linux that listens to your micr
     <tr>
       <td rowspan="2"><b>Realtime copilot</b></td>
       <td>Realtime Assistant</td>
-      <td>Listens to mic plus system audio, segments speech live, and answers per segment. Offline path corrects each Vosk bubble in place with a background Whisper pass.</td>
+      <td>Listens to mic plus system audio, segments speech live, and answers per segment. Offline path transcribes each segment with a local Whisper pass.</td>
     </tr>
     <tr>
       <td>Jargon explainer</td>
@@ -142,7 +140,7 @@ Helper Node ships in two mutually exclusive editions. They both run as `helper-n
 
 - **Operating system:** Linux. Tested on Pop!_OS / Ubuntu / Debian and Arch / Manjaro, on both Wayland and X11.
 - **Node.js:** 18 or newer (Electron 36). The maintainer's environment uses Node 24.
-- **Native dependencies:** `git`, `ffmpeg`, `cmake`, `make`, a C++ compiler, `python3` with `venv` and `pip`, PipeWire / PulseAudio utilities (`parec`, `pactl`), `x11-utils`, `gnome-screenshot`, and `imagemagick`. The Full edition additionally builds Whisper.cpp and downloads the Whisper and Vosk models.
+- **Native dependencies:** `git`, `ffmpeg`, `cmake`, `make`, a C++ compiler, `python3`, PipeWire / PulseAudio utilities (`parec`, `pactl`), `x11-utils`, `gnome-screenshot`, and `imagemagick`. The Full edition additionally builds Whisper.cpp and downloads the Whisper models.
 
 ```bash
 # Pop!_OS / Ubuntu / Debian
@@ -165,8 +163,7 @@ cd helper-node
 ```
 
 ```bash
-# Installs everything: Whisper.cpp, models, Python venv, Vosk, and the PT-BR model.
-# Use a smaller Vosk model (40 MB, lower quality) with VOSK_MODEL_SIZE=small.
+# Installs everything: Whisper.cpp and the Whisper models.
 ./install-deps.sh
 ```
 
@@ -182,7 +179,7 @@ Download the assets from the [latest release](https://github.com/SoderJuliano/he
 # Debian / Ubuntu / Pop!_OS — Lite (recommended, ~127 MB, online):
 sudo apt install ./helper-node-lite_0.4.2_amd64.deb
 
-# OR Full (offline, ~654 MB, local Whisper/Vosk/Ollama):
+# OR Full (offline, ~600 MB, local Whisper/Ollama):
 sudo apt install ./helper-node-full_0.4.2_amd64.deb
 
 helper-node
@@ -194,7 +191,7 @@ sudo pacman -U helper-node-lite-0.4.2-1-x86_64.pkg.tar.zst
 helper-node
 ```
 
-The Debian `postinst` step builds a Python venv at `/opt/helper-node/venv` with Vosk installed from a wheel bundled inside the package, so installation stays offline and needs no manual setup.
+The Debian package ships the Whisper runtime and models inside `/opt/helper-node`, so the Full edition needs no extra setup after install.
 
 > Do not install the `.deb` through the Pop!_OS cosmic-store. It has a known bug with large local `.deb` packages and hangs at "Installing (0%)". Install from a terminal or with the bundled installer script instead. The installer copies the package to `/tmp` first to work around an `_apt` read-permission limitation on home directories.
 
@@ -240,13 +237,13 @@ irm https://raw.githubusercontent.com/SoderJuliano/helper-node/master/install-wi
 
 Installs to `%LOCALAPPDATA%\helper-node`. Re-run the same command to update
 (it `git pull`s and re-runs `npm install`). Local offline transcription
-(Whisper.cpp/Vosk) isn't ported to Windows yet — use the OpenAI model there
+(Whisper.cpp) isn't ported to Windows yet — use the OpenAI model there
 (see "Gaps conhecidos" in `WINDOWS-PORT.md`).
 
 ## Usage
 
-- **Push-to-talk / Dictation Mode:** In OS Integration mode, press `Ctrl+D` to start recording, press again to transcribe and answer (appears in a transparent overlay). In Window/IDE/CLI mode, `Ctrl+D` acts as a continuous **Dictation Toggle**: it uses Vosk for Voice Activity Detection and Whisper for precise transcription, automatically segmenting your speech by 2 seconds of silence and pasting the transcribed text progressively into the input box until you press `Ctrl+D` again to stop.
-- **Realtime Assistant:** when enabled in settings, `Ctrl+D` toggles continuous listening instead. With OpenAI selected (and always in Lite) the whole pipeline runs online. With a local backend or Ollama selected, transcription runs offline through Vosk with a Whisper correction pass, and the answer goes to the selected provider.
+- **Push-to-talk / Dictation Mode:** In OS Integration mode, press `Ctrl+D` to start recording, press again to transcribe and answer (appears in a transparent overlay). It works the same way in Window/IDE/CLI mode, where the transcribed text is pasted into the input box. The same push-to-talk path runs on Linux, Windows and macOS.
+- **Realtime Assistant:** when enabled in settings, `Ctrl+D` toggles continuous listening instead. With OpenAI selected (and always in Lite) the whole pipeline runs online. With a local backend or Ollama selected, transcription runs offline through local Whisper, and the answer goes to the selected provider.
 - **Translation Assistant:** translates the interviewer (system audio), suggests a reply, and shows your own speech transcribed but untranslated. Pick your microphone in Settings; system audio is captured automatically.
 - **Helper Tools:** enable under Settings, "Advanced Tools". The AI then receives read, write, and execution tools through function calling and decides which to call.
 
@@ -303,19 +300,18 @@ helper-node/
 ├── preload.js                  contextBridge bridge to the renderer
 ├── index.html / config.html    Main chat UI and Settings window
 ├── config.js                   Settings window logic
-├── vosk-stream.py              Streams PCM audio to Vosk, emits JSON
 ├── package.sh                  Builds the .deb and .pkg.tar.zst
-├── install-deps.sh             Installs Whisper.cpp, models, venv, and Vosk
+├── install-deps.sh             Installs Whisper.cpp and the Whisper models
 ├── setup-hotkey.sh             Registers global hotkeys (GNOME / Hyprland)
 ├── services/
 │   ├── openAIService.js        OpenAI chat, vision, and tool-calling loop
 │   ├── llamaService.js         Local Ollama provider
 │   ├── backendService.js       HTTP server for global hotkeys (port 3000)
 │   ├── realtimeOpenAiService.js   Online realtime path (OpenAI)
-│   ├── realtimeAssistantService.js Offline realtime path (Vosk + Whisper)
+│   ├── realtimeAssistantService.js Offline realtime path (local Whisper)
 │   ├── realtimeAudioCapture.js Audio engine for the online realtime path
 │   ├── translationAssistant/   Interview translation assistant
-│   ├── voskStreamService.js    Microphone to PCM to vosk-stream.py
+│   ├── techGlossary.js         Technical vocabulary injected into STT prompts
 │   ├── tesseractService.js     Screenshot OCR
 │   ├── knowledgeBase.js        Embeddings and hybrid retrieval
 │   ├── answerBank.js           RAG over past conversations

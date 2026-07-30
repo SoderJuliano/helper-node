@@ -24,14 +24,6 @@ helpers.checkBackendStatus = async function() {
   }
 }
 
-helpers.clearOsVoskSilenceTimer = function() {
-  if (state.osVoskSilenceTimer) { clearTimeout(state.osVoskSilenceTimer); state.osVoskSilenceTimer = null; }
-  if (state.osLiveSilenceInterval) { clearInterval(state.osLiveSilenceInterval); state.osLiveSilenceInterval = null; }
-  state.osLiveSegment = null;
-  state.osLiveTurnCount = 0;
-  state.osLiveLastClosed = null;
-}
-
 helpers.realtimeProviderResponder = async function(transcript) {
   const aiModel = configService.getAiModel();
   const kb = await helpers.knowledgeBlockForOllama(transcript);

@@ -84,7 +84,7 @@ O path **Linux ficou byte-idêntico**. Follower de sink (pactl) guardado p/ Linu
 `gpt-4o-transcribe`) — HTTP puro, cross-platform. ✅
 
 **Requisito no Windows:** usar o modelo **OpenAI** (online). `pickRealtimeService`
-só cai no pipeline local (Vosk+Whisper, binários Linux) quando o modelo NÃO é
+só cai no pipeline local (Whisper.cpp, binários Linux) quando o modelo NÃO é
 `openIa`. Com a chave OpenAI do usuário, cai no caminho cross-platform correto.
 
 **macOS:** loopback de sistema não é suportado pelo Chromium sem driver virtual
@@ -214,11 +214,10 @@ compartilhar entre devs, não pra distribuição tipo usuário final via loja.
   cross-platform (`services/platform/nativeAudio`) em **press-to-talk**: Ctrl+D
   grava, Ctrl+D de novo transcreve via OpenAI (`cloudTranscribeAudio`) e roteia
   (composer no modo IDE / `getIaResponse` no modo janela). Ver `startWinDictation`
-  / `stopWinDictationAndTranscribe` em `main.js`. Requer chave OpenAI configurada.
-  O caminho Linux (Vosk contínuo) ficou intocado.
-- **Ctrl+D no modo INTEGRADO (OS Integration) no Windows**: ainda usa `pw-record`
-  (Linux). Trabalho futuro — no modo integrado a entrada principal é o print
-  (Ctrl+Shift+S), que já funciona no Windows.
+  / `stopDictationAndTranscribe` em `main/helpers/audio.js`.
+- **Ctrl+D no modo INTEGRADO (OS Integration)** ✅ CORRIGIDO: antes usava
+  `pw-record` + `ffmpeg` (Linux-only). Agora usa o MESMO press-to-talk universal
+  do modo janela — funciona em Linux, Windows e macOS.
 - **Terminal integrado no Windows** ✅ CORRIGIDO: antes rodava
   `python3 -c "import pty..."` (pty do Python é Unix-only + `python3` inexistente
   → mensagem da Store + código 9009) com fallback pra `/bin/bash`. Agora, no
@@ -230,5 +229,7 @@ compartilhar entre devs, não pra distribuição tipo usuário final via loja.
   a build falhar o `npm install` não quebra. Ver `terminal:init` em `main.js`
   (branch `isWin`) + helpers `writeToTerminal`/`killTerminal`.
 - **`captureOneAnswer`** (`vadEngine`, só usado no testMode): usa `pw-record`.
-- **Pipeline local Vosk+Whisper** (edição full sem OpenAI): binários Linux/Python.
-  No Windows use o modelo OpenAI.
+- **Pipeline local Whisper.cpp** (edição full sem OpenAI): os binários ainda são
+  compilados só pra Linux. A CAPTURA de áudio já é cross-platform; o que falta é
+  o build do `whisper-cli` pra Windows. Enquanto isso, no Windows use o modelo
+  OpenAI (o código cai automaticamente na nuvem quando não acha o binário).

@@ -17,7 +17,7 @@
 # valer a pena comprar um certificado de assinatura de código de verdade.
 #
 # Edição FULL: habilita na UI as opções de provedor local (Ollama / Claude CLI /
-# Gemini CLI). A transcrição offline local (Whisper.cpp/Vosk) ainda NÃO está
+# Gemini CLI). A transcrição offline local (Whisper.cpp) ainda NÃO está
 # portada pro Windows — use o modelo OpenAI pra transcrição em tempo real (ver
 # WINDOWS-PORT.md, "Gaps conhecidos"). Ollama/Claude CLI/Gemini CLI funcionam
 # normalmente se você já tiver essas ferramentas instaladas e no PATH.
@@ -176,7 +176,7 @@ Write-Host "Pra abrir depois: clique no atalho, ou digite 'helper-node' num NOVO
 Write-Host "Pra atualizar: rode este mesmo comando de novo (faz git pull + npm install)."
 Write-Host "Configure sua OpenAI API key na primeira execucao (Configuracoes)."
 Write-Host "Edicao FULL: opcoes de Ollama/Claude CLI/Gemini CLI habilitadas na UI (precisam estar instaladas" -ForegroundColor DarkGray
-Write-Host "  separadamente). Transcricao offline local (Whisper/Vosk) ainda nao portada - use OpenAI." -ForegroundColor DarkGray
+Write-Host "  separadamente). Transcricao offline local (Whisper) ainda nao portada - use OpenAI." -ForegroundColor DarkGray
 Write-Host ""
 
 Write-Step "Abrindo o Helper Node..."

@@ -1,7 +1,7 @@
 // realtimeOpenAiService.js — Assistente em tempo real 100% ONLINE (OpenAI).
 //
 // Usado quando o provider selecionado é ChatGPT (aiModel === 'openIa') ou na
-// edição Lite (onde só existe OpenAI). NÃO usa Vosk nem Whisper local: tanto a
+// edição Lite (onde só existe OpenAI). NÃO usa Whisper local: tanto a
 // transcrição quanto a resposta vão para a OpenAI.
 //
 // Pipeline por segmento de fala:
@@ -14,7 +14,7 @@
 // Eventos emitidos (compatíveis com index.html):
 //   state | segment_start | segment_whisper_correction | segment_response |
 //   segment_error | fatal_error
-// (sem Vosk não há preview/partial nem etapa intermediária de correção.)
+// (não há preview/partial: a transcrição chega pronta, em batch.)
 
 const fs = require('fs');
 const path = require('path');
@@ -22,16 +22,20 @@ const { startCapture, stopCapture } = require('./realtimeAudioCapture');
 const knowledgeBase = require('./knowledgeBase');
 const answerBank = require('./answerBank');
 const { evaluateUserResponse } = require('./translationAssistant/openaiClient');
+const { buildTranscriptionPrompt } = require('./techGlossary');
 const { applyRealtimeOverride, supportsReasoningEffort, maxTokensParam, raceWithTimeout, RAG_TIMEOUT_MS } = require('./openAiRealtimeModels');
 
 // Transcrição própria (NÃO importa nada do Assistente de Tradução — totalmente
 // independente). Envia o WAV pro endpoint de transcrição da OpenAI.
-async function transcribeAudio(audioPath, apiKey, model) {
+// `glossaryPrompt` enviesa o decoder pros termos técnicos da entrevista
+// (SOLID, Spring, Kafka...) — custo de rede zero, é o mesmo request.
+async function transcribeAudio(audioPath, apiKey, model, glossaryPrompt) {
   const fileBuffer = fs.readFileSync(audioPath);
   const blob = new Blob([fileBuffer]);
   const form = new FormData();
   form.append('file', blob, path.basename(audioPath));
   form.append('model', model || 'gpt-4o-transcribe');
+  if (glossaryPrompt) form.append('prompt', glossaryPrompt);
   const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',
     headers: { Authorization: 'Bearer ' + apiKey },
@@ -108,6 +112,19 @@ class RealtimeOpenAiService {
   }
 
   isActive() { return this.active; }
+
+  // Vocabulário técnico injetado na transcrição. Cacheado no techGlossary — não
+  // custa rede nem entra no caminho crítico da resposta.
+  _glossaryPrompt() {
+    try {
+      const ta = this.configService.getTranslationAssistantConfig
+        ? this.configService.getTranslationAssistantConfig() : {};
+      const recent = this.contextMessages.slice(-4).map(m => m.content).join(' ');
+      return buildTranscriptionPrompt({ background: ta.userBackground || '', context: recent });
+    } catch (_) {
+      return buildTranscriptionPrompt({});
+    }
+  }
 
   async start() {
     if (this.active) return true;
@@ -193,7 +210,7 @@ class RealtimeOpenAiService {
     try {
       if (!token) throw new Error('Token da OpenAI não configurado.');
 
-      const transcript = (await transcribeAudio(audioPath, token, TRANSCRIBE_MODEL) || '').trim();
+      const transcript = (await transcribeAudio(audioPath, token, TRANSCRIBE_MODEL, this._glossaryPrompt()) || '').trim();
       if (!transcript || transcript.length < 3) {
         // Ruído/silêncio: descarta a bolha sem incomodar.
         this.emitUpdate({ type: 'segment_whisper_correction', id, iteration, text: transcript || '(sem fala)', source: 'openai', timestamp: new Date().toISOString() });
@@ -289,7 +306,7 @@ class RealtimeOpenAiService {
     }
     let id = null, iteration = null;
     try {
-      const transcript = (await transcribeAudio(audioPath, token, TRANSCRIBE_MODEL) || '').trim();
+      const transcript = (await transcribeAudio(audioPath, token, TRANSCRIBE_MODEL, this._glossaryPrompt()) || '').trim();
       if (!transcript || transcript.length < 3) return;
       // Já respondemos esse texto exato via outro snapshot? Evita repetir a
       // cada checagem de 4s enquanto o trecho ainda não muda.

@@ -26,8 +26,8 @@ helpers.computeTranslationOverlayBounds = function() {
     display = screen.getPrimaryDisplay();
   }
   const wa = display.workArea; // {x, y, width, height} — respeita docks
-  const VOSK_MIN_WIDTH = 380;
-  const winWidth = Math.max(VOSK_MIN_WIDTH, Math.round(wa.width * 0.20));
+  const OVERLAY_MIN_WIDTH = 380;
+  const winWidth = Math.max(OVERLAY_MIN_WIDTH, Math.round(wa.width * 0.20));
   const winHeight = Math.round(wa.height * 0.80);
   // 10px da borda direita, clampeado para não sair da tela
   const posX = Math.max(wa.x, wa.x + wa.width - winWidth - 10);

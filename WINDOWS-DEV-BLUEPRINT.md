@@ -125,7 +125,7 @@ npm start
 Config do app (restaure o backup da PARTE A):
 - Copie seu `config.json` para `%APPDATA%\meu-electron-app\config.json`
   (crie a pasta se não existir). Ou configure a **chave OpenAI** na tela de Ajustes.
-- **Importante:** use o **modelo OpenAI (online)** — o pipeline local (Vosk+Whisper)
+- **Importante:** use o **modelo OpenAI (online)** — o pipeline local (Whisper.cpp)
   é só Linux. Ligue "Assistente em Tempo Real" / "Tradutor".
 - Teste `Ctrl+Shift+S` com o OBS aberto → a janela deve **sumir** da gravação.
 

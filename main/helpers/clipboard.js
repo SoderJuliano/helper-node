@@ -12,7 +12,7 @@ const {
   OS_LIVE_CONTINUATION_WINDOW_MS, OS_LIVE_SAMPLE_RATE, OS_LIVE_SILENCE_RMS,
   OS_LIVE_SILENCE_MS, OS_LIVE_MAX_MS, OS_LIVE_TMP_DIR,
   state, helpers,
-  clipboard, execPromise, appConfig, Notification, VoskStreamService
+  clipboard, execPromise, appConfig, Notification
 } = require('../globals.js');
 
 helpers.calculateImageHash = function(imageBuffer) {
@@ -215,14 +215,7 @@ helpers.startClipboardMonitoring = function() {
           // Check if OS integration mode is enabled
           const isOsIntegration = configService.getOsIntegrationStatus();
           if (isOsIntegration) {
-            // Se Vosk (recording-live) est\u00e1 rodando, N\u00c3O cria janela loading
-            // \u2014 isso destruiria a bolha de conversa. A resposta vai abrir
-            // numa janela secund\u00e1ria via showImageResponseInSecondaryWindow.
-            if (!VoskStreamService.isRunning()) {
-              helpers.createOsNotificationWindow('loading', 'Nova imagem detectada! Processando...');
-            } else {
-              console.log('[os-image] Vosk ativo \u2014 pulando janela loading (preserva recording-live)');
-            }
+            helpers.createOsNotificationWindow('loading', 'Nova imagem detectada! Processando...');
           } else if (appConfig.notificationsEnabled && Notification.isSupported()) {
             new Notification({
               title: 'Helper-Node',
