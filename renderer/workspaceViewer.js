@@ -98,8 +98,8 @@
         // Implementação real (CodeMirror, save, estado) vive em editorController.js
         // (window.EditorController) — este wrapper só existe pra manter o nome/assinatura
         // que os call sites já usam (tree, chip da IA, link do RAG).
-        async function openFileViewer(filePath) {
-            if (window.EditorController) await window.EditorController.openFile(filePath);
+        async function openFileViewer(filePath, lineNum) {
+            if (window.EditorController) await window.EditorController.openFile(filePath, lineNum);
         }
         // Ctrl+Shift+F → Enter: abre todos os arquivos que bateram a busca por
         // conteúdo, cada um como uma aba. Abre em ordem reversa para o PRIMEIRO

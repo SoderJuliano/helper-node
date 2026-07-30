@@ -178,6 +178,11 @@
         .ws-tree-node.dim { opacity: .35; }
         .ws-tree-node.match { color: var(--text); }
         .ws-tree-node.match span { text-decoration: underline; text-decoration-color: var(--accent-2); text-underline-offset: 2px; }
+        .ws-tree-node.focused-match {
+            background: rgba(100, 200, 255, 0.18) !important;
+            border-radius: 4px;
+            box-shadow: inset 0 0 0 1px var(--accent-2, #64c8ff);
+        }
         /* Busca flutuante de arquivos (Ctrl+F com o editor FECHADO, de qualquer
            lugar do app) — abre a árvore do projeto sozinha e sublinha o que
            bate; Enter abre o arquivo. Ver openTreeFilter() em index.html. */
@@ -194,6 +199,40 @@
             display: none; position: fixed; top: 82px; left: 12px; width: 260px;
             box-sizing: border-box; padding: 4px 10px; font-size: 10.5px; color: var(--text-4);
             font-family: var(--font-ui); z-index: 6500;
+        }
+        .ws-tree-content-occurrences {
+            display: none; position: fixed; top: 104px; left: 12px; width: 300px; max-height: 280px;
+            overflow-y: auto; background: var(--bg-elevated, #1b1e24);
+            border: 1px solid var(--accent-border, #2d2d38); border-radius: var(--radius-sm, 6px);
+            box-shadow: 0 12px 32px rgba(0,0,0,0.65); color: var(--text, #e3e3e6); font-size: 11.5px;
+            font-family: var(--font-ui); box-sizing: border-box; -webkit-app-region: no-drag;
+            z-index: 6501; padding: 6px 0;
+            scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.2) transparent;
+        }
+        .ws-occ-header {
+            padding: 4px 10px 6px 10px; font-size: 10.5px; font-weight: 600;
+            color: var(--accent-2, #64c8ff); border-bottom: 1px solid var(--border, rgba(255,255,255,0.08));
+            margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.3px;
+        }
+        .ws-occ-list { display: flex; flex-direction: column; gap: 2px; }
+        .ws-occ-item {
+            padding: 5px 10px; cursor: pointer; transition: background 0.15s ease;
+            border-radius: 3px; margin: 0 4px;
+        }
+        .ws-occ-item:hover {
+            background: rgba(255,255,255,0.08);
+        }
+        .ws-occ-file-info { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+        .ws-occ-filename { font-weight: 600; color: #fff; }
+        .ws-occ-line { color: var(--accent-2, #64c8ff); font-family: monospace; font-size: 10px; }
+        .ws-occ-dir { color: var(--text-4, #71717a); font-size: 10px; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100px; }
+        .ws-occ-snippet {
+            font-family: monospace; font-size: 10.5px; color: var(--text-2, #a1a1aa);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px;
+        }
+        .ws-occ-highlight {
+            background: rgba(255, 215, 0, 0.25); color: #ffd700; font-weight: 700;
+            border-radius: 2px; padding: 0 2px; text-decoration: underline;
         }
         /* Tema do dialog de busca do CodeMirror (Ctrl+F no editor) — combina com o resto da UI */
         .CodeMirror-dialog { background: var(--bg-sidebar); border-bottom: 1px solid var(--border); color: var(--text); padding: 6px 10px; }

@@ -461,7 +461,7 @@
   // Abre um arquivo no editor. Se já estava aberto nesta sessão (mesmo que o
   // painel tenha sido fechado), reaproveita o buffer em memória — inclusive
   // alterações não salvas, sem perder nada ao trocar de arquivo e voltar.
-  async function openFile(filePath) {
+  async function openFile(filePath, lineNum) {
     const viewer = document.getElementById('file-viewer');
     const pathEl = document.getElementById('fv-path');
     const langEl = document.getElementById('fv-lang');
@@ -514,7 +514,14 @@
     cmInst.clearHistory(); // trocar de arquivo não deve deixar Ctrl+Z voltar pro arquivo anterior
     updateDirtyIndicator();
     renderTabs();
-    setTimeout(() => cmInst.refresh(), 0); // corrige medidas quando o painel estava fechado ao criar o CM
+    setTimeout(() => {
+      cmInst.refresh();
+      if (typeof lineNum === 'number' && lineNum > 0) {
+        const line = lineNum - 1;
+        cmInst.setCursor({ line, ch: 0 });
+        cmInst.scrollIntoView({ line, ch: 0 }, 100);
+      }
+    }, 0);
   }
 
   async function saveActive() {

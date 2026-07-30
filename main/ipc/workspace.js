@@ -248,13 +248,15 @@ ipcMain.handle("get-dir-children", async (_event, dirPath) => {
 ipcMain.handle("search-project-content", async (_event, query) => {
   try {
     const dir = (workspace.list() || []).find((a) => a.type === "dir");
-    if (!dir) return { ok: false, error: "nenhum projeto aberto", matches: [] };
+    if (!dir) return { ok: false, error: "nenhum projeto aberto", matches: [], occurrences: [] };
     const normalizedQuery = String(query || "").trim().toLowerCase();
-    if (normalizedQuery.length < 4) return { ok: true, query: normalizedQuery, matches: [] };
+    if (normalizedQuery.length < 4) return { ok: true, query: normalizedQuery, matches: [], occurrences: [] };
 
     const root = dir.path;
     const matches = [];
+    const occurrences = [];
     const MAX_RESULTS = 200;
+    const MAX_OCCURRENCES = 300;
     const MAX_FILE_SIZE = 1024 * 1024;
 
     const walk = (dirPath) => {
@@ -290,16 +292,39 @@ ipcMain.handle("search-project-content", async (_event, query) => {
           continue;
         }
         if (helpers.isLikelyBinaryBuffer(buffer)) continue;
-        const text = buffer.toString("utf8").toLowerCase();
-        if (text.includes(normalizedQuery)) matches.push(absPath);
+        const text = buffer.toString("utf8");
+        const lowerText = text.toLowerCase();
+        if (lowerText.includes(normalizedQuery)) {
+          matches.push(absPath);
+          let relPath = absPath;
+          if (absPath.startsWith(root)) {
+            relPath = absPath.substring(root.length).replace(/^[/\\]+/, '').replace(/\\/g, '/');
+          } else {
+            relPath = relPath.replace(/\\/g, '/');
+          }
+          const lines = text.split(/\r?\n/);
+          for (let i = 0; i < lines.length; i++) {
+            const lineStr = lines[i];
+            if (lineStr.toLowerCase().includes(normalizedQuery)) {
+              if (occurrences.length < MAX_OCCURRENCES) {
+                occurrences.push({
+                  path: absPath,
+                  relPath: relPath,
+                  line: i + 1,
+                  text: lineStr.trim()
+                });
+              }
+            }
+          }
+        }
       }
     };
 
     walk(root);
-    return { ok: true, query: normalizedQuery, matches, limited: matches.length >= MAX_RESULTS };
+    return { ok: true, query: normalizedQuery, matches, occurrences, limited: matches.length >= MAX_RESULTS };
   } catch (e) {
     console.warn("[search-project-content] falhou:", e.message);
-    return { ok: false, error: e.message, matches: [] };
+    return { ok: false, error: e.message, matches: [], occurrences: [] };
   }
 });
 

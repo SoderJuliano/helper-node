@@ -115,10 +115,7 @@
             });
         })();
 
-        // Ctrl+F/Ctrl+B global — capture-phase no document (mesmo padrão do Esc
-        // acima), não bubble-phase no window: é o que garante que nada no caminho
-        // (foco em contenteditable, outros listeners) engula a tecla antes de
-        // chegar aqui.
+        // Ctrl+F / Ctrl+Shift+F / Ctrl+B global — capture-phase no document
         document.addEventListener('keydown', (e) => {
             // Ctrl+B: alterna a sidebar — funciona igual no chat e no editor.
             if (e.key.toLowerCase() === 'b' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
@@ -127,24 +124,33 @@
                 return;
             }
             if (e.key.toLowerCase() !== 'f' || !(e.ctrlKey || e.metaKey) || e.altKey) return;
-            // Editor aberto → busca dentro do arquivo (CodeMirror). Editor fechado →
-            // Ctrl+F busca por nome e Ctrl+Shift+F busca por conteúdo no projeto.
+
+            // Shift+F = Ctrl+Shift+F: Busca por conteúdo em todos os arquivos do projeto.
+            if (e.shiftKey) {
+                e.preventDefault(); e.stopPropagation();
+                if (isSidebarCollapsed()) setSidebarCollapsed(false);
+                if (window.openTreeContentFilter) window.openTreeContentFilter();
+                return;
+            }
+
+            // Ctrl+F (sem Shift):
+            // Se o editor estiver aberto com um arquivo: busca dentro do arquivo (CodeMirror).
+            // Se nenhum arquivo estiver aberto: busca na árvore de arquivos por nome.
             const fv = document.getElementById('file-viewer');
-            if (fv && fv.classList.contains('open')) {
+            const isEditorOpen = !!(fv && fv.classList.contains('open') && window.EditorController && window.EditorController.hasOpenFile());
+
+            if (isEditorOpen) {
                 if (window.EditorController && window.EditorController.hasFocus()) {
-                    return;
+                    return; // Deixa o CodeMirror tratar o evento se o foco já estiver dentro dele
                 }
                 e.preventDefault(); e.stopPropagation();
                 if (window.EditorController) window.EditorController.focusSearch();
                 return;
             }
+
             e.preventDefault(); e.stopPropagation();
             if (isSidebarCollapsed()) setSidebarCollapsed(false);
-            if (e.shiftKey) {
-                if (window.openTreeContentFilter) window.openTreeContentFilter();
-            } else if (window.openTreeFilter) {
-                window.openTreeFilter();
-            }
+            if (window.openTreeFilter) window.openTreeFilter();
         }, true);
 
         function removeManualInputContainer() {
