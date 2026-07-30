@@ -12,7 +12,9 @@ const SUPPORTED_EXTS = new Set([
 
 // Pastas ignoradas
 const IGNORED_DIRS = new Set([
-  'node_modules', '.git', 'dist', 'build', 'target', '.idea', '.vscode', 'vendor', 'bin', 'obj'
+  'node_modules', '.git', 'dist', 'build', 'target', '.idea', '.vscode', '.claude', '.gemini',
+  'vendor', 'bin', 'obj', '.next', '.nuxt', '.cache', '__pycache__', 'venv', '.venv', 'env',
+  'coverage', '.output', 'out', 'temp', 'tmp', 'logs', '.bundle'
 ]);
 
 function normalizePath(p) {
@@ -33,6 +35,10 @@ class SymbolIndexer {
     this.implementationsMap = new Map();
     // symbolName -> Set of { filePath, line, col, kind, className }
     this.symbolMap = new Map();
+
+    this.indexingSessionId = 0;
+    this.isIndexing = false;
+    this.indexingProgress = { total: 0, processed: 0 };
   }
 
   reset() {
@@ -40,6 +46,8 @@ class SymbolIndexer {
     this.fileMap.clear();
     this.implementationsMap.clear();
     this.symbolMap.clear();
+    this.isIndexing = false;
+    this.indexingProgress = { total: 0, processed: 0 };
   }
 
   // Tenta resolver uma referencia de arquivo (ex: require('./foo'), import 'bar.js')
@@ -86,35 +94,103 @@ class SymbolIndexer {
     return null;
   }
 
+  /**
+   * Indexa todo o workspace em segundo plano sem bloquear o event loop ou a UI do Windows.
+   */
   async indexWorkspace(projectPath) {
     if (!projectPath || !fs.existsSync(projectPath)) return;
+
+    const currentSession = ++this.indexingSessionId;
     this.reset();
     this.projectPath = normalizePath(projectPath);
+    this.isIndexing = true;
+    this.notifyStatus('indexing', { processed: 0, total: 0 });
 
-    const files = this.scanDir(this.projectPath);
-    for (const f of files) {
-      this.indexSingleFile(f);
+    try {
+      // 1. Varredura assíncrona de arquivos em segundo plano
+      const files = await this.scanDirAsync(this.projectPath, currentSession);
+      if (this.indexingSessionId !== currentSession) return; // cancelado por novo projeto
+
+      this.indexingProgress = { total: files.length, processed: 0 };
+      this.notifyStatus('indexing', this.indexingProgress);
+
+      // 2. Processa a indexação dos arquivos em micro-lotes (30 arquivos por vez)
+      const BATCH_SIZE = 30;
+      for (let i = 0; i < files.length; i += BATCH_SIZE) {
+        if (this.indexingSessionId !== currentSession) return; // cancelado
+
+        const chunk = files.slice(i, i + BATCH_SIZE);
+        for (const f of chunk) {
+          this.indexSingleFile(f);
+        }
+
+        this.indexingProgress.processed = Math.min(i + BATCH_SIZE, files.length);
+
+        // Libera o Event Loop para processar eventos de UI e IPC do Windows
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+
+      if (this.indexingSessionId === currentSession) {
+        this.isIndexing = false;
+        this.notifyStatus('completed', { total: files.length, processed: files.length });
+        console.log(`[symbolIndexer] Indexação em segundo plano concluída (${files.length} arquivos).`);
+      }
+    } catch (e) {
+      if (this.indexingSessionId === currentSession) {
+        this.isIndexing = false;
+        this.notifyStatus('error', { error: e.message });
+        console.warn('[symbolIndexer] Erro na indexação assíncrona:', e.message);
+      }
     }
   }
 
-  scanDir(dir) {
+  /**
+   * Varredura assíncrona não-bloqueante usando fila iterativa
+   */
+  async scanDirAsync(startDir, sessionId) {
     const results = [];
-    try {
-      const entries = fs.readdirSync(dir, { withFileTypes: true });
-      for (const entry of entries) {
-        if (IGNORED_DIRS.has(entry.name)) continue;
-        const fullPath = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          results.push(...this.scanDir(fullPath));
-        } else if (entry.isFile()) {
-          const ext = path.extname(entry.name).toLowerCase();
-          if (SUPPORTED_EXTS.has(ext)) {
-            results.push(normalizePath(fullPath));
+    const queue = [startDir];
+    let dirsVisited = 0;
+
+    while (queue.length > 0) {
+      if (this.indexingSessionId !== sessionId) return results;
+
+      const currentDir = queue.pop();
+      try {
+        const entries = await fs.promises.readdir(currentDir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (IGNORED_DIRS.has(entry.name)) continue;
+          const fullPath = path.join(currentDir, entry.name);
+          if (entry.isDirectory()) {
+            queue.push(fullPath);
+          } else if (entry.isFile()) {
+            const ext = path.extname(entry.name).toLowerCase();
+            if (SUPPORTED_EXTS.has(ext)) {
+              results.push(normalizePath(fullPath));
+            }
           }
         }
+      } catch (_) {}
+
+      dirsVisited++;
+      if (dirsVisited % 40 === 0) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+    }
+    return results;
+  }
+
+  notifyStatus(status, details = {}) {
+    try {
+      const { state } = require('../main/globals.js');
+      if (state && state.mainWindow && !state.mainWindow.isDestroyed()) {
+        state.mainWindow.webContents.send('symbol-indexer-status', {
+          status,
+          projectPath: this.projectPath,
+          ...details
+        });
       }
     } catch (_) {}
-    return results;
   }
 
   indexSingleFile(filePath, contentOverride = null) {
@@ -303,6 +379,130 @@ class SymbolIndexer {
     }
 
     return results;
+  }
+
+  scanDir(startDir) {
+    const results = [];
+    try {
+      const entries = fs.readdirSync(startDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (IGNORED_DIRS.has(entry.name)) continue;
+        const fullPath = path.join(startDir, entry.name);
+        if (entry.isDirectory()) {
+          results.push(...this.scanDir(fullPath));
+        } else if (entry.isFile()) {
+          const ext = path.extname(entry.name).toLowerCase();
+          if (SUPPORTED_EXTS.has(ext)) {
+            results.push(normalizePath(fullPath));
+          }
+        }
+      }
+    } catch (_) {}
+    return results;
+  }
+
+  // Encontra todos os pontos onde um método/função é chamado/usado no projeto (usages / callers)
+  findUsages(currentFilePath, symbolName) {
+    if (!symbolName || typeof symbolName !== 'string') return [];
+    const cleanSymbol = symbolName.trim();
+    if (!cleanSymbol || !/^[A-Za-z_$][\w$]*$/.test(cleanSymbol)) return [];
+
+    // Ignora palavras reservadas da linguagem que não são métodos customizados
+    const KEYWORDS = new Set([
+      'if', 'for', 'while', 'switch', 'catch', 'function', 'class', 'return',
+      'import', 'export', 'require', 'const', 'let', 'var', 'new', 'typeof',
+      'instanceof', 'void', 'delete', 'true', 'false', 'null', 'undefined', 'this',
+      'super', 'async', 'await', 'yield', 'try', 'finally', 'else', 'case', 'break'
+    ]);
+    if (KEYWORDS.has(cleanSymbol)) return [];
+
+    const normCurrent = normalizePath(currentFilePath);
+    if (normCurrent && !this.fileMap.has(normCurrent) && fs.existsSync(normCurrent)) {
+      this.indexSingleFile(normCurrent);
+    }
+
+    // 1. Obter lista de todos os arquivos a verificar
+    const filesToScan = new Set();
+    if (this.fileMap.size > 0) {
+      for (const f of this.fileMap.keys()) {
+        filesToScan.add(f);
+      }
+    }
+    if (normCurrent) filesToScan.add(normCurrent);
+
+    if (this.projectPath && filesToScan.size < 5 && fs.existsSync(this.projectPath)) {
+      const projFiles = this.scanDir(this.projectPath);
+      for (const f of projFiles) filesToScan.add(f);
+    }
+
+    // Identificar as linhas de definição/declaração do método no projeto para desconsiderá-las como uso
+    const defLinesByFile = new Map();
+    for (const f of filesToScan) {
+      const defs = this.searchDefinitionInFile(f, cleanSymbol);
+      if (defs && defs.length > 0) {
+        defLinesByFile.set(f, new Set(defs.map(d => d.line)));
+      }
+    }
+
+    const escaped = cleanSymbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const wordRegex = new RegExp(`\\b${escaped}\\b`);
+    const funcHeaderRegex = /(?:async\s+)?function\*?\s+([A-Za-z0-9_$]+)|(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=|([A-Za-z0-9_$]+)\s*\([^)]*\)\s*\{/;
+
+    const usages = [];
+
+    for (const filePath of filesToScan) {
+      let content = '';
+      try {
+        content = fs.readFileSync(filePath, 'utf8');
+      } catch (_) {
+        continue;
+      }
+
+      const lines = content.split(/\r?\n/);
+      const defLines = defLinesByFile.get(filePath) || new Set();
+
+      let currentEnclosingFunc = null;
+
+      for (let i = 0; i < lines.length; i++) {
+        const lineText = lines[i];
+        const lineNum = i + 1;
+
+        // Atualizar o método contêiner para contextualizar chamadas
+        const funcMatch = lineText.match(funcHeaderRegex);
+        if (funcMatch) {
+          const fnName = funcMatch[1] || funcMatch[2] || funcMatch[3];
+          if (fnName && !KEYWORDS.has(fnName) && fnName !== cleanSymbol) {
+            currentEnclosingFunc = fnName;
+          }
+        }
+
+        // Se a linha não contém o símbolo, continua
+        if (!wordRegex.test(lineText)) continue;
+
+        // Se é a própria linha de definição do método, ignora
+        if (defLines.has(lineNum)) continue;
+
+        // Ignorar comentários simples de linha inteira
+        const trimmed = lineText.trim();
+        if (trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*')) continue;
+
+        const col = lineText.indexOf(cleanSymbol) + 1;
+        const relPath = this.projectPath ? path.relative(this.projectPath, filePath).replace(/\\/g, '/') : filePath;
+        const fileName = path.basename(filePath);
+
+        usages.push({
+          filePath,
+          relativePath: relPath,
+          fileName,
+          line: lineNum,
+          col: col > 0 ? col : 1,
+          lineText: trimmed,
+          callerName: currentEnclosingFunc || null
+        });
+      }
+    }
+
+    return usages;
   }
 
   // Encontra as definições/ocorrências de um símbolo clicado

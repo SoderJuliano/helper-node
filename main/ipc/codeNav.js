@@ -32,6 +32,16 @@ module.exports = function registerCodeNavIPC() {
     }
   });
 
+  ipcMain.handle('code-nav-find-usages', async (event, { filePath, symbol }) => {
+    try {
+      ensureIndexed(filePath);
+      return symbolIndexer.findUsages(filePath, symbol);
+    } catch (e) {
+      console.error('[codeNav] Erro ao buscar usos:', e);
+      return [];
+    }
+  });
+
   ipcMain.handle('code-nav-get-implementations', async (event, { filePath, lineNum, symbol }) => {
     try {
       ensureIndexed(filePath);

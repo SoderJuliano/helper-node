@@ -98,8 +98,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   cancelIaRequest: () => ipcRenderer.send("cancel-ia-request"),
   isHyprland: () => ipcRenderer.invoke("is-hyprland"),
   getAvailableShortcuts: () => ipcRenderer.invoke("get-available-shortcuts"),
-  // Navegação de Código (Go to Definition / Implementações)
+  // Navegação de Código (Go to Definition / Implementações / Usages)
   codeNavFindDefinition: (payload) => ipcRenderer.invoke("code-nav-find-definition", payload),
+  codeNavFindUsages: (payload) => ipcRenderer.invoke("code-nav-find-usages", payload),
   codeNavGetImplementations: (payload) => ipcRenderer.invoke("code-nav-get-implementations", payload),
   codeNavGetGutterInfo: (payload) => ipcRenderer.invoke("code-nav-get-gutter-info", payload),
   codeNavReindex: (payload) => ipcRenderer.invoke("code-nav-reindex", payload),
@@ -180,6 +181,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("workspace-changed", (event, data) => cb(data)),
   onWorkspaceFileWritten: (cb) =>
     ipcRenderer.on("workspace-file-written", (event, data) => cb(data)),
+  onSymbolIndexerStatus: (cb) =>
+    ipcRenderer.on("symbol-indexer-status", (event, data) => cb(data)),
   // Configurações (janela separada) pede pra abrir um arquivo (ex.: base de
   // conhecimento) no visualizador desta janela.
   onOpenFileInViewer: (cb) =>

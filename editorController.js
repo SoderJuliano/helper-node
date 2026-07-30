@@ -502,7 +502,7 @@
   // Abre um arquivo no editor. Se já estava aberto nesta sessão (mesmo que o
   // painel tenha sido fechado), reaproveita o buffer em memória — inclusive
   // alterações não salvas, sem perder nada ao trocar de arquivo e voltar.
-  async function openFile(rawFilePath, lineNum) {
+  async function openFile(rawFilePath, lineNum, colNum) {
     const viewer = document.getElementById('file-viewer');
     const pathEl = document.getElementById('fv-path');
     const langEl = document.getElementById('fv-lang');
@@ -566,8 +566,9 @@
       cmInst.refresh();
       if (typeof lineNum === 'number' && lineNum > 0) {
         const line = lineNum - 1;
-        cmInst.setCursor({ line, ch: 0 });
-        cmInst.scrollIntoView({ line, ch: 0 }, 150);
+        const ch = (typeof colNum === 'number' && colNum > 0) ? colNum - 1 : 0;
+        cmInst.setCursor({ line, ch });
+        cmInst.scrollIntoView({ line, ch }, 150);
         cmInst.focus();
         try {
           const lineHandle = cmInst.addLineClass(line, 'background', 'code-nav-highlight-line');

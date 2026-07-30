@@ -328,5 +328,28 @@ function fileIconHtml(name) {
     if (ctxProjectBtn) {
         ctxProjectBtn.addEventListener('click', (e) => { e.stopPropagation(); showProjectMenu(ctxProjectBtn); });
     }
+    if (window.electronAPI && window.electronAPI.onSymbolIndexerStatus) {
+        window.electronAPI.onSymbolIndexerStatus((data) => {
+            if (!ctxProjectBtn) return;
+            let statusBadge = document.getElementById('ctx-indexer-status');
+            if (!statusBadge) {
+                statusBadge = document.createElement('span');
+                statusBadge.id = 'ctx-indexer-status';
+                statusBadge.style.cssText = 'font-size:10px; opacity:0.8; margin-left:6px; font-family:var(--font-mono); color:#81d4fa; display:none; align-items:center; gap:3px;';
+                ctxProjectBtn.appendChild(statusBadge);
+            }
+            if (data.status === 'indexing') {
+                statusBadge.style.display = 'inline-flex';
+                const pct = data.total > 0 ? Math.round((data.processed / data.total) * 100) : 0;
+                statusBadge.textContent = `⚡ Indexando... ${pct}%`;
+            } else if (data.status === 'completed') {
+                statusBadge.style.display = 'inline-flex';
+                statusBadge.textContent = `✓ Indexado`;
+                setTimeout(() => { if (statusBadge) statusBadge.style.display = 'none'; }, 3500);
+            } else {
+                statusBadge.style.display = 'none';
+            }
+        });
+    }
     refreshProjectContext();
 })();

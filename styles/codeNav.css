@@ -121,3 +121,84 @@
   transition: background-color 0.5s ease-out;
 }
 
+/* Badge flutuante sutil de Usages (Hover inicial) */
+.code-nav-usages-badge {
+  position: fixed;
+  z-index: 9999;
+  background: var(--bg-elevated, #1b1e24);
+  border: 1px solid rgba(80, 250, 123, 0.4);
+  border-radius: 12px;
+  padding: 3px 9px;
+  font-family: var(--font-ui, system-ui, sans-serif);
+  font-size: 11px;
+  font-weight: 600;
+  color: #50fa7b;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  backdrop-filter: blur(8px);
+  animation: codeNavBadgeFadeIn 0.18s ease-out;
+  transition: transform 0.12s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.code-nav-usages-badge:hover {
+  background: rgba(80, 250, 123, 0.18);
+  border-color: #50fa7b;
+  transform: translateY(-1px) scale(1.03);
+  color: #ffffff;
+}
+
+.code-nav-usages-badge .badge-icon {
+  font-size: 10px;
+  opacity: 0.9;
+}
+
+.code-nav-usages-badge .badge-hint {
+  font-size: 10px;
+  font-weight: normal;
+  color: var(--text-3, #888);
+  margin-left: 3px;
+}
+
+@keyframes codeNavBadgeFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Trecho de código e chamador no Popup de Usages */
+.code-nav-popup-snippet {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--text-2, #bbb);
+  background: rgba(0, 0, 0, 0.3);
+  padding: 3px 7px;
+  border-radius: 3px;
+  margin-top: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-left: 2px solid #50fa7b;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.code-nav-popup-caller {
+  font-size: 10px;
+  color: #bd93f9;
+  background: rgba(189, 147, 249, 0.15);
+  padding: 1px 6px;
+  border-radius: 3px;
+  margin-left: 6px;
+  flex-shrink: 0;
+}
+
+

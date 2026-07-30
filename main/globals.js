@@ -86,8 +86,16 @@ const SCREENSHOT_DIRS = [
   path.join(os.homedir(), "Área de Trabalho"),
 ];
 // Sets (nao arrays): o codigo chama .has() nesses dois.
-const PROJECT_SEARCH_SKIP_DIRS = new Set(['node_modules', '.git', 'build', 'dist', '.idea', '.vscode', '.claude']);
-const TREE_HEAVY_DIRS = new Set(['node_modules', '.git', 'build', 'dist', '.idea', '.vscode', '.claude']);
+const PROJECT_SEARCH_SKIP_DIRS = new Set([
+  'node_modules', '.git', 'dist', 'build', 'target', '.idea', '.vscode', '.claude', '.gemini',
+  'vendor', 'bin', 'obj', '.next', '.nuxt', '.cache', '__pycache__', 'venv', '.venv', 'env',
+  'coverage', '.output', 'out', 'temp', 'tmp', 'logs', '.bundle'
+]);
+const TREE_HEAVY_DIRS = new Set([
+  'node_modules', '.git', 'dist', 'build', 'target', '.idea', '.vscode', '.claude', '.gemini',
+  'vendor', 'bin', 'obj', '.next', '.nuxt', '.cache', '__pycache__', 'venv', '.venv', 'env',
+  'coverage', '.output', 'out', 'temp', 'tmp', 'logs', '.bundle'
+]);
 const OS_LIVE_CONTINUATION_WINDOW_MS = 1200;
 const OS_LIVE_SAMPLE_RATE = 16000;
 const OS_LIVE_SILENCE_RMS = 0.015;
