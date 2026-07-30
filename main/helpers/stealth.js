@@ -65,13 +65,25 @@ helpers.updateAllWindowsStealthProtection = function() {
     const isStealth = configService.getStealthModeStatus();
     const { BrowserWindow } = require('electron');
     const windows = BrowserWindow.getAllWindows();
-    console.log(`[stealth] Atualizando proteção stealth para todas as janelas: ${isStealth}`);
+    console.log(`[stealth] Atualizando proteção stealth e taskbar para todas as janelas: ${isStealth}`);
+    
+    const mainAppWindows = [state.mainWindow, state.configWindow, state.preferencesWindow];
+
     for (const win of windows) {
       if (!win || win.isDestroyed()) continue;
       try {
         win.setContentProtection(isStealth);
       } catch (e) {
         console.log(`[stealth] Erro ao definir setContentProtection em janela:`, e.message);
+      }
+
+      const isMainAppWin = mainAppWindows.some(w => w && !w.isDestroyed() && w.id === win.id);
+      if (isMainAppWin) {
+        try {
+          win.setSkipTaskbar(isStealth);
+        } catch (e) {
+          console.log(`[stealth] Erro ao definir setSkipTaskbar em janela:`, e.message);
+        }
       }
     }
   } catch (err) {

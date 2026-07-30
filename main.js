@@ -136,6 +136,7 @@ app.whenReady().then(async () => {
   } catch (e) { console.warn('Confirmer setup falhou:', e.message); }
   OpenAIService.initialize();
   await historyService.initialize();
+  helpers.setupTray();
   await helpers.createWindow();
   ipcService.start({
     toggleRecording: helpers.toggleRecording,
@@ -321,6 +322,10 @@ app.on("will-quit", () => {
   globalShortcut.unregisterAll();
   helpers.stopClipboardMonitoring();
   helpers.stopAllRealtime();
+  if (state.tray && !state.tray.isDestroyed()) {
+    try { state.tray.destroy(); } catch (_) {}
+    state.tray = null;
+  }
   // CLI providers: encerra processos de forma limpa.
   GeminiCliProvider.shutdown().catch(e => console.warn('[gemini-cli] shutdown error:', e.message));
   ClaudeCliProvider.shutdown().catch(e => console.warn('[claude-cli] shutdown error:', e.message));

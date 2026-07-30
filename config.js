@@ -643,6 +643,7 @@ osIntegrationToggle.addEventListener("change", () => {
 if (stealthModeToggle) {
   stealthModeToggle.addEventListener("change", () => {
     updateStealthModeStatus(stealthModeToggle.checked);
+    ipcRenderer.send("save-stealth-mode-status", stealthModeToggle.checked);
   });
 }
 

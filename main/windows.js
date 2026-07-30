@@ -12,7 +12,7 @@ const {
   OS_LIVE_CONTINUATION_WINDOW_MS, OS_LIVE_SAMPLE_RATE, OS_LIVE_SILENCE_RMS,
   OS_LIVE_SILENCE_MS, OS_LIVE_MAX_MS, OS_LIVE_TMP_DIR,
   state, helpers,
-  app, BrowserWindow, screen
+  app, BrowserWindow, screen, Tray, Menu
 } = require('./globals.js');
 
 helpers.createConfigWindow = function() {
@@ -20,6 +20,8 @@ helpers.createConfigWindow = function() {
     state.configWindow.focus();
     return;
   }
+
+  const isStealth = configService.getStealthModeStatus();
 
   state.configWindow = new BrowserWindow({
     width: 640,
@@ -35,7 +37,7 @@ helpers.createConfigWindow = function() {
       nodeIntegration: true,
       contextIsolation: false,
     },
-    skipTaskbar: HIDE_FROM_TASKBAR,
+    skipTaskbar: isStealth,
     icon: APP_ICON,
   });
 
@@ -53,6 +55,8 @@ helpers.createPreferencesWindow = function() {
     return;
   }
 
+  const isStealth = configService.getStealthModeStatus();
+
   state.preferencesWindow = new BrowserWindow({
     width: 640,
     height: 720,
@@ -67,7 +71,7 @@ helpers.createPreferencesWindow = function() {
       nodeIntegration: true,
       contextIsolation: false,
     },
-    skipTaskbar: HIDE_FROM_TASKBAR,
+    skipTaskbar: isStealth,
     icon: APP_ICON,
   });
 
@@ -273,8 +277,69 @@ helpers.createOsNotificationWindow = function(type, content) {
   });
 }
 
+helpers.setupTray = function() {
+  if (state.tray && !state.tray.isDestroyed()) return;
+  try {
+    const icon = APP_ICON;
+    state.tray = new Tray(icon);
+    state.tray.setToolTip("Helper Node");
+
+    const contextMenu = Menu.buildFromTemplate([
+      {
+        label: "Abrir Helper Node",
+        click: () => {
+          if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+            if (state.mainWindow.isMinimized()) state.mainWindow.restore();
+            state.mainWindow.show();
+            state.mainWindow.focus();
+          } else {
+            helpers.createWindow();
+          }
+        }
+      },
+      {
+        label: "Configurações",
+        click: () => {
+          helpers.createConfigWindow();
+        }
+      },
+      { type: "separator" },
+      {
+        label: "Sair",
+        click: () => {
+          app.quit();
+        }
+      }
+    ]);
+
+    state.tray.setContextMenu(contextMenu);
+
+    state.tray.on("click", () => {
+      if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+        if (state.mainWindow.isVisible()) {
+          if (state.mainWindow.isFocused()) {
+            state.mainWindow.hide();
+          } else {
+            state.mainWindow.focus();
+          }
+        } else {
+          if (state.mainWindow.isMinimized()) state.mainWindow.restore();
+          state.mainWindow.show();
+          state.mainWindow.focus();
+        }
+      } else {
+        helpers.createWindow();
+      }
+    });
+  } catch (e) {
+    console.error("[tray] Erro ao criar System Tray:", e);
+  }
+};
+
 helpers.createWindow = async function() {
   try {
+    const isStealth = configService.getStealthModeStatus();
+
     state.mainWindow = new BrowserWindow({
       width: 800,
       height: 600,
@@ -292,7 +357,7 @@ helpers.createWindow = async function() {
       focusable: true,
       alwaysOnTop: false,
       show: false,
-      skipTaskbar: true,
+      skipTaskbar: isStealth,
       icon: APP_ICON,
       nodeIntegration: false,
     });
@@ -304,15 +369,14 @@ helpers.createWindow = async function() {
       app.dock.hide();
     }
 
-    // Tentativa adicional para KDE para ocultar app na dock
     if (process.platform === "linux") {
-      state.mainWindow.setSkipTaskbar(true);
+      state.mainWindow.setSkipTaskbar(isStealth);
       state.mainWindow.setMenuBarVisibility(false);
       state.mainWindow.setTitle(""); // Janela sem título pode ajudar
     }
 
     if (process.env.XDG_SESSION_TYPE === "wayland") {
-      state.mainWindow.setSkipTaskbar(true);
+      state.mainWindow.setSkipTaskbar(isStealth);
       console.log("Running on Wayland");
     } else {
       console.log("Running on X11");

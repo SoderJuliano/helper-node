@@ -8,6 +8,8 @@ const {
   desktopCapturer,
   nativeImage,
   clipboard,
+  Tray,
+  Menu,
 } = electron;
 const path = require("path");
 const os = require("os");
@@ -209,6 +211,8 @@ module.exports = {
   desktopCapturer,
   nativeImage,
   clipboard,
+  Tray,
+  Menu,
   execPromise,
   appConfig,
   _confirmActionPending,
