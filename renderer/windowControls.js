@@ -68,6 +68,28 @@
             if (expandBtn) expandBtn.addEventListener('click', (e) => { e.stopPropagation(); setSidebarCollapsed(false); });
         })();
 
+        // === AI Chat Collapsing (espelhado da Sidebar) ===
+        window.isChatCollapsed = function() {
+            const mainEl = document.getElementById('main');
+            return mainEl ? mainEl.classList.contains('chat-hidden') : false;
+        };
+
+        window.setChatCollapsed = function(collapsed) {
+            if (window.EditorController && typeof window.EditorController.toggleChatVisibility === 'function') {
+                window.EditorController.toggleChatVisibility(!collapsed);
+            } else {
+                const mainEl = document.getElementById('main');
+                if (mainEl) mainEl.classList.toggle('chat-hidden', collapsed);
+            }
+        };
+
+        (function initChatCollapse() {
+            const collapseBtn = document.getElementById('chat-collapse-btn');
+            if (collapseBtn) collapseBtn.addEventListener('click', (e) => { e.stopPropagation(); window.setChatCollapsed(true); });
+            const expandBtn = document.getElementById('chat-expand-btn');
+            if (expandBtn) expandBtn.addEventListener('click', (e) => { e.stopPropagation(); window.setChatCollapsed(false); });
+        })();
+
         // === Sidebar redimensionável (arraste a borda direita) — largura
         // persiste entre sessões via localStorage, independente do estado de
         // recolhido/expandido (que continua controlado por setSidebarCollapsed). ===

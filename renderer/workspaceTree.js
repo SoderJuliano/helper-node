@@ -122,6 +122,9 @@ var creatingFolderParent = null;
 
             let gitClass = '';
             let gitStatus = null;
+            let featuredClass = '';
+            let dirIconHtml = TREE_DIR_IC;
+
             if (!e.isDir) {
                 gitStatus = currentGitStatus.modifiedFiles ? currentGitStatus.modifiedFiles[relPath] : null;
                 if (gitStatus) {
@@ -131,15 +134,24 @@ var creatingFolderParent = null;
                 if (currentGitStatus.modifiedDirs && currentGitStatus.modifiedDirs[relPath]) {
                     gitClass = ' git-dir-modified';
                 }
+
+                const dirName = e.name.toLowerCase();
+                if (dirName === 'src' || dirName === 'main') {
+                    featuredClass = ' ws-tree-node-featured';
+                    dirIconHtml = '<svg class="ws-tree-ic ws-tree-ic-featured" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+                } else if (['app', 'services', 'components', 'renderer', 'pages', 'lib', 'core', 'api', 'backend', 'frontend', 'controllers', 'models', 'views', 'routes'].includes(dirName)) {
+                    featuredClass = ' ws-tree-node-primary';
+                    dirIconHtml = '<svg class="ws-tree-ic ws-tree-ic-primary" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+                }
             }
 
             const node = document.createElement('div');
             node.className = 'ws-tree-node ' + (e.isDir ? 'dir' : 'file') +
                 (e.collapsed ? ' collapsed' : '') +
                 (shouldDim ? (isMatch ? ' match' : ' dim') : '') +
-                gitClass;
+                gitClass + featuredClass;
             node.style.paddingLeft = (4 + e.depth * 12) + 'px';
-            node.innerHTML = e.isDir ? (TREE_CHEVRON_IC + TREE_DIR_IC) : (TREE_CHEVRON_SPACER + window.fileIconHtml(e.name));
+            node.innerHTML = e.isDir ? (TREE_CHEVRON_IC + dirIconHtml) : (TREE_CHEVRON_SPACER + window.fileIconHtml(e.name));
 
             // Wire events (drag, context menu, double click to view)
             if (typeof window.wireTreeNodeEvents === 'function') {

@@ -171,14 +171,14 @@
                     <span class="fv-lang" id="fv-lang"></span>
                     <span class="fv-conflict" id="fv-conflict"></span>
                     <span class="fv-save-status" id="fv-save-status"></span>
-                    <button class="fv-toggle-chat" id="fv-toggle-chat" title="Esconder Chat com IA (Tela cheia de código)">
-                        <span class="fv-toggle-label">Tela Cheia</span> ›
-                    </button>
                 </div>
                 <div class="fv-body" id="fv-body"></div>
             </div>
 
             <div id="chat-container">
+                <button class="chat-collapse-btn" id="chat-collapse-btn" title="Esconder chat de IA">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
                 <div class="chat-area">
                     <div class="chat-topbar">
                         <button id="copy-all-btn" class="copy-all-fixed-btn">Copiar tudo</button>
@@ -295,6 +295,13 @@
     <div id="sidebar-reveal-zone" title="Mostrar sidebar (Ctrl+B)">
         <button id="sidebar-expand-btn" title="Mostrar sidebar (Ctrl+B)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+    </div>
+    <!-- Aparece só quando o chat de IA está recolhido (#main.chat-hidden) —
+         passar o mouse na borda direita revela o botão de reabrir chat. -->
+    <div id="chat-reveal-zone" title="Mostrar chat de IA">
+        <button id="chat-expand-btn" title="Mostrar chat de IA">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
     </div>
     <button id="panels-toggle-btn" title="Mostrar/esconder painéis"></button>

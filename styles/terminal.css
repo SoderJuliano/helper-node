@@ -26,30 +26,6 @@
         .fv-dirty { display: none; color: #ffb74d; font-size: 10px; flex-shrink: 0; }
         .fv-close { flex-shrink: 0; width: 24px; height: 24px; background: transparent; border: none; color: var(--text-3); font-size: 17px; cursor: pointer; border-radius: 5px; display: flex; align-items: center; justify-content: center; }
         .fv-close:hover { background: rgba(255,255,255,0.08); color: var(--text); }
-        .fv-toggle-chat {
-            flex-shrink: 0;
-            height: 24px;
-            padding: 0 8px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid var(--border, #2d2d38);
-            color: var(--text-2, #aaa);
-            font-size: 12px;
-            font-weight: bold;
-            cursor: pointer;
-            border-radius: 5px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 4px;
-            transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-            margin-left: auto;
-            user-select: none;
-        }
-        .fv-toggle-chat:hover {
-            background: rgba(80, 250, 123, 0.15);
-            color: #50fa7b;
-            border-color: rgba(80, 250, 123, 0.4);
-        }
         .fv-tabs-container {
             display: flex;
             align-items: flex-end;
@@ -168,6 +144,44 @@
         .ws-tree-node.drag-over {
             background: rgba(255, 255, 255, 0.08) !important;
             outline: 1px dashed var(--accent-2) !important;
+        }
+        /* Destaque especial para pastas principais como src e main no sidebar */
+        .ws-tree-node.ws-tree-node-featured {
+            background: rgba(80, 250, 123, 0.09) !important;
+            border-left: 2px solid #50fa7b !important;
+            border-radius: 0 4px 4px 0;
+            margin: 1px 0;
+        }
+        .ws-tree-node.ws-tree-node-featured .ws-tree-label {
+            color: #50fa7b !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.2px;
+        }
+        .ws-tree-node.ws-tree-node-featured .ws-tree-ic-featured {
+            color: #50fa7b !important;
+            fill: rgba(80, 250, 123, 0.22) !important;
+            filter: drop-shadow(0 0 3px rgba(80, 250, 123, 0.4));
+        }
+        .ws-tree-node.ws-tree-node-featured:hover {
+            background: rgba(80, 250, 123, 0.2) !important;
+        }
+        /* Destaque para outras pastas importantes de código (app, services, renderer, components, etc) */
+        .ws-tree-node.ws-tree-node-primary {
+            background: rgba(129, 212, 250, 0.05);
+            border-left: 2px solid rgba(129, 212, 250, 0.6);
+            border-radius: 0 4px 4px 0;
+            margin: 1px 0;
+        }
+        .ws-tree-node.ws-tree-node-primary .ws-tree-label {
+            color: #81d4fa !important;
+            font-weight: 600 !important;
+        }
+        .ws-tree-node.ws-tree-node-primary .ws-tree-ic-primary {
+            color: #81d4fa !important;
+            fill: rgba(129, 212, 250, 0.18) !important;
+        }
+        .ws-tree-node.ws-tree-node-primary:hover {
+            background: rgba(129, 212, 250, 0.12);
         }
         /* Auto-complete (CodeMirror hints) Dracula Theme styling */
         .CodeMirror-hints {

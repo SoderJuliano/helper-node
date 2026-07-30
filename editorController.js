@@ -619,20 +619,6 @@
     if (el) el.textContent = msg || '';
   }
 
-  function updateToggleChatButton() {
-    const btn = document.getElementById('fv-toggle-chat');
-    const mainEl = document.getElementById('main');
-    if (!btn || !mainEl) return;
-    const isHidden = mainEl.classList.contains('chat-hidden');
-    if (isHidden) {
-      btn.innerHTML = '‹ <span class="fv-toggle-label">Mostrar Chat</span>';
-      btn.title = 'Mostrar Chat de IA';
-    } else {
-      btn.innerHTML = '<span class="fv-toggle-label">Tela Cheia</span> ›';
-      btn.title = 'Esconder Chat com IA (Tela cheia de código)';
-    }
-  }
-
   function toggleChatVisibility(show) {
     const mainEl = document.getElementById('main');
     if (!mainEl) return;
@@ -645,7 +631,6 @@
     } else {
       mainEl.classList.toggle('chat-hidden');
     }
-    updateToggleChatButton();
     if (cm) {
       setTimeout(() => cm.refresh(), 50);
     }
@@ -660,7 +645,6 @@
     setConflictBanner('');
     const mainEl = document.getElementById('main');
     if (mainEl) mainEl.classList.remove('chat-hidden');
-    updateToggleChatButton();
   }
 
   function isDirty(filePath) {
@@ -740,10 +724,5 @@
 
   if (window.electronAPI && window.electronAPI.onFileMutated) {
     window.electronAPI.onFileMutated(onFileMutated);
-  }
-
-  const toggleBtn = document.getElementById('fv-toggle-chat');
-  if (toggleBtn) {
-    toggleBtn.addEventListener('click', () => toggleChatVisibility());
   }
 })();
