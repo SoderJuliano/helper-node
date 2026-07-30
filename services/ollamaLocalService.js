@@ -573,8 +573,14 @@ class OllamaLocalService {
         const signal = this.activeAbortController.signal;
 
         let modelLoaded = true;
+        const psController = new AbortController();
+        const psTimeout = setTimeout(() => {
+            try { psController.abort(); } catch (_) {}
+        }, 1500);
+
         try {
-            const psRes = await axios.get(`${host}/api/ps`, { timeout: 1500, signal });
+            const psRes = await axios.get(`${host}/api/ps`, { timeout: 1500, signal: psController.signal });
+            clearTimeout(psTimeout);
             const loadedModels = psRes.data && psRes.data.models;
             if (Array.isArray(loadedModels)) {
                 const loadedNames = loadedModels.map(m => m.name || m.model).filter(Boolean);
@@ -586,6 +592,7 @@ class OllamaLocalService {
                 );
             }
         } catch (_) {
+            clearTimeout(psTimeout);
             // ignore failure
         }
 
@@ -606,6 +613,13 @@ class OllamaLocalService {
         try {
             while (iter < maxToolCalls) {
                 if (signal.aborted) throw new Error("Request cancelled");
+                if (iter > 0 && onChunk) {
+                    onChunk({
+                        type: 'thinking',
+                        text: `\n⚙️ [Ollama: Processando o resultado da(s) ferramenta(s)...]\n`,
+                        event: 'thinking'
+                    });
+                }
                 console.log(`[ollamaLocal-stream] → ${model} @ ${host} (msgs=${this.sessions[sessionId].messages.length}, iter=${iter + 1}/${maxToolCalls})`);
                 
                 const { createStreamRouter } = require('./backendStreamRouter');
@@ -643,9 +657,19 @@ class OllamaLocalService {
                             if (line) {
                                 try {
                                     const parsed = JSON.parse(line);
+                                    if (parsed.error) {
+                                        cleanup();
+                                        reject(new Error(parsed.error));
+                                        return;
+                                    }
                                     const token = parsed.message && parsed.message.content;
                                     if (token) {
                                         router.routeToken(token);
+                                    }
+                                    if (parsed.done) {
+                                        cleanup();
+                                        resolve();
+                                        return;
                                     }
                                 } catch (err) {
                                     console.error('Error parsing Ollama stream line:', err);
