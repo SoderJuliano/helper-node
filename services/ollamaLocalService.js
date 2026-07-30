@@ -572,6 +572,31 @@ class OllamaLocalService {
         this.activeAbortController = new AbortController();
         const signal = this.activeAbortController.signal;
 
+        let modelLoaded = true;
+        try {
+            const psRes = await axios.get(`${host}/api/ps`, { timeout: 1500, signal });
+            const loadedModels = psRes.data && psRes.data.models;
+            if (Array.isArray(loadedModels)) {
+                const loadedNames = loadedModels.map(m => m.name || m.model).filter(Boolean);
+                modelLoaded = loadedNames.some(name => 
+                    name === model || 
+                    name.replace(/:latest$/, '') === model.replace(/:latest$/, '') ||
+                    model.startsWith(name) ||
+                    name.startsWith(model)
+                );
+            }
+        } catch (_) {
+            // ignore failure
+        }
+
+        if (!modelLoaded && onChunk) {
+            onChunk({
+                type: 'thinking',
+                text: `⚙️ [Ollama: Carregando o modelo \`${model}\` na memória/VRAM (isso pode levar de 10 a 60 segundos)...]\n`,
+                event: 'thinking'
+            });
+        }
+
         let iter = 0;
         let lastResponseText = '';
         let toolsExecutedOk = 0;
