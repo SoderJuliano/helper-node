@@ -29,7 +29,20 @@
     }
   }
 
+  let badgeHideTimer = null;
+
+  function scheduleBadgeRemoval(delayMs = 2000) {
+    clearTimeout(badgeHideTimer);
+    badgeHideTimer = setTimeout(() => {
+      if (!isMouseOverBadge) {
+        removeActiveUsagesBadge();
+      }
+    }, delayMs);
+  }
+
   function removeActiveUsagesBadge() {
+    clearTimeout(badgeHideTimer);
+    badgeHideTimer = null;
     if (activeUsagesBadge && !isMouseOverBadge) {
       activeUsagesBadge.remove();
       activeUsagesBadge = null;
@@ -46,12 +59,13 @@
   // Exibe o badge sutil [usado em N lugares] sobre o método quando o mouse fica parado
   function showUsagesBadge(symbol, usages, pos, clientX, clientY) {
     if (activeUsagesPopup) return; // Se a janela detalhada já está aberta, não mostra badge
+    clearTimeout(badgeHideTimer);
     if (activeUsagesBadge) {
       activeUsagesBadge.remove();
       activeUsagesBadge = null;
     }
 
-    const count = usages.length;
+    const count = Array.isArray(usages) ? usages.length : 0;
     const label = count === 1 ? '[1 uso]' : count === 0 ? '[0 usos]' : `[usado em ${count} lugares]`;
 
     const badge = document.createElement('div');
@@ -75,18 +89,18 @@
 
     badge.addEventListener('mouseenter', () => {
       isMouseOverBadge = true;
+      clearTimeout(badgeHideTimer);
     });
 
     badge.addEventListener('mouseleave', () => {
       isMouseOverBadge = false;
-      setTimeout(() => {
-        removeActiveUsagesBadge();
-      }, 150);
+      scheduleBadgeRemoval(1500);
     });
 
     badge.addEventListener('click', (ev) => {
       ev.stopPropagation();
       isMouseOverBadge = false;
+      clearTimeout(badgeHideTimer);
       removeActiveUsagesBadge();
       showUsagesPopup(usages, symbol, clientX, clientY);
     });
@@ -94,26 +108,36 @@
     document.body.appendChild(badge);
     activeUsagesBadge = badge;
 
-    // Posicionar exatamente acima da palavra no CodeMirror
+    // Posicionar mais perto da palavra no CodeMirror (21px acima)
     let x = clientX;
-    let y = clientY - 28;
+    let y = clientY - 24;
 
     if (activeCm && pos) {
       try {
         const coords = activeCm.charCoords(pos, 'window');
         if (coords && coords.top > 0) {
           x = coords.left;
-          y = coords.top - 26;
+          y = coords.top - 21;
         }
       } catch (_) {}
     }
 
     const badgeWidth = badge.offsetWidth || 160;
     if (x + badgeWidth > window.innerWidth) x = window.innerWidth - badgeWidth - 10;
-    if (y < 10) y = clientY + 18;
+    if (y < 10) {
+      if (activeCm && pos) {
+        try {
+          const coords = activeCm.charCoords(pos, 'window');
+          y = (coords.bottom || clientY) + 4;
+        } catch (_) { y = clientY + 18; }
+      } else { y = clientY + 18; }
+    }
 
     badge.style.left = Math.max(10, x) + 'px';
     badge.style.top = Math.max(10, y) + 'px';
+
+    // Tempo de carência de 2.5s para permitir mover o cursor até o badge sem ele sumir
+    scheduleBadgeRemoval(2500);
   }
 
   // Renderiza a janela detalhada de Chamadores (Usages Popup)
@@ -927,7 +951,7 @@
           lastHoveredSymbol = null;
           clearTimeout(usagesTimer);
           if (!isMouseOverBadge) {
-            removeActiveUsagesBadge();
+            scheduleBadgeRemoval(1800);
           }
         }
       }
@@ -937,11 +961,9 @@
       clearHoverMarker();
       lastHoveredSymbol = null;
       clearTimeout(usagesTimer);
-      setTimeout(() => {
-        if (!isMouseOverBadge) {
-          removeActiveUsagesBadge();
-        }
-      }, 200);
+      if (!isMouseOverBadge) {
+        scheduleBadgeRemoval(1500);
+      }
     });
 
     // Ctrl + MouseDown para disparar Go to Definition
