@@ -153,9 +153,91 @@ function testNaRede() {
   });
 }
 
+// ── 4. Tool call SUJO, do jeito que o servidor real manda ────────────────────
+// Bytes capturados do pikachu em produção: o modelo emite a marca picada em
+// tokens e o JSON com barra invertida solta — que não é escape válido. Antes
+// disso, os 4 fallbacks do parser estouravam no JSON.parse, a ferramenta nunca
+// rodava, o JSON cru ia pra tela e o turno encerrava sem resposta.
+function testToolCallSujo() {
+  console.log('\n── tool call sujo (bytes reais do servidor) ──');
+  const { parseOllamaToolCalls, looksLikeToolCall, parseLooseJson } =
+    require(path.join(__dirname, '..', 'services', 'ollamaToolHelper'));
+  const { createStreamRouter } =
+    require(path.join(__dirname, '..', 'services', 'backendStreamRouter'));
+
+  const { looksLikeToolCallAttempt } =
+    require(path.join(__dirname, '..', 'services', 'ollamaToolHelper'));
+  // Menção em prosa não pode contar como chamada: era isso que descartava a
+  // resposta final boa e gastava uma iteração cobrando reemissão.
+  const prosa = 'Terminei a análise. Se precisar, pode emitir TOOL_CALL de novo.';
+  ok(!looksLikeToolCallAttempt(prosa, { requireJson: true }), 'mencao em prosa NAO e tentativa de chamada');
+  ok(looksLikeToolCallAttempt('TO OL _CALL: {"name":"listDir"}', { requireJson: true }),
+    'chamada suja COM json e tentativa de chamada');
+
+  ok(looksLikeToolCall('TO OL _CALL: {}'), 'marca picada em tokens e reconhecida');
+  ok(looksLikeToolCall('TOOL_CALL: {}'), 'marca limpa continua reconhecida');
+  ok(!looksLikeToolCall('vou listar o diretorio'), 'texto normal nao vira tool call');
+
+  ok(parseLooseJson('{"a":1}').a === 1, 'JSON valido passa intocado');
+  ok(parseLooseJson('{"path":"C:\\ Users"}') !== undefined, 'barra invertida solta e reparada');
+  ok(parseLooseJson('{"a":1,}').a === 1, 'virgula sobrando e reparada');
+  ok(parseLooseJson('nao e json') === undefined, 'lixo continua sendo lixo');
+
+  // Exatamente o que veio na rede, incluindo o path do Windows quebrado.
+  const sujo = 'TO OL _CALL: {" name":" list Dir"," args":{" path":" C:\\ Users \\soder \\ Documents \\ helper-node"}}';
+  const calls = parseOllamaToolCalls(sujo);
+  ok(calls.length === 1, 'tool call sujo foi parseado');
+  ok(calls.length === 1 && calls[0].obj.name === 'listDir', 'nome despacado para listDir');
+  ok(calls.length === 1 && calls[0].obj.args.path === 'C:\\Users\\soder\\Documents\\helper-node',
+    'path do Windows remontado sem espaco');
+
+  // E o JSON não pode vazar pra tela, nem quando vem prosa antes.
+  let naTela = '';
+  const r = createStreamRouter({ onChunk: (c) => { if (typeof c === 'string') naTela += c; }, hasTools: true });
+  r.routeToken('Primeiramente, vou investigar a estrutura do projeto. ');
+  r.routeToken('TO OL _CALL: {" name":" list Dir"," args":{" path":" /tmp/x"}}');
+  ok(!/list\s*Dir/.test(naTela), 'JSON do tool call NAO vazou pra tela');
+  ok(/investigar a estrutura/.test(naTela), 'a prosa antes do tool call foi mostrada');
+  ok(parseOllamaToolCalls(r.answer).length === 1, 'o tool call segue parseavel no buffer');
+}
+
+// ── 5. Path picado em tokens e placeholder do exemplo ────────────────────────
+function testPathPicado() {
+  console.log('\n── path picado em tokens ──');
+  const { repairPath, normalizeArgs } =
+    require(path.join(__dirname, '..', 'services', 'toolLoop'));
+  const raiz = path.join(__dirname, '..');
+
+  // Nome do arquivo picado: "packa ge.json" → o arquivo existe despacado.
+  const picado = path.join(raiz, 'packa ge.json');
+  ok(repairPath(picado) === path.join(raiz, 'package.json'),
+    'nome de arquivo picado e remontado (variante existe no disco)');
+
+  // "/C:/..." com barra sobrando na frente.
+  if (process.platform === 'win32') {
+    ok(repairPath('/' + raiz.replace(/\\/g, '/')) === raiz.replace(/\\/g, '/'),
+      'barra sobrando antes do C: e removida');
+  }
+
+  // Path com espaco LEGITIMO nao pode ser estragado: se o original existe, vale ele.
+  ok(repairPath(raiz) === raiz, 'path que existe e devolvido intocado');
+  ok(repairPath('/nao/existe/nada aqui.txt') === '/nao/existe/nada aqui.txt',
+    'path inexistente com espaco e preservado pro erro ser honesto');
+
+  ok(normalizeArgs({ path: picado }).path === path.join(raiz, 'package.json'),
+    'normalizeArgs aplica o reparo de path');
+
+  // O exemplo do prompt usa o path REAL, senao o modelo copia o placeholder.
+  const p = buildIdeAgentPrompt({ toolsSchema: fakeTools, wsPaths: ['C:/proj/alvo'] });
+  ok(!/\/caminho\/absoluto"/.test(p), 'exemplo NAO deixa placeholder copiavel');
+  ok(/"path":"C:\/proj\/alvo"/.test(p), 'exemplo usa o path real do workspace');
+}
+
 (async () => {
   testPromptCoerente();
   testCaps();
+  testToolCallSujo();
+  testPathPicado();
   await testNaRede();
   console.log(falhas ? `\n${falhas} falha(s).` : '\nTudo ok.');
   process.exitCode = falhas ? 1 : 0;

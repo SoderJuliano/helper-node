@@ -167,6 +167,67 @@ function buildToolFirstSystemPrompt(toolsSchema, wsPaths = []) {
   return lines.join('\n');
 }
 
+// O modelo NÃO emite "TOOL_CALL" limpo. Nos bytes reais do stream vem picado em
+// tokens, com espaço em qualquer junta: "TO OL _CALL: {" name":" list Dir"...}".
+// A marca precisa ser reconhecida assim, senão o tool call não é nem encontrado.
+const TOOL_CALL_MARK = 'T\\s*O\\s*O\\s*L\\s*[_\\s-]*C\\s*A\\s*L\\s*L';
+function toolCallRe(suffix = '\\s*:?\\s*') {
+  return new RegExp(TOOL_CALL_MARK + suffix, 'gi');
+}
+function looksLikeToolCall(text) {
+  if (!text) return false;
+  return new RegExp(TOOL_CALL_MARK, 'i').test(text);
+}
+
+/**
+ * A marca apareceu como TENTATIVA de chamada, não como menção em prosa.
+ *
+ * Importa porque o modelo termina resposta boa com "sinta-se à vontade para
+ * emitir TOOL_CALL" — e tratar isso como chamada quebrada gastava uma iteração
+ * e descartava a resposta final do usuário.
+ *
+ * @param {boolean} requireJson  true = só conta se vier "{" depois da marca.
+ */
+function looksLikeToolCallAttempt(text, { requireJson = true } = {}) {
+  if (!text) return false;
+  const re = toolCallRe('');
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const depois = text.slice(m.index + m[0].length, m.index + m[0].length + 160);
+    if (requireJson ? /^\s*:?\s*\{/.test(depois) : /^\s*[:{]/.test(depois)) return true;
+  }
+  return false;
+}
+
+/**
+ * JSON.parse tolerante. O modelo manda JSON QUEBRADO e era isso que derrubava
+ * TODOS os fallbacks do parser de uma vez:
+ *   {" name":" list Dir"," args":{" path":" C:\ Users \soder \ Documents"}}
+ * `\ ` e `\U` não são escapes válidos em JSON, então o JSON.parse estourava e o
+ * tool call era descartado em silêncio — a ferramenta nunca rodava, o JSON cru
+ * ia pra tela e o turno encerrava sem resposta.
+ * Os reparos só rodam DEPOIS do parse estrito falhar, então JSON válido passa
+ * intocado.
+ */
+function parseLooseJson(str) {
+  if (typeof str !== 'string' || !str) return undefined;
+  try { return JSON.parse(str); } catch (_) {}
+
+  // Barra invertida solitária (path do Windows) → escapa pra virar JSON válido.
+  // A negativa preserva os escapes legítimos (\\ \" \n \t \uXXXX).
+  const escaped = str.replace(/\\(?![\\"/bfnrt]|u[0-9a-fA-F]{4})/g, '\\\\');
+  try { return JSON.parse(escaped); } catch (_) {}
+
+  // Aspas tipográficas e vírgula sobrando antes de } ou ].
+  const tidied = escaped
+    .replace(/[\u201c\u201d]/g, '"')
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/,\s*([}\]])/g, '$1');
+  try { return JSON.parse(tidied); } catch (_) {}
+
+  return undefined;
+}
+
 function extractFirstJsonObject(s) {
   let depth = 0, start = -1;
   for (let i = 0; i < s.length; i++) {
@@ -219,8 +280,12 @@ function normalizeToolCallObj(obj) {
       let val = av;
       if (typeof val === 'string') {
         val = val.trim();
-        if (key === 'path' || key === 'cwd') {
+        if (key === 'path' || key === 'cwd' || key === 'file' || key === 'dir') {
           val = val.replace(/\s+\/\s+/g, '/').replace(/\/\s+/g, '/').replace(/\s+\//g, '/');
+          // Windows: o modelo tokeniza o path com espaço em volta da barra —
+          // "C:\ Users \soder \ Documents" — e aí nenhum arquivo é encontrado.
+          // Só tira espaço COLADO na barra: "C:\Program Files\x" continua certo.
+          val = val.replace(/\s*\\\s*/g, '\\').replace(/^([A-Za-z]):\s+/, '$1:');
         }
       }
       cleanArgs[key] = val;
@@ -236,7 +301,7 @@ function normalizeToolCallObj(obj) {
 function parseOllamaToolCalls(text) {
   if (!text) return [];
   const calls = [];
-  const re = /TOOL[_\s-]?CALL\s*:?\s*/gi;
+  const re = toolCallRe();
   let m;
   while ((m = re.exec(text)) !== null) {
     const start = m.index + m[0].length;
@@ -245,7 +310,7 @@ function parseOllamaToolCalls(text) {
     const objStr = extractFirstJsonObject(text.slice(jsonStart));
     if (!objStr) continue;
     try {
-      const parsedObj = JSON.parse(objStr);
+      const parsedObj = parseLooseJson(objStr);
       const norm = normalizeToolCallObj(parsedObj);
       if (norm && norm.name) {
         calls.push({ raw: text.slice(m.index, jsonStart + objStr.length), obj: norm });
@@ -255,7 +320,7 @@ function parseOllamaToolCalls(text) {
   }
 
   if (calls.length === 0) {
-    const shellRe = /TOOL[_\s-]?CALL\s*:?\s*([a-z][^\n`{]+)/gi;
+    const shellRe = toolCallRe('\\s*:?\\s*([a-z][^\\n`{]+)');
     let sm;
     while ((sm = shellRe.exec(text)) !== null) {
       const raw = sm[1].trim().replace(/^`+|`+$/g, '').trim();
@@ -274,7 +339,7 @@ function parseOllamaToolCalls(text) {
     let fm;
     while ((fm = fenceRe.exec(text)) !== null) {
       try {
-        const parsedObj = JSON.parse(fm[1]);
+        const parsedObj = parseLooseJson(fm[1]);
         const norm = normalizeToolCallObj(parsedObj);
         if (norm && norm.name) {
           calls.push({ raw: fm[0], obj: norm });
@@ -294,7 +359,7 @@ function parseOllamaToolCalls(text) {
         const objStr = extractFirstJsonObject(text.slice(open));
         if (!objStr) break;
         try {
-          const parsedObj = JSON.parse(objStr);
+          const parsedObj = parseLooseJson(objStr);
           const norm = normalizeToolCallObj(parsedObj);
           if (norm && norm.name && (knownNames.has(norm.name) || knownNames.has(norm.name.toLowerCase()))) {
             calls.push({ raw: objStr, obj: norm });
@@ -322,8 +387,8 @@ function stripToolCallBlocks(text) {
 function stripDanglingToolCallFragments(text) {
   if (!text) return text;
 
-  let out = text.replace(/```[\s\S]*?TOOL[_\s-]?CALL[\s\S]*?```/gi, '');
-  const re = /TOOL[_\s-]?CALL\s*:?\s*/gi;
+  let out = text.replace(new RegExp('```[\\s\\S]*?' + TOOL_CALL_MARK + '[\\s\\S]*?```', 'gi'), '');
+  const re = toolCallRe();
   let m;
   let cursor = 0;
   let cleaned = '';
@@ -354,7 +419,7 @@ function stripDanglingToolCallFragments(text) {
   }
 
   cleaned += out.slice(cursor);
-  cleaned = cleaned.replace(/^TOOL[_\s-]?CALL.*$/gm, '');
+  cleaned = cleaned.replace(new RegExp('^' + TOOL_CALL_MARK + '.*$', 'gmi'), '');
   return cleaned.replace(/\n{3,}/g, '\n\n').trim();
 }
 
@@ -379,6 +444,9 @@ module.exports = {
   buildOllamaToolsAddon,
   buildToolFirstSystemPrompt,
   extractFirstJsonObject,
+  parseLooseJson,
+  looksLikeToolCall,
+  looksLikeToolCallAttempt,
   parseOllamaToolCalls,
   stripToolCallBlocks,
   stripDanglingToolCallFragments,

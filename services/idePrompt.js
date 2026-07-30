@@ -92,7 +92,7 @@ function environmentFacts() {
   ];
 }
 
-function workLoop() {
+function workLoop(wsPaths = []) {
   return [
     '═══ COMO TRABALHAR ═══',
     '',
@@ -113,6 +113,21 @@ function workLoop() {
     '  sucessivas. Só encerre quando TODOS estiverem prontos.',
     '- Terminou? Responda em texto normal, SEM nenhum TOOL_CALL, dizendo o que',
     '  você leu, o que mudou e onde. Cite os arquivos pelo nome.',
+    '',
+    '═══ FORMATO DO TOOL_CALL (JSON ESTRITO) ═══',
+    '',
+    '- Uma linha só, começando por TOOL_CALL:, e o JSON logo depois:',
+    // O exemplo usa o path REAL do workspace de propósito. Com um placeholder
+    // ("/caminho/absoluto") o modelo copiava o texto do exemplo literalmente e
+    // chamava a ferramenta num diretório que não existe.
+    '  TOOL_CALL: {"name":"listDir","args":{"path":' +
+      JSON.stringify(wsPaths[0] || '/caminho/absoluto/do/projeto') + '}}',
+    '- Escreva TOOL_CALL junto, sem espaço no meio. Sem espaço dentro do nome da',
+    '  ferramenta ("listDir", nunca "list Dir") nem dentro das chaves do JSON',
+    '  ("name", nunca " name").',
+    '- Path do Windows: use barra normal ("C:/Users/x/proj") ou barra invertida',
+    '  DUPLA ("C:\\\\Users\\\\x\\\\proj"). Barra invertida simples quebra o JSON.',
+    '- Nada de ``` em volta e nada escrito depois do JSON na mesma linha.',
     '',
   ];
 }
@@ -160,7 +175,7 @@ function buildIdeAgentPrompt({ toolsSchema = [], wsPaths = [] } = {}) {
     ...workspaceBlock(wsPaths),
     '',
     ...environmentFacts(),
-    ...workLoop(),
+    ...workLoop(wsPaths),
     ...reasoningRules(),
   ];
 

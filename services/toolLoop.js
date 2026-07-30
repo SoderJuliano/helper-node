@@ -41,6 +41,39 @@ function capPrompt(prompt) {
     s.slice(s.length - tailSize);
 }
 
+const fs = require('fs');
+
+/**
+ * Conserta path que veio picado em tokens pelo modelo.
+ *
+ * Nos bytes reais do stream o modelo escreve "ARCH IT ECT URE.md" e
+ * "/C:/Users/x" — o arquivo não existe com esse nome e a ferramenta falhava com
+ * "não encontrado", sem ninguém entender por quê.
+ *
+ * A ordem importa: o valor ORIGINAL é testado primeiro, e uma variante só é
+ * aceita se ela EXISTIR no disco. Assim "C:/Program Files/x" (espaço legítimo)
+ * nunca é estragado — se o original existe, é ele que vale.
+ */
+function repairPath(value) {
+  if (typeof value !== 'string' || !value.trim()) return value;
+  const original = value.trim();
+
+  const candidatos = [
+    original,
+    original.replace(/^\/([A-Za-z]:)/, '$1'),        // "/C:/x" → "C:/x"
+    original.replace(/\s+/g, ''),                    // "ARCH IT ECT URE.md" → junta
+    original.replace(/^\/([A-Za-z]:)/, '$1').replace(/\s+/g, ''),
+  ];
+
+  for (const c of candidatos) {
+    if (!c) continue;
+    try { if (fs.existsSync(c)) return c; } catch (_) {}
+  }
+  // Nada existe: devolve com o "/C:" corrigido, que é sempre errado, e deixa a
+  // ferramenta reportar o erro de verdade com o nome que o modelo pediu.
+  return candidatos[1] || original;
+}
+
 // A IA às vezes manda {command: "git status"} em vez de {cmd, args}.
 // Normaliza pro formato que o executor espera.
 function normalizeArgs(rawArgs) {
@@ -49,6 +82,13 @@ function normalizeArgs(rawArgs) {
     const parts = String(args.command).trim().split(/\s+/);
     args = { ...args, cmd: parts[0], args: parts.slice(1) };
     delete args.command;
+  }
+  // Path tokenizado pelo modelo ("ARCH IT ECT URE.md", "/C:/Users/x").
+  for (const k of ['path', 'cwd', 'file', 'dir']) {
+    if (typeof args[k] === 'string') {
+      const fixed = repairPath(args[k]);
+      if (fixed !== args[k]) args = { ...args, [k]: fixed };
+    }
   }
   return args;
 }
@@ -94,6 +134,7 @@ async function runToolCalls(calls, onToolCall, { onChunk, signal, source } = {})
 module.exports = {
   runToolCalls,
   normalizeArgs,
+  repairPath,
   capToolResult,
   capPrompt,
   MAX_TOOL_RESULT_CHARS,

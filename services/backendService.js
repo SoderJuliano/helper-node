@@ -9,7 +9,8 @@ const {
   buildOllamaToolsAddon,
   parseOllamaToolCalls,
   stripToolCallBlocks,
-  stripThinkingBlock
+  stripThinkingBlock,
+  looksLikeToolCallAttempt
 } = require('./ollamaToolHelper');
 const { streamOnce } = require('./backendSseClient');
 const { runToolCalls, capPrompt } = require('./toolLoop');
@@ -332,6 +333,19 @@ class BackendService {
       let iter = 0;
       const maxIters = opts.maxToolCalls || 15;
       let currentWorkingPrompt = promptWithContext;
+      // Quantas vezes já pedi pro modelo reemitir um TOOL_CALL que veio quebrado.
+      let malformedNudges = 0;
+      // Assinatura de cada tool call já executado, pra detectar o modelo preso
+      // repetindo a MESMA chamada. Sem isso ele consome as 15 iterações fazendo
+      // o mesmo listDir e o turno acaba sem nenhuma resposta na tela — que é o
+      // "rodou 10 minutos e nunca veio resposta".
+      const callCounts = new Map();
+      // Melhor texto que o modelo produziu no caminho, e se algo já foi pra
+      // tela. Se o limite de iterações estourar, isso é entregue em vez de
+      // descartar a análise e mostrar só "parei" — era assim que o usuário
+      // ficava sem resposta depois de esperar todas as rodadas.
+      let ultimoTexto = '';
+      let algoNaTela = false;
 
       while (iter < maxIters) {
         if (signal.aborted) throw new Error("Request cancelled");
@@ -366,6 +380,10 @@ class BackendService {
           }
         }
 
+        algoNaTela = algoNaTela || router.streamedAnything;
+        const textoDaVez = stripToolCallBlocks(router.answer).trim();
+        if (textoDaVez.length > 40) ultimoTexto = textoDaVez;
+
         const calls = (effectiveTools && onToolCall) ? parseOllamaToolCalls(router.answer) : [];
 
         if (calls.length > 0 && effectiveTools && onToolCall) {
@@ -377,7 +395,55 @@ class BackendService {
           // teto, um readFile grande é reenviado em TODA iteração seguinte até
           // estourar a janela de contexto — e aí o Ollama trunca o COMEÇO, que é
           // onde estão as ferramentas e o pedido do usuário.
-          currentWorkingPrompt = capPrompt(currentWorkingPrompt + results);
+          // Preso na mesma chamada? Cobra o próximo passo em vez de deixar o
+          // modelo gastar as 15 iterações repetindo o mesmo listDir.
+          let repeticao = '';
+          for (const c of calls) {
+            const sig = `${c.obj.name}:${JSON.stringify(c.obj.args || {})}`;
+            const n = (callCounts.get(sig) || 0) + 1;
+            callCounts.set(sig, n);
+            if (n >= 3) {
+              repeticao = '\n\nPARE. Você já chamou ' + c.obj.name + ' com esses ' +
+                'mesmos argumentos ' + n + ' vezes e o resultado está acima. ' +
+                'NÃO repita essa chamada. Responda AGORA em texto normal, sem ' +
+                'nenhum TOOL_CALL, com o que você já descobriu.';
+            } else if (n === 2) {
+              repeticao = '\n\nATENÇÃO: essa chamada é repetida — o resultado já ' +
+                'está no histórico acima. Use o que já tem e dê o PRÓXIMO passo ' +
+                '(outra ferramenta, outro path) ou responda em texto.';
+            }
+          }
+          if (repeticao && onChunk) {
+            onChunk({ type: 'thinking', text: '\n⚠️ Chamada repetida — cobrando o próximo passo.\n' });
+          }
+          currentWorkingPrompt = capPrompt(currentWorkingPrompt + results + repeticao);
+          iter++;
+          continue;
+        } else if (
+          // requireJson: só é tentativa de chamada se vier "{" depois da marca.
+          // Sem isso, uma resposta boa terminando em "pode emitir TOOL_CALL se
+          // precisar" era tratada como chamada quebrada: gastava iteração e o
+          // texto final do usuário ia pro lixo.
+          effectiveTools && onToolCall && malformedNudges < 2 &&
+          looksLikeToolCallAttempt(router.answer, { requireJson: true })
+        ) {
+          // O modelo TENTOU chamar ferramenta mas o bloco não parseou (JSON com
+          // barra invertida solta, aspas tortas, chave truncada). Antes isso
+          // encerrava o turno em silêncio — a ferramenta nunca rodava e o
+          // usuário ficava olhando pra tela vazia. Agora mostra o formato exato
+          // e dá outra chance, sem gastar o turno.
+          malformedNudges++;
+          console.warn(`[backend-stream][tools] TOOL_CALL malformado (tentativa ${malformedNudges}) — pedindo reemissão.`);
+          if (onChunk) onChunk({ type: 'thinking', text: '\n⚠️ TOOL_CALL malformado, pedindo reemissão...\n' });
+          currentWorkingPrompt = capPrompt(
+            currentWorkingPrompt +
+            `\n\n${router.answer}\n\n` +
+            'ERRO: o TOOL_CALL acima não pôde ser lido. Reemita AGORA em UMA linha, ' +
+            'exatamente neste formato, sem espaço dentro das chaves nem dentro do nome:\n' +
+            'TOOL_CALL: {"name":"listDir","args":{"path":"/caminho/absoluto"}}\n' +
+            'Em path do Windows use barra normal ("C:/Users/x") ou barra invertida ' +
+            'dupla ("C:\\\\Users\\\\x"). Não escreva nada além dessa linha.'
+          );
           iter++;
           continue;
         } else {
@@ -400,11 +466,14 @@ class BackendService {
       // isso fechava o loading em silêncio e o usuário ficava sem nada na tela.
       console.warn(`[backend-stream] limite de ${maxIters} iterações atingido sem resposta final.`);
       if (onChunk) {
+        // Entrega o que o modelo já tinha escrito antes de avisar do limite.
+        if (!algoNaTela && ultimoTexto) onChunk(ultimoTexto);
         onChunk(
           `\n\n_Parei após ${maxIters} rodadas de ferramenta sem concluir. ` +
           `Peça em passos menores ou diga qual arquivo atacar primeiro._`
         );
       }
+      if (ultimoTexto) this.addAssistantResponse(sessionId, ultimoTexto);
       if (onComplete) onComplete();
 
     } catch (error) {

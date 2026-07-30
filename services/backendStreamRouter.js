@@ -8,6 +8,12 @@
 //
 // Coberto por scripts/test-backend-stream.js (npm run test:stream).
 
+const { looksLikeToolCallAttempt } = require('./ollamaToolHelper');
+
+// Menção em prosa ("pode emitir TOOL_CALL se precisar") NÃO conta — cortar o
+// stream nela truncava a resposta final do usuário. Exige ":" ou "{" na sequência.
+const pareceChamada = (t) => looksLikeToolCallAttempt(t, { requireJson: false });
+
 function createStreamRouter({ onChunk, hasTools }) {
   let thinkingBuffer = '';
   let answerBuffer = '';
@@ -37,8 +43,19 @@ function createStreamRouter({ onChunk, hasTools }) {
       const head = answerBuffer.trimStart();
       if (head.length < 10) return;
       streamDecided = true;
-      answerIsToolCall = /^(TOOL[_\s-]?CALL|\{)/i.test(head);
+      // Sem espaço na comparação: o modelo emite a marca picada em tokens
+      // ("TO OL _CALL"), e a regex antiga exigia "TOOL" colado — resultado, o
+      // JSON do tool call era classificado como texto e ia inteiro pra tela.
+      answerIsToolCall = pareceChamada(head.slice(0, 60)) || /^\{/.test(head);
       if (!answerIsToolCall && onChunk) { onChunk(answerBuffer); streamedAnything = true; }
+      return;
+    }
+    // O modelo costuma escrever prosa ANTES do tool call ("Primeiramente, vou
+    // investigar... vou emitir o seguinte TOOL_CALL:"). Nesse caso a decisão
+    // acima já saiu como "texto", e sem este corte o JSON cru era despejado na
+    // tela do usuário. Ao ver a marca aparecer, para de emitir daqui pra frente.
+    if (!answerIsToolCall && pareceChamada(answerBuffer)) {
+      answerIsToolCall = true;
       return;
     }
     if (!answerIsToolCall && onChunk) { onChunk(chunk); streamedAnything = true; }
