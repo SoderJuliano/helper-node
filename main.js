@@ -145,6 +145,18 @@ app.whenReady().then(async () => {
     openConfig: helpers.createConfigWindow,
   });
 
+  // Indexar workspace ativo na inicialização
+  try {
+    const symbolIndexer = require('./services/symbolIndexer.js');
+    const { workspace } = require('./main/globals.js');
+    const dir = (workspace.list() || []).find(a => a.type === 'dir');
+    if (dir && dir.path) {
+      symbolIndexer.indexWorkspace(dir.path).catch(e => console.warn('[symbolIndexer] init workspace error:', e.message));
+    }
+  } catch (e) {
+    console.warn('[symbolIndexer] startup index failed:', e.message);
+  }
+
   // Roteamento de eventos do Assistente de Tradução (modo ao vivo)
   if (translationAssistant) {
     translationAssistant.onResult((data) => {

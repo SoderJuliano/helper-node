@@ -17,7 +17,11 @@ const IGNORED_DIRS = new Set([
 
 function normalizePath(p) {
   if (!p) return '';
-  return path.normalize(p).replace(/\\/g, '/');
+  let norm = path.normalize(p).replace(/\\/g, '/');
+  if (norm.length >= 2 && norm[1] === ':') {
+    norm = norm[0].toUpperCase() + norm.substring(1);
+  }
+  return norm;
 }
 
 class SymbolIndexer {
@@ -36,6 +40,50 @@ class SymbolIndexer {
     this.fileMap.clear();
     this.implementationsMap.clear();
     this.symbolMap.clear();
+  }
+
+  // Tenta resolver uma referencia de arquivo (ex: require('./foo'), import 'bar.js')
+  tryResolveFilePath(currentFilePath, rawPath) {
+    if (!rawPath || typeof rawPath !== 'string') return null;
+    const cleanPath = rawPath.replace(/^['"`]|['"`]$/g, '').trim();
+    if (!cleanPath) return null;
+
+    const normCurrent = normalizePath(currentFilePath);
+    const currentDir = normCurrent ? path.dirname(normCurrent) : '';
+    const projDir = this.projectPath || currentDir;
+
+    const basePaths = [];
+    if (path.isAbsolute(cleanPath)) {
+      basePaths.push(cleanPath);
+    } else if (cleanPath.startsWith('./') || cleanPath.startsWith('../') || cleanPath.startsWith('.\\') || cleanPath.startsWith('..\\')) {
+      if (currentDir) basePaths.push(path.resolve(currentDir, cleanPath));
+    } else {
+      if (currentDir) basePaths.push(path.resolve(currentDir, cleanPath));
+      if (projDir) basePaths.push(path.resolve(projDir, cleanPath));
+    }
+
+    const extsToTry = ['', '.js', '.ts', '.jsx', '.tsx', '.json', '.html', '.css', '/index.js', '/index.ts'];
+
+    for (const base of basePaths) {
+      for (const ext of extsToTry) {
+        const candidate = normalizePath(base + ext);
+        try {
+          if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+            const relPath = this.projectPath ? path.relative(this.projectPath, candidate).replace(/\\/g, '/') : candidate;
+            return [{
+              filePath: candidate,
+              relativePath: relPath,
+              line: 1,
+              col: 1,
+              symbol: path.basename(candidate),
+              kind: 'file',
+              className: null
+            }];
+          }
+        } catch (_) {}
+      }
+    }
+    return null;
   }
 
   async indexWorkspace(projectPath) {
@@ -99,17 +147,12 @@ class SymbolIndexer {
       const lineNum = i + 1; // 1-indexed
 
       // 1. Imports
-      // JS/TS: import ... from '...'
-      // Java: import com.example.Foo;
-      // PHP: use App\Services\Foo;
-      // C#: using System.IO;
-      const importMatch = lineText.match(/(?:import|using|use)\s+([^;'"\n]+)/);
+      const importMatch = lineText.match(/(?:import|using|use|require)\s+([^;'"\n]+)/);
       if (importMatch) {
         fileData.imports.push({ text: importMatch[1].trim(), line: lineNum });
       }
 
       // 2. Interfaces
-      // interface FooService { ... } or public interface FooService extends ...
       const interfaceMatch = lineText.match(/(?:public\s+|export\s+|protected\s+)?interface\s+([A-Za-z0-9_$]+)/);
       if (interfaceMatch) {
         const interfaceName = interfaceMatch[1];
@@ -122,8 +165,6 @@ class SymbolIndexer {
       }
 
       // 3. Classes e Implementações
-      // class FooImpl implements FooService
-      // class FooImpl extends Bar implements FooService, BarService
       const classMatch = lineText.match(/(?:public\s+|export\s+|default\s+|abstract\s+)*class\s+([A-Za-z0-9_$]+)(?:\s+extends\s+[A-Za-z0-9_$.<>]*)?(?:\s+implements\s+([A-Za-z0-9_$,\s<>]+))?/);
       if (classMatch) {
         const className = classMatch[1];
@@ -149,25 +190,24 @@ class SymbolIndexer {
       }
 
       // 4. Métodos / Funções
-      // Java/C#/C++/PHP: public void myMethod(...) | String getFoo(...)
-      // TS/JS: async myMethod(...) | function myMethod(...) | myMethod = (...) =>
       const methodPatterns = [
-        // Java/C#/PHP: [public|private|protected] [static] [async] ReturnType methodName(...)
-        /(?:public|protected|private|static|final|async|override)\s+(?:[A-Za-z0-9_$<>[\]]+\s+)+([A-Za-z0-9_$]+)\s*\([^)]*\)\s*\{?/,
-        // TS/JS/PHP: function methodName(...)
-        /function\s+([A-Za-z0-9_$]+)\s*\(/,
-        // TS/JS: methodName(...) { or async methodName(...) {
+        // async function foo(...) / function foo(...) / function* foo(...)
+        /(?:async\s+)?function\*?\s+([A-Za-z0-9_$]+)\s*\(/,
+        // const foo = (...) => / let foo = async () => / var foo = function()
+        /(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_$]+|\bfunction\b)/,
+        // foo(...) { / async foo(...) { (métodos de classe/objeto)
         /^\s*(?:async\s+)?([A-Za-z0-9_$]+)\s*\([^)]*\)\s*\{/,
-        // TS/JS arrow: const methodName = (...) =>
-        /(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*(?:async\s*)?\(/
+        // foo: function(...) / foo: async function(...)
+        /([A-Za-z0-9_$]+)\s*:\s*(?:async\s+)?function/,
+        // Java/C#/PHP/C++: public void foo(...) / static async Task<Bar> foo(...)
+        /(?:public|protected|private|static|final|async|override)\s+(?:[A-Za-z0-9_$<>[\]]+\s+)+([A-Za-z0-9_$]+)\s*\([^)]*\)/
       ];
 
       for (const pattern of methodPatterns) {
         const m = lineText.match(pattern);
         if (m && m[1]) {
           const methodName = m[1];
-          // Ignorar palavras-chave reservadas
-          if (['if', 'for', 'while', 'switch', 'catch', 'constructor', 'function', 'class', 'return', 'import', 'export'].includes(methodName)) {
+          if (['if', 'for', 'while', 'switch', 'catch', 'constructor', 'function', 'class', 'return', 'import', 'export', 'require'].includes(methodName)) {
             continue;
           }
           const col = lineText.indexOf(methodName) + 1;
@@ -215,11 +255,92 @@ class SymbolIndexer {
     this.fileMap.delete(normPath);
   }
 
+  // Busca rápida e precisa por padrão de definição de um símbolo em um arquivo específico
+  searchDefinitionInFile(filePath, symbolName) {
+    const normPath = normalizePath(filePath);
+    let content = '';
+    try {
+      content = fs.readFileSync(normPath, 'utf8');
+    } catch (_) {
+      return [];
+    }
+
+    const lines = content.split(/\r?\n/);
+    const results = [];
+    const escaped = symbolName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    // Expressões regulares para capturar declaração/definição de símbolo
+    const defRegexes = [
+      // async function foo / function foo / function* foo
+      new RegExp(`(?:async\\s+)?function\\*?\\s+${escaped}\\s*\\(`),
+      // const foo = / let foo = / var foo = / this.foo = / foo =
+      new RegExp(`(?:const|let|var|this\\.)?\\s*${escaped}\\s*=\\s*(?:async\\s*)?(?:\\([^)]*\\)|[A-Za-z0-9_$]+|function)`),
+      // foo(...) { / async foo(...) { / get foo() / set foo() / static foo()
+      new RegExp(`(?:async\\s+|get\\s+|set\\s+|static\\s+)?${escaped}\\s*\\([^)]*\\)\\s*\\{`),
+      // foo: function / foo: async function / foo: (
+      new RegExp(`${escaped}\\s*:\\s*(?:async\\s+)?(?:function|\\()`),
+      // class Foo / interface Foo
+      new RegExp(`(?:class|interface)\\s+${escaped}\\b`),
+      // Java/C#/C++: tipoRetorno foo(...)
+      new RegExp(`(?:public|protected|private|static|final|async|override)\\s+(?:[A-Za-z0-9_$<>\\[\\]]+\\s+)+${escaped}\\s*\\(`)
+    ];
+
+    for (let i = 0; i < lines.length; i++) {
+      const lineText = lines[i];
+      for (const rx of defRegexes) {
+        if (rx.test(lineText)) {
+          const col = lineText.indexOf(symbolName) + 1;
+          results.push({
+            name: symbolName,
+            line: i + 1,
+            col: col > 0 ? col : 1,
+            filePath: normPath,
+            kind: 'method'
+          });
+          break;
+        }
+      }
+    }
+
+    return results;
+  }
+
   // Encontra as definições/ocorrências de um símbolo clicado
   findDefinition(currentFilePath, symbolName, lineText = '') {
     if (!symbolName) return [];
+
     const normCurrent = normalizePath(currentFilePath);
-    const candidates = this.symbolMap.get(symbolName) || [];
+
+    // Garante que o arquivo atual esteja indexado
+    if (normCurrent && !this.fileMap.has(normCurrent) && fs.existsSync(normCurrent)) {
+      this.indexSingleFile(normCurrent);
+    }
+
+    // 1. Tentar resolver como referência de arquivo (require / import / caminho)
+    const fileMatches = this.tryResolveFilePath(normCurrent, symbolName);
+    if (fileMatches && fileMatches.length > 0) {
+      return fileMatches;
+    }
+
+    let candidates = [...(this.symbolMap.get(symbolName) || [])];
+
+    // 2. Fallback: se o mapa global não tem a definição, busca diretamente no arquivo atual e no workspace
+    if (candidates.length === 0 && normCurrent && fs.existsSync(normCurrent)) {
+      const localMatches = this.searchDefinitionInFile(normCurrent, symbolName);
+      if (localMatches.length > 0) {
+        candidates = localMatches;
+      } else if (this.projectPath) {
+        const projFiles = this.scanDir(this.projectPath);
+        for (const f of projFiles) {
+          if (f === normCurrent) continue;
+          const found = this.searchDefinitionInFile(f, symbolName);
+          if (found.length > 0) {
+            candidates.push(...found);
+            break;
+          }
+        }
+      }
+    }
 
     if (candidates.length === 0) return [];
 
@@ -230,9 +351,9 @@ class SymbolIndexer {
         relativePath: relPath,
         line: c.line,
         col: c.col,
-        symbol: c.name,
+        symbol: c.name || c.symbol || symbolName,
         kind: c.kind || 'method',
-        className: c.owner ? c.owner.name : (c.kind === 'class' ? c.name : null)
+        className: c.owner ? c.owner.name : (c.className || (c.kind === 'class' ? c.name : null))
       };
     });
 
@@ -240,8 +361,8 @@ class SymbolIndexer {
 
     const currentData = this.fileMap.get(normCurrent);
     const sorted = [...formatted].sort((a, b) => {
-      if (a.filePath === normCurrent) return -1;
-      if (b.filePath === normCurrent) return 1;
+      if (a.filePath === normCurrent && b.filePath !== normCurrent) return -1;
+      if (b.filePath === normCurrent && a.filePath !== normCurrent) return 1;
       if (currentData && currentData.imports.length > 0) {
         const aImport = currentData.imports.some(imp => imp.text.includes(path.basename(a.filePath, path.extname(a.filePath))));
         const bImport = currentData.imports.some(imp => imp.text.includes(path.basename(b.filePath, path.extname(b.filePath))));

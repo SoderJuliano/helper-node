@@ -4,9 +4,27 @@
 const { ipcMain } = require('electron');
 const symbolIndexer = require('../../services/symbolIndexer.js');
 
+function ensureIndexed(filePath) {
+  if (!symbolIndexer.projectPath) {
+    try {
+      const { workspace } = require('../globals.js');
+      const dir = (workspace.list() || []).find((a) => a.type === "dir");
+      if (dir && dir.path) {
+        symbolIndexer.indexWorkspace(dir.path);
+        return;
+      }
+    } catch (_) {}
+    if (filePath) {
+      const path = require('path');
+      symbolIndexer.indexWorkspace(path.dirname(filePath));
+    }
+  }
+}
+
 module.exports = function registerCodeNavIPC() {
   ipcMain.handle('code-nav-find-definition', async (event, { filePath, symbol, lineText }) => {
     try {
+      ensureIndexed(filePath);
       return symbolIndexer.findDefinition(filePath, symbol, lineText);
     } catch (e) {
       console.error('[codeNav] Erro ao buscar definição:', e);
@@ -16,6 +34,7 @@ module.exports = function registerCodeNavIPC() {
 
   ipcMain.handle('code-nav-get-implementations', async (event, { filePath, lineNum, symbol }) => {
     try {
+      ensureIndexed(filePath);
       return symbolIndexer.findImplementations(filePath, lineNum, symbol);
     } catch (e) {
       console.error('[codeNav] Erro ao buscar implementações:', e);

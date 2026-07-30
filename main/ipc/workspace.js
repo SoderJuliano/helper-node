@@ -370,6 +370,10 @@ ipcMain.handle("editor-save-file", async (event, payload) => {
     }
     const res = fileEditService.writeFile(filePath, content || "", { expectedMtimeMs });
     helpers.emitFileMutated({ path: filePath, origin: "user" });
+    try {
+      const symbolIndexer = require('../../services/symbolIndexer.js');
+      symbolIndexer.indexSingleFile(filePath, content);
+    } catch (_) {}
     return res;
   } catch (e) {
     return { ok: false, error: e.message };

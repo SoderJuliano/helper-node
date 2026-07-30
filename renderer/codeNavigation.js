@@ -192,17 +192,61 @@
     }
   }
 
-  // Tenta resolver a definição de uma palavra ao clicar com Ctrl
+  // Extrai o símbolo ou caminho de arquivo clicado/focado sob o cursor
+  function getSymbolOrPathAtPos(cm, pos) {
+    if (!cm || !pos || pos.line < 0) return null;
+    const lineText = cm.getLine(pos.line);
+    if (!lineText) return null;
+    const ch = pos.ch;
+
+    // 1. Checar se a posição está dentro de aspas ('...', "...", `...`)
+    const quotes = ['"', "'", '`'];
+    for (const q of quotes) {
+      let first = -1;
+      while ((first = lineText.indexOf(q, first + 1)) !== -1) {
+        if (first > 0 && lineText[first - 1] === '\\') continue;
+        const second = lineText.indexOf(q, first + 1);
+        if (second === -1) break;
+        if (ch >= first && ch <= second) {
+          const raw = lineText.substring(first + 1, second).trim();
+          if (raw && (raw.includes('/') || raw.includes('\\') || raw.startsWith('.') || /\.[a-zA-Z0-9]+$/.test(raw))) {
+            return {
+              symbol: raw,
+              range: {
+                anchor: { line: pos.line, ch: first + 1 },
+                head: { line: pos.line, ch: second }
+              },
+              isPath: true
+            };
+          }
+        }
+        first = second;
+      }
+    }
+
+    // 2. Símbolo normal de código (método, função, classe)
+    const wordRange = cm.findWordAt(pos);
+    const symbol = cm.getRange(wordRange.anchor, wordRange.head).trim();
+    if (symbol && /^[A-Za-z_$][\w$]*$/.test(symbol)) {
+      return {
+        symbol,
+        range: wordRange,
+        isPath: false
+      };
+    }
+
+    return null;
+  }
+
+  // Tenta resolver a definição de uma palavra ou caminho de arquivo ao clicar com Ctrl
   async function handleCtrlClick(cm, filePath, pos, mouseEvent) {
     if (!cm || !filePath || !window.electronAPI || !window.electronAPI.codeNavFindDefinition) return;
 
-    const wordRange = cm.findWordAt(pos);
-    const symbol = cm.getRange(wordRange.anchor, wordRange.head).trim();
-
-    if (!symbol || !/^[A-Za-z_$][\w$]*$/.test(symbol)) return;
+    const item = getSymbolOrPathAtPos(cm, pos);
+    if (!item || !item.symbol) return;
 
     const lineText = cm.getLine(pos.line) || '';
-    const matches = await window.electronAPI.codeNavFindDefinition({ filePath, symbol, lineText });
+    const matches = await window.electronAPI.codeNavFindDefinition({ filePath, symbol: item.symbol, lineText });
 
     if (!Array.isArray(matches) || matches.length === 0) return;
 
@@ -211,7 +255,7 @@
         await window.EditorController.openFile(matches[0].filePath, matches[0].line);
       }
     } else {
-      showDefinitionPopup(matches, symbol, mouseEvent.clientX, mouseEvent.clientY);
+      showDefinitionPopup(matches, item.symbol, mouseEvent.clientX, mouseEvent.clientY);
     }
   }
 
@@ -236,17 +280,11 @@
       }
 
       const pos = cm.coordsChar({ left: e.clientX, top: e.clientY });
-      if (!pos || pos.line < 0) {
-        clearHoverMarker();
-        return;
-      }
+      const item = getSymbolOrPathAtPos(cm, pos);
 
-      const wordRange = cm.findWordAt(pos);
-      const symbol = cm.getRange(wordRange.anchor, wordRange.head).trim();
-
-      if (symbol && /^[A-Za-z_$][\w$]*$/.test(symbol)) {
+      if (item && item.symbol && item.range) {
         clearHoverMarker();
-        currentHoverMarker = cm.markText(wordRange.anchor, wordRange.head, {
+        currentHoverMarker = cm.markText(item.range.anchor, item.range.head, {
           className: 'cm-nav-link'
         });
       } else {

@@ -32,6 +32,15 @@
     sql: 'SQL', go: 'GO', rs: 'RUST', php: 'PHP', rb: 'RUBY',
   };
 
+  function normPath(p) {
+    if (!p) return '';
+    let norm = String(p).replace(/\\/g, '/');
+    if (norm.length >= 2 && norm[1] === ':') {
+      norm = norm[0].toUpperCase() + norm.substring(1);
+    }
+    return norm;
+  }
+
   // path -> { content, originalContent, mtimeMs, dirty }
   const openFiles = new Map();
   let activePath = null;
@@ -123,6 +132,12 @@
   function extOf(p) {
     const m = /\.([a-zA-Z0-9]+)$/.exec(p || '');
     return m ? m[1].toLowerCase() : '';
+  }
+
+  function getFileName(p) {
+    if (!p) return '';
+    const norm = String(p).replace(/\\/g, '/');
+    return norm.split('/').pop() || norm;
   }
 
   function customHint(editor) {
@@ -311,7 +326,7 @@
       // Nome do arquivo
       const nameSpan = document.createElement('span');
       nameSpan.className = 'fv-tab-name';
-      nameSpan.textContent = String(filePath).split('/').pop() || filePath;
+      nameSpan.textContent = getFileName(filePath);
       nameSpan.title = filePath;
       tab.appendChild(nameSpan);
 
@@ -487,18 +502,19 @@
   // Abre um arquivo no editor. Se já estava aberto nesta sessão (mesmo que o
   // painel tenha sido fechado), reaproveita o buffer em memória — inclusive
   // alterações não salvas, sem perder nada ao trocar de arquivo e voltar.
-  async function openFile(filePath, lineNum) {
+  async function openFile(rawFilePath, lineNum) {
     const viewer = document.getElementById('file-viewer');
     const pathEl = document.getElementById('fv-path');
     const langEl = document.getElementById('fv-lang');
-    if (!viewer || !filePath) return;
+    if (!viewer || !rawFilePath) return;
 
+    const filePath = normPath(rawFilePath);
     viewer.classList.add('open');
     setConflictBanner('');
     setSaveStatus('');
     activePath = filePath;
     if (pathEl) {
-      pathEl.textContent = String(filePath).split('/').slice(-3).join('/');
+      pathEl.textContent = getFileName(filePath);
       pathEl.title = filePath;
     }
 
@@ -536,8 +552,11 @@
     const ext = extOf(filePath);
     langEl.textContent = LANG_LABEL_BY_EXT[ext] || (ext || 'texto').toUpperCase();
     cmInst.setOption('mode', CM_MODE_BY_EXT[ext] || null);
-    cmInst.setValue(doc.content);
-    cmInst.clearHistory(); // trocar de arquivo não deve deixar Ctrl+Z voltar pro arquivo anterior
+
+    if (cmInst.getValue() !== doc.content) {
+      cmInst.setValue(doc.content);
+      cmInst.clearHistory(); // trocar de arquivo não deve deixar Ctrl+Z voltar pro arquivo anterior
+    }
     updateDirtyIndicator();
     renderTabs();
     if (window.CodeNavigation) {
@@ -548,9 +567,18 @@
       if (typeof lineNum === 'number' && lineNum > 0) {
         const line = lineNum - 1;
         cmInst.setCursor({ line, ch: 0 });
-        cmInst.scrollIntoView({ line, ch: 0 }, 100);
+        cmInst.scrollIntoView({ line, ch: 0 }, 150);
+        cmInst.focus();
+        try {
+          const lineHandle = cmInst.addLineClass(line, 'background', 'code-nav-highlight-line');
+          setTimeout(() => {
+            if (cmInst) cmInst.removeLineClass(lineHandle, 'background', 'code-nav-highlight-line');
+          }, 1500);
+        } catch (_) {}
+      } else {
+        cmInst.focus();
       }
-    }, 0);
+    }, 20);
   }
 
   async function saveActive() {
@@ -653,7 +681,7 @@
       if (changed) {
         const pathEl = document.getElementById('fv-path');
         if (pathEl) {
-          pathEl.textContent = String(activePath).split('/').slice(-3).join('/');
+          pathEl.textContent = getFileName(activePath);
           pathEl.title = activePath;
         }
         if (cm) {
