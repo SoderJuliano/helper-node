@@ -15,7 +15,8 @@
     "test:stream": "node ./scripts/test-backend-stream.js",
     "test:ide": "node ./scripts/test-ide-mode.js",
     "hooks:install": "git config core.hooksPath scripts/githooks",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "test:url": "node ./scripts/test-backend-url.js"
   },
   "dependencies": {
     "@ricky0123/vad-web": "^0.0.30",

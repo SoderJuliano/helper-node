@@ -15,11 +15,13 @@ const {
 const { streamOnce } = require('./backendSseClient');
 const { runToolCalls, capPrompt } = require('./toolLoop');
 const { buildIdeAgentPrompt } = require('./idePrompt');
+const { createUrlDiscovery } = require('./backendUrlDiscovery');
 
 // Configurar agentes HTTP/HTTPS com keepAlive
 const httpAgent = new http.Agent({ keepAlive: true, keepAliveMsecs: 60000, maxSockets: 50, maxFreeSockets: 10, timeout: 360000 });
 const httpsAgent = new https.Agent({ keepAlive: true, keepAliveMsecs: 60000, maxSockets: 50, maxFreeSockets: 10, timeout: 360000 });
 let apiUrl = "";
+const urlDiscovery = createUrlDiscovery();
 
 class BackendService {
   constructor() {
@@ -68,48 +70,18 @@ class BackendService {
     return await this.getLastEnvUrl();
   }
 
+  // Descoberta da URL: ver services/backendUrlDiscovery.js (localhost, tunel,
+  // e a ultima URL boa preservada em falha transitoria).
   async getLastEnvUrl() {
-    const now = Date.now();
-    if (this._cachedApiUrl && (now - (this._lastUrlFetch || 0) < 60000)) {
-      apiUrl = this._cachedApiUrl;
-      return apiUrl;
-    }
-    try {
-      const res = await axios.get("https://abra-api.top/notifications/retrieve?key=ngrockurl", {
-        timeout: 5000,
-        headers: { 'Cache-Control': 'no-cache' }
-      });
-      const data = res.data;
-      if (Array.isArray(data) && data.length > 0) {
-        const lastNotification = data[data.length - 1];
-        if (lastNotification && lastNotification.content) {
-          const fetchedUrl = String(lastNotification.content).trim().replace(/\/+$/, '');
-          if (fetchedUrl && fetchedUrl.startsWith('http')) {
-            apiUrl = fetchedUrl;
-            this._cachedApiUrl = fetchedUrl;
-            this._lastUrlFetch = now;
-            return apiUrl;
-          }
-        }
-      }
-    } catch (e) {
-      console.warn("[backendService] Erro ao buscar URL do abra-api:", e && e.message);
-    }
-
-    try {
-      const ip = await configService.getIp();
-      if (ip) {
-        apiUrl = `http://${ip}:8080`;
-        this._cachedApiUrl = apiUrl;
-        this._lastUrlFetch = now;
-        return apiUrl;
-      }
-    } catch (_) {}
-
-    console.log("[backendService] Nenhuma URL de backend disponível.");
-    apiUrl = "";
-    return null;
+    apiUrl = (await urlDiscovery.discover()) || "";
+    return apiUrl || null;
   }
+
+  // Compatibilidade com os testes/probe, que mexem no cache direto.
+  get _cachedApiUrl() { return urlDiscovery.cached; }
+  set _cachedApiUrl(v) { urlDiscovery.cached = v; }
+  get _lastUrlFetch() { return urlDiscovery.lastFetch; }
+  set _lastUrlFetch(v) { urlDiscovery.lastFetch = v; }
 
   async testConnection() {
     try {
