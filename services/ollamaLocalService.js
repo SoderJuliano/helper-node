@@ -390,7 +390,7 @@ class OllamaLocalService {
                         stream: false,
                         options: {
                             temperature: 0.7,
-                            num_ctx: 8192,
+                            num_ctx: 4096,
                         },
                     },
                     {
@@ -502,7 +502,21 @@ class OllamaLocalService {
     }
 
     async responderStream(texto, onChunk, onComplete, onError, opts = {}) {
+        const fs = require('fs');
+        const path = require('path');
+        const isTesting = process.env.TESTING === 'true';
+        const debugLogPath = path.join(__dirname, '..', isTesting ? 'ollama-debug-test.log' : 'ollama-debug.log');
+        const logDebug = (msg) => {
+            try {
+                fs.appendFileSync(debugLogPath, `[${new Date().toISOString()}] ${msg}\n`);
+            } catch (_) {}
+        };
+        
+        try { fs.writeFileSync(debugLogPath, ''); } catch (_) {}
+        logDebug(`responderStream chamado com texto: "${texto}"`);
+
         if (!texto) {
+            logDebug(`Texto vazio. Chamando onError.`);
             if (onError) onError(new Error('Não entendi'));
             return;
         }
@@ -514,7 +528,7 @@ class OllamaLocalService {
 
         if (this.sessions[sessionId] && (now - this.sessions[sessionId].lastActivity > twoHours)) {
             delete this.sessions[sessionId];
-            console.log('[ollamaLocal] sessão expirou');
+            logDebug('[ollamaLocal] sessão expirou');
         }
 
         const tools = Array.isArray(opts.tools) && opts.tools.length ? opts.tools : null;
@@ -624,6 +638,10 @@ class OllamaLocalService {
                         event: 'thinking'
                     });
                 }
+                
+                logDebug(`\n--- ITERATION ${iter + 1} ---`);
+                logDebug(`Messages sent: ${JSON.stringify(this.sessions[sessionId].messages, null, 2)}`);
+
                 console.log(`[ollamaLocal-stream] → ${model} @ ${host} (msgs=${this.sessions[sessionId].messages.length}, iter=${iter + 1}/${maxToolCalls})`);
                 
                 const { createStreamRouter } = require('./backendStreamRouter');
@@ -637,14 +655,17 @@ class OllamaLocalService {
                         stream: true,
                         options: {
                             temperature: 0.7,
-                            num_ctx: 8192,
+                            num_ctx: 4096, // Reduced from 8192 to prevent local VRAM OOM on larger models (like 35B)
                         },
                     },
                     {
                         responseType: 'stream',
                         timeout: 0, // NO TIMEOUT
                         signal,
-                        headers: { 'Content-Type': 'application/json' }
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'Connection': 'keep-alive'
+                        }
                     }
                 );
 
@@ -653,10 +674,13 @@ class OllamaLocalService {
                     let buffer = '';
 
                     const processLine = (line) => {
+                        logDebug(`Line read: "${line}"`);
                         try {
                             const parsed = JSON.parse(line);
                             if (parsed.error) {
+                                logDebug(`Ollama parsed error: ${parsed.error}`);
                                 cleanup();
+                                try { stream.destroy(); } catch (_) {}
                                 reject(new Error(parsed.error));
                                 return true;
                             }
@@ -664,14 +688,24 @@ class OllamaLocalService {
                             if (token) {
                                 router.routeToken(token);
                             }
+                            if (parsed.done) {
+                                logDebug(`Ollama done flag received. Resolving early.`);
+                                cleanup();
+                                try { stream.destroy(); } catch (_) {}
+                                resolve();
+                                return true;
+                            }
                         } catch (err) {
+                            logDebug(`Error parsing JSON: ${err.message}`);
                             console.error('Error parsing Ollama stream line:', err);
                         }
                         return false;
                     };
                     
                     const onStreamData = (chunk) => {
-                        buffer += chunk.toString('utf8');
+                        const chunkStr = chunk.toString('utf8');
+                        logDebug(`Chunk data: ${chunkStr}`);
+                        buffer += chunkStr;
                         let lineEndIndex;
                         while ((lineEndIndex = buffer.indexOf('\n')) !== -1) {
                             const line = buffer.slice(0, lineEndIndex).trim();
@@ -684,6 +718,7 @@ class OllamaLocalService {
                     };
 
                     const onStreamEnd = () => {
+                        logDebug(`Stream end event. Buffer: "${buffer}"`);
                         if (buffer.trim()) {
                             processLine(buffer.trim());
                         }
@@ -692,6 +727,7 @@ class OllamaLocalService {
                     };
 
                     const onStreamError = (err) => {
+                        logDebug(`Stream error event: ${err.message}`);
                         cleanup();
                         reject(err);
                     };
@@ -717,7 +753,10 @@ class OllamaLocalService {
                 let content = router.answer || '';
                 content = stripThinkingBlock(content);
                 
+                logDebug(`End of iteration ${iter + 1}. Content: "${content}" | Thinking: "${router.thinking}"`);
+                
                 if (!content && !router.thinking) {
+                    logDebug(`Error: Empty response from Ollama`);
                     throw new Error('Resposta vazia do Ollama');
                 }
 

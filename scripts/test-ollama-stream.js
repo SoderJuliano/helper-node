@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+process.env.TESTING = 'true';
 // Teste do stream do OllamaLocalService.
 // Roda com: node ./scripts/test-ollama-stream.js
 
