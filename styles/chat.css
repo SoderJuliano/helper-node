@@ -13,6 +13,13 @@
         #main:has(#file-viewer.open) {
             flex-direction: row;
         }
+        #main.chat-hidden #chat-container {
+            display: none !important;
+        }
+        #main.chat-hidden #file-viewer {
+            flex: 1 1 100% !important;
+            border-right: none !important;
+        }
         #chat-container {
             display: flex;
             flex-direction: column;

@@ -26,6 +26,30 @@
         .fv-dirty { display: none; color: #ffb74d; font-size: 10px; flex-shrink: 0; }
         .fv-close { flex-shrink: 0; width: 24px; height: 24px; background: transparent; border: none; color: var(--text-3); font-size: 17px; cursor: pointer; border-radius: 5px; display: flex; align-items: center; justify-content: center; }
         .fv-close:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+        .fv-toggle-chat {
+            flex-shrink: 0;
+            height: 24px;
+            padding: 0 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border, #2d2d38);
+            color: var(--text-2, #aaa);
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+            margin-left: auto;
+            user-select: none;
+        }
+        .fv-toggle-chat:hover {
+            background: rgba(80, 250, 123, 0.15);
+            color: #50fa7b;
+            border-color: rgba(80, 250, 123, 0.4);
+        }
         .fv-tabs-container {
             display: flex;
             align-items: flex-end;
