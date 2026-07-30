@@ -122,24 +122,27 @@
         }
 
         /* Entradas clicáveis da árvore do projeto (dropdown do workspace) */
+        .ws-tree {
+            font-size: var(--ws-tree-font-size, 12.5px);
+        }
         .ws-tree-node {
             display: flex; align-items: center; gap: 6px;
             padding: 3px 6px; border-radius: 4px; cursor: default;
             white-space: nowrap; color: var(--text-3);
             font-family: 'JetBrains Mono', var(--font-mono);
-            font-size: 12.5px; line-height: 18px;
+            font-size: inherit; line-height: 1.45;
         }
         .ws-tree-node.file { cursor: pointer; }
         .ws-tree-node.file:hover { background: rgba(255,255,255,0.07); color: var(--text); }
         .ws-tree-node:focus-visible { outline: 1px solid var(--accent-2); outline-offset: -1px; background: rgba(255,255,255,0.06); }
-        .ws-tree-node .ws-tree-ic { width: 14px; height: 14px; opacity: .85; flex-shrink: 0; }
+        .ws-tree-node .ws-tree-ic { width: 1.1em; height: 1.1em; opacity: .85; flex-shrink: 0; }
         .ws-tree-node.dir { color: var(--text-2); cursor: pointer; font-weight: 500; }
         .ws-tree-node.dir:hover { background: rgba(255,255,255,0.06); }
-        .ws-tree-chevron { width: 10px; height: 10px; flex-shrink: 0; opacity: .6; transition: transform .15s var(--ease); }
+        .ws-tree-chevron { width: 0.85em; height: 0.85em; flex-shrink: 0; opacity: .6; transition: transform .15s var(--ease); }
         /* Spacer com a MESMA largura+gap do chevron — garante que o nome do
            arquivo comece exatamente na mesma coluna do nome da pasta
            (antes ficava "puxado" 16px pra trás por faltar esse espaço). */
-        .ws-tree-chevron-spacer { width: 10px; height: 10px; flex-shrink: 0; display: inline-block; }
+        .ws-tree-chevron-spacer { width: 0.85em; height: 0.85em; flex-shrink: 0; display: inline-block; }
         .ws-tree-node.dir.collapsed .ws-tree-chevron { transform: rotate(-90deg); }
         .ws-tree-node.drag-over {
             background: rgba(255, 255, 255, 0.08) !important;

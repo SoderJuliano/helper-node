@@ -481,6 +481,70 @@
             }
  // showAttachMenu, wsOpenProjectBtn, wsAddBtn clicks, delete selection, rename selection
 
+    // Toast de Zoom (indica o nível de zoom do editor ou da árvore)
+    if (!window.showZoomToast) {
+        window.showZoomToast = function(text) {
+            let toast = document.getElementById('zoom-level-toast');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.id = 'zoom-level-toast';
+                toast.style.cssText = 'position:fixed; bottom:24px; right:24px; z-index:20000; background:rgba(20,20,28,0.92); color:#50fa7b; border:1px solid rgba(80,250,123,0.4); border-radius:18px; padding:6px 14px; font-family:var(--font-ui, system-ui, sans-serif); font-size:12px; font-weight:600; box-shadow:0 6px 20px rgba(0,0,0,0.6); pointer-events:none; transition:opacity 0.2s ease, transform 0.2s ease; backdrop-filter:blur(8px);';
+                document.body.appendChild(toast);
+            }
+            toast.textContent = text;
+            toast.style.opacity = '1';
+            toast.style.transform = 'translateY(0)';
+            clearTimeout(toast._hideTimer);
+            toast._hideTimer = setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(6px)';
+            }, 1200);
+        };
+    }
+
+    // Zoom da Árvore Lateral (Workspace Tree) com Ctrl + Mouse Wheel
+    const setupTreeWheelZoom = () => {
+        const sidebar = document.getElementById('sidebar');
+        if (!sidebar || sidebar._hasTreeWheelZoom) return;
+        sidebar._hasTreeWheelZoom = true;
+
+        // Restaurar tamanho salvo da fonte da árvore
+        const savedTreeFontSize = localStorage.getItem('ws_tree_font_size');
+        if (savedTreeFontSize) {
+            document.documentElement.style.setProperty('--ws-tree-font-size', `${savedTreeFontSize}px`);
+            const wsTreeEl = document.getElementById('ws-tree');
+            if (wsTreeEl) wsTreeEl.style.fontSize = `${savedTreeFontSize}px`;
+        }
+
+        sidebar.addEventListener('wheel', (e) => {
+            if (e.ctrlKey || e.metaKey) {
+                const wsTreeEl = document.getElementById('ws-tree');
+                if (!wsTreeEl) return;
+
+                e.preventDefault();
+                e.stopPropagation();
+
+                const delta = e.deltaY < 0 ? 0.8 : -0.8;
+                let currentSize = parseFloat(getComputedStyle(wsTreeEl).fontSize) || parseFloat(wsTreeEl.style.fontSize) || 12.5;
+                let newSize = Math.min(28, Math.max(8, Math.round((currentSize + delta) * 10) / 10));
+
+                document.documentElement.style.setProperty('--ws-tree-font-size', `${newSize}px`);
+                wsTreeEl.style.fontSize = `${newSize}px`;
+                localStorage.setItem('ws_tree_font_size', newSize);
+
+                if (typeof window.showZoomToast === 'function') {
+                    window.showZoomToast(`🔍 Fonte da Árvore: ${newSize}px`);
+                }
+            }
+        }, { passive: false });
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', setupTreeWheelZoom);
+    } else {
+        setupTreeWheelZoom();
+    }
+
     // Expose functions
     window.refreshProjectTree = refreshProjectTree;
     window.triggerTreeRefresh = triggerTreeRefresh;

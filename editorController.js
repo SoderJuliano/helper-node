@@ -224,6 +224,36 @@
       },
     });
 
+    // Restaurar font-size salvo do editor no CodeMirror
+    const savedEditorFontSize = localStorage.getItem('editor_font_size');
+    const wrapperEl = cm.getWrapperElement();
+    if (savedEditorFontSize && wrapperEl) {
+      wrapperEl.style.fontSize = savedEditorFontSize + 'px';
+      setTimeout(() => cm.refresh(), 0);
+    }
+
+    // Ctrl + Wheel Zoom no editor de código
+    const handleEditorWheel = (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        const delta = e.deltaY < 0 ? 1 : -1;
+        let currentSize = parseFloat(wrapperEl.style.fontSize) || 13;
+        let newSize = Math.min(40, Math.max(8, currentSize + delta));
+        wrapperEl.style.fontSize = newSize + 'px';
+        localStorage.setItem('editor_font_size', newSize);
+        cm.refresh();
+        if (typeof window.showZoomToast === 'function') {
+          window.showZoomToast(`🔍 Zoom do Editor: ${newSize}px`);
+        }
+      }
+    };
+
+    if (wrapperEl && !wrapperEl._hasWheelZoom) {
+      wrapperEl._hasWheelZoom = true;
+      wrapperEl.addEventListener('wheel', handleEditorWheel, { passive: false });
+    }
+
     cm.on('inputRead', (editor, change) => {
       if (change.origin === '+input') {
         const text = change.text[0];
