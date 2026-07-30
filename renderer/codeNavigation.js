@@ -506,6 +506,365 @@
     }
   }
 
+  let activeEditorContextMenu = null;
+  let activeRenameState = null;
+
+  function removeActiveEditorContextMenu() {
+    if (activeEditorContextMenu) {
+      activeEditorContextMenu.remove();
+      activeEditorContextMenu = null;
+    }
+  }
+
+  function removeActiveRename() {
+    if (activeRenameState) {
+      if (activeRenameState.cleanup) {
+        activeRenameState.cleanup();
+      }
+      activeRenameState = null;
+    }
+  }
+
+  function findSymbolOccurrencesInCm(cm, symbol) {
+    if (!cm || !symbol) return [];
+    const occurrences = [];
+    const escaped = symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`\\b${escaped}\\b`, 'g');
+    const lineCount = cm.lineCount();
+
+    for (let i = 0; i < lineCount; i++) {
+      const lineText = cm.getLine(i);
+      if (!lineText) continue;
+      let match;
+      while ((match = regex.exec(lineText)) !== null) {
+        occurrences.push({
+          line: i,
+          chStart: match.index,
+          chEnd: match.index + symbol.length
+        });
+      }
+    }
+    return occurrences;
+  }
+
+  async function updateProjectUsages(originalSymbol, finalName, projectUsages, currentFile) {
+    if (!Array.isArray(projectUsages) || projectUsages.length === 0) return;
+    const normCurrent = (currentFile || '').replace(/\\/g, '/').toLowerCase();
+    
+    const usagesByFile = new Map();
+    for (const u of projectUsages) {
+      if (!u.filePath) continue;
+      const normPath = u.filePath.replace(/\\/g, '/');
+      if (normPath.toLowerCase() === normCurrent) continue;
+      if (!usagesByFile.has(normPath)) {
+        usagesByFile.set(normPath, u.filePath);
+      }
+    }
+
+    const escaped = originalSymbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`\\b${escaped}\\b`, 'g');
+
+    for (const [normPath, rawPath] of usagesByFile.entries()) {
+      try {
+        if (window.electronAPI && window.electronAPI.readFileContent && window.electronAPI.editorSaveFile) {
+          const res = await window.electronAPI.readFileContent(rawPath);
+          if (res && typeof res.content === 'string') {
+            if (regex.test(res.content)) {
+              const updatedContent = res.content.replace(regex, finalName);
+              await window.electronAPI.editorSaveFile({ filePath: rawPath, content: updatedContent });
+            }
+          }
+        }
+      } catch (err) {
+        console.warn(`[codeNavigation] Erro ao renomear em ${rawPath}:`, err);
+      }
+    }
+  }
+
+  function startRenameMethod(cm, filePath, originalSymbol, clickPos) {
+    removeActiveRename();
+    removeActiveUsagesBadge();
+    removeActivePopup();
+
+    const originalDocContent = cm.getValue();
+    const localOccurrences = findSymbolOccurrencesInCm(cm, originalSymbol);
+    
+    let projectUsages = [];
+    if (window.electronAPI && window.electronAPI.codeNavFindUsages) {
+      window.electronAPI.codeNavFindUsages({ filePath, symbol: originalSymbol }).then(u => {
+        if (Array.isArray(u)) projectUsages = u;
+      }).catch(() => {});
+    }
+
+    let renameMarkers = [];
+    function updateRedHighlights(symbolToHighlight) {
+      renameMarkers.forEach(m => m.clear());
+      renameMarkers = [];
+      if (!symbolToHighlight) return;
+      const occs = findSymbolOccurrencesInCm(cm, symbolToHighlight);
+      for (const occ of occs) {
+        const marker = cm.markText(
+          { line: occ.line, ch: occ.chStart },
+          { line: occ.line, ch: occ.chEnd },
+          { className: 'cm-rename-highlight-red' }
+        );
+        renameMarkers.push(marker);
+      }
+    }
+
+    updateRedHighlights(originalSymbol);
+
+    // Banner de Aviso com Fundo Vermelho em Destaque
+    const banner = document.createElement('div');
+    banner.className = 'code-rename-banner';
+
+    const header = document.createElement('div');
+    header.className = 'code-rename-header';
+
+    const warningSpan = document.createElement('span');
+    warningSpan.className = 'code-rename-warning-span';
+    warningSpan.innerHTML = `<span>⚠️</span> <span>Renomeando método <strong>'${originalSymbol}'</strong> (${localOccurrences.length} uso${localOccurrences.length !== 1 ? 's' : ''})</span>`;
+
+    const timerSpan = document.createElement('span');
+    timerSpan.className = 'code-rename-timer';
+    timerSpan.textContent = 'Auto-confirma em 10s';
+
+    header.appendChild(warningSpan);
+    header.appendChild(timerSpan);
+    banner.appendChild(header);
+
+    const inputWrapper = document.createElement('div');
+    inputWrapper.className = 'code-rename-input-wrapper';
+
+    const renameInput = document.createElement('input');
+    renameInput.type = 'text';
+    renameInput.className = 'code-rename-input';
+    renameInput.value = originalSymbol;
+
+    inputWrapper.appendChild(renameInput);
+    banner.appendChild(inputWrapper);
+
+    const hintsRow = document.createElement('div');
+    hintsRow.className = 'code-rename-hints';
+    hintsRow.innerHTML = `<span><span class="code-rename-hint-key">Enter</span> confirmar</span> <span><span class="code-rename-hint-key">Esc</span> cancelar</span> <span>10s inativo (>1 char): auto-confirma</span>`;
+    banner.appendChild(hintsRow);
+
+    const wrapper = cm.getWrapperElement();
+    wrapper.appendChild(banner);
+
+    renameInput.focus();
+    renameInput.select();
+
+    let autoConfirmTimer = null;
+    let countdownInterval = null;
+    let remainingSeconds = 10;
+
+    function resetTimer() {
+      clearTimeout(autoConfirmTimer);
+      clearInterval(countdownInterval);
+      remainingSeconds = 10;
+      timerSpan.textContent = `Auto-confirma em ${remainingSeconds}s`;
+
+      countdownInterval = setInterval(() => {
+        remainingSeconds--;
+        if (remainingSeconds >= 0) {
+          timerSpan.textContent = `Auto-confirma em ${remainingSeconds}s`;
+        }
+      }, 1000);
+
+      autoConfirmTimer = setTimeout(() => {
+        clearInterval(countdownInterval);
+        const val = renameInput.value.trim();
+        if (val.length > 1 && val !== originalSymbol) {
+          confirmRename(val);
+        }
+      }, 10000);
+    }
+
+    resetTimer();
+
+    renameInput.addEventListener('input', () => {
+      const newName = renameInput.value.trim();
+      if (newName && newName !== originalSymbol) {
+        const escaped = originalSymbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(`\\b${escaped}\\b`, 'g');
+        const updatedDocContent = originalDocContent.replace(regex, newName);
+        
+        const cursor = cm.getCursor();
+        cm.setValue(updatedDocContent);
+        cm.setCursor(cursor);
+        updateRedHighlights(newName);
+      } else if (!newName || newName === originalSymbol) {
+        const cursor = cm.getCursor();
+        cm.setValue(originalDocContent);
+        cm.setCursor(cursor);
+        updateRedHighlights(originalSymbol);
+      }
+      resetTimer();
+    });
+
+    function confirmRename(finalName) {
+      const isConfirmed = finalName && finalName.length > 1 && finalName !== originalSymbol;
+      cleanup();
+      if (isConfirmed) {
+        const escaped = originalSymbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(`\\b${escaped}\\b`, 'g');
+        const updatedDocContent = originalDocContent.replace(regex, finalName);
+        cm.setValue(updatedDocContent);
+
+        if (projectUsages && projectUsages.length > 0) {
+          updateProjectUsages(originalSymbol, finalName, projectUsages, filePath);
+        }
+
+        if (window.EditorController && window.EditorController.markDirty) {
+          window.EditorController.markDirty(filePath);
+        }
+      } else {
+        cm.setValue(originalDocContent);
+      }
+    }
+
+    function cancelRename() {
+      cleanup();
+      cm.setValue(originalDocContent);
+    }
+
+    function cleanup() {
+      clearTimeout(autoConfirmTimer);
+      clearInterval(countdownInterval);
+      renameMarkers.forEach(m => m.clear());
+      renameMarkers = [];
+      if (banner && banner.parentNode) {
+        banner.remove();
+      }
+      document.removeEventListener('keydown', globalKeyListener, true);
+      activeRenameState = null;
+    }
+
+    const globalKeyListener = (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        confirmRename(renameInput.value.trim());
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        cancelRename();
+      }
+    };
+
+    renameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        confirmRename(renameInput.value.trim());
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        cancelRename();
+      }
+    });
+
+    document.addEventListener('keydown', globalKeyListener, true);
+
+    activeRenameState = {
+      cleanup,
+      confirm: confirmRename,
+      cancel: cancelRename
+    };
+  }
+
+  function showEditorContextMenu(cm, filePath, event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    removeActiveEditorContextMenu();
+    removeActiveUsagesBadge();
+    removeActivePopup();
+
+    const selection = cm.getSelection();
+    const hasSelection = selection && selection.length > 0;
+
+    const pos = cm.coordsChar({ left: event.clientX, top: event.clientY });
+    const item = getSymbolOrPathAtPos(cm, pos);
+    let targetSymbol = (item && item.symbol && !item.isPath) ? item.symbol : null;
+
+    if (!targetSymbol) {
+      const wordRange = cm.findWordAt(pos);
+      const word = cm.getRange(wordRange.anchor, wordRange.head).trim();
+      if (word && /^[A-Za-z_$][\w$]*$/.test(word)) {
+        targetSymbol = word;
+      }
+    }
+
+    if (!hasSelection && !targetSymbol) return;
+
+    const menu = document.createElement('div');
+    menu.className = 'code-editor-context-menu';
+    activeEditorContextMenu = menu;
+
+    if (targetSymbol) {
+      const btnRename = document.createElement('button');
+      btnRename.className = 'menu-item-rename menu-danger';
+      btnRename.innerHTML = `<span class="menu-icon">✏️</span> <span>Renomear '${targetSymbol}'</span>`;
+      btnRename.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        removeActiveEditorContextMenu();
+        startRenameMethod(cm, filePath, targetSymbol, pos);
+      });
+      menu.appendChild(btnRename);
+    }
+
+    if (hasSelection) {
+      const btnCopy = document.createElement('button');
+      btnCopy.className = 'menu-item-copy';
+      const linesCount = selection.split('\n').length;
+      const label = linesCount > 1 ? `Copiar (${linesCount} linhas)` : 'Copiar';
+      btnCopy.innerHTML = `<span class="menu-icon">📋</span> <span>${label}</span>`;
+      btnCopy.addEventListener('click', async (ev) => {
+        ev.stopPropagation();
+        removeActiveEditorContextMenu();
+        try {
+          if (window.electronAPI && window.electronAPI.copyToClipboard) {
+            window.electronAPI.copyToClipboard(selection);
+          } else {
+            await navigator.clipboard.writeText(selection);
+          }
+        } catch (_) {
+          const ta = document.createElement('textarea');
+          ta.value = selection;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          ta.remove();
+        }
+      });
+      menu.appendChild(btnCopy);
+    }
+
+    document.body.appendChild(menu);
+
+    const width = menu.offsetWidth || 180;
+    const height = menu.offsetHeight || 80;
+    let x = event.clientX;
+    let y = event.clientY;
+    if (x + width > window.innerWidth) x = window.innerWidth - width - 10;
+    if (y + height > window.innerHeight) y = window.innerHeight - height - 10;
+
+    menu.style.left = Math.max(10, x) + 'px';
+    menu.style.top = Math.max(10, y) + 'px';
+
+    const dismissHandler = (ev) => {
+      if (menu && !menu.contains(ev.target)) {
+        removeActiveEditorContextMenu();
+        document.removeEventListener('mousedown', dismissHandler, true);
+      }
+    };
+    setTimeout(() => {
+      document.addEventListener('mousedown', dismissHandler, true);
+    }, 0);
+  }
+
   // Configura os ouvintes de evento no CodeMirror
   function attachCodeNavigation(cm, filePath) {
     if (!cm) return;
@@ -518,6 +877,11 @@
     const wrapper = cm.getWrapperElement();
     if (wrapper._hasCodeNav) return;
     wrapper._hasCodeNav = true;
+
+    // Menu de contexto no clique do botão direito (Renomear método / Copiar seleção)
+    wrapper.addEventListener('contextmenu', (e) => {
+      showEditorContextMenu(cm, currentFilePath, e);
+    });
 
     // Mousemove para efeito de link sob Ctrl & Usages Badge sob hover normal
     wrapper.addEventListener('mousemove', (e) => {
@@ -605,4 +969,5 @@
     updateGutterMarkers
   };
 })();
+
 

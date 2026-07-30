@@ -201,4 +201,154 @@
   flex-shrink: 0;
 }
 
+/* Menu de Contexto do Editor de Código (Botão Direito) */
+.code-editor-context-menu {
+  position: fixed;
+  z-index: 10000;
+  background: var(--bg-elevated, #1b1e24);
+  border: 1px solid var(--border, #2d2d38);
+  border-radius: 6px;
+  padding: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65);
+  min-width: 180px;
+  font-family: var(--font-ui, system-ui, sans-serif);
+  font-size: 12px;
+  color: var(--text, #e3e3e6);
+  user-select: none;
+  animation: codeNavBadgeFadeIn 0.12s ease-out;
+}
+
+.code-editor-context-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 12px;
+  font-family: inherit;
+  padding: 7px 10px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.code-editor-context-menu button:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+.code-editor-context-menu button .menu-icon {
+  font-size: 13px;
+}
+
+.code-editor-context-menu button.menu-danger:hover {
+  background: rgba(255, 68, 68, 0.2);
+  color: #ff5555;
+}
+
+/* Banner de Aviso de Renomeação (Fundo Vermelho em Destaque) */
+.code-rename-banner {
+  position: absolute;
+  top: 12px;
+  right: 25px;
+  z-index: 9999;
+  background: #8b0000;
+  background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%);
+  border: 1px solid #ef4444;
+  border-radius: 8px;
+  padding: 10px 14px;
+  box-shadow: 0 8px 24px rgba(185, 28, 28, 0.5), 0 2px 8px rgba(0, 0, 0, 0.4);
+  color: #ffffff;
+  font-family: var(--font-ui, system-ui, sans-serif);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 330px;
+  max-width: 480px;
+  animation: codeNavBadgeFadeIn 0.2s ease-out;
+}
+
+.code-rename-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.code-rename-warning-span {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #fecaca;
+  font-size: 12px;
+}
+
+.code-rename-timer {
+  font-size: 11px;
+  color: #fca5a5;
+  background: rgba(0, 0, 0, 0.35);
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(254, 202, 202, 0.3);
+  white-space: nowrap;
+}
+
+.code-rename-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.code-rename-input {
+  flex: 1;
+  background: #3f0f0f !important;
+  border: 1px solid #ef4444 !important;
+  border-radius: 4px !important;
+  color: #ffffff !important;
+  font-family: var(--font-mono, monospace) !important;
+  font-size: 13px !important;
+  font-weight: bold !important;
+  padding: 6px 10px !important;
+  outline: none !important;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.5), 0 0 6px rgba(239, 68, 68, 0.4);
+}
+
+.code-rename-input:focus {
+  border-color: #f87171 !important;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.5), 0 0 10px rgba(248, 113, 113, 0.7);
+}
+
+.code-rename-hints {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #fca5a5;
+  margin-top: 2px;
+}
+
+.code-rename-hint-key {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: #fff;
+  font-family: monospace;
+}
+
+/* Destaque Vermelho para Ocorrências do Método no CodeMirror */
+.cm-rename-highlight-red {
+  background-color: rgba(220, 38, 38, 0.45) !important;
+  color: #ffffff !important;
+  border-bottom: 2px solid #ef4444 !important;
+  border-radius: 2px;
+  box-shadow: 0 0 4px rgba(239, 68, 68, 0.4);
+}
+
+
 
