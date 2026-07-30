@@ -651,6 +651,24 @@ class OllamaLocalService {
                 await new Promise((resolve, reject) => {
                     const stream = r.data;
                     let buffer = '';
+
+                    const processLine = (line) => {
+                        try {
+                            const parsed = JSON.parse(line);
+                            if (parsed.error) {
+                                cleanup();
+                                reject(new Error(parsed.error));
+                                return true;
+                            }
+                            const token = parsed.message && parsed.message.content;
+                            if (token) {
+                                router.routeToken(token);
+                            }
+                        } catch (err) {
+                            console.error('Error parsing Ollama stream line:', err);
+                        }
+                        return false;
+                    };
                     
                     const onStreamData = (chunk) => {
                         buffer += chunk.toString('utf8');
@@ -659,26 +677,16 @@ class OllamaLocalService {
                             const line = buffer.slice(0, lineEndIndex).trim();
                             buffer = buffer.slice(lineEndIndex + 1);
                             if (line) {
-                                try {
-                                    const parsed = JSON.parse(line);
-                                    if (parsed.error) {
-                                        cleanup();
-                                        reject(new Error(parsed.error));
-                                        return;
-                                    }
-                                    const token = parsed.message && parsed.message.content;
-                                    if (token) {
-                                        router.routeToken(token);
-                                    }
-
-                                } catch (err) {
-                                    console.error('Error parsing Ollama stream line:', err);
-                                }
+                                const isError = processLine(line);
+                                if (isError) return;
                             }
                         }
                     };
 
                     const onStreamEnd = () => {
+                        if (buffer.trim()) {
+                            processLine(buffer.trim());
+                        }
                         cleanup();
                         resolve();
                     };
