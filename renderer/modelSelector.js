@@ -138,7 +138,7 @@
                 document.querySelectorAll('.composer-model-menu').forEach(m => m.remove());
                 const menu = document.createElement('div');
                 menu.className = 'composer-model-menu';
-                menu.style.cssText = 'position:absolute; z-index:9999; background:var(--bg-elevated); border:1px solid var(--border-strong); border-radius:8px; padding:4px; box-shadow:0 10px 30px rgba(0,0,0,0.55); min-width:200px;';
+                menu.style.cssText = 'position:absolute; z-index:9999; background:var(--bg-elevated); border:1px solid var(--border-strong); border-radius:8px; padding:4px; box-shadow:0 10px 30px rgba(0,0,0,0.55); min-width:200px; -webkit-app-region: no-drag;';
                 const current = composerModelName.textContent;
                 models.forEach(opt => {
                     const b = document.createElement('button');

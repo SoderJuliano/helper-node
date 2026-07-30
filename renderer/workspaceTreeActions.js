@@ -193,7 +193,7 @@
                 document.querySelectorAll('.ws-tree-context-menu').forEach(m => m.remove());
                 const menu = document.createElement('div');
                 menu.className = 'ws-tree-context-menu';
-                menu.style.cssText = 'position:fixed; z-index:10000; background:var(--bg-elevated, #1b1e24); border:1px solid var(--border, #2d2d38); border-radius:var(--radius-sm, 4px); padding:4px; box-shadow:0 4px 12px rgba(0,0,0,0.5); min-width:170px; font-family:var(--font-ui); font-size:12px; color:var(--text, #e3e3e6);';
+                menu.style.cssText = 'position:fixed; z-index:10000; background:var(--bg-elevated, #1b1e24); border:1px solid var(--border, #2d2d38); border-radius:var(--radius-sm, 4px); padding:4px; box-shadow:0 4px 12px rgba(0,0,0,0.5); min-width:170px; font-family:var(--font-ui); font-size:12px; color:var(--text, #e3e3e6); -webkit-app-region: no-drag;';
                 
                 const SVGI_NEW_FILE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>';
                 const SVGI_NEW_FOLDER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>';
@@ -370,7 +370,7 @@
                 document.querySelectorAll('.ws-attach-menu').forEach(m => m.remove());
                 const menu = document.createElement('div');
                 menu.className = 'ws-attach-menu';
-                menu.style.cssText = 'position:absolute; z-index:9999; background:#1c1c1c; border:1px solid rgba(255,255,255,0.18); border-radius:4px; padding:3px; box-shadow:0 4px 12px rgba(0,0,0,0.5); min-width:120px;';
+                menu.style.cssText = 'position:absolute; z-index:9999; background:#1c1c1c; border:1px solid rgba(255,255,255,0.18); border-radius:4px; padding:3px; box-shadow:0 4px 12px rgba(0,0,0,0.5); min-width:120px; -webkit-app-region: no-drag;';
                 const mkItem = (label, fn) => {
                     const b = document.createElement('button');
                     b.textContent = label;

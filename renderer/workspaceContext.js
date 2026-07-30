@@ -75,7 +75,7 @@ function fileIconHtml(name) {
                 document.querySelectorAll('.ctx-project-menu').forEach(m => m.remove());
                 const menu = document.createElement('div');
                 menu.className = 'ctx-project-menu';
-                menu.style.cssText = 'position:absolute; z-index:9999; background:var(--bg-elevated); border:1px solid var(--border-strong); border-radius:8px; padding:4px; box-shadow:0 10px 30px rgba(0,0,0,0.55); min-width:188px;';
+                menu.style.cssText = 'position:absolute; z-index:9999; background:var(--bg-elevated); border:1px solid var(--border-strong); border-radius:8px; padding:4px; box-shadow:0 10px 30px rgba(0,0,0,0.55); min-width:188px; -webkit-app-region: no-drag;';
                 
                 const projectPath = anchor.dataset.path || (ctxProject && ctxProject.path);
                 const projectId = anchor.dataset.id || (ctxProject && ctxProject.id);
