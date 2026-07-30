@@ -915,12 +915,12 @@
           lastHoveredSymbol = item.symbol;
           clearTimeout(usagesTimer);
           usagesTimer = setTimeout(async () => {
-            if (activeCm !== cm || currentFilePath !== filePath) return;
+            if (activeCm !== cm || !currentFilePath) return;
             if (window.electronAPI && window.electronAPI.codeNavFindUsages) {
-              const usages = await window.electronAPI.codeNavFindUsages({ filePath, symbol: item.symbol });
+              const usages = await window.electronAPI.codeNavFindUsages({ filePath: currentFilePath, symbol: item.symbol });
               showUsagesBadge(item.symbol, usages, pos, e.clientX, e.clientY);
             }
-          }, 350);
+          }, 300);
         }
       } else {
         if (lastHoveredSymbol !== null) {
