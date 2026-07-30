@@ -83,7 +83,7 @@ function load() {
     if (state.attachments && state.attachments.length > 0) {
       let changed = false;
       state.attachments = state.attachments.map(a => {
-        const resolved = resolvePortalPath(a.path);
+        const resolved = path.resolve(resolvePortalPath(a.path));
         if (resolved !== a.path) {
           changed = true;
           return { ...a, path: resolved };
@@ -153,9 +153,21 @@ function getMsgCountAtLastSummary() { return state.msgCountAtLastSummary; }
 
 function isPathAllowed(absPath) {
   if (!absPath) return false;
-  for (const a of state.attachments) {
-    if (absPath === a.path) return true;
-    if (a.type === "dir" && absPath.startsWith(a.path + path.sep)) return true;
+  try {
+    const resolved = resolvePortalPath(absPath);
+    const normResolved = path.resolve(resolved);
+    for (const a of state.attachments) {
+      const aResolved = resolvePortalPath(a.path);
+      const normAttachment = path.resolve(aResolved);
+      if (normResolved === normAttachment) return true;
+      if (a.type === "dir") {
+        const relative = path.relative(normAttachment, normResolved);
+        const isInside = !relative.startsWith('..') && !path.isAbsolute(relative);
+        if (isInside) return true;
+      }
+    }
+  } catch (e) {
+    console.warn("[workspace] isPathAllowed erro:", e.message);
   }
   return false;
 }

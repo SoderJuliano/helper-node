@@ -31,8 +31,11 @@ ipcMain.handle("workspace:pick-file", async () => {
   if (res.canceled || !res.filePaths.length) return { ok: false, canceled: true };
   const added = [];
   for (const p of res.filePaths) {
-    try { await workspace.addPath(p, "file"); added.push(p); }
-    catch (e) { console.warn("[workspace] add file falhou:", e.message); }
+    try {
+      await workspace.addPath(p, "file");
+      const resolved = workspace.resolvePortalPath ? workspace.resolvePortalPath(p) : p;
+      added.push(resolved);
+    } catch (e) { console.warn("[workspace] add file falhou:", e.message); }
   }
   if (state.mainWindow && !state.mainWindow.isDestroyed()) {
     state.mainWindow.webContents.send("workspace-changed", { attachments: workspace.list() });
@@ -51,8 +54,11 @@ ipcMain.handle("workspace:pick-dir", async () => {
   // Modelo IDE: um projeto por vez — openProject substitui a pasta anterior.
   const prevDirs = workspace.list().filter(a => a.type === 'dir').map(a => a.path);
   for (const p of res.filePaths) {
-    try { await workspace.openProject(p); added.push(p); }
-    catch (e) { console.warn("[workspace] open project falhou:", e.message); }
+    try {
+      await workspace.openProject(p);
+      const resolved = workspace.resolvePortalPath ? workspace.resolvePortalPath(p) : p;
+      added.push(resolved);
+    } catch (e) { console.warn("[workspace] open project falhou:", e.message); }
   }
   helpers.syncTerminalCwd();
   // Gemini CLI: reinicia sessão quando o projeto muda.
@@ -300,6 +306,9 @@ ipcMain.handle("search-project-content", async (_event, query) => {
 ipcMain.handle("read-file-content", async (event, filePath) => {
   try {
     if (!filePath) return { ok: false, error: "path vazio" };
+    if (workspace.resolvePortalPath) {
+      filePath = workspace.resolvePortalPath(filePath);
+    }
     if (workspace.isPathAllowed && !workspace.isPathAllowed(filePath)) {
       return { ok: false, error: "arquivo fora do projeto/workspace" };
     }
@@ -318,8 +327,11 @@ ipcMain.handle("read-file-content", async (event, filePath) => {
 
 ipcMain.handle("editor-save-file", async (event, payload) => {
   try {
-    const { path: filePath, content, expectedMtimeMs } = payload || {};
+    let { path: filePath, content, expectedMtimeMs } = payload || {};
     if (!filePath) return { ok: false, error: "path vazio" };
+    if (workspace.resolvePortalPath) {
+      filePath = workspace.resolvePortalPath(filePath);
+    }
     if (workspace.isPathAllowed && !workspace.isPathAllowed(filePath)) {
       return { ok: false, error: "arquivo fora do projeto/workspace" };
     }

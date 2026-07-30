@@ -44,7 +44,7 @@ function ensureAgyTrustedWorkspace(absPath) {
 
 async function addPath(absPath, type) {
   if (!absPath) throw new Error("path vazio");
-  absPath = store.resolvePortalPath(absPath);
+  absPath = path.resolve(store.resolvePortalPath(absPath));
   if (!fs.existsSync(absPath)) throw new Error("path não existe: " + absPath);
   const st = fs.statSync(absPath);
   const resolvedType = type || (st.isDirectory() ? "dir" : "file");
@@ -128,5 +128,6 @@ module.exports = {
   buildContextIfNeeded, markContextSent, resetContextSent,
   compactHistoryIfNeeded, getProjectPath,
   budgetFor,
+  resolvePortalPath: (p) => store.resolvePortalPath(p),
 };
 
