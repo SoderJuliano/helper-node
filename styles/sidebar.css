@@ -60,7 +60,26 @@
         .panel-item-action svg { width: 13px; height: 13px; }
         .panel-item:hover .panel-item-action { opacity: .7; }
         .panel-item-action:hover { color: var(--text); background: rgba(255,255,255,0.10); opacity: 1; }
+        .panel-item-rename:hover { color: var(--accent-2, #5fd75f); background: rgba(76,175,80,0.12); opacity: 1; }
         .panel-item-delete:hover { color: var(--danger); background: rgba(248,113,113,0.12); opacity: 1; }
+
+        .panel-item-rename-input {
+            flex: 1;
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid var(--accent-border, rgba(76,175,80,0.4));
+            border-radius: 4px;
+            color: var(--text, #fff);
+            font-size: 12px;
+            font-family: inherit;
+            padding: 2px 6px;
+            outline: none;
+            min-width: 0;
+            margin: 0;
+        }
+        .panel-item-rename-input:focus {
+            border-color: var(--accent, #4CAF50);
+            box-shadow: 0 0 0 2px var(--accent-soft, rgba(76,175,80,0.2));
+        }
 
         .commands-content {
             max-height: 280px;

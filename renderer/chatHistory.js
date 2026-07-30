@@ -35,9 +35,66 @@ var historyState = { loadedSessions: [], currentSession: null };
                     // continua a sessão, com o contexto recarregado na IA.
                     titleSpan.addEventListener('click', () => loadSessionIntoChat(session.id));
 
-                    // Ações: baixar (.txt) + deletar, lado a lado.
+                    // Ações: renomear + baixar (.txt) + deletar, lado a lado.
                     const actions = document.createElement('div');
                     actions.className = 'panel-item-actions';
+
+                    const renameBtn = document.createElement('button');
+                    renameBtn.className = 'panel-item-action panel-item-rename';
+                    renameBtn.title = 'Renomear conversa';
+                    renameBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+                    renameBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        if (item.querySelector('.panel-item-rename-input')) return;
+
+                        const input = document.createElement('input');
+                        input.type = 'text';
+                        input.className = 'panel-item-rename-input';
+                        input.value = session.title;
+
+                        let saved = false;
+
+                        const finishRename = async () => {
+                            if (saved) return;
+                            saved = true;
+
+                            const newTitle = input.value.trim();
+                            if (newTitle && newTitle !== session.title) {
+                                session.title = newTitle;
+                                const sessionInList = historyState.loadedSessions.find(s => s.id === session.id);
+                                if (sessionInList) sessionInList.title = newTitle;
+                                try {
+                                    await window.electronAPI.renameSession(session.id, newTitle);
+                                } catch (err) {
+                                    console.error('Erro ao renomear sessão:', err);
+                                }
+                            }
+                            renderHistoryList(historyState.loadedSessions);
+                        };
+
+                        input.addEventListener('click', (ev) => ev.stopPropagation());
+                        input.addEventListener('keydown', async (ev) => {
+                            if (ev.key === 'Enter') {
+                                ev.preventDefault();
+                                ev.stopPropagation();
+                                await finishRename();
+                            } else if (ev.key === 'Escape') {
+                                ev.preventDefault();
+                                ev.stopPropagation();
+                                saved = true;
+                                renderHistoryList(historyState.loadedSessions);
+                            }
+                        });
+
+                        input.addEventListener('blur', async () => {
+                            await finishRename();
+                        });
+
+                        item.replaceChild(input, titleSpan);
+                        actions.style.display = 'none';
+                        input.focus();
+                        input.select();
+                    });
 
                     const downloadBtn = document.createElement('button');
                     downloadBtn.className = 'panel-item-action';
@@ -69,6 +126,7 @@ var historyState = { loadedSessions: [], currentSession: null };
                         }
                     });
 
+                    actions.appendChild(renameBtn);
                     actions.appendChild(downloadBtn);
                     actions.appendChild(deleteBtn);
                     item.appendChild(titleSpan);

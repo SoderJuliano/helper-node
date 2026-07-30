@@ -246,6 +246,25 @@ async function deleteSession(sessionId) {
   }
 }
 
+/**
+ * Renomeia o título de uma sessão pelo ID
+ */
+async function renameSession(sessionId, newTitle) {
+  try {
+    const numericId = Number(sessionId);
+    const session = currentSessions.find(s => s.id === sessionId || s.id === (Number.isFinite(numericId) ? numericId : sessionId));
+    if (!session) return false;
+
+    const trimmed = (newTitle || '').trim();
+    session.title = trimmed || 'Sem título';
+    await saveCurrentFile();
+    return true;
+  } catch (error) {
+    console.error('Erro ao renomear sessão:', error);
+    return false;
+  }
+}
+
 module.exports = {
   initialize,
   createNewSession,
@@ -257,4 +276,6 @@ module.exports = {
   getCurrentSession,
   clearCurrentSessionFromMemory,
   deleteSession,
+  renameSession,
 };
+

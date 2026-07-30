@@ -154,4 +154,18 @@ ipcMain.handle('delete-session', async (event, sessionId) => {
   }
 });
 
+ipcMain.handle('rename-session', async (event, sessionId, newTitle) => {
+  try {
+    const success = await historyService.renameSession(sessionId, newTitle);
+    if (success) {
+      console.log(`✓ Sessão ${sessionId} renomeada para "${newTitle}"`);
+    }
+    return { success };
+  } catch (error) {
+    console.error('Erro ao renomear sessão:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 };
+
