@@ -103,14 +103,16 @@
                     let r = rowStr.trim();
                     if (r.startsWith('|')) r = r.slice(1);
                     if (r.endsWith('|')) r = r.slice(0, -1);
-                    return r.split('|').map(c => c.trim());
+                    return r.replace(/\\\|/g, '\x00PIPE\x00')
+                            .split('|')
+                            .map(c => c.replace(/\x00PIPE\x00/g, '|').trim());
                 };
 
                 const headerRow = parseRow(tableLines[0]);
                 const alignRow = parseRow(tableLines[1]);
 
                 // Valida se a linha separadora é válida (| --- | :---: | ---: |)
-                const isValidAlign = alignRow.every(col => /^:?-+:?$/.test(col));
+                const isValidAlign = alignRow.length > 0 && alignRow.every(col => /^:?-+:?$/.test(col));
                 if (!isValidAlign) return tableLines.join('\n');
 
                 const alignments = alignRow.map(col => {
@@ -121,12 +123,14 @@
                 });
 
                 const bodyRows = tableLines.slice(2).map(parseRow);
+                const formatCell = (cellStr) => cellStr.replace(/&lt;br\s*\/??&gt;/gi, '<br>')
+                                                      .replace(/<br\s*\/?>/gi, '<br>')
+                                                      .replace(/\\n/g, '<br>');
 
                 let html = '<div class="markdown-table-wrapper"><table class="markdown-table"><thead><tr>';
                 headerRow.forEach((cell, idx) => {
                     const align = alignments[idx] || 'left';
-                    const formattedCell = cell.replace(/&lt;br\s*\/??&gt;/gi, '<br>').replace(/<br\s*\/?>/gi, '<br>');
-                    html += `<th style="text-align:${align}">${formattedCell}</th>`;
+                    html += `<th style="text-align:${align}">${formatCell(cell)}</th>`;
                 });
                 html += '</tr></thead><tbody>';
 
@@ -134,8 +138,7 @@
                     html += '<tr>';
                     row.forEach((cell, idx) => {
                         const align = alignments[idx] || 'left';
-                        const formattedCell = cell.replace(/&lt;br\s*\/??&gt;/gi, '<br>').replace(/<br\s*\/?>/gi, '<br>');
-                        html += `<td style="text-align:${align}">${formattedCell}</td>`;
+                        html += `<td style="text-align:${align}">${formatCell(cell)}</td>`;
                     });
                     html += '</tr>';
                 });
@@ -232,8 +235,15 @@
             out = out.replace(/\n\n+/g, '\x01').replace(/\n/g, '<br>').replace(/\x01/g, '</p><p>');
             if (!out.match(/^<(h[123]|ul|ol|pre|\x00)/)) out = '<p>' + out + '</p>';
 
+            // Limpa marcas de parágrafo e quebras de linha supérfluas em torno de blocos retidos (tabelas e código)
+            out = out.replace(/<p>\s*(<br>\s*)*(\x00B\d+\x00)/g, '$2<p>')
+                     .replace(/(\x00B\d+\x00)\s*(<br>\s*)*<\/p>/g, '</p>$1')
+                     .replace(/<p>\s*<\/p>/g, '');
+
             // 7. Restaura blocos protegidos
             blocks.forEach((b, i) => { out = out.replace(`\x00B${i}\x00`, b); });
+
+            return out;
 
             return out;
         }
