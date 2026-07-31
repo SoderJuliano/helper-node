@@ -75,7 +75,7 @@ Roteado por `pickRealtimeService()`; `getEffectiveAiModel() = isLite() ? 'openIa
 **Realtime — dois caminhos, escolhidos pelo provedor de IA:**
 - **ChatGPT (e SEMPRE na edição Lite)** → `services/realtimeOpenAiService.js` + motor
   próprio `services/realtimeAudioCapture.js` (**`parec`** + VAD + segue sink ativo).
-  Transcrição `gpt-4o-transcribe` + resposta OpenAI. **Sem Whisper local.** Default
+  Transcrição `gpt-4o-transcribe` **em streaming (WebSocket)** + resposta OpenAI. **Sem Whisper local.** Default
   sobe `gpt-4.1-nano` → `gpt-4.1`. Transcrição própria (NÃO importa nada do tradutor).
 - **Full + Backend (LLaMA/Ollama) ou Ollama Local** → `realtimeAssistantService.js`
   (Whisper local, mesmo motor de captura do online), com a **resposta no provedor selecionado** (via
@@ -91,6 +91,41 @@ enquanto a IA responde, e **seletor de microfone** nas Configurações (áudio d
 continua automático: pega Meet/Teams/YouTube no navegador).
 
 Emojis removidos da tela de Configurações. Agora em **modo manutenção/melhorias**.
+
+## ✅ Latência do Assistente em Tempo Real: de ~3s para ~1s
+
+**Problema:** o pipeline era serial e só COMEÇAVA depois que o interlocutor parava
+de falar — 1,2s de silêncio no VAD + 0,7-1,4s pra subir e transcrever o WAV
+inteiro + 0,4-0,9s de TTFT. Total ~2,3-3,9s.
+
+**Fase 1 — tirar peso do caminho crítico:**
+- `SILENCE_DURATION.sys` 1200→400ms (só afeta o caminho batch/fallback agora).
+- `maxIterationsInContext` 10→3: menos prompt, menos TTFT, prefixo do system
+  prompt estável pro prompt caching.
+- RAG (`realtimeRag.js`) **pré-buscado sobre o transcript parcial** — quando o
+  turno fecha o bloco já está no cache, custo ZERO no caminho crítico.
+- Conexão aquecida no start (paga o TLS antes, não no meio da pergunta).
+- Instrumentação: `ttft`, `fim-da-fala->1o-token` e `TOTAL` no log por turno.
+
+**Fase 2 — STT em streaming (o fix de verdade):** `realtimeTranscriptionSession.js`
+abre um WebSocket na Realtime GA e manda PCM contínuo. O transcript chega junto
+com a fala e o `semantic_vad` do servidor decide o fim do turno (nada de piso
+fixo de silêncio). **Medido com áudio real: 0,6-0,8s do fim da fala até o
+transcript completo**, contra 1,9-2,6s do batch.
+
+Sumiu junto o `_handleInterim`, que a cada 4s re-transcrevia o buffer INTEIRO e
+ainda pagava um `gpt-4.1-nano` só pra perguntar "isso é uma pergunta?" — 2
+round-trips extras por segmento.
+
+**Fase 3 — disparo especulativo:** com o transcript parcial de graça, uma
+heurística local detecta pergunta fechada e responde ANTES do fim do turno. A
+resposta prematura e a definitiva convivem na tela (decisão do dono); quando o
+texto final é o mesmo, a bolha só é confirmada em vez de duplicada.
+
+⚠️ **Pegadinhas da API que custaram sondagem** (não mude sem re-testar):
+`?intent=transcription` sem `model=` na query; **sem** header `OpenAI-Beta`;
+**rate mínimo 24000** (reamostramos 16k→24k); `gpt-live-transcribe` não aceita
+`turn_detection`.
 
 ## ✅ Lançado em v0.4.2: Streaming + Banco de respostas (RAG de conversas)
 

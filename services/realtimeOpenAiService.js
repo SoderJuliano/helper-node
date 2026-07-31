@@ -4,91 +4,45 @@
 // edição Lite (onde só existe OpenAI). NÃO usa Whisper local: tanto a
 // transcrição quanto a resposta vão para a OpenAI.
 //
-// Pipeline por segmento de fala:
-//   1. realtimeAudioCapture (parec + RMS) captura mic + monitor do sistema e detecta
-//      fim de fala → entrega um WAV.
-//   2. Transcrição via /audio/transcriptions (gpt-4o-transcribe).
-//   3. Resposta via /chat/completions com o system prompt de copiloto.
-//   4. Emite eventos `realtime-assistant-update` (mesmo contrato da UI).
+// DOIS CAMINHOS, por fonte de áudio:
+//
+// 'sys' (interlocutor — é dele que sai a sugestão) → STREAMING:
+//   realtimeAudioCapture entrega PCM cru e contínuo → `realtimeTranscriptionSession`
+//   (WebSocket) transcreve ENQUANTO a pessoa fala e o `semantic_vad` do servidor
+//   decide o fim do turno. Quando ela para, o texto já está pronto: medido em
+//   ~0,5s da última sílaba até o transcript completo, contra ~1,9-2,6s do batch.
+//   Se a sessão não subir (rede/API), `_streaming` fica false e o 'sys' cai
+//   sozinho no caminho batch abaixo — nunca fica sem transcrição.
+//
+// 'mic' (você) → BATCH, como antes: o VAD local fecha o segmento e manda o WAV
+//   pro /audio/transcriptions. Sua fala não gera sugestão (só alimenta o banco
+//   de respostas), então não vale o custo de uma segunda sessão de streaming.
+//
+// Disparo especulativo: com o transcript parcial em mãos, uma heurística LOCAL
+// (sem round-trip) detecta pergunta fechada e já responde antes do fim do turno.
 //
 // Eventos emitidos (compatíveis com index.html):
 //   state | segment_start | segment_whisper_correction | segment_response |
 //   segment_error | fatal_error
-// (não há preview/partial: a transcrição chega pronta, em batch.)
 
-const fs = require('fs');
-const path = require('path');
 const { startCapture, stopCapture } = require('./realtimeAudioCapture');
-const knowledgeBase = require('./knowledgeBase');
 const answerBank = require('./answerBank');
 const { evaluateUserResponse } = require('./translationAssistant/openaiClient');
 const { buildTranscriptionPrompt } = require('./techGlossary');
-const { applyRealtimeOverride, supportsReasoningEffort, maxTokensParam, raceWithTimeout, RAG_TIMEOUT_MS } = require('./openAiRealtimeModels');
+const RealtimeTranscriptionSession = require('./realtimeTranscriptionSession');
+const RealtimeRag = require('./realtimeRag');
+const { handleBatchSegment, TRANSCRIBE_MODEL } = require('./realtimeBatchFallback');
+const { looksLikeCompleteQuestion, sameQuestion } = require('./realtimeQuestionHeuristics');
+const { buildRealtimeCopilotPrompt } = require('./realtimeCopilotPrompt');
+const { applyRealtimeOverride, supportsReasoningEffort, maxTokensParam } = require('./openAiRealtimeModels');
 
-// Transcrição própria (NÃO importa nada do Assistente de Tradução — totalmente
-// independente). Envia o WAV pro endpoint de transcrição da OpenAI.
-// `glossaryPrompt` enviesa o decoder pros termos técnicos da entrevista
-// (SOLID, Spring, Kafka...) — custo de rede zero, é o mesmo request.
-async function transcribeAudio(audioPath, apiKey, model, glossaryPrompt) {
-  const fileBuffer = fs.readFileSync(audioPath);
-  const blob = new Blob([fileBuffer]);
-  const form = new FormData();
-  form.append('file', blob, path.basename(audioPath));
-  form.append('model', model || 'gpt-4o-transcribe');
-  if (glossaryPrompt) form.append('prompt', glossaryPrompt);
-  const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: { Authorization: 'Bearer ' + apiKey },
-    body: form,
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    const e = new Error(data.error?.message || 'Transcription failed');
-    e.response = { status: res.status, data };
-    throw e;
-  }
-  return data.text;
-}
-
-// Classificador rápido/barato — decide se um trecho AINDA gravando já contém
-// uma pergunta completa que merece resposta agora. Texto curto + modelo nano =
-// resposta em poucas centenas de ms, bem mais confiável que checar só se
-// termina com "?" (muita pergunta real não termina literalmente assim).
-const QUESTION_CHECK_MODEL = 'gpt-4.1-nano';
-async function isCompleteQuestion(transcript, token) {
-  try {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: QUESTION_CHECK_MODEL,
-        max_tokens: 3,
-        messages: [
-          {
-            role: 'system',
-            content: 'Você está monitorando a fala de um entrevistador em tempo real, durante uma entrevista de emprego técnica. ' +
-              'Dado o trecho transcrito até agora, responda APENAS "SIM" se ele já contém uma pergunta completa e clara que merece ' +
-              'resposta imediata, ou "NAO" se ainda está incompleto, é só contexto/comentário, ou não há pergunta nenhuma. Na dúvida, responda "SIM".',
-          },
-          { role: 'user', content: transcript },
-        ],
-      }),
-    });
-    if (!res.ok) return false;
-    const data = await res.json();
-    const answer = (data.choices?.[0]?.message?.content || '').trim().toUpperCase();
-    return answer.startsWith('SIM');
-  } catch (_) {
-    return false; // falhou a checagem: não força resposta precoce, o fechamento normal do segmento ainda processa depois
-  }
-}
-
-const TRANSCRIBE_MODEL = 'gpt-4o-transcribe';
 const CHAT_MAX_TOKENS = 700;
-// Se o proximo segmento (mesma fonte: mic ou sys) fechar dentro desta janela
-// apos o anterior, tratamos como continuacao da MESMA pergunta (pausa pra
-// respirar) — juntamos os textos e reprocessamos a pergunta inteira.
-const CONTINUATION_WINDOW_MS = 3000;
+// Disparo especulativo (Fase 3): responde em cima do transcript PARCIAL, antes
+// do fim do turno. O dono aceitou o trade — resposta prematura + completa cabem
+// as duas na tela. Só dispara com texto suficiente e respeitando um intervalo,
+// pra não metralhar a API a cada delta.
+const SPECULATIVE_MIN_CHARS = 28;
+const SPECULATIVE_COOLDOWN_MS = 3500;
 
 class RealtimeOpenAiService {
   constructor({ configService, getMainWindow, onFatalStop, historyService }) {
@@ -101,14 +55,21 @@ class RealtimeOpenAiService {
     this.iterationCount = 0;
     this.currentSessionId = null;
     this.contextMessages = [];
-    this.maxIterationsInContext = 10;
+    // 3 turnos (não 10): menos prompt = menos TTFT, e mantém o prefixo do system
+    // prompt estável pro prompt caching da OpenAI.
+    this.maxIterationsInContext = 3;
     // Última pergunta do interlocutor (sys) — pareada com a SUA resposta (mic) p/ o banco.
     this._lastInterviewerQuestion = '';
     // Fusao de fala fragmentada por pausa — rastreado por fonte (mic/sys nao se misturam).
     this.lastClosedBySource = { mic: null, sys: null };
-    // Último texto (parcial, ainda gravando) já respondido via snapshot interino —
-    // evita responder a mesma pergunta de novo a cada checagem de 4s.
-    this._interimAnswered = { mic: '', sys: '' };
+    // Sessão de transcrição em STREAMING (só p/ 'sys' — é dela que sai a
+    // sugestão). null quando não subiu: aí o 'sys' cai no caminho batch.
+    this._stt = null;
+    this._streaming = false;
+    // Fase 3: controle do disparo especulativo sobre o transcript parcial.
+    this._spec = { text: '', at: 0, id: null, iteration: null };
+    // RAG pré-buscado fora do caminho crítico (Fase 1).
+    this._rag = new RealtimeRag(configService);
   }
 
   isActive() { return this.active; }
@@ -134,7 +95,8 @@ class RealtimeOpenAiService {
     this.currentSessionId = null;
     this._lastInterviewerQuestion = '';
     this.lastClosedBySource = { mic: null, sys: null };
-    this._interimAnswered = { mic: '', sys: '' };
+    this._spec = { text: '', at: 0, id: null, iteration: null };
+    this._rag.reset();
 
     if (this.historyService) {
       try {
@@ -158,184 +120,159 @@ class RealtimeOpenAiService {
     const sysTarget = cfg.systemAudioSink ? (cfg.systemAudioSink.endsWith('.monitor') ? cfg.systemAudioSink : cfg.systemAudioSink + '.monitor') : undefined;
     const micTarget = cfg.micSource || undefined;
 
+    // Conexão quente: paga o handshake TLS AGORA, não no meio da primeira
+    // pergunta. Fire-and-forget — se falhar, não muda nada.
+    this._warmUp();
+
+    // Fase 2: sessão de transcrição em streaming para o 'sys' (interlocutor).
+    // Se não subir, `this._streaming` fica false e o 'sys' segue no caminho
+    // batch — a entrevista nunca fica sem transcrição por causa disso.
+    this._startStreamingStt();
+
     await startCapture({
-      onSpeechEnd: (audioPath, source) => this._handleSegment(audioPath, source),
-      onInterim: (audioPath, source) => this._handleInterim(audioPath, source),
+      onSpeechEnd: (audioPath, source) => handleBatchSegment(this, audioPath, source),
+      onPcm: (chunk, source) => { if (source === 'sys' && this._stt) this._stt.sendPcm16k(chunk); },
       sysTarget,
       micTarget,
     });
     return true;
   }
 
+  _warmUp() {
+    const token = this.configService.getOpenIaToken();
+    if (!token) return;
+    fetch('https://api.openai.com/v1/models', { headers: { Authorization: 'Bearer ' + token } })
+      .then(() => console.log('[realtime-openai] conexão aquecida'))
+      .catch(() => {});
+  }
+
+  _startStreamingStt() {
+    const token = this.configService.getOpenIaToken();
+    if (!token) return;
+    const cfg = this.configService.getConfig ? this.configService.getConfig() : {};
+    if (cfg.realtimeStreamingStt === false) {
+      console.log('[realtime-openai] STT em streaming desligado por config — usando batch.');
+      return;
+    }
+    // No modo 'mic' quem gera sugestão é o microfone, não o sys — não vale
+    // manter uma sessão (e um custo) de streaming aberta pro sys.
+    if ((cfg.realtimeAudioMode || 'both') === 'mic') return;
+
+    this._stt = new RealtimeTranscriptionSession({
+      token,
+      model: TRANSCRIBE_MODEL,
+      prompt: this._glossaryPrompt(),
+      eagerness: cfg.realtimeVadEagerness || 'high',
+      onSpeechStarted: () => { this._spec = { text: '', at: 0, id: null, iteration: null }; this._tSpeech = Date.now(); },
+      onSpeechStopped: () => { this._tSpeechStopped = Date.now(); },
+      onDelta: (accumulated) => this._onStreamDelta(accumulated),
+      onCompleted: (finalText) => this._onStreamTurn(finalText),
+      onFatal: (err) => {
+        console.error('[realtime-openai] streaming STT caiu, voltando pro batch:', err.message);
+        this._streaming = false;
+        this._stt = null;
+        this.emitUpdate({ type: 'error', message: 'Transcrição em streaming indisponível — usando o modo padrão.', timestamp: new Date().toISOString() });
+      },
+    });
+    this._streaming = true;
+    this._stt.connect();
+    console.log('[realtime-openai] STT em streaming ativo (semantic_vad)');
+  }
+
   async stop() {
     if (!this.active) return;
     this.active = false;
+    if (this._stt) { this._stt.close(); this._stt = null; }
+    this._streaming = false;
     await stopCapture();
     this.emitUpdate({ type: 'state', state: 'stopped', message: 'Assistente em tempo real parado.', timestamp: new Date().toISOString() });
   }
 
-  // ---------- Pipeline por segmento ----------
-  async _handleSegment(audioPath, source) {
-    if (!this.active) {
-      try { if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath); } catch (_) {}
+  // ---------- Fase 2: turno vindo do STT em streaming ----------
+  // Chamado quando o semantic_vad do servidor decide que o interlocutor fechou o
+  // turno. O transcript JA chegou junto com a fala, entao aqui nao ha espera de
+  // upload nem de transcricao — vai direto pra resposta.
+  async _onStreamTurn(finalText) {
+    if (!this.active) return;
+    const text = (finalText || '').trim();
+    if (!text || text.length < 3) return;
+
+    const tStop = this._tSpeechStopped || Date.now();
+    console.log(`[realtime-openai] turno (stream) +${((Date.now() - tStop) / 1000).toFixed(2)}s apos fim da fala: "${text.slice(0, 70)}"`);
+
+    this._lastInterviewerQuestion = text;
+
+    // Ja respondemos especulativamente a exatamente esse texto? Entao a bolha que
+    // esta na tela ja e a resposta certa — so confirma e sai, sem repetir.
+    const spec = this._spec;
+    if (spec.id && spec.text && sameQuestion(spec.text, text)) {
+      this.emitUpdate({ type: 'segment_whisper_correction', id: spec.id, iteration: spec.iteration, text, source: 'openai', timestamp: new Date().toISOString() });
+      this.lastClosedBySource.sys = { id: spec.id, text, closedAt: Date.now() };
+      this._spec = { text: '', at: 0, id: null, iteration: null };
       return;
     }
 
-    // O motor de captura abre DOIS streams: 'mic' (você) e 'sys' (áudio do sistema —
-    // interlocutor/vídeo/reunião). Com parec separando as fontes corretamente,
-    // são conteúdos DIFERENTES (sem duplicação), então por padrão ouvimos OS
-    // DOIS — o copiloto responde tanto ao que o outro fala quanto ao que você
-    // fala. Override opcional via config.json "realtimeAudioMode":
-    //   'both' (default) → ambos | 'system' → só sistema | 'mic' → só você.
-    const cfg = this.configService.getConfig ? this.configService.getConfig() : {};
-    const mode = cfg.realtimeAudioMode || 'both';
-    const wanted = mode === 'mic' ? 'mic' : (mode === 'system' ? 'sys' : null);
-    if (wanted && source !== wanted) {
-      try { if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath); } catch (_) {}
-      return;
-    }
-
-    // No modo 'both', a SUA fala (mic) serve só pra transcrição + banco de respostas —
-    // NÃO gera sugestão. Senão, quando você LÊ a sugestão em voz alta, o mic re-dispara
-    // a IA e ela repete a mesma coisa (loop). A sugestão é pro que o OUTRO (sys) fala.
-    // No modo 'mic' (você é a fonte do conteúdo), aí sim respondemos ao mic.
-    const respondToSegment = (source === 'sys') || (mode === 'mic');
-
-    const token = this.configService.getOpenIaToken();
-    const id = 'seg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
-    this.iterationCount += 1;
-    const iteration = this.iterationCount;
-    this.emitUpdate({ type: 'segment_start', id, iteration, timestamp: new Date().toISOString() });
-
-    try {
-      if (!token) throw new Error('Token da OpenAI não configurado.');
-
-      const transcript = (await transcribeAudio(audioPath, token, TRANSCRIBE_MODEL, this._glossaryPrompt()) || '').trim();
-      if (!transcript || transcript.length < 3) {
-        // Ruído/silêncio: descarta a bolha sem incomodar.
-        this.emitUpdate({ type: 'segment_whisper_correction', id, iteration, text: transcript || '(sem fala)', source: 'openai', timestamp: new Date().toISOString() });
-        this.emitUpdate({ type: 'segment_response', id, iteration, response: '(trecho sem conteúdo relevante)', source: 'openai', timestamp: new Date().toISOString() });
-        return;
-      }
-
-      // Texto definitivo (UI mostra "transcrito" + "pensando…"). noSuggestion=true
-      // quando é a sua fala em modo both → a UI esconde a bolha do assistente.
-      this.emitUpdate({ type: 'segment_whisper_correction', id, iteration, text: transcript, source: 'openai', noSuggestion: !respondToSegment, timestamp: new Date().toISOString() });
-
-      // Banco de respostas: rastreia a pergunta do interlocutor (sys) e, quando VOCÊ
-      // (mic) responde, avalia/guarda o par em background (não trava o pipeline).
-      if (source === 'mic') {
-        if (this._lastInterviewerQuestion) {
-          this._scoreAndStore(this._lastInterviewerQuestion, transcript, token);
-          this._lastInterviewerQuestion = '';
-        }
-      } else {
-        this._lastInterviewerQuestion = transcript;
-      }
-
-      // Sua fala em modo both: já transcreveu e alimentou o banco — não gera sugestão.
-      if (!respondToSegment) return;
-
-      // Já respondemos essa pergunta via snapshot interino (enquanto o segmento
-      // ainda gravava)? Não repete a resposta — só segue com o que veio DEPOIS dela.
-      let effectiveTranscript = transcript;
-      const alreadyAnswered = this._interimAnswered[source];
-      if (alreadyAnswered && transcript.startsWith(alreadyAnswered)) {
-        this._interimAnswered[source] = '';
-        effectiveTranscript = transcript.slice(alreadyAnswered.length).trim();
-        if (!effectiveTranscript) {
-          // Nada de novo depois da pergunta já respondida — so atualiza o estado e sai.
-          this.lastClosedBySource[source] = { id, text: transcript, closedAt: Date.now() };
-          return;
-        }
-      }
-
-      // Continuacao de fala: se o ultimo segmento DESSA MESMA fonte fechou ha pouco
-      // tempo (pausa pra respirar, nao fim de pergunta), junta os textos e reprocessa
-      // a pergunta INTEIRA — em vez de responder so o pedaco novo fragmentado.
-      const prevClosed = this.lastClosedBySource[source];
-      const isContinuation = !!(prevClosed && (Date.now() - prevClosed.closedAt) <= CONTINUATION_WINDOW_MS);
-      const askText = isContinuation ? `${prevClosed.text} ${effectiveTranscript}`.trim() : effectiveTranscript;
-      if (isContinuation) {
-        // Mostra a pergunta completa (com o trecho anterior) na bolha de transcricao.
-        this.emitUpdate({ type: 'segment_whisper_correction', id, iteration, text: askText, source: 'openai', timestamp: new Date().toISOString() });
-      }
-
-      // Streaming: emite segment_response parcial com o MESMO id; a UI atualiza a
-      // bolha no lugar (rtSegments.get(payload.id)). Throttle já é feito no _askAI.
-      const response = await this._askAI(askText, token, (partial) => {
-        this.emitUpdate({ type: 'segment_response', id, iteration, response: partial, source: 'openai', timestamp: new Date().toISOString() });
-      });
-      if (isContinuation) {
-        // Marca a resposta do trecho anterior como superada — a pergunta continuava.
-        this.emitUpdate({ type: 'segment_response', id: prevClosed.id, response: '↳ pergunta continuou no trecho seguinte — veja a resposta completa abaixo.', timestamp: new Date().toISOString() });
-      }
-      // Emite o texto final completo (garante o conteúdo inteiro mesmo se o último delta foi throttled).
-      this.emitUpdate({ type: 'segment_response', id, iteration, response, source: 'openai', timestamp: new Date().toISOString() });
-      await this._writeHistory(askText, response);
-      this.lastClosedBySource[source] = { id, text: askText, closedAt: Date.now() };
-    } catch (err) {
-      this._handleError(err, id, iteration);
-    } finally {
-      try { if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath); } catch (_) {}
-    }
+    await this._respond(text, 'sys', { tStop });
   }
 
-  // ---------- Snapshot interino (segmento AINDA gravando) ----------
-  // Chamado a cada INTERIM_CHECK_MS enquanto o segmento 'sys' continua capturando,
-  // SEM esperar ele fechar. Se o texto até agora terminar numa pergunta completa,
-  // responde IMEDIATAMENTE — a gravação do segmento oficial continua em paralelo
-  // e vai fechar/processar normalmente depois (com dedup pra não repetir a resposta).
-  async _handleInterim(audioPath, source) {
-    if (!this.active || source !== 'sys') {
-      try { if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath); } catch (_) {}
-      return;
-    }
+  // ---------- Fase 3: disparo especulativo sobre o transcript PARCIAL ----------
+  // Roda a cada delta. Custo zero (heuristica local, sem round-trip): se o que ja
+  // foi dito parece uma pergunta fechada, responde ANTES do fim do turno.
+  _onStreamDelta(accumulated) {
+    if (!this.active) return;
     const cfg = this.configService.getConfig ? this.configService.getConfig() : {};
-    const mode = cfg.realtimeAudioMode || 'both';
-    // No modo 'mic' quem gera sugestão é o mic, não o sys — snapshot interino do
-    // sys não se aplica (mesma regra de respondToSegment do fluxo normal).
-    if (mode === 'mic') {
-      try { if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath); } catch (_) {}
-      return;
-    }
+    if (cfg.realtimeSpeculative === false) return;
+
+    const text = (accumulated || '').trim();
+
+    // Aproveita que ja temos texto parcial pra adiantar o RAG — quando o turno
+    // fechar, o bloco ja esta pronto e nao custa nada no caminho critico.
+    this._rag.prefetch(text, this.configService.getOpenIaToken());
+
+    if (text.length < SPECULATIVE_MIN_CHARS) return;
+    if (Date.now() - this._spec.at < SPECULATIVE_COOLDOWN_MS) return;
+    // Nada de novo alem do que ja foi especulado: espera crescer de verdade.
+    if (this._spec.text && text.startsWith(this._spec.text) &&
+        (text.length - this._spec.text.length) < SPECULATIVE_MIN_CHARS) return;
+    if (!looksLikeCompleteQuestion(text)) return;
+
+    this._spec = { text, at: Date.now(), id: null, iteration: null };
+    console.log(`[realtime-openai] disparo especulativo: "${text.slice(0, 70)}"`);
+    this._respond(text, 'sys', { speculative: true }).catch((e) =>
+      console.error('[realtime-openai] especulativo falhou:', e.message));
+  }
+
+  // ---------- Pipeline de resposta (compartilhado stream/batch) ----------
+  async _respond(askText, source, opts = {}) {
     const token = this.configService.getOpenIaToken();
-    if (!token) {
-      try { if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath); } catch (_) {}
-      return;
-    }
-    let id = null, iteration = null;
+    if (!token) return;
+    const id = (opts.speculative ? 'seg_spec_' : 'seg_') + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    this.iterationCount += 1;
+    const iteration = this.iterationCount;
+
+    this.emitUpdate({ type: 'segment_start', id, iteration, timestamp: new Date().toISOString() });
+    this.emitUpdate({ type: 'segment_whisper_correction', id, iteration, text: askText, source: 'openai', timestamp: new Date().toISOString() });
+    if (opts.speculative) { this._spec.id = id; this._spec.iteration = iteration; }
+
+    const tAsk = Date.now();
+    let tFirstToken = null;
     try {
-      const transcript = (await transcribeAudio(audioPath, token, TRANSCRIBE_MODEL, this._glossaryPrompt()) || '').trim();
-      if (!transcript || transcript.length < 3) return;
-      // Já respondemos esse texto exato via outro snapshot? Evita repetir a
-      // cada checagem de 4s enquanto o trecho ainda não muda.
-      if (transcript === this._interimAnswered.sys) return;
-
-      const isQuestion = await isCompleteQuestion(transcript, token);
-      console.log(`[realtime-openai] interim "${transcript.slice(0, 80)}" → pergunta completa? ${isQuestion ? 'sim' : 'não'}`);
-      if (!isQuestion) return;
-
-      this._interimAnswered.sys = transcript;
-      id = 'seg_interim_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
-      this.iterationCount += 1;
-      iteration = this.iterationCount;
-      this.emitUpdate({ type: 'segment_start', id, iteration, timestamp: new Date().toISOString() });
-      this.emitUpdate({ type: 'segment_whisper_correction', id, iteration, text: transcript, source: 'openai', timestamp: new Date().toISOString() });
-
-      const response = await this._askAI(transcript, token, (partial) => {
+      const response = await this._askAI(askText, token, (partial) => {
+        if (!tFirstToken) {
+          tFirstToken = Date.now();
+          const since = opts.tStop ? ` | fim-da-fala->1o-token ${((tFirstToken - opts.tStop) / 1000).toFixed(2)}s` : '';
+          console.log(`[realtime-openai] ttft ${((tFirstToken - tAsk) / 1000).toFixed(2)}s${since}`);
+        }
         this.emitUpdate({ type: 'segment_response', id, iteration, response: partial, source: 'openai', timestamp: new Date().toISOString() });
       });
       this.emitUpdate({ type: 'segment_response', id, iteration, response, source: 'openai', timestamp: new Date().toISOString() });
-      await this._writeHistory(transcript, response);
-      this.lastClosedBySource.sys = { id, text: transcript, closedAt: Date.now() };
+      if (!opts.speculative) {
+        await this._writeHistory(askText, response);
+        this.lastClosedBySource[source] = { id, text: askText, closedAt: Date.now() };
+      }
+      if (opts.tStop) console.log(`[realtime-openai] TOTAL fim-da-fala->resposta ${((Date.now() - opts.tStop) / 1000).toFixed(2)}s`);
     } catch (err) {
-      // CRÍTICO: se já criamos a bolha (segment_start), ela NUNCA pode ficar
-      // travada em "pensando…" pra sempre — sempre resolve com um erro visível.
-      if (id) this._handleError(err, id, iteration);
-      else console.error('[realtime-openai] interim error (antes da bolha):', err.message);
-    } finally {
-      try { if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath); } catch (_) {}
+      this._handleError(err, id, iteration);
     }
   }
 
@@ -365,28 +302,7 @@ class RealtimeOpenAiService {
     const chosen = this.configService.getOpenAiModel();
     const model = applyRealtimeOverride(chosen);
 
-    // RAG: base de conhecimento (fatos atuais) + banco de respostas (suas respostas boas).
-    // Embeda a query UMA vez e compartilha entre os dois → 0 chamada de rede a mais.
-    // Tempo real: isso NUNCA pode segurar a resposta além de RAG_TIMEOUT_MS — se
-    // a busca (embeddings, chamada de rede) demorar demais, segue sem esse contexto.
-    let kbBlock = '', bankHint = '';
-    try {
-      const kbOn = this.configService.getKnowledgeBaseConfig
-        ? this.configService.getKnowledgeBaseConfig().enabled : false;
-      const abOn = this.configService.getAnswerBankConfig
-        ? this.configService.getAnswerBankConfig().enabled : false;
-      if (kbOn || abOn) {
-        const ragWork = (async () => {
-          const qEmb = await knowledgeBase.embed(transcript, token);
-          const kb = kbOn ? await knowledgeBase.augment(transcript, { token, topK: 5, queryEmbedding: qEmb }) : '';
-          const bank = abOn ? await answerBank.augment(transcript, { token, queryEmbedding: qEmb }) : '';
-          return { kb, bank };
-        })();
-        const result = await raceWithTimeout(ragWork, RAG_TIMEOUT_MS, null);
-        if (result) { kbBlock = result.kb; bankHint = result.bank; }
-      }
-    } catch (_) {}
-    const ragBlock = [bankHint, kbBlock].filter(Boolean).join('\n\n');
+    const ragBlock = await this._rag.blockFor(transcript, token);
 
     const userPrompt =
       (ragBlock ? ragBlock + '\n\n---\n\n' : '') +
@@ -401,7 +317,7 @@ class RealtimeOpenAiService {
       ...maxTokensParam(model, CHAT_MAX_TOKENS),
       stream,
       messages: [
-        { role: 'system', content: this._systemInstruction() },
+        { role: 'system', content: buildRealtimeCopilotPrompt(this._lang()) },
         ...this.contextMessages.slice(-(this.maxIterationsInContext * 2)),
         { role: 'user', content: userPrompt },
       ],
@@ -456,46 +372,8 @@ class RealtimeOpenAiService {
     return content.trim() || '(sem resposta)';
   }
 
-  _systemInstruction() {
-    const lang = (this.configService.getLanguage && this.configService.getLanguage()) === 'us-en' ? 'en' : 'pt';
-    return [
-      'Você é um COPILOTO DISCRETO em tempo real durante ENTREVISTAS, reuniões e ligações.',
-      'Você ouve o microfone do usuário E o áudio do sistema (interlocutor). O texto recebido é uma TRANSCRIÇÃO do que está sendo falado.',
-      'OBJETIVO: dar ao usuário o que ele precisa pra responder COM AS PRÓPRIAS PALAVRAS — não escrever um discurso pronto pra ele decorar.',
-      'MULTIFUNÇÃO: serve pra entrevistas em PT-BR, mas TAMBÉM pra acompanhar reuniões, bate-papos e vídeos (YouTube etc.). Nem todo trecho é uma pergunta. Quando for só conversa/exposição (não uma pergunta a responder), mostre os TERMOS/TÓPICOS-CHAVE do que está sendo falado — NÃO force uma sugestão de resposta.',
-      '',
-      'LINGUAGEM (muito importante):',
-      '- Português brasileiro FALADO, simples e natural — como um colega dev de SP/SC falaria. Frases curtas e diretas.',
-      '- PROIBIDO formalês e clichê de RH: nada de "Claro, obrigado pela oportunidade", "soluções escaláveis/robustas", "agregar valor", "sinergia", "promovendo integrações", "colaborando com times multidisciplinares", "boas práticas" solto. Fale como gente.',
-      '',
-      'DECIDA O FORMATO PELO TIPO DE PERGUNTA:',
-      '',
-      'A) PERGUNTA ABERTA / COMPORTAMENTAL / DE EXPERIÊNCIA (ex: "me fala sua trajetória", "quais os desafios da migração", "como foi X"):',
-      '   → NÃO escreva resposta pronta. Dê SÓ os PONTOS-CHAVE que o recrutador técnico quer ouvir, pra ele montar a própria fala.',
-      '   → 3 a 5 bullets curtos. Em CADA bullet destaque o termo-chave em **negrito** + 2-5 palavras de contexto. Ex: "- **idempotência** nas filas Kafka", "- **Javax → Jakarta** na migração", "- **fila única** pra resolver concorrência".',
-      '',
-      'B) PERGUNTA TÉCNICA DE PROFUNDIDADE (ex: "como você implementa Spring Security", "explica como funciona X", "diferença entre A e B"):',
-      '   → AÍ SIM responda completo e correto, com os termos-chave em **negrito**. Pode ser mais longo.',
-      '   → **Exemplo de código é bem-vindo SÓ aqui** (bloco curto ```linguagem```), quando realmente ajudar.',
-      '',
-      'C) PERGUNTA OBJETIVA (número, sim/não, cálculo, 1 definição): responda direto e curto, termo-chave em **negrito**.',
-      '',
-      'D) RUÍDO / SAUDAÇÃO / "mm-hmm" / backchannel SEM conteúdo: responda APENAS "(trecho sem conteúdo relevante)". (Atenção: conversa ou exposição COM conteúdo NÃO se enquadra aqui — nesse caso siga a regra de MULTIFUNÇÃO e dê os termos-chave do que foi dito.)',
-      '',
-      'SEMPRE destaque em **negrito** os termos/tecnologias/conceitos-chave — é o que o usuário bate o olho pra montar a resposta (ex: **Kafka**, **Spring Security**, **JWT**, **idempotência**, **índice**, **transação**, **Jakarta**, **IPO**).',
-      '',
-      'SIGLAS E JARGÃO (negócios/finanças/tech): quando aparecer uma sigla ou termo que valha explicar (ex: IPO, M&A, ARR, SLA, churn, valuation, EBITDA), acrescente uma EXPLICAÇÃO CURTA do que significa NAQUELE contexto. Formato DISCRETO: linha separada em itálico começando com "ℹ️", SEM negrito — ex: "*ℹ️ IPO = abertura de capital, quando a empresa passa a vender ações na bolsa*". Só quando ajuda; no máximo 1-2 por trecho.',
-      '',
-      'HIERARQUIA (destaque x apoio): as PALAVRAS-CHAVE em **negrito** são o FOCO — é o que o usuário lê pra responder. As notas de sigla (ℹ️ itálico) e a sugestão de resposta são APOIO SECUNDÁRIO, discretas — nunca roubam o destaque das palavras-chave nem confundem o que importa. Em tempo real, palavras-chave primeiro; resposta sugerida só quando faz sentido (entrevista), e nunca como foco principal.',
-      '',
-      'CONHECIMENTO: Java/Spring, JS/TS/React/Angular/Node, Python, SQL/NoSQL, Kafka/RabbitMQ, Docker/K8s/OpenShift, AWS/GCP, SOLID/DDD/TDD/CI-CD, REST/GraphQL, segurança (OAuth2/JWT), além de leis BR e produtos financeiros.',
-      '',
-      'FORMATO:',
-      '- Sem preâmbulo ("a fala menciona...", "o interlocutor diz..."). Vá direto.',
-      '- Não repita a pergunta.',
-      '- CURTO por padrão (tipos A/C). Só alongue em pergunta técnica de profundidade (tipo B).',
-      lang === 'en' ? '- Responda em inglês quando a conversa estiver em inglês.' : '- Responda em português (registro falado BR, SP/SC).',
-    ].join('\n');
+  _lang() {
+    return (this.configService.getLanguage && this.configService.getLanguage()) === 'us-en' ? 'en' : 'pt';
   }
 
   // ---------- History ----------

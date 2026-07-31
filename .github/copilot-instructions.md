@@ -50,7 +50,12 @@ services/
   realtimeOpenAiService.js     # Realtime ONLINE (ChatGPT / toda a Lite): transcrição gpt-4o-transcribe + chat OpenAI; transcrição própria, SEM Whisper local
   realtimeAudioCapture.js      # Motor de áudio do realtime ONLINE (parec + VAD + segue sink ativo). INDEPENDENTE do tradutor — não compartilha com vadEngine
   translationAssistant/    # Assistente de Tradução (entrevistas): vadEngine (parec) + openaiClient + testMode
-  techGlossary.js          # vocabulário técnico injetado no `prompt` do STT
+  techGlossary.js          # vocabulário técnico injetado no `prompt` do STT (teto ~224 tokens!)
+  realtimeTranscriptionSession.js # STT em streaming (WebSocket) — 16k→24k, semantic_vad
+  realtimeBatchFallback.js # caminho batch (mic + plano B do sys)
+  realtimeRag.js           # RAG pré-buscado no transcript parcial (fora do caminho crítico)
+  realtimeQuestionHeuristics.js # "já é uma pergunta?" local, p/ o disparo especulativo
+  realtimeCopilotPrompt.js # system prompt do copiloto (texto de produto)
   tesseractService.js      # OCR de screenshots
   historyService.js        # sessões persistidas em ~/.config/helper-node/history.json
   configService.js         # leitura/escrita config (modelos, ativações)
@@ -75,7 +80,10 @@ package.sh                 # build .deb e .pkg.tar.zst
 
 **Realtime assistant — DOIS caminhos (roteado por `pickRealtimeService()` em main.js):**
 - `getEffectiveAiModel()` = `edition.isLite() ? 'openIa' : configService.getAiModel()`.
-- **ONLINE** (`getEffectiveAiModel()==='openIa'` → ChatGPT, e SEMPRE na Lite): `realtimeOpenAiService` + `realtimeAudioCapture` (parec). Transcrição `gpt-4o-transcribe` + chat OpenAI. Sem Whisper local. Default sobe `gpt-4.1-nano`→`gpt-4.1`.
+- **ONLINE** (`getEffectiveAiModel()==='openIa'` → ChatGPT, e SEMPRE na Lite): `realtimeOpenAiService`.
+  - **'sys' (interlocutor) = STT em STREAMING** via `realtimeTranscriptionSession` (WebSocket GA `?intent=transcription`, `semantic_vad`). O `realtimeAudioCapture` entrega PCM cru por `onPcm`. ⚠️ A API exige **rate >= 24000** — o módulo reamostra 16k→24k (razão 2:3); NÃO mandar 16k. NÃO mandar o header `OpenAI-Beta` (cai na Beta descontinuada). O `model=` da query tem que ser um modelo *realtime*, então usamos `?intent=transcription` sem ele e passamos o de transcrição em `audio.input.transcription.model`.
+  - **'mic' (você) = BATCH** (`realtimeBatchFallback.js`), que também é o plano B do 'sys' se o streaming cair.
+  - **Disparo especulativo**: `realtimeQuestionHeuristics.js` detecta pergunta fechada no transcript parcial (heurística LOCAL, sem round-trip) e responde antes do fim do turno.
 - **OFFLINE** (Full + backend `llama`/`llama-stream` ou `ollamaLocal`): `realtimeAssistantService` (Whisper local, mesmo motor de captura do online). A **resposta vai pro provider selecionado** (não OpenAI) via `aiResponder` injetado no main.js. Regra do projeto: sem fallback entre providers.
 - UI: ambos emitem `realtime-assistant-update` (`segment_start`/`segment_whisper_correction`/`segment_response`...). O online NÃO emite `segment_partial` (sem preview ao vivo — OpenAI é batch).
 
