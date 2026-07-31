@@ -147,7 +147,7 @@ const defaultConfig = {
   // Gemini CLI provider — modelo escolhido pelo usuário dentro da lista do CLI.
   geminiCliModel: "gemini-2.5-flash",
   // Claude Code CLI provider.
-  claudeCliModel: "claude-sonnet-4-6",
+  claudeCliModel: "sonnet",
 
   // API Key do backend remoto. Necessário para endpoints pesados (ex: qwen3.6-17b).
   // Endpoints leves (llama3, qwen25) usam o Bearer token fixo hardcoded.

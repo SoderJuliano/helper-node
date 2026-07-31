@@ -19,16 +19,10 @@
                 'llama-stream': 'Ollama Backend (stream)', ollamaLocal: 'Ollama Local',
                 geminiCli: 'Gemini CLI', claudeCli: 'Claude CLI',
             };
-            // Claude Code CLI model list (initially mirrored, loaded dynamically later)
-            let CLAUDE_CLI_MODELS = [
-                { value: 'claude-fable-5',            label: 'Fable 5'          },
-                { value: 'claude-opus-4-8',           label: 'Opus 4.8'         },
-                { value: 'claude-sonnet-4-6',         label: 'Sonnet 4.6'       },
-                { value: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5'        },
-                { value: 'sonnet',                    label: 'Sonnet (latest)'  },
-                { value: 'opus',                      label: 'Opus (latest)'    },
-                { value: 'haiku',                     label: 'Haiku (latest)'   },
-            ];
+            // Claude Code CLI: preenchido por loadCliModels() a partir do binário `claude`.
+            // Começa vazio de propósito — qualquer nome de modelo escrito aqui fica
+            // desatualizado sozinho e aparece na tela diferente do que o CLI mostra.
+            let CLAUDE_CLI_MODELS = [];
             // Gemini CLI model list (initially mirrored, loaded dynamically later)
             let GEMINI_CLI_MODELS = [
                 { value: 'Gemini 3.5 Flash (High)',      label: 'Gemini 3.5 Flash (High)'      },
@@ -86,7 +80,7 @@
                     const found = GEMINI_CLI_MODELS.find(x => x.value === m);
                     composerModelName.textContent = found ? found.label : m;
                 } else if (provider === 'claudeCli') {
-                    let m = 'claude-sonnet-4-6';
+                    let m = 'sonnet';
                     try { m = (await window.electronAPI.getClaudeCliModel()) || m; } catch (_) {}
                     const found = CLAUDE_CLI_MODELS.find(x => x.value === m);
                     composerModelName.textContent = found ? found.label : m;

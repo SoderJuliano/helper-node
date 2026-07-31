@@ -550,14 +550,11 @@
         <!-- Claude Code CLI: select de modelo + aviso de instalação manual -->
         <div class="setting-item" id="claude-cli-model-container" style="display: none;">
             <label for="claude-cli-model-select">Modelo Claude CLI</label>
+            <!-- Sem <option> fixo: a lista vem do próprio binário `claude` via
+                 populateClaudeCliModels(). Nome de modelo escrito aqui vira nome
+                 errado na tela assim que a Anthropic muda a linha. -->
             <select id="claude-cli-model-select" class="custom-select">
-                <option value="claude-fable-5">Fable 5</option>
-                <option value="claude-opus-4-8">Opus 4.8</option>
-                <option value="claude-sonnet-4-6" selected>Sonnet 4.6 (padrão)</option>
-                <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
-                <option value="sonnet">Sonnet (latest alias)</option>
-                <option value="opus">Opus (latest alias)</option>
-                <option value="haiku">Haiku (latest alias)</option>
+                <option value="" disabled selected>Carregando modelos do CLI…</option>
             </select>
         </div>
 
