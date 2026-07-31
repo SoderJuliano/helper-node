@@ -465,19 +465,53 @@ var historyState = { loadedSessions: [], currentSession: null };
                     const sc = document.getElementById('shortcut-content');
                     if (!sc || typeof window.electronAPI.getAvailableShortcuts !== 'function') return;
                     const data = await window.electronAPI.getAvailableShortcuts();
-                    const items = (data && data.items) || [];
-
-                    // Preserva debug-indicator no fim
                     const dbg = document.getElementById('debug-indicator');
+
                     sc.innerHTML = '';
-                    items.forEach(s => {
-                        const div = document.createElement('div');
-                        div.className = 'command-item';
-                        div.id = 'sc-' + s.id;
-                        const keysText = s.altKeys ? `${s.keys} / ${s.altKeys}` : s.keys;
-                        div.innerHTML = `\u26a1\ufe0e <strong>${keysText}</strong> - ${s.action} ${s.icon || ''}`;
-                        sc.appendChild(div);
-                    });
+
+                    if (data && data.categories && data.categories.length > 0) {
+                        data.categories.forEach(cat => {
+                            const catDiv = document.createElement('div');
+                            catDiv.className = 'shortcut-category';
+                            
+                            const title = document.createElement('div');
+                            title.className = 'shortcut-cat-title';
+                            title.textContent = cat.name;
+                            catDiv.appendChild(title);
+
+                            cat.items.forEach(s => {
+                                const div = document.createElement('div');
+                                div.className = 'command-item';
+                                div.id = 'sc-' + s.id;
+                                const keysText = s.altKeys ? `${s.keys} / ${s.altKeys}` : s.keys;
+                                div.innerHTML = `
+                                    <div class="command-item-left">
+                                        <span class="sc-kbd">${keysText}</span>
+                                        <span class="sc-action">${s.action} ${s.icon || ''}</span>
+                                    </div>
+                                    <span class="sc-where" title="Onde usar: ${s.where || 'No App'}">${s.where || 'No App'}</span>
+                                `;
+                                catDiv.appendChild(div);
+                            });
+                            sc.appendChild(catDiv);
+                        });
+                    } else if (data && data.items) {
+                        data.items.forEach(s => {
+                            const div = document.createElement('div');
+                            div.className = 'command-item';
+                            div.id = 'sc-' + s.id;
+                            const keysText = s.altKeys ? `${s.keys} / ${s.altKeys}` : s.keys;
+                            div.innerHTML = `
+                                <div class="command-item-left">
+                                    <span class="sc-kbd">${keysText}</span>
+                                    <span class="sc-action">${s.action} ${s.icon || ''}</span>
+                                </div>
+                                <span class="sc-where" title="Onde usar">${s.where || 'No App'}</span>
+                            `;
+                            sc.appendChild(div);
+                        });
+                    }
+
                     if (dbg) sc.appendChild(dbg);
                 } catch (err) {
                     console.warn('[shortcuts] Falha ao renderizar atalhos:', err);

@@ -482,11 +482,15 @@ class SymbolIndexer {
         // Se é a própria linha de definição do método, ignora
         if (defLines.has(lineNum)) continue;
 
-        // Ignorar comentários simples de linha inteira
+        // Ignorar linhas de comentários (//, /*, *, #, <!--)
         const trimmed = lineText.trim();
-        if (trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*')) continue;
+        if (trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*') || trimmed.startsWith('#') || trimmed.startsWith('<!--')) continue;
 
         const col = lineText.indexOf(cleanSymbol) + 1;
+
+        // Se a ocorrência do símbolo está dentro de um comentário inline (ex: code; // symbol)
+        const lineCommentIdx = lineText.indexOf('//');
+        if (lineCommentIdx !== -1 && col > lineCommentIdx) continue;
         const relPath = this.projectPath ? path.relative(this.projectPath, filePath).replace(/\\/g, '/') : filePath;
         const fileName = path.basename(filePath);
 

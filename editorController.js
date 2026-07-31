@@ -652,14 +652,18 @@
   function toggleChatVisibility(show) {
     const mainEl = document.getElementById('main');
     if (!mainEl) return;
+    let shouldHide;
     if (typeof show === 'boolean') {
-      if (show) {
-        mainEl.classList.remove('chat-hidden');
-      } else {
-        mainEl.classList.add('chat-hidden');
-      }
+      shouldHide = !show;
     } else {
-      mainEl.classList.toggle('chat-hidden');
+      shouldHide = !mainEl.classList.contains('chat-hidden');
+    }
+    if (shouldHide) {
+      mainEl.classList.add('chat-hidden');
+      document.body.classList.add('chat-hidden');
+    } else {
+      mainEl.classList.remove('chat-hidden');
+      document.body.classList.remove('chat-hidden');
     }
     if (cm) {
       setTimeout(() => cm.refresh(), 50);
@@ -675,6 +679,7 @@
     setConflictBanner('');
     const mainEl = document.getElementById('main');
     if (mainEl) mainEl.classList.remove('chat-hidden');
+    document.body.classList.remove('chat-hidden');
   }
 
   function isDirty(filePath) {

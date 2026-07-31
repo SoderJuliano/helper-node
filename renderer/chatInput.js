@@ -61,12 +61,52 @@ var promptHistoryDraft = '';
                 }, 120);
             }
 
-    // Keydown for Ctrl+I to show/hide composer or focus it
-    window.addEventListener('keydown', (e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') {
+    // Handler global do Ctrl+I: traz o chat de volta se estiver escondido (no modo IDE/janela com arquivo traz dividindo a tela) e foca o campo de texto.
+    function handleCtrlI(e) {
+        if (e) {
             e.preventDefault();
-            const toggle = document.getElementById('composer-collapse-toggle');
-            if (toggle) toggle.click();
+            e.stopPropagation();
+        }
+
+        // Se o chat com IA estiver recolhido / escondido, restaura a visibilidade do chat
+        if (typeof window.isChatCollapsed === 'function' && window.isChatCollapsed()) {
+            if (typeof window.setChatCollapsed === 'function') {
+                window.setChatCollapsed(false);
+            }
+        }
+
+        // Garante que a caixa do composer não esteja colapsada
+        const composer = document.getElementById('composer');
+        if (composer && composer.classList.contains('collapsed')) {
+            composer.classList.remove('collapsed');
+            const toggleBtn = document.getElementById('composer-collapse-toggle');
+            if (toggleBtn) {
+                const svg = toggleBtn.querySelector('svg');
+                if (svg) svg.style.transform = 'rotate(0deg)';
+            }
+        }
+
+        // Foca no campo de texto para digitação imediata
+        const ghost = document.getElementById('composer-ghost');
+        if (ghost) {
+            ghost.setAttribute('tabindex', '0');
+            setTimeout(() => {
+                try {
+                    ghost.focus({ preventScroll: true });
+                } catch (_) {
+                    ghost.focus();
+                }
+            }, 60);
+        } else if (typeof window.openManualInput === 'function') {
+            window.openManualInput();
+        }
+    }
+
+    window.handleCtrlI = handleCtrlI;
+
+    window.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i' && !e.shiftKey && !e.altKey) {
+            handleCtrlI(e);
         }
     });
 

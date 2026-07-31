@@ -106,13 +106,78 @@
         .commands-toggle svg { width: 12px; height: 12px; display: block; pointer-events: none; }
         .panel:not(.collapsed) .commands-toggle { transform: rotate(180deg); }
 
-        .command-item {
-            margin: 3px 0;
-            font-size: 11.5px;
-            color: var(--text-2);
-            line-height: 1.5;
+        #shortcut-content {
+            max-height: 48vh;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            padding-right: 3px;
         }
-        .command-item strong { color: var(--accent-2); font-weight: 600; }
+        #shortcut-content::-webkit-scrollbar {
+            width: 3px;
+        }
+        #shortcut-content::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.15);
+            border-radius: 4px;
+        }
+
+        .shortcut-category {
+            margin-bottom: 8px;
+        }
+        .shortcut-cat-title {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            color: var(--accent-2, #60a5fa);
+            margin: 6px 0 4px 0;
+            padding-bottom: 2px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+        .command-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+            margin: 4px 0;
+            font-size: 11px;
+            color: var(--text-2);
+            line-height: 1.4;
+        }
+        .command-item-left {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
+            flex: 1;
+        }
+        .sc-kbd {
+            font-family: var(--font-mono);
+            font-size: 9.5px;
+            background: rgba(255,255,255,0.07);
+            border: 1px solid rgba(255,255,255,0.12);
+            color: var(--text, #fff);
+            padding: 1px 5px;
+            border-radius: 4px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .sc-action {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--text-2);
+            font-size: 11px;
+        }
+        .sc-where {
+            font-size: 9px;
+            color: var(--text-4, #9ca3af);
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 4px;
+            padding: 1px 5px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
 
         /* === Workspace / Projeto na sidebar === */
         .ws-section {

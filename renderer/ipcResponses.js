@@ -16,7 +16,14 @@
             
             // Listener para CTRL+I
             window.electronAPI.onManualInput(() => {
-                openManualInput();
+                if (typeof window.handleCtrlI === 'function') {
+                    window.handleCtrlI();
+                } else {
+                    if (typeof window.setChatCollapsed === 'function' && window.isChatCollapsed()) {
+                        window.setChatCollapsed(false);
+                    }
+                    openManualInput();
+                }
             });
 
              // Transcrição

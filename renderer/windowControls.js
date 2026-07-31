@@ -75,6 +75,7 @@
         };
 
         window.setChatCollapsed = function(collapsed) {
+            document.body.classList.toggle('chat-hidden', collapsed);
             if (window.EditorController && typeof window.EditorController.toggleChatVisibility === 'function') {
                 window.EditorController.toggleChatVisibility(!collapsed);
             } else {

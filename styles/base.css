@@ -164,22 +164,24 @@
         .chat-collapse-btn:hover { opacity: 1; background: rgba(255,255,255,0.08); color: var(--text); }
         .chat-collapse-btn svg { width: 10px; height: 10px; }
 
-        /* Zona de hover na borda direita da janela, ativa quando o chat está recolhido (#main.chat-hidden) — passar o mouse revela o botão "<". */
+        /* Zona de hover na borda direita da janela, ativa quando o chat está recolhido (#main.chat-hidden ou body.chat-hidden) — revela o botão "<". */
         #chat-reveal-zone {
             display: none; position: fixed; right: 0; top: 40px; bottom: 8px;
-            width: 18px; z-index: 200; -webkit-app-region: no-drag;
+            width: 22px; z-index: 200; -webkit-app-region: no-drag;
         }
-        #main.chat-hidden #chat-reveal-zone { display: block; }
+        body:has(#main.chat-hidden) #chat-reveal-zone,
+        body.chat-hidden #chat-reveal-zone { display: block; }
         #chat-expand-btn {
             position: absolute; top: 50%; right: 0; transform: translateY(-50%);
-            width: 18px; height: 34px; padding: 0;
+            width: 20px; height: 38px; padding: 0;
             background: var(--bg-sidebar); border: 1px solid var(--border-strong);
-            border-radius: 6px 0 0 6px; color: var(--text-3); cursor: pointer;
+            border-radius: 6px 0 0 6px; color: var(--text-2); cursor: pointer;
             display: flex; align-items: center; justify-content: center;
-            opacity: 0; transition: opacity .15s var(--ease), background .15s var(--ease), color .15s var(--ease);
+            opacity: .65; transition: opacity .15s var(--ease), background .15s var(--ease), color .15s var(--ease);
+            box-shadow: -2px 0 8px rgba(0,0,0,0.3);
         }
-        #chat-reveal-zone:hover #chat-expand-btn { opacity: 1; background: rgba(255,255,255,0.08); color: var(--text); }
-        #chat-expand-btn svg { width: 10px; height: 10px; }
+        #chat-reveal-zone:hover #chat-expand-btn, #chat-expand-btn:hover { opacity: 1; background: rgba(255,255,255,0.12); color: var(--text); }
+        #chat-expand-btn svg { width: 12px; height: 12px; }
 
         .sb-brand {
             display: flex;

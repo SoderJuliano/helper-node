@@ -13,7 +13,7 @@
         #file-viewer.open { display: flex; }
         .fv-header {
             display: flex; align-items: center; gap: 8px;
-            padding: 9px 12px; border-bottom: 1px solid var(--border);
+            padding: 9px 120px 9px 12px; border-bottom: 1px solid var(--border);
             background: var(--bg-sidebar); flex-shrink: 0;
         }
         .fv-ic { width: 14px; height: 14px; opacity: .7; flex-shrink: 0; }

@@ -70,7 +70,7 @@
         .chat-topbar {
             position: absolute; top: 0; left: 0; right: 0; z-index: 30;
             height: 38px; display: flex; align-items: center; justify-content: flex-end;
-            padding: 0 14px;
+            padding: 0 120px 0 14px;
             background: linear-gradient(to bottom, var(--bg-base) 55%, rgba(14,17,22,0));
             pointer-events: none;
         }

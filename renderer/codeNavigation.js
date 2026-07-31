@@ -470,7 +470,16 @@
     if (!lineText) return null;
     const ch = pos.ch;
 
-    // 1. Checar se a posição está dentro de aspas ('...', "...", `...`)
+    // Checa o tipo do token do CodeMirror na posição atual do cursor/mouse
+    const token = cm.getTokenAt(pos);
+    const tokenType = (token && token.type) ? token.type : '';
+
+    // 1. Ignorar completamente palavras dentro de comentários (//, /* */, Javadoc, docstrings)
+    if (tokenType.includes('comment')) {
+      return null;
+    }
+
+    // 2. Checar se a posição está dentro de aspas para ser um caminho de arquivo importado
     const quotes = ['"', "'", '`'];
     for (const q of quotes) {
       let first = -1;
@@ -495,10 +504,30 @@
       }
     }
 
-    // 2. Símbolo normal de código (método, função, classe)
+    // Se estiver em uma string comum de texto (e não for caminho de importação), ignora
+    if (tokenType.includes('string')) {
+      return null;
+    }
+
+    // Ignorar palavras-chave de linguagem (if, return, function, class, etc.)
+    if (tokenType.includes('keyword')) {
+      return null;
+    }
+
+    // 3. Símbolo normal de código (método, função, variável, propriedade, classe)
     const wordRange = cm.findWordAt(pos);
     const symbol = cm.getRange(wordRange.anchor, wordRange.head).trim();
-    if (symbol && /^[A-Za-z_$][\w$]*$/.test(symbol)) {
+
+    const RESERVED_WORDS = new Set([
+      'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue',
+      'return', 'function', 'class', 'const', 'let', 'var', 'import', 'export',
+      'from', 'default', 'try', 'catch', 'finally', 'throw', 'new', 'this', 'super',
+      'async', 'await', 'yield', 'typeof', 'instanceof', 'void', 'delete', 'in',
+      'public', 'private', 'protected', 'static', 'final', 'abstract', 'interface',
+      'implements', 'extends', 'package', 'null', 'true', 'false', 'undefined'
+    ]);
+
+    if (symbol && /^[A-Za-z_$][\w$]*$/.test(symbol) && !RESERVED_WORDS.has(symbol)) {
       return {
         symbol,
         range: wordRange,

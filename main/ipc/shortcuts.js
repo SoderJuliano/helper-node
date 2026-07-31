@@ -35,36 +35,61 @@ ipcMain.handle("get-available-shortcuts", () => {
   const mod = isHyprlandEnv ? "SUPER" : "CTRL";
   const shift = isHyprlandEnv ? "SUPER+SHIFT" : "CTRL+SHIFT";
 
-  const items = [];
-
-  // Sempre dispon\u00edvel (registrado via gsettings/COSMIC/Hyprland config)
-  items.push({ id: "recording", keys: `${mod}+D`, action: "Iniciar/Parar grava\u00e7\u00e3o", icon: "\ud83c\udf99\ufe0f" });
-  items.push({ id: "manual-input", keys: `${mod}+I`, altKeys: `${shift}+I`, action: "Inserir pergunta", icon: "\u270d\ufe0f" });
-  items.push({ id: "open-config", keys: `${shift}+C`, action: "Configura\u00e7\u00f5es", icon: "\u2699\ufe0f" });
-
-  // Captura stealth (Ctrl+Shift+S): s\u00f3 faz sentido com OS Integration ON.
-  // Quando print-mode est\u00e1 OFF, o user prefere usar ferramenta nativa do SO
-  // + Ctrl+V no input. N\u00e3o mostramos.
-  if (osIntegrationOn && printModeOn) {
-    items.push({ id: "capture-stealth", keys: `${shift}+S`, action: "Captura stealth + IA", icon: "\ud83d\udcf8" });
-  }
-
-  // Mover janela entre telas: s\u00f3 funciona em X11 ou Hyprland.
-  // Wayland puro (COSMIC, GNOME Wayland) ignora setBounds() pelo compositor.
-  if (isX11 || isHyprlandEnv) {
-    if (isHyprlandEnv) {
-      items.push({ id: "move-1", keys: `${shift}+1`, action: "Mover para workspace 1", icon: "\ud83d\udccd" });
-      items.push({ id: "move-2", keys: `${shift}+2`, action: "Mover para workspace 2", icon: "\ud83d\udccd" });
-    } else {
-      items.push({ id: "move-1", keys: `${shift}+1`, action: "Mover para tela 1", icon: "\ud83d\uddb5\u2190" });
-      items.push({ id: "move-2", keys: `${shift}+2`, action: "Mover para tela 2", icon: "\ud83d\uddb5\u2192" });
+  const categories = [
+    {
+      name: "Globais (Sistema / SO)",
+      items: [
+        { id: "recording", keys: `${mod}+D`, action: "Iniciar/Parar gravação de voz", where: "Em todo o SO / App", icon: "🎙️" },
+        { id: "manual-input", keys: `${mod}+I`, altKeys: `${shift}+I`, action: "Focar app / Fazer pergunta", where: "Em todo o SO / App", icon: "✍️" },
+        { id: "open-config", keys: `${shift}+C`, action: "Abrir Configurações", where: "Em todo o SO / App", icon: "⚙️" },
+        ...(osIntegrationOn && printModeOn ? [{ id: "capture-stealth", keys: `${shift}+S`, action: "Captura stealth + IA", where: "No SO (Modo OS)", icon: "📸" }] : []),
+        ...((isX11 || isHyprlandEnv) ? [
+          { id: "move-1", keys: `${shift}+1`, action: isHyprlandEnv ? "Mover p/ workspace 1" : "Mover p/ monitor 1", where: "No App", icon: "🖥️" },
+          { id: "move-2", keys: `${shift}+2`, action: isHyprlandEnv ? "Mover p/ workspace 2" : "Mover p/ monitor 2", where: "No App", icon: "🖥️" }
+        ] : [])
+      ]
+    },
+    {
+      name: "Interface & Chat (Navegação)",
+      items: [
+        { id: "toggle-sidebar", keys: `${mod}+B`, action: "Mostrar / Ocultar barra lateral", where: "No App", icon: "📁" },
+        { id: "toggle-chat", keys: `${mod}+I`, action: "Mostrar Chat / Dividir tela", where: "No App / IDE", icon: "💬" },
+        { id: "send-chat", keys: "SHIFT+ENTER", action: "Enviar pergunta para a IA", where: "No Chat", icon: "🚀" },
+        { id: "newline-chat", keys: "ENTER", action: "Quebrar linha na mensagem", where: "No Chat", icon: "↵" },
+        { id: "close-modal", keys: "ESC", action: "Fechar modais / painéis abertos", where: "No App", icon: "❌" }
+      ]
+    },
+    {
+      name: "Editor de Código (Modo IDE)",
+      items: [
+        { id: "save-file", keys: `${mod}+S`, action: "Salvar alterações no arquivo", where: "No Editor", icon: "💾" },
+        { id: "find-file", keys: `${mod}+F`, action: "Buscar texto no arquivo aberto", where: "No Editor", icon: "🔍" },
+        { id: "find-next", keys: `${mod}+G`, altKeys: `SHIFT+${mod}+G`, action: "Ir p/ próxima/ant. ocorrência", where: "No Editor", icon: "⏭️" },
+        { id: "autocomplete", keys: `${mod}+ESPAÇO`, action: "Forçar autocomplete (IntelliSense)", where: "No Editor", icon: "💡" },
+        { id: "accept-tutor", keys: "TAB", action: "Aceitar sugestão do Tutor (Ghost)", where: "No Editor", icon: "➔" },
+        { id: "dismiss-tutor", keys: "ESC", action: "Limpar sugestão / Fechar busca", where: "No Editor", icon: "❌" },
+        { id: "zoom-editor", keys: `${mod}+SCROLL`, action: "Aumentar/diminuir zoom do texto", where: "No Editor", icon: "🔎" },
+        { id: "goto-def", keys: "CTRL+Clique", action: "Ir para a definição do símbolo", where: "No Editor", icon: "🔗" },
+        { id: "context-menu", keys: "Botão Direito", action: "Menu contextual (Renomear / Usos)", where: "No Editor", icon: "🖱️" }
+      ]
+    },
+    {
+      name: "Busca de Projeto (Workspace)",
+      items: [
+        { id: "search-tree", keys: `${mod}+F`, action: "Filtrar e abrir arquivo na árvore", where: "Sem editor aberto", icon: "📂" },
+        { id: "search-global", keys: `${shift}+F`, action: "Buscar texto em todos os arquivos", where: "No Projeto", icon: "🔎" }
+      ]
     }
-  }
+  ];
+
+  // Flat list para retrocompatibilidade
+  const items = categories.flatMap(cat => cat.items);
 
   return {
     env: { sessionType, desktop, isWayland, isCosmic, isHyprland: isHyprlandEnv, isX11 },
     flags: { osIntegrationOn, printModeOn },
     items,
+    categories,
   };
 });
 
