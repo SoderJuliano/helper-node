@@ -42,6 +42,7 @@ class Notification {
 const BackendService = require("../services/backendService.js");
 const GeminiCliProvider = require("../services/providers/gemini-cli/GeminiCliProvider");
 const ClaudeCliProvider = require("../services/providers/claude-cli/ClaudeCliProvider");
+const CopilotCliProvider = require("../services/providers/copilot-cli/CopilotCliProvider");
 const TesseractService = require("../services/tesseractService.js");
 const OpenAIService = require("../services/openAIService.js");
 const RealtimeAssistantService = require("../services/realtimeAssistantService.js");
@@ -209,6 +210,7 @@ module.exports = {
   BackendService,
   GeminiCliProvider,
   ClaudeCliProvider,
+  CopilotCliProvider,
   TesseractService,
   OpenAIService,
   RealtimeAssistantService,

@@ -148,6 +148,8 @@ const defaultConfig = {
   geminiCliModel: "gemini-2.5-flash",
   // Claude Code CLI provider.
   claudeCliModel: "sonnet",
+  // GitHub Copilot CLI provider.
+  copilotCliModel: "claude-sonnet-4.5",
 
   // API Key do backend remoto. Necessário para endpoints pesados (ex: qwen3.6-17b).
   // Endpoints leves (llama3, qwen25) usam o Bearer token fixo hardcoded.
@@ -466,6 +468,18 @@ function getGeminiCliModel() {
 function setGeminiCliModel(model) {
   if (!currentConfig) currentConfig = loadConfig();
   currentConfig.geminiCliModel = model || defaultConfig.geminiCliModel;
+  saveConfig(currentConfig);
+  currentConfig = null;
+}
+
+function getCopilotCliModel() {
+  if (!currentConfig) currentConfig = loadConfig();
+  return currentConfig.copilotCliModel || defaultConfig.copilotCliModel;
+}
+
+function setCopilotCliModel(model) {
+  if (!currentConfig) currentConfig = loadConfig();
+  currentConfig.copilotCliModel = model || defaultConfig.copilotCliModel;
   saveConfig(currentConfig);
   currentConfig = null;
 }
@@ -796,6 +810,8 @@ module.exports = {
   setClaudeCliModel,
   getGeminiCliModel,
   setGeminiCliModel,
+  getCopilotCliModel,
+  setCopilotCliModel,
   getBackendModel,
   setBackendModel,
   getOllamaLocalModel,

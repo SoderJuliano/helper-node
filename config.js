@@ -81,6 +81,12 @@ const claudeCliModelSelect = document.getElementById("claude-cli-model-select");
 const claudeCliInfo = document.getElementById("claude-cli-info");
 const checkClaudeCliBtn = document.getElementById("check-claude-cli-btn");
 const claudeCliStatusResult = document.getElementById("claude-cli-status-result");
+// Copilot CLI elements
+const copilotCliModelContainer = document.getElementById("copilot-cli-model-container");
+const copilotCliModelSelect = document.getElementById("copilot-cli-model-select");
+const copilotCliInfo = document.getElementById("copilot-cli-info");
+const checkCopilotCliBtn = document.getElementById("check-copilot-cli-btn");
+const copilotCliStatusResult = document.getElementById("copilot-cli-status-result");
 
 // Helper function to update the debug mode status text
 function updateDebugModeStatus(isDebugging) {
@@ -124,7 +130,7 @@ function updateStealthModeStatus(isEnabled) {
 // Backends genéricos e Ollama não suportam — esconde e desliga.
 function applyWorkspaceAccessVisibility(model) {
   if (!workspaceAccessItem) return;
-  const supportsWorkspace = model === 'openIa' || model === 'geminiCli' || model === 'claudeCli' || model === 'ollamaLocal' || model === 'llama' || model === 'llama-stream';
+  const supportsWorkspace = model === 'openIa' || model === 'geminiCli' || model === 'claudeCli' || model === 'copilotCli' || model === 'ollamaLocal' || model === 'llama' || model === 'llama-stream';
   workspaceAccessItem.style.display = supportsWorkspace ? '' : 'none';
   if (!supportsWorkspace && workspaceAccessToggle) {
     workspaceAccessToggle.checked = false;
@@ -144,7 +150,8 @@ function applyLiteUi() {
   } catch (_) {}
   ['backend-api-key-container', 'ollama-local-model-container', 'ollama-local-info',
    'gemini-cli-model-container', 'gemini-cli-info',
-   'claude-cli-model-container', 'claude-cli-info'].forEach((id) => {
+   'claude-cli-model-container', 'claude-cli-info',
+   'copilot-cli-model-container', 'copilot-cli-info'].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
   });
@@ -402,6 +409,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     await populateGeminiCliModels(savedGeminiCliModel);
   } catch (e) { console.warn("gemini-cli model load failed:", e); }
 
+  // Load saved Copilot CLI model
+  try {
+    const savedCopilotCliModel = await ipcRenderer.invoke("get-copilot-cli-model");
+    await populateCopilotCliModels(savedCopilotCliModel);
+  } catch (e) { console.warn("copilot-cli model load failed:", e); }
+
   // Show/hide provider fields based on saved model
   const isChatGPT = (aiModelSelect.value === 'openIa' || aiModelSelect.value === 'openIaCodex');
   if (visionGuideSection) {
@@ -429,6 +442,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   } else if (aiModelSelect.value === 'claudeCli') {
     if (claudeCliModelContainer) claudeCliModelContainer.style.display = 'flex';
     if (claudeCliInfo) claudeCliInfo.style.display = 'block';
+  } else if (aiModelSelect.value === 'copilotCli') {
+    if (copilotCliModelContainer) copilotCliModelContainer.style.display = 'flex';
+    if (copilotCliInfo) copilotCliInfo.style.display = 'block';
   } else if (aiModelSelect.value === 'llama' || aiModelSelect.value === 'llama-stream') {
     const backendModelContainerEl = document.getElementById('backend-model-container');
     if (backendModelContainerEl) backendModelContainerEl.style.display = 'flex';
@@ -676,7 +692,7 @@ if (workspaceAccessToggle) {
     if (workspaceAccessToggle.checked) {
       // Se ligar o workspaceAccess, e não for CLI, requer helperTools ligado!
       const model = aiModelSelect ? aiModelSelect.value : 'openIa';
-      const isCli = model === 'geminiCli' || model === 'claudeCli';
+      const isCli = model === 'geminiCli' || model === 'claudeCli' || model === 'copilotCli';
       if (!isCli && helperToolsToggle && !helperToolsToggle.checked) {
         helperToolsToggle.checked = true;
         updateHelperToolsStatus(true);
@@ -862,6 +878,59 @@ async function populateClaudeCliModels(savedModel = null) {
   }
 }
 
+// Lista de exemplos documentados (ver CopilotCliModels.js) — não é uma
+// sondagem ao vivo do binário como no Claude, então "(indisponível)" aqui
+// pode só significar "não confirmamos ainda", não que o modelo não exista.
+async function populateCopilotCliModels(savedModel = null) {
+  if (!copilotCliModelSelect) return;
+  const currentVal = savedModel || copilotCliModelSelect.value;
+  try {
+    const models = await ipcRenderer.invoke('get-copilot-cli-models');
+    copilotCliModelSelect.innerHTML = '';
+    if (models && models.length) {
+      models.forEach(m => {
+        const option = document.createElement('option');
+        const val = m.id || m.value || m;
+        const text = m.label || val;
+        option.value = val;
+        option.textContent = text;
+        copilotCliModelSelect.appendChild(option);
+      });
+
+      const hasModel = models.some(m => (m.id || m.value || m) === currentVal);
+      if (currentVal && !hasModel) {
+        const option = document.createElement('option');
+        option.value = currentVal;
+        option.textContent = `${currentVal} (não confirmado)`;
+        copilotCliModelSelect.appendChild(option);
+      }
+
+      if (currentVal) {
+        copilotCliModelSelect.value = currentVal;
+      } else {
+        copilotCliModelSelect.selectedIndex = 0;
+      }
+    } else {
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = 'Nenhum modelo Copilot CLI encontrado';
+      option.disabled = true;
+      copilotCliModelSelect.appendChild(option);
+    }
+  } catch (e) {
+    console.error("Failed to populate Copilot CLI models:", e);
+    if (currentVal) {
+      const option = document.createElement('option');
+      option.value = currentVal;
+      option.textContent = currentVal;
+      copilotCliModelSelect.appendChild(option);
+      copilotCliModelSelect.value = currentVal;
+    } else {
+      copilotCliModelSelect.innerHTML = '<option value="" disabled>Erro ao carregar modelos</option>';
+    }
+  }
+}
+
 // Quando ollamaLocal selecionado, nada a fazer extra
 function applyOllamaLocalExclusivity() {
 }
@@ -882,8 +951,8 @@ aiModelSelect.addEventListener('change', () => {
       }
     }
     const isOllama = (v === 'llama' || v === 'llama-stream' || v === 'ollamaLocal');
-    const isCli = (v === 'geminiCli' || v === 'claudeCli');
-    let disableHelperTools = (v === 'geminiCli' || v === 'claudeCli');
+    const isCli = (v === 'geminiCli' || v === 'claudeCli' || v === 'copilotCli');
+    let disableHelperTools = (v === 'geminiCli' || v === 'claudeCli' || v === 'copilotCli');
     const isRemoteBackend = (v === 'llama' || v === 'llama-stream');
     if (isRemoteBackend) {
        // Evaluate if remote backend allows tools based on model size
@@ -906,6 +975,8 @@ aiModelSelect.addEventListener('change', () => {
     if (geminiCliInfo) geminiCliInfo.style.display = (v === 'geminiCli') ? 'block' : 'none';
     if (claudeCliModelContainer) claudeCliModelContainer.style.display = (v === 'claudeCli') ? 'flex' : 'none';
     if (claudeCliInfo) claudeCliInfo.style.display = (v === 'claudeCli') ? 'block' : 'none';
+    if (copilotCliModelContainer) copilotCliModelContainer.style.display = (v === 'copilotCli') ? 'flex' : 'none';
+    if (copilotCliInfo) copilotCliInfo.style.display = (v === 'copilotCli') ? 'block' : 'none';
     const backendApiKeyContainer = document.getElementById('backend-api-key-container');
     if (backendApiKeyContainer) backendApiKeyContainer.style.display = isOllama ? 'flex' : 'none';
     const backendModelContainerEl = document.getElementById('backend-model-container');
@@ -930,6 +1001,8 @@ aiModelSelect.addEventListener('change', () => {
         populateGeminiCliModels();
       } else if (v === 'claudeCli') {
         populateClaudeCliModels();
+      } else if (v === 'copilotCli') {
+        populateCopilotCliModels();
       } else if (v === 'openIa' || v === 'openIaCodex') {
         populateOpenAiModels();
       } else if (v === 'llama' || v === 'llama-stream') {
@@ -956,6 +1029,11 @@ if (geminiCliModelSelect) {
 if (claudeCliModelSelect) {
   claudeCliModelSelect.addEventListener('change', () => {
     ipcRenderer.send("set-claude-cli-model", claudeCliModelSelect.value);
+  });
+}
+if (copilotCliModelSelect) {
+  copilotCliModelSelect.addEventListener('change', () => {
+    ipcRenderer.send("set-copilot-cli-model", copilotCliModelSelect.value);
   });
 }
 if (ollamaLocalModelSelect) {
@@ -1016,6 +1094,24 @@ if (checkClaudeCliBtn) {
       }
     } catch (e) {
       claudeCliStatusResult.innerHTML = `<span style="color:#ff6b6b">Erro: ${e.message}</span>`;
+    }
+  });
+}
+
+if (checkCopilotCliBtn) {
+  checkCopilotCliBtn.addEventListener('click', async () => {
+    if (!copilotCliStatusResult) return;
+    copilotCliStatusResult.textContent = 'Verificando...';
+    copilotCliStatusResult.style.color = '#888';
+    try {
+      const res = await ipcRenderer.invoke('check-copilot-cli-installed');
+      if (res && res.installed) {
+        copilotCliStatusResult.innerHTML = '<span style="color:#9ef0a8">✓ Copilot CLI instalado.</span> (isso confirma o binário — não confirma login/autenticação)';
+      } else {
+        copilotCliStatusResult.innerHTML = '<span style="color:#ff6b6b">✗ Não encontrado.</span> Instale com <code style="background:#0d0d0d;padding:2px 5px;border-radius:3px;color:#9ef0a8;">npm install -g @github/copilot</code>';
+      }
+    } catch (e) {
+      copilotCliStatusResult.innerHTML = `<span style="color:#ff6b6b">Erro: ${e.message}</span>`;
     }
   });
 }
@@ -1095,6 +1191,11 @@ saveButton.addEventListener("click", async () => {
   // Save Claude Code CLI model
   if (claudeCliModelSelect) {
     ipcRenderer.send("set-claude-cli-model", claudeCliModelSelect.value);
+  }
+
+  // Save Copilot CLI model
+  if (copilotCliModelSelect) {
+    ipcRenderer.send("set-copilot-cli-model", copilotCliModelSelect.value);
   }
 
   // Save Gemini CLI model

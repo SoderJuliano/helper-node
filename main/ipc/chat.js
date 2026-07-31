@@ -1,7 +1,7 @@
 // main/ipc/chat.js
 const {
   electron, path, os, crypto, exec, spawn, util, fs, fs2,
-  BackendService, GeminiCliProvider, ClaudeCliProvider, TesseractService,
+  BackendService, GeminiCliProvider, ClaudeCliProvider, CopilotCliProvider, TesseractService,
   OpenAIService, RealtimeAssistantService, RealtimeOpenAiService, ipcService,
   configService, edition, knowledgeBase, fileEditService, historyService,
   helperTools, workspace, agenticWorkflow, ollamaAgenticWorkflow,
@@ -64,6 +64,21 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
       } catch (ccliErr) {
         console.error('[claude-cli] send error:', ccliErr.message);
         // Garante que o loading fecha mesmo que o provider não tenha emitido gemini-stream-complete
+        try { event.sender.send('gemini-stream-complete'); } catch (_) {}
+      }
+      return;
+    }
+
+    // ── GitHub Copilot CLI provider ──────────────────────────────────────────
+    if (aiModel === 'copilotCli') {
+      const projectPath = workspace.getProjectPath();
+      const copilotModel = configService.getCopilotCliModel();
+      CopilotCliProvider.setModel(copilotModel);
+      const finalPrompt = helpers.appendAttachmentsContext(promptWithHistory);
+      try {
+        await CopilotCliProvider.send(finalPrompt, projectPath, event.sender);
+      } catch (cpErr) {
+        console.error('[copilot-cli] send error:', cpErr.message);
         try { event.sender.send('gemini-stream-complete'); } catch (_) {}
       }
       return;
@@ -468,6 +483,25 @@ ipcMain.handle("claude-cli-restart-session", async () => {
   const projectPath = workspace.getProjectPath();
   await ClaudeCliProvider.changeProject(projectPath, projectPath).catch(() => {});
   return { ok: true };
+});
+
+ipcMain.handle("get-copilot-cli-model", () => configService.getCopilotCliModel());
+
+ipcMain.on("set-copilot-cli-model", (event, model) => {
+  configService.setCopilotCliModel(model);
+  CopilotCliProvider.setModel(model);
+  broadcastAiModelChange({ provider: 'copilotCli', model });
+});
+
+ipcMain.handle("get-copilot-cli-models", () => CopilotCliProvider.getModels());
+
+ipcMain.handle("check-copilot-cli-installed", async () => {
+  try {
+    const ok = await CopilotCliProvider.checkInstalled();
+    return { installed: ok };
+  } catch (e) {
+    return { installed: false, error: String(e && e.message) };
+  }
 });
 
 ipcMain.handle("check-ollama-local-status", async () => {

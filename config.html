@@ -393,6 +393,7 @@
                 <option value="ollamaLocal">Ollama Local (offline)</option>
                 <option value="geminiCli">Gemini CLI</option>
                 <option value="claudeCli">Claude Code CLI</option>
+                <option value="copilotCli">Copilot CLI</option>
             </select>
         </div>
 
@@ -577,6 +578,43 @@
             </div>
             <div style="margin-top: 8px; padding: 8px 10px; background: rgba(255,180,77,0.08); border-radius: 4px; font-size: 11.5px; color: #ffb74d;">
                 <strong>Ferramentas avançadas</strong> desativadas neste modo — o CLI gerencia tudo internamente.
+            </div>
+            <div style="margin-top: 8px; font-size: 11px; color: #999;">
+                🎙️ Ctrl+D (transcrição de áudio) não tem suporte neste modo — troque para ChatGPT ou Ollama.
+            </div>
+        </div>
+
+        <!-- Copilot CLI: select de modelo + aviso de instalação manual -->
+        <div class="setting-item" id="copilot-cli-model-container" style="display: none;">
+            <label for="copilot-cli-model-select">Modelo Copilot CLI</label>
+            <!-- Lista de exemplos documentados (não é sondagem ao vivo do binário
+                 como no Claude — a Copilot CLI não expõe listagem não-interativa
+                 até onde a doc confirma). Pode não bater 1:1 com o que sua conta libera. -->
+            <select id="copilot-cli-model-select" class="custom-select">
+                <option value="" disabled selected>Carregando modelos…</option>
+            </select>
+        </div>
+
+        <div id="copilot-cli-info" style="display: none; margin-top: 12px; padding: 14px; background-color: rgba(0,0,0,0.5); border-radius: 5px; font-size: 12.5px; line-height: 1.5; color: #ddd; -webkit-app-region: no-drag;">
+            <div style="font-weight: bold; color: #6cc4ff; margin-bottom: 8px;">GitHub Copilot CLI — instalação manual</div>
+            <div style="margin-bottom: 10px; color: #aaa; font-size: 12px;">O app <strong>não instala nem autentica o Copilot CLI</strong>. Configure antes de usar:</div>
+            <div style="margin-bottom: 6px;"><strong>1. Instalar</strong> (não precisa de admin, requer Node.js 22+):</div>
+            <pre style="background:#0d0d0d; padding:8px 10px; border-radius:4px; margin:0 0 10px 0; overflow-x:auto; font-size:12px; color:#9ef0a8; user-select:text;">npm install -g @github/copilot</pre>
+            <div style="margin-bottom: 6px;"><strong>2. Autenticar</strong> (abre browser):</div>
+            <pre style="background:#0d0d0d; padding:8px 10px; border-radius:4px; margin:0 0 10px 0; overflow-x:auto; font-size:12px; color:#9ef0a8; user-select:text;">copilot
+/login</pre>
+            <div style="margin-bottom: 6px;"><strong>3. Verificar</strong>:</div>
+            <div style="display:flex; align-items:center; gap:10px;">
+                <button id="check-copilot-cli-btn" style="padding: 6px 12px; background:#1a2e3a; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; -webkit-app-region: no-drag;">
+                    Verificar instalação
+                </button>
+                <span id="copilot-cli-status-result" style="font-size: 12px;"></span>
+            </div>
+            <div style="margin-top: 12px; padding: 8px 10px; background: rgba(108,196,255,0.07); border-radius: 4px; font-size: 11.5px; color: #6cc4ff;">
+                O Copilot CLI roda em modo não-interativo (<code>-p</code>) com todas as ferramentas liberadas automaticamente. O Helper Node envia o prompt e mostra a resposta final quando o processo termina — sem streaming/thinking em tempo real ainda.
+            </div>
+            <div style="margin-top: 8px; padding: 8px 10px; background: rgba(255,180,77,0.08); border-radius: 4px; font-size: 11.5px; color: #ffb74d;">
+                <strong>Conta corporativa (Business/Enterprise)</strong>: peça pro admin habilitar "Copilot in the CLI" nas políticas da organização — sem isso o CLI recusa mesmo com Copilot funcionando no VS Code/IntelliJ.
             </div>
             <div style="margin-top: 8px; font-size: 11px; color: #999;">
                 🎙️ Ctrl+D (transcrição de áudio) não tem suporte neste modo — troque para ChatGPT ou Ollama.

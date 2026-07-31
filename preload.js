@@ -82,6 +82,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   checkClaudeCliInstalled: () => ipcRenderer.invoke("check-claude-cli-installed"),
   claudeCliRestartSession: () => ipcRenderer.invoke("claude-cli-restart-session"),
   onClaudeCliStatus: (cb) => ipcRenderer.on("claude-cli-status", (event, data) => cb(data)),
+  // GitHub Copilot CLI provider
+  getCopilotCliModel: () => ipcRenderer.invoke("get-copilot-cli-model"),
+  setCopilotCliModel: (model) => ipcRenderer.send("set-copilot-cli-model", model),
+  getCopilotCliModels: () => ipcRenderer.invoke("get-copilot-cli-models"),
+  checkCopilotCliInstalled: () => ipcRenderer.invoke("check-copilot-cli-installed"),
+  onCopilotCliStatus: (cb) => ipcRenderer.on("copilot-cli-status", (event, data) => cb(data)),
   // Gemini CLI provider
   getGeminiCliModel: () => ipcRenderer.invoke("get-gemini-cli-model"),
   setGeminiCliModel: (model) => ipcRenderer.send("set-gemini-cli-model", model),

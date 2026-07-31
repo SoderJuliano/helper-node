@@ -17,12 +17,16 @@
             const PROVIDER_LABELS = {
                 openIa: 'ChatGPT', openIaCodex: 'OpenAI Codex', llama: 'Ollama Backend',
                 'llama-stream': 'Ollama Backend (stream)', ollamaLocal: 'Ollama Local',
-                geminiCli: 'Gemini CLI', claudeCli: 'Claude CLI',
+                geminiCli: 'Gemini CLI', claudeCli: 'Claude CLI', copilotCli: 'Copilot CLI',
             };
             // Claude Code CLI: preenchido por loadCliModels() a partir do binário `claude`.
             // Começa vazio de propósito — qualquer nome de modelo escrito aqui fica
             // desatualizado sozinho e aparece na tela diferente do que o CLI mostra.
             let CLAUDE_CLI_MODELS = [];
+            // Copilot CLI: sem descoberta dinâmica real confirmada (ver
+            // CopilotCliModels.js) — loadCliModels() preenche com a lista de
+            // exemplos documentados, não é uma sondagem ao vivo como a do Claude.
+            let COPILOT_CLI_MODELS = [];
             // Gemini CLI model list (initially mirrored, loaded dynamically later)
             let GEMINI_CLI_MODELS = [
                 { value: 'Gemini 3.5 Flash (High)',      label: 'Gemini 3.5 Flash (High)'      },
@@ -58,6 +62,17 @@
                 } catch (e) {
                     console.warn('Failed to load dynamic Gemini CLI models:', e);
                 }
+                try {
+                    const copilotRes = await window.electronAPI.getCopilotCliModels();
+                    if (Array.isArray(copilotRes) && copilotRes.length) {
+                        COPILOT_CLI_MODELS = copilotRes.map(m => ({
+                            value: m.id || m.value || m,
+                            label: m.label || m.id || m.value || m
+                        }));
+                    }
+                } catch (e) {
+                    console.warn('Failed to load Copilot CLI models:', e);
+                }
             }
 
             const composerModelBtn = document.getElementById('composer-model');
@@ -83,6 +98,11 @@
                     let m = 'sonnet';
                     try { m = (await window.electronAPI.getClaudeCliModel()) || m; } catch (_) {}
                     const found = CLAUDE_CLI_MODELS.find(x => x.value === m);
+                    composerModelName.textContent = found ? found.label : m;
+                } else if (provider === 'copilotCli') {
+                    let m = 'claude-sonnet-4.5';
+                    try { m = (await window.electronAPI.getCopilotCliModel()) || m; } catch (_) {}
+                    const found = COPILOT_CLI_MODELS.find(x => x.value === m);
                     composerModelName.textContent = found ? found.label : m;
                 } else if (provider === 'llama' || provider === 'llama-stream') {
                     let m = '';
@@ -222,6 +242,14 @@
                     _buildModelMenu(anchor, CLAUDE_CLI_MODELS, () => currentVal, (opt) => {
                         currentVal = opt.value;
                         try { window.electronAPI.setClaudeCliModel(opt.value); } catch (_) {}
+                        composerModelName.textContent = opt.label;
+                        if (typeof showToast === 'function') showToast('Modelo: ' + opt.label);
+                    });
+                } else if (provider === 'copilotCli') {
+                    let currentVal = '';
+                    _buildModelMenu(anchor, COPILOT_CLI_MODELS, () => currentVal, (opt) => {
+                        currentVal = opt.value;
+                        try { window.electronAPI.setCopilotCliModel(opt.value); } catch (_) {}
                         composerModelName.textContent = opt.label;
                         if (typeof showToast === 'function') showToast('Modelo: ' + opt.label);
                     });
