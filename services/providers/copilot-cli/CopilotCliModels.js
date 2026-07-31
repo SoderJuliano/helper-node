@@ -21,15 +21,22 @@
 const DEFAULT_MODEL = 'claude-sonnet-4.5'; // default documentado do próprio CLI
 
 // ⚠️ Não verificado ao vivo — só o que a doc oficial cita como exemplo.
-const DOCUMENTED_EXAMPLES = [
+// A UI (config.html/config.js) consome isso como SUGESTÕES num <datalist>
+// de um campo de texto livre, nunca como <option> de um <select> fechado —
+// foi exatamente essa confusão (lista fechada = "modelos disponíveis") que
+// fez usuário em conta corporativa ver "nomes genéricos e outros que nem
+// estão disponíveis". Não reintroduzir um select fechado aqui.
+const SUGGESTIONS = [
   { id: 'claude-sonnet-4.5', label: 'Claude Sonnet 4.5 (default)' },
   { id: 'claude-sonnet-4.6', label: 'Claude Sonnet 4.6' },
   { id: 'claude-fable-5',    label: 'Claude Fable 5' },
   { id: 'gpt-5.2',           label: 'GPT-5.2' },
 ];
 
+// Nome mantido "getModels" (mesma interface pública do ClaudeCliModels.js),
+// mas o retorno é uma lista de sugestões, não uma lista de modelos confirmados.
 async function getModels() {
-  return DOCUMENTED_EXAMPLES;
+  return SUGGESTIONS;
 }
 
 function getDefaultModel() {
@@ -39,7 +46,7 @@ function getDefaultModel() {
 // Sem descoberta dinâmica real ainda — mantido pra manter a mesma interface
 // pública do ClaudeCliModels.js (chamado pelo botão de refresh, se existir).
 async function refresh() {
-  return DOCUMENTED_EXAMPLES;
+  return SUGGESTIONS;
 }
 
 module.exports = { DEFAULT_MODEL, getModels, getDefaultModel, refresh };

@@ -584,15 +584,17 @@
             </div>
         </div>
 
-        <!-- Copilot CLI: select de modelo + aviso de instalação manual -->
+        <!-- Copilot CLI: campo de texto livre (não é select fechado) -->
         <div class="setting-item" id="copilot-cli-model-container" style="display: none;">
             <label for="copilot-cli-model-select">Modelo Copilot CLI</label>
-            <!-- Lista de exemplos documentados (não é sondagem ao vivo do binário
-                 como no Claude — a Copilot CLI não expõe listagem não-interativa
-                 até onde a doc confirma). Pode não bater 1:1 com o que sua conta libera. -->
-            <select id="copilot-cli-model-select" class="custom-select">
-                <option value="" disabled selected>Carregando modelos…</option>
-            </select>
+            <!-- NÃO é uma lista de modelos confirmados: a Copilot CLI não expõe
+                 listagem não-interativa (diferente do Claude, onde dava pra sondar
+                 `claude --print "/model"`). Por isso é texto livre, com sugestões
+                 (datalist) — digite o ID exatamente como aparece no seu `/model`
+                 dentro do `copilot` interativo. Um <select> fechado aqui mostrava
+                 nomes genéricos que nem sempre existiam na conta do usuário. -->
+            <input type="text" id="copilot-cli-model-select" class="custom-select" list="copilot-cli-model-suggestions" placeholder="ex: claude-sonnet-4.5 (veja /model no `copilot`)">
+            <datalist id="copilot-cli-model-suggestions"></datalist>
         </div>
 
         <div id="copilot-cli-info" style="display: none; margin-top: 12px; padding: 14px; background-color: rgba(0,0,0,0.5); border-radius: 5px; font-size: 12.5px; line-height: 1.5; color: #ddd; -webkit-app-region: no-drag;">
