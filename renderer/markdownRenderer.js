@@ -96,7 +96,94 @@
             out = out.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
             out = out.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>');
 
-            // 4. Processa linha a linha para headings e listas
+            // 4. Processa tabelas markdown (| col1 | col2 | \n |---|---| \n | val1 | val2 |)
+            function renderTableBlock(tableLines) {
+                if (tableLines.length < 2) return tableLines.join('\n');
+                const parseRow = (rowStr) => {
+                    let r = rowStr.trim();
+                    if (r.startsWith('|')) r = r.slice(1);
+                    if (r.endsWith('|')) r = r.slice(0, -1);
+                    return r.split('|').map(c => c.trim());
+                };
+
+                const headerRow = parseRow(tableLines[0]);
+                const alignRow = parseRow(tableLines[1]);
+
+                // Valida se a linha separadora é válida (| --- | :---: | ---: |)
+                const isValidAlign = alignRow.every(col => /^:?-+:?$/.test(col));
+                if (!isValidAlign) return tableLines.join('\n');
+
+                const alignments = alignRow.map(col => {
+                    if (col.startsWith(':') && col.endsWith(':')) return 'center';
+                    if (col.endsWith(':')) return 'right';
+                    if (col.startsWith(':')) return 'left';
+                    return 'left';
+                });
+
+                const bodyRows = tableLines.slice(2).map(parseRow);
+
+                let html = '<div class="markdown-table-wrapper"><table class="markdown-table"><thead><tr>';
+                headerRow.forEach((cell, idx) => {
+                    const align = alignments[idx] || 'left';
+                    const formattedCell = cell.replace(/&lt;br\s*\/??&gt;/gi, '<br>').replace(/<br\s*\/?>/gi, '<br>');
+                    html += `<th style="text-align:${align}">${formattedCell}</th>`;
+                });
+                html += '</tr></thead><tbody>';
+
+                bodyRows.forEach(row => {
+                    html += '<tr>';
+                    row.forEach((cell, idx) => {
+                        const align = alignments[idx] || 'left';
+                        const formattedCell = cell.replace(/&lt;br\s*\/??&gt;/gi, '<br>').replace(/<br\s*\/?>/gi, '<br>');
+                        html += `<td style="text-align:${align}">${formattedCell}</td>`;
+                    });
+                    html += '</tr>';
+                });
+                html += '</tbody></table></div>';
+                return html;
+            }
+
+            // Detecta blocos de tabela markdown
+            const linesForTable = out.split('\n');
+            const processedTableLines = [];
+            let currentTableBlock = [];
+
+            for (let i = 0; i < linesForTable.length; i++) {
+                const line = linesForTable[i];
+                const isTableLine = /^\s*\|.*\|\s*$/.test(line);
+
+                if (isTableLine) {
+                    currentTableBlock.push(line);
+                } else {
+                    if (currentTableBlock.length >= 2) {
+                        const tableHtml = renderTableBlock(currentTableBlock);
+                        if (tableHtml.startsWith('<div class="markdown-table-wrapper">')) {
+                            processedTableLines.push(hold(tableHtml));
+                        } else {
+                            processedTableLines.push(...currentTableBlock);
+                        }
+                    } else if (currentTableBlock.length > 0) {
+                        processedTableLines.push(...currentTableBlock);
+                    }
+                    currentTableBlock = [];
+                    processedTableLines.push(line);
+                }
+            }
+
+            if (currentTableBlock.length >= 2) {
+                const tableHtml = renderTableBlock(currentTableBlock);
+                if (tableHtml.startsWith('<div class="markdown-table-wrapper">')) {
+                    processedTableLines.push(hold(tableHtml));
+                } else {
+                    processedTableLines.push(...currentTableBlock);
+                }
+            } else if (currentTableBlock.length > 0) {
+                processedTableLines.push(...currentTableBlock);
+            }
+
+            out = processedTableLines.join('\n');
+
+            // 5. Processa linha a linha para headings e listas
             const lines = out.split('\n');
             const result = [];
             let listType = null;
@@ -140,12 +227,12 @@
             }
             flushList();
 
-            // 5. Agrupa linhas em parágrafos (linha vazia = nova <p>)
+            // 6. Agrupa linhas em parágrafos (linha vazia = nova <p>)
             out = result.join('\n');
             out = out.replace(/\n\n+/g, '\x01').replace(/\n/g, '<br>').replace(/\x01/g, '</p><p>');
             if (!out.match(/^<(h[123]|ul|ol|pre|\x00)/)) out = '<p>' + out + '</p>';
 
-            // 6. Restaura blocos protegidos
+            // 7. Restaura blocos protegidos
             blocks.forEach((b, i) => { out = out.replace(`\x00B${i}\x00`, b); });
 
             return out;
