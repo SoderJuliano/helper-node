@@ -1,40 +1,41 @@
-// Lista dinâmica de modelos da GitHub Copilot CLI.
+// Lista de modelos da GitHub Copilot CLI — 100% dinâmica, lida do binário.
 //
-// A sondagem é feita passando uma flag de modelo inválida (`--model __probe_invalid_model__`).
-// O binário da Copilot CLI v1.0.77+ imprime a lista/tabela de modelos disponíveis para a conta
-// do usuário:
+// FONTE: `copilot help config`. A seção `model:` desse help imprime os IDs
+// exatos que o `--model` aceita, um por linha entre aspas:
 //
-//   Model                        Context    Reasoning
-// ❯ Auto                         —          —
-//   Claude Sonnet 5 (default) ✓  264K       Medium
-//   Claude Sonnet 4.6            264K       Medium
-//   Claude Sonnet 4.5            —          —
-//   Claude Haiku 4.5             —          —
-//   GPT-5.6 Terra                400K       Medium
-//   GPT-5.6 Luna                 328K       Medium
+//   `model`: AI model to use for Copilot CLI; can be changed with /model ...
+//     - "claude-sonnet-5"
+//     - "claude-sonnet-4.6"
+//     - "gpt-5.6-terra"
+//     ...
 //
-// A função `parseCopilotModels` extrai essas linhas, mantendo o label e gerando os IDs limpos.
-// Resultados são salvos no cache em disco (`copilot-cli-models.json`).
+// Por que essa fonte e não outra (sondado contra o binário v1.0.77 de verdade):
+//   - `--model ?` NÃO lista nada: só entra na sessão normal com o aviso
+//     'Model "?" ... is not available. Using "claude-sonnet-5" instead.'
+//   - O seletor `/model` (que mostra a tabela bonita com Context/Reasoning)
+//     só existe no TUI interativo e devolve NOMES DE EXIBIÇÃO ("Claude Sonnet
+//     4.6"), não os IDs. Derivar ID a partir do nome seria adivinhação.
+//   - `help config` roda non-interactive, não exige auth, e dá o ID cru.
+//
+// Nada aqui é hardcoded: se a GitHub adicionar/remover modelo, aparece sozinho.
+// Se a sondagem falhar, retornamos LISTA VAZIA — nunca um nome inventado.
+//
+// ⚠️ LIMITE CONHECIDO: `help config` lista o catálogo que o binário conhece,
+// que pode ser MAIOR do que o que a sua conta/org liberou (o picker interativo
+// mostra só o subconjunto liberado). Filtrar por conta exigiria capturar o TUI
+// com pty. Ver README/discussão antes de "consertar" isso adivinhando.
 
 const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { resolveBinary, getEnrichedEnv } = require('./CopilotCliProcess');
 
-const FALLBACK_MODELS = [
-  { id: 'auto',              label: 'Auto' },
-  { id: 'claude-sonnet-5',   label: 'Claude Sonnet 5 (default)' },
-  { id: 'claude-sonnet-4.6', label: 'Claude Sonnet 4.6' },
-  { id: 'claude-sonnet-4.5', label: 'Claude Sonnet 4.5' },
-  { id: 'claude-haiku-4.5',  label: 'Claude Haiku 4.5' },
-  { id: 'gpt-5.6-terra',     label: 'GPT-5.6 Terra' },
-  { id: 'gpt-5.6-luna',      label: 'GPT-5.6 Luna' },
-];
-
+// 'auto' é aceito pelo --model (documentado no próprio --help: "use 'auto' to
+// let Copilot pick automatically") e é o que o picker mostra como 1ª opção.
 const DEFAULT_MODEL = 'auto';
 
 const MEMORY_TTL = 5 * 60 * 1000;
-const PROBE_TIMEOUT = 15000;
+const PROBE_TIMEOUT = 20000;
 
 let cachedModels = null;
 let lastFetchTime = 0;
@@ -69,80 +70,75 @@ function writeDiskCache(models) {
   }
 }
 
-function runCopilotProbe(bin) {
+function runCopilot(bin, args, timeoutMs) {
   return new Promise((resolve) => {
+    // Shim .cmd/.bat do npm precisa de shell; .exe roda direto.
     const useShell = process.platform === 'win32' && /\.(cmd|bat)$/i.test(bin);
-    const env = getEnrichedEnv ? getEnrichedEnv() : process.env;
     const child = execFile(
       bin,
-      ['--model', '__probe_invalid_model__'],
-      { timeout: PROBE_TIMEOUT, windowsHide: true, shell: useShell, maxBuffer: 1024 * 1024, env },
+      args,
+      { timeout: timeoutMs, windowsHide: true, shell: useShell, maxBuffer: 4 * 1024 * 1024, env: getEnrichedEnv() },
       (_err, stdout, stderr) => resolve(((stdout || '') + '\n' + (stderr || '')).trim())
     );
+    // Sem isso o processo pode ficar esperando entrada e só sair no timeout.
     try { child.stdin && child.stdin.end(); } catch (_) {}
   });
 }
 
-function parseCopilotModels(stdout) {
-  if (!stdout) return [];
-  const lines = stdout.split(/\r?\n/);
-  const models = [];
+// Extrai os IDs da seção `model:` do `copilot help config`.
+// Exportada para ser testável sem spawnar o binário (scripts/test-copilot-probe.js).
+function parseModelIdsFromHelpConfig(out) {
+  if (!out) return [];
+  const lines = out.replace(/\[[0-9;]*[a-zA-Z]/g, '').split(/\r?\n/);
+
+  // Acha a linha que abre a chave `model` (e não `modelXyz`/`providerModel`).
+  let start = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^\s*`model`\s*:/.test(lines[i])) { start = i; break; }
+  }
+  if (start === -1) return [];
+
+  const ids = [];
   const seen = new Set();
-  
-  let inTable = false;
-  for (let line of lines) {
-    const cleanLine = line.replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '').trimEnd();
-    
-    if (/Model\s+Context\s+Reasoning/i.test(cleanLine)) {
-      inTable = true;
+  for (let i = start + 1; i < lines.length; i++) {
+    const line = lines[i];
+    // Próxima chave de config (`contextTier`:, `logLevel`: ...) encerra a seção.
+    if (/^\s*`[^`]+`\s*:/.test(line)) break;
+    const m = line.match(/^\s*-\s*"([^"]+)"\s*$/);
+    if (m) {
+      const id = m[1].trim();
+      if (id && !seen.has(id)) { seen.add(id); ids.push(id); }
       continue;
     }
-    
-    if (inTable) {
-      const trimmed = cleanLine.trim();
-      if (!trimmed || /^───|^===|^╭|^╰/.test(trimmed)) {
-        if (models.length > 0) inTable = false;
-        continue;
-      }
-      
-      let content = cleanLine.replace(/^[❯\s]+/, '').trim();
-      if (!content) continue;
-      
-      const parts = content.split(/\s{2,}/);
-      if (parts.length >= 1) {
-        const rawModelCol = parts[0].trim();
-        if (!rawModelCol || /^Model$/i.test(rawModelCol)) continue;
-        
-        const label = rawModelCol.replace(/✓/g, '').trim();
-        let id = rawModelCol
-          .replace(/\(default\)/gi, '')
-          .replace(/✓/g, '')
-          .trim()
-          .toLowerCase()
-          .replace(/\s+/g, '-');
-          
-        if (id && !seen.has(id)) {
-          seen.add(id);
-          models.push({ id, label });
-        }
-      }
-    }
+    // Linha em branco no meio da lista é tolerada; texto solto encerra.
+    if (line.trim() === '') continue;
+    if (ids.length) break;
   }
-  
-  return models;
+  return ids;
+}
+
+// O CLI só devolve o ID; o label exibido é o próprio ID (nada de inventar
+// "Claude Sonnet 4.6" a partir de "claude-sonnet-4.6" — o que a UI mostra é
+// exatamente o que o --model aceita, então não há como divergir).
+function toModels(ids) {
+  return ids.map(id => ({ id, label: id }));
 }
 
 async function fetchModels() {
   const bin = await resolveBinary();
   if (!bin) return null;
 
-  const output = await runCopilotProbe(bin);
-  const models = parseCopilotModels(output);
-  
-  if (models && models.length > 0) {
-    return models;
+  const out = await runCopilot(bin, ['help', 'config'], PROBE_TIMEOUT);
+  const ids = parseModelIdsFromHelpConfig(out);
+  if (!ids.length) return null;
+
+  const models = toModels(ids);
+  // 'auto' não aparece na lista do help config, mas é aceito pelo --model e é
+  // a 1ª opção do picker do próprio CLI. Só entra se o CLI respondeu de fato.
+  if (!models.some(m => m.id === 'auto')) {
+    models.unshift({ id: 'auto', label: 'auto' });
   }
-  return null;
+  return models;
 }
 
 async function getModels() {
@@ -150,13 +146,16 @@ async function getModels() {
 
   const disk = readDiskCache();
   if (disk && !cachedModels) {
+    // Serve o último resultado bom na hora e revalida em segundo plano.
     cachedModels = disk;
     lastFetchTime = Date.now();
     refresh();
     return disk;
   }
 
-  return (await refresh()) || cachedModels || disk || FALLBACK_MODELS;
+  // Sem fallback inventado: se nada resolver, a UI recebe [] e diz que não
+  // conseguiu listar, em vez de mostrar modelo que pode não existir.
+  return (await refresh()) || cachedModels || disk || [];
 }
 
 function refresh() {
@@ -171,7 +170,7 @@ function refresh() {
       return models;
     })
     .catch((e) => {
-      console.warn('[CopilotCliModels] falha ao sondar modelos do CLI:', e.message);
+      console.warn('[CopilotCliModels] falha ao listar modelos do CLI:', e.message);
       return null;
     })
     .finally(() => { inFlight = null; });
@@ -182,4 +181,4 @@ function getDefaultModel() {
   return DEFAULT_MODEL;
 }
 
-module.exports = { DEFAULT_MODEL, getModels, getDefaultModel, refresh, parseCopilotModels };
+module.exports = { DEFAULT_MODEL, getModels, getDefaultModel, refresh, parseModelIdsFromHelpConfig };

@@ -83,6 +83,7 @@ const checkClaudeCliBtn = document.getElementById("check-claude-cli-btn");
 const claudeCliStatusResult = document.getElementById("claude-cli-status-result");
 // Copilot CLI elements
 const copilotCliModelContainer = document.getElementById("copilot-cli-model-container");
+const copilotCliModelNote = document.getElementById("copilot-cli-model-note");
 const copilotCliModelSelect = document.getElementById("copilot-cli-model-select");
 const copilotCliInfo = document.getElementById("copilot-cli-info");
 const checkCopilotCliBtn = document.getElementById("check-copilot-cli-btn");
@@ -444,6 +445,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (claudeCliInfo) claudeCliInfo.style.display = 'block';
   } else if (aiModelSelect.value === 'copilotCli') {
     if (copilotCliModelContainer) copilotCliModelContainer.style.display = 'flex';
+    if (copilotCliModelNote) copilotCliModelNote.style.display = 'block';
     if (copilotCliInfo) copilotCliInfo.style.display = 'block';
   } else if (aiModelSelect.value === 'llama' || aiModelSelect.value === 'llama-stream') {
     const backendModelContainerEl = document.getElementById('backend-model-container');
@@ -974,6 +976,7 @@ aiModelSelect.addEventListener('change', () => {
     if (claudeCliModelContainer) claudeCliModelContainer.style.display = (v === 'claudeCli') ? 'flex' : 'none';
     if (claudeCliInfo) claudeCliInfo.style.display = (v === 'claudeCli') ? 'block' : 'none';
     if (copilotCliModelContainer) copilotCliModelContainer.style.display = (v === 'copilotCli') ? 'flex' : 'none';
+    if (copilotCliModelNote) copilotCliModelNote.style.display = (v === 'copilotCli') ? 'block' : 'none';
     if (copilotCliInfo) copilotCliInfo.style.display = (v === 'copilotCli') ? 'block' : 'none';
     const backendApiKeyContainer = document.getElementById('backend-api-key-container');
     if (backendApiKeyContainer) backendApiKeyContainer.style.display = isOllama ? 'flex' : 'none';

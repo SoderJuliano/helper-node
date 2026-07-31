@@ -62,15 +62,25 @@ async function resolveBinary() {
     try {
       const fullPath = await new Promise((resolve, reject) => {
         execFile(locator, [cmd], { env }, (err, stdout) => {
-          const first = stdout && stdout.split(/\r?\n/).map(s => s.trim()).find(Boolean);
-          if (err || !first) return reject(err || new Error('not found'));
-          resolve(first);
+          const lines = (stdout || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+          if (err || !lines.length) return reject(err || new Error('not found'));
+          resolve(pickExecutable(lines));
         });
       });
       if (fullPath) return fullPath;
     } catch (_) {}
   }
   return null;
+}
+
+// `where copilot` no Windows devolve VÁRIAS linhas quando o pacote veio do npm,
+// e a PRIMEIRA é o shim Unix sem extensão (ex.: C:\nvm4w\nodejs\copilot), que o
+// Windows não sabe executar → spawn morre com ENOENT e o app diz "não instalado".
+// (Não apareceu no Claude/Gemini porque os dois são .exe nativos, uma linha só.)
+// Por isso preferimos explicitamente .cmd/.bat/.exe em vez de confiar na ordem.
+function pickExecutable(lines) {
+  if (process.platform !== 'win32') return lines[0];
+  return lines.find(l => /\.(cmd|bat|exe)$/i.test(l)) || lines[0];
 }
 
 // npm install -g costuma criar um shim .cmd/.bat no Windows, que só roda via
