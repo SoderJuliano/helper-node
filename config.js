@@ -878,34 +878,55 @@ async function populateClaudeCliModels(savedModel = null) {
   }
 }
 
-// Lista de exemplos documentados (ver CopilotCliModels.js) — não é uma
-// sondagem ao vivo do binário como no Claude, então "(indisponível)" aqui
-// pode só significar "não confirmamos ainda", não que o modelo não exista.
-// Campo de TEXTO LIVRE (não select fechado) — a Copilot CLI não tem listagem
-// não-interativa confirmada, então qualquer lista aqui é só sugestão pro
-// datalist, nunca a única coisa aceita. Digitar um valor fora da lista é
-// esperado e válido (ex: modelo liberado só pra sua org).
+// Sondagem ao vivo do binário da Copilot CLI (igual ao Claude e Gemini)
 async function populateCopilotCliModels(savedModel = null) {
   if (!copilotCliModelSelect) return;
   const currentVal = savedModel != null ? savedModel : copilotCliModelSelect.value;
-  const datalist = document.getElementById('copilot-cli-model-suggestions');
   try {
     const models = await ipcRenderer.invoke('get-copilot-cli-models');
-    if (datalist) {
-      datalist.innerHTML = '';
-      (models || []).forEach(m => {
+    copilotCliModelSelect.innerHTML = '';
+    if (models && models.length) {
+      models.forEach(m => {
+        const option = document.createElement('option');
         const val = m.id || m.value || m;
         const text = m.label || val;
-        const option = document.createElement('option');
         option.value = val;
-        option.label = text;
-        datalist.appendChild(option);
+        option.textContent = text;
+        copilotCliModelSelect.appendChild(option);
       });
+
+      const hasModel = models.some(m => (m.id || m.value || m) === currentVal);
+      if (currentVal && !hasModel) {
+        const option = document.createElement('option');
+        option.value = currentVal;
+        option.textContent = `${currentVal} (indisponível)`;
+        copilotCliModelSelect.appendChild(option);
+      }
+
+      if (currentVal) {
+        copilotCliModelSelect.value = currentVal;
+      } else {
+        copilotCliModelSelect.selectedIndex = 0;
+      }
+    } else {
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = 'Nenhum modelo Copilot CLI encontrado';
+      option.disabled = true;
+      copilotCliModelSelect.appendChild(option);
     }
   } catch (e) {
-    console.warn("Failed to load Copilot CLI model suggestions:", e);
+    console.error("Failed to populate Copilot CLI models:", e);
+    if (currentVal) {
+      const option = document.createElement('option');
+      option.value = currentVal;
+      option.textContent = currentVal;
+      copilotCliModelSelect.appendChild(option);
+      copilotCliModelSelect.value = currentVal;
+    } else {
+      copilotCliModelSelect.innerHTML = '<option value="" disabled>Erro ao carregar modelos</option>';
+    }
   }
-  copilotCliModelSelect.value = currentVal || '';
 }
 
 // Quando ollamaLocal selecionado, nada a fazer extra

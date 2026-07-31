@@ -23,9 +23,7 @@
             // Começa vazio de propósito — qualquer nome de modelo escrito aqui fica
             // desatualizado sozinho e aparece na tela diferente do que o CLI mostra.
             let CLAUDE_CLI_MODELS = [];
-            // Copilot CLI: sem descoberta dinâmica real confirmada (ver
-            // CopilotCliModels.js) — loadCliModels() preenche com a lista de
-            // exemplos documentados, não é uma sondagem ao vivo como a do Claude.
+            // Copilot CLI: preenchido por loadCliModels() a partir do binário `copilot`.
             let COPILOT_CLI_MODELS = [];
             // Gemini CLI model list (initially mirrored, loaded dynamically later)
             let GEMINI_CLI_MODELS = [

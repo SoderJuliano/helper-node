@@ -1,52 +1,185 @@
-// Lista de modelos da GitHub Copilot CLI.
+// Lista dinâmica de modelos da GitHub Copilot CLI.
 //
-// Diferente do ClaudeCliModels.js, aqui NÃO existe (até onde a documentação
-// oficial mostra) um jeito não-interativo de perguntar pro binário quais
-// modelos estão disponíveis — o único seletor é o `/model` dentro da sessão
-// interativa (TUI, provavelmente com pty), sem equivalente a
-// `claude --print "/model"`. Ver a saga de bugs do ClaudeCliModels.js antes
-// de "resolver" isso inventando um parser sem confirmar contra o binário real.
+// A sondagem é feita passando uma flag de modelo inválida (`--model __probe_invalid_model__`).
+// O binário da Copilot CLI v1.0.77+ imprime a lista/tabela de modelos disponíveis para a conta
+// do usuário:
 //
-// Por isso esta lista NÃO é dinâmica — são os exemplos citados na doc oficial
-// (docs.github.com/en/copilot/reference/copilot-cli-reference/
-// cli-programmatic-reference), explicitamente marcados como não verificados
-// ao vivo. Numa conta corporativa a org pode liberar um subconjunto diferente
-// (ver `services/providers/copilot-cli/README` se/quando for escrito).
+//   Model                        Context    Reasoning
+// ❯ Auto                         —          —
+//   Claude Sonnet 5 (default) ✓  264K       Medium
+//   Claude Sonnet 4.6            264K       Medium
+//   Claude Sonnet 4.5            —          —
+//   Claude Haiku 4.5             —          —
+//   GPT-5.6 Terra                400K       Medium
+//   GPT-5.6 Luna                 328K       Medium
 //
-// TODO assim que houver uma máquina com `copilot` instalado à mão:
-//   1. Rodar `copilot --help` e `copilot -p "/model" --allow-all-tools` (ou o
-//      que o --help indicar) pra ver se existe forma de listar sem TUI.
-//   2. Se não existir, pelo menos confirmar que os IDs abaixo ainda resolvem
-//      com `copilot -p "oi" --model <id>` sem erro de "model not found".
-const DEFAULT_MODEL = 'claude-sonnet-4.5'; // default documentado do próprio CLI
+// A função `parseCopilotModels` extrai essas linhas, mantendo o label e gerando os IDs limpos.
+// Resultados são salvos no cache em disco (`copilot-cli-models.json`).
 
-// ⚠️ Não verificado ao vivo — só o que a doc oficial cita como exemplo.
-// A UI (config.html/config.js) consome isso como SUGESTÕES num <datalist>
-// de um campo de texto livre, nunca como <option> de um <select> fechado —
-// foi exatamente essa confusão (lista fechada = "modelos disponíveis") que
-// fez usuário em conta corporativa ver "nomes genéricos e outros que nem
-// estão disponíveis". Não reintroduzir um select fechado aqui.
-const SUGGESTIONS = [
-  { id: 'claude-sonnet-4.5', label: 'Claude Sonnet 4.5 (default)' },
+const { execFile } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+const { resolveBinary, getEnrichedEnv } = require('./CopilotCliProcess');
+
+const FALLBACK_MODELS = [
+  { id: 'auto',              label: 'Auto' },
+  { id: 'claude-sonnet-5',   label: 'Claude Sonnet 5 (default)' },
   { id: 'claude-sonnet-4.6', label: 'Claude Sonnet 4.6' },
-  { id: 'claude-fable-5',    label: 'Claude Fable 5' },
-  { id: 'gpt-5.2',           label: 'GPT-5.2' },
+  { id: 'claude-sonnet-4.5', label: 'Claude Sonnet 4.5' },
+  { id: 'claude-haiku-4.5',  label: 'Claude Haiku 4.5' },
+  { id: 'gpt-5.6-terra',     label: 'GPT-5.6 Terra' },
+  { id: 'gpt-5.6-luna',      label: 'GPT-5.6 Luna' },
 ];
 
-// Nome mantido "getModels" (mesma interface pública do ClaudeCliModels.js),
-// mas o retorno é uma lista de sugestões, não uma lista de modelos confirmados.
+const DEFAULT_MODEL = 'auto';
+
+const MEMORY_TTL = 5 * 60 * 1000;
+const PROBE_TIMEOUT = 15000;
+
+let cachedModels = null;
+let lastFetchTime = 0;
+let inFlight = null;
+
+function cacheFile() {
+  try {
+    const { app } = require('electron');
+    return path.join(app.getPath('userData'), 'copilot-cli-models.json');
+  } catch (_) {
+    return null;
+  }
+}
+
+function readDiskCache() {
+  const f = cacheFile();
+  if (!f) return null;
+  try {
+    const raw = JSON.parse(fs.readFileSync(f, 'utf8'));
+    if (Array.isArray(raw.models) && raw.models.length) return raw.models;
+  } catch (_) {}
+  return null;
+}
+
+function writeDiskCache(models) {
+  const f = cacheFile();
+  if (!f) return;
+  try {
+    fs.writeFileSync(f, JSON.stringify({ savedAt: Date.now(), models }, null, 2));
+  } catch (e) {
+    console.warn('[CopilotCliModels] não consegui gravar cache:', e.message);
+  }
+}
+
+function runCopilotProbe(bin) {
+  return new Promise((resolve) => {
+    const useShell = process.platform === 'win32' && /\.(cmd|bat)$/i.test(bin);
+    const env = getEnrichedEnv ? getEnrichedEnv() : process.env;
+    const child = execFile(
+      bin,
+      ['--model', '__probe_invalid_model__'],
+      { timeout: PROBE_TIMEOUT, windowsHide: true, shell: useShell, maxBuffer: 1024 * 1024, env },
+      (_err, stdout, stderr) => resolve(((stdout || '') + '\n' + (stderr || '')).trim())
+    );
+    try { child.stdin && child.stdin.end(); } catch (_) {}
+  });
+}
+
+function parseCopilotModels(stdout) {
+  if (!stdout) return [];
+  const lines = stdout.split(/\r?\n/);
+  const models = [];
+  const seen = new Set();
+  
+  let inTable = false;
+  for (let line of lines) {
+    const cleanLine = line.replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '').trimEnd();
+    
+    if (/Model\s+Context\s+Reasoning/i.test(cleanLine)) {
+      inTable = true;
+      continue;
+    }
+    
+    if (inTable) {
+      const trimmed = cleanLine.trim();
+      if (!trimmed || /^───|^===|^╭|^╰/.test(trimmed)) {
+        if (models.length > 0) inTable = false;
+        continue;
+      }
+      
+      let content = cleanLine.replace(/^[❯\s]+/, '').trim();
+      if (!content) continue;
+      
+      const parts = content.split(/\s{2,}/);
+      if (parts.length >= 1) {
+        const rawModelCol = parts[0].trim();
+        if (!rawModelCol || /^Model$/i.test(rawModelCol)) continue;
+        
+        const label = rawModelCol.replace(/✓/g, '').trim();
+        let id = rawModelCol
+          .replace(/\(default\)/gi, '')
+          .replace(/✓/g, '')
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, '-');
+          
+        if (id && !seen.has(id)) {
+          seen.add(id);
+          models.push({ id, label });
+        }
+      }
+    }
+  }
+  
+  return models;
+}
+
+async function fetchModels() {
+  const bin = await resolveBinary();
+  if (!bin) return null;
+
+  const output = await runCopilotProbe(bin);
+  const models = parseCopilotModels(output);
+  
+  if (models && models.length > 0) {
+    return models;
+  }
+  return null;
+}
+
 async function getModels() {
-  return SUGGESTIONS;
+  if (cachedModels && Date.now() - lastFetchTime < MEMORY_TTL) return cachedModels;
+
+  const disk = readDiskCache();
+  if (disk && !cachedModels) {
+    cachedModels = disk;
+    lastFetchTime = Date.now();
+    refresh();
+    return disk;
+  }
+
+  return (await refresh()) || cachedModels || disk || FALLBACK_MODELS;
+}
+
+function refresh() {
+  if (inFlight) return inFlight;
+  inFlight = fetchModels()
+    .then((models) => {
+      if (models) {
+        cachedModels = models;
+        lastFetchTime = Date.now();
+        writeDiskCache(models);
+      }
+      return models;
+    })
+    .catch((e) => {
+      console.warn('[CopilotCliModels] falha ao sondar modelos do CLI:', e.message);
+      return null;
+    })
+    .finally(() => { inFlight = null; });
+  return inFlight;
 }
 
 function getDefaultModel() {
   return DEFAULT_MODEL;
 }
 
-// Sem descoberta dinâmica real ainda — mantido pra manter a mesma interface
-// pública do ClaudeCliModels.js (chamado pelo botão de refresh, se existir).
-async function refresh() {
-  return SUGGESTIONS;
-}
-
-module.exports = { DEFAULT_MODEL, getModels, getDefaultModel, refresh };
+module.exports = { DEFAULT_MODEL, getModels, getDefaultModel, refresh, parseCopilotModels };
