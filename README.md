@@ -1,251 +1,139 @@
 # Helper Node
 
-[![Language](https://img.shields.io/badge/JavaScript-Node.js-f7df1e?style=flat-square&logo=javascript&logoColor=black)](https://nodejs.org)
-[![Electron](https://img.shields.io/badge/Electron-36-47848f?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org)
-[![Version](https://img.shields.io/badge/version-0.5.1-blue?style=flat-square)](https://github.com/SoderJuliano/helper-node/releases/latest)
+[![Version](https://img.shields.io/badge/version-0.6.0-blue?style=flat-square)](https://github.com/SoderJuliano/helper-node/releases/latest)
 [![Latest release](https://img.shields.io/github/v/release/SoderJuliano/helper-node?label=latest%20release&style=flat-square)](https://github.com/SoderJuliano/helper-node/releases/latest)
+[![Electron](https://img.shields.io/badge/Electron-36-47848f?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-333333?style=flat-square)](#install)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](#license)
-[![Platform](https://img.shields.io/badge/platform-Linux-333333?style=flat-square&logo=linux&logoColor=white)](#prerequisites)
-[![Windows](https://img.shields.io/badge/Windows-community%20install-0078D6?style=flat-square&logo=windows&logoColor=white)](#windows)
 
 <p align="center"><img src="assets/helper-node-img.jpg" width="800"></p>
 
-A stealth AI copilot for Linux: live transcription, screen OCR, and on-screen answers during meetings, interviews, and study sessions, powered by your own API key.
+A stealth AI copilot: live transcription, screen OCR, and on-screen answers during
+meetings, interviews, and study sessions — powered by your own API key or your own
+local models. Native OS notifications are suppressed by design, so nothing shows up
+in a screen share.
 
-> **Windows (community, unsigned):** one-line PowerShell install, no packaged
-> `.exe` — see [Windows](#windows) below for why and how.
+---
 
-## Overview
+## Install
 
-Helper Node is an Electron desktop assistant for Linux that listens to your microphone and your system audio at the same time, transcribes speech in real time, reads what is on your screen through OCR or vision models, and surfaces concise AI answers in discreet overlay windows. It is built for people who need a second brain during live conversations: interviews in another language, technical meetings, calls, and lectures. Every native operating-system notification is suppressed by design, so nobody watching a screen-share sees that an assistant is running. Transcription and answers run either fully online through OpenAI or fully offline through local Whisper.cpp models plus a local Ollama or custom backend. You bring your own OpenAI key or your own local model; no credentials are bundled with the app.
+Every installer follows the same strategy: **nothing is compiled or repackaged**.
+It clones the source, runs `npm install` (which pulls the *official* Electron
+binary), and registers a `helper-node` command plus a desktop shortcut. Everything
+lands in your user profile — no admin/root required for the app itself.
 
-## Features
-
-<table>
-  <thead>
-    <tr><th>Category</th><th>Feature</th><th>Description</th></tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td rowspan="3"><b>Transcription</b></td>
-      <td>Whisper.cpp (batch)</td>
-      <td>High-quality offline transcription on the <code>Ctrl+D</code> push-to-talk flow, using the <code>medium</code> PT-BR/EN model.</td>
-    </tr>
-    <tr>
-    </tr>
-    <tr>
-      <td>OpenAI transcription</td>
-      <td>Cloud transcription with <code>gpt-4o-transcribe</code> for the online realtime path and the Lite edition.</td>
-    </tr>
-    <tr>
-      <td rowspan="4"><b>AI providers</b></td>
-      <td>OpenAI</td>
-      <td>Chat, vision, and tool calling with <code>gpt-4.1-nano</code> (default), <code>gpt-4.1</code>, or <code>gpt-5.1</code>.</td>
-    </tr>
-    <tr>
-      <td>Ollama / custom backend</td>
-      <td>Local Ollama models or a remote backend over HTTP. No automatic fallback between providers: you choose, the agent honors it.</td>
-    </tr>
-    <tr>
-      <td>Gemini CLI</td>
-      <td>Google's <code>gemini</code> CLI as a persistent REPL session. Auth via <code>~/.gemini/</code> — no API key in the app. Streaming, tool activity, and thinking visible live.</td>
-    </tr>
-    <tr>
-      <td>Claude Code CLI</td>
-      <td>Anthropic's <code>claude</code> CLI in <code>--print --output-format stream-json</code> mode. Auth via <code>~/.claude/</code>. Thinking streamed in real time, file edits show diffs on click, session continuity via <code>--resume</code>.</td>
-    </tr>
-    <tr>
-      <td rowspan="2"><b>Realtime copilot</b></td>
-      <td>Realtime Assistant</td>
-      <td>Listens to mic plus system audio, segments speech live, and answers per segment. Offline path transcribes each segment with a local Whisper pass.</td>
-    </tr>
-    <tr>
-      <td>Jargon explainer</td>
-      <td>Defines business and technical acronyms (IPO, M&amp;A, EBITDA) discreetly, without interrupting the answer flow.</td>
-    </tr>
-    <tr>
-      <td><b>Translation</b></td>
-      <td>Translation Assistant</td>
-      <td>Translates the interviewer (system audio) and suggests a reply, while transcribing your own speech on screen without translating it. Includes a microphone selector; system audio follows the active sink automatically.</td>
-    </tr>
-    <tr>
-      <td rowspan="2"><b>Vision &amp; OCR</b></td>
-      <td>Tesseract OCR</td>
-      <td>Local screenshot OCR (PT/EN) with bundled <code>eng</code> and <code>por</code> traineddata.</td>
-    </tr>
-    <tr>
-      <td>GPT-4o vision</td>
-      <td>Online image understanding for pasted or captured images via the integrated input.</td>
-    </tr>
-    <tr>
-      <td rowspan="3"><b>Helper Tools (function calling)</b></td>
-      <td>Read tools</td>
-      <td><code>listDir</code>, <code>readFile</code>, <code>readFileChunk</code>, <code>searchInFiles</code>, <code>findFiles</code>, <code>fileInfo</code>, <code>listPackages</code>, <code>listDesktopApps</code>, <code>detectShellConfig</code>.</td>
-    </tr>
-    <tr>
-      <td>Write tools</td>
-      <td><code>writeFile</code>, <code>patchFile</code>, <code>appendToFile</code>, <code>deleteFile</code>, each with automatic backups and click confirmation.</td>
-    </tr>
-    <tr>
-      <td>Execution tools</td>
-      <td><code>runCommand</code> (whitelist), <code>runShellAdvanced</code> (confirmed shell with hard-deny patterns), <code>systemPowerAction</code>. Sandboxed to <code>$HOME</code> with a secret redactor and append-only audit log.</td>
-    </tr>
-    <tr>
-      <td><b>Memory</b></td>
-      <td>Answer Bank &amp; knowledge base</td>
-      <td>RAG over your own conversations: stores well-scored answers and re-injects them as hints when a near-identical question reappears (cosine &ge; 0.85).</td>
-    </tr>
-    <tr>
-      <td rowspan="3"><b>System integration</b></td>
-      <td>Global hotkeys</td>
-      <td>Hotkeys routed through an internal IPC server (port 3000), so they work outside app focus on Wayland and X11.</td>
-    </tr>
-    <tr>
-      <td>Overlay windows</td>
-      <td>Floating, positionable windows for recording, loading, responses, capture, and manual input in OS Integration mode.</td>
-    </tr>
-    <tr>
-      <td>Stealth mode</td>
-      <td>The Electron <code>Notification</code> class is replaced by a no-op stub: no native OS notification is ever shown.</td>
-    </tr>
-    <tr>
-      <td><b>UX</b></td>
-      <td>Streaming &amp; code blocks</td>
-      <td>Token-by-token answer rendering, syntax-highlighted code blocks with copy buttons, and a persistent session history.</td>
-    </tr>
-  </tbody>
-</table>
-
-### Editions: Lite (online) vs Full (offline)
-
-Helper Node ships in two mutually exclusive editions. They both run as `helper-node`; the active edition is recorded in `/opt/helper-node/edition.json` and read by `services/edition.js`.
-
-<table>
-  <thead>
-    <tr><th></th><th>Lite (<code>helper-node-lite</code>)</th><th>Full (<code>helper-node-full</code>)</th></tr>
-  </thead>
-  <tbody>
-    <tr><td><b>.deb size</b></td><td>~127 MB</td><td>~654 MB</td></tr>
-    <tr><td><b>Transcription (Ctrl+D)</b></td><td>OpenAI cloud (<code>gpt-4o-mini-transcribe</code>)</td><td>Local Whisper.cpp</td></tr>
-    <tr><td><b>Screen OCR</b></td><td><code>gpt-4o</code> vision (online)</td><td>Local Tesseract</td></tr>
-    <tr><td><b>AI providers</b></td><td>OpenAI only</td><td>OpenAI + local Ollama + custom backend</td></tr>
-    <tr><td><b>Works offline</b></td><td>No</td><td>Yes (local models)</td></tr>
-    <tr><td><b>Requires OpenAI key</b></td><td>Yes</td><td>Optional</td></tr>
-  </tbody>
-</table>
-
-## Installation
-
-### Prerequisites
-
-- **Operating system:** Linux. Tested on Pop!_OS / Ubuntu / Debian and Arch / Manjaro, on both Wayland and X11.
-- **Node.js:** 18 or newer (Electron 36). The maintainer's environment uses Node 24.
-- **Native dependencies:** `git`, `ffmpeg`, `cmake`, `make`, a C++ compiler, `python3`, PipeWire / PulseAudio utilities (`parec`, `pactl`), `x11-utils`, `gnome-screenshot`, and `imagemagick`. The Full edition additionally builds Whisper.cpp and downloads the Whisper models.
+### Linux — Debian, Ubuntu, Pop!_OS, Mint
 
 ```bash
-# Pop!_OS / Ubuntu / Debian
-sudo apt install git nodejs npm make g++ curl ffmpeg cmake \
-                 python3 python3-venv python3-pip \
-                 pipewire pipewire-utils pulseaudio-utils x11-utils \
-                 gnome-screenshot imagemagick
-
-# Arch / Manjaro
-sudo pacman -S git nodejs npm make gcc curl ffmpeg cmake \
-               python python-pip pipewire pipewire-pulse libpulse xorg-xprop \
-               gnome-screenshot grim slurp imagemagick
+curl -fsSL https://raw.githubusercontent.com/SoderJuliano/helper-node/master/install-linux-debian.sh | bash
 ```
 
-### Quick Start
+### Linux — Arch, Manjaro, EndeavourOS, Garuda, CachyOS
 
 ```bash
-git clone https://github.com/SoderJuliano/helper-node.git
-cd helper-node
+curl -fsSL https://raw.githubusercontent.com/SoderJuliano/helper-node/master/install-linux-arch.sh | bash
 ```
 
-```bash
-# Installs everything: Whisper.cpp and the Whisper models.
-./install-deps.sh
-```
-
-```bash
-npm start
-```
-
-### Install from a release
-
-Download the assets from the [latest release](https://github.com/SoderJuliano/helper-node/releases/latest). Each edition provides a `.deb` (Debian family) and a `.pkg.tar.zst` (Arch family), plus a graphical installer script.
-
-```bash
-# Debian / Ubuntu / Pop!_OS — Lite (recommended, ~127 MB, online):
-sudo apt install ./helper-node-lite_0.4.2_amd64.deb
-
-# OR Full (offline, ~600 MB, local Whisper/Ollama):
-sudo apt install ./helper-node-full_0.4.2_amd64.deb
-
-helper-node
-```
-
-```bash
-# Arch / Manjaro / EndeavourOS — Lite or Full:
-sudo pacman -U helper-node-lite-0.4.2-1-x86_64.pkg.tar.zst
-helper-node
-```
-
-The Debian package ships the Whisper runtime and models inside `/opt/helper-node`, so the Full edition needs no extra setup after install.
-
-> Do not install the `.deb` through the Pop!_OS cosmic-store. It has a known bug with large local `.deb` packages and hangs at "Installing (0%)". Install from a terminal or with the bundled installer script instead. The installer copies the package to `/tmp` first to work around an `_apt` read-permission limitation on home directories.
-
-### Build & Package
-
-```bash
-./package.sh         # builds both .deb and .pkg.tar.zst
-./package.sh deb     # Debian only
-./package.sh arch    # Arch only
-./make-installers.sh # generates the per-edition graphical installers
-```
-
-Artifacts are written to `dist/`.
+Both ask for `sudo` **once**, only to install system packages (Electron runtime
+libs, `ffmpeg`, screenshot tools). Skip that with `HELPER_SKIP_DEPS=1`.
 
 ### Windows
 
-> **Requires Node.js 18+** (check with `node -v`; install from
-> [nodejs.org](https://nodejs.org) if missing) and, ideally, `git` in `PATH`
-> (falls back to downloading a `.zip` if `git` is absent). No admin rights
-> needed.
-
-There is intentionally **no packaged `.exe` installer**. A compiled Electron
-Forge/Squirrel binary was tried first and got flagged by Windows Defender's
-cloud ML as `Trojan:Win32/Cinjo.O!cl` — a behavioral false positive (the app
-does global hotkeys + screen-capture evasion by design, combined with a
-freshly-built, unsigned, zero-reputation binary — a textbook trigger for that
-heuristic). See [`WINDOWS-PORT.md`](WINDOWS-PORT.md) (Etapa 5) for the full
-story, including code-signing price research kept for later.
-
-Instead, these scripts do what `install.sh` already does on Linux: no new
-binary gets compiled. They clone/update the source, run `npm install` (which
-pulls the **official** `electron.exe` — the same binary thousands of other
-apps use, not a freshly repackaged one), and register a shortcut + a
-`helper-node` command in your user `PATH`:
-
 ```powershell
-# Full — enables Ollama / Claude CLI / Gemini CLI provider options (bring your own):
+# Full — enables the Ollama / Claude CLI / Gemini CLI / Copilot CLI options:
 irm https://raw.githubusercontent.com/SoderJuliano/helper-node/master/install-windows-full.ps1 | iex
 
-# Lite — 100% online via OpenAI, same as the Linux Lite edition:
+# Lite — 100% online through OpenAI:
 irm https://raw.githubusercontent.com/SoderJuliano/helper-node/master/install-windows-lite.ps1 | iex
 ```
 
-Installs to `%LOCALAPPDATA%\helper-node`. Re-run the same command to update
-(it `git pull`s and re-runs `npm install`). Local offline transcription
-(Whisper.cpp) isn't ported to Windows yet — use the OpenAI model there
-(see "Gaps conhecidos" in `WINDOWS-PORT.md`).
+Requires [Node.js](https://nodejs.org) 18+ and, ideally, `git` in `PATH` (falls back
+to a `.zip` download). No admin rights needed.
 
-## Usage
+> There is intentionally **no packaged `.exe`**. A compiled Electron Forge/Squirrel
+> binary was flagged by Windows Defender as `Trojan:Win32/Cinjo.O!cl` — a behavioral
+> false positive (global hotkeys + screen-capture evasion in a freshly built,
+> unsigned, zero-reputation binary). The full story is in
+> [`WINDOWS-PORT.md`](WINDOWS-PORT.md).
 
-- **Push-to-talk / Dictation Mode:** In OS Integration mode, press `Ctrl+D` to start recording, press again to transcribe and answer (appears in a transparent overlay). It works the same way in Window/IDE/CLI mode, where the transcribed text is pasted into the input box. The same push-to-talk path runs on Linux, Windows and macOS.
-- **Realtime Assistant:** when enabled in settings, `Ctrl+D` toggles continuous listening instead. With OpenAI selected (and always in Lite) the whole pipeline runs online. With a local backend or Ollama selected, transcription runs offline through local Whisper, and the answer goes to the selected provider.
-- **Translation Assistant:** translates the interviewer (system audio), suggests a reply, and shows your own speech transcribed but untranslated. Pick your microphone in Settings; system audio is captured automatically.
-- **Helper Tools:** enable under Settings, "Advanced Tools". The AI then receives read, write, and execution tools through function calling and decides which to call.
+### Install options
+
+The Linux scripts never prompt (`curl | bash` already occupies stdin), so options
+are passed as environment variables:
+
+| Variable | Default | Effect |
+|---|---|---|
+| `HELPER_EDITION` | `full` | `lite` hides the local-provider options in the UI |
+| `HELPER_WHISPER` | *(off)* | `1` builds Whisper.cpp and downloads the models (~1.5 GB, Linux only) |
+| `HELPER_SKIP_DEPS` | *(off)* | `1` skips system packages, so `sudo` is never asked |
+| `HELPER_DIR` | `~/.local/share/helper-node` | Install location |
+
+```bash
+curl -fsSL .../install-linux-debian.sh | HELPER_EDITION=lite bash
+```
+
+On Windows the edition is chosen by picking the `-full` or `-lite` script.
+
+### Updating
+
+Re-run the exact same install command. It does a `git pull` and re-runs
+`npm install` in place — your settings and history are untouched.
+
+### Uninstalling
+
+There is no uninstaller; removal is three paths (see
+[Where things live](#where-things-live) for what each one holds):
+
+```bash
+# Linux
+rm -rf ~/.local/share/helper-node ~/.local/bin/helper-node \
+       ~/.local/share/applications/helper-node.desktop
+rm -rf ~/.config/meu-electron-app ~/.config/helper-node   # also wipes your data
+```
+
+```powershell
+# Windows
+Remove-Item -Recurse -Force "$env:LOCALAPPDATA\helper-node"
+Remove-Item -Recurse -Force "$env:APPDATA\meu-electron-app"   # also wipes your data
+Remove-Item "$([Environment]::GetFolderPath('Desktop'))\Helper Node.lnk"
+```
+
+On Windows the `bin` entry stays in your user `PATH` after the install dir is
+deleted; remove it by hand from *Edit environment variables for your account* if it
+bothers you.
+
+---
+
+## Getting started
+
+1. **Launch it** — run `helper-node` in a terminal, or open it from your
+   applications menu / Start Menu.
+2. **Add your key** — press `Ctrl+Shift+C` to open Settings and paste your OpenAI
+   API key. No credentials ship with the app; it is always your own key or your own
+   local model.
+3. **Pick a provider** — OpenAI, a local Ollama, a custom HTTP backend, or one of
+   the CLI providers (Claude Code, Gemini, GitHub Copilot). There is no automatic
+   fallback between providers: you choose, the agent honors it.
+4. **Global hotkeys on Linux** — the installer runs `setup-hotkey.sh` on first
+   launch, which detects GNOME or Hyprland and registers the bindings. Wayland
+   blocks Electron's own global shortcuts, so an internal IPC server (port 3000)
+   handles them. Re-run with `npm run fix-hotkeys` if they stop working.
+
+### Modes
+
+- **Push-to-talk / Dictation** — `Ctrl+D` starts recording, `Ctrl+D` again
+  transcribes and answers. In OS Integration mode the answer appears in a
+  transparent overlay; in Window/IDE mode the text lands in the input box.
+- **Realtime Assistant** — when enabled in Settings, `Ctrl+D` toggles continuous
+  listening instead. It listens to your microphone and system audio at once,
+  segments speech live, and answers per segment.
+- **Translation Assistant** — translates the other party (system audio) and
+  suggests a reply, while showing your own speech transcribed but untranslated.
+  See [`TRANSLATION_ASSISTANT.md`](TRANSLATION_ASSISTANT.md).
+- **IDE mode** — attach a folder plus extra files and let a CLI provider read,
+  write, and run commands in it.
+- **Helper Tools** — enable under Settings → "Advanced Tools" to give the AI read,
+  write, and execution tools through function calling.
 
 ### Keyboard shortcuts
 
@@ -258,77 +146,174 @@ Installs to `%LOCALAPPDATA%\helper-node`. Re-run the same command to update
 | `Ctrl+Shift+X` | Capture a screenshot and analyze it | OCR (Full) or vision (Lite) |
 | `Ctrl+Shift+1` / `Ctrl+Shift+2` | Move to display 1 / 2 | Moves to workspace 1 / 2 on Hyprland |
 
-Global shortcuts are configured with `./setup-hotkey.sh`, which detects GNOME or Hyprland and registers the bindings (Wayland blocks Electron's own global shortcuts, so an IPC server handles them).
+---
 
-## Latest release
+## Where things live
 
-[![Latest release](https://img.shields.io/github/v/release/SoderJuliano/helper-node?label=latest%20release&style=flat-square)](https://github.com/SoderJuliano/helper-node/releases/latest)
+### The application
 
-**v0.4.2 — Issues fixes and local database to upgrade models.** See all releases at [github.com/SoderJuliano/helper-node/releases](https://github.com/SoderJuliano/helper-node/releases).
+| | Linux | Windows |
+|---|---|---|
+| Source / install dir | `~/.local/share/helper-node` | `%LOCALAPPDATA%\helper-node` |
+| Launcher command | `~/.local/bin/helper-node` | `<install dir>\bin\helper-node.cmd`, with that `bin` added to your user `PATH` |
+| Menu shortcut | `~/.local/share/applications/helper-node.desktop` | Desktop + Start Menu shortcuts |
+| Edition flag | `<install dir>/edition.json` | `<install dir>\edition.json` |
 
-- **Streaming (OpenAI):** the translator and realtime assistant render answers token by token, lowering perceived latency.
-- **Answer Bank (RAG over conversations):** stores well-scored answers in the background and re-injects them as hints when a near-identical question reappears, with a single shared embedding per query.
-- **Realtime copilot:** discreet acronym and jargon explanations, multi-purpose recognition (interviews, meetings, videos), and no longer answers the user's own microphone in `both` mode.
-- **Vision and packaging fixes:** image analysis routed to `gpt-4o`, overlay restricted to OS Integration mode, and per-edition installers.
+Deleting the install dir is safe — it holds no personal data, only the checkout and
+`node_modules`.
 
-## Configuration
+### Your data
 
-Settings are reachable with `Ctrl+Shift+C` and persisted to `~/.config/meu-electron-app/config.json`.
+Everything personal lives in two directories, **outside** the install dir, so
+updating or reinstalling never touches it.
 
-| Setting | Description |
+**`<userData>`** — `~/.config/meu-electron-app/` on Linux,
+`%APPDATA%\meu-electron-app\` on Windows,
+`~/Library/Application Support/meu-electron-app/` on macOS:
+
+| Path | Contents |
 |---|---|
-| AI provider | OpenAI, local Ollama, or custom backend |
-| OpenAI model | `gpt-4.1-nano` (default), `gpt-4.1`, or `gpt-5.1` |
-| OpenAI token | Your API key (never bundled; supplied per user) |
-| Language | `pt-br` or `en-us` |
-| OS Integration | Enables global hotkeys and floating overlay windows (stealth, no native notifications) |
-| Translation Assistant | Name and background, target language, and microphone selector |
-| Advanced Tools | Enables the Helper Tools function-calling module |
+| `config.json` | All settings, **including your OpenAI API key** |
+| `history/` | Persistent session history, one JSON file per session |
+| `knowledge/index.json` | Knowledge-base embeddings |
+| `knowledge/answers.json` | Answer Bank — RAG over your own past conversations |
+| `claude-cli-models.json`, `copilot-cli-models.json` | Cached model lists probed from each CLI |
+| `gemini-cli-sessions.json`, `*-cli-backups/` | CLI session state and pre-edit file backups |
+| `temp_images/` | Scratch space for captured/pasted images |
 
-Additional state:
+**`~/.config/helper-node/`** (same path on every OS):
 
-- **Edition flag:** `/opt/helper-node/edition.json`, read by `services/edition.js`.
-- **Session history:** `~/.config/helper-node/history.json`.
-- **Audit log:** `~/.config/helper-node/audit.log` records every Helper Tools invocation.
-- **Answer Bank:** persisted to `<userData>/knowledge/answers.json`; configurable via `answerBank { enabled, minScore }`.
+| Path | Contents |
+|---|---|
+| `audit.log` | Append-only record of every Helper Tools invocation |
+| `workspace.json` | Attached project/folder context |
+| `.setup-done` | Marker so hotkey setup only runs on first launch |
+
+> `config.json` holds your API key in plain text. Back up that directory if you
+> care about your history, and be careful about where you copy it.
+
+---
+
+## Features
+
+| Area | What you get |
+|---|---|
+| **Transcription** | OpenAI streaming STT (`gpt-4o-transcribe`) with semantic turn detection for the realtime path; offline Whisper.cpp for push-to-talk in the Full edition on Linux |
+| **AI providers** | OpenAI (`gpt-4.1-nano` → `gpt-5.6`), OpenAI Codex mode, local Ollama, custom HTTP backend, Claude Code CLI, Gemini CLI, GitHub Copilot CLI |
+| **CLI providers** | Each runs the real binary and reuses its own auth (`~/.claude/`, `~/.gemini/`, Copilot's credential store) — no extra API key in the app. Model lists are probed from the binary at runtime, never hardcoded |
+| **Realtime copilot** | Listens to mic + system audio, segments speech live, answers per segment, and explains business/technical jargon (IPO, M&A, EBITDA) without breaking the answer flow |
+| **Translation** | Translates the other party and drafts a reply, with a microphone selector; system audio follows the active sink automatically |
+| **Vision & OCR** | Local Tesseract screenshot OCR (PT/EN) in Full; `gpt-4o` vision in Lite and for pasted images |
+| **Helper Tools** | Read (`listDir`, `readFile`, `searchInFiles`, …), write (`writeFile`, `patchFile`, … with automatic backups + click confirmation), and execution (`runCommand` whitelist, confirmed shell with hard-deny patterns). Sandboxed to `$HOME`, with a secret redactor and an append-only audit log |
+| **Memory** | Answer Bank stores well-scored answers and re-injects them as hints when a near-identical question reappears (cosine ≥ 0.85) |
+| **System integration** | Global hotkeys via an internal IPC server so they work unfocused on Wayland and X11; floating overlay windows; stealth mode replaces Electron's `Notification` with a no-op stub |
+
+### Editions: Lite (online) vs Full (offline)
+
+Both run as `helper-node`. The active edition is recorded in `edition.json` inside
+the install dir and read by `services/edition.js`.
+
+| | Lite | Full |
+|---|---|---|
+| Transcription (`Ctrl+D`) | OpenAI cloud | Local Whisper.cpp (Linux) |
+| Screen OCR | `gpt-4o` vision (online) | Local Tesseract |
+| AI providers | OpenAI only | OpenAI + Ollama + custom backend + CLI providers |
+| Works offline | No | Yes, with local models |
+| Requires an OpenAI key | Yes | Optional |
+
+Local offline transcription is **not ported to Windows yet** — use an OpenAI model
+there. See "Gaps conhecidos" in [`WINDOWS-PORT.md`](WINDOWS-PORT.md).
+
+---
+
+## Running from source
+
+```bash
+git clone https://github.com/SoderJuliano/helper-node.git
+cd helper-node
+npm install
+npm start
+```
+
+`./install-deps.sh` additionally builds Whisper.cpp and downloads the Whisper
+models (Linux, Full edition only).
+
+## Building & packaging
+
+Only needed if you want to produce distributable artifacts — the installers above
+do not use them.
+
+```bash
+./package.sh         # builds both .deb and .pkg.tar.zst into dist/
+./package.sh deb     # Debian only
+./package.sh arch    # Arch only
+./make-installers.sh # generates the per-edition graphical installers
+./install.sh         # installs/reinstalls the newest .deb from dist/
+```
+
+The Arch `PKGBUILD` lives in [`build/arch/`](build/arch/); publishing to the AUR is
+documented in [`AUR_PUBLISH_GUIDE.md`](AUR_PUBLISH_GUIDE.md).
 
 ## Project structure
 
 ```text
 helper-node/
-├── main.js                     Electron main process: IPC handlers and windows
+├── main.js / main/             Electron main process: IPC handlers and windows
 ├── preload.js                  contextBridge bridge to the renderer
-├── index.html / config.html    Main chat UI and Settings window
-├── config.js                   Settings window logic
-├── package.sh                  Builds the .deb and .pkg.tar.zst
-├── install-deps.sh             Installs Whisper.cpp and the Whisper models
+├── index.html / renderer/      Main chat UI
+├── config.html / config.js     Settings window
+├── install-linux-debian.sh     One-line installer (apt)
+├── install-linux-arch.sh       One-line installer (pacman)
+├── install-windows-*.ps1       One-line installers (PowerShell)
+├── helper-node.sh              Linux launcher (Flatpak, nvm and Electron resolution)
 ├── setup-hotkey.sh             Registers global hotkeys (GNOME / Hyprland)
+├── install-deps.sh             Builds Whisper.cpp and downloads the models
+├── package.sh                  Builds the .deb and .pkg.tar.zst
 ├── services/
 │   ├── openAIService.js        OpenAI chat, vision, and tool-calling loop
-│   ├── llamaService.js         Local Ollama provider
-│   ├── backendService.js       HTTP server for global hotkeys (port 3000)
-│   ├── realtimeOpenAiService.js   Online realtime path (OpenAI)
+│   ├── realtimeOpenAiService.js   Online realtime path (streaming STT)
 │   ├── realtimeAssistantService.js Offline realtime path (local Whisper)
-│   ├── realtimeAudioCapture.js Audio engine for the online realtime path
-│   ├── translationAssistant/   Interview translation assistant
+│   ├── realtimeAudioCapture.js Cross-platform audio engine
 │   ├── techGlossary.js         Technical vocabulary injected into STT prompts
-│   ├── tesseractService.js     Screenshot OCR
+│   ├── providers/              Claude CLI, Gemini CLI, Copilot CLI
+│   ├── translationAssistant/   Interview translation assistant
+│   ├── workspace/              Attached-project context and summarization
+│   ├── helperTools/            Tool-calling module (read/write/exec tools)
 │   ├── knowledgeBase.js        Embeddings and hybrid retrieval
 │   ├── answerBank.js           RAG over past conversations
-│   ├── workspace/              Attached-project context and summarization
-│   ├── historyService.js       Persistent session history
-│   ├── configService.js        Configuration read/write
-│   └── helperTools/            Tool-calling module (read/write/exec tools)
+│   └── configService.js        Configuration read/write
 ├── os-integration/notifications/  Overlay window HTML
-├── assets/                     Images and Lottie animations
-└── resources/                  Compositor rules (Hyprland, KWin)
+├── build/arch/                 PKGBUILD and Arch packaging files
+└── assets/ · resources/        Images, animations, compositor rules
 ```
 
-The `whisper/` directory is a cloned Whisper.cpp checkout and is not part of this project's source.
+`whisper/` is a cloned Whisper.cpp checkout and is not part of this project's source.
+
+## Documentation
+
+| File | Topic |
+|---|---|
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Module layout and data flow |
+| [`ROADMAP.md`](ROADMAP.md) | Planned work |
+| [`WINDOWS-PORT.md`](WINDOWS-PORT.md) | Windows port status and known gaps |
+| [`TRANSLATION_ASSISTANT.md`](TRANSLATION_ASSISTANT.md) | Translation mode internals |
+| [`COSMIC_SETUP.md`](COSMIC_SETUP.md) | Extra setup for the COSMIC desktop |
+| [`AUR_PUBLISH_GUIDE.md`](AUR_PUBLISH_GUIDE.md) | Publishing to the AUR |
 
 ## Contributing
 
-Contributions are welcome. The codebase and commit messages are written in Brazilian Portuguese; module logs are prefixed with tags such as `[realtime]` or `[helperTools]`. Use single-line commit messages with one of these prefixes: `fix:`, `feat:`, `release:`, `chore:`, `ui:`, `build:`. Do not modify the `whisper/` submodule, and do not bundle API keys or per-user configuration into packages or commits. Audio capture is sensitive: system audio must be captured with `parec --device=<sink>.monitor`, never `pw-record --target`.
+Contributions are welcome. The codebase and commit messages are written in
+Brazilian Portuguese; module logs are prefixed with tags such as `[realtime]` or
+`[helperTools]`. Use single-line commit messages prefixed with `fix:`, `feat:`,
+`release:`, `chore:`, `ui:`, or `build:`.
+
+Run `npm run check` before committing (file-size and structure lint), and
+`npm run hooks:install` once to enable it as a pre-commit hook.
+
+Do not modify the `whisper/` checkout, and never bundle API keys or per-user
+configuration into packages or commits. Audio capture is sensitive: on Linux,
+system audio must be captured with `parec --device=<sink>.monitor`, never
+`pw-record --target`.
 
 ## License
 
