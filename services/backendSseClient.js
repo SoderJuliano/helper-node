@@ -128,6 +128,14 @@ async function consumeSse(response, router, signal) {
   // marcador, o read() fica pendurado pra sempre e a resposta nunca volta.
   let sawDoneMarker = false;
 
+  // FORA do laço de leitura de propósito: o nome do evento vale para as linhas
+  // "data:" que vêm DEPOIS dele, e esse par pode ser partido entre dois pedaços
+  // da rede ("event: end" no fim de um, "data: done" no começo do outro).
+  // Resetando por pedaço, o marcador de fim era perdido nesse caso e o laço
+  // seguia esperando um close que o servidor nunca manda — 4 minutos de tela
+  // travada até o watchdog de stall.
+  let currentEvent = 'message';
+
   try {
     while (true) {
       if (signal && signal.aborted) throw new Error('Request cancelled');
@@ -140,8 +148,6 @@ async function consumeSse(response, router, signal) {
       buffer += decoded;
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
-
-      let currentEvent = 'message';
 
       for (const line of lines) {
         if (line.startsWith('event: ')) {
