@@ -187,9 +187,30 @@ class BackendService {
 
       // Corpo simples (ResponseEntity<String>) em vez de SSE: nenhuma linha
       // "data: " apareceu e o texto ficou só no buffer bruto.
+      //
+      // O comentário acima sempre disse "nenhuma linha data: apareceu", mas o
+      // código NUNCA checava isso: bastava answer ficar vazio pra despejar o
+      // buffer bruto na tela. Quando o backend manda um SSE legítimo cujo texto
+      // veio todo rotulado como "thinking" (answer vazio), o usuário recebia o
+      // PROTOCOLO SSE INTEIRO na cara — centenas de linhas `data: {"thinking":…}`.
+      const pareceSse = /^\s*(event|data):\s/m.test(rawBody);
       let resposta = router.answer;
-      if (!resposta.trim() && rawBody.trim()) resposta = rawBody.trim();
-      if (!resposta.trim()) throw new Error("Empty response from backend");
+      if (!resposta.trim() && rawBody.trim() && !pareceSse) resposta = rawBody.trim();
+
+      // Sem uma letra de resposta. Explica o que houve em vez de estourar um
+      // "Empty response" genérico que a camada de cima transforma em
+      // "Failed to process IA response" — mensagem que não ajuda ninguém.
+      if (!resposta.trim()) {
+        const thinkingChars = (router.thinking || '').trim().length;
+        console.warn(`[backend] resposta vazia (thinking=${thinkingChars} chars, sse=${pareceSse})`);
+        if (thinkingChars > 0) {
+          return 'O modelo raciocinou mas não emitiu resposta final. Se o servidor ' +
+            'estiver com o pikachu desatualizado, a resposta chega rotulada como ' +
+            'raciocínio e se perde — atualize e reinicie o backend. Alternativa ' +
+            'imediata: use um modelo sem raciocínio.';
+        }
+        throw new Error('Backend encerrou sem enviar resposta.');
+      }
 
       resposta = stripThinkingBlock(resposta);
       resposta = stripToolCallBlocks(resposta);
