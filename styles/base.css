@@ -7,6 +7,8 @@
            ===================================================================== */
 
         :root {
+            color-scheme: dark;
+
             /* Base / superfícies */
             --bg-base:        #0e1116;
             --bg-sidebar:     #0b0e12;
@@ -45,7 +47,34 @@
             --font-mono: 'Source Code Pro', 'JetBrains Mono', ui-monospace, monospace;
         }
 
-        * { box-sizing: border-box; }
+        /* Global Reset & Dark Scrollbar System */
+        * {
+            box-sizing: border-box;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.18);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.32);
+        }
+
+        ::-webkit-scrollbar-corner {
+            background: transparent;
+        }
 
         html, body {
             margin: 0;

@@ -98,14 +98,14 @@
             color: var(--text);
             text-align: left;
             scrollbar-width: thin;
-            scrollbar-color: rgba(255,255,255,0.14) transparent;
+            scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
             user-select: text;
             -webkit-user-select: text;
         }
-        #transcription::-webkit-scrollbar { width: 10px; }
+        #transcription::-webkit-scrollbar { width: 6px; height: 6px; }
         #transcription::-webkit-scrollbar-track { background: transparent; }
-        #transcription::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.10); border-radius: 8px; border: 3px solid transparent; background-clip: content-box; }
-        #transcription::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.20); background-clip: content-box; border: 3px solid transparent; }
+        #transcription::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.18); border-radius: 4px; }
+        #transcription::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.32); }
         #transcription br { display: block; margin-top: 4px; }
         #transcription pre {
             text-align: left; max-width: 100%; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;

@@ -175,6 +175,7 @@
             flex: 1; overflow: auto; padding: 6px 0;
             font-family: var(--font-mono); font-size: 12px; line-height: 1.5;
             scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
         }
         .diff-line { display: flex; white-space: pre; }
         .diff-line .dl-gutter {
@@ -189,3 +190,33 @@
         .diff-line.del .dl-sign, .diff-line.del .dl-text { color: #ffd2d2; }
         .diff-line.ctx .dl-text { color: var(--text-3); }
         .diff-empty { padding: 20px; color: var(--text-4); font-family: var(--font-ui); font-size: 13px; }
+
+        /* CodeMirror 5 Custom Dark Scrollbars */
+        .CodeMirror-vscrollbar,
+        .CodeMirror-hscrollbar {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+        }
+        .CodeMirror-vscrollbar::-webkit-scrollbar,
+        .CodeMirror-hscrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .CodeMirror-vscrollbar::-webkit-scrollbar-track,
+        .CodeMirror-hscrollbar::-webkit-scrollbar-track,
+        .CodeMirror-scrollbar-filler,
+        .CodeMirror-gutter-filler {
+            background: transparent !important;
+        }
+        .CodeMirror-vscrollbar::-webkit-scrollbar-thumb,
+        .CodeMirror-hscrollbar::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.18);
+            border-radius: 4px;
+        }
+        .CodeMirror-vscrollbar::-webkit-scrollbar-thumb:hover,
+        .CodeMirror-hscrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.32);
+        }
+        .CodeMirror-scrollbar-filler {
+            background: transparent !important;
+        }
