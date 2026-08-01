@@ -45,20 +45,24 @@ class ClaudeCliSession {
 
     return new Promise((resolve, reject) => {
       // Watchdog: se o processo ficar mudo (API 529 em retry silencioso, hang),
-      // avisa a UI a cada verificação e mata depois de 10 min sem NENHUM output.
+      // avisa a UI a cada verificação e mata se passar do limite sem NENHUM output.
       let lastActivity = Date.now();
       let watchdogKilled = false;
-      // O pior pro usuário é encarar a tela achando que a IA trabalha e, quando
-      // desconfia e pergunta "como foi", ela recomeça do zero. Então avisamos
-      // CEDO que o Claude parou de produzir saída e encerramos rápido com erro
-      // claro, em vez de fingir progresso por 10 min. (Com --include-partial-
-      // messages o texto/thinking streama continuamente enquanto ele realmente
-      // trabalha; silêncio longo = travou de verdade, não é progresso.)
-      const STALL_WARN_MS = 25 * 1000;   // avisa em 25s que não está recebendo nada
-      const STALL_KILL_MS = 150 * 1000;  // encerra em 2,5min (era 10min)
+      // Enquanto uma ferramenta (Bash, build, script longo) está rodando, o CLI
+      // fica em silêncio total no stdout até ela terminar — isso é esperado, não
+      // é travamento. Só aplicamos o timeout curto quando NADA está em execução
+      // (--include-partial-messages garante que texto/thinking streama continuamente
+      // enquanto o modelo gera; silêncio aí sim é sinal real de travamento).
+      let activeTools = 0;
+      const STALL_WARN_MS = 25 * 1000;        // sem ferramenta ativa: avisa em 25s
+      const STALL_KILL_MS = 150 * 1000;       // sem ferramenta ativa: mata em 2,5min
+      const TOOL_WARN_MS  = 5 * 60 * 1000;    // ferramenta rodando: avisa em 5min
+      const TOOL_KILL_MS  = 15 * 60 * 1000;   // ferramenta rodando: mata em 15min
       const watchdog = setInterval(() => {
         const silent = Date.now() - lastActivity;
-        if (silent > STALL_KILL_MS) {
+        const killMs = activeTools > 0 ? TOOL_KILL_MS : STALL_KILL_MS;
+        const warnMs = activeTools > 0 ? TOOL_WARN_MS : STALL_WARN_MS;
+        if (silent > killMs) {
           clearInterval(watchdog);
           console.warn('[claude-cli] sem output além do limite — encerrando processo travado');
           watchdogKilled = true;
@@ -66,10 +70,13 @@ class ClaudeCliSession {
           if (this._activeProc === proc) {
             proc.kill().catch(() => {});
           }
-        } else if (silent > STALL_WARN_MS && opts.onStatus) {
+        } else if (silent > warnMs && opts.onStatus) {
           const s = Math.round(silent / 1000);
-          const left = Math.max(0, Math.round((STALL_KILL_MS - silent) / 1000));
-          opts.onStatus(`⚠️ Claude sem responder há ${s}s — parado, NÃO está trabalhando. Encerro em ${left}s se não voltar.`);
+          const left = Math.max(0, Math.round((killMs - silent) / 1000));
+          const msg = activeTools > 0
+            ? `Executando ferramenta há ${s}s… encerro em ${left}s se não voltar.`
+            : `⚠️ Claude sem responder há ${s}s — parado, NÃO está trabalhando. Encerro em ${left}s se não voltar.`;
+          opts.onStatus(msg);
         }
       }, 5 * 1000);
 
@@ -80,8 +87,8 @@ class ClaudeCliSession {
         onConnected: ()     => {},
         onChunk:     (t)    => opts.onChunk    && opts.onChunk(t),
         onThinking:  (t)    => opts.onThinking && opts.onThinking(t),
-        onToolStart: (info) => opts.onToolStart && opts.onToolStart(info),
-        onToolDone:  (info) => opts.onToolDone && opts.onToolDone(info),
+        onToolStart: (info) => { activeTools++; lastActivity = Date.now(); opts.onToolStart && opts.onToolStart(info); },
+        onToolDone:  (info) => { activeTools = Math.max(0, activeTools - 1); lastActivity = Date.now(); opts.onToolDone && opts.onToolDone(info); },
         onFileTool:  (info) => opts.onFileTool && opts.onFileTool(info),
         onTokenUpdate: (info) => { lastActivity = Date.now(); opts.onTokenUpdate && opts.onTokenUpdate(info); },
         onRateLimit:   (info) => { lastActivity = Date.now(); opts.onRateLimit   && opts.onRateLimit(info); },
