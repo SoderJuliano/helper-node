@@ -425,6 +425,22 @@ class BackendService {
             onChunk(cleanText);
           }
 
+          // REDE DE SEGURANÇA: o stream terminou "com sucesso" mas sem UMA LETRA
+          // de resposta. Era daqui que saía a tela em branco absoluta — chamava
+          // onComplete(), o spinner sumia e o usuário ficava olhando pro nada,
+          // sem texto e sem erro, sem like de que algo aconteceu. Nunca mais:
+          // se o modelo só raciocinou, diz isso na cara do usuário.
+          if (!router.streamedAnything && !cleanText) {
+            const raciocinou = (router.thinking || '').trim().length > 0;
+            console.warn(`[backend-stream] stream terminou SEM resposta (thinking=${(router.thinking || '').length} chars)`);
+            if (onChunk) {
+              onChunk(raciocinou
+                ? '_O modelo gastou o turno inteiro raciocinando e não emitiu resposta. ' +
+                  'Reenvie a mensagem, ou troque para um modelo menor/sem raciocínio._'
+                : '_O backend encerrou o stream sem enviar nenhuma resposta._');
+            }
+          }
+
           this.addAssistantResponse(sessionId, cleanText);
           if (onComplete) onComplete();
           return;
