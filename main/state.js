@@ -27,22 +27,16 @@ helpers.shouldUseAgentic = function(rawText) {
   return !isDirectCommand;
 }
 
-helpers.ollamaNeedsKnowledge = async function(query) {
-  try {
-    const r = await BackendService.responder(
-      `Pergunta do candidato/interlocutor: "${String(query).slice(0, 400)}"\n\n` +
-      `Responda APENAS com SIM ou NAO: essa fala precisa de informação ATUALIZADA ` +
-      `sobre tecnologias, versões de libs/frameworks ou mercado recente pra ser bem respondida?`,
-      { sessionId: "kb-classifier", instruction: "Você é um classificador binário. Responda SOMENTE com SIM ou NAO, nada mais." }
-    );
-    return /\bsim\b/i.test(r || "");
-  } catch (_) { return false; }
-}
-
+// NÃO reintroduzir um classificador SIM/NAO por LLM aqui. A versão anterior
+// gastava UMA GERAÇÃO INTEIRA do modelo do backend (qwen3.6:35b, com
+// raciocínio) só pra decidir se valia rodar a busca — e essa chamada era
+// BLOQUEANTE, antes de qualquer stream. Um "oi" pagava o preço duas vezes.
+// O retrieval abaixo é keyword/BM25 sobre arquivo local: sem rede, barato o
+// bastante pra rodar sempre. É o que o irmão do ChatGPT (knowledgeBlockForOpenAI)
+// já fazia — a assimetria não tinha motivo.
 helpers.knowledgeBlockForOllama = async function(query) {
   try {
     if (!configService.getKnowledgeBaseConfig().enabled) return "";
-    if (!(await helpers.ollamaNeedsKnowledge(query))) return "";
     return await knowledgeBase.augment(query, { topK: 5 }); // sem token → keyword
   } catch (_) { return ""; }
 }

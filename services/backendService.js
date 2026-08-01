@@ -1,8 +1,4 @@
-const axios = require("axios");
 const configService = require("./configService");
-const { getIp } = require("./configService");
-const https = require('https');
-const http = require('http');
 const {
   pickOllamaEndpoint,
   buildDeepAnalysisAddon,
@@ -17,9 +13,6 @@ const { runToolCalls, capPrompt } = require('./toolLoop');
 const { buildIdeAgentPrompt } = require('./idePrompt');
 const { createUrlDiscovery } = require('./backendUrlDiscovery');
 
-// Configurar agentes HTTP/HTTPS com keepAlive
-const httpAgent = new http.Agent({ keepAlive: true, keepAliveMsecs: 60000, maxSockets: 50, maxFreeSockets: 10, timeout: 360000 });
-const httpsAgent = new https.Agent({ keepAlive: true, keepAliveMsecs: 60000, maxSockets: 50, maxFreeSockets: 10, timeout: 360000 });
 let apiUrl = "";
 const urlDiscovery = createUrlDiscovery();
 
@@ -172,27 +165,31 @@ class BackendService {
         headers['x-api-key'] = apiKey;
       }
 
-      let response;
-      try {
-        response = await axios.post(`${apiUrl}${effectiveEndpoint}`, payload, {
-          headers, timeout: 360000, httpAgent, httpsAgent
-        });
-      } catch (errFirst) {
-        const is404 = errFirst.response && errFirst.response.status === 404;
-        if (is404 && effectiveEndpoint !== '/llama3') {
-          response = await axios.post(`${apiUrl}/llama3`, payload, {
-            headers, timeout: 360000, httpAgent, httpsAgent
-          });
-          effectiveEndpoint = '/llama3';
-        } else {
-          throw errFirst;
-        }
-      }
+      // ATENÇÃO: /chat do pikachu é SSE (produces = TEXT_EVENT_STREAM_VALUE) e o
+      // servidor NÃO fecha a conexão no fim — o controller chama startAsync()
+      // com timeout de 10min e nunca chama asyncContext.complete(). Um cliente
+      // HTTP comum (era axios aqui) escreve a resposta inteira no buffer, fica
+      // esperando o close que não vem e só desiste no PRÓPRIO timeout: eram
+      // 360s de espera morta por chamada, com o texto já pronto em ~20s.
+      //
+      // Por isso usa o mesmo leitor de SSE do responderStream, que sai no
+      // marcador de fim ("event: end") e cancela o reader. Sem onChunk: só
+      // acumula e devolve de uma vez. O raciocínio cai no buffer de thinking do
+      // router e naturalmente não entra na resposta.
+      const { router, rawBody } = await streamOnce({
+        endpoint: `${apiUrl}${effectiveEndpoint}`,
+        fallbackEndpoint: effectiveEndpoint !== '/llama3' ? `${apiUrl}/llama3` : null,
+        headers,
+        payload,
+        onChunk: null,
+        hasTools: false,
+      });
 
-      if (!response.data) throw new Error("Empty response from backend");
-
-      let resposta = response.data.response || response.data;
-      if (typeof resposta !== 'string') resposta = String(resposta);
+      // Corpo simples (ResponseEntity<String>) em vez de SSE: nenhuma linha
+      // "data: " apareceu e o texto ficou só no buffer bruto.
+      let resposta = router.answer;
+      if (!resposta.trim() && rawBody.trim()) resposta = rawBody.trim();
+      if (!resposta.trim()) throw new Error("Empty response from backend");
 
       resposta = stripThinkingBlock(resposta);
       resposta = stripToolCallBlocks(resposta);
