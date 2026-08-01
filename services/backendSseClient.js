@@ -17,6 +17,15 @@ const { createStreamRouter } = require('./backendStreamRouter');
 // propósito: modelo pesado com raciocínio pode demorar pra emitir o 1º token.
 const STALL_TIMEOUT_MS = 240000;
 
+// O fetch() inicial (antes de qualquer header de resposta chegar) não tinha
+// NENHUM guard — só o abort manual do usuário. Se o servidor aceita a conexão
+// TCP mas nunca manda a resposta (ex.: pikachu preso atrás de uma request
+// zumbi, fila do Ollama travada), esse await ficava pendurado pra sempre: sem
+// log, sem erro, sem NADA na tela — silêncio total mesmo pra um "oi". Generoso
+// (3min) porque um modelo pesado ainda não carregado pode legitimamente
+// demorar pra sequer abrir a resposta.
+const CONNECT_TIMEOUT_MS = 180000;
+
 // Erros de conexão que valem uma segunda tentativa (o servidor caiu no meio, o
 // túnel reciclou, o socket morreu). Erro de aplicação (400/500) não entra aqui.
 const RETRYABLE = /terminated|fetch failed|ECONNRESET|ECONNREFUSED|socket hang up|EPIPE|premature close|other side closed/i;
@@ -43,6 +52,13 @@ function friendlyError(err) {
       'grande demais para a VRAM disponível.'
     );
   }
+  if (String((err && err.message) || '') === '__CONNECT_STALL__') {
+    return new Error(
+      `O backend não respondeu nada em ${Math.round(CONNECT_TIMEOUT_MS / 1000)}s (nem os ` +
+      'headers da resposta). Provavelmente uma requisição anterior travou o servidor ' +
+      '(fila do Ollama presa) — tente de novo em instantes ou reinicie o pikachu no server.'
+    );
+  }
   return err;
 }
 
@@ -57,6 +73,38 @@ async function readWithStallGuard(reader) {
     ]);
   } finally {
     clearTimeout(timer);
+  }
+}
+
+// Faz o fetch() com um teto de tempo próprio, abortando a conexão (não só
+// desistindo de esperar) se o servidor não responder nada. Sem abortar de
+// verdade, o socket ficaria pendurado em segundo plano mesmo após desistirmos.
+async function fetchWithConnectGuard(endpoint, init, externalSignal) {
+  const guardController = new AbortController();
+  const forwardAbort = () => guardController.abort();
+  if (externalSignal) {
+    if (externalSignal.aborted) guardController.abort();
+    else externalSignal.addEventListener('abort', forwardAbort, { once: true });
+  }
+  let timer;
+  try {
+    // fetchPromise recebe um catch vazio à parte: se o timeout vencer a
+    // corrida, essa promise ainda rejeita mais tarde (AbortError) e, sem
+    // handler nenhum, o Node reclama de unhandledRejection.
+    const fetchPromise = fetch(endpoint, { ...init, signal: guardController.signal });
+    fetchPromise.catch(() => {});
+    return await Promise.race([
+      fetchPromise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          guardController.abort();
+          reject(new Error('__CONNECT_STALL__'));
+        }, CONNECT_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+    if (externalSignal) externalSignal.removeEventListener('abort', forwardAbort);
   }
 }
 
@@ -163,11 +211,11 @@ async function streamOnce({
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const emittedBefore = router.answer.length + router.thinking.length;
     try {
-      let response = await fetch(endpoint, { method: 'POST', headers, body, signal });
+      let response = await fetchWithConnectGuard(endpoint, { method: 'POST', headers, body }, signal);
 
       if (response.status === 404 && fallbackEndpoint) {
         console.log(`[backend-stream] 404 em ${endpoint} — caindo pro fallback`);
-        response = await fetch(fallbackEndpoint, { method: 'POST', headers, body, signal });
+        response = await fetchWithConnectGuard(fallbackEndpoint, { method: 'POST', headers, body }, signal);
       }
 
       if (!response.ok) {
