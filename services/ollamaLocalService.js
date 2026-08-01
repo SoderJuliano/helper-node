@@ -6,207 +6,117 @@
 
 const axios = require('axios');
 const configService = require('./configService');
+const {
+  buildOllamaToolsAddon,
+  parseOllamaToolCalls,
+  stripToolCallBlocks,
+  stripThinkingBlock,
+} = require('./ollamaLocalParsing');
 
 const DEFAULT_HOST = 'http://localhost:11434';
-const REQUEST_TIMEOUT_MS = 120000; // 2 min — modelos locais podem ser lentos no primeiro token
 
 const OLLAMA_WRITE_TOOLS_BLOCKED = new Set(['writeFile', 'appendToFile', 'deleteFile', 'patchFile']);
 
-function buildOllamaToolsAddon(toolsSchema, wsPaths = []) {
-  if (!Array.isArray(toolsSchema) || toolsSchema.length === 0) return '';
-  const ws0 = wsPaths[0] || '/abs/path';
-  const lines = ['', '═══ TOOL CALLING (modo Ollama) ═══', ''];
-  lines.push('Voce tem acesso a estas ferramentas. Para chamar uma, emita NA RESPOSTA');
-  lines.push('um bloco EXATO no formato (uma linha, JSON puro, sem markdown ao redor):');
-  lines.push('');
-  lines.push('TOOL_CALL: {"name":"<nome>","args":{...}}');
-  lines.push('');
-  lines.push('Pode emitir VARIOS TOOL_CALL na mesma resposta. O sistema executa cada um');
-  lines.push('e devolve TOOL_RESULT: <name> <json> na proxima mensagem. Iterate ate ter');
-  lines.push('todas as informacoes que precisa, dai escreva a RESPOSTA FINAL ao usuario');
-  lines.push('SEM nenhum TOOL_CALL (resposta normal em texto/markdown).');
-  lines.push('');
-  lines.push('FERRAMENTAS DISPONIVEIS:');
-  for (const t of toolsSchema) {
-    const fn = t.function || t;
-    const name = fn.name;
-    const desc = (fn.description || '').replace(/\n/g, ' ').slice(0, 200);
-    const params = fn.parameters && fn.parameters.properties
-      ? Object.entries(fn.parameters.properties)
-          .map(([k, v]) => `${k}:${v.type || '?'}`)
-          .join(', ')
-      : '';
-    lines.push(`- ${name}(${params}) — ${desc}`);
-  }
-  lines.push('');
-  lines.push('REGRAS:');
-  lines.push('- TOOL_CALL deve ser JSON valido EXATO. Nada de comentarios, sem ``` ao redor.');
-  lines.push('- Tools mutates (writeFile, deleteFile, patchFile, appendToFile, systemPowerAction)');
-  lines.push('  abrem confirmacao visual pro usuario — chame quando faz sentido, sem medo.');
-  lines.push('- Quando terminar (resposta final ao usuario), NAO inclua TOOL_CALL nenhum.');
-  lines.push('- Para LER: use listDir + readFile.');
-  lines.push('- Para EDITAR (adicionar linha, mudar trecho): use patchFile — NAO writeFile.');
-  lines.push('  writeFile APAGA O ARQUIVO INTEIRO e reescreve do zero. So use writeFile para CRIAR arquivo novo.');
-  lines.push('  patchFile substitui apenas o trecho exato — use para qualquer edicao em arquivo existente.');
-  lines.push('');
-  lines.push('EXEMPLOS CONCRETOS (siga EXATAMENTE este formato):');
-  lines.push('');
-  lines.push('User: "cria um readme pro projeto"');
-  lines.push('Resposta correta (UMA linha, sem markdown, sem texto antes):');
-  lines.push(`TOOL_CALL: {"name":"writeFile","args":{"path":"${ws0}/README.md","content":"# Titulo\\n\\nDescricao...","reason":"Criar README"}}`);
-  lines.push('');
-  lines.push('User: "o que tem no arquivo de config?"');
-  lines.push('Resposta correta:');
-  lines.push(`TOOL_CALL: {"name":"readFile","args":{"path":"${ws0}/package.json"}}`);
-  lines.push('');
-  lines.push('ERRADO (NAO FACA): explicar o que vai fazer, usar ```markdown ao redor,');
-  lines.push('inventar texto tipo "Texto explicativo:" ou "Vou criar...". Apenas EMITA o TOOL_CALL.');
-  lines.push('');
-  return lines.join('\n');
+// ─── Janela de contexto (num_ctx) ────────────────────────────────────────────
+// O Ollama NÃO cresce a janela sozinho. Com um num_ctx fixo, tudo que passar
+// dele é descartado EM SILÊNCIO — e o descarte conta prompt + o que o modelo
+// está gerando. Era isso que fazia a resposta "começar e parar do nada": o
+// modelo enchia a janela raciocinando, o Ollama mandava done e o app tratava
+// como fim normal.
+//
+// Mesma estratégia que o pikachu já usa no servidor (OllamaClientAdapter.
+// resolveNumCtx): dimensiona por request, então pergunta curta continua barata
+// e prompt de agente recebe a janela de que precisa, até um teto.
+//
+// O PISO fica em 4096 de propósito, e não subi: o comentário que estava aqui
+// registra que 8192 estourou a VRAM com modelo grande (35B) NESTA máquina. Não
+// vou trocar um bug silencioso por um OOM silencioso. Então:
+//   - a janela cresce sozinha com o TAMANHO DO PROMPT (aí truncar é sempre erro);
+//   - se ainda assim o modelo encher a janela GERANDO, isso agora aparece na
+//     tela (done_reason) em vez de sumir, e o usuário sobe o piso conscientemente
+//     com HELPER_OLLAMA_MIN_CTX — que é o botão certo pra modelo que raciocina
+//     muito. HELPER_OLLAMA_MAX_CTX mexe no teto.
+const DEFAULT_MIN_NUM_CTX = 4096;
+const DEFAULT_MAX_NUM_CTX = 32768;
+const CHARS_PER_TOKEN = 3.0;      // conservador (código + PT-BR)
+const OUTPUT_HEADROOM_TOKENS = 2048;
+
+function envCtx(nome, padrao) {
+  const raw = parseInt(process.env[nome] || '', 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : padrao;
 }
 
-function parseOllamaToolCalls(text) {
-  if (!text) return [];
-  const calls = [];
-  const re = /TOOL[_\s-]*CALL\s*:?\s*/gi;
-  let m;
-  while ((m = re.exec(text)) !== null) {
-    const start = m.index + m[0].length;
-    const jsonStart = text.indexOf('{', start);
-    if (jsonStart === -1 || jsonStart - start > 120) continue;
-    const objStr = extractFirstJsonObject(text.slice(jsonStart));
-    if (!objStr) continue;
-    try {
-      const obj = JSON.parse(objStr);
-      if (obj && obj.name) {
-        calls.push({ raw: text.slice(m.index, jsonStart + objStr.length), obj });
-        re.lastIndex = jsonStart + objStr.length;
-      }
-    } catch (_) {}
-  }
-  if (calls.length === 0) {
-    const shellRe = /TOOL[_\s-]*CALL\s*:?\s*([a-z][^\n`{]+)/gi;
-    let sm;
-    while ((sm = shellRe.exec(text)) !== null) {
-      const raw = sm[1].trim().replace(/^`+|`+$/g, '').trim();
-      if (!raw || raw.startsWith('{')) continue;
-      const parts = raw.split(/\s+/);
-      const cmd = parts[0];
-      const knownCmds = ['git','npm','ls','cat','find','grep','echo','node','python','pip','curl','wget','mkdir','cp','mv','rm'];
-      if (!knownCmds.includes(cmd)) continue;
-      const obj = { name: 'runCommand', args: { cmd, args: parts.slice(1) } };
-      calls.push({ raw: sm[0], obj });
-    }
-  }
-  if (calls.length === 0) {
-    const fenceRe = /```(?:json)?\s*(\{[\s\S]*?\})\s*```/gi;
-    let fm;
-    while ((fm = fenceRe.exec(text)) !== null) {
-      try {
-        const obj = JSON.parse(fm[1]);
-        if (obj && obj.name && typeof obj.name === 'string') {
-          calls.push({ raw: fm[0], obj });
-        }
-      } catch (_) {}
-    }
-    if (calls.length === 0) {
-      const knownNames = new Set(
-        ['listDir','fileInfo','readFile','readFileChunk','searchInFiles','findFiles',
-         'detectShellConfig','listPackages','listDesktopApps','systemPowerAction',
-         'writeFile','appendToFile','deleteFile','patchFile','runCommand','runShellAdvanced']
-      );
-      let i = 0;
-      while (i < text.length) {
-        const open = text.indexOf('{', i);
-        if (open === -1) break;
-        const objStr = extractFirstJsonObject(text.slice(open));
-        if (!objStr) break;
-        try {
-          const obj = JSON.parse(objStr);
-          if (obj && obj.name && knownNames.has(obj.name)) {
-            calls.push({ raw: objStr, obj });
-          }
-        } catch (_) {}
-        i = open + (objStr ? objStr.length : 1);
-      }
-    }
-  }
-  return calls;
+function resolveNumCtx(promptChars) {
+  const floor = envCtx('HELPER_OLLAMA_MIN_CTX', DEFAULT_MIN_NUM_CTX);
+  const cap = Math.max(envCtx('HELPER_OLLAMA_MAX_CTX', DEFAULT_MAX_NUM_CTX), floor);
+  const estimated = Math.ceil((promptChars || 0) / CHARS_PER_TOKEN) + OUTPUT_HEADROOM_TOKENS;
+  let ctx = floor;
+  while (ctx < estimated && ctx < cap) ctx *= 2;
+  return Math.min(ctx, cap);
 }
 
-function extractFirstJsonObject(s) {
-  let depth = 0, start = -1;
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    if (c === '{') {
-      if (depth === 0) start = i;
-      depth++;
-    } else if (c === '}') {
-      depth--;
-      if (depth === 0 && start >= 0) return s.slice(start, i + 1);
-    }
-  }
-  return null;
+function promptCharsOf(messages) {
+  if (!Array.isArray(messages)) return 0;
+  return messages.reduce((n, m) => n + String((m && m.content) || '').length, 0);
 }
 
-function stripToolCallBlocks(text) {
-  if (!text) return text;
-  const calls = parseOllamaToolCalls(text);
-  let out = text;
-  for (const c of calls) {
-    out = out.split(c.raw).join('');
-  }
-  out = stripDanglingToolCallFragments(out);
-  out = out.replace(/```\s*\n\s*```/g, '').trim();
-  return out;
-}
-
-function stripDanglingToolCallFragments(text) {
-  if (!text) return text;
-  let out = text.replace(/```[\s\S]*?TOOL_CALL[\s\S]*?```/gi, '');
-  const re = /TOOL_CALL\s*:?\s*/gi;
-  let m;
-  let cursor = 0;
-  let cleaned = '';
-  while ((m = re.exec(out)) !== null) {
-    cleaned += out.slice(cursor, m.index);
-    const afterMarker = m.index + m[0].length;
-    const jsonStart = out.indexOf('{', afterMarker);
-    if (jsonStart === -1 || jsonStart - afterMarker > 12) {
-      const nextNl = out.indexOf('\n', afterMarker);
-      cursor = nextNl === -1 ? out.length : nextNl + 1;
-      re.lastIndex = cursor;
-      continue;
-    }
-    const objStr = extractFirstJsonObject(out.slice(jsonStart));
-    if (objStr) {
-      cursor = jsonStart + objStr.length;
-      re.lastIndex = cursor;
-      continue;
-    }
-    const nextNl = out.indexOf('\n', jsonStart);
-    cursor = nextNl === -1 ? out.length : nextNl + 1;
-    re.lastIndex = cursor;
-  }
-  cleaned += out.slice(cursor);
-  return cleaned.replace(/\n{3,}/g, '\n\n').trim();
-}
-
-function stripThinkingBlock(text) {
-  if (!text || typeof text !== 'string') return text;
-  let cleaned = text
-    .replace(/<think>[\s\S]*?<\/think>/gi, '')
-    .replace(/<think>[\s\S]*$/gi, '')
-    .replace(/(?:[^\n]*thinking\s+process:[\s\S]*?)(?=(?:\n\s*\n[A-Z0-9#\*])|$)/gi, '')
-    .replace(/(?:[^\n]*thinking\s+process:[\s\S]*$)/gi, '')
-    .trim();
-  return cleaned;
-}
 
 class OllamaLocalService {
     constructor() {
         this.sessions = {};
         this.activeAbortController = null;
+        // Modelos que o Ollama recusou com think=true (400). Guardado pra não
+        // pagar uma request perdida a cada iteração do tool loop.
+        this._noThinking = new Set();
+    }
+
+    /**
+     * POST /api/chat pedindo raciocínio visível.
+     *
+     * Modelo sem suporte a raciocínio faz o Ollama devolver 400 quando
+     * think=true. Em vez de estourar isso na cara do usuário, repete sem o
+     * parâmetro e anota o modelo — mesmo tratamento que o pikachu já faz no
+     * servidor (OllamaClientAdapter.callGenerate).
+     *
+     * @returns {Promise<{res: Object, thinking: boolean}>}
+     */
+    async _postChat(host, model, messages, { stream, signal, responseType }) {
+        const wantThinking = !this._noThinking.has(model);
+        const numCtx = resolveNumCtx(promptCharsOf(messages));
+        console.log(`[ollamaLocal] num_ctx=${numCtx} think=${wantThinking} (${promptCharsOf(messages)} chars de prompt)`);
+
+        const body = {
+            model,
+            messages,
+            stream: !!stream,
+            options: { temperature: 0.7, num_ctx: numCtx },
+        };
+        if (wantThinking) body.think = true;
+
+        const axiosOpts = {
+            timeout: 0, // sem timeout de cliente: quem manda no fim é o Ollama
+            signal,
+            headers: { 'Content-Type': 'application/json' },
+        };
+        if (responseType) axiosOpts.responseType = responseType;
+        if (stream) axiosOpts.headers.Connection = 'keep-alive';
+
+        try {
+            const res = await axios.post(`${host}/api/chat`, body, axiosOpts);
+            return { res, thinking: wantThinking };
+        } catch (err) {
+            const status = err && err.response && err.response.status;
+            if (status === 400 && wantThinking) {
+                console.warn(`[ollamaLocal] ${model} recusou think=true; repetindo sem raciocínio.`);
+                this._noThinking.add(model);
+                const retry = { ...body };
+                delete retry.think;
+                retry.options = { ...retry.options, num_ctx: numCtx };
+                const res = await axios.post(`${host}/api/chat`, retry, axiosOpts);
+                return { res, thinking: false };
+            }
+            throw err;
+        }
     }
 
     abortCurrentRequest() {
@@ -382,29 +292,21 @@ class OllamaLocalService {
             while (iter < maxToolCalls) {
                 if (signal.aborted) throw new Error("Request cancelled");
                 console.log(`[ollamaLocal] → ${model} @ ${host} (msgs=${this.sessions[sessionId].messages.length}, iter=${iter + 1}/${maxToolCalls})`);
-                const r = await axios.post(
-                    `${host}/api/chat`,
-                    {
-                        model,
-                        messages: this.sessions[sessionId].messages,
-                        stream: false,
-                        options: {
-                            temperature: 0.7,
-                            num_ctx: 4096,
-                        },
-                    },
-                    {
-                        timeout: 0, // NO TIMEOUT
-                        signal,
-                        headers: { 'Content-Type': 'application/json' }
-                    }
+                const { res: r } = await this._postChat(
+                    host, model, this.sessions[sessionId].messages,
+                    { stream: false, signal }
                 );
-                
+
+                const doneReason = String((r.data && r.data.done_reason) || '');
+                if (doneReason && doneReason !== 'stop') {
+                    console.warn(`[ollamaLocal] done_reason=${doneReason} — resposta possivelmente truncada.`);
+                }
+
                 let content = (r.data && r.data.message && r.data.message.content) || '';
                 if (!content) {
                     throw new Error('Resposta vazia do Ollama');
                 }
-                
+
                 content = stripThinkingBlock(content);
                 lastResponseText = content;
 
@@ -647,27 +549,16 @@ class OllamaLocalService {
                 const { createStreamRouter } = require('./backendStreamRouter');
                 const router = createStreamRouter({ onChunk, hasTools: !!(effectiveTools && onToolCall) });
 
-                const r = await axios.post(
-                    `${host}/api/chat`,
-                    {
-                        model,
-                        messages: this.sessions[sessionId].messages,
-                        stream: true,
-                        options: {
-                            temperature: 0.7,
-                            num_ctx: 4096, // Reduced from 8192 to prevent local VRAM OOM on larger models (like 35B)
-                        },
-                    },
-                    {
-                        responseType: 'stream',
-                        timeout: 0, // NO TIMEOUT
-                        signal,
-                        headers: { 
-                            'Content-Type': 'application/json',
-                            'Connection': 'keep-alive'
-                        }
-                    }
+                const { res: r } = await this._postChat(
+                    host, model, this.sessions[sessionId].messages,
+                    { stream: true, signal, responseType: 'stream' }
                 );
+
+                // Por que o Ollama parou. Só "stop" é fim natural — "length"
+                // (encheu a janela de contexto) e o resto precisam aparecer pro
+                // usuário, senão uma resposta cortada no meio é indistinguível
+                // de uma resposta que acabou.
+                let doneReason = '';
 
                 await new Promise((resolve, reject) => {
                     const stream = r.data;
@@ -684,12 +575,23 @@ class OllamaLocalService {
                                 reject(new Error(parsed.error));
                                 return true;
                             }
+                            // Raciocínio vem em campo PRÓPRIO (message.thinking)
+                            // quando think=true. Antes só se lia .content, então
+                            // a fase inteira de raciocínio — que num modelo
+                            // pensante é a maior parte do tempo — não aparecia
+                            // na janela: o usuário via o cursor parado e nada
+                            // acontecendo.
+                            const reasoning = parsed.message && parsed.message.thinking;
+                            if (reasoning) {
+                                router.emitThinking(reasoning);
+                            }
                             const token = parsed.message && parsed.message.content;
                             if (token) {
                                 router.routeToken(token);
                             }
                             if (parsed.done) {
-                                logDebug(`Ollama done flag received. Resolving early.`);
+                                doneReason = String(parsed.done_reason || '');
+                                logDebug(`Ollama done flag received (done_reason=${doneReason || 'n/a'}). Resolving early.`);
                                 cleanup();
                                 try { stream.destroy(); } catch (_) {}
                                 resolve();
@@ -750,9 +652,24 @@ class OllamaLocalService {
                     signal.addEventListener('abort', onAbort);
                 });
 
+                // Fim que NÃO é "stop" precisa ser dito. O caso que morde é
+                // done_reason="length": o Ollama encheu num_ctx e parou no meio
+                // da frase, mas manda done=true igual a um fim normal — pro app
+                // era indistinguível, e a resposta simplesmente sumia no meio.
+                if (doneReason && doneReason !== 'stop') {
+                    const aviso = doneReason === 'length'
+                        ? `\n\n_⚠️ O modelo parou por falta de contexto (num_ctx cheio), não por ter terminado. ` +
+                          `Se repetir, suba o piso da janela com \`HELPER_OLLAMA_MIN_CTX\` (ex.: 8192) — ` +
+                          `custa VRAM, então se der erro de memória volte pro padrão e use um modelo menor._`
+                        : `\n\n_⚠️ O Ollama encerrou com \`done_reason=${doneReason}\` — a resposta pode estar incompleta._`;
+                    logDebug(`done_reason anormal: ${doneReason}`);
+                    console.warn(`[ollamaLocal-stream] done_reason=${doneReason} — resposta possivelmente truncada.`);
+                    if (onChunk) onChunk(aviso);
+                }
+
                 let content = router.answer || '';
                 content = stripThinkingBlock(content);
-                
+
                 logDebug(`End of iteration ${iter + 1}. Content: "${content}" | Thinking: "${router.thinking}"`);
                 
                 if (!content && !router.thinking) {
