@@ -6,7 +6,7 @@ const { redact } = require("../secretRedactor");
 module.exports = {
   name: "readFile",
   description:
-    "Lê o conteúdo inteiro de um arquivo de texto (até maxLinesForFullRead linhas, default 500). Segredos detectados (chaves, tokens, senhas) são substituídos por [REDACTED] antes de retornar. Para arquivos maiores, use readFileChunk.",
+    "Lê um arquivo de texto inteiro (até ~1000 linhas). O resultado é truncado se for muito grande. Segredos (chaves, tokens, senhas) viram [REDACTED]. ARQUIVO GRANDE: não leia em fatias sequenciais às cegas — use searchInFiles pra achar a linha do que você procura e readFileChunk em volta dela. Sai em 1 rodada em vez de 8.",
   schema: {
     type: "object",
     properties: {

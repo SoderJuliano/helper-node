@@ -20,13 +20,16 @@
 // milhares de tokens de raciocínio por cima. Era isso que transformava 4
 // rodadas em 10+ minutos com pouca coisa feita.
 //
-//   40k chars -> num_ctx 16384 (metade do trabalho por rodada)
-//   90k chars -> num_ctx 32768 (teto)
+//   42k chars -> num_ctx 16384 (limite: chars/3 + 2048 <= 16384)
+//   90k chars -> num_ctx 32768 (teto, o dobro do trabalho por rodada)
 //
-// Ajustáveis: o modo IDE cabe bem em 40k porque o que ocupa espaço são os
-// TOOL_RESULT antigos, que já foram usados. Suba se precisar de mais história.
-const MAX_TOOL_RESULT_CHARS = Number(process.env.HELPER_MAX_TOOL_RESULT_CHARS || 6000);
-const MAX_PROMPT_CHARS = Number(process.env.HELPER_MAX_PROMPT_CHARS || 40000);
+// CUIDADO COM O TETO DO RESULTADO: ele foi 6000 por um tempo, mirando rodadas
+// mais baratas, e o efeito foi o oposto. Num arquivo de 44KB o modelo passava a
+// enxergar 14% por leitura e precisava de 8 RODADAS só pra ler o arquivo —
+// otimizei a rodada e quebrei a tarefa. O teto tem que caber um pedaço de
+// arquivo que dê pra trabalhar (~280 linhas), mesmo custando mais por rodada.
+const MAX_TOOL_RESULT_CHARS = Number(process.env.HELPER_MAX_TOOL_RESULT_CHARS || 16000);
+const MAX_PROMPT_CHARS = Number(process.env.HELPER_MAX_PROMPT_CHARS || 42000);
 
 function capToolResult(str) {
   const s = String(str == null ? '' : str);
