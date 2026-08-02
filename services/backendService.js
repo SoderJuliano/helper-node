@@ -408,6 +408,8 @@ class BackendService {
       let currentWorkingPrompt = promptWithContext;
       // Quantas vezes já pedi pro modelo reemitir um TOOL_CALL que veio quebrado.
       let malformedNudges = 0;
+      // Quantas vezes cobrei uma rodada que veio sem resposta e sem ferramenta.
+      let mudoNudges = 0;
       // Assinatura de cada tool call já executado, pra detectar o modelo preso
       // repetindo a MESMA chamada. Sem isso ele consome as 15 iterações fazendo
       // o mesmo listDir e o turno acaba sem nenhuma resposta na tela — que é o
@@ -591,6 +593,28 @@ class BackendService {
           // bloco único), manda o texto final de uma vez.
           if (!router.streamedAnything && onChunk && cleanText) {
             onChunk(cleanText);
+          }
+
+          // RODADA MUDA: o modelo raciocinou e fechou sem resposta E sem
+          // ferramenta. Medido: acontece de verdade e mata o turno inteiro
+          // (rodada 5 do harness — 2 rodadas, 286s, zero escrita, com 18 mil
+          // tokens de espaço de geração sobrando, então não é falta de espaço).
+          // Antes isso encerrava o turno; agora cobra uma vez e segue. Uma
+          // rodada perdida é muito mais barata que o turno inteiro.
+          if (!router.streamedAnything && !cleanText &&
+              (router.thinking || '').trim().length > 0 && mudoNudges < 1) {
+            mudoNudges++;
+            console.warn(`[backend-stream] rodada muda (só raciocínio, ${(router.thinking || '').length} chars) — cobrando ação.`);
+            if (onChunk) onChunk({ type: 'thinking', text: '\n⚠️ Rodada sem saída — cobrando a ação.\n' });
+            currentWorkingPrompt = capPrompt(
+              currentWorkingPrompt +
+              '\n\nVocê raciocinou mas NÃO emitiu nada: nem texto, nem TOOL_CALL. ' +
+              'Raciocinar não executa nada. AGORA, sem pensar de novo: se ainda ' +
+              'falta um passo, emita o TOOL_CALL dele. Se o trabalho acabou, ' +
+              'escreva a resposta final em texto normal.'
+            );
+            iter++;
+            continue;
           }
 
           // REDE DE SEGURANÇA: o stream terminou "com sucesso" mas sem UMA LETRA
