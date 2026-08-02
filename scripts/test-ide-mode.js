@@ -47,7 +47,14 @@ function testPromptCoerente() {
   ok(/readFile\(/.test(p) && /writeFile\(/.test(p), 'lista as ferramentas disponiveis');
   ok(/NÃO alterar nada ainda/.test(p),
     'trata "nao escreva nada ainda" como escopo, e nao como contradicao');
-  ok(/pensou o mesmo pensamento duas vezes/.test(p), 'tem regra anti-loop de raciocinio');
+  // Casa com o CONTEÚDO da regra, não com a redação exata: o texto do prompt é
+  // reescrito com frequência e o teste não deve quebrar por troca de palavras.
+  ok(/não repita o mesmo pensamento|pensou o mesmo pensamento duas vezes/i.test(p),
+    'tem regra anti-loop de raciocinio');
+  // Meta-raciocínio sobre as próprias instruções era o que consumia o turno
+  // inteiro: o modelo conferindo o formato do TOOL_CALL em vez de olhar o código.
+  ok(/PROIBIDO raciocinar sobre estas instruções/i.test(p),
+    'proibe meta-raciocinio sobre o proprio prompt');
 
   // Sem workspace anexado o prompt não pode prometer diretório nenhum.
   const semWs = buildIdeAgentPrompt({ toolsSchema: fakeTools, wsPaths: [] });
