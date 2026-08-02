@@ -28,8 +28,17 @@
 // enxergar 14% por leitura e precisava de 8 RODADAS só pra ler o arquivo —
 // otimizei a rodada e quebrei a tarefa. O teto tem que caber um pedaço de
 // arquivo que dê pra trabalhar (~280 linhas), mesmo custando mais por rodada.
-const MAX_TOOL_RESULT_CHARS = Number(process.env.HELPER_MAX_TOOL_RESULT_CHARS || 16000);
-const MAX_PROMPT_CHARS = Number(process.env.HELPER_MAX_PROMPT_CHARS || 42000);
+// O QUE MANDA AQUI É O ESPAÇO QUE SOBRA PRA GERAR, não o tamanho do prompt.
+// O servidor reserva OUTPUT_HEADROOM_TOKENS (8192) e escolhe o num_ctx como a
+// menor potência de 2 acima de (prompt/3 + headroom). Pra janela ficar em
+// 16384 com os 8192 de saída intactos, o prompt tem que caber em 8192 tokens:
+//   24000 chars / 3 = 8000 tokens + 8192 = 16192 -> num_ctx 16384
+//   sobra = 16384 - 8000 = 8384 tokens pro modelo pensar E responder
+// Um raciocínio real medido gastou 4683 tokens, então 8384 dá folga.
+// Subir o prompt daqui empurra o num_ctx pra 32768 (rodada ~2x mais lenta) ou,
+// pior, come o espaço de saída e o turno acaba sem resposta nenhuma.
+const MAX_TOOL_RESULT_CHARS = Number(process.env.HELPER_MAX_TOOL_RESULT_CHARS || 10000);
+const MAX_PROMPT_CHARS = Number(process.env.HELPER_MAX_PROMPT_CHARS || 24000);
 
 function capToolResult(str) {
   const s = String(str == null ? '' : str);
