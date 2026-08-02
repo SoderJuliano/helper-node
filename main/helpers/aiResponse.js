@@ -203,14 +203,36 @@ helpers.buildHelperToolsOpenAIOpts = function(userText, baseInstruction, baseMod
 helpers.prependWorkspaceContextIfNeeded = async function(text, modelKey) {
   try {
     const wsOn = configService.getWorkspaceAccessEnabled && configService.getWorkspaceAccessEnabled();
-    const htOn = helperTools.isEnabled && helperTools.isEnabled();
+    let htOn = helperTools.isEnabled && helperTools.isEnabled();
     const attCount = workspace.list().length;
     if (!wsOn) {
       console.log(`[workspace] SKIP: toggle Acesso a diretorios OFF`);
       return text;
     }
+
+    // A config em disco é a ÚNICA fonte de verdade do toggle. O módulo
+    // helperTools guarda uma CÓPIA em memória (_cfg + _initialized), populada
+    // só em dois pontos: o boot (main.js) e o IPC set-helper-tools-enabled.
+    // Se o boot não rodou o initialize, ou se ele estourou antes de marcar
+    // _initialized (audit.init/backup.init/loadBuiltins ficam ANTES da marca),
+    // o módulo responde OFF pra sempre enquanto a config diz ON — e o usuário
+    // liga as ferramentas, vê o toggle marcado, e o log insiste em "OFF".
+    // Aqui a cópia em memória é ressincronizada com a config em vez de
+    // silenciosamente ignorar o que o usuário pediu.
+    const htConfig = !!(configService.getHelperToolsEnabled && configService.getHelperToolsEnabled());
+    if (!htOn && htConfig) {
+      console.warn('[helperTools] DESSINCRONIA: config=ON mas modulo=OFF — ressincronizando');
+      try {
+        helperTools.updateConfig(configService.getHelperToolsConfig());
+        htOn = helperTools.isEnabled();
+        console.log(`[helperTools] apos ressincronizar: isEnabled=${htOn}`);
+      } catch (e) {
+        console.error('[helperTools] falha ao ressincronizar:', e && e.message);
+      }
+    }
+
     if (!htOn) {
-      console.log(`[workspace] SKIP: Ferramentas avancadas OFF`);
+      console.log(`[workspace] SKIP: Ferramentas avancadas OFF (config=${htConfig}, modulo=${htOn})`);
       return text;
     }
     if (attCount === 0) {

@@ -19,6 +19,13 @@ module.exports = function registerIpc() {
 ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
   try {
     const aiModel = helpers.getEffectiveAiModel();
+    // Este canal NÃO streama: a resposta só aparece quando termina, sem
+    // raciocínio ao vivo. Para os modelos de backend/ollama isso é escolha
+    // errada do renderer (deveria ser send-to-gemini-stream) e o sintoma pro
+    // usuário é "demorou muito e não veio thinking nenhum".
+    if (aiModel === 'llama-stream' || aiModel === 'qwen-stream' || aiModel === 'llama' || aiModel === 'ollamaLocal') {
+      console.warn(`[send-to-gemini] canal SEM streaming usado com modelo "${aiModel}" — sem thinking ao vivo.`);
+    }
     let resposta, usedKnowledge = false;
     let promptWithHistory = text;
     let pastMessages = [];
@@ -389,7 +396,15 @@ ipcMain.on("cancel-ia-request", () => {
 
 ipcMain.handle("get-backend-url", async () => await BackendService.getApiUrl());
 ipcMain.handle("get-backend-api-key", () => configService.getBackendApiKey());
-ipcMain.handle("get-ai-model", () => configService.getAiModel());
+ipcMain.handle("get-ai-model", () => {
+  const m = configService.getAiModel();
+  // O renderer usa ESTE valor pra escolher entre o canal com streaming
+  // (send-to-gemini-stream, mostra o raciocínio ao vivo) e o sem streaming
+  // (send-to-gemini, só entrega o texto no fim). Quando os dois discordam, é
+  // aqui que dá pra ver — sem isso a escolha do canal é invisível no log.
+  console.log(`[get-ai-model] -> ${JSON.stringify(m)}`);
+  return m;
+});
 ipcMain.handle("get-edition", () => edition.getEdition());
 ipcMain.on("open-config-ui", () => helpers.createConfigWindow());
 ipcMain.on("open-preferences-ui", () => helpers.createPreferencesWindow());
