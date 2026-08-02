@@ -602,16 +602,27 @@ class BackendService {
           // Antes isso encerrava o turno; agora cobra uma vez e segue. Uma
           // rodada perdida é muito mais barata que o turno inteiro.
           if (!router.streamedAnything && !cleanText &&
-              (router.thinking || '').trim().length > 0 && mudoNudges < 1) {
+              (router.thinking || '').trim().length > 0 && mudoNudges < 3) {
             mudoNudges++;
-            console.warn(`[backend-stream] rodada muda (só raciocínio, ${(router.thinking || '').length} chars) — cobrando ação.`);
+            const raciocinouChamada = /TOOL_?CALL/i.test(router.thinking || '');
+            console.warn(`[backend-stream] rodada muda (só raciocínio, ${(router.thinking || '').length} chars, ensaiou chamada=${raciocinouChamada}) — cobrança ${mudoNudges}/3.`);
             if (onChunk) onChunk({ type: 'thinking', text: '\n⚠️ Rodada sem saída — cobrando a ação.\n' });
+            // MEDIDO: o modelo escreve "TOOL_CALL" DENTRO do raciocínio (13x num
+            // turno capturado do fio). Ele ensaia a chamada no pensamento, se
+            // convence de que executou, e não emite nada na resposta. Pro modelo
+            // "planejei" e "emiti" são a mesma coisa — as duas são texto que ele
+            // escreveu. Por isso a cobrança separa explicitamente os dois canais.
             currentWorkingPrompt = capPrompt(
               currentWorkingPrompt +
-              '\n\nVocê raciocinou mas NÃO emitiu nada: nem texto, nem TOOL_CALL. ' +
-              'Raciocinar não executa nada. AGORA, sem pensar de novo: se ainda ' +
-              'falta um passo, emita o TOOL_CALL dele. Se o trabalho acabou, ' +
-              'escreva a resposta final em texto normal.'
+              (raciocinouChamada
+                ? '\n\nVocê escreveu o TOOL_CALL DENTRO do seu raciocínio. O raciocínio ' +
+                  'NÃO é executado — é só pensamento, ninguém lê. Só a RESPOSTA é lida e ' +
+                  'executada. Emita AGORA, na resposta, a MESMA linha TOOL_CALL que você ' +
+                  'já formulou. Não pense de novo, não replaneje: copie e emita.'
+                : '\n\nVocê raciocinou mas NÃO emitiu nada: nem texto, nem TOOL_CALL. ' +
+                  'Raciocinar não executa nada. AGORA, sem pensar de novo: se ainda ' +
+                  'falta um passo, emita o TOOL_CALL dele. Se o trabalho acabou, ' +
+                  'escreva a resposta final em texto normal.')
             );
             iter++;
             continue;
