@@ -209,6 +209,39 @@
             font-size: 12px;
             color: #ccc;
         }
+        /* Teto de altura: um modelo com raciocínio longo gerava centenas de
+           linhas aqui, a caixa tomava a tela inteira e empurrava o resto pra
+           fora — junto com o botão de interromper, que ficava inalcançável.
+           Agora o raciocínio rola DENTRO da própria caixa. */
+        .think-block > div {
+            max-height: 220px;
+            overflow-y: auto;
+            overflow-wrap: anywhere;
+        }
+
+        /* Botão de parar SEMPRE alcançável, independente do scroll. */
+        .ai-stop-floating {
+            position: fixed;
+            right: 18px;
+            bottom: 18px;
+            z-index: 9999;
+            display: none;
+            align-items: center;
+            gap: 7px;
+            padding: 9px 14px;
+            font-family: var(--font-ui);
+            font-size: 12px;
+            font-weight: 600;
+            color: #fff;
+            background: var(--danger, #d9534f);
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            box-shadow: 0 3px 12px rgba(0, 0, 0, .45);
+            -webkit-app-region: no-drag;
+        }
+        .ai-stop-floating.visible { display: inline-flex; }
+        .ai-stop-floating:hover { filter: brightness(1.12); }
         .think-block summary {
             cursor: pointer;
             font-weight: bold;

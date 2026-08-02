@@ -389,6 +389,7 @@ var isEditingQuestion = false;
 
         
         function stopProcessing() {
+            showFloatingStop(false);
             // Para animações (instância lottie compartilhada via window.animation)
             const animation = window.animation;
             const animationContainer = document.getElementById('animation-container');
@@ -417,11 +418,40 @@ var isEditingQuestion = false;
             window.electronAPI.stopNotifications();
         }
         
+        // Botão de parar FIXO na tela. O botão × dentro do bloco "Pensando"
+        // rolava junto com a conversa: com um raciocínio longo ele saía da área
+        // visível e não havia como interromper a IA. Este fica sempre no mesmo
+        // canto, independente do scroll.
+        function getFloatingStop() {
+            let btn = document.getElementById('ai-stop-floating');
+            if (!btn) {
+                btn = document.createElement('button');
+                btn.id = 'ai-stop-floating';
+                btn.className = 'ai-stop-floating';
+                btn.textContent = '■ Parar IA';
+                btn.title = 'Interromper a IA';
+                btn.addEventListener('click', () => {
+                    if (window.electronAPI && window.electronAPI.cancelIaRequest) {
+                        window.electronAPI.cancelIaRequest();
+                    }
+                    stopProcessing();
+                });
+                document.body.appendChild(btn);
+            }
+            return btn;
+        }
+
+        function showFloatingStop(mostrar) {
+            const btn = getFloatingStop();
+            btn.classList.toggle('visible', !!mostrar);
+        }
+
         function startProcessing() {
             console.log('startProcessing chamado');
             const robot = document.getElementById('robot');
             if (robot) robot.style.display = 'block';
             console.log('Robô definido como visível');
+            showFloatingStop(true);
 
             const transcriptionElement = document.getElementById('transcription');
             if (transcriptionElement) {

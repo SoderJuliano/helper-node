@@ -7,6 +7,17 @@ var streamingElement = null;
 var streamingText = '';
 var typingCursor = null;
 
+// Só arrasta a tela pro fim se o usuário JÁ estiver no fim. Antes, cada token
+// de raciocínio forçava scrollTo(scrollHeight) — com centenas de tokens era
+// impossível rolar pra cima: a tela puxava de volta pra baixo sem parar, e o
+// botão de interromper ficava inalcançável enquanto a IA não parava sozinha.
+function autoScrollSeNoFim(el) {
+    if (!el) return;
+    const distanciaDoFim = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distanciaDoFim > 120) return; // usuário rolou pra cima: respeita
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+}
+
 (function() {
     const transcriptionElement = document.getElementById('transcription');
     const robot = document.getElementById('robot');
@@ -83,11 +94,8 @@ var typingCursor = null;
                         contentDiv.textContent += chunk.text;
                     }
                     
-                    // Scroll automático para thinking
-                    transcriptionElement.scrollTo({
-                        top: transcriptionElement.scrollHeight,
-                        behavior: 'smooth'
-                    });
+                    // Scroll automático para thinking (só se já estiver no fim)
+                    autoScrollSeNoFim(transcriptionElement);
                     return; // Retorna cedo para não jogar thinking no texto final
                 }
 
@@ -103,12 +111,9 @@ var typingCursor = null;
                 
                 streamingElement.textContent = streamingText;
                 streamingElement.appendChild(typingCursor);
-                
-                // Scroll automático
-                transcriptionElement.scrollTo({
-                    top: transcriptionElement.scrollHeight,
-                    behavior: 'smooth'
-                });
+
+                // Scroll automático (só se já estiver no fim)
+                autoScrollSeNoFim(transcriptionElement);
             });
 
             window.electronAPI.onStreamComplete(() => {
