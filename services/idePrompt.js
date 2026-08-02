@@ -157,7 +157,15 @@ function reasoningRules() {
  * @param {string[]} o.wsPaths      caminhos absolutos anexados
  * @returns {string}
  */
-function buildIdeAgentPrompt({ toolsSchema = [], wsPaths = [] } = {}) {
+/**
+ * @param {boolean} o.nativeTools  ferramentas chegam pelo tools[] nativo do
+ *   Ollama (endpoint /agent). Nesse caso TODO o protocolo de texto sai do
+ *   prompt: o formato do TOOL_CALL, o exemplo de JSON, as regras de barra
+ *   invertida e de espaço no nome. Nada disso existe mais — a chamada é uma
+ *   ação tipada. Manter essas regras seria pior que inútil: o modelo com
+ *   raciocínio visível gasta o turno conferindo um protocolo que não usa mais.
+ */
+function buildIdeAgentPrompt({ toolsSchema = [], wsPaths = [], nativeTools = false } = {}) {
   const lines = [
     'Você é um AGENTE DE CODIFICAÇÃO rodando na máquina do usuário, no mesmo',
     'papel de um Codex ou Claude Code: você lê o projeto de verdade, edita',
@@ -176,6 +184,20 @@ function buildIdeAgentPrompt({ toolsSchema = [], wsPaths = [] } = {}) {
   ];
 
   const base = lines.join('\n');
+  if (nativeTools) {
+    // As ferramentas já chegam declaradas no tools[] da API; descrever de novo
+    // em texto só duplica e convida o modelo a "emitir" chamada como prosa.
+    return base + [
+      '',
+      '═══ FERRAMENTAS ═══',
+      '',
+      'As ferramentas estão disponíveis nativamente nesta conversa. Para usar uma,',
+      'CHAME-A — não escreva a chamada como texto e não descreva o que você faria.',
+      'O resultado volta como mensagem de papel "tool" e é a verdade sobre o que',
+      'aconteceu no disco.',
+      '',
+    ].join('\n');
+  }
   const toolsAddon = buildOllamaToolsAddon(toolsSchema, wsPaths);
   return toolsAddon ? `${base}\n${toolsAddon}` : base;
 }
