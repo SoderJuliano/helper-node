@@ -11,32 +11,19 @@ function pickOllamaEndpoint(texto) {
   return '/llama3';
 }
 
-function isProjectAnalysisPrompt(texto) {
-  const t = String(texto || '').toLowerCase();
-  return /\b(que projeto|tipo de projeto|o que faz|arquitetura|estrutura|endpoint|endpoints|controller|rest|api|servi[cç]o|usecase|hexagonal|spring|maven|gradle|depend[eê]ncia|pom\.xml|application\.ya?ml)\b/.test(t);
-}
-
-function buildDeepAnalysisAddon({ toolsEnabled, wsEnabled, attCount, texto }) {
-  if (!toolsEnabled) return '';
-  if (!wsEnabled || attCount <= 0) return '';
-  if (!isProjectAnalysisPrompt(texto)) return '';
-
-  return [
-    '',
-    '═══ MODO ANÁLISE DE PROJETO (OBRIGATÓRIO) ═══',
-    // Este bloco NÃO fala mais de "ignorar o limite de 65 palavras": o prompt do
-    // modo IDE (services/idePrompt.js) não tem limite nenhum, e citar um limite
-    // aqui só reintroduzia a contradição que travava o modelo em raciocínio.
-    '- Responda de forma completa e objetiva (300-900 palavras quando necessário).',
-    '- Antes da RESPOSTA FINAL, faça no mínimo 3 TOOL_CALL de leitura para evidência real do código:',
-    '  1) listDir do diretório raiz anexado',
-    '  2) readFile de manifesto/config principal (pom.xml, package.json, build.gradle, application.yaml/properties)',
-    '  3) readFile de 1-2 arquivos de entrada/fluxo (controller/use case/service/application)',
-    '- Só finalize após citar evidências dos arquivos lidos (nomes de arquivo + conclusão).',
-    '- Estruture a resposta em tópicos: Tipo do projeto, O que ele faz, Arquitetura, Fluxo principal, Tecnologias e Pontos de atenção.',
-    '',
-  ].join('\n');
-}
+// REMOVIDO: isProjectAnalysisPrompt / buildDeepAnalysisAddon.
+//
+// Injetavam um "MODO ANÁLISE DE PROJETO (OBRIGATÓRIO)" exigindo no mínimo 3
+// TOOL_CALL e resposta de 300-900 palavras. Serviam pra impedir modelo fraco de
+// escrever código sem ler antes — premissa abandonada: não se usa mais modelo
+// abaixo de ~10B pra escrever, e modelo capaz decide sozinho quando ler.
+//
+// O gatilho também estava quebrado: recebia o prompt JÁ montado, que carrega a
+// linha "Estrutura de diretórios:" do contexto de workspace, e "estrutura"
+// estava na regex — então com uma pasta anexada QUALQUER mensagem entrava em
+// modo análise. Um "oi" virava análise obrigatória do repositório inteiro.
+//
+// O prompt do modo IDE vive só em services/idePrompt.js (fonte única).
 
 function isWriteIntent(texto) {
   const t = String(texto || '').toLowerCase();
@@ -436,8 +423,6 @@ function stripThinkingBlock(text) {
 
 module.exports = {
   pickOllamaEndpoint,
-  isProjectAnalysisPrompt,
-  buildDeepAnalysisAddon,
   isWriteIntent,
   isFileReadIntent,
   isShellCommandIntent,

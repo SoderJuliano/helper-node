@@ -49,15 +49,61 @@ function isInsideAny(abs, roots) {
   });
 }
 
+// Compara sempre com barra normal: os fragmentos negados são escritos no
+// formato POSIX ("/.ssh/", "/.aws/credentials"), mas no Windows o caminho
+// absoluto vem com barra invertida ("C:\\Users\\soder\\.ssh\\id_rsa"). Sem
+// normalizar, NENHUM fragmento casava no Windows — a lista de negação inteira
+// (.ssh, credenciais AWS/gcloud, gnupg, wallet, keystore) era letra morta.
+function normalizeForMatch(abs) {
+  return String(abs).replace(/\\/g, "/").toLowerCase();
+}
+
 function isDeniedPath(abs, deniedFragments, deniedSuffixes) {
-  const lower = abs.toLowerCase();
+  const norm = normalizeForMatch(abs);
   for (const frag of deniedFragments) {
-    if (lower.includes(frag.toLowerCase())) return frag;
+    if (norm.includes(normalizeForMatch(frag))) return frag;
   }
   for (const suf of deniedSuffixes) {
-    if (lower.endsWith(suf.toLowerCase())) return suf;
+    if (norm.endsWith(normalizeForMatch(suf))) return suf;
   }
   return null;
+}
+
+/**
+ * Diretórios em que a leitura é permitida.
+ *
+ * O prompt do modo ferramentas promete ao modelo: "você TEM PERMISSÃO de
+ * leitura e edição NELES (e só neles)". A política não cumpria essa promessa:
+ * checkWrite tinha sandbox (writeRoots) mas checkRead NÃO tinha nenhum, então
+ * a IA podia ler qualquer arquivo do disco que não estivesse na lista de
+ * negação — inclusive fora do projeto anexado.
+ *
+ * Regra: se há pastas anexadas no painel, a leitura fica restrita a elas (mais
+ * os arquivos avulsos anexados). Sem nada anexado, cai pro sandbox de escrita
+ * (HOME), que ainda é muito melhor do que o disco inteiro.
+ */
+function readRootsFor(cfg) {
+  try {
+    const workspace = require("../workspace");
+    const anexos = workspace.list() || [];
+    const dirs = anexos.filter((a) => a.type === "dir").map((a) => a.path);
+    if (dirs.length) return dirs;
+  } catch (_) {}
+  if (cfg && Array.isArray(cfg.readRoots) && cfg.readRoots.length) return cfg.readRoots;
+  return (cfg && cfg.writeRoots) || [];
+}
+
+// Arquivo avulso anexado pelo usuário é liberado mesmo fora das pastas raiz —
+// foi ele que anexou, é consentimento explícito.
+function isAttachedFile(abs) {
+  try {
+    const workspace = require("../workspace");
+    return (workspace.list() || []).some(
+      (a) => a.type === "file" && path.resolve(a.path) === abs
+    );
+  } catch (_) {
+    return false;
+  }
 }
 
 function isAllowedForWrite(abs, allowEnvFiles) {
@@ -100,6 +146,16 @@ function checkRead(rawPath, cfg) {
       ok: false,
       error:
         ".env real bloqueado. Habilite `allowEnvFiles` nas configs se necessário.",
+    };
+  }
+  // Sandbox de LEITURA (antes não existia: a IA lia qualquer canto do disco).
+  const roots = readRootsFor(cfg);
+  if (roots.length && !isInsideAny(abs, roots) && !isAttachedFile(abs)) {
+    return {
+      ok: false,
+      error:
+        `Leitura fora dos diretórios liberados. Permitido apenas em: ` +
+        `${roots.join(", ")}. Anexe a pasta no painel se precisar dela.`,
     };
   }
   return { ok: true, abs };

@@ -1,7 +1,6 @@
 const configService = require("./configService");
 const {
   pickOllamaEndpoint,
-  buildDeepAnalysisAddon,
   buildOllamaToolsAddon,
   parseOllamaToolCalls,
   stripToolCallBlocks,
@@ -281,9 +280,17 @@ class BackendService {
       let promptInstruction = customInstruction || configService.getPromptInstruction();
 
       if (effectiveTools && onToolCall) {
-        const analysisAddon = customInstruction ? '' : buildDeepAnalysisAddon({
-          toolsEnabled: true, wsEnabled, attCount, texto
-        });
+        // O "MODO ANÁLISE DE PROJETO (OBRIGATÓRIO)" foi REMOVIDO daqui.
+        // Ele existia pra forçar modelo fraco a ler o código antes de escrever,
+        // mas a premissa mudou: não se usa mais modelo abaixo de ~10B pra
+        // escrever, e o modelo capaz decide sozinho quando precisa ler.
+        // Além disso o gatilho estava quebrado — recebia o prompt JÁ montado,
+        // que carrega a linha "Estrutura de diretórios:" do contexto de
+        // workspace, e a palavra "estrutura" está na regex. Com uma pasta
+        // anexada, QUALQUER mensagem virava análise obrigatória com no mínimo
+        // 3 TOOL_CALL e 300-900 palavras: um "oi" mandava o modelo com
+        // raciocínio para minutos de deliberação. Ver idePrompt.js, que é a
+        // fonte única do prompt no modo IDE.
         if (customInstruction) {
           // Fluxo agêntico multi-fase: a instrução vem pronta de quem chamou
           // (ollamaAgenticWorkflowService), então aqui só entra o protocolo de
@@ -298,7 +305,7 @@ class BackendService {
           // instruções conflitantes é o que fazia o modelo com raciocínio visível
           // gastar o turno debatendo contradições em vez de ler o projeto.
           // Ver services/idePrompt.js.
-          promptInstruction = buildIdeAgentPrompt({ toolsSchema: tools, wsPaths }) + analysisAddon;
+          promptInstruction = buildIdeAgentPrompt({ toolsSchema: tools, wsPaths });
         }
       }
 

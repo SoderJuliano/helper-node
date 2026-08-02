@@ -366,7 +366,11 @@ ipcMain.on("send-to-gemini-stream", async (event, text, sessionId) => {
         console.error("Stream error:", error);
         event.sender.send("transcription-error", error.message);
       },
-      { ..._htO2.opts, sessionId }
+      // userText = a pergunta CRUA, sem o contexto de workspace colado na
+      // frente. É com ela que o backend decide se o turno pede análise
+      // profunda do projeto — usar o prompt montado fazia todo "oi" virar
+      // análise obrigatória do repositório.
+      { ..._htO2.opts, sessionId, userText: text }
     );
   } catch (error) {
     if (error && (error.message === 'Request cancelled' || error.message === 'Cancelado.')) {
