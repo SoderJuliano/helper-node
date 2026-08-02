@@ -13,26 +13,55 @@ var typingCursor = null;
 // corrido fica ilegível. Com o markdown do projeto, ``` vira <pre><code>.
 var thinkingRaw = '';
 var thinkingRenderTimer = null;
+var thinkingNoDom = 0;        // quanto do raw já foi pro DOM no modo texto
+var thinkingModoTexto = false; // caiu pro modo barato (append incremental)?
 
-function renderThinking(contentDiv) {
+// Acima disto, formatar ao vivo custa caro demais: reconstruir o innerHTML de
+// um texto de dezenas de KB (com blocos <pre> e botões de copiar) a cada tick
+// trava o renderer — foi o que fez a caixa de raciocínio "congelar" enquanto o
+// modelo continuava mandando tokens. Passando do limite, o texto só é
+// ACRESCENTADO (barato) e a formatação completa acontece uma vez, no fim.
+var LIMITE_MARKDOWN_AO_VIVO = 20000;
+
+function renderThinking(contentDiv, final) {
     if (!contentDiv) return;
-    if (typeof window.renderMarkdown === 'function') {
-        contentDiv.innerHTML = window.renderMarkdown(thinkingRaw, 'stream');
-    } else {
-        contentDiv.textContent = thinkingRaw;
+    if (thinkingRaw.length <= LIMITE_MARKDOWN_AO_VIVO || final) {
+        try {
+            if (typeof window.renderMarkdown === 'function') {
+                contentDiv.innerHTML = window.renderMarkdown(thinkingRaw, 'stream');
+            } else {
+                contentDiv.textContent = thinkingRaw;
+            }
+            thinkingModoTexto = false;
+        } catch (e) {
+            // Markdown quebrado no meio do stream (bloco de código aberto, por
+            // exemplo) não pode derrubar a exibição do raciocínio.
+            console.warn('renderThinking: markdown falhou, caindo pra texto:', e && e.message);
+            contentDiv.textContent = thinkingRaw;
+            thinkingModoTexto = true;
+        }
+        thinkingNoDom = thinkingRaw.length;
+    } else if (!thinkingModoTexto) {
+        contentDiv.textContent = thinkingRaw; // troca de modo: uma vez só
+        thinkingModoTexto = true;
+        thinkingNoDom = thinkingRaw.length;
+    } else if (thinkingRaw.length > thinkingNoDom) {
+        // Append puro: não reconstrói nada do que já está na tela.
+        contentDiv.appendChild(document.createTextNode(thinkingRaw.slice(thinkingNoDom)));
+        thinkingNoDom = thinkingRaw.length;
     }
     // A caixa tem altura fixa e rola por dentro: acompanha o texto novo sozinha.
     contentDiv.scrollTop = contentDiv.scrollHeight;
 }
 
-// Re-renderizar a cada token seria custoso (centenas de innerHTML por resposta)
-// e ainda faria o texto piscar. Agrupa em janelas de ~120ms.
+// Re-renderizar a cada token seria custoso e faria o texto piscar. Agrupa em
+// janelas de ~250ms.
 function agendarRenderThinking(contentDiv) {
     if (thinkingRenderTimer) return;
     thinkingRenderTimer = setTimeout(() => {
         thinkingRenderTimer = null;
-        renderThinking(contentDiv);
-    }, 120);
+        renderThinking(contentDiv, false);
+    }, 250);
 }
 
 // Só arrasta a tela pro fim se o usuário JÁ estiver no fim. Antes, cada token
@@ -71,6 +100,8 @@ function autoScrollSeNoFim(el) {
                     console.log('Criando novo elemento de streaming');
                     // Raciocínio é por resposta: zera o buffer da anterior.
                     thinkingRaw = '';
+                    thinkingNoDom = 0;
+                    thinkingModoTexto = false;
                     streamingElement = document.createElement('div');
                     streamingElement.className = 'streaming-response';
                     
@@ -199,7 +230,9 @@ function autoScrollSeNoFim(el) {
                             clearTimeout(thinkingRenderTimer);
                             thinkingRenderTimer = null;
                         }
-                        renderThinking(existingThinkBlock.querySelector('div'));
+                        // final=true: força a formatação completa mesmo se o
+                        // raciocínio passou do limite do render ao vivo.
+                        renderThinking(existingThinkBlock.querySelector('div'), true);
                         // Fecha o raciocínio ao terminar. O colapso dependia de um
                         // evento 'thinking-end', que o backendStreamRouter NUNCA
                         // emite (todo thinking sai como event:'thinking'), então a
