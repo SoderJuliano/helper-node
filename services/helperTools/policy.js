@@ -45,7 +45,12 @@ function isInsideAny(abs, roots) {
   return roots.some((root) => {
     const r = path.resolve(expandHome(root));
     const rel = path.relative(r, abs);
-    return rel && !rel.startsWith("..") && !path.isAbsolute(rel);
+    // path.relative(raiz, raiz) === "" — a PRÓPRIA raiz é permitida. Sem este
+    // caso, `rel` cai como falsy e a raiz do projeto anexado era rejeitada:
+    // um listDir/searchInFiles na pasta do projeto (a primeira coisa que o
+    // agente faz) morria com "fora dos diretórios liberados".
+    if (rel === "") return true;
+    return !rel.startsWith("..") && !path.isAbsolute(rel);
   });
 }
 
