@@ -328,7 +328,24 @@ class BackendService {
       }
 
       let iter = 0;
-      const maxIters = opts.maxToolCalls || 15;
+      // Teto de iterações. O default do helperTools é 50, calibrado pro OpenAI,
+      // onde cada rodada custa segundos. Aqui cada rodada é uma GERAÇÃO INTEIRA
+      // de um modelo com raciocínio sobre um prompt que só cresce (contexto do
+      // workspace + base de conhecimento + todos os TOOL_RESULT acumulados):
+      // passa de um minuto por rodada com facilidade. 50 rodadas viram uma hora
+      // sem nada na tela. Ajustável por HELPER_TOOL_LOOP_MAX_ITERS.
+      const TETO_ITERS_BACKEND = Number(process.env.HELPER_TOOL_LOOP_MAX_ITERS || 10);
+      const maxIters = Math.min(opts.maxToolCalls || 15, TETO_ITERS_BACKEND);
+
+      // Orçamento de tempo do turno inteiro. O teto de iterações não protege
+      // contra UMA rodada lenta: com o prompt no talo do num_ctx, uma única
+      // geração do 35B passa de 10 minutos, e o usuário fica olhando o
+      // raciocínio rolar sem nunca receber resposta. Estourando o orçamento,
+      // entregamos o que já existe em vez de continuar.
+      const ORCAMENTO_MS = Number(process.env.HELPER_TOOL_LOOP_BUDGET_MS || 6 * 60 * 1000);
+      const inicioTurno = Date.now();
+      let estourouTempo = false;
+
       let currentWorkingPrompt = promptWithContext;
       // Quantas vezes já pedi pro modelo reemitir um TOOL_CALL que veio quebrado.
       let malformedNudges = 0;
@@ -346,6 +363,15 @@ class BackendService {
 
       while (iter < maxIters) {
         if (signal.aborted) throw new Error("Request cancelled");
+
+        // Só entra em NOVA rodada se ainda há orçamento. Não interrompe uma
+        // geração em andamento — corta o encadeamento de rodadas, que é o que
+        // faz o turno se arrastar sem fim.
+        if (iter > 0 && Date.now() - inicioTurno > ORCAMENTO_MS) {
+          estourouTempo = true;
+          console.warn(`[backend-stream] orçamento de ${Math.round(ORCAMENTO_MS / 1000)}s estourado na iter ${iter + 1} — encerrando o turno.`);
+          break;
+        }
 
         const payload = { prompt: currentWorkingPrompt, language: mappedLang };
         if (opts.imageBase64) {
@@ -475,15 +501,23 @@ class BackendService {
         }
       }
 
-      // Estourou o limite de iterações sem uma resposta final em texto. Antes
-      // isso fechava o loading em silêncio e o usuário ficava sem nada na tela.
-      console.warn(`[backend-stream] limite de ${maxIters} iterações atingido sem resposta final.`);
+      // Saiu do laço sem uma resposta final em texto — por tempo ou por rodadas.
+      // Antes isso fechava o loading em silêncio e o usuário ficava sem nada.
+      const decorridoS = Math.round((Date.now() - inicioTurno) / 1000);
+      console.warn(
+        estourouTempo
+          ? `[backend-stream] turno encerrado por tempo (${decorridoS}s) após ${iter} rodada(s).`
+          : `[backend-stream] limite de ${maxIters} iterações atingido sem resposta final.`
+      );
       if (onChunk) {
         // Entrega o que o modelo já tinha escrito antes de avisar do limite.
         if (!algoNaTela && ultimoTexto) onChunk(ultimoTexto);
         onChunk(
-          `\n\n_Parei após ${maxIters} rodadas de ferramenta sem concluir. ` +
-          `Peça em passos menores ou diga qual arquivo atacar primeiro._`
+          estourouTempo
+            ? `\n\n_Parei após ${decorridoS}s (${iter} rodada(s) de ferramenta) pra não deixar você esperando. ` +
+              `As edições já aplicadas estão salvas. Peça a continuação em passos menores._`
+            : `\n\n_Parei após ${maxIters} rodadas de ferramenta sem concluir. ` +
+              `Peça em passos menores ou diga qual arquivo atacar primeiro._`
         );
       }
       if (ultimoTexto) this.addAssistantResponse(sessionId, ultimoTexto);

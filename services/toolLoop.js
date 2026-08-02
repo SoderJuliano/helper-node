@@ -43,6 +43,10 @@ function capPrompt(prompt) {
 
 const fs = require('fs');
 
+// Ferramentas que ALTERAM arquivo. Depois de uma delas dar certo, o turno
+// normalmente acabou — ver o texto de próximo passo em runToolCalls.
+const ESCRITA = new Set(['writeFile', 'appendToFile', 'patchFile', 'deleteFile']);
+
 /**
  * Conserta path que veio picado em tokens pelo modelo.
  *
@@ -124,9 +128,22 @@ async function runToolCalls(calls, onToolCall, { onChunk, signal, source } = {})
     const resStr = capToolResult(
       typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult)
     );
-    appended += `\n\nTOOL_RESULT: ${name} ${resStr}\n` +
-      'Continue a tarefa. Se precisar de mais ferramentas, emita TOOL_CALL. ' +
-      'Se terminou, responda em texto normal ao usuário.';
+
+    // Escrita que DEU CERTO encerra o trabalho na esmagadora maioria dos casos.
+    // Com o "Continue a tarefa" genérico, o modelo com raciocínio gastava mais
+    // uma geração inteira (minutos, sobre um prompt já enorme) relendo o arquivo
+    // pra "conferir" o que ele mesmo acabou de escrever — e às vezes reabria o
+    // ciclo de análise. Aqui a instrução é explícita: aplicou, agora responda.
+    const escreveu = ESCRITA.has(name) && toolResult && toolResult.ok !== false;
+    const proximoPasso = escreveu
+      ? 'A EDIÇÃO JÁ FOI APLICADA no arquivo, com sucesso. NÃO releia o arquivo ' +
+        'pra conferir e NÃO refaça a edição. Se era isso que o usuário pediu, ' +
+        'RESPONDA AGORA em texto normal (sem nenhum TOOL_CALL) dizendo o que mudou. ' +
+        'Só emita outro TOOL_CALL se ainda faltar um passo DIFERENTE.'
+      : 'Continue a tarefa. Se precisar de mais ferramentas, emita TOOL_CALL. ' +
+        'Se terminou, responda em texto normal ao usuário.';
+
+    appended += `\n\nTOOL_RESULT: ${name} ${resStr}\n${proximoPasso}`;
   }
   return appended;
 }

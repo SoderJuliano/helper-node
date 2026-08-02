@@ -92,8 +92,13 @@ function autoScrollSeNoFim(el) {
                         }
                         const contentDiv = currentThinkBlock.querySelector('div');
                         contentDiv.textContent += chunk.text;
+                        // A caixa tem altura fixa e rola por dentro, então ela
+                        // precisa acompanhar o texto novo sozinha — senão o
+                        // usuário tem que arrastar a barrinha interna a cada
+                        // linha pra continuar lendo o raciocínio ao vivo.
+                        contentDiv.scrollTop = contentDiv.scrollHeight;
                     }
-                    
+
                     // Scroll automático para thinking (só se já estiver no fim)
                     autoScrollSeNoFim(transcriptionElement);
                     return; // Retorna cedo para não jogar thinking no texto final
