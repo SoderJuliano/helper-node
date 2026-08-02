@@ -37,6 +37,15 @@ helpers.shouldUseAgentic = function(rawText) {
 helpers.knowledgeBlockForOllama = async function(query) {
   try {
     if (!configService.getKnowledgeBaseConfig().enabled) return "";
+    // MODO IDE (ferramentas ligadas) NÃO leva base de conhecimento. São notas
+    // sobre versões/tecnologias recentes — não ajudam a editar um arquivo, e o
+    // custo é alto no lugar errado: o prompt do tool loop é REENVIADO INTEIRO
+    // a cada rodada, então cada trecho injetado é pago de novo em TODA
+    // iteração, empurrando o num_ctx pra cima e deixando o turno mais lento.
+    if (configService.getHelperToolsEnabled && configService.getHelperToolsEnabled()) {
+      console.log('[knowledgeBase] SKIP: modo IDE (ferramentas ON) — base não entra no prompt do agente');
+      return "";
+    }
     return await knowledgeBase.augment(query, { topK: 5 }); // sem token → keyword
   } catch (_) { return ""; }
 }
