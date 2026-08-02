@@ -136,12 +136,14 @@ async function runToolCalls(calls, onToolCall, { onChunk, signal, source } = {})
     // ciclo de análise. Aqui a instrução é explícita: aplicou, agora responda.
     const escreveu = ESCRITA.has(name) && toolResult && toolResult.ok !== false;
     const proximoPasso = escreveu
-      ? 'A EDIÇÃO JÁ FOI APLICADA no arquivo, com sucesso. NÃO releia o arquivo ' +
-        'pra conferir e NÃO refaça a edição. Se era isso que o usuário pediu, ' +
-        'RESPONDA AGORA em texto normal (sem nenhum TOOL_CALL) dizendo o que mudou. ' +
-        'Só emita outro TOOL_CALL se ainda faltar um passo DIFERENTE.'
-      : 'Continue a tarefa. Se precisar de mais ferramentas, emita TOOL_CALL. ' +
-        'Se terminou, responda em texto normal ao usuário.';
+      ? 'A EDIÇÃO JÁ FOI APLICADA no arquivo, com sucesso — este resultado é a ' +
+        'confirmação. NÃO releia o arquivo pra conferir e NÃO refaça a edição. ' +
+        'Se ainda falta algo, escreva o relatório (Feito/Agora/Falta) e emita o ' +
+        'próximo TOOL_CALL para o passo DIFERENTE que falta. Se não falta nada, ' +
+        'RESPONDA AGORA em texto normal, sem nenhum TOOL_CALL, dizendo o que mudou.'
+      : 'Continue de onde parou — não recomece a tarefa. Escreva o relatório ' +
+        '(Feito/Agora/Falta) e emita o próximo TOOL_CALL, ou responda em texto ' +
+        'normal se já terminou.';
 
     appended += `\n\nTOOL_RESULT: ${name} ${resStr}\n${proximoPasso}`;
   }

@@ -7,6 +7,34 @@ var streamingElement = null;
 var streamingText = '';
 var typingCursor = null;
 
+// Texto CRU do raciocínio da resposta atual. Guardado à parte porque o
+// raciocínio precisa ser re-renderizado inteiro a cada atualização: o modelo
+// despeja trechos de código dentro do pensamento, e mostrar isso como texto
+// corrido fica ilegível. Com o markdown do projeto, ``` vira <pre><code>.
+var thinkingRaw = '';
+var thinkingRenderTimer = null;
+
+function renderThinking(contentDiv) {
+    if (!contentDiv) return;
+    if (typeof window.renderMarkdown === 'function') {
+        contentDiv.innerHTML = window.renderMarkdown(thinkingRaw, 'stream');
+    } else {
+        contentDiv.textContent = thinkingRaw;
+    }
+    // A caixa tem altura fixa e rola por dentro: acompanha o texto novo sozinha.
+    contentDiv.scrollTop = contentDiv.scrollHeight;
+}
+
+// Re-renderizar a cada token seria custoso (centenas de innerHTML por resposta)
+// e ainda faria o texto piscar. Agrupa em janelas de ~120ms.
+function agendarRenderThinking(contentDiv) {
+    if (thinkingRenderTimer) return;
+    thinkingRenderTimer = setTimeout(() => {
+        thinkingRenderTimer = null;
+        renderThinking(contentDiv);
+    }, 120);
+}
+
 // Só arrasta a tela pro fim se o usuário JÁ estiver no fim. Antes, cada token
 // de raciocínio forçava scrollTo(scrollHeight) — com centenas de tokens era
 // impossível rolar pra cima: a tela puxava de volta pra baixo sem parar, e o
@@ -41,6 +69,8 @@ function autoScrollSeNoFim(el) {
                 // Cria o elemento de streaming na primeira chunk
                 if (!streamingElement) {
                     console.log('Criando novo elemento de streaming');
+                    // Raciocínio é por resposta: zera o buffer da anterior.
+                    thinkingRaw = '';
                     streamingElement = document.createElement('div');
                     streamingElement.className = 'streaming-response';
                     
@@ -91,12 +121,8 @@ function autoScrollSeNoFim(el) {
                             currentThinkBlock = details;
                         }
                         const contentDiv = currentThinkBlock.querySelector('div');
-                        contentDiv.textContent += chunk.text;
-                        // A caixa tem altura fixa e rola por dentro, então ela
-                        // precisa acompanhar o texto novo sozinha — senão o
-                        // usuário tem que arrastar a barrinha interna a cada
-                        // linha pra continuar lendo o raciocínio ao vivo.
-                        contentDiv.scrollTop = contentDiv.scrollHeight;
+                        thinkingRaw += chunk.text;
+                        agendarRenderThinking(contentDiv);
                     }
 
                     // Scroll automático para thinking (só se já estiver no fim)
@@ -165,6 +191,15 @@ function autoScrollSeNoFim(el) {
                     const existingThinkBlock = streamingElement.querySelector('details.think-block');
                     let thinkHTML = '';
                     if (existingThinkBlock) {
+                        // Render final: pode haver um lote de tokens ainda
+                        // pendente no throttle de 120ms, e o outerHTML abaixo
+                        // congela o que estiver na tela — sem isso o fim do
+                        // raciocínio se perdia.
+                        if (thinkingRenderTimer) {
+                            clearTimeout(thinkingRenderTimer);
+                            thinkingRenderTimer = null;
+                        }
+                        renderThinking(existingThinkBlock.querySelector('div'));
                         // Fecha o raciocínio ao terminar. O colapso dependia de um
                         // evento 'thinking-end', que o backendStreamRouter NUNCA
                         // emite (todo thinking sai como event:'thinking'), então a

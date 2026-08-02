@@ -14,6 +14,10 @@ const { looksLikeToolCallAttempt } = require('./ollamaToolHelper');
 // stream nela truncava a resposta final do usuário. Exige ":" ou "{" na sequência.
 const pareceChamada = (t) => looksLikeToolCallAttempt(t, { requireJson: false });
 
+// Marcador que abre uma chamada de ferramenta. Usado pra reter na saída
+// qualquer sufixo que ainda possa estar no meio de ser escrito.
+const MARCA = 'TOOL_CALL';
+
 function createStreamRouter({ onChunk, hasTools }) {
   let thinkingBuffer = '';
   let answerBuffer = '';
@@ -32,6 +36,33 @@ function createStreamRouter({ onChunk, hasTools }) {
   // tool call (aí não vai pra tela) ou texto (aí streama). O gate antigo era
   // `length > 80` + uma regex que casava a expressão "tool call" escrita em
   // prosa — qualquer resposta que mencionasse ferramentas sumia da tela.
+  // Quanto do answerBuffer já foi pra tela.
+  let emitidoAte = 0;
+
+  // Maior sufixo do buffer que ainda PODE virar "TOOL_CALL". Fica retido até se
+  // provar que não é: sem isso o começo do marcador aparecia na tela ("...Falta:
+  // conferir os selects.\nTOOL") antes do router perceber que era uma chamada.
+  // Agora que o prompt manda escrever um relatório de progresso ANTES de cada
+  // TOOL_CALL, isso apareceria em toda rodada.
+  function tamanhoRetido(buf) {
+    const max = Math.min(MARCA.length - 1, buf.length);
+    for (let n = max; n > 0; n--) {
+      if (buf.slice(-n).toUpperCase() === MARCA.slice(0, n)) return n;
+    }
+    return 0;
+  }
+
+  function emitirPendente(reterMarca = true) {
+    if (answerIsToolCall || !onChunk) return;
+    const limite = reterMarca
+      ? answerBuffer.length - tamanhoRetido(answerBuffer)
+      : answerBuffer.length;
+    if (limite <= emitidoAte) return;
+    const trecho = answerBuffer.slice(emitidoAte, limite);
+    emitidoAte = limite;
+    if (trecho) { onChunk(trecho); streamedAnything = true; }
+  }
+
   function pushAnswer(chunk) {
     if (!chunk) return;
     answerBuffer += chunk;
@@ -47,7 +78,7 @@ function createStreamRouter({ onChunk, hasTools }) {
       // ("TO OL _CALL"), e a regex antiga exigia "TOOL" colado — resultado, o
       // JSON do tool call era classificado como texto e ia inteiro pra tela.
       answerIsToolCall = pareceChamada(head.slice(0, 60)) || /^\{/.test(head);
-      if (!answerIsToolCall && onChunk) { onChunk(answerBuffer); streamedAnything = true; }
+      if (!answerIsToolCall) emitirPendente();
       return;
     }
     // O modelo costuma escrever prosa ANTES do tool call ("Primeiramente, vou
@@ -58,7 +89,7 @@ function createStreamRouter({ onChunk, hasTools }) {
       answerIsToolCall = true;
       return;
     }
-    if (!answerIsToolCall && onChunk) { onChunk(chunk); streamedAnything = true; }
+    emitirPendente();
   }
 
   // Alguns modelos emitem o raciocínio como <think>…</think> dentro do próprio
@@ -86,6 +117,10 @@ function createStreamRouter({ onChunk, hasTools }) {
     get streamedAnything() { return streamedAnything; },
     get answerIsToolCall() { return answerIsToolCall; },
     markStreamed() { streamedAnything = true; },
+    // Fim do turno: solta o sufixo que estava retido por poder ser o começo de
+    // "TOOL_CALL". Sem isso, uma resposta final que terminasse nessas letras
+    // perderia os últimos caracteres na tela.
+    flushAnswer() { emitirPendente(false); },
   };
 }
 

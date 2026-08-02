@@ -492,6 +492,10 @@ class BackendService {
           iter++;
           continue;
         } else {
+          // Turno acabou em texto: solta o que estava retido por poder ser o
+          // começo de um "TOOL_CALL" que nunca veio.
+          if (router.flushAnswer) router.flushAnswer();
+
           // router.answer já não tem thinking (foi separado no routeToken).
           let cleanText = stripToolCallBlocks(router.answer).trim();
 
