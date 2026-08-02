@@ -74,7 +74,10 @@
 
             window.electronAPI.onTranscriptionError((message) => {
                 robot.style.display = 'none';
-                
+                // Erro também encerra o turno: sem isto o spinner do bloco
+                // "Pensando" continuava girando embaixo da mensagem de erro.
+                if (typeof window.stopProcessing === 'function') window.stopProcessing();
+
                 // Ignora erros de cancelamento (não exibe na tela)
                 if (message === 'Request cancelled') {
                     console.log('Request cancelled by user - this is expected');

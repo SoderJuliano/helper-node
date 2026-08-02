@@ -116,6 +116,14 @@ var typingCursor = null;
                 const robot = document.getElementById('robot');
                 robot.style.display = 'none';
 
+                // O bloco "Pensando" (com o spinner girando) é criado ao enviar
+                // a pergunta, mas stopProcessing() só era chamado pelo botão de
+                // interromper — no fim normal do stream ninguém desligava, e o
+                // spinner ficava rodando para sempre embaixo da resposta já
+                // pronta. É stopProcessing quem tira o spinner, o botão × e a
+                // classe is-processing do bloco.
+                if (typeof window.stopProcessing === 'function') window.stopProcessing();
+
                 const finalStreamText = streamingText;
                 if (window.historySession && finalStreamText) {
                     window.historySession.addMessageToCurrentSession('assistant', finalStreamText);
@@ -147,6 +155,12 @@ var typingCursor = null;
                     const existingThinkBlock = streamingElement.querySelector('details.think-block');
                     let thinkHTML = '';
                     if (existingThinkBlock) {
+                        // Fecha o raciocínio ao terminar. O colapso dependia de um
+                        // evento 'thinking-end', que o backendStreamRouter NUNCA
+                        // emite (todo thinking sai como event:'thinking'), então a
+                        // caixa ficava aberta pra sempre. Como o outerHTML é
+                        // capturado logo abaixo, tem que fechar ANTES.
+                        existingThinkBlock.open = false;
                         thinkHTML = existingThinkBlock.outerHTML;
                     }
                     
