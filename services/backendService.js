@@ -386,6 +386,18 @@ class BackendService {
           }
         }
 
+        // SINAL DE VIDA entre rodadas. Depois de executar uma ferramenta, o
+        // modelo pode levar minutos até o primeiro token da rodada seguinte —
+        // e nesse intervalo a tela fica exatamente igual a uma resposta que
+        // morreu. Sem isto o usuário não tem como distinguir "processando" de
+        // "parou abruptamente", e acaba matando um turno que estava vivo.
+        if (iter > 0 && onChunk) {
+          onChunk({
+            type: 'thinking',
+            text: `\n⏳ Rodada ${iter + 1} — enviando ao modelo (prompt ${Math.round(currentWorkingPrompt.length / 1000)}k chars)…\n`,
+          });
+        }
+
         const payload = { prompt: currentWorkingPrompt, language: mappedLang };
         if (opts.imageBase64) {
           payload.imageBase64 = opts.imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');

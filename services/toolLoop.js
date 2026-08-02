@@ -11,8 +11,22 @@
 // iterações isso passa de qualquer janela de contexto, e o Ollama trunca em
 // silêncio: o modelo perde justamente o começo do prompt (onde estão as
 // ferramentas e o pedido) e começa a raciocinar que não tem acesso a nada.
-const MAX_TOOL_RESULT_CHARS = 12000;
-const MAX_PROMPT_CHARS = 90000;
+// Estes dois números definem o CUSTO DE CADA RODADA, porque o backend é
+// stateless: a cada iteração o prompt inteiro é reenviado e reprocessado.
+//
+// O servidor dimensiona o num_ctx pelo tamanho do prompt (~3 chars/token +
+// folga). Com o teto antigo de 90k chars o num_ctx batia em 32768 — o MÁXIMO —
+// e o 35B passava a reprocessar 32k de contexto a cada rodada, gerando ainda
+// milhares de tokens de raciocínio por cima. Era isso que transformava 4
+// rodadas em 10+ minutos com pouca coisa feita.
+//
+//   40k chars -> num_ctx 16384 (metade do trabalho por rodada)
+//   90k chars -> num_ctx 32768 (teto)
+//
+// Ajustáveis: o modo IDE cabe bem em 40k porque o que ocupa espaço são os
+// TOOL_RESULT antigos, que já foram usados. Suba se precisar de mais história.
+const MAX_TOOL_RESULT_CHARS = Number(process.env.HELPER_MAX_TOOL_RESULT_CHARS || 6000);
+const MAX_PROMPT_CHARS = Number(process.env.HELPER_MAX_PROMPT_CHARS || 40000);
 
 function capToolResult(str) {
   const s = String(str == null ? '' : str);
