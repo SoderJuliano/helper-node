@@ -3,8 +3,8 @@
 // Decide entre inline (cat) vs metadata-only baseado em token budget.
 
 const fs = require("fs").promises;
+const fsSync = require("fs");
 const path = require("path");
-const { execSync } = require("child_process");
 const store = require("./store");
 const pathCmd = require("./pathCommands");
 
@@ -55,29 +55,65 @@ async function readSmallFileSafe(absPath) {
   } catch (_) { return null; }
 }
 
+// Diretórios de build/cache que nunca entram na árvore nem nos candidatos.
+const SKIP_DIRS = new Set([
+  '.git', 'node_modules', 'target', 'build', '.idea', '__pycache__', '.venv', 'dist',
+]);
+
 /**
- * Gera estrutura de diretórios tipo tree usando find (nativo).
- * Retorna string formatada com indentação ou null em erro.
+ * Percorre o diretório em Node puro.
+ *
+ * Antes isto era `find ... | grep -v | sort | head` via execSync. No Windows não
+ * existe `find` do Unix nem `grep`, então o comando falhava INTEIRO e a função
+ * devolvia '' — a árvore do projeto ia VAZIA no prompt ("estrutura gerada: 1
+ * linhas, 0 chars") e o modelo não enxergava nada do projeto anexado, mesmo com
+ * o usuário tendo anexado a pasta. Em Node funciona nos três sistemas.
+ *
+ * @returns {Array<{path: string, isDir: boolean}>} ordenado, no máximo maxItems
+ */
+function walkPaths(rootPath, { maxItems, filesOnly = false }) {
+  const out = [];
+  const stack = [rootPath];
+  while (stack.length && out.length < maxItems) {
+    const dir = stack.pop();
+    let entries;
+    try {
+      entries = fsSync.readdirSync(dir, { withFileTypes: true });
+    } catch (_) {
+      continue; // sem permissão / sumiu no meio: ignora e segue
+    }
+    for (const entry of entries) {
+      if (out.length >= maxItems) break;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (SKIP_DIRS.has(entry.name)) continue;
+        if (!filesOnly) out.push({ path: full, isDir: true });
+        stack.push(full);
+      } else if (entry.isFile()) {
+        out.push({ path: full, isDir: false });
+      }
+    }
+  }
+  return out.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+/**
+ * Gera estrutura de diretórios tipo tree.
+ * Retorna string formatada com indentação, ou '' se não der pra ler.
  * Máximo ~100 linhas pra não explodir o prompt.
  * @param {string} rootPath
  */
 function generateTreeStructure(rootPath) {
   try {
-    const maxLines = 100;
-    // Exclui explicitamente todos os diretórios build/cache/.git antes dos -type
-    // Usa parênteses pra agrupar a lógica de exclusão
-    const cmd = `find "${rootPath}" \\( -name '.git' -o -name 'node_modules' -o -name 'target' -o -name 'build' -o -name '.idea' -o -name '__pycache__' -o -name '.venv' -o -name 'dist' \\) -prune -o \\( -type f -o -type d \\) -print 2>/dev/null | grep -v '^$' | sort | head -${maxLines}`;
-    const output = execSync(cmd, { encoding: 'utf8', stdio: 'pipe' }).trim();
-    
-    if (!output) return '';
+    const entries = walkPaths(rootPath, { maxItems: 100 });
+    if (!entries.length) return '';
 
-    const lines = output.split('\n').filter(Boolean);
-    const formatted = lines.map(line => {
-      const depth = (line.match(/\//g) || []).length - (rootPath.match(/\//g) || []).length;
-      const indent = '  '.repeat(depth);
-      const name = path.basename(line);
-      const isDir = !name.includes('.') || name === '.' ? '/' : '';
-      return indent + (name || rootPath) + isDir;
+    const formatted = entries.map(({ path: full, isDir }) => {
+      const rel = path.relative(rootPath, full);
+      // Profundidade pelo separador do SISTEMA (antes contava só '/', que no
+      // Windows nunca aparece e deixava tudo no mesmo nível).
+      const depth = rel ? rel.split(/[\\/]/).length - 1 : 0;
+      return '  '.repeat(depth) + path.basename(full) + (isDir ? '/' : '');
     }).join('\n');
 
     return formatted.length > 5000 ? formatted.slice(0, 5000) + '\n[...truncated]' : formatted;
@@ -85,10 +121,6 @@ function generateTreeStructure(rootPath) {
     console.warn('[tree] falhou gerar estrutura:', e.message);
     return '';
   }
-}
-
-function escapeForDoubleQuotes(str) {
-  return String(str || '').replace(/(["\\$`])/g, '\\$1');
 }
 
 function collectCandidatePaths(attachments, maxItems = 220) {
@@ -100,11 +132,7 @@ function collectCandidatePaths(attachments, maxItems = 220) {
     }
     if (att.type !== 'dir') continue;
     try {
-      const root = escapeForDoubleQuotes(att.path);
-      const cmd = `find "${root}" \\( -name '.git' -o -name 'node_modules' -o -name 'target' -o -name 'build' -o -name '.idea' -o -name '__pycache__' -o -name '.venv' -o -name 'dist' \\) -prune -o -type f -print 2>/dev/null | sort | head -${maxItems}`;
-      const output = execSync(cmd, { encoding: 'utf8', stdio: 'pipe' }).trim();
-      if (!output) continue;
-      out.push(...output.split('\n').filter(Boolean));
+      out.push(...walkPaths(att.path, { maxItems, filesOnly: true }).map((e) => e.path));
     } catch (_) {
       // best effort: em caso de falha, segue com os anexos já conhecidos
     }

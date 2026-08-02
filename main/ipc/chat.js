@@ -421,7 +421,15 @@ function broadcastAiModelChange(data = {}) {
 }
 
 ipcMain.on("set-ai-model", (event, aiModel) => {
-  try { BackendService.abortCurrentRequest(); } catch (_) {}
+  const anterior = configService.getAiModel();
+  // Trocar de provedor no meio de uma resposta invalida a resposta — aí abortar
+  // é certo. Mas o botão Salvar das Configurações reenvia SEMPRE o modelo
+  // atual, mesmo sem alteração nenhuma: abortar incondicionalmente matava a
+  // resposta em andamento só porque o usuário abriu e salvou as Configurações
+  // enquanto esperava. O sintoma era "mandei a pergunta e nunca veio nada".
+  if (anterior !== aiModel) {
+    try { BackendService.abortCurrentRequest(); } catch (_) {}
+  }
   configService.setAiModel(aiModel);
   broadcastAiModelChange({ provider: aiModel });
 });
