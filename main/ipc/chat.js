@@ -346,6 +346,35 @@ ipcMain.on("send-to-gemini-stream", async (event, text, sessionId) => {
     const _augTxtO2 = _kbO2 ? _kbO2 + "\n\n---\n\n" + _wsTxtO2 : _wsTxtO2;
     const _htO2 = helpers.buildHelperToolsOpenAIOpts(_augTxtO2, instructionO2, configService.getOpenAiModel());
 
+    // MODO AGENTE NATIVO. Só vale quando há ferramentas engajadas (é aí que o
+    // protocolo importa) e quando o servidor expõe /agent. No caminho nativo a
+    // chamada de ferramenta é um objeto tipado, e não texto que o modelo
+    // confunde com o próprio raciocínio — medido: 18s por rodada contra 47-110s,
+    // e 87 tokens de raciocínio contra 4546.
+    if (_htO2.opts && _htO2.opts.tools && _htO2.opts.onToolCall) {
+      const AgentService = require('../../services/backendAgentService');
+      if (await AgentService.suportaAgente()) {
+        console.log("IPC: modo AGENTE (tool calling nativo via /agent)");
+        await AgentService.agentStream(
+          _augTxtO2,
+          (chunk) => { event.sender.send("gemini-stream-chunk", chunk); },
+          () => { event.sender.send("gemini-stream-complete"); },
+          (error) => {
+            if (error && (error.message === 'Request cancelled' || error.message === 'Cancelado.')) {
+              console.log('[ipc] Agente cancelado pelo usuário.');
+              event.sender.send("transcription-error", "Request cancelled");
+              return;
+            }
+            console.error("Agent error:", error);
+            event.sender.send("transcription-error", error.message);
+          },
+          { ..._htO2.opts, model: configService.getBackendModel && configService.getBackendModel() }
+        );
+        return;
+      }
+      console.log("IPC: /agent indisponível no servidor — caindo pro protocolo de texto.");
+    }
+
     await BackendService.responderStream(
       _augTxtO2,
       // onChunk
@@ -391,6 +420,9 @@ ipcMain.on("cancel-ia-request", () => {
     state.waitingNotificationInterval = null;
   }
   try { BackendService.abortCurrentRequest(); } catch (_) {}
+  // O modo agente tem o próprio turno em andamento — sem isto o botão "Parar
+  // IA" não alcança o caminho nativo e o usuário fica sem como interromper.
+  try { require('../../services/backendAgentService').abortCurrentRequest(); } catch (_) {}
   try {
     const OllamaLocalService = require('../../services/ollamaLocalService');
     OllamaLocalService.abortCurrentRequest();

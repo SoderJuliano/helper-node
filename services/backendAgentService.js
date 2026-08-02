@@ -28,6 +28,17 @@ const { capToolResult } = require('./toolLoop');
 
 const urlDiscovery = createUrlDiscovery();
 
+// Turno em andamento, pra o botão "Parar IA" (cancel-ia-request) alcançar
+// também o caminho nativo. Sem isto o usuário fica sem como interromper.
+let abortAtual = null;
+
+function abortCurrentRequest() {
+  if (abortAtual) {
+    try { abortAtual.abort(); console.log('[agent] turno cancelado pelo usuário.'); } catch (_) {}
+    abortAtual = null;
+  }
+}
+
 // Sem um byte por este tempo o stream está travado. Generoso: o modelo pode
 // demorar pra emitir o 1º token quando o contexto está grande.
 const STALL_MS = Number(process.env.HELPER_AGENT_STALL_MS || 240000);
@@ -175,7 +186,11 @@ async function agentStream(texto, onChunk, onComplete, onError, opts = {}) {
   const maxIters = Number(process.env.HELPER_AGENT_MAX_ITERS || 30);
   const inicio = Date.now();
   const TETO_MS = Number(process.env.HELPER_AGENT_MAX_MS || 25 * 60 * 1000);
-  const signal = opts.signal;
+
+  // Um turno por vez: se sobrou algo pendurado, aborta antes de começar.
+  abortCurrentRequest();
+  abortAtual = new AbortController();
+  const signal = opts.signal || abortAtual.signal;
 
   try {
     for (let iter = 0; iter < maxIters; iter++) {
@@ -251,4 +266,4 @@ async function suportaAgente() {
   }
 }
 
-module.exports = { agentStream, suportaAgente };
+module.exports = { agentStream, suportaAgente, abortCurrentRequest };
