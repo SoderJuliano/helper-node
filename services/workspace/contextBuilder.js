@@ -60,6 +60,15 @@ const SKIP_DIRS = new Set([
   '.git', 'node_modules', 'target', 'build', '.idea', '__pycache__', '.venv', 'dist',
 ]);
 
+// Arquivo morto não é candidato a nada. Um ".bak" chegou a ser SUGERIDO pro
+// agente ("configService.js.bak"), e sugestão é a primeira coisa que ele
+// persegue: cada arquivo irrelevante na lista custa uma rodada inteira.
+const SUFIXOS_MORTOS = /\.(bak|old|orig|tmp|swp|log|min\.js|min\.css|map)$|~$/i;
+
+function ehArquivoMorto(nome) {
+  return SUFIXOS_MORTOS.test(nome);
+}
+
 /**
  * Percorre o diretório em Node puro.
  *
@@ -90,6 +99,7 @@ function walkPaths(rootPath, { maxItems, filesOnly = false }) {
         if (!filesOnly) out.push({ path: full, isDir: true });
         stack.push(full);
       } else if (entry.isFile()) {
+        if (ehArquivoMorto(entry.name)) continue;
         out.push({ path: full, isDir: false });
       }
     }
@@ -278,8 +288,49 @@ function suggestRelevantFiles(texto, attachments, candidates = []) {
     .filter(x => x.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, 5)  // top 5
-    .map(x => `  • ${x.path}`)
-    .join('\n');
+    .map(x => x.path);
+}
+
+// Quanto do arquivo mais provável entra JÁ LIDO no contexto inicial.
+const INLINE_ALVO_CHARS = Number(process.env.HELPER_INLINE_ALVO_CHARS || 30000);
+
+/**
+ * Lê o arquivo com maior chance de ser o alvo e devolve o bloco pronto.
+ *
+ * Por que isto existe: medindo o agente contra o backend real, ele gastava de 3
+ * a 5 RODADAS (300-500s) só pra ter o código em mãos — readFile, searchInFiles,
+ * readFileChunk, readFileChunk — antes da primeira edição. Entregar caminho não
+ * resolve: "arquivo sugerido" ainda custa uma rodada de leitura cada.
+ * Entregando o CONTEÚDO, a primeira rodada já pode editar.
+ */
+async function inlineArquivoAlvo(candidatoTop) {
+  if (!candidatoTop) return '';
+  try {
+    const st = fsSync.statSync(candidatoTop);
+    if (!st.isFile() || st.size > 5 * 1024 * 1024) return '';
+  } catch (_) {
+    return '';
+  }
+  const conteudo = await readSmallFileSafe(candidatoTop);
+  if (conteudo === null) return ''; // binário ou ilegível
+
+  const truncou = conteudo.length > INLINE_ALVO_CHARS;
+  const corpo = truncou ? conteudo.slice(0, INLINE_ALVO_CHARS) : conteudo;
+  const linhas = corpo.split('\n').length;
+
+  return [
+    '',
+    `═══ CONTEÚDO DE ${candidatoTop} ═══`,
+    `(este é o arquivo com maior chance de ser o alvo, JÁ LIDO pra você —`,
+    ` NÃO gaste uma rodada com readFile nele; edite direto com patchFile)`,
+    truncou
+      ? `(mostrando as primeiras ${linhas} linhas de ${conteudo.length} chars; use readFileChunk se precisar do resto)`
+      : `(arquivo completo, ${linhas} linhas)`,
+    '```',
+    corpo,
+    '```',
+    '',
+  ].join('\n');
 }
 
 /**
@@ -312,12 +363,18 @@ async function buildContextBlock(opts = {}) {
 
   // Sugere arquivos relevantes baseado na pergunta (se houver no contexto)
   let relevantSuggestion = '';
+  let alvoInline = '';
   if (opts.userText) {
     const candidates = collectCandidatePaths(attachments);
     const suggested = suggestRelevantFiles(opts.userText, attachments, candidates);
-    if (suggested) {
-      relevantSuggestion = `Arquivos sugeridos para análise:\n${suggested}`;
-      console.log(`[tree] sugestão gerada: ${suggested.split('\n').length} arquivos`);
+    if (suggested.length) {
+      relevantSuggestion = `Arquivos sugeridos para análise:\n${suggested.map(p => `  • ${p}`).join('\n')}`;
+      console.log(`[tree] sugestão gerada: ${suggested.length} arquivos`);
+      // O primeiro colocado entra JÁ LIDO — economiza as rodadas de leitura.
+      alvoInline = await inlineArquivoAlvo(suggested[0]);
+      if (alvoInline) {
+        console.log(`[tree] alvo inline: ${suggested[0]} (${alvoInline.length} chars no contexto)`);
+      }
     } else {
       console.log(`[tree] nenhum arquivo sugerido para: "${opts.userText.slice(0, 60)}"`);
     }
@@ -357,6 +414,7 @@ async function buildContextBlock(opts = {}) {
     "",
     treeStructure ? `Estrutura de diretórios:\n\`\`\`\n${treeStructure}\n\`\`\`` : '',
     relevantSuggestion ? `\n${relevantSuggestion}` : '',
+    alvoInline || '',
     "",
     "Use as tools disponíveis (readFile, readFileChunk, listDir, writeFile, appendToFile, deleteFile, patchFile) pra interagir.",
     "Edições/exclusões SEMPRE pedem confirmação visual ao usuário antes de executar.",
