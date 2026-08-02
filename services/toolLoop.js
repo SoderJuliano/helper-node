@@ -28,17 +28,28 @@
 // enxergar 14% por leitura e precisava de 8 RODADAS só pra ler o arquivo —
 // otimizei a rodada e quebrei a tarefa. O teto tem que caber um pedaço de
 // arquivo que dê pra trabalhar (~280 linhas), mesmo custando mais por rodada.
-// O QUE MANDA AQUI É O ESPAÇO QUE SOBRA PRA GERAR, não o tamanho do prompt.
-// O servidor reserva OUTPUT_HEADROOM_TOKENS (8192) e escolhe o num_ctx como a
-// menor potência de 2 acima de (prompt/3 + headroom). Pra janela ficar em
-// 16384 com os 8192 de saída intactos, o prompt tem que caber em 8192 tokens:
-//   24000 chars / 3 = 8000 tokens + 8192 = 16192 -> num_ctx 16384
-//   sobra = 16384 - 8000 = 8384 tokens pro modelo pensar E responder
-// Um raciocínio real medido gastou 4683 tokens, então 8384 dá folga.
-// Subir o prompt daqui empurra o num_ctx pra 32768 (rodada ~2x mais lenta) ou,
-// pior, come o espaço de saída e o turno acaba sem resposta nenhuma.
-const MAX_TOOL_RESULT_CHARS = Number(process.env.HELPER_MAX_TOOL_RESULT_CHARS || 10000);
-const MAX_PROMPT_CHARS = Number(process.env.HELPER_MAX_PROMPT_CHARS || 24000);
+// ORÇAMENTO DO TURNO — três restrições ao mesmo tempo, e apertar uma quebra
+// as outras. Já quebrei todas as três nesta ordem, uma de cada vez:
+//
+//   1. Espaço pra GERAR = num_ctx − prompt. O raciocínio sozinho gasta ~4700
+//      tokens antes de a resposta começar. Faltando espaço, o turno termina
+//      sem UMA letra de resposta.
+//   2. Espaço pra ENXERGAR o arquivo. Teto de resultado pequeno faz o modelo
+//      ler 14% do arquivo por vez e gastar rodadas só navegando.
+//   3. Espaço pra LEMBRAR. Com o teto em 24000, o custo fixo (prompt de
+//      sistema 6374 + contexto de workspace 4196 = 10570, ou 44% do teto)
+//      deixava 13430, e UMA leitura de 10000 já enchia: a 2ª leitura expulsava
+//      a 1ª e o modelo relia o mesmo arquivo pra sempre. Laço infinito.
+//
+// A janela de 16384 não comporta as três. Então o turno assume 32768:
+//   60000 chars / 3 = 20000 tokens + 8192 de folga = 28192 -> num_ctx 32768
+//   sobra pra gerar = 32768 − 20000 = 12768 tokens (raciocínio 4700 + resposta)
+//   cabem 4 leituras de 12000 simultâneas + histórico, sem expulsar nada
+//
+// Rodada mais lenta que em 16384, e é o preço certo: turno lento que TERMINA
+// vale mais que turno rápido que relê o arquivo pra sempre.
+const MAX_TOOL_RESULT_CHARS = Number(process.env.HELPER_MAX_TOOL_RESULT_CHARS || 12000);
+const MAX_PROMPT_CHARS = Number(process.env.HELPER_MAX_PROMPT_CHARS || 60000);
 
 function capToolResult(str) {
   const s = String(str == null ? '' : str);
