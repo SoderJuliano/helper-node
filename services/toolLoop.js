@@ -48,8 +48,15 @@
 //
 // Rodada mais lenta que em 16384, e é o preço certo: turno lento que TERMINA
 // vale mais que turno rápido que relê o arquivo pra sempre.
-const MAX_TOOL_RESULT_CHARS = Number(process.env.HELPER_MAX_TOOL_RESULT_CHARS || 12000);
-const MAX_PROMPT_CHARS = Number(process.env.HELPER_MAX_PROMPT_CHARS || 60000);
+// MEDIDO (mesmo prompt, agente completo contra o backend real):
+//   resultado 12000 -> 5 rodadas / 765s, sendo 3 rodadas (377s) SÓ navegando o
+//   arquivo: readFile truncava em 27% do config.html, então ele lia, faltava,
+//   buscava, lia pedaço, lia outro pedaço, e só então editava.
+// Com 32000 o arquivo cabe em ~1 leitura útil e as rodadas de navegação caem.
+//   70000/3 = 23333 tok + 8192 de folga = 31525 -> num_ctx 32768
+//   sobra pra gerar = 32768 − 23333 = 9435 tok (raciocínio medido: ~2400/rodada)
+const MAX_TOOL_RESULT_CHARS = Number(process.env.HELPER_MAX_TOOL_RESULT_CHARS || 32000);
+const MAX_PROMPT_CHARS = Number(process.env.HELPER_MAX_PROMPT_CHARS || 70000);
 
 function capToolResult(str) {
   const s = String(str == null ? '' : str);
