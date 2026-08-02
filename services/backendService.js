@@ -341,6 +341,23 @@ class BackendService {
       // o turno que fica só deliberando — ou repetindo a mesma chamada — é
       // encerrado e entrega o que já tem. Era esse o caso dos 10+ minutos
       // parados depois do patchFile.
+      // O PEDIDO DO USUÁRIO É REINJETADO A CADA RODADA, no fim do prompt.
+      //
+      // capPrompt preserva a cabeça (instruções) e a cauda (resultados recentes)
+      // e corta o MIOLO — e o pedido do usuário fica exatamente no miolo, logo
+      // depois do contexto de workspace. Com o teto em 24000, sistema (6374) +
+      // workspace (4196) enchem a cabeça de 10800 e sobram 230 chars: o pedido
+      // (~360) era CORTADO a partir da 2ª rodada. O modelo ficava órfão de
+      // tarefa, via só o "Continue de onde parou" do TOOL_RESULT e saía
+      // chutando arquivo — pediram layout de configurações e ele foi ler o chat.
+      //
+      // Vai no payload, não no prompt acumulado: assim não empilha a cada
+      // rodada, fica sempre por último (é o que o modelo lê por fim) e nenhum
+      // corte futuro consegue removê-lo.
+      const lembretePedido = opts.userText
+        ? `\n\n═══ PEDIDO DO USUÁRIO (é ISTO que você tem que entregar) ═══\n${opts.userText}\n`
+        : '';
+
       const ORCAMENTO_SEM_PROGRESSO_MS = Number(process.env.HELPER_TOOL_LOOP_BUDGET_MS || 7 * 60 * 1000);
       // Rede final: mesmo progredindo, nenhum turno passa disto.
       const TETO_ABSOLUTO_MS = Number(process.env.HELPER_TOOL_LOOP_MAX_MS || 25 * 60 * 1000);
@@ -398,7 +415,12 @@ class BackendService {
           });
         }
 
-        const payload = { prompt: currentWorkingPrompt, language: mappedLang };
+        // iter 0 já tem o pedido no corpo do prompt; a partir da 2ª rodada ele
+        // pode ter sido cortado pelo capPrompt, então volta no fim.
+        const payload = {
+          prompt: iter === 0 ? currentWorkingPrompt : currentWorkingPrompt + lembretePedido,
+          language: mappedLang,
+        };
         if (opts.imageBase64) {
           payload.imageBase64 = opts.imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
         }
