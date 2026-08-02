@@ -461,7 +461,22 @@ class BackendService {
           // muitas edições segue rodando o quanto for necessário — o que o
           // orçamento corta é o turno PARADO, não o turno longo.
           if (houveChamadaNova) ultimoProgresso = Date.now();
-          currentWorkingPrompt = capPrompt(currentWorkingPrompt + results + repeticao);
+
+          // O QUE O MODELO ESCREVEU VOLTA PRO PROMPT. Sem isto, a única coisa
+          // que se acumulava entre rodadas eram os TOOL_RESULT: o plano e o
+          // relatório de progresso que ele acabou de escrever eram DESCARTADOS.
+          // Na rodada seguinte ele recebia o pedido original + resultados, sem
+          // nenhuma lembrança do próprio raciocínio — e replanejava do zero,
+          // relia os mesmos arquivos e nunca convergia. Era esse o "ela reinicia
+          // a tarefa" e os 12 minutos sem escrever nada.
+          // (O ramo de TOOL_CALL malformado, abaixo, já reinjetava a resposta —
+          // o esquecimento aqui era descuido, não intenção.)
+          const escritoPeloModelo = stripToolCallBlocks(router.answer).trim();
+          const memoria = escritoPeloModelo
+            ? `\n\n[VOCÊ ESCREVEU]\n${escritoPeloModelo}`
+            : '';
+
+          currentWorkingPrompt = capPrompt(currentWorkingPrompt + memoria + results + repeticao);
           iter++;
           continue;
         } else if (

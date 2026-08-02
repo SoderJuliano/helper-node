@@ -52,11 +52,21 @@ function createStreamRouter({ onChunk, hasTools }) {
     return 0;
   }
 
+  // Até onde é seguro emitir sem vazar o começo de uma chamada.
+  function limiteSeguro() {
+    // Marcador JÁ COMPLETO no buffer: nada dele (nem do que vier depois) vai
+    // pra tela. Sem este caso, "TOOL_CALL" aparecia inteiro no fim do relatório
+    // de progresso — pareceChamada() só dispara quando chega o ":" ou o "{",
+    // e até lá o texto já tinha sido emitido.
+    const idx = answerBuffer.toUpperCase().lastIndexOf(MARCA);
+    if (idx >= 0) return idx;
+    // Marcador possivelmente sendo escrito agora: retém o sufixo parcial.
+    return answerBuffer.length - tamanhoRetido(answerBuffer);
+  }
+
   function emitirPendente(reterMarca = true) {
     if (answerIsToolCall || !onChunk) return;
-    const limite = reterMarca
-      ? answerBuffer.length - tamanhoRetido(answerBuffer)
-      : answerBuffer.length;
+    const limite = reterMarca ? limiteSeguro() : answerBuffer.length;
     if (limite <= emitidoAte) return;
     const trecho = answerBuffer.slice(emitidoAte, limite);
     emitidoAte = limite;
@@ -119,8 +129,13 @@ function createStreamRouter({ onChunk, hasTools }) {
     markStreamed() { streamedAnything = true; },
     // Fim do turno: solta o sufixo que estava retido por poder ser o começo de
     // "TOOL_CALL". Sem isso, uma resposta final que terminasse nessas letras
-    // perderia os últimos caracteres na tela.
-    flushAnswer() { emitirPendente(false); },
+    // perderia os últimos caracteres na tela. A exceção é um marcador SOLTO no
+    // fim (chamada que o modelo começou e não completou): isso é lixo de
+    // protocolo, não resposta — fica retido.
+    flushAnswer() {
+      const restoSoMarcador = /TOOL_?CALL[\s:]*$/i.test(answerBuffer.slice(emitidoAte));
+      emitirPendente(restoSoMarcador);
+    },
   };
 }
 
