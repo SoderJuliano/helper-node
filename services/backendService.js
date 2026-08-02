@@ -328,23 +328,26 @@ class BackendService {
       }
 
       let iter = 0;
-      // Teto de iterações. O default do helperTools é 50, calibrado pro OpenAI,
-      // onde cada rodada custa segundos. Aqui cada rodada é uma GERAÇÃO INTEIRA
-      // de um modelo com raciocínio sobre um prompt que só cresce (contexto do
-      // workspace + base de conhecimento + todos os TOOL_RESULT acumulados):
-      // passa de um minuto por rodada com facilidade. 50 rodadas viram uma hora
-      // sem nada na tela. Ajustável por HELPER_TOOL_LOOP_MAX_ITERS.
-      const TETO_ITERS_BACKEND = Number(process.env.HELPER_TOOL_LOOP_MAX_ITERS || 10);
-      const maxIters = Math.min(opts.maxToolCalls || 15, TETO_ITERS_BACKEND);
+      // Teto de rodadas. Folgado de propósito: tarefa real pode precisar de
+      // muitas edições, e cortar por contagem puniria justamente quem está
+      // trabalhando. Quem segura o turno travado é o orçamento SEM PROGRESSO,
+      // abaixo. Ajustável por HELPER_TOOL_LOOP_MAX_ITERS.
+      const maxIters = Number(process.env.HELPER_TOOL_LOOP_MAX_ITERS || 30);
 
-      // Orçamento de tempo do turno inteiro. O teto de iterações não protege
-      // contra UMA rodada lenta: com o prompt no talo do num_ctx, uma única
-      // geração do 35B passa de 10 minutos, e o usuário fica olhando o
-      // raciocínio rolar sem nunca receber resposta. Estourando o orçamento,
-      // entregamos o que já existe em vez de continuar.
-      const ORCAMENTO_MS = Number(process.env.HELPER_TOOL_LOOP_BUDGET_MS || 6 * 60 * 1000);
+      // Orçamento medido a partir do ÚLTIMO PROGRESSO, não do início do turno.
+      // Progresso = uma tool call INÉDITA executada (repetir a mesma chamada é
+      // justamente o sintoma de estar preso, então não renova nada).
+      // Assim: 30 edições distintas seguem rodando o tempo que precisarem, mas
+      // o turno que fica só deliberando — ou repetindo a mesma chamada — é
+      // encerrado e entrega o que já tem. Era esse o caso dos 10+ minutos
+      // parados depois do patchFile.
+      const ORCAMENTO_SEM_PROGRESSO_MS = Number(process.env.HELPER_TOOL_LOOP_BUDGET_MS || 7 * 60 * 1000);
+      // Rede final: mesmo progredindo, nenhum turno passa disto.
+      const TETO_ABSOLUTO_MS = Number(process.env.HELPER_TOOL_LOOP_MAX_MS || 25 * 60 * 1000);
       const inicioTurno = Date.now();
+      let ultimoProgresso = Date.now();
       let estourouTempo = false;
+      let motivoTempo = '';
 
       let currentWorkingPrompt = promptWithContext;
       // Quantas vezes já pedi pro modelo reemitir um TOOL_CALL que veio quebrado.
@@ -367,10 +370,20 @@ class BackendService {
         // Só entra em NOVA rodada se ainda há orçamento. Não interrompe uma
         // geração em andamento — corta o encadeamento de rodadas, que é o que
         // faz o turno se arrastar sem fim.
-        if (iter > 0 && Date.now() - inicioTurno > ORCAMENTO_MS) {
-          estourouTempo = true;
-          console.warn(`[backend-stream] orçamento de ${Math.round(ORCAMENTO_MS / 1000)}s estourado na iter ${iter + 1} — encerrando o turno.`);
-          break;
+        if (iter > 0) {
+          const paradoMs = Date.now() - ultimoProgresso;
+          const totalMs = Date.now() - inicioTurno;
+          if (paradoMs > ORCAMENTO_SEM_PROGRESSO_MS) {
+            estourouTempo = true;
+            motivoTempo = `${Math.round(paradoMs / 1000)}s sem nenhuma ferramenta nova`;
+          } else if (totalMs > TETO_ABSOLUTO_MS) {
+            estourouTempo = true;
+            motivoTempo = `teto absoluto de ${Math.round(TETO_ABSOLUTO_MS / 60000)}min`;
+          }
+          if (estourouTempo) {
+            console.warn(`[backend-stream] encerrando na iter ${iter + 1}: ${motivoTempo}.`);
+            break;
+          }
         }
 
         const payload = { prompt: currentWorkingPrompt, language: mappedLang };
@@ -421,10 +434,15 @@ class BackendService {
           // Preso na mesma chamada? Cobra o próximo passo em vez de deixar o
           // modelo gastar as 15 iterações repetindo o mesmo listDir.
           let repeticao = '';
+          let houveChamadaNova = false;
           for (const c of calls) {
             const sig = `${c.obj.name}:${JSON.stringify(c.obj.args || {})}`;
             const n = (callCounts.get(sig) || 0) + 1;
             callCounts.set(sig, n);
+            // Chamada INÉDITA = o turno avançou de verdade. Repetir a mesma
+            // chamada não conta como progresso (é justamente o sintoma de estar
+            // preso), e por isso não renova o orçamento.
+            if (n === 1) houveChamadaNova = true;
             if (n >= 3) {
               repeticao = '\n\nPARE. Você já chamou ' + c.obj.name + ' com esses ' +
                 'mesmos argumentos ' + n + ' vezes e o resultado está acima. ' +
@@ -439,6 +457,10 @@ class BackendService {
           if (repeticao && onChunk) {
             onChunk({ type: 'thinking', text: '\n⚠️ Chamada repetida — cobrando o próximo passo.\n' });
           }
+          // Avançou: renova o orçamento. Tarefa que legitimamente precisa de
+          // muitas edições segue rodando o quanto for necessário — o que o
+          // orçamento corta é o turno PARADO, não o turno longo.
+          if (houveChamadaNova) ultimoProgresso = Date.now();
           currentWorkingPrompt = capPrompt(currentWorkingPrompt + results + repeticao);
           iter++;
           continue;
@@ -506,7 +528,7 @@ class BackendService {
       const decorridoS = Math.round((Date.now() - inicioTurno) / 1000);
       console.warn(
         estourouTempo
-          ? `[backend-stream] turno encerrado por tempo (${decorridoS}s) após ${iter} rodada(s).`
+          ? `[backend-stream] turno encerrado (${decorridoS}s, ${iter} rodada(s)): ${motivoTempo}.`
           : `[backend-stream] limite de ${maxIters} iterações atingido sem resposta final.`
       );
       if (onChunk) {
@@ -514,8 +536,8 @@ class BackendService {
         if (!algoNaTela && ultimoTexto) onChunk(ultimoTexto);
         onChunk(
           estourouTempo
-            ? `\n\n_Parei após ${decorridoS}s (${iter} rodada(s) de ferramenta) pra não deixar você esperando. ` +
-              `As edições já aplicadas estão salvas. Peça a continuação em passos menores._`
+            ? `\n\n_Parei após ${decorridoS}s e ${iter} rodada(s) de ferramenta — ${motivoTempo}. ` +
+              `As edições já aplicadas estão salvas. Peça a continuação de onde parou._`
             : `\n\n_Parei após ${maxIters} rodadas de ferramenta sem concluir. ` +
               `Peça em passos menores ou diga qual arquivo atacar primeiro._`
         );
