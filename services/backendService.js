@@ -358,6 +358,45 @@ class BackendService {
         ? `\n\n═══ PEDIDO DO USUÁRIO (é ISTO que você tem que entregar) ═══\n${opts.userText}\n`
         : '';
 
+      // TRAVA DO LAÇO DE VERIFICAÇÃO. Medido num turno real: o modelo aplicou a
+      // solução CORRETA aos 630s e depois gastou mais 18 MINUTOS relendo o
+      // arquivo que acabou de editar e empilhando outras duas abordagens de CSS
+      // com !important — que quebrariam a primeira. Ele não consegue ver a tela,
+      // então "confere" relendo, não se convence, e tenta de novo.
+      //
+      // Reler um arquivo que este turno acabou de escrever não traz informação
+      // nova: o TOOL_RESULT da escrita já confirmou. Aqui a leitura é
+      // curto-circuitada com a instrução de encerrar.
+      const LEITURA = new Set(['readFile', 'readFileChunk', 'searchInFiles', 'fileInfo']);
+      const ESCRITA_TOOLS = new Set(['writeFile', 'appendToFile', 'patchFile', 'deleteFile']);
+      const arquivosEscritos = new Set();
+      const normPath = (p) => String(p || '').replace(/\\/g, '/').toLowerCase();
+
+      const onToolCallOriginal = onToolCall;
+      if (onToolCallOriginal) {
+        onToolCall = async (name, args, meta) => {
+          const alvo = normPath(args && (args.path || args.file));
+          if (LEITURA.has(name) && alvo && arquivosEscritos.has(alvo)) {
+            console.warn(`[backend-stream][tools] ${name} em arquivo já editado neste turno — cobrando o encerramento.`);
+            return {
+              ok: true,
+              result: {
+                skipped: true,
+                note: 'Você JÁ editou este arquivo neste turno e o TOOL_RESULT confirmou ' +
+                  'que deu certo. Reler não traz informação nova e você não consegue ver a ' +
+                  'tela renderizada, então mais uma tentativa não valida nada — só empilha ' +
+                  'regras conflitantes. Se a tarefa acabou, RESPONDA AGORA em texto normal, ' +
+                  'sem nenhum TOOL_CALL, dizendo o que mudou. Só continue se faltar um passo ' +
+                  'DIFERENTE, em OUTRO arquivo.',
+              },
+            };
+          }
+          const r = await onToolCallOriginal(name, args, meta);
+          if (ESCRITA_TOOLS.has(name) && alvo && r && r.ok !== false) arquivosEscritos.add(alvo);
+          return r;
+        };
+      }
+
       const ORCAMENTO_SEM_PROGRESSO_MS = Number(process.env.HELPER_TOOL_LOOP_BUDGET_MS || 7 * 60 * 1000);
       // Rede final: mesmo progredindo, nenhum turno passa disto.
       const TETO_ABSOLUTO_MS = Number(process.env.HELPER_TOOL_LOOP_MAX_MS || 25 * 60 * 1000);
