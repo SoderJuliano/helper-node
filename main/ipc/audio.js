@@ -5,7 +5,7 @@ const {
   OpenAIService, RealtimeAssistantService, RealtimeOpenAiService, ipcService,
   configService, edition, knowledgeBase, fileEditService, historyService,
   helperTools, workspace, agenticWorkflow, ollamaAgenticWorkflow,
-  translationAssistant, visionGuide, platformScreenCapture, runTestMode,
+  translationAssistant, visionGuide, platformScreenCapture, googleTtsService, runTestMode,
   analyzeInterviewImage, cloudTranscribeAudio,
   APP_ICON, HIDE_FROM_TASKBAR, IMAGE_COOLDOWN_MS, AUDIO_TMP_DIR,
   audioFilePath, SCREENSHOT_DIRS, PROJECT_SEARCH_SKIP_DIRS, TREE_HEAVY_DIRS,

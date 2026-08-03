@@ -736,7 +736,7 @@ if (googleTtsToggle) {
     updateGoogleTtsStatus(enabled);
 
     const keyPathOrKey = googleTtsKey ? googleTtsKey.value.trim() : "";
-    const voiceName = googleTtsVoiceSelect ? googleTtsVoiceSelect.value : "pt-BR-Neural2-C";
+    const voiceName = "pt-BR-Neural2-C"; // Voz profissional padrão (TODO: menu futuro de vozes)
 
     if (enabled && googleTtsTestResult) {
       googleTtsTestResult.style.color = "#ffb74d";
@@ -769,12 +769,11 @@ const saveGoogleTtsParams = () => {
   ipcRenderer.send("save-google-tts-config", {
     enabled: googleTtsToggle.checked,
     keyPathOrKey: googleTtsKey ? googleTtsKey.value.trim() : "",
-    voiceName: googleTtsVoiceSelect ? googleTtsVoiceSelect.value : "pt-BR-Neural2-C"
+    voiceName: "pt-BR-Neural2-C"
   });
 };
 
 if (googleTtsKey) googleTtsKey.addEventListener("blur", saveGoogleTtsParams);
-if (googleTtsVoiceSelect) googleTtsVoiceSelect.addEventListener("change", saveGoogleTtsParams);
 
 if (googleTtsTestBtn) {
   googleTtsTestBtn.addEventListener("click", async () => {
