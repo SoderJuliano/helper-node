@@ -99,8 +99,10 @@
 
         /* Styles for the Debug Mode Toggle */
         .setting-item {
-            display: flex;
-            justify-content: space-between;
+            display: grid;
+            /* Coluna 1: descrição (cresce e quebra linha). Colunas 2 e 3 reservadas para alinhar controles verticalmente */
+            grid-template-columns: minmax(180px, 1fr) auto auto;
+            gap: 15px;
             align-items: center;
             margin-bottom: 15px;
             padding: 10px;
@@ -112,6 +114,7 @@
         .setting-item label {
             margin-bottom: 0;
             font-weight: bold;
+            word-break: break-word; /* Evita estouro horizontal em textos longos */
         }
 
         /* --- TOGGLE SWITCH CSS --- */
