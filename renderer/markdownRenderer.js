@@ -81,8 +81,14 @@
             const blocks = [];
             const hold = (html) => { const ph = `\x00B${blocks.length}\x00`; blocks.push(html); return ph; };
 
+            // 0. Trata tag <voice_summary>...</voice_summary>
+            let out = text.replace(/<voice_summary>([\s\S]*?)<\/voice_summary>/gi, (_, summary) => {
+                const clean = summary.replace(/<[^>]*>/g, '').trim();
+                return hold(`<div class="voice-summary-card"><span class="voice-icon">🔊</span><div class="voice-content"><strong>Resumo em Áudio:</strong> ${clean}</div></div>`);
+            });
+
             // 1. Protege blocos ``` ... ```
-            let out = text.replace(/```([\w-]*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+            out = out.replace(/```([\w-]*)\n?([\s\S]*?)```/g, (_, lang, code) => {
                 const id = `${pfx}-cb-${Date.now()}-${blocks.length}`;
                 return hold(`<pre>${copyBtn()}<code id="${id}" class="language-${lang || 'text'}">${escapeHTML(code.trim())}</code></pre>`);
             });

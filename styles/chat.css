@@ -446,3 +446,39 @@
             content: "";
             margin-top: 4px;
         }
+
+        /* Card do Resumo em Voz (Google TTS) */
+        .voice-summary-card {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(0, 170, 255, 0.1);
+            border: 1px solid rgba(0, 170, 255, 0.3);
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin: 10px 0;
+            font-size: 13px;
+            color: #e0f2fe;
+        }
+        .voice-summary-card .voice-icon {
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+        .voice-summary-card .voice-content {
+            flex: 1;
+            line-height: 1.4;
+        }
+        .voice-summary-card .voice-play-btn {
+            background: rgba(0, 170, 255, 0.2);
+            border: 1px solid rgba(0, 170, 255, 0.4);
+            color: #38bdf8;
+            border-radius: 4px;
+            padding: 4px 10px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .voice-summary-card .voice-play-btn:hover {
+            background: rgba(0, 170, 255, 0.35);
+            color: #ffffff;
+        }
