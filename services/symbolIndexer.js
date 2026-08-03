@@ -349,8 +349,10 @@ class SymbolIndexer {
     const defRegexes = [
       // async function foo / function foo / function* foo
       new RegExp(`(?:async\\s+)?function\\*?\\s+${escaped}\\s*\\(`),
-      // const foo = / let foo = / var foo = / this.foo = / foo =
-      new RegExp(`(?:const|let|var|this\\.)?\\s*${escaped}\\s*=\\s*(?:async\\s*)?(?:\\([^)]*\\)|[A-Za-z0-9_$]+|function)`),
+      // const foo / let foo / var foo (com ou sem = e qualquer valor)
+      new RegExp(`(?:const|let|var)\\s+${escaped}\\b`),
+      // this.foo = ... / foo = ...
+      new RegExp(`(?:this\\.)?${escaped}\\s*=\\s*(?:async\\s*)?(?:\\([^)]*\\)|[A-Za-z0-9_$]+|function)`),
       // foo(...) { / async foo(...) { / get foo() / set foo() / static foo()
       new RegExp(`(?:async\\s+|get\\s+|set\\s+|static\\s+)?${escaped}\\s*\\([^)]*\\)\\s*\\{`),
       // foo: function / foo: async function / foo: (
