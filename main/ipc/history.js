@@ -122,6 +122,8 @@ ipcMain.handle('add-message', async (event, sessionId, role, content) => {
 ipcMain.handle('create-new-session', async (event, title) => {
   try {
     const session = await historyService.createNewSession(title);
+    try { GeminiCliProvider.shutdown().catch(() => {}); } catch (_) {}
+    try { ClaudeCliProvider.shutdown().catch(() => {}); } catch (_) {}
     return session;
   } catch (error) {
     console.error('Erro ao criar sessão:', error);
@@ -134,6 +136,9 @@ ipcMain.handle('new-chat', async () => {
     const session = await historyService.createNewSession('Nova conversa');
     // Nova sessao = re-injeta contexto do workspace na proxima pergunta.
     try { workspace.resetContextSent && workspace.resetContextSent(); } catch (_) {}
+    // Garante que a nova conversa comece 100% limpa sem --continue / --resume
+    try { GeminiCliProvider.shutdown().catch(() => {}); } catch (_) {}
+    try { ClaudeCliProvider.shutdown().catch(() => {}); } catch (_) {}
     return session;
   } catch (error) {
     console.error('Erro ao criar novo chat:', error);

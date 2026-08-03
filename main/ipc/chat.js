@@ -299,11 +299,14 @@ ipcMain.on("stop-agentic-workflow", (event, sessionId) => {
 });
 
 ipcMain.on("clear-ai-sessions", () => {
-  console.log("🧹 Limpando sessões de IA (OpenAI + Backend + Gemini)...");
+  console.log("🧹 Limpando sessões de IA (OpenAI + Backend + Gemini + Claude)...");
   if (OpenAIService.sessions) OpenAIService.sessions = {};
   BackendService.clearSessions();
   GeminiCliProvider.shutdown().catch((e) => {
     console.warn('[gemini-cli] clear-ai-sessions shutdown error:', e.message);
+  });
+  ClaudeCliProvider.shutdown().catch((e) => {
+    console.warn('[claude-cli] clear-ai-sessions shutdown error:', e.message);
   });
 });
 
