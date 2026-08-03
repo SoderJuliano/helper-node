@@ -1,102 +1,165 @@
-// Known Antigravity (agy) CLI models. Models are ordered by capability (best first).
-const { exec } = require('child_process');
+// Lista de modelos do Antigravity CLI (agy) — 100% dinâmica, lida do binário.
+//
+// FONTE: `agy models`, um ID por linha.
+//
+// NADA de lista escrita à mão aqui. A versão anterior tinha um KNOWN_MODELS com
+// 11 nomes fixos que servia de FALLBACK quando o `agy` não respondia — e o
+// resultado era a UI oferecendo 11 modelos de um CLI que podia nem estar
+// instalado. Se o usuário escolhesse um, o envio quebrava depois, longe da
+// causa. Nome de modelo escrito à mão envelhece sozinho e mente na tela.
+//
+// Se a sondagem falhar, devolvemos LISTA VAZIA — a UI avisa que não conseguiu
+// listar, em vez de inventar. Mesmo contrato do CopilotCliModels/ClaudeCliModels.
+
+const { execFile } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 const { resolveBinary } = require('./GeminiCliProcess');
 
-const KNOWN_MODELS = [
-  { id: 'gemini-3.6-flash-high',        label: 'Gemini 3.6 Flash (High)'      },
-  { id: 'gemini-3.6-flash-medium',      label: 'Gemini 3.6 Flash (Medium)'    },
-  { id: 'gemini-3.6-flash-low',         label: 'Gemini 3.6 Flash (Low)'       },
-  { id: 'gemini-3.5-flash-high',        label: 'Gemini 3.5 Flash (High)'      },
-  { id: 'gemini-3.5-flash-medium',      label: 'Gemini 3.5 Flash (Medium)'    },
-  { id: 'gemini-3.5-flash-low',         label: 'Gemini 3.5 Flash (Low)'       },
-  { id: 'gemini-3.1-pro-high',          label: 'Gemini 3.1 Pro (High)'        },
-  { id: 'gemini-3.1-pro-low',           label: 'Gemini 3.1 Pro (Low)'         },
-  { id: 'claude-sonnet-4-6',            label: 'Claude Sonnet 4.6'            },
-  { id: 'claude-opus-4-6-thinking',     label: 'Claude Opus 4.6 (Thinking)'   },
-  { id: 'gpt-oss-120b-medium',          label: 'GPT-OSS 120B (Medium)'        },
-];
+// Sem modelo padrão escrito à mão: string vazia faz o GeminiCliProcess omitir
+// o `--model` (ele só empurra a flag `if (model)`), e o próprio CLI escolhe.
+const DEFAULT_MODEL = '';
 
-const DEFAULT_MODEL = 'gemini-3.5-flash-medium';
+const MEMORY_TTL = 5 * 60 * 1000;
+const PROBE_TIMEOUT = 20000;
 
 let cachedModels = null;
 let lastFetchTime = 0;
-const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+let inFlight = null;
+
+function cacheFile() {
+  try {
+    const { app } = require('electron');
+    return path.join(app.getPath('userData'), 'gemini-cli-models.json');
+  } catch (_) {
+    return null;
+  }
+}
+
+function readDiskCache() {
+  const f = cacheFile();
+  if (!f) return null;
+  try {
+    const raw = JSON.parse(fs.readFileSync(f, 'utf8'));
+    if (Array.isArray(raw.models) && raw.models.length) return raw.models;
+  } catch (_) {}
+  return null;
+}
+
+function writeDiskCache(models) {
+  const f = cacheFile();
+  if (!f) return;
+  try {
+    fs.writeFileSync(f, JSON.stringify({ savedAt: Date.now(), models }, null, 2));
+  } catch (e) {
+    console.warn('[GeminiCliModels] não consegui gravar cache:', e.message);
+  }
+}
+
+function runAgy(bin, args, timeoutMs) {
+  return new Promise((resolve) => {
+    // Args são literais fixos, sem espaço nem aspas — aqui o shell do shim .cmd
+    // não corrompe nada (diferente do prompt do usuário, ver CopilotCliProcess).
+    const useShell = process.platform === 'win32' && /\.(cmd|bat)$/i.test(bin);
+    const child = execFile(
+      bin,
+      args,
+      { timeout: timeoutMs, windowsHide: true, shell: useShell, maxBuffer: 4 * 1024 * 1024 },
+      (_err, stdout, stderr) => resolve(((stdout || '') + '\n' + (stderr || '')).trim())
+    );
+    // Sem isso o processo pode ficar esperando entrada e só sair no timeout.
+    try { child.stdin && child.stdin.end(); } catch (_) {}
+  });
+}
+
+// Converte o ID cru do CLI num rótulo legível ("gemini-3.5-flash-medium" →
+// "Gemini 3.5 Flash (Medium)"). É só formatação do que o CLI devolveu: nenhum
+// modelo é criado aqui, e ID desconhecido aparece cru, sem chute.
+// Exportada para teste sem spawnar o binário.
+function labelFromId(id) {
+  const parts = String(id).split('-');
+  const BRANDS = { gemini: 'Gemini', claude: 'Claude', gpt: 'GPT', grok: 'Grok', kimi: 'Kimi' };
+  const brand = BRANDS[parts[0]];
+  if (!brand) return id;
+
+  const TIERS = new Set(['high', 'medium', 'low', 'thinking', 'fast', 'mini']);
+  const tier = [];
+  while (parts.length > 1 && TIERS.has(parts[parts.length - 1].toLowerCase())) {
+    tier.unshift(parts.pop());
+  }
+
+  const cap = (w) => w.charAt(0).toUpperCase() + w.slice(1);
+  let label = [brand, ...parts.slice(1).map(cap)].join(' ');
+  if (tier.length) label += ` (${tier.map(cap).join(' ')})`;
+  return label;
+}
+
+// Uma linha = um ID. Descarta cabeçalho/ruído: ID de modelo não tem espaço.
+// Exportada para teste sem spawnar o binário.
+function parseModelIds(out) {
+  if (!out) return [];
+  const ids = [];
+  const seen = new Set();
+  for (const raw of out.replace(/\[[0-9;]*[a-zA-Z]/g, '').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || /\s/.test(line)) continue;
+    if (!/^[a-z0-9][a-z0-9._-]*$/i.test(line)) continue;
+    if (seen.has(line)) continue;
+    seen.add(line);
+    ids.push(line);
+  }
+  return ids;
+}
+
+async function fetchModels() {
+  const bin = await resolveBinary();
+  if (!bin) return null;
+
+  const out = await runAgy(bin, ['models'], PROBE_TIMEOUT);
+  const ids = parseModelIds(out);
+  if (!ids.length) return null;
+
+  return ids.map(id => ({ id, label: labelFromId(id) }));
+}
+
+function refresh() {
+  if (inFlight) return inFlight;
+  inFlight = fetchModels()
+    .then((models) => {
+      if (models) {
+        cachedModels = models;
+        lastFetchTime = Date.now();
+        writeDiskCache(models);
+      }
+      return models;
+    })
+    .catch((e) => {
+      console.warn('[GeminiCliModels] falha ao listar modelos do CLI:', e.message);
+      return null;
+    })
+    .finally(() => { inFlight = null; });
+  return inFlight;
+}
 
 async function getModels() {
-  const now = Date.now();
-  if (cachedModels && (now - lastFetchTime < CACHE_TTL)) {
-    return cachedModels;
+  if (cachedModels && Date.now() - lastFetchTime < MEMORY_TTL) return cachedModels;
+
+  const disk = readDiskCache();
+  if (disk && !cachedModels) {
+    // Serve o último resultado bom na hora e revalida em segundo plano.
+    cachedModels = disk;
+    lastFetchTime = Date.now();
+    refresh();
+    return disk;
   }
 
-  try {
-    const bin = await resolveBinary();
-    if (!bin) {
-      return KNOWN_MODELS;
-    }
-
-    const cmd = process.platform === 'win32'
-      ? `cmd.exe /c "${bin} models < NUL"`
-      : `${bin} models`;
-
-    const stdout = await new Promise((resolve, reject) => {
-      exec(cmd, { timeout: 4000 }, (err, stdout) => {
-        if (err) reject(err);
-        else resolve(stdout);
-      });
-    });
-
-    const lines = stdout.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-    if (lines.length > 0) {
-      const dynamicModels = lines.map(id => {
-        let label = id;
-        try {
-          const parts = id.split('-');
-          if (parts[0] === 'gemini' || parts[0] === 'claude' || parts[0] === 'gpt') {
-            const brand = parts[0] === 'gemini' ? 'Gemini' : (parts[0] === 'claude' ? 'Claude' : 'GPT');
-            const version = parts[1] || '';
-            const type = parts[2] || '';
-            const tier = parts.slice(3).join('-') || '';
-
-            let mainPart = brand;
-            if (version) mainPart += ' ' + version.charAt(0).toUpperCase() + version.slice(1);
-            if (type) mainPart += ' ' + type.charAt(0).toUpperCase() + type.slice(1);
-            if (tier) {
-              const formattedTier = tier.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-              mainPart += ` (${formattedTier})`;
-            }
-            label = mainPart;
-          }
-        } catch (_) {}
-        return { id, label };
-      });
-
-      // Merge custom model mapping to preserve labels of known models if IDs match
-      const mergedModels = dynamicModels.map(m => {
-        const known = KNOWN_MODELS.find(k => k.id.toLowerCase() === m.id.toLowerCase());
-        return known ? { id: m.id, label: known.label } : m;
-      });
-
-      cachedModels = mergedModels;
-      lastFetchTime = now;
-      return cachedModels;
-    }
-  } catch (e) {
-    console.warn('[GeminiCliModels] Failed to fetch dynamic models from agy models:', e.message);
-  }
-
-  // Fallback to hardcoded list if command failed, but don't cache it forever
-  return KNOWN_MODELS;
+  // Sem fallback inventado: se nada resolver, a UI recebe [] e diz que não
+  // conseguiu listar, em vez de mostrar modelo que pode não existir.
+  return (await refresh()) || cachedModels || disk || [];
 }
 
 function getDefaultModel() {
   return DEFAULT_MODEL;
 }
 
-function isKnownModel(id) {
-  if (cachedModels) {
-    return cachedModels.some(m => m.id === id);
-  }
-  return KNOWN_MODELS.some(m => m.id === id);
-}
-
-module.exports = { KNOWN_MODELS, DEFAULT_MODEL, getModels, getDefaultModel, isKnownModel };
+module.exports = { DEFAULT_MODEL, getModels, getDefaultModel, refresh, parseModelIds, labelFromId };

@@ -83,10 +83,102 @@ function pickExecutable(lines) {
   return lines.find(l => /\.(cmd|bat|exe)$/i.test(l)) || lines[0];
 }
 
-// npm install -g costuma criar um shim .cmd/.bat no Windows, que só roda via
-// spawn com shell: true (mesma lição do ClaudeCliProcess/GeminiCliProcess).
+// npm install -g cria um shim .cmd/.bat no Windows, e desde o patch de segurança
+// do Node 18.20/20.12 o spawn recusa executar .cmd sem `shell: true`.
+//
+// ⚠️ Só que `shell: true` no Windows NÃO faz quoting dos args: o Node concatena
+// tudo com espaço e entrega pro cmd.exe. Aí `-p Diga apenas hello` chega no
+// binário como quatro argumentos separados e o Copilot responde
+// "Invalid command format ... your prompt was not quoted". Era esse o bug.
+//
+// Solução: não usar `shell: true`. O shim .cmd do npm é só um wrapper que roda
+// `node <pacote>/npm-loader.js %*`, então extraímos o .js de dentro dele e
+// chamamos o node direto — spawn sem shell, argv passado como array, zero
+// quoting envolvido (e de quebra imune a `%VAR%` sendo expandido pelo cmd.exe
+// num prompt do usuário).
 function needsShell(bin) {
   return process.platform === 'win32' && /\.(cmd|bat)$/i.test(bin);
+}
+
+// Lê o shim .cmd e devolve o caminho do .js que ele executa, ou null.
+function extractShimEntry(shimPath) {
+  try {
+    const content = fs.readFileSync(shimPath, 'utf8');
+    // linha final do shim: ... "%_prog%"  "%dp0%\node_modules\@github\copilot\npm-loader.js" %*
+    const m = content.match(/"%dp0%\\?([^"]+\.js)"/i) || content.match(/\$basedir\/([^\s"']+\.js)/i);
+    if (!m) return null;
+    const rel = m[1].replace(/^[\\/]+/, '');
+    const entry = path.join(path.dirname(shimPath), rel);
+    return fs.existsSync(entry) ? entry : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// Plano B caso o formato do shim mude: o npm sempre instala o pacote em
+// <dir do shim>/node_modules/@github/copilot, então dá pra achar o entrypoint
+// pelo package.json sem depender de como o .cmd é escrito.
+function findPackageEntry(shimPath) {
+  try {
+    const pkgDir = path.join(path.dirname(shimPath), 'node_modules', '@github', 'copilot');
+    const pkgJson = path.join(pkgDir, 'package.json');
+    if (!fs.existsSync(pkgJson)) return null;
+    const pkg = JSON.parse(fs.readFileSync(pkgJson, 'utf8'));
+    const candidates = [];
+    if (typeof pkg.bin === 'string') candidates.push(pkg.bin);
+    else if (pkg.bin && typeof pkg.bin === 'object') candidates.push(...Object.values(pkg.bin));
+    if (pkg.main) candidates.push(pkg.main);
+    for (const rel of candidates) {
+      const entry = path.join(pkgDir, rel);
+      if (fs.existsSync(entry)) return entry;
+    }
+    return null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// Acha um node.exe utilizável pra rodar o entrypoint do shim.
+function findNodeExecutable(nearPath) {
+  const candidates = [];
+  if (nearPath) candidates.push(path.join(path.dirname(nearPath), process.platform === 'win32' ? 'node.exe' : 'node'));
+  // process.execPath é o Electron quando rodando no app — serve como node só
+  // com ELECTRON_RUN_AS_NODE, tratado em buildSpawnCommand.
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return { node: c, viaElectron: false };
+  }
+  return { node: process.execPath, viaElectron: !/[\\/]node(\.exe)?$/i.test(process.execPath) };
+}
+
+// Monta { command, args, options, strategy } pro spawn, resolvendo o shim do
+// Windows sem recorrer a shell: true.
+function buildSpawnCommand(bin, args, baseOptions = {}) {
+  const options = { ...baseOptions };
+
+  if (!needsShell(bin)) {
+    return { command: bin, args, options: { ...options, shell: false }, strategy: 'direct' };
+  }
+
+  const entry = extractShimEntry(bin) || findPackageEntry(bin);
+  if (entry) {
+    const { node, viaElectron } = findNodeExecutable(bin);
+    const env = { ...(options.env || process.env) };
+    if (viaElectron) env.ELECTRON_RUN_AS_NODE = '1';
+    return {
+      command: node,
+      args: [entry, ...args],
+      options: { ...options, env, shell: false },
+      strategy: viaElectron ? 'node-entry (electron-as-node)' : 'node-entry',
+    };
+  }
+
+  // Sem entrypoint resolvível não dá pra fugir do cmd.exe — e o quoting do cmd
+  // é justamente o que estourava o "Invalid command format". Melhor falhar com
+  // mensagem clara do que mandar um prompt corrompido pro modelo.
+  throw new Error(
+    `Não consegui resolver o entrypoint do Copilot CLI a partir de "${bin}". ` +
+    'Reinstale com: npm install -g @github/copilot'
+  );
 }
 
 class CopilotCliProcess {
@@ -123,12 +215,14 @@ class CopilotCliProcess {
 
     const env = getEnrichedEnv();
 
-    this._proc = spawn(bin, args, {
+    const plan = buildSpawnCommand(bin, args, {
       cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
       env,
-      shell: needsShell(bin),
     });
+    console.log('[copilot-cli] spawn via', plan.strategy, '->', plan.command);
+
+    this._proc = spawn(plan.command, plan.args, plan.options);
 
     this.alive = true;
 
@@ -186,4 +280,4 @@ class CopilotCliProcess {
   }
 }
 
-module.exports = { CopilotCliProcess, resolveBinary, getEnrichedEnv, ALLOW_ALL_FLAG };
+module.exports = { CopilotCliProcess, resolveBinary, getEnrichedEnv, buildSpawnCommand, ALLOW_ALL_FLAG };

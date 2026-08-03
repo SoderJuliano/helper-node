@@ -388,7 +388,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   } catch (e) { console.warn("get-openai-reasoning-effort failed:", e); }
   try {
     const savedVisionModel = await ipcRenderer.invoke("get-openai-vision-model");
-    if (savedVisionModel && openAiVisionModelSelect) openAiVisionModelSelect.value = savedVisionModel;
+    await populateOpenAiVisionModels(savedVisionModel);
   } catch (e) { console.warn("get-openai-vision-model failed:", e); }
 
   // Load saved Ollama Local model
@@ -580,52 +580,87 @@ async function populateBackendModels(savedModel = null) {
   checkBackendToolsAvailability();
 }
 
+// Modelos da OpenAI: vêm SEMPRE da API (/v1/models), nunca escritos à mão.
+// Sem lista de reserva chumbada — se a chave não está configurada ou a API não
+// responde, o select diz isso, em vez de oferecer nome que pode não existir
+// mais na conta.
+async function fetchOpenAiModelIds() {
+  const token = await ipcRenderer.invoke("get-open-ia-token");
+  if (!token) throw new Error("Chave da OpenAI não configurada");
+
+  const res = await fetch("https://api.openai.com/v1/models", {
+    method: "GET",
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  if (!res.ok) throw new Error("Erro HTTP " + res.status);
+  const data = await res.json();
+  if (!data.data || !Array.isArray(data.data)) return [];
+
+  return data.data
+    .map(m => m.id)
+    .filter(id => id.startsWith('gpt-') || id.startsWith('o1-') || id.startsWith('o3-'))
+    .sort();
+}
+
+// Preenche um <select> com a lista vinda da API. Mantém a escolha do usuário
+// mesmo que o modelo tenha saído da conta — marcado como (indisponível), pra
+// ninguém perder a configuração em silêncio.
+function fillOpenAiSelect(select, models, currentVal) {
+  select.innerHTML = '';
+  for (const m of models) {
+    const option = document.createElement('option');
+    option.value = m;
+    option.textContent = m;
+    select.appendChild(option);
+  }
+  if (currentVal && !models.includes(currentVal)) {
+    const option = document.createElement('option');
+    option.value = currentVal;
+    option.textContent = `${currentVal} (indisponível)`;
+    select.appendChild(option);
+  }
+  if (currentVal) select.value = currentVal;
+  else select.selectedIndex = 0;
+}
+
+function showOpenAiSelectError(select, currentVal, motivo) {
+  select.innerHTML = '';
+  const option = document.createElement('option');
+  option.value = currentVal || '';
+  option.textContent = currentVal
+    ? `${currentVal} (não foi possível confirmar: ${motivo})`
+    : `Não foi possível listar modelos: ${motivo}`;
+  option.disabled = !currentVal;
+  select.appendChild(option);
+  if (currentVal) select.value = currentVal;
+}
+
 async function populateOpenAiModels(savedModel = null) {
   if (!openAiModelSelect) return;
   const currentVal = savedModel || openAiModelSelect.value;
   try {
-    const token = await ipcRenderer.invoke("get-open-ia-token");
-    if (!token) throw new Error("Chave da OpenAI não configurada");
-    
-    const res = await fetch("https://api.openai.com/v1/models", {
-      method: "GET",
-      headers: {
-        "Authorization": `Bearer ${token}`
-      }
-    });
-    if (!res.ok) throw new Error("Erro HTTP " + res.status);
-    const data = await res.json();
-    
-    let models = [];
-    if (data.data && Array.isArray(data.data)) {
-      models = data.data
-        .map(m => m.id)
-        .filter(id => id.startsWith('gpt-') || id.startsWith('o1-') || id.startsWith('o3-'))
-        .sort();
-    }
-    
-    if (models.length > 0) {
-      openAiModelSelect.innerHTML = '';
-      for (const m of models) {
-        const option = document.createElement('option');
-        option.value = m;
-        option.textContent = m;
-        openAiModelSelect.appendChild(option);
-      }
-      
-      if (currentVal) {
-        let found = false;
-        for (const opt of openAiModelSelect.options) {
-          if (opt.value === currentVal) found = true;
-        }
-        if (found) openAiModelSelect.value = currentVal;
-        else openAiModelSelect.selectedIndex = 0;
-      } else {
-        openAiModelSelect.selectedIndex = 0;
-      }
-    }
+    const models = await fetchOpenAiModelIds();
+    if (!models.length) throw new Error("a API não devolveu nenhum modelo");
+    fillOpenAiSelect(openAiModelSelect, models, currentVal);
   } catch (e) {
     console.warn("Falha ao carregar modelos dinâmicos da OpenAI:", e.message);
+    showOpenAiSelectError(openAiModelSelect, currentVal, e.message);
+  }
+}
+
+// Mesma fonte do select principal: a API. O catálogo não marca quais modelos
+// aceitam imagem, então listamos os mesmos IDs — adivinhar capacidade de visão
+// a partir do nome seria voltar a chutar.
+async function populateOpenAiVisionModels(savedModel = null) {
+  if (!openAiVisionModelSelect) return;
+  const currentVal = savedModel || openAiVisionModelSelect.value;
+  try {
+    const models = await fetchOpenAiModelIds();
+    if (!models.length) throw new Error("a API não devolveu nenhum modelo");
+    fillOpenAiSelect(openAiVisionModelSelect, models, currentVal);
+  } catch (e) {
+    console.warn("Falha ao carregar modelos de visão da OpenAI:", e.message);
+    showOpenAiSelectError(openAiVisionModelSelect, currentVal, e.message);
   }
 }
 
