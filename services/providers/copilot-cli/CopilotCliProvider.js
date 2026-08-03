@@ -82,8 +82,13 @@ class CopilotCliProvider {
       try { sender.send('gemini-stream-complete'); } catch (_) {}
     };
 
+    let streamedBytes = 0;
     return new Promise((resolve, reject) => {
-      proc.onData((chunk) => { buf += chunk; });
+      proc.onData((chunk) => {
+        buf += chunk;
+        streamedBytes += chunk.length;
+        try { sender.send('gemini-stream-chunk', chunk); } catch (_) {}
+      });
       proc.onStderr((line) => { errBuf += line + '\n'; });
 
       proc.onClose((code) => {
@@ -91,7 +96,9 @@ class CopilotCliProvider {
           const text = buf.trim();
           safeClose(false, undefined);
           this._emitStatus(sender, { state: 'done', projectPath: cwd });
-          try { sender.send('gemini-stream-chunk', text); } catch (_) {}
+          if (streamedBytes === 0 && text) {
+            try { sender.send('gemini-stream-chunk', text); } catch (_) {}
+          }
           resolve({ text });
         } else {
           const errText = errBuf.trim() || buf.trim() || `exited with code ${code}`;

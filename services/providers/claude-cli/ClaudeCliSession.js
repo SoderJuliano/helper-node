@@ -13,12 +13,22 @@ class ClaudeCliSession {
     this._activeProc  = null;  // currently running process (for kill on abort)
   }
 
+  setSessionId(sessionId) {
+    if (this._sessionId !== sessionId) {
+      console.log(`[claude-cli][${this._projectPath}] sessionId changed to ${sessionId}`);
+      this._sessionId = sessionId || null;
+      if (this._activeProc) {
+        this.abort().catch(() => {});
+      }
+    }
+  }
+
   getProjectPath() { return this._projectPath; }
   getSessionId()   { return this._sessionId;   }
   isActive()       { return !!(this._activeProc && this._activeProc.alive); }
 
   // Send a prompt and stream the response.
-  // opts: { model, onChunk, onThinking, onToolStart, onToolDone, onFileTool,
+  // opts: { model, history, onChunk, onThinking, onToolStart, onToolDone, onFileTool,
   //         onStatus, onTokenUpdate, onRateLimit, onDone, onError }
   async send(prompt, opts = {}) {
     // Nunca deixa dois processos disputarem a sessão: se um envio anterior
@@ -26,6 +36,26 @@ class ClaudeCliSession {
     if (this._activeProc && this._activeProc.alive) {
       console.warn('[claude-cli] envio anterior ainda ativo — abortando antes do novo');
       await this.abort().catch(() => {});
+    }
+
+    const history = opts.history || [];
+    let isContinue = !!this._sessionId;
+    let finalPrompt = prompt;
+
+    if (!isContinue && history.length > 0) {
+      const historyLimit = 30;
+      let historyContext = "=== HISTÓRICO DA CONVERSA ANTERIOR ===\n";
+      const messagesToInclude = history.slice(-historyLimit);
+      const omittedCount = history.length - messagesToInclude.length;
+      if (omittedCount > 0) {
+        historyContext += `[Mensagens anteriores omitidas para economizar contexto: ${omittedCount}]\n\n`;
+      }
+      for (const msg of messagesToInclude) {
+        const roleName = msg.role === 'user' ? 'Usuário' : 'IA';
+        historyContext += `[${roleName}]: ${msg.content}\n\n`;
+      }
+      historyContext += "=== FIM DO HISTÓRICO ===\n\nInstrução atual: ";
+      finalPrompt = historyContext + prompt;
     }
 
     // Resolve binary once per session
@@ -156,7 +186,7 @@ class ClaudeCliSession {
         cwd:       this._projectPath,
         model:     opts.model,
         sessionId: this._sessionId,   // null on first turn → new session
-        prompt,
+        prompt:    finalPrompt,
         binary:    this._binary,
       }).catch((startErr) => {
         finish();

@@ -96,8 +96,8 @@ class GeminiCliSession extends EventEmitter {
     
     let finalPrompt = prompt;
     if (!isContinue && history.length > 0) {
-      // Reidratação inteligente do contexto: últimas 6 mensagens
-      const historyLimit = 6;
+      // Reidratação inteligente do contexto: últimas 30 mensagens
+      const historyLimit = 30;
       let historyContext = "=== RECONSTRUÇÃO DO CONTEXTO DA CONVERSA ===\n";
       const messagesToInclude = history.slice(-historyLimit);
       const omittedCount = history.length - messagesToInclude.length;

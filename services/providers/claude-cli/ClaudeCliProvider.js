@@ -56,7 +56,7 @@ class ClaudeCliProvider {
   getModels()     { return getModels(); }
 
   // Main entry point called from main.js.
-  async send(prompt, projectPath, sender) {
+  async send(prompt, projectPath, sender, sessionId, history = []) {
     const os = require('os');
     const fs = require('fs');
     let cwd = projectPath;
@@ -64,6 +64,9 @@ class ClaudeCliProvider {
       cwd = (process.cwd() && process.cwd() !== '/') ? process.cwd() : os.homedir();
     }
     const session = this._getOrCreateSession(cwd);
+    if (session.setSessionId) {
+      session.setSessionId(sessionId);
+    }
 
     this._emitStatus(sender, { state: 'busy', projectPath: cwd });
 
@@ -108,6 +111,7 @@ class ClaudeCliProvider {
     return new Promise((resolve, reject) => {
       session.send(prompt, {
         model: this._model,
+        history,
 
         onChunk: (chunk) => {
           sender.send('gemini-stream-chunk', chunk);

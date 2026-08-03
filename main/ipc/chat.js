@@ -65,9 +65,9 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
       const projectPath = workspace.getProjectPath();
       const claudeModel = configService.getClaudeCliModel();
       ClaudeCliProvider.setModel(claudeModel);
-      const finalPrompt = helpers.appendAttachmentsContext(promptWithHistory);
+      const finalPrompt = helpers.appendAttachmentsContext(text);
       try {
-        await ClaudeCliProvider.send(finalPrompt, projectPath, event.sender);
+        await ClaudeCliProvider.send(finalPrompt, projectPath, event.sender, sessionId, pastMessages);
       } catch (ccliErr) {
         console.error('[claude-cli] send error:', ccliErr.message);
         // Garante que o loading fecha mesmo que o provider não tenha emitido gemini-stream-complete
@@ -81,7 +81,12 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
       const projectPath = workspace.getProjectPath();
       const copilotModel = configService.getCopilotCliModel();
       CopilotCliProvider.setModel(copilotModel);
-      const finalPrompt = helpers.appendAttachmentsContext(promptWithHistory);
+      // Limite de segurança pra flag -p no Windows (CreateProcess estoura em 32k)
+      let safePrompt = promptWithHistory;
+      if (safePrompt.length > 24000) {
+        safePrompt = safePrompt.slice(0, 4000) + "\n\n[...histórico antigo omitido pra caber na linha de comando...]\n\n" + safePrompt.slice(-20000);
+      }
+      const finalPrompt = helpers.appendAttachmentsContext(safePrompt);
       try {
         await CopilotCliProvider.send(finalPrompt, projectPath, event.sender);
       } catch (cpErr) {
