@@ -411,6 +411,42 @@
             </select>
         </div>
 
+        <!-- Modo Interativo de Voz (Google Text-to-Speech) -->
+        <div class="setting-item" title="Ativa a resposta falada por áudio no modo janela usando o Google Cloud Text-to-Speech.">
+            <label for="google-tts-toggle">Modo Interativo de Voz (Google TTS)</label>
+            <span id="google-tts-status" style="font-weight: bold; margin-left: 10px; min-width: 30px; text-align: center; -webkit-app-region: no-drag;">OFF</span>
+            <label class="switch">
+                <input type="checkbox" id="google-tts-toggle" hidden>
+                <div class="switch__wrapper">
+                    <div class="switch__toggle"></div>
+                </div>
+            </label>
+        </div>
+
+        <div id="google-tts-container" style="display: none; margin-bottom: 15px; padding: 12px; background-color: rgba(0,0,0,0.3); border-radius: 6px; border: 1px solid #444; -webkit-app-region: no-drag;">
+            <div style="margin-bottom: 10px;">
+                <label for="google-tts-key" style="font-size: 13px; color: #00aaff; display: block; margin-bottom: 4px;">Caminho do arquivo JSON de credenciais ou API Key:</label>
+                <input type="text" id="google-tts-key" class="custom-input" placeholder="Ex: C:\Users\nome\Documentos\chave.json ou AIzaSy...">
+            </div>
+            
+            <div style="margin-bottom: 10px;">
+                <label for="google-tts-voice-select" style="font-size: 13px; color: #00aaff; display: block; margin-bottom: 4px;">Voz do Assistente:</label>
+                <select id="google-tts-voice-select" class="custom-select" style="width: 100%;">
+                    <option value="pt-BR-Neural2-C" selected>Feminina Neural (Loli / Suave - Neural2-C)</option>
+                    <option value="pt-BR-Neural2-B">Masculina Neural (Jarvis / Tech - Neural2-B)</option>
+                    <option value="pt-BR-Chirp3-HD-Aoede">Feminina HD (Aoede - Chirp3)</option>
+                    <option value="pt-BR-Chirp3-HD-Fenrir">Masculina HD (Fenrir - Chirp3)</option>
+                    <option value="pt-BR-Wavenet-A">Feminina Wavenet (Wavenet-A)</option>
+                    <option value="pt-BR-Wavenet-B">Masculina Wavenet (Wavenet-B)</option>
+                </select>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px;">
+                <button id="google-tts-test-btn" style="margin-top:0; padding:6px 14px; font-size:13px; background-color:#28a745;">Testar Conexão / Quota</button>
+                <span id="google-tts-test-result" style="font-size: 12px; margin-left: 10px;"></span>
+            </div>
+        </div>
+
         <div class="setting-item">
             <label for="ai-model">Modo / Ferramenta de IA</label>
             <select id="ai-model" class="custom-select">

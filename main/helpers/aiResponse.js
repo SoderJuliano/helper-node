@@ -391,3 +391,43 @@ helpers.formatToHTML = function(text) {
   formatted = formatted.replace(/(<br>)+$/, "").replace(/^(<br>)+/, "");
   return formatted;
 }
+
+helpers.appendVoiceSummaryInstructionIfNeeded = function(instructionOrPrompt) {
+  try {
+    const cfg = configService.getGoogleTtsConfig();
+    if (!cfg || !cfg.enabled) return instructionOrPrompt;
+    const directive = "\n\n[INSTRUÇÃO DE MODO DE VOZ ATIVO]\nSua resposta DEVE incluir ao final a tag <voice_summary>resumo sucinto em 1 a 2 frases para ser lido em voz alta. NUNCA inclua códigos, tabelas ou exemplos longos dentro da tag voice_summary. Se houver códigos ou exemplos na resposta, peça para o usuário olhá-los na tela.</voice_summary>";
+    return (instructionOrPrompt || "") + directive;
+  } catch (e) {
+    return instructionOrPrompt;
+  }
+};
+
+helpers.triggerTtsPlaybackIfEnabled = function(fullResponse) {
+  try {
+    const cfg = configService.getGoogleTtsConfig();
+    if (!cfg || !cfg.enabled) return;
+    if (!state.mainWindow || state.mainWindow.isDestroyed()) return;
+
+    const summary = googleTtsService.extractVoiceSummary(fullResponse);
+    if (!summary || !summary.trim()) return;
+
+    console.log("🔊 Sintetizando resumo por voz Google TTS:", summary);
+    googleTtsService.synthesizeText(summary, {
+      keyOrPath: cfg.keyPathOrKey,
+      voiceName: cfg.voiceName || 'pt-BR-Neural2-C'
+    }).then(buf => {
+      if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+        state.mainWindow.webContents.send("play-tts-audio", {
+          audioBase64: buf.toString("base64"),
+          text: summary
+        });
+      }
+    }).catch(err => {
+      console.error("🔊 Erro no Google TTS playback:", err && err.message);
+    });
+  } catch (e) {
+    console.error("🔊 Erro ao acionar TTS:", e && e.message);
+  }
+};
+

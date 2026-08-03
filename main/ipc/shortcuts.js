@@ -315,6 +315,19 @@ ipcMain.on("set-language", (event, language) => {
   configService.setLanguage(language);
 });
 
+ipcMain.handle("get-google-tts-config", () => {
+  return configService.getGoogleTtsConfig();
+});
+
+ipcMain.on("save-google-tts-config", (event, cfg) => {
+  configService.setGoogleTtsConfig(cfg);
+  console.log("Google TTS config updated:", cfg);
+});
+
+ipcMain.on("trigger-tts-stream-playback", (event, text) => {
+  helpers.triggerTtsPlaybackIfEnabled(text);
+});
+
 ipcMain.handle("kb-get", () => {
   const cfg = configService.getKnowledgeBaseConfig();
   return {

@@ -219,4 +219,39 @@ ipcMain.on("cancel-recording", () => {
   }
 });
 
+// ── Google Text-to-Speech (TTS) IPC Handlers ─────────────────────────────────
+ipcMain.handle("google-tts-test", async (event, keyPathOrKey) => {
+  try {
+    const keyToUse = keyPathOrKey || configService.getGoogleTtsConfig().keyPathOrKey;
+    return await googleTtsService.testConnection(keyToUse);
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle("google-tts-list-voices", async (event, keyPathOrKey) => {
+  try {
+    const keyToUse = keyPathOrKey || configService.getGoogleTtsConfig().keyPathOrKey;
+    return await googleTtsService.listVoices(keyToUse);
+  } catch (err) {
+    return [];
+  }
+});
+
+ipcMain.handle("google-tts-synthesize", async (event, text, voiceName) => {
+  try {
+    const cfg = configService.getGoogleTtsConfig();
+    if (!cfg.enabled) return { error: "Modo de voz desativado." };
+    const voiceToUse = voiceName || cfg.voiceName || "pt-BR-Neural2-C";
+    const audioBuf = await googleTtsService.synthesizeText(text, {
+      keyOrPath: cfg.keyPathOrKey,
+      voiceName: voiceToUse
+    });
+    return { audioBase64: audioBuf.toString("base64") };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
 };
+

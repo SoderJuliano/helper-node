@@ -89,6 +89,20 @@ const copilotCliInfo = document.getElementById("copilot-cli-info");
 const checkCopilotCliBtn = document.getElementById("check-copilot-cli-btn");
 const copilotCliStatusResult = document.getElementById("copilot-cli-status-result");
 
+// Google TTS elements
+const googleTtsToggle = document.getElementById("google-tts-toggle");
+const googleTtsStatus = document.getElementById("google-tts-status");
+const googleTtsContainer = document.getElementById("google-tts-container");
+const googleTtsKey = document.getElementById("google-tts-key");
+const googleTtsVoiceSelect = document.getElementById("google-tts-voice-select");
+const googleTtsTestBtn = document.getElementById("google-tts-test-btn");
+const googleTtsTestResult = document.getElementById("google-tts-test-result");
+
+function updateGoogleTtsStatus(isEnabled) {
+  if (googleTtsStatus) googleTtsStatus.textContent = isEnabled ? "ON" : "OFF";
+  if (googleTtsContainer) googleTtsContainer.style.display = isEnabled ? "block" : "none";
+}
+
 // Helper function to update the debug mode status text
 function updateDebugModeStatus(isDebugging) {
   debugModeStatus.textContent = isDebugging ? "ON" : "OFF";
@@ -265,6 +279,21 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   } catch (e) {
     console.warn("stealth mode load failed:", e);
+  }
+
+  // -------------------------
+  // Load Google TTS mode
+  // -------------------------
+  try {
+    const ttsCfg = await ipcRenderer.invoke("get-google-tts-config");
+    if (googleTtsToggle && ttsCfg) {
+      googleTtsToggle.checked = !!ttsCfg.enabled;
+      updateGoogleTtsStatus(!!ttsCfg.enabled);
+      if (googleTtsKey) googleTtsKey.value = ttsCfg.keyPathOrKey || "";
+      if (googleTtsVoiceSelect) googleTtsVoiceSelect.value = ttsCfg.voiceName || "pt-BR-Neural2-C";
+    }
+  } catch (e) {
+    console.warn("Google TTS load failed:", e);
   }
 
   // -------------------------
@@ -697,6 +726,75 @@ if (stealthModeToggle) {
   stealthModeToggle.addEventListener("change", () => {
     updateStealthModeStatus(stealthModeToggle.checked);
     ipcRenderer.send("save-stealth-mode-status", stealthModeToggle.checked);
+  });
+}
+
+// Handle Google TTS toggle live update & test
+if (googleTtsToggle) {
+  googleTtsToggle.addEventListener("change", async () => {
+    const enabled = googleTtsToggle.checked;
+    updateGoogleTtsStatus(enabled);
+
+    const keyPathOrKey = googleTtsKey ? googleTtsKey.value.trim() : "";
+    const voiceName = googleTtsVoiceSelect ? googleTtsVoiceSelect.value : "pt-BR-Neural2-C";
+
+    if (enabled && googleTtsTestResult) {
+      googleTtsTestResult.style.color = "#ffb74d";
+      googleTtsTestResult.textContent = "Verificando conexão e cota...";
+      try {
+        const testRes = await ipcRenderer.invoke("google-tts-test", keyPathOrKey);
+        if (testRes.ok) {
+          googleTtsTestResult.style.color = "#28a745";
+          googleTtsTestResult.textContent = "Conexão OK! Cota ativa.";
+        } else {
+          googleTtsTestResult.style.color = "#ffb74d";
+          googleTtsTestResult.textContent = `Aviso: cota zerada ou erro na chave (${testRes.error}). O modo permanece ativo.`;
+        }
+      } catch (err) {
+        googleTtsTestResult.style.color = "#ff6b6b";
+        googleTtsTestResult.textContent = `Aviso de conexão: ${err.message}`;
+      }
+    }
+
+    ipcRenderer.send("save-google-tts-config", {
+      enabled,
+      keyPathOrKey,
+      voiceName
+    });
+  });
+}
+
+const saveGoogleTtsParams = () => {
+  if (!googleTtsToggle) return;
+  ipcRenderer.send("save-google-tts-config", {
+    enabled: googleTtsToggle.checked,
+    keyPathOrKey: googleTtsKey ? googleTtsKey.value.trim() : "",
+    voiceName: googleTtsVoiceSelect ? googleTtsVoiceSelect.value : "pt-BR-Neural2-C"
+  });
+};
+
+if (googleTtsKey) googleTtsKey.addEventListener("blur", saveGoogleTtsParams);
+if (googleTtsVoiceSelect) googleTtsVoiceSelect.addEventListener("change", saveGoogleTtsParams);
+
+if (googleTtsTestBtn) {
+  googleTtsTestBtn.addEventListener("click", async () => {
+    if (!googleTtsTestResult) return;
+    const keyPathOrKey = googleTtsKey ? googleTtsKey.value.trim() : "";
+    googleTtsTestResult.style.color = "#00aaff";
+    googleTtsTestResult.textContent = "Testando conexão...";
+    try {
+      const res = await ipcRenderer.invoke("google-tts-test", keyPathOrKey);
+      if (res.ok) {
+        googleTtsTestResult.style.color = "#28a745";
+        googleTtsTestResult.textContent = res.message || "Conexão e cota validadas!";
+      } else {
+        googleTtsTestResult.style.color = "#ff6b6b";
+        googleTtsTestResult.textContent = `Erro: ${res.error}`;
+      }
+    } catch (err) {
+      googleTtsTestResult.style.color = "#ff6b6b";
+      googleTtsTestResult.textContent = `Erro ao testar: ${err.message}`;
+    }
   });
 }
 

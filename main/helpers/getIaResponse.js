@@ -92,6 +92,48 @@ helpers.getIaResponse = async function(text) {
               ht.opts
             );
         }
+    } else if (aiModel === 'geminiCli') {
+        const projectPath = workspace.getProjectPath();
+        const geminiModel = configService.getGeminiCliModel();
+        GeminiCliProvider.setModel(geminiModel);
+        const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(text));
+        clearInterval(state.waitingNotificationInterval);
+        state.waitingNotificationInterval = null;
+        try {
+          await GeminiCliProvider.send(finalPrompt, projectPath, state.mainWindow.webContents, null, []);
+        } catch (gcliErr) {
+          console.error('[gemini-cli getIaResponse] send error:', gcliErr.message);
+          try { state.mainWindow.webContents.send('gemini-stream-complete'); } catch (_) {}
+        }
+        return;
+    } else if (aiModel === 'claudeCli') {
+        const projectPath = workspace.getProjectPath();
+        const claudeModel = configService.getClaudeCliModel();
+        ClaudeCliProvider.setModel(claudeModel);
+        const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(text));
+        clearInterval(state.waitingNotificationInterval);
+        state.waitingNotificationInterval = null;
+        try {
+          await ClaudeCliProvider.send(finalPrompt, projectPath, state.mainWindow.webContents, null, []);
+        } catch (ccliErr) {
+          console.error('[claude-cli getIaResponse] send error:', ccliErr.message);
+          try { state.mainWindow.webContents.send('gemini-stream-complete'); } catch (_) {}
+        }
+        return;
+    } else if (aiModel === 'copilotCli') {
+        const projectPath = workspace.getProjectPath();
+        const copilotModel = configService.getCopilotCliModel();
+        CopilotCliProvider.setModel(copilotModel);
+        const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(text));
+        clearInterval(state.waitingNotificationInterval);
+        state.waitingNotificationInterval = null;
+        try {
+          await CopilotCliProvider.send(finalPrompt, projectPath, state.mainWindow.webContents);
+        } catch (cpErr) {
+          console.error('[copilot-cli getIaResponse] send error:', cpErr.message);
+          try { state.mainWindow.webContents.send('gemini-stream-complete'); } catch (_) {}
+        }
+        return;
     } else if (aiModel === 'ollamaLocal') {
         const OllamaLocalService = require('../../services/ollamaLocalService');
         const _kbL = await helpers.knowledgeBlockForOllama(text);
@@ -152,6 +194,9 @@ helpers.getIaResponse = async function(text) {
     // Formata a resposta para exibição na UI
     const formattedResposta = helpers.formatToHTML(resposta);
     state.mainWindow.webContents.send("gemini-response", { resposta: formattedResposta, usedKnowledge });
+
+    // Dispara síntese de áudio por voz se o modo Google TTS estiver ativo
+    helpers.triggerTtsPlaybackIfEnabled(resposta);
 
     // Usa a resposta crua para a notificação de texto simples
     if (appConfig.notificationsEnabled && Notification.isSupported()) {

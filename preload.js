@@ -121,6 +121,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getBackendUrl: () => ipcRenderer.invoke("get-backend-url"),
   getLanguage: () => ipcRenderer.invoke("get-language"),
   setLanguage: (language) => ipcRenderer.send("set-language", language),
+
+  // === Modo Interativo de Voz (Google TTS) ===
+  getGoogleTtsConfig: () => ipcRenderer.invoke("get-google-tts-config"),
+  saveGoogleTtsConfig: (cfg) => ipcRenderer.send("save-google-tts-config", cfg),
+  googleTtsTest: (keyPathOrKey) => ipcRenderer.invoke("google-tts-test", keyPathOrKey),
+  googleTtsListVoices: (keyPathOrKey) => ipcRenderer.invoke("google-tts-list-voices", keyPathOrKey),
+  onPlayTtsAudio: (cb) => ipcRenderer.on("play-tts-audio", (event, data) => cb(data)),
+  triggerTtsPlayback: (text) => ipcRenderer.send("trigger-tts-stream-playback", text),
   processPastedImage: (base64Image) =>
     ipcRenderer.send("process-pasted-image", base64Image),
   processManualInputWithImage: (data) =>

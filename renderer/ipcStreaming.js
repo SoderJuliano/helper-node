@@ -195,6 +195,9 @@ function autoScrollSeNoFim(el) {
                 if (window.historySession && finalStreamText) {
                     window.historySession.addMessageToCurrentSession('assistant', finalStreamText);
                 }
+                if (window.electronAPI && window.electronAPI.triggerTtsPlayback && finalStreamText) {
+                    window.electronAPI.triggerTtsPlayback(finalStreamText);
+                }
                 
                 // Remove o cursor piscando
                 if (typingCursor && typingCursor.parentNode) {

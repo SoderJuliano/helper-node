@@ -192,7 +192,14 @@ const defaultConfig = {
     minInterventionSeconds: 0,   // 0 = a IA decide quando falar (sem piso de silêncio fixo)
     listenAudio: true,           // ouvir mic + áudio do sistema pra contexto (Win/mac)
     useKnowledgeBase: true,      // injeta RAG (docs recentes) quando relevante
-
+  },
+  // Modo Interativo de Voz via Google Cloud Text-to-Speech (TTS)
+  googleTts: {
+    enabled: false,
+    keyPathOrKey: fs.existsSync("C:\\Users\\soder\\Documents\\sectrets\\gen-lang-client-0083021392-f898f4b44b05.json")
+      ? "C:\\Users\\soder\\Documents\\sectrets\\gen-lang-client-0083021392-f898f4b44b05.json"
+      : "",
+    voiceName: "pt-BR-Neural2-C",
   },
 };
 
@@ -780,6 +787,22 @@ function setStealthModeStatus(status) {
   currentConfig = null;
 }
 
+function getGoogleTtsConfig() {
+  if (!currentConfig) {
+    currentConfig = loadConfig();
+  }
+  return { ...defaultConfig.googleTts, ...(currentConfig.googleTts || {}) };
+}
+
+function setGoogleTtsConfig(cfg) {
+  if (!currentConfig) {
+    currentConfig = loadConfig();
+  }
+  currentConfig.googleTts = { ...getGoogleTtsConfig(), ...cfg };
+  saveConfig(currentConfig);
+  currentConfig = null;
+}
+
 module.exports = {
   initialize,
   getStealthModeStatus,
@@ -837,6 +860,8 @@ module.exports = {
   setKnowledgeBaseConfig,
   getAnswerBankConfig,
   setAnswerBankConfig,
+  getGoogleTtsConfig,
+  setGoogleTtsConfig,
   getConfig,
   setConfigValue,
   getIp,

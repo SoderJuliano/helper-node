@@ -60,6 +60,7 @@ const ollamaAgenticWorkflow = require("../services/ollamaAgenticWorkflowService"
 const translationAssistant = require("../services/translationAssistant");
 const visionGuide = require("../services/visionGuideService");
 const platformScreenCapture = require("../services/platform/screenCapture.js");
+const googleTtsService = require("../services/googleTtsService.js");
 const { runTestMode } = require("../services/translationAssistant/testMode");
 const { analyzeInterviewImage } = require("../services/translationAssistant/imageAnalysis");
 const { transcribeAudio: cloudTranscribeAudio } = require("../services/translationAssistant/openaiClient");
@@ -228,6 +229,7 @@ module.exports = {
   translationAssistant,
   visionGuide,
   platformScreenCapture,
+  googleTtsService,
   runTestMode,
   analyzeInterviewImage,
   cloudTranscribeAudio,

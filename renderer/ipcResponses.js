@@ -149,6 +149,23 @@
 
             });
 
+            // Reprodução de áudio TTS quando o modo de voz está ativo
+            if (window.electronAPI && window.electronAPI.onPlayTtsAudio) {
+                window.electronAPI.onPlayTtsAudio(({ audioBase64, text }) => {
+                    try {
+                        if (window.currentTtsAudio) {
+                            window.currentTtsAudio.pause();
+                            window.currentTtsAudio = null;
+                        }
+                        const audio = new Audio('data:audio/mp3;base64,' + audioBase64);
+                        window.currentTtsAudio = audio;
+                        audio.play().catch(e => console.warn('Erro ao reproduzir áudio TTS:', e.message));
+                    } catch (err) {
+                        console.error('Erro na execução do player TTS:', err);
+                    }
+                });
+            }
+
             window.electronAPI.onOpenAIResponse((response, usedKnowledge, usage) => {
                 console.log('OpenAI respondeu:', response, '| base de conhecimento:', !!usedKnowledge, '| usage:', usage);
                 if (!response) {

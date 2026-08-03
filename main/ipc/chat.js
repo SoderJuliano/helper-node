@@ -49,12 +49,11 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
       const projectPath = workspace.getProjectPath();
       const geminiModel = configService.getGeminiCliModel();
       GeminiCliProvider.setModel(geminiModel);
-      const finalPrompt = helpers.appendAttachmentsContext(text);
+      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(text));
       try {
         await GeminiCliProvider.send(finalPrompt, projectPath, event.sender, sessionId, pastMessages);
       } catch (gcliErr) {
         console.error('[gemini-cli] send error:', gcliErr.message);
-        // Garante que o loading fecha mesmo que o provider não tenha emitido gemini-stream-complete
         try { event.sender.send('gemini-stream-complete'); } catch (_) {}
       }
       return;
@@ -65,12 +64,11 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
       const projectPath = workspace.getProjectPath();
       const claudeModel = configService.getClaudeCliModel();
       ClaudeCliProvider.setModel(claudeModel);
-      const finalPrompt = helpers.appendAttachmentsContext(text);
+      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(text));
       try {
         await ClaudeCliProvider.send(finalPrompt, projectPath, event.sender, sessionId, pastMessages);
       } catch (ccliErr) {
         console.error('[claude-cli] send error:', ccliErr.message);
-        // Garante que o loading fecha mesmo que o provider não tenha emitido gemini-stream-complete
         try { event.sender.send('gemini-stream-complete'); } catch (_) {}
       }
       return;
@@ -81,12 +79,11 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
       const projectPath = workspace.getProjectPath();
       const copilotModel = configService.getCopilotCliModel();
       CopilotCliProvider.setModel(copilotModel);
-      // Limite de segurança pra flag -p no Windows (CreateProcess estoura em 32k)
       let safePrompt = promptWithHistory;
       if (safePrompt.length > 24000) {
         safePrompt = safePrompt.slice(0, 4000) + "\n\n[...histórico antigo omitido pra caber na linha de comando...]\n\n" + safePrompt.slice(-20000);
       }
-      const finalPrompt = helpers.appendAttachmentsContext(safePrompt);
+      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(safePrompt));
       try {
         await CopilotCliProvider.send(finalPrompt, projectPath, event.sender);
       } catch (cpErr) {
@@ -213,6 +210,7 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
         }
     }
     event.sender.send("gemini-response", { resposta, usedKnowledge });
+    helpers.triggerTtsPlaybackIfEnabled(resposta);
   } catch (error) {
     console.error("IPC: IA service error:", error);
     event.sender.send(
@@ -245,6 +243,7 @@ ipcMain.on("send-to-gemini-vision", async (event, { text, image }) => {
         resposta = await OllamaLocalService.responder(_wsTxt);
       }
       event.sender.send("gemini-response", { resposta, usedKnowledge: false });
+      helpers.triggerTtsPlaybackIfEnabled(resposta);
       return;
     } else if (aiModel !== 'openIa') {
       // Backends sem visão (Ollama/full offline): cai no OCR + texto.
@@ -256,6 +255,7 @@ ipcMain.on("send-to-gemini-vision", async (event, { text, image }) => {
       const _ht = helpers.buildHelperToolsOpenAIOpts(_wsTxt, instructionO, configService.getOpenAiModel());
       const resposta = await BackendService.responder(_wsTxt, _ht.opts);
       event.sender.send("gemini-response", { resposta, usedKnowledge: false });
+      helpers.triggerTtsPlaybackIfEnabled(resposta);
       return;
     }
 
@@ -281,6 +281,7 @@ ipcMain.on("send-to-gemini-vision", async (event, { text, image }) => {
       { stateless: true }
     );
     event.sender.send("openai-final-response", { resposta, usedKnowledge: false });
+    helpers.triggerTtsPlaybackIfEnabled(resposta);
   } catch (error) {
     console.error("IPC visão: erro ao analisar imagem:", error && error.message);
     event.sender.send("transcription-error", "Falha ao analisar a imagem com a IA.");
