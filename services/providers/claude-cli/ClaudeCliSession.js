@@ -2,21 +2,66 @@
 // Each send() spawns a fresh `claude --print` process; conversation continuity
 // is maintained by the CLI itself via --resume <session_id>.
 
+const path = require('path');
+const fs = require('fs');
 const { ClaudeCliProcess } = require('./ClaudeCliProcess');
 const { ClaudeCliParser }  = require('./ClaudeCliParser');
 
+function getSessionStatePath() {
+  const { app } = require('electron');
+  return path.join(app.getPath('userData'), 'claude-cli-sessions.json');
+}
+
+function loadSessions() {
+  try {
+    const file = getSessionStatePath();
+    if (fs.existsSync(file)) {
+      return JSON.parse(fs.readFileSync(file, 'utf8'));
+    }
+  } catch (e) {
+    console.error('[claude-cli] failed to load sessions:', e.message);
+  }
+  return {};
+}
+
+function saveSessions(sessions) {
+  try {
+    const file = getSessionStatePath();
+    fs.writeFileSync(file, JSON.stringify(sessions, null, 2), 'utf8');
+  } catch (e) {
+    console.error('[claude-cli] failed to save sessions:', e.message);
+  }
+}
+
 class ClaudeCliSession {
   constructor(projectPath) {
-    this._projectPath = projectPath;
-    this._sessionId   = null;  // set after first successful response
-    this._binary      = null;  // cached binary path
-    this._activeProc  = null;  // currently running process (for kill on abort)
+    this._projectPath        = projectPath;
+    this._appSessionId       = null;  // ID da sessão da UI (Electron)
+    this._claudeSessionId    = null;  // UUID retornado pelo Claude CLI p/ --resume
+    this._lastHistoryLength = 0;     // Qtd de msgs vistas por esta sessão CLI
+    this._binary             = null;
+    this._activeProc         = null;
+    this._aborted            = false;
   }
 
-  setSessionId(sessionId) {
-    if (this._sessionId !== sessionId) {
-      console.log(`[claude-cli][${this._projectPath}] sessionId changed to ${sessionId}`);
-      this._sessionId = sessionId || null;
+  setSessionId(appSessionId) {
+    if (this._appSessionId !== appSessionId) {
+      console.log(`[claude-cli][${this._projectPath}] appSessionId mudou de ${this._appSessionId} para ${appSessionId}`);
+      this._appSessionId = appSessionId;
+      
+      const sessions = loadSessions();
+      const saved = sessions[this._projectPath];
+      
+      if (saved && saved.appSessionId === appSessionId) {
+        console.log(`[claude-cli][${this._projectPath}] sessão salva encontrada: ${saved.claudeSessionId}`);
+        this._claudeSessionId = saved.claudeSessionId || null;
+        this._lastHistoryLength = saved.lastHistoryLength || 0;
+      } else {
+        console.log(`[claude-cli][${this._projectPath}] nova sessão appSessionId. Resetando estado do Claude CLI.`);
+        this._claudeSessionId = null;
+        this._lastHistoryLength = 0;
+      }
+
       if (this._activeProc) {
         this.abort().catch(() => {});
       }
@@ -24,41 +69,47 @@ class ClaudeCliSession {
   }
 
   getProjectPath() { return this._projectPath; }
-  getSessionId()   { return this._sessionId;   }
+  getSessionId()   { return this._claudeSessionId; }
   isActive()       { return !!(this._activeProc && this._activeProc.alive); }
 
   // Send a prompt and stream the response.
   // opts: { model, history, onChunk, onThinking, onToolStart, onToolDone, onFileTool,
   //         onStatus, onTokenUpdate, onRateLimit, onDone, onError }
   async send(prompt, opts = {}) {
-    // Nunca deixa dois processos disputarem a sessão: se um envio anterior
-    // ficou preso (API retry, hang), mata antes de começar o novo.
     if (this._activeProc && this._activeProc.alive) {
       console.warn('[claude-cli] envio anterior ainda ativo — abortando antes do novo');
       await this.abort().catch(() => {});
     }
 
     const history = opts.history || [];
-    let isContinue = !!this._sessionId;
+    // Só faz continuação nativa (--resume) se temos UUID do Claude E o tamanho do histórico
+    // bate com as mensagens que o Claude acompanhou. Se o usuário alternou pro Gemini/OpenAI
+    // no meio, history.length será maior do que _lastHistoryLength → força reidratação!
+    let isContinue = !!this._claudeSessionId && (history.length === this._lastHistoryLength);
     let finalPrompt = prompt;
 
-    if (!isContinue && history.length > 0) {
-      const historyLimit = 30;
-      let historyContext = "=== HISTÓRICO DA CONVERSA ANTERIOR ===\n";
-      const messagesToInclude = history.slice(-historyLimit);
-      const omittedCount = history.length - messagesToInclude.length;
-      if (omittedCount > 0) {
-        historyContext += `[Mensagens anteriores omitidas para economizar contexto: ${omittedCount}]\n\n`;
+    if (!isContinue) {
+      if (this._claudeSessionId) {
+        console.log(`[claude-cli] modelo alternado ou histórico divergiu (${history.length} vs ${this._lastHistoryLength}). Reiniciando sessão Claude CLI com contexto reidratado.`);
+        this._claudeSessionId = null;
       }
-      for (const msg of messagesToInclude) {
-        const roleName = msg.role === 'user' ? 'Usuário' : 'IA';
-        historyContext += `[${roleName}]: ${msg.content}\n\n`;
+      if (history.length > 0) {
+        const historyLimit = 30;
+        let historyContext = "=== RECONSTRUÇÃO DO CONTEXTO DA CONVERSA ===\n";
+        const messagesToInclude = history.slice(-historyLimit);
+        const omittedCount = history.length - messagesToInclude.length;
+        if (omittedCount > 0) {
+          historyContext += `[Mensagens anteriores omitidas para economizar contexto: ${omittedCount}]\n\n`;
+        }
+        for (const msg of messagesToInclude) {
+          const roleName = msg.role === 'user' ? 'Usuário' : 'IA';
+          historyContext += `[${roleName}]: ${msg.content}\n\n`;
+        }
+        historyContext += "=== FIM DO CONTEXTO ===\n\nUse o contexto acima como base para a instrução atual. Não responda ao histórico, apenas siga a instrução atual.\n\nInstrução atual: ";
+        finalPrompt = historyContext + prompt;
       }
-      historyContext += "=== FIM DO HISTÓRICO ===\n\nInstrução atual: ";
-      finalPrompt = historyContext + prompt;
     }
 
-    // Resolve binary once per session
     if (!this._binary) {
       const { resolveBinary } = require('./ClaudeCliProcess');
       this._binary = await resolveBinary();
@@ -74,20 +125,13 @@ class ClaudeCliSession {
     }
 
     return new Promise((resolve, reject) => {
-      // Watchdog: se o processo ficar mudo (API 529 em retry silencioso, hang),
-      // avisa a UI a cada verificação e mata se passar do limite sem NENHUM output.
       let lastActivity = Date.now();
       let watchdogKilled = false;
-      // Enquanto uma ferramenta (Bash, build, script longo) está rodando, o CLI
-      // fica em silêncio total no stdout até ela terminar — isso é esperado, não
-      // é travamento. Só aplicamos o timeout curto quando NADA está em execução
-      // (--include-partial-messages garante que texto/thinking streama continuamente
-      // enquanto o modelo gera; silêncio aí sim é sinal real de travamento).
       let activeTools = 0;
-      const STALL_WARN_MS = 25 * 1000;        // sem ferramenta ativa: avisa em 25s
-      const STALL_KILL_MS = 150 * 1000;       // sem ferramenta ativa: mata em 2,5min
-      const TOOL_WARN_MS  = 5 * 60 * 1000;    // ferramenta rodando: avisa em 5min
-      const TOOL_KILL_MS  = 15 * 60 * 1000;   // ferramenta rodando: mata em 15min
+      const STALL_WARN_MS = 25 * 1000;
+      const STALL_KILL_MS = 150 * 1000;
+      const TOOL_WARN_MS  = 5 * 60 * 1000;
+      const TOOL_KILL_MS  = 15 * 60 * 1000;
       const watchdog = setInterval(() => {
         const silent = Date.now() - lastActivity;
         const killMs = activeTools > 0 ? TOOL_KILL_MS : STALL_KILL_MS;
@@ -96,7 +140,7 @@ class ClaudeCliSession {
           clearInterval(watchdog);
           console.warn('[claude-cli] sem output além do limite — encerrando processo travado');
           watchdogKilled = true;
-          this._aborted = false; // não é abort do usuário: queremos o erro na UI
+          this._aborted = false;
           if (this._activeProc === proc) {
             proc.kill().catch(() => {});
           }
@@ -113,7 +157,7 @@ class ClaudeCliSession {
       const finish = () => { clearInterval(watchdog); };
 
       const parser = new ClaudeCliParser({
-        onSessionId: (id)   => { this._sessionId = id; },
+        onSessionId: (id)   => { this._claudeSessionId = id; },
         onConnected: ()     => {},
         onChunk:     (t)    => opts.onChunk    && opts.onChunk(t),
         onThinking:  (t)    => opts.onThinking && opts.onThinking(t),
@@ -123,7 +167,20 @@ class ClaudeCliSession {
         onTokenUpdate: (info) => { lastActivity = Date.now(); opts.onTokenUpdate && opts.onTokenUpdate(info); },
         onRateLimit:   (info) => { lastActivity = Date.now(); opts.onRateLimit   && opts.onRateLimit(info); },
         onDone: ({ text, cost, sessionId, usage }) => {
-          if (sessionId) this._sessionId = sessionId;
+          if (sessionId) this._claudeSessionId = sessionId;
+          this._lastHistoryLength = history.length + 2; // +1 user msg, +1 IA msg
+
+          if (this._appSessionId) {
+            const sessions = loadSessions();
+            sessions[this._projectPath] = {
+              appSessionId: this._appSessionId,
+              claudeSessionId: this._claudeSessionId,
+              lastHistoryLength: this._lastHistoryLength,
+              lastUsed: Date.now()
+            };
+            saveSessions(sessions);
+          }
+
           finish();
           this._activeProc = null;
           opts.onDone && opts.onDone({ text, cost, usage });
@@ -132,10 +189,6 @@ class ClaudeCliSession {
         onError: (err) => {
           finish();
           this._activeProc = null;
-          // SIGINT (Ctrl+C) faz o próprio CLI reportar um result/error gracioso
-          // pelo protocolo dele — chega aqui ANTES do processo fechar de fato,
-          // sem passar pelo onClose. Se foi abort pedido pelo usuário, trata
-          // igual: silencioso, sem mostrar "erro" pra quem só queria parar.
           if (this._aborted) {
             this._aborted = false;
             opts.onDone && opts.onDone({ text: '', cost: 0 });
@@ -153,8 +206,6 @@ class ClaudeCliSession {
       proc.onData((chunk) => { lastActivity = Date.now(); parser.feed(chunk); });
       proc.onStderr((line) => {
         lastActivity = Date.now();
-        // Retries da API (529 overloaded, 5xx) aparecem no stderr — mostra na UI
-        // em vez de deixar a tela estática por minutos.
         if (opts.onStatus && /retry|overloaded|529|rate.?limit|attempt/i.test(line)) {
           opts.onStatus(`API instável — tentando novamente… (${line.slice(0, 100)})`);
         }
@@ -164,7 +215,6 @@ class ClaudeCliSession {
         parser.flush();
         if (proc.alive === false && this._activeProc === proc) {
           this._activeProc = null;
-          // Abort do usuário (SIGTERM=143, SIGKILL=137): resolve silenciosamente.
           if (this._aborted) {
             this._aborted = false;
             opts.onDone && opts.onDone({ text: '', cost: 0 });
@@ -185,7 +235,7 @@ class ClaudeCliSession {
       proc.start({
         cwd:       this._projectPath,
         model:     opts.model,
-        sessionId: this._sessionId,   // null on first turn → new session
+        sessionId: this._claudeSessionId,
         prompt:    finalPrompt,
         binary:    this._binary,
       }).catch((startErr) => {
@@ -197,7 +247,6 @@ class ClaudeCliSession {
     });
   }
 
-  // Abort any in-progress send (user-initiated — won't show error in UI).
   async abort() {
     if (this._activeProc) {
       this._aborted = true;
@@ -206,11 +255,11 @@ class ClaudeCliSession {
     }
   }
 
-  // Full reset: kill process + clear session ID.
   async stop() {
     await this.abort();
-    this._sessionId = null;
-    this._binary    = null;
+    this._appSessionId    = null;
+    this._claudeSessionId = null;
+    this._binary          = null;
   }
 }
 

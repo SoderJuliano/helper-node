@@ -42,6 +42,7 @@ class GeminiCliSession extends EventEmitter {
     this._model       = model;
     this._sessionId   = null;
     this._agyConvId   = null;   // id da conversa interna do agy, p/ retomar via --conversation
+    this._lastHistoryLength = 0;
     this._hasStarted  = false;
     this._activeProc  = null;
     this._aborted     = false;
@@ -60,10 +61,12 @@ class GeminiCliSession extends EventEmitter {
         console.log(`[gemini-cli][${this._projectPath}] sessionId matches last saved session. Restoring CLI continuation state.`);
         this._hasStarted = true;
         this._agyConvId = saved.agyConvId || null;
+        this._lastHistoryLength = saved.lastHistoryLength || 0;
       } else {
         console.log(`[gemini-cli][${this._projectPath}] sessionId is new/mismatched. Resetting CLI continuation state (will rehydrate).`);
         this._hasStarted = false;
         this._agyConvId = null;
+        this._lastHistoryLength = 0;
       }
       
       if (this._activeProc) {
@@ -92,10 +95,15 @@ class GeminiCliSession extends EventEmitter {
     this._transition('busy');
 
     const history = opts.history || [];
-    let isContinue = this._hasStarted;
+    let isContinue = this._hasStarted && (history.length === this._lastHistoryLength);
     
     let finalPrompt = prompt;
     if (!isContinue && history.length > 0) {
+      if (this._hasStarted) {
+        console.log(`[gemini-cli] histórico divergiu ou modelo foi alternado. Reiniciando sessão agy com reidratação do contexto.`);
+        this._hasStarted = false;
+        this._agyConvId = null;
+      }
       // Reidratação inteligente do contexto: últimas 30 mensagens
       const historyLimit = 30;
       let historyContext = "=== RECONSTRUÇÃO DO CONTEXTO DA CONVERSA ===\n";
@@ -137,11 +145,13 @@ class GeminiCliSession extends EventEmitter {
 
             this._hasStarted = true;
             if (parser._agyConvId) this._agyConvId = parser._agyConvId;
+            this._lastHistoryLength = history.length + 2;
             if (this._sessionId) {
               const sessions = loadSessions();
               sessions[this._projectPath] = {
                 sessionId: this._sessionId,
                 agyConvId: this._agyConvId,
+                lastHistoryLength: this._lastHistoryLength,
                 lastUsed: Date.now()
               };
               saveSessions(sessions);
