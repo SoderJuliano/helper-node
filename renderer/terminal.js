@@ -133,6 +133,7 @@ var isTerminalInitialized = false;
             refreshTimer = setTimeout(() => {
                 if (typeof fetchAndUpdateGitStatus === 'function') fetchAndUpdateGitStatus();
                 if (typeof refreshProjectTree === 'function') refreshProjectTree();
+                if (typeof window.refreshProjectContext === 'function') window.refreshProjectContext();
             }, 400);
         }
 
