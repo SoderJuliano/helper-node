@@ -275,8 +275,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   closeWindow: () => ipcRenderer.send("window-close"),
 
   // === Terminal Connection ===
-  terminalInit: () => ipcRenderer.invoke("terminal:init"),
+  terminalInit: (dim) => ipcRenderer.invoke("terminal:init", dim),
   terminalInput: (data) => ipcRenderer.send("terminal:input", data),
+  terminalResize: (dim) => ipcRenderer.send("terminal:resize", dim),
   onTerminalOutput: (cb) => ipcRenderer.on("terminal:output", (event, data) => cb(data)),
   onTerminalClosed: (cb) => ipcRenderer.on("terminal:closed", (event, data) => cb(data)),
 });

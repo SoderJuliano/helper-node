@@ -1,174 +1,166 @@
-// Embedded Terminal Module
+// Terminal embutido — xterm.js sobre o PTY do processo main.
+//
+// POR QUE ESTE ARQUIVO FOI REESCRITO
+// ----------------------------------
+// A versão anterior tinha um emulador VT100 escrito à mão (~370 linhas) que
+// mantinha dois buffers por linha: `plainLines` (texto puro) e `ansiLines`
+// (texto + escapes). O cursor (`curCol`) é uma coluna VISÍVEL, mas era usado
+// pra fatiar os DOIS buffers — e `ansiLines` contém os bytes de escape, que não
+// ocupam coluna nenhuma. Na prática:
+//
+//   ansi = "\x1b[32m"      (5 bytes, 0 colunas)  curCol = 0
+//   escreve 'M'  ->  ansi.slice(0,0) + 'M' + ansi.slice(1)  =  "M[32m"
+//
+// O escape do git era PICADO e depois sobrescrito pelas letras seguintes. Daí
+// os sintomas todos de uma vez: saída sem cor nenhuma (o SGR nunca chegava
+// inteiro na tela), lixo de escape aparecendo quando o cursor estava em outra
+// coluna, e a tela embaralhando progressivamente a cada comando colorido —
+// `git status`, `git log`, `git diff`.
+//
+// Nada disso se conserta com mais casos especiais: um terminal precisa de um
+// emulador de verdade. Este usa xterm.js, o mesmo do VS Code, que traz junto o
+// que faltava e não dava pra remendar:
+//   - alternate screen (\x1b[?1049h) → o vim do `git pull` fica VISÍVEL;
+//   - teclas indo direto pro PTY → dá pra usar o vim, Tab, setas, Ctrl+C;
+//   - resize real → sem mais corte na direita (ver terminal:resize).
+
 var isTerminalInitialized = false;
-var terminalHistory = [];
-var terminalHistoryIdx = 0;
 
 (function() {
-        function ansiToHtml(text) {
-            let html = text
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;');
-            
-            const colors = {
-                // Foreground standard
-                30: 'color: #21222c',
-                31: 'color: #ff5555', // Red (untracked / unstaged)
-                32: 'color: #50fa7b', // Green (staged)
-                33: 'color: #f1fa8c', // Yellow
-                34: 'color: #bd93f9', // Blue
-                35: 'color: #ff79c6', // Magenta
-                36: 'color: #8be9fd', // Cyan
-                37: 'color: #f8f8f2', // White
-                39: 'color: inherit',
-                // Foreground bright
-                90: 'color: #6272a4', // Gray/Bright Black
-                91: 'color: #ff6e6e',
-                92: 'color: #69ff94',
-                93: 'color: #ffffa5',
-                94: 'color: #d6acff',
-                95: 'color: #ff92df',
-                96: 'color: #a4ffff',
-                97: 'color: #ffffff',
-                // Background standard
-                40: 'background-color: #21222c',
-                41: 'background-color: #ff5555',
-                42: 'background-color: #50fa7b',
-                43: 'background-color: #f1fa8c',
-                44: 'background-color: #bd93f9',
-                45: 'background-color: #ff79c6',
-                46: 'background-color: #8be9fd',
-                47: 'background-color: #f8f8f2',
-                49: 'background-color: transparent',
-                // Background bright
-                100: 'background-color: #6272a4',
-                101: 'background-color: #ff6e6e',
-                102: 'background-color: #69ff94',
-                103: 'background-color: #ffffa5',
-                104: 'background-color: #d6acff',
-                105: 'background-color: #ff92df',
-                106: 'background-color: #a4ffff',
-                107: 'background-color: #ffffff'
-            };
+        var term = null;
+        var fitAddon = null;
+        var resizeObserver = null;
 
-            function get256Color(n) {
-                if (n < 8) {
-                    const base = ['#000000','#cd0000','#00cd00','#cdcd00','#0000ee','#cd00cd','#00cdcd','#e5e5e5'];
-                    return base[n];
-                }
-                if (n < 16) {
-                    const bright = ['#7f7f7f','#ff0000','#00ff00','#ffff00','#5c5cff','#ff00ff','#00ffff','#ffffff'];
-                    return bright[n - 8];
-                }
-                if (n >= 16 && n <= 231) {
-                    n -= 16;
-                    const r = Math.floor(n / 36);
-                    const g = Math.floor((n % 36) / 6);
-                    const b = n % 6;
-                    const map = [0, 95, 135, 175, 215, 255];
-                    return `rgb(${map[r]}, ${map[g]}, ${map[b]})`;
-                }
-                if (n >= 232 && n <= 255) {
-                    const val = (n - 232) * 10 + 8;
-                    return `rgb(${val}, ${val}, ${val})`;
-                }
-                return '#f8f8f2';
-            }
+        // Tema alinhado ao Dracula que o resto do app já usa.
+        const TEMA = {
+            background: '#090a0f', foreground: '#d8dee9', cursor: '#50fa7b',
+            selectionBackground: 'rgba(98,114,164,0.45)',
+            black: '#21222c',   red: '#ff5555',     green: '#50fa7b',  yellow: '#f1fa8c',
+            blue: '#bd93f9',    magenta: '#ff79c6', cyan: '#8be9fd',   white: '#f8f8f2',
+            brightBlack: '#6272a4', brightRed: '#ff6e6e', brightGreen: '#69ff94',
+            brightYellow: '#ffffa5', brightBlue: '#d6acff', brightMagenta: '#ff92df',
+            brightCyan: '#a4ffff',   brightWhite: '#ffffff',
+        };
 
-            let openSpan = false;
-
-            html = html.replace(/\x1b\[([0-9;]*)m/g, (match, p1) => {
-                let style = '';
-                const codes = p1.split(';');
-                let reset = false;
-                
-                for (let i = 0; i < codes.length; i++) {
-                    const code = codes[i];
-                    if (code === '0' || code === '') {
-                        reset = true;
-                    } else if (code === '1') {
-                        style += 'font-weight: bold;';
-                    } else if (code === '2') {
-                        style += 'opacity: 0.75;';
-                    } else if (code === '4') {
-                        style += 'text-decoration: underline;';
-                    } else if (code === '38' && codes[i+1] === '5' && codes[i+2] !== undefined) {
-                        const colorIdx = parseInt(codes[i+2], 10);
-                        style += `color: ${get256Color(colorIdx)};`;
-                        i += 2;
-                    } else if (code === '48' && codes[i+1] === '5' && codes[i+2] !== undefined) {
-                        const colorIdx = parseInt(codes[i+2], 10);
-                        style += `background-color: ${get256Color(colorIdx)};`;
-                        i += 2;
-                    } else if (code === '38' && codes[i+1] === '2' && codes[i+4] !== undefined) {
-                        style += `color: rgb(${codes[i+2]}, ${codes[i+3]}, ${codes[i+4]});`;
-                        i += 4;
-                    } else if (code === '48' && codes[i+1] === '2' && codes[i+4] !== undefined) {
-                        style += `background-color: rgb(${codes[i+2]}, ${codes[i+3]}, ${codes[i+4]});`;
-                        i += 4;
-                    } else if (colors[code]) {
-                        style += colors[code] + ';';
-                    }
-                }
-
-                let result = '';
-                if (reset && openSpan) {
-                    result += '</span>';
-                    openSpan = false;
-                }
-                if (style) {
-                    if (openSpan) {
-                        result += '</span>';
-                    }
-                    result += `<span style="${style}">`;
-                    openSpan = true;
-                }
-                return result;
-            });
-
-            // Clean up any remaining non-color ANSI escape sequences that pollute the terminal output
-            // 1. Remove DCS, OSC, PM, APC sequences (typically terminate with ESC \ or BEL)
-            html = html.replace(/\x1b[P\]^_][\s\S]*?(?:\x1b\\|\x07)/g, '');
-            // 2. Remove remaining CSI sequences (e.g. bracketed paste [?2004h, alt screen [?1049h)
-            html = html.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '');
-            // 3. Remove any other leftover ESC sequences (2-byte)
-            html = html.replace(/\x1b./g, '');
-
-            if (openSpan) {
-                html += '</span>';
-            }
-            return html;
+        function fonteMono() {
+            const v = getComputedStyle(document.documentElement).getPropertyValue('--font-mono');
+            return (v && v.trim()) || 'JetBrains Mono, Consolas, monospace';
         }
 
- // ansiToHtml & get256Color
+        /** Manda o tamanho REAL pro PTY. Sem isto o shell quebra as linhas na
+         *  largura errada e o texto some na borda direita. */
+        function sincronizarTamanho() {
+            if (!term || !fitAddon) return;
+            let dims;
+            try { dims = fitAddon.proposeDimensions(); } catch (_) { return; }
+            if (!dims || !dims.cols || !dims.rows) return;          // painel escondido
+            if (!isFinite(dims.cols) || !isFinite(dims.rows)) return;
+            try { fitAddon.fit(); } catch (_) { return; }
+            if (window.electronAPI.terminalResize) {
+                window.electronAPI.terminalResize({ cols: term.cols, rows: term.rows });
+            }
+        }
+        window._termFit = sincronizarTamanho;
+
+        function criarTerminal(host) {
+            if (term) return term;
+            if (typeof Terminal === 'undefined') {
+                host.textContent = 'Falha ao carregar o xterm.js (node_modules/@xterm/xterm).';
+                return null;
+            }
+            term = new Terminal({
+                theme: TEMA,
+                fontFamily: fonteMono(),
+                fontSize: 13,
+                lineHeight: 1.2,
+                cursorBlink: true,
+                // Histórico de rolagem. O emulador antigo guardava a tela inteira
+                // em DOM, o que ficava pesado; aqui é buffer do xterm.
+                scrollback: 5000,
+                allowProposedApi: true,
+                // Ctrl+C com texto selecionado copia (comportamento de terminal
+                // de IDE); sem seleção, o handler abaixo manda SIGINT.
+                macOptionIsMeta: true,
+            });
+
+            const FitCtor = (window.FitAddon && window.FitAddon.FitAddon) || window.FitAddon;
+            if (FitCtor) { fitAddon = new FitCtor(); term.loadAddon(fitAddon); }
+
+            term.open(host);
+            // Exposto para scripts/test-terminal.js, que dirige o app por CDP e
+            // lê o buffer real pra conferir cor e largura. Um terminal só dá pra
+            // testar de verdade olhando o que foi pra tela.
+            window._term = term;
+
+            // Cada tecla vai crua pro PTY. É o que faltava pro vim do `git pull`:
+            // antes o <input> só mandava a linha inteira no Enter, então dentro do
+            // editor era chute.
+            term.onData((data) => {
+                window.electronAPI.terminalInput(data);
+                // Depois de um Enter, o painel de git/árvore pode ter mudado.
+                if (data.includes('\r')) agendarRefreshGit();
+            });
+
+            // Ctrl+C: com seleção, copia; sem seleção, deixa o PTY receber o \x03.
+            term.attachCustomKeyEventHandler((e) => {
+                if (e.type !== 'keydown') return true;
+                if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'c') {
+                    const sel = term.getSelection();
+                    if (sel && sel.trim()) {
+                        navigator.clipboard.writeText(sel).catch(() => {});
+                        term.clearSelection();
+                        return false;
+                    }
+                }
+                if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'v') {
+                    navigator.clipboard.readText()
+                        .then((t) => t && window.electronAPI.terminalInput(t))
+                        .catch(() => {});
+                    return false;
+                }
+                return true;
+            });
+
+            return term;
+        }
+
+        // `git add`/`commit`/`checkout` mexem no que a árvore e o badge de branch
+        // mostram. Antes isso era disparado ao ler o texto do <input>; agora o
+        // gatilho é o Enter, e um debounce evita rodar a cada tecla de um vim.
+        let refreshTimer = null;
+        function agendarRefreshGit() {
+            clearTimeout(refreshTimer);
+            refreshTimer = setTimeout(() => {
+                if (typeof fetchAndUpdateGitStatus === 'function') fetchAndUpdateGitStatus();
+                if (typeof refreshProjectTree === 'function') refreshProjectTree();
+            }, 400);
+        }
 
         async function initTerminalProcess() {
-            if (isTerminalInitialized) return;
+            if (isTerminalInitialized) { sincronizarTamanho(); return; }
             isTerminalInitialized = true;
 
-            // Reseta o buffer de tela ao conectar/reconectar
-            if (typeof window._termResetBuffer === 'function') window._termResetBuffer();
-            
-            const termScreen = document.getElementById('terminal-screen');
-            if (termScreen) {
-                termScreen.innerHTML = '<span style="color: #6272a4;">Iniciando conexão com terminal do sistema...\n</span>';
-            }
+            const host = document.getElementById('terminal-screen');
+            if (!host) { isTerminalInitialized = false; return; }
+            if (!criarTerminal(host)) { isTerminalInitialized = false; return; }
 
+            // Mede ANTES de subir o PTY pra ele já nascer com o tamanho certo —
+            // senão o primeiro prompt já vem quebrado na largura errada.
+            try { fitAddon && fitAddon.fit(); } catch (_) {}
+
+            term.writeln('\x1b[38;5;61mIniciando conexão com terminal do sistema...\x1b[0m');
             try {
-                const res = await window.electronAPI.terminalInit();
+                const res = await window.electronAPI.terminalInit({ cols: term.cols, rows: term.rows });
                 if (res && res.ok) {
-                    if (termScreen) {
-                        termScreen.innerHTML += `<span style="color: #50fa7b;">Terminal conectado (${res.shell}) em ${res.projectPath}\n\n</span>`;
-                    }
+                    term.writeln(`\x1b[32mTerminal conectado (${res.shell}) em ${res.projectPath}\x1b[0m`);
+                    sincronizarTamanho();
                 } else {
-                    if (termScreen) {
-                        termScreen.innerHTML += '<span style="color: #ff5555;">Erro ao iniciar terminal.\n</span>';
-                    }
+                    term.writeln(`\x1b[31mErro ao iniciar terminal: ${(res && res.error) || 'desconhecido'}\x1b[0m`);
+                    isTerminalInitialized = false;
                 }
             } catch (e) {
-                if (termScreen) {
-                    termScreen.innerHTML += `<span style="color: #ff5555;">Erro: ${e.message}\n</span>`;
-                }
+                term.writeln(`\x1b[31mErro: ${e.message}\x1b[0m`);
+                isTerminalInitialized = false;
             }
         }
 
@@ -177,8 +169,6 @@ var terminalHistoryIdx = 0;
             const btnTerminal = document.getElementById('tab-btn-terminal');
             const btnSplit = document.getElementById('tab-btn-split');
             const content = document.getElementById('composer-view-content');
-            const termScreen = document.getElementById('terminal-screen');
-            const termInput = document.getElementById('terminal-input-field');
             const termContainer = document.getElementById('terminal-container-element');
             const resizer = document.getElementById('terminal-resizer');
 
@@ -206,6 +196,7 @@ var terminalHistoryIdx = 0;
                         window.removeEventListener('mousemove', onMouseMove);
                         window.removeEventListener('mouseup', onMouseUp);
                         localStorage.setItem('helper_terminal_height', termContainer.style.height);
+                        sincronizarTamanho();
                     }
 
                     window.addEventListener('mousemove', onMouseMove);
@@ -213,31 +204,33 @@ var terminalHistoryIdx = 0;
                 });
 
                 const savedH = localStorage.getItem('helper_terminal_height');
-                if (savedH) {
-                    termContainer.style.height = savedH;
-                }
+                if (savedH) termContainer.style.height = savedH;
             }
 
+            // Qualquer coisa que mude a caixa (trocar de aba, split, redimensionar
+            // a janela) muda cols/rows — e cols/rows errado é o corte na direita.
+            if (termContainer && typeof ResizeObserver !== 'undefined') {
+                resizeObserver = new ResizeObserver(() => sincronizarTamanho());
+                resizeObserver.observe(termContainer);
+            }
+            window.addEventListener('resize', sincronizarTamanho);
+
             function setActiveTab(activeBtn, layoutClass) {
-                [btnChat, btnTerminal, btnSplit].forEach(btn => {
+                [btnChat, btnTerminal, btnSplit].forEach((btn) => {
                     if (btn) btn.classList.remove('active');
                 });
                 if (activeBtn) activeBtn.classList.add('active');
-                
-                if (content) {
-                    content.className = 'composer-view-content ' + layoutClass;
-                }
 
-                // Manage body classes for full-width layout
+                if (content) content.className = 'composer-view-content ' + layoutClass;
+
                 document.body.classList.remove('terminal-active', 'split-active');
-                if (layoutClass === 'flex-layout-terminal') {
-                    document.body.classList.add('terminal-active');
+                if (layoutClass === 'flex-layout-terminal' || layoutClass === 'flex-layout-split') {
+                    document.body.classList.add(
+                        layoutClass === 'flex-layout-terminal' ? 'terminal-active' : 'split-active'
+                    );
                     initTerminalProcess();
-                    setTimeout(() => termInput && termInput.focus(), 50);
-                } else if (layoutClass === 'flex-layout-split') {
-                    document.body.classList.add('split-active');
-                    initTerminalProcess();
-                    setTimeout(() => termInput && termInput.focus(), 50);
+                    // O painel acabou de ficar visível: só agora dá pra medir.
+                    setTimeout(() => { sincronizarTamanho(); if (term) term.focus(); }, 50);
                 }
             }
 
@@ -245,292 +238,20 @@ var terminalHistoryIdx = 0;
             if (btnTerminal) btnTerminal.addEventListener('click', () => setActiveTab(btnTerminal, 'flex-layout-terminal'));
             if (btnSplit) btnSplit.addEventListener('click', () => setActiveTab(btnSplit, 'flex-layout-split'));
 
-            if (termContainer && termInput) {
-                termContainer.addEventListener('click', () => {
-                    const sel = window.getSelection ? window.getSelection().toString() : '';
-                    if (sel && sel.trim()) {
-                        return; // Se houver texto selecionado, não altera o foco para não cancelar a seleção
-                    }
-                    termInput.focus();
-                });
-            }
-
-            if (termInput) {
-                termInput.addEventListener('keydown', (e) => {
-                    // === Caracteres de controle (terminal nativo) ===
-                    // Encaminha sinais reais ao PTY: Ctrl+C interrompe (SIGINT),
-                    // Ctrl+D EOF, Ctrl+Z suspende, Ctrl+\ SIGQUIT. Sem isso, npm/git
-                    // e qualquer processo em foreground ficavam travados sem forma de parar.
-                    if (e.ctrlKey && !e.altKey && !e.metaKey && e.key.length === 1) {
-                        const k = e.key.toLowerCase();
-                        // Ctrl+C: se há texto selecionado, deixa copiar; senão manda SIGINT.
-                        if (k === 'c') {
-                            const sel = window.getSelection && window.getSelection().toString();
-                            if (sel && sel.trim()) return; // permite copiar seleção
-                            e.preventDefault();
-                            window.electronAPI.terminalInput('\x03');
-                            termInput.value = '';
-                            return;
-                        }
-                        if (k === 'd') { e.preventDefault(); window.electronAPI.terminalInput('\x04'); return; }
-                        if (k === 'z') { e.preventDefault(); window.electronAPI.terminalInput('\x1a'); return; }
-                        if (k === '\\') { e.preventDefault(); window.electronAPI.terminalInput('\x1c'); return; }
-                        if (k === 'u') { e.preventDefault(); termInput.value = ''; window.electronAPI.terminalInput('\x15'); return; }
-                    }
-                    if (e.key === 'Enter') {
-                        const val = termInput.value;
-                        if (val.trim() === 'clear') {
-                            if (typeof window._termResetBuffer === 'function') window._termResetBuffer();
-                            window.electronAPI.terminalInput('\n');
-                            terminalHistory.push(val);
-                            terminalHistoryIdx = terminalHistory.length;
-                            termInput.value = '';
-                            return;
-                        }
-                        window.electronAPI.terminalInput(val + '\n');
-                        if (val.trim()) {
-                            terminalHistory.push(val);
-                            terminalHistoryIdx = terminalHistory.length;
-                            if (val.trim().startsWith('git ')) {
-                                setTimeout(() => {
-                                    if (typeof fetchAndUpdateGitStatus === 'function') fetchAndUpdateGitStatus();
-                                    if (typeof refreshProjectTree === 'function') refreshProjectTree();
-                                }, 350);
-                            }
-                        }
-                        termInput.value = '';
-                    } else if (e.key === 'ArrowUp') {
-                        e.preventDefault();
-                        if (terminalHistory.length > 0 && terminalHistoryIdx > 0) {
-                            terminalHistoryIdx--;
-                            termInput.value = terminalHistory[terminalHistoryIdx];
-                        }
-                    } else if (e.key === 'ArrowDown') {
-                        e.preventDefault();
-                        if (terminalHistoryIdx < terminalHistory.length - 1) {
-                            terminalHistoryIdx++;
-                            termInput.value = terminalHistory[terminalHistoryIdx];
-                        } else {
-                            terminalHistoryIdx = terminalHistory.length;
-                            termInput.value = '';
-                        }
-                    } else if (e.key === 'l' && e.ctrlKey) {
-                        e.preventDefault();
-                        if (typeof window._termResetBuffer === 'function') window._termResetBuffer();
-                    }
-                });
-            }
-
             if (window.electronAPI.onTerminalOutput) {
-                // === Mini screen buffer VT100 ===
-                // O ConPTY (node-pty) envia sequências de cursor reais: \r (CR),
-                // \x1b[K (erase to end of line), \x1b[nA/B (up/down), etc.
-                // Sem isso, git status / npm / qualquer coisa que reescreve linhas
-                // exibe texto grudado (ex: "index.htmlmodified:").
-                //
-                // Dois buffers paralelos por linha:
-                //   plainLines[r] — texto puro (sem ANSI) → usado para slice/pad/cursor
-                //   ansiLines[r]  — texto + escapes ANSI  → usado para renderização
-
-                let plainLines = [''];
-                let ansiLines  = [''];
-                let curRow = 0;
-                let curCol = 0;
-                let currentAnsiState = '';
-
-                function resetScreenBuffer() {
-                    plainLines = [''];
-                    ansiLines  = [''];
-                    curRow = 0;
-                    curCol = 0;
-                    currentAnsiState = '';
-                    if (termScreen) termScreen.innerHTML = '';
-                }
-                window._termResetBuffer = resetScreenBuffer;
-
-                function ensureRow(r) {
-                    while (r >= plainLines.length) { plainLines.push(''); ansiLines.push(''); }
-                }
-
-                function flushScreen() {
-                    termScreen.innerHTML = '';
-                    for (let i = 0; i < ansiLines.length; i++) {
-                        const span = document.createElement('span');
-                        span.innerHTML = ansiToHtml(ansiLines[i]);
-                        termScreen.appendChild(span);
-                        if (i < ansiLines.length - 1) {
-                            termScreen.appendChild(document.createTextNode('\n'));
-                        }
-                    }
-                }
-
-                // Processa um chunk VT100 e atualiza plainLines/ansiLines e cursor.
-                function processChunk(chunk) {
-                    let i = 0;
-                    while (i < chunk.length) {
-                        const ch = chunk[i];
-
-                        // ── Carriage Return: volta ao início da linha atual ──
-                        if (ch === '\r') {
-                            curCol = 0;
-                            i++;
-                            continue;
-                        }
-
-                        // ── Line Feed: nova linha ──
-                        if (ch === '\n' || ch === '\x0b' || ch === '\x0c') {
-                            curRow++;
-                            ensureRow(curRow);
-                            i++;
-                            continue;
-                        }
-
-                        // ── Backspace ──
-                        if (ch === '\x08') {
-                            if (curCol > 0) curCol--;
-                            i++;
-                            continue;
-                        }
-
-                        // ── Escape sequences ──
-                        if (ch === '\x1b' && i + 1 < chunk.length) {
-                            if (chunk[i + 1] === '[') {
-                                const csiMatch = chunk.slice(i).match(/^\x1b\[([0-9;?]*)([A-Za-z@`])/);
-                                if (csiMatch) {
-                                    const params = csiMatch[1];
-                                    const cmd = csiMatch[2];
-                                    const args = params.split(';').map(v => parseInt(v || '0', 10));
-                                    const n = args[0] || 1;
-
-                                    if (cmd === 'A') { curRow = Math.max(0, curRow - n); }
-                                    else if (cmd === 'B' || cmd === 'e') { curRow += n; ensureRow(curRow); }
-                                    else if (cmd === 'C' || cmd === 'a') { curCol += n; }
-                                    else if (cmd === 'D') { curCol = Math.max(0, curCol - n); }
-                                    else if (cmd === 'E') { curRow += n; curCol = 0; ensureRow(curRow); }
-                                    else if (cmd === 'F') { curRow = Math.max(0, curRow - n); curCol = 0; }
-                                    else if (cmd === 'G' || cmd === '`') { curCol = Math.max(0, (args[0] || 1) - 1); }
-                                    else if (cmd === 'H' || cmd === 'f') {
-                                        curRow = Math.max(0, (args[0] || 1) - 1);
-                                        curCol = Math.max(0, (args[1] || 1) - 1);
-                                        ensureRow(curRow);
-                                    }
-                                    else if (cmd === 'J') {
-                                        if (args[0] === 2 || args[0] === 3) {
-                                            plainLines = ['']; ansiLines = [''];
-                                            curRow = 0; curCol = 0;
-                                        } else if (args[0] === 0) {
-                                            plainLines[curRow] = plainLines[curRow].slice(0, curCol);
-                                            ansiLines[curRow] = ansiLines[curRow].slice(0, curCol) + currentAnsiState;
-                                            plainLines.splice(curRow + 1); ansiLines.splice(curRow + 1);
-                                        } else if (args[0] === 1) {
-                                            plainLines[curRow] = ' '.repeat(curCol) + plainLines[curRow].slice(curCol);
-                                            ansiLines[curRow] = ' '.repeat(curCol) + ansiLines[curRow].slice(curCol);
-                                            for (let r = 0; r < curRow; r++) { plainLines[r] = ''; ansiLines[r] = ''; }
-                                        }
-                                    }
-                                    else if (cmd === 'K') {
-                                        const p = plainLines[curRow] || '';
-                                        const a = ansiLines[curRow] || '';
-                                        if (args[0] === 0 || args[0] === undefined || isNaN(args[0])) {
-                                            // Erase cursor→end: trunca o texto puro; no ansi adiciona reset
-                                            plainLines[curRow] = p.slice(0, curCol);
-                                            ansiLines[curRow] = a.slice(0, curCol) + '\x1b[0m';
-                                        } else if (args[0] === 1) {
-                                            plainLines[curRow] = ' '.repeat(curCol) + p.slice(curCol);
-                                            ansiLines[curRow] = ' '.repeat(curCol) + a.slice(curCol);
-                                        } else if (args[0] === 2) {
-                                            plainLines[curRow] = '';
-                                            ansiLines[curRow] = '';
-                                            curCol = 0;
-                                        }
-                                    }
-                                    else if (cmd === 'P') {
-                                        plainLines[curRow] = (plainLines[curRow]||'').slice(0, curCol) + (plainLines[curRow]||'').slice(curCol + n);
-                                        ansiLines[curRow] = (ansiLines[curRow]||'').slice(0, curCol) + (ansiLines[curRow]||'').slice(curCol + n);
-                                    }
-                                    else if (cmd === 'S') {
-                                        for (let s = 0; s < n; s++) { plainLines.shift(); ansiLines.shift(); }
-                                        while (plainLines.length < 1) { plainLines.push(''); ansiLines.push(''); }
-                                    }
-                                    else if (cmd === 'T') {
-                                        for (let s = 0; s < n; s++) { plainLines.unshift(''); ansiLines.unshift(''); }
-                                        curRow += n;
-                                    }
-
-                                    // SGR (m): injeta no ansiLines, atualiza estado de cor atual
-                                    if (cmd === 'm') {
-                                        const raw = csiMatch[0];
-                                        currentAnsiState = raw; // simplificado: último SGR é o estado
-                                        ensureRow(curRow);
-                                        ansiLines[curRow] = (ansiLines[curRow] || '') + raw;
-                                        // plainLines não muda — SGR não é caractere visível
-                                    }
-
-                                    i += csiMatch[0].length;
-                                    continue;
-                                }
-                            }
-
-                            // OSC, DCS, PM, APC — descarta
-                            const oscMatch = chunk.slice(i).match(/^\x1b[P\]^_][\s\S]*?(?:\x1b\\|\x07)/);
-                            if (oscMatch) { i += oscMatch[0].length; continue; }
-
-                            // Outros escapes 2-byte
-                            i += 2;
-                            continue;
-                        }
-
-                        // ── Caracteres imprimíveis ──
-                        ensureRow(curRow);
-                        let plain = plainLines[curRow];
-                        let ansi  = ansiLines[curRow];
-
-                        // Pad com espaços até o cursor (em texto puro)
-                        if (curCol > plain.length) {
-                            const pad = ' '.repeat(curCol - plain.length);
-                            plain += pad;
-                            ansi  += pad;
-                        }
-
-                        // Overwrite o caractere na posição correta (texto puro e ansi separados)
-                        plainLines[curRow] = plain.slice(0, curCol) + ch + plain.slice(curCol + 1);
-                        ansiLines[curRow]  = ansi.slice(0, curCol)  + ch + ansi.slice(curCol + 1);
-                        curCol++;
-                        i++;
-                    }
-                }
-
                 window.electronAPI.onTerminalOutput((payload) => {
-                    if (!termScreen) return;
-                    const isAtBottom = termScreen.scrollHeight - termScreen.clientHeight <= termScreen.scrollTop + 20;
-                    const chunk = payload.data;
-
-                    if (!chunk) return;
-
-                    processChunk(chunk);
-                    flushScreen();
-
-                    if (isAtBottom) {
-                        termScreen.scrollTop = termScreen.scrollHeight;
-                    }
+                    if (term && payload && payload.data) term.write(payload.data);
                 });
             }
 
             if (window.electronAPI.onTerminalClosed) {
                 window.electronAPI.onTerminalClosed((payload) => {
-                    if (termScreen) {
-                        const span = document.createElement('span');
-                        span.style.color = '#ff5555';
-                        span.textContent = `\n[Terminal desconectado com código ${payload.code}]\n`;
-                        termScreen.appendChild(span);
-                        termScreen.scrollTop = termScreen.scrollHeight;
-                    }
+                    if (term) term.writeln(`\r\n\x1b[31m[Terminal desconectado com código ${payload.code}]\x1b[0m`);
                     isTerminalInitialized = false;
                 });
             }
-        } // initTerminalProcess, setupTerminalUI, control characters, fit resize
+        }
 
-    // Expose functions
     window.initTerminalProcess = initTerminalProcess;
     window.setupTerminalUI = setupTerminalUI;
 })();

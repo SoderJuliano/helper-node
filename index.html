@@ -7,6 +7,12 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&family=Source+Code+Pro:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+    <!-- Terminal embutido: xterm.js, o mesmo emulador do VS Code. Carregado do
+         node_modules (NÃO de CDN) porque o terminal precisa funcionar com a
+         máquina offline — é o cenário principal do app. -->
+    <link rel="stylesheet" href="node_modules/@xterm/xterm/css/xterm.css">
+    <script src="node_modules/@xterm/xterm/lib/xterm.js"></script>
+    <script src="node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
     <!-- Syntax highlight (visualizador de arquivos da IDE) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
@@ -231,12 +237,11 @@
                     <div class="composer-view-content flex-layout-chat" id="composer-view-content">
                         <div class="composer-view-pane pane-terminal" id="pane-terminal" style="display: none;">
                             <div class="terminal-resizer" id="terminal-resizer" title="Arraste para redimensionar a altura do terminal"></div>
+                            <!-- Sem <input> de comando: o xterm.js É o teclado. Cada tecla vai
+                                 direto pro PTY, que é o que faz vim, Ctrl+C, setas, Tab e
+                                 qualquer programa interativo funcionarem de verdade. -->
                             <div class="terminal-container" id="terminal-container-element">
                                 <div class="terminal-screen" id="terminal-screen"></div>
-                                <div class="terminal-input-row">
-                                    <span class="terminal-prompt">$</span>
-                                    <input type="text" id="terminal-input-field" placeholder="Digite comandos aqui... (Enter para enviar)" autocomplete="off" />
-                                </div>
                             </div>
                         </div>
                         <div class="composer-view-pane pane-chat" id="pane-chat">

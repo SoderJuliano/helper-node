@@ -20,10 +20,13 @@
     "test:url": "node ./scripts/test-backend-url.js",
     "test:noclose": "node ./scripts/test-backend-noclose.js",
     "test:ollama": "node ./scripts/test-ollama-local.js",
-    "test:ollama:ide": "node ./scripts/test-ollama-stream.js"
+    "test:ollama:ide": "node ./scripts/test-ollama-stream.js",
+    "test:terminal": "node ./scripts/test-terminal.js"
   },
   "dependencies": {
     "@ricky0123/vad-web": "^0.0.30",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
     "axios": "^1.9.0",
     "electron": "^36.2.1",
     "express": "^5.1.0",
