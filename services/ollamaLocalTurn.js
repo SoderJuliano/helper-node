@@ -28,19 +28,63 @@ function workspacePaths() {
   }
 }
 
+// Teto de CARACTERES da conversa. Contar mensagem não serve: uma mensagem pode
+// ser um `readFile` de 32000 chars, e 12 dessas dão ~96000 chars ≈ 32000 tokens
+// — a janela inteira do Ollama (num_ctx bate no teto de 32768), sem sobrar nada
+// pra gerar. O Ollama descarta o excedente EM SILÊNCIO, e o que ele descarta é o
+// COMEÇO: o prompt de sistema com as ferramentas e o pedido do usuário. É assim
+// que o modelo começa a raciocinar que "não tem acesso a nada" no meio de um
+// turno que estava indo bem.
+//
+// 70000 chars é o mesmo teto que o caminho do backend usa (toolLoop.capPrompt),
+// e pela mesma conta: 70000/3 ≈ 23300 tokens de prompt, sobrando ~9400 da janela
+// de 32768 pro raciocínio (~2400-4700 medidos) mais a resposta.
+const MAX_SESSION_CHARS = Number(process.env.HELPER_MAX_PROMPT_CHARS || 70000);
+
+function charsDe(m) {
+  return String((m && m.content) || '').length;
+}
+
 /**
- * Corta o histórico sem deixar mensagem órfã.
+ * Quebra a conversa em GRUPOS indivisíveis: uma mensagem user/assistant mais os
+ * role:"tool" que vêm logo atrás dela.
  *
- * Uma mensagem role:"tool" só faz sentido logo depois do assistant que pediu a
- * ferramenta. Cortando pelo número bruto de mensagens, o corte cai no meio de
- * um par e o Ollama recebe um resultado de ferramenta que ninguém pediu.
+ * Cortar mensagem a mensagem não funciona — um role:"tool" só faz sentido depois
+ * do assistant que pediu a ferramenta, então descartar o assistant obriga a
+ * descartar os resultados junto. Fazendo isso na mão (jogando fora todo "tool"
+ * que sobrou na frente), 64 KB de leitura de arquivo já lida iam pro lixo e o
+ * modelo relia tudo na rodada seguinte.
+ */
+function agruparMensagens(msgs) {
+  const grupos = [];
+  for (const m of msgs) {
+    if (m.role === 'tool' && grupos.length) grupos[grupos.length - 1].push(m);
+    else grupos.push([m]);
+  }
+  return grupos;
+}
+
+/**
+ * Corta o histórico por CONTAGEM e por TAMANHO, sem deixar mensagem órfã.
  */
 function trimSession(messages, manter = 12) {
-  if (messages.length <= manter + 1) return messages;
+  if (!messages.length) return messages;
   const sistema = messages[0];
-  let resto = messages.slice(-manter);
-  while (resto.length && resto[0].role === 'tool') resto = resto.slice(1);
-  return [sistema, ...resto];
+  let grupos = agruparMensagens(messages.slice(1));
+
+  const custo = (g) => g.reduce((n, m) => n + charsDe(m), 0);
+  let total = charsDe(sistema) + grupos.reduce((n, g) => n + custo(g), 0);
+
+  // Descarta os grupos mais ANTIGOS até caber nas duas restrições. O sistema e o
+  // último grupo (o pedido atual ou o TOOL_RESULT recém-chegado) nunca saem —
+  // sem eles o turno perde o sentido, que é exatamente o que a truncagem
+  // silenciosa do Ollama causava.
+  while (grupos.length > 1 && (total > MAX_SESSION_CHARS || grupos.length > manter)) {
+    total -= custo(grupos[0]);
+    grupos = grupos.slice(1);
+  }
+
+  return [sistema, ...grupos.flat()];
 }
 
 /**

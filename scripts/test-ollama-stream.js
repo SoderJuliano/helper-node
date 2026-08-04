@@ -173,6 +173,39 @@ server.listen(0, '127.0.0.1', async () => {
   assert(!r.visivel.includes('TOOL_CALL'), 'o JSON da chamada não vazou pra tela');
   assert(r.visivel.includes('configuração está correto'), 'resposta final chegou à tela');
 
+  console.log('5) histórico cortado por TAMANHO, não só por contagem de mensagens');
+  // Um readFile grande cabe no teto de resultado (32000 chars), mas 6 deles
+  // estouram a janela do Ollama — que descarta o excedente em silêncio, e o que
+  // ele descarta é o COMEÇO: o system prompt com as ferramentas.
+  const { trimSession } = require(path.join(__dirname, '..', 'services', 'ollamaLocalTurn'));
+  // 6 rodadas de agente, cada uma = assistant + um readFile de 20000 chars.
+  // 120000 chars não cabem na janela; ~3 rodadas cabem. O corte tem que jogar
+  // fora as ANTIGAS e manter as recentes INTEIRAS (assistant junto do seu tool).
+  const historico = [{ role: 'system', content: 'SYSTEM: prompt de agente' }];
+  historico.push({ role: 'user', content: 'pedido original do usuário' });
+  for (let i = 1; i <= 6; i++) {
+    historico.push({ role: 'assistant', content: `rodada ${i}`, tool_calls: [{ function: { name: 'readFile', arguments: {} } }] });
+    historico.push({ role: 'tool', tool_name: 'readFile', content: `R${i}` + 'x'.repeat(20000) });
+  }
+  historico.push({ role: 'user', content: 'e agora?' });
+
+  const cortado = trimSession(historico);
+  const chars = cortado.reduce((n, m) => n + String(m.content || '').length, 0);
+  const tools = cortado.filter((m) => m.role === 'tool');
+  assert(cortado[0].role === 'system' && /prompt de agente/.test(cortado[0].content), 'o system prompt sobreviveu ao corte');
+  assert(chars <= 70000, `histórico ficou dentro do teto de 70000 chars (ficou ${chars})`);
+  assert(cortado[cortado.length - 1].content === 'e agora?', 'a última mensagem (o pedido atual) sobreviveu');
+  // O bug da 1ª tentativa: descartava TODO tool que sobrasse na frente e o
+  // histórico ia de 120000 chars pra 2 mensagens — o modelo relia tudo de novo.
+  assert(tools.length >= 2, `manteve os resultados recentes que cabiam (${tools.length} tool(s))`);
+  assert(tools.every((m) => /^R[456]/.test(m.content)), `os mantidos são os MAIS RECENTES (${tools.map((m) => m.content.slice(0, 2)).join(',')})`);
+  assert(!cortado.some((m, i) => m.role === 'tool' && cortado[i - 1].role === 'system'), 'não sobrou tool órfão logo após o system');
+  for (const t of tools) {
+    const idx = cortado.indexOf(t);
+    const antes = cortado.slice(0, idx).reverse().find((m) => m.role !== 'tool');
+    assert(antes && antes.role === 'assistant', `o tool ${t.content.slice(0, 2)} ficou junto do assistant que o pediu`);
+  }
+
   server.close();
   console.log(falhas === 0 ? '\nTUDO OK' : `\n${falhas} FALHA(S)`);
   process.exit(falhas === 0 ? 0 : 1);
