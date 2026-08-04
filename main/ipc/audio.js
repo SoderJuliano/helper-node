@@ -6,6 +6,10 @@ const {
   configService, edition, knowledgeBase, fileEditService, historyService,
   helperTools, workspace, agenticWorkflow, ollamaAgenticWorkflow,
   translationAssistant, visionGuide, platformScreenCapture, runTestMode,
+  // Mesmo esquecimento do aiResponse.js: os três handlers de TTS abaixo usavam
+  // googleTtsService sem importar. O "Testar conexão" das Configurações sempre
+  // respondeu {ok:false, error:"googleTtsService is not defined"}.
+  googleTtsService,
   analyzeInterviewImage, cloudTranscribeAudio,
   APP_ICON, HIDE_FROM_TASKBAR, IMAGE_COOLDOWN_MS, AUDIO_TMP_DIR,
   audioFilePath, SCREENSHOT_DIRS, PROJECT_SEARCH_SKIP_DIRS, TREE_HEAVY_DIRS,

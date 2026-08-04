@@ -117,7 +117,11 @@ helpers.stopDictationAndTranscribe = async function() {
       await helpers.processOsQuestion(text);
     } else if (isIdeModeNow) {
       state.mainWindow.webContents.send('ide-audio-transcribed', { text: text + ' ' });
-    } else if (aiModel === 'llama-stream') {
+    } else if (aiModel === 'llama-stream' || aiModel === 'qwen-stream' || aiModel === 'ollamaLocal') {
+      // Mesma lista de provedores com streaming que o renderer usa em sentToAI.
+      // O Ollama Local estava fora: o ditado sem pasta anexada caía no caminho
+      // SEM streaming, e o usuário ficava olhando pra tela parada durante os
+      // minutos de raciocínio de um modelo local, sem ver nada acontecendo.
       state.mainWindow.webContents.send('send-to-gemini-stream-auto', text);
     } else {
       helpers.getIaResponse(text);

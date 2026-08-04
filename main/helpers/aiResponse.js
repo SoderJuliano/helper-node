@@ -6,6 +6,11 @@ const {
   configService, edition, knowledgeBase, fileEditService, historyService,
   helperTools, workspace, agenticWorkflow, ollamaAgenticWorkflow,
   translationAssistant, visionGuide, platformScreenCapture, runTestMode,
+  // googleTtsService estava sendo USADO aqui (triggerTtsPlaybackIfEnabled) sem
+  // constar nesta lista: era um ReferenceError puro, engolido pelo try/catch da
+  // própria função. O modo de voz nunca chegou a sintetizar nada — só o card
+  // visual, que é renderizado no renderer, dava sinal de vida.
+  googleTtsService,
   analyzeInterviewImage, cloudTranscribeAudio,
   APP_ICON, HIDE_FROM_TASKBAR, IMAGE_COOLDOWN_MS, AUDIO_TMP_DIR,
   audioFilePath, SCREENSHOT_DIRS, PROJECT_SEARCH_SKIP_DIRS, TREE_HEAVY_DIRS,

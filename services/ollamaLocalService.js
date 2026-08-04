@@ -3,19 +3,27 @@
 // Sem fallback automático: se Ollama não estiver instalado/rodando ou se o
 // modelo escolhido não estiver baixado, devolvemos erro AMIGÁVEL com o
 // comando que o user precisa rodar.
+//
+// Dois protocolos de ferramenta convivem aqui, e a escolha é do Ollama:
+//   - NATIVO  (tools[] em /api/chat, message.tool_calls tipado) quando
+//     /api/show diz que o modelo suporta. É o caminho bom.
+//   - TEXTO   ("TOOL_CALL: {...}" parseado da resposta) pro resto.
+// Ver services/ollamaLocalCaps.js pra por que a decisão é sondada e não chutada.
 
 const axios = require('axios');
 const configService = require('./configService');
 const {
-  buildOllamaToolsAddon,
   parseOllamaToolCalls,
   stripToolCallBlocks,
   stripThinkingBlock,
 } = require('./ollamaLocalParsing');
+const { prepareTurn, executeCalls, trimSession } = require('./ollamaLocalTurn');
+const caps = require('./ollamaLocalCaps');
 
 const DEFAULT_HOST = 'http://localhost:11434';
 
-const OLLAMA_WRITE_TOOLS_BLOCKED = new Set(['writeFile', 'appendToFile', 'deleteFile', 'patchFile']);
+// O Ollama recusou tools[] no meio do turno: refaz em protocolo de texto.
+const SEM_TOOLS_NATIVAS = '__OLLAMA_SEM_TOOLS_NATIVAS__';
 
 // ─── Janela de contexto (num_ctx) ────────────────────────────────────────────
 // O Ollama NÃO cresce a janela sozinho. Com um num_ctx fixo, tudo que passar
@@ -60,6 +68,60 @@ function promptCharsOf(messages) {
   return messages.reduce((n, m) => n + String((m && m.content) || '').length, 0);
 }
 
+/** message.tool_calls do Ollama → [{name, args}]. */
+function normalizarChamadasNativas(toolCalls) {
+  const out = [];
+  for (const tc of toolCalls || []) {
+    const fn = (tc && tc.function) || tc;
+    if (!fn || !fn.name) continue;
+    let args = fn.arguments != null ? fn.arguments : fn.args;
+    // A API devolve objeto; alguns builds mandam a string JSON.
+    if (typeof args === 'string') {
+      try { args = JSON.parse(args); } catch (_) { args = {}; }
+    }
+    out.push({ name: fn.name, args: args || {} });
+  }
+  return out;
+}
+
+/** Saída do parseOllamaToolCalls → mesmo formato. */
+function normalizarChamadasTexto(calls) {
+  return calls.map((c) => ({ name: c.obj.name, args: c.obj.args || c.obj.arguments || {} }));
+}
+
+/**
+ * Tira do texto final o que sobrou do protocolo — SÓ quando o protocolo é o de
+ * texto. No modo nativo a resposta é prosa comum, e o parser tem um fallback que
+ * varre qualquer {...} procurando nome de ferramenta: um exemplo de JSON dentro
+ * da resposta ("o package.json ficou assim: {...}") seria apagado da tela.
+ */
+function limparProtocolo(texto, nativeTools) {
+  return nativeTools ? String(texto || '') : stripToolCallBlocks(texto);
+}
+
+const SUFIXO_FOLLOWUP =
+  '\n\nCom base nos TOOL_RESULT acima, ou emita novos TOOL_CALL se precisar de ' +
+  'mais info, ou escreva a RESPOSTA FINAL ao usuario (sem nenhum TOOL_CALL).';
+
+/** Cobrança quando o modelo repete a MESMA chamada — sintoma de estar preso. */
+function cobrancaRepeticao(chamadas, contagens) {
+  let texto = '';
+  for (const c of chamadas) {
+    const assinatura = `${c.name}:${JSON.stringify(c.args || {})}`;
+    const n = (contagens.get(assinatura) || 0) + 1;
+    contagens.set(assinatura, n);
+    if (n >= 3) {
+      texto = `\n\nPARE. Você já chamou ${c.name} com esses mesmos argumentos ${n} vezes ` +
+        `e o resultado está acima. NÃO repita essa chamada. Responda AGORA em texto ` +
+        `normal, com o que você já descobriu.`;
+    } else if (n === 2) {
+      texto = '\n\nATENÇÃO: essa chamada é repetida — o resultado já está no histórico ' +
+        'acima. Use o que já tem e dê o PRÓXIMO passo (outra ferramenta, outro path) ' +
+        'ou responda em texto.';
+    }
+  }
+  return texto;
+}
 
 class OllamaLocalService {
     constructor() {
@@ -68,6 +130,8 @@ class OllamaLocalService {
         // Modelos que o Ollama recusou com think=true (400). Guardado pra não
         // pagar uma request perdida a cada iteração do tool loop.
         this._noThinking = new Set();
+        // Modelos que recusaram tools[] apesar do /api/show — mesma ideia.
+        this._noNativeTools = new Set();
     }
 
     /**
@@ -80,10 +144,10 @@ class OllamaLocalService {
      *
      * @returns {Promise<{res: Object, thinking: boolean}>}
      */
-    async _postChat(host, model, messages, { stream, signal, responseType }) {
+    async _postChat(host, model, messages, { stream, signal, responseType, tools }) {
         const wantThinking = !this._noThinking.has(model);
         const numCtx = resolveNumCtx(promptCharsOf(messages));
-        console.log(`[ollamaLocal] num_ctx=${numCtx} think=${wantThinking} (${promptCharsOf(messages)} chars de prompt)`);
+        console.log(`[ollamaLocal] num_ctx=${numCtx} think=${wantThinking} tools=${tools ? tools.length : 0} (${promptCharsOf(messages)} chars de prompt)`);
 
         const body = {
             model,
@@ -92,6 +156,7 @@ class OllamaLocalService {
             options: { temperature: 0.7, num_ctx: numCtx },
         };
         if (wantThinking) body.think = true;
+        if (tools && tools.length) body.tools = tools;
 
         const axiosOpts = {
             timeout: 0, // sem timeout de cliente: quem manda no fim é o Ollama
@@ -106,6 +171,20 @@ class OllamaLocalService {
             return { res, thinking: wantThinking };
         } catch (err) {
             const status = err && err.response && err.response.status;
+            const detalhe = String(
+              (err && err.response && err.response.data && (err.response.data.error || err.response.data.message)) || ''
+            );
+
+            // Recusou as ferramentas: o /api/show mentiu (ou é Ollama antigo).
+            // Quem chamou refaz o turno inteiro no protocolo de texto — não dá
+            // pra só remover tools[], porque o prompt de sistema seria o do
+            // modo nativo, sem o formato do TOOL_CALL.
+            if (status === 400 && tools && tools.length && /tool/i.test(detalhe)) {
+                console.warn(`[ollamaLocal] ${model} recusou tools nativas ("${detalhe.slice(0, 120)}") — refazendo em protocolo de texto.`);
+                this._noNativeTools.add(model);
+                throw new Error(SEM_TOOLS_NATIVAS);
+            }
+
             if (status === 400 && wantThinking) {
                 console.warn(`[ollamaLocal] ${model} recusou think=true; repetindo sem raciocínio.`);
                 this._noThinking.add(model);
@@ -215,86 +294,57 @@ class OllamaLocalService {
         ].join('\n');
     }
 
+    /** Empilha o resultado das ferramentas no formato de cada protocolo. */
+    _empilharResultados(sessionId, { nativeTools, content, chamadas, results, cobranca }) {
+        const msgs = this.sessions[sessionId].messages;
+        if (nativeTools) {
+            msgs.push({
+                role: 'assistant',
+                content: content || '',
+                tool_calls: chamadas.map((c) => ({ function: { name: c.name, arguments: c.args } })),
+            });
+            for (const r of results) {
+                msgs.push({ role: 'tool', tool_name: r.name, content: r.serialized });
+            }
+            if (cobranca) msgs.push({ role: 'user', content: cobranca.trim() });
+        } else {
+            msgs.push({ role: 'assistant', content });
+            const blocos = results.map((r) => `TOOL_RESULT: ${r.name}\n${r.serialized}`).join('\n\n');
+            msgs.push({ role: 'user', content: `${blocos}${SUFIXO_FOLLOWUP}${cobranca}` });
+        }
+        this.sessions[sessionId].messages = trimSession(msgs);
+    }
+
     async responder(texto, opts = {}) {
         if (!texto) throw new Error('Não entendi');
         const model = this._model();
         const host = this._host();
-        const sessionId = opts.sessionId || 'default';
-        const now = Date.now();
-        const twoHours = 2 * 60 * 60 * 1000;
 
-        if (this.sessions[sessionId] && (now - this.sessions[sessionId].lastActivity > twoHours)) {
-            delete this.sessions[sessionId];
-            console.log('[ollamaLocal] sessão expirou');
-        }
-
-        const tools = Array.isArray(opts.tools) && opts.tools.length ? opts.tools : null;
-        const onToolCall = typeof opts.onToolCall === 'function' ? opts.onToolCall : null;
-        const maxToolCalls = Number.isInteger(opts.maxToolCalls) ? opts.maxToolCalls : 50;
-
-        let wsPaths = [];
-        try {
-            const workspace = require('./workspace');
-            const wsEnabled = !!(configService.getWorkspaceAccessEnabled && configService.getWorkspaceAccessEnabled());
-            if (wsEnabled && workspace.list().length > 0) {
-                wsPaths = workspace.list().map(a => a.path).filter(Boolean);
-            }
-        } catch (_) {}
-
-        let effectiveTools = tools;
-        if (tools) {
-            effectiveTools = tools.filter(t => {
-                const name = (t.function || t).name;
-                return !OLLAMA_WRITE_TOOLS_BLOCKED.has(name);
-            });
-        }
-
-        const baseSystemPrompt = opts.instruction || configService.getPromptInstruction() || 'You are a helpful assistant.';
-        let systemPromptContent = baseSystemPrompt;
-        if (effectiveTools && onToolCall) {
-            systemPromptContent = `${systemPromptContent}\n\n${buildOllamaToolsAddon(effectiveTools, wsPaths)}`;
-        }
-
-        if (!this.sessions[sessionId]) {
-            this.sessions[sessionId] = {
-                messages: [
-                    { role: 'system', content: systemPromptContent },
-                ],
-                lastActivity: now,
-            };
-        } else {
-            this.sessions[sessionId].messages[0].content = systemPromptContent;
-        }
-
-        let userMsg = { role: 'user', content: texto };
-        if (opts.imageBase64) {
-            const base64Data = opts.imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
-            userMsg.images = [base64Data];
-        }
-        this.sessions[sessionId].messages.push(userMsg);
-        this.sessions[sessionId].lastActivity = now;
-
-        if (this.sessions[sessionId].messages.length > 13) {
-            const sys = this.sessions[sessionId].messages[0];
-            this.sessions[sessionId].messages = [sys, ...this.sessions[sessionId].messages.slice(-12)];
-        }
+        const turno = await prepareTurn({
+            host, model, texto, sessions: this.sessions,
+            opts: { ...opts, textToolsOnly: opts.textToolsOnly || this._noNativeTools.has(model) },
+        });
+        const { sessionId, maxToolCalls, modoIde, nativeTools, effectiveTools } = turno;
+        turno.model = model;
+        turno.source = 'ollama-tool-loop';
 
         this.abortCurrentRequest();
         this.activeAbortController = new AbortController();
         const signal = this.activeAbortController.signal;
 
         let iter = 0;
-        let lastResponseText = '';
-        let toolsExecutedOk = 0;
-        const ranSummary = [];
+        let ultimaResposta = '';
+        let executadasOk = 0;
+        const resumo = [];
+        const contagens = new Map();
 
         try {
             while (iter < maxToolCalls) {
-                if (signal.aborted) throw new Error("Request cancelled");
+                if (signal.aborted) throw new Error('Request cancelled');
                 console.log(`[ollamaLocal] → ${model} @ ${host} (msgs=${this.sessions[sessionId].messages.length}, iter=${iter + 1}/${maxToolCalls})`);
                 const { res: r } = await this._postChat(
                     host, model, this.sessions[sessionId].messages,
-                    { stream: false, signal }
+                    { stream: false, signal, tools: nativeTools ? effectiveTools : null }
                 );
 
                 const doneReason = String((r.data && r.data.done_reason) || '');
@@ -302,104 +352,49 @@ class OllamaLocalService {
                     console.warn(`[ollamaLocal] done_reason=${doneReason} — resposta possivelmente truncada.`);
                 }
 
-                let content = (r.data && r.data.message && r.data.message.content) || '';
-                if (!content) {
-                    throw new Error('Resposta vazia do Ollama');
-                }
+                const msg = (r.data && r.data.message) || {};
+                let content = stripThinkingBlock(msg.content || '');
+                const chamadas = nativeTools
+                    ? normalizarChamadasNativas(msg.tool_calls)
+                    : (modoIde ? normalizarChamadasTexto(parseOllamaToolCalls(content)) : []);
 
-                content = stripThinkingBlock(content);
-                lastResponseText = content;
+                if (!content && !chamadas.length) throw new Error('Resposta vazia do Ollama');
+                ultimaResposta = content;
 
-                if (!effectiveTools || !onToolCall) {
+                if (!modoIde || !chamadas.length) {
                     this.sessions[sessionId].messages.push({ role: 'assistant', content });
                     this.activeAbortController = null;
-                    return content;
+                    return modoIde ? (limparProtocolo(content, nativeTools) || content) : content;
                 }
 
-                const calls = parseOllamaToolCalls(content);
-                if (!calls.length) {
-                    this.sessions[sessionId].messages.push({ role: 'assistant', content });
-                    break;
-                }
+                console.log(`[ollamaLocal][tools] iter=${iter + 1}/${maxToolCalls} — ${chamadas.length} chamada(s) (${nativeTools ? 'nativa' : 'texto'})`);
+                const exec = await executeCalls(chamadas, turno, { signal });
+                executadasOk += exec.executadasOk;
+                resumo.push(...exec.resumo);
 
-                console.log(`[ollamaLocal][tools] iter=${iter + 1}/${maxToolCalls} — ${calls.length} tool_call(s) detectada(s)`);
-                this.sessions[sessionId].messages.push({ role: 'assistant', content });
-
-                const results = [];
-                for (const c of calls) {
-                    const name = c.obj.name;
-                    const rawArgs = c.obj.args || c.obj.arguments || {};
-                    let args = rawArgs;
-                    if (args && args.command && !args.cmd) {
-                        const parts = String(args.command).trim().split(/\s+/);
-                        args = { ...args, cmd: parts[0], args: parts.slice(1) };
-                        delete args.command;
-                        c.obj.args = args;
-                    }
-                    console.log(`[ollamaLocal][tools] → ${name}(${JSON.stringify(args).slice(0, 120)})`);
-                    
-                    let toolResult;
-                    const knownToolNames = new Set([
-                        'listDir','fileInfo','readFile','readFileChunk','searchInFiles','findFiles',
-                        'detectShellConfig','listPackages','listDesktopApps','systemPowerAction',
-                        'writeFile','appendToFile','deleteFile','patchFile','runCommand','runShellAdvanced'
-                    ]);
-
-                    if (!knownToolNames.has(name)) {
-                        console.warn(`[ollamaLocal][tools] ⚠️ tool desconhecida ignorada: "${name}"`);
-                        toolResult = { error: `Ferramenta "${name}" não existe. Use apenas as ferramentas listadas. Escreva a RESPOSTA FINAL ao usuário agora.` };
-                    } else {
-                        try {
-                            toolResult = await onToolCall(name, args, { source: 'ollama-tool-loop' });
-                        } catch (e) {
-                            toolResult = { error: String(e && e.message || e) };
-                        }
-                        if (toolResult && toolResult.ok !== false) {
-                            toolsExecutedOk++;
-                            if (name === 'runCommand') {
-                                const cmdline = `${args.cmd || ''} ${(Array.isArray(args.args) ? args.args : []).join(' ')}`.trim();
-                                const exit = toolResult.result && typeof toolResult.result.exitCode === 'number' ? toolResult.result.exitCode : '?';
-                                ranSummary.push(`✓ \`${cmdline}\` (exit=${exit})`);
-                            } else {
-                                ranSummary.push(`✓ ${name}`);
-                            }
-                        }
-                    }
-
-                    let serialized;
-                    try { serialized = typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult); }
-                    catch (_) { serialized = String(toolResult); }
-                    if (serialized.length > 8 * 1024) serialized = serialized.slice(0, 8 * 1024) + '\n…[truncated]';
-                    results.push(`TOOL_RESULT: ${name}\n${serialized}`);
-                }
-
-                const followupSuffix = `\n\nCom base nos TOOL_RESULT acima, ou emita novos TOOL_CALL se precisar de mais info, ou escreva a RESPOSTA FINAL ao usuario (sem nenhum TOOL_CALL).`;
-                const userFollowup = `${results.join('\n\n')}${followupSuffix}`;
-                
-                this.sessions[sessionId].messages.push({ role: 'user', content: userFollowup });
+                this._empilharResultados(sessionId, {
+                    nativeTools, content, chamadas,
+                    results: exec.results,
+                    cobranca: cobrancaRepeticao(chamadas, contagens),
+                });
                 iter++;
             }
 
             this.activeAbortController = null;
-            if (effectiveTools && onToolCall) {
-                const stripped = stripToolCallBlocks(lastResponseText);
-                if (stripped && stripped.trim()) {
-                    return stripped;
-                } else if (toolsExecutedOk > 0 && ranSummary.length) {
-                    return `Pronto! Comandos executados:\n\n${ranSummary.join('\n')}`;
-                } else {
-                    return 'Não consegui concluir essa tarefa com ferramentas. Tente reformular a pergunta.';
-                }
-            }
-
-            return lastResponseText;
+            const limpo = limparProtocolo(ultimaResposta, nativeTools);
+            if (limpo && limpo.trim()) return limpo;
+            if (executadasOk > 0 && resumo.length) return `Pronto! Comandos executados:\n\n${resumo.join('\n')}`;
+            return 'Não consegui concluir essa tarefa com ferramentas. Tente reformular a pergunta.';
 
         } catch (err) {
             this.activeAbortController = null;
-            this.sessions[sessionId].messages.pop();
-            const friendly = this._classifyError(err, model);
+            if (err && err.message === SEM_TOOLS_NATIVAS && !opts.textToolsOnly) {
+                delete this.sessions[sessionId];
+                return await this.responder(texto, { ...opts, textToolsOnly: true });
+            }
+            try { this.sessions[sessionId].messages.pop(); } catch (_) {}
             console.error('[ollamaLocal] erro:', err && err.message);
-            return friendly;
+            return this._classifyError(err, model);
         }
     }
 
@@ -409,248 +404,63 @@ class OllamaLocalService {
         const isTesting = process.env.TESTING === 'true';
         const debugLogPath = path.join(__dirname, '..', isTesting ? 'ollama-debug-test.log' : 'ollama-debug.log');
         const logDebug = (msg) => {
-            try {
-                fs.appendFileSync(debugLogPath, `[${new Date().toISOString()}] ${msg}\n`);
-            } catch (_) {}
+            try { fs.appendFileSync(debugLogPath, `[${new Date().toISOString()}] ${msg}\n`); } catch (_) {}
         };
-        
-        try { fs.writeFileSync(debugLogPath, ''); } catch (_) {}
+        if (!opts.textToolsOnly) { try { fs.writeFileSync(debugLogPath, ''); } catch (_) {} }
         logDebug(`responderStream chamado com texto: "${texto}"`);
 
         if (!texto) {
-            logDebug(`Texto vazio. Chamando onError.`);
             if (onError) onError(new Error('Não entendi'));
             return;
         }
         const model = this._model();
         const host = this._host();
-        const sessionId = opts.sessionId || 'default';
-        const now = Date.now();
-        const twoHours = 2 * 60 * 60 * 1000;
 
-        if (this.sessions[sessionId] && (now - this.sessions[sessionId].lastActivity > twoHours)) {
-            delete this.sessions[sessionId];
-            logDebug('[ollamaLocal] sessão expirou');
-        }
-
-        const tools = Array.isArray(opts.tools) && opts.tools.length ? opts.tools : null;
-        const onToolCall = typeof opts.onToolCall === 'function' ? opts.onToolCall : null;
-        const maxToolCalls = Number.isInteger(opts.maxToolCalls) ? opts.maxToolCalls : 50;
-
-        let wsPaths = [];
-        try {
-            const workspace = require('./workspace');
-            const wsEnabled = !!(configService.getWorkspaceAccessEnabled && configService.getWorkspaceAccessEnabled());
-            if (wsEnabled && workspace.list().length > 0) {
-                wsPaths = workspace.list().map(a => a.path).filter(Boolean);
-            }
-        } catch (_) {}
-
-        let effectiveTools = tools;
-        if (tools) {
-            effectiveTools = tools.filter(t => {
-                const name = (t.function || t).name;
-                return !OLLAMA_WRITE_TOOLS_BLOCKED.has(name);
-            });
-        }
-
-        const baseSystemPrompt = opts.instruction || configService.getPromptInstruction() || 'You are a helpful assistant.';
-        let systemPromptContent = baseSystemPrompt;
-        if (effectiveTools && onToolCall) {
-            systemPromptContent = `${systemPromptContent}\n\n${buildOllamaToolsAddon(effectiveTools, wsPaths)}`;
-        }
-
-        if (!this.sessions[sessionId]) {
-            this.sessions[sessionId] = {
-                messages: [
-                    { role: 'system', content: systemPromptContent },
-                ],
-                lastActivity: now,
-            };
-        } else {
-            this.sessions[sessionId].messages[0].content = systemPromptContent;
-        }
-
-        let userMsg = { role: 'user', content: texto };
-        if (opts.imageBase64) {
-            const base64Data = opts.imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
-            userMsg.images = [base64Data];
-        }
-        this.sessions[sessionId].messages.push(userMsg);
-        this.sessions[sessionId].lastActivity = now;
-
-        if (this.sessions[sessionId].messages.length > 13) {
-            const sys = this.sessions[sessionId].messages[0];
-            this.sessions[sessionId].messages = [sys, ...this.sessions[sessionId].messages.slice(-12)];
-        }
+        const turno = await prepareTurn({
+            host, model, texto, sessions: this.sessions,
+            opts: { ...opts, textToolsOnly: opts.textToolsOnly || this._noNativeTools.has(model) },
+        });
+        const { sessionId, maxToolCalls, modoIde, nativeTools, effectiveTools } = turno;
+        turno.model = model;
+        turno.source = 'ollama-tool-loop';
 
         this.abortCurrentRequest();
         this.activeAbortController = new AbortController();
         const signal = this.activeAbortController.signal;
 
-        let modelLoaded = true;
-        const psController = new AbortController();
-        const psTimeout = setTimeout(() => {
-            try { psController.abort(); } catch (_) {}
-        }, 1500);
-
-        try {
-            const psRes = await axios.get(`${host}/api/ps`, {
-                timeout: 1500,
-                signal: psController.signal,
-                headers: { 'Connection': 'close' }
-            });
-            clearTimeout(psTimeout);
-            const loadedModels = psRes.data && psRes.data.models;
-            if (Array.isArray(loadedModels)) {
-                const loadedNames = loadedModels.map(m => m.name || m.model).filter(Boolean);
-                modelLoaded = loadedNames.some(name => 
-                    name === model || 
-                    name.replace(/:latest$/, '') === model.replace(/:latest$/, '') ||
-                    model.startsWith(name) ||
-                    name.startsWith(model)
-                );
-            }
-        } catch (_) {
-            clearTimeout(psTimeout);
-            // ignore failure
-        }
-
-        if (!modelLoaded && onChunk) {
-            onChunk({
-                type: 'thinking',
-                text: `⚙️ [Ollama: Carregando o modelo \`${model}\` na memória/VRAM (isso pode levar de 10 a 60 segundos)...]\n`,
-                event: 'thinking'
-            });
-        }
+        // Carregar um 35B na VRAM leva de 10s a 1min sem emitir um byte. Sem este
+        // aviso a janela fica parada e parece travamento.
+        await this._avisarCarregamento(host, model, onChunk);
 
         let iter = 0;
-        let lastResponseText = '';
-        let toolsExecutedOk = 0;
-        const ranSummary = [];
-        const callCounts = new Map();
+        let ultimaResposta = '';
+        let ultimaJaFoiPraTela = false;
+        let executadasOk = 0;
+        const resumo = [];
+        const contagens = new Map();
 
         try {
             while (iter < maxToolCalls) {
-                if (signal.aborted) throw new Error("Request cancelled");
+                if (signal.aborted) throw new Error('Request cancelled');
                 if (iter > 0 && onChunk) {
-                    onChunk({
-                        type: 'thinking',
-                        text: `\n⚙️ [Ollama: Processando o resultado da(s) ferramenta(s)...]\n`,
-                        event: 'thinking'
-                    });
+                    onChunk({ type: 'thinking', text: `\n⚙️ [Ollama: Processando o resultado da(s) ferramenta(s)...]\n`, event: 'thinking' });
                 }
-                
-                logDebug(`\n--- ITERATION ${iter + 1} ---`);
-                logDebug(`Messages sent: ${JSON.stringify(this.sessions[sessionId].messages, null, 2)}`);
 
+                logDebug(`\n--- ITERATION ${iter + 1} (nativas=${nativeTools}) ---`);
                 console.log(`[ollamaLocal-stream] → ${model} @ ${host} (msgs=${this.sessions[sessionId].messages.length}, iter=${iter + 1}/${maxToolCalls})`);
-                
+
                 const { createStreamRouter } = require('./backendStreamRouter');
-                const router = createStreamRouter({ onChunk, hasTools: !!(effectiveTools && onToolCall) });
+                // No protocolo nativo NÃO existe TOOL_CALL em texto pra esconder:
+                // segurar o começo da resposta só atrasaria o que o usuário vê.
+                const router = createStreamRouter({ onChunk, hasTools: modoIde && !nativeTools });
 
                 const { res: r } = await this._postChat(
                     host, model, this.sessions[sessionId].messages,
-                    { stream: true, signal, responseType: 'stream' }
+                    { stream: true, signal, responseType: 'stream', tools: nativeTools ? effectiveTools : null }
                 );
 
-                // Por que o Ollama parou. Só "stop" é fim natural — "length"
-                // (encheu a janela de contexto) e o resto precisam aparecer pro
-                // usuário, senão uma resposta cortada no meio é indistinguível
-                // de uma resposta que acabou.
-                let doneReason = '';
-
-                await new Promise((resolve, reject) => {
-                    const stream = r.data;
-                    let buffer = '';
-
-                    const processLine = (line) => {
-                        logDebug(`Line read: "${line}"`);
-                        try {
-                            const parsed = JSON.parse(line);
-                            if (parsed.error) {
-                                logDebug(`Ollama parsed error: ${parsed.error}`);
-                                cleanup();
-                                try { stream.destroy(); } catch (_) {}
-                                reject(new Error(parsed.error));
-                                return true;
-                            }
-                            // Raciocínio vem em campo PRÓPRIO (message.thinking)
-                            // quando think=true. Antes só se lia .content, então
-                            // a fase inteira de raciocínio — que num modelo
-                            // pensante é a maior parte do tempo — não aparecia
-                            // na janela: o usuário via o cursor parado e nada
-                            // acontecendo.
-                            const reasoning = parsed.message && parsed.message.thinking;
-                            if (reasoning) {
-                                router.emitThinking(reasoning);
-                            }
-                            const token = parsed.message && parsed.message.content;
-                            if (token) {
-                                router.routeToken(token);
-                            }
-                            if (parsed.done) {
-                                doneReason = String(parsed.done_reason || '');
-                                logDebug(`Ollama done flag received (done_reason=${doneReason || 'n/a'}). Resolving early.`);
-                                cleanup();
-                                try { stream.destroy(); } catch (_) {}
-                                resolve();
-                                return true;
-                            }
-                        } catch (err) {
-                            logDebug(`Error parsing JSON: ${err.message}`);
-                            console.error('Error parsing Ollama stream line:', err);
-                        }
-                        return false;
-                    };
-                    
-                    const onStreamData = (chunk) => {
-                        const chunkStr = chunk.toString('utf8');
-                        logDebug(`Chunk data: ${chunkStr}`);
-                        buffer += chunkStr;
-                        let lineEndIndex;
-                        while ((lineEndIndex = buffer.indexOf('\n')) !== -1) {
-                            const line = buffer.slice(0, lineEndIndex).trim();
-                            buffer = buffer.slice(lineEndIndex + 1);
-                            if (line) {
-                                const isError = processLine(line);
-                                if (isError) return;
-                            }
-                        }
-                    };
-
-                    const onStreamEnd = () => {
-                        logDebug(`Stream end event. Buffer: "${buffer}"`);
-                        if (buffer.trim()) {
-                            processLine(buffer.trim());
-                        }
-                        cleanup();
-                        resolve();
-                    };
-
-                    const onStreamError = (err) => {
-                        logDebug(`Stream error event: ${err.message}`);
-                        cleanup();
-                        reject(err);
-                    };
-
-                    const cleanup = () => {
-                        stream.removeListener('data', onStreamData);
-                        stream.removeListener('end', onStreamEnd);
-                        stream.removeListener('error', onStreamError);
-                        signal.removeEventListener('abort', onAbort);
-                    };
-
-                    const onAbort = () => {
-                        cleanup();
-                        reject(new Error("Request cancelled"));
-                    };
-
-                    stream.on('data', onStreamData);
-                    stream.on('end', onStreamEnd);
-                    stream.on('error', onStreamError);
-                    signal.addEventListener('abort', onAbort);
-                });
+                const nativas = [];
+                const doneReason = await this._consumirStream(r.data, { router, signal, logDebug, nativas });
 
                 // Fim que NÃO é "stop" precisa ser dito. O caso que morde é
                 // done_reason="length": o Ollama encheu num_ctx e parou no meio
@@ -662,161 +472,188 @@ class OllamaLocalService {
                           `Se repetir, suba o piso da janela com \`HELPER_OLLAMA_MIN_CTX\` (ex.: 8192) — ` +
                           `custa VRAM, então se der erro de memória volte pro padrão e use um modelo menor._`
                         : `\n\n_⚠️ O Ollama encerrou com \`done_reason=${doneReason}\` — a resposta pode estar incompleta._`;
-                    logDebug(`done_reason anormal: ${doneReason}`);
                     console.warn(`[ollamaLocal-stream] done_reason=${doneReason} — resposta possivelmente truncada.`);
                     if (onChunk) onChunk(aviso);
                 }
 
-                let content = router.answer || '';
-                content = stripThinkingBlock(content);
+                const content = stripThinkingBlock(router.answer || '');
+                const chamadas = nativeTools
+                    ? normalizarChamadasNativas(nativas)
+                    : (modoIde ? normalizarChamadasTexto(parseOllamaToolCalls(content)) : []);
 
-                logDebug(`End of iteration ${iter + 1}. Content: "${content}" | Thinking: "${router.thinking}"`);
-                
-                if (!content && !router.thinking) {
-                    logDebug(`Error: Empty response from Ollama`);
-                    throw new Error('Resposta vazia do Ollama');
-                }
+                logDebug(`Fim da iteração ${iter + 1}. Content: "${content.slice(0, 200)}" | chamadas: ${chamadas.length}`);
+                if (!content && !router.thinking && !chamadas.length) throw new Error('Resposta vazia do Ollama');
+                ultimaResposta = content;
+                ultimaJaFoiPraTela = router.streamedAnything;
 
-                lastResponseText = content;
-
-                if (!effectiveTools || !onToolCall) {
+                if (!modoIde || !chamadas.length) {
+                    router.flushAnswer();
                     this.sessions[sessionId].messages.push({ role: 'assistant', content });
+                    const limpo = limparProtocolo(content, nativeTools).trim();
+                    if (!router.streamedAnything && onChunk && limpo) onChunk(limpo);
                     this.activeAbortController = null;
                     if (onComplete) onComplete();
                     return;
                 }
 
-                const calls = parseOllamaToolCalls(content);
-                if (!calls.length) {
-                    this.sessions[sessionId].messages.push({ role: 'assistant', content });
-                    const cleanText = stripToolCallBlocks(content).trim();
-                    if (!router.streamedAnything && onChunk && cleanText) {
-                        onChunk(cleanText);
-                    }
-                    this.activeAbortController = null;
-                    if (onComplete) onComplete();
-                    return;
+                console.log(`[ollamaLocal-stream][tools] iter=${iter + 1}/${maxToolCalls} — ${chamadas.length} chamada(s) (${nativeTools ? 'nativa' : 'texto'})`);
+                const exec = await executeCalls(chamadas, turno, { onChunk, signal });
+                executadasOk += exec.executadasOk;
+                resumo.push(...exec.resumo);
+
+                const cobranca = cobrancaRepeticao(chamadas, contagens);
+                if (cobranca && onChunk) {
+                    onChunk({ type: 'thinking', text: '\n⚠️ Chamada repetida — cobrando o próximo passo.\n', event: 'thinking' });
                 }
-
-                console.log(`[ollamaLocal-stream][tools] iter=${iter + 1}/${maxToolCalls} — ${calls.length} tool_call(s) detectada(s)`);
-                this.sessions[sessionId].messages.push({ role: 'assistant', content });
-
-                const results = [];
-                for (const c of calls) {
-                    const name = c.obj.name;
-                    const rawArgs = c.obj.args || c.obj.arguments || {};
-                    let args = rawArgs;
-                    if (args && args.command && !args.cmd) {
-                        const parts = String(args.command).trim().split(/\s+/);
-                        args = { ...args, cmd: parts[0], args: parts.slice(1) };
-                        delete args.command;
-                        c.obj.args = args;
-                    }
-                    console.log(`[ollamaLocal-stream][tools] → ${name}(${JSON.stringify(args).slice(0, 120)})`);
-                    
-                    let toolResult;
-                    const knownToolNames = new Set([
-                        'listDir','fileInfo','readFile','readFileChunk','searchInFiles','findFiles',
-                        'detectShellConfig','listPackages','listDesktopApps','systemPowerAction',
-                        'writeFile','appendToFile','deleteFile','patchFile','runCommand','runShellAdvanced'
-                    ]);
-
-                    if (!knownToolNames.has(name)) {
-                        console.warn(`[ollamaLocal-stream][tools] ⚠️ tool desconhecida ignorada: "${name}"`);
-                        toolResult = { error: `Ferramenta "${name}" não existe. Use apenas as ferramentas listadas. Escreva a RESPOSTA FINAL ao usuário agora.` };
-                    } else {
-                        if (onChunk) {
-                            onChunk({ type: 'thinking', text: `\n⚙️ Executando ${name}...\n` });
-                        }
-                        try {
-                            toolResult = await onToolCall(name, args, { source: 'ollama-tool-loop' });
-                        } catch (e) {
-                            toolResult = { error: String(e && e.message || e) };
-                        }
-                        if (toolResult && toolResult.ok !== false) {
-                            toolsExecutedOk++;
-                            if (name === 'runCommand') {
-                                const cmdline = `${args.cmd || ''} ${(Array.isArray(args.args) ? args.args : []).join(' ')}`.trim();
-                                const exit = toolResult.result && typeof toolResult.result.exitCode === 'number' ? toolResult.result.exitCode : '?';
-                                ranSummary.push(`✓ \`${cmdline}\` (exit=${exit})`);
-                            } else {
-                                ranSummary.push(`✓ ${name}`);
-                            }
-                        }
-                    }
-
-                    let serialized;
-                    try { serialized = typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult); }
-                    catch (_) { serialized = String(toolResult); }
-                    if (serialized.length > 8 * 1024) serialized = serialized.slice(0, 8 * 1024) + '\n…[truncated]';
-                    results.push(`TOOL_RESULT: ${name}\n${serialized}`);
-                }
-
-                let repeticao = '';
-                for (const c of calls) {
-                    const sig = `${c.obj.name}:${JSON.stringify(c.obj.args || {})}`;
-                    const n = (callCounts.get(sig) || 0) + 1;
-                    callCounts.set(sig, n);
-                    if (n >= 3) {
-                        repeticao = '\n\nPARE. Você já chamou ' + c.obj.name + ' com esses ' +
-                            'mesmos argumentos ' + n + ' vezes e o resultado está acima. ' +
-                            'NÃO repita essa chamada. Responda AGORA em texto normal, sem ' +
-                            'nenhum TOOL_CALL, com o que você já descobriu.';
-                    } else if (n === 2) {
-                        repeticao = '\n\nATENÇÃO: essa chamada é repetida — o resultado já ' +
-                            'está no histórico acima. Use o que já tem e dê o PRÓXIMO passo ' +
-                            '(outra ferramenta, outro path) ou responda em texto.';
-                    }
-                }
-                if (repeticao && onChunk) {
-                    onChunk({ type: 'thinking', text: '\n⚠️ Chamada repetida — cobrando o próximo passo.\n' });
-                }
-
-                const followupSuffix = `\n\nCom base nos TOOL_RESULT acima, ou emita novos TOOL_CALL se precisar de mais info, ou escreva a RESPOSTA FINAL ao usuario (sem nenhum TOOL_CALL).`;
-                const userFollowup = `${results.join('\n\n')}${followupSuffix}${repeticao}`;
-                
-                this.sessions[sessionId].messages.push({ role: 'user', content: userFollowup });
+                this._empilharResultados(sessionId, { nativeTools, content, chamadas, results: exec.results, cobranca });
                 iter++;
             }
 
+            // Estourou o teto de rodadas sem o modelo dar a resposta final.
             this.activeAbortController = null;
-            if (effectiveTools && onToolCall) {
-                const stripped = stripToolCallBlocks(lastResponseText);
-                if (stripped && stripped.trim()) {
-                    if (onChunk) onChunk(stripped);
-                } else if (toolsExecutedOk > 0 && ranSummary.length) {
-                    if (onChunk) onChunk(`Pronto! Comandos executados:\n\n${ranSummary.join('\n')}`);
-                } else {
-                    if (onChunk) onChunk('Não consegui concluir essa tarefa com ferramentas. Tente reformular a pergunta.');
-                }
+            const limpo = limparProtocolo(ultimaResposta, nativeTools);
+            if (ultimaJaFoiPraTela) {
+                // Protocolo nativo: o texto da última rodada JÁ foi pra tela
+                // enquanto era gerado. Reemitir duplicaria a resposta inteira —
+                // aqui só se explica por que o turno parou.
+                if (onChunk) onChunk(`\n\n_⚠️ Parei após ${maxToolCalls} rodadas de ferramenta. O que foi executado está acima._`);
+            } else if (limpo && limpo.trim()) {
+                if (onChunk) onChunk(limpo);
+            } else if (executadasOk > 0 && resumo.length) {
+                if (onChunk) onChunk(`Pronto! Comandos executados:\n\n${resumo.join('\n')}`);
+            } else if (onChunk) {
+                onChunk('Não consegui concluir essa tarefa com ferramentas. Tente reformular a pergunta.');
             }
-
             if (onComplete) onComplete();
 
         } catch (err) {
             this.activeAbortController = null;
-            this.sessions[sessionId].messages.pop();
+            if (err && err.message === SEM_TOOLS_NATIVAS && !opts.textToolsOnly) {
+                delete this.sessions[sessionId];
+                return await this.responderStream(texto, onChunk, onComplete, onError, { ...opts, textToolsOnly: true });
+            }
+            try { this.sessions[sessionId].messages.pop(); } catch (_) {}
             console.error('[ollamaLocal-stream] erro:', err && err.message);
-            const friendly = this._classifyError(err, model);
-            if (onError) onError(new Error(friendly));
+            if (onError) onError(new Error(this._classifyError(err, model)));
         }
+    }
+
+    /** Avisa na tela quando o modelo ainda não está na VRAM (/api/ps). */
+    async _avisarCarregamento(host, model, onChunk) {
+        let carregado = true;
+        try {
+            const psRes = await axios.get(`${host}/api/ps`, {
+                timeout: 1500,
+                signal: AbortSignal.timeout(1500),
+                headers: { Connection: 'close' },
+            });
+            const lista = psRes.data && psRes.data.models;
+            if (Array.isArray(lista)) {
+                const nomes = lista.map((m) => m.name || m.model).filter(Boolean);
+                const semTag = (s) => String(s).replace(/:latest$/, '');
+                carregado = nomes.some((n) => n === model || semTag(n) === semTag(model) ||
+                    model.startsWith(n) || n.startsWith(model));
+            }
+        } catch (_) { /* /api/ps é opcional — na dúvida não avisa nada */ }
+
+        if (!carregado && onChunk) {
+            onChunk({
+                type: 'thinking',
+                text: `⚙️ [Ollama: Carregando o modelo \`${model}\` na memória/VRAM (isso pode levar de 10 a 60 segundos)...]\n`,
+                event: 'thinking',
+            });
+        }
+    }
+
+    /**
+     * Lê o NDJSON do /api/chat até done, roteando raciocínio/resposta e
+     * recolhendo as tool_calls nativas.
+     * @returns {Promise<string>} done_reason
+     */
+    _consumirStream(stream, { router, signal, logDebug, nativas }) {
+        return new Promise((resolve, reject) => {
+            let buffer = '';
+            let doneReason = '';
+
+            const processLine = (line) => {
+                try {
+                    const parsed = JSON.parse(line);
+                    if (parsed.error) {
+                        cleanup();
+                        try { stream.destroy(); } catch (_) {}
+                        reject(new Error(parsed.error));
+                        return true;
+                    }
+                    const msg = parsed.message || {};
+                    // Raciocínio vem em campo PRÓPRIO (message.thinking) quando
+                    // think=true. Antes só se lia .content, então a fase inteira
+                    // de raciocínio — que num modelo pensante é a maior parte do
+                    // tempo — não aparecia na janela: o usuário via o cursor
+                    // parado e nada acontecendo.
+                    if (msg.thinking) router.emitThinking(msg.thinking);
+                    if (msg.content) router.routeToken(msg.content);
+                    if (Array.isArray(msg.tool_calls) && msg.tool_calls.length) {
+                        nativas.push(...msg.tool_calls);
+                    }
+                    if (parsed.done) {
+                        doneReason = String(parsed.done_reason || '');
+                        cleanup();
+                        try { stream.destroy(); } catch (_) {}
+                        resolve(doneReason);
+                        return true;
+                    }
+                } catch (err) {
+                    logDebug(`Erro ao parsear linha do stream: ${err.message}`);
+                }
+                return false;
+            };
+
+            const onData = (chunk) => {
+                buffer += chunk.toString('utf8');
+                let fim;
+                while ((fim = buffer.indexOf('\n')) !== -1) {
+                    const line = buffer.slice(0, fim).trim();
+                    buffer = buffer.slice(fim + 1);
+                    if (line && processLine(line)) return;
+                }
+            };
+            const onEnd = () => {
+                if (buffer.trim()) processLine(buffer.trim());
+                cleanup();
+                resolve(doneReason);
+            };
+            const onErr = (err) => { cleanup(); reject(err); };
+            const onAbort = () => { cleanup(); reject(new Error('Request cancelled')); };
+            const cleanup = () => {
+                stream.removeListener('data', onData);
+                stream.removeListener('end', onEnd);
+                stream.removeListener('error', onErr);
+                signal.removeEventListener('abort', onAbort);
+            };
+
+            stream.on('data', onData);
+            stream.on('end', onEnd);
+            stream.on('error', onErr);
+            signal.addEventListener('abort', onAbort);
+        });
     }
 
     async preloadModel(oldModel, newModel) {
         const os = require('os');
         const host = this._host();
-        
+
+        // Trocou de modelo: as capacidades sondadas eram do modelo antigo.
+        caps.invalidate();
+        this._noNativeTools.delete(newModel);
+
         // Verifica se há pelo menos 4GB de RAM livre antes de tentar fazer preload (evitar travar pc com pouca memoria)
         const freeRamGB = os.freemem() / (1024 ** 3);
         const hasEnoughRam = freeRamGB > 4.0;
-        
+
         if (oldModel && oldModel !== newModel) {
             try {
                 console.log(`[ollamaLocal] Descarregando modelo anterior: ${oldModel}`);
-                await axios.post(`${host}/api/generate`, {
-                    model: oldModel,
-                    keep_alive: 0
-                }, { timeout: 10000 });
+                await axios.post(`${host}/api/generate`, { model: oldModel, keep_alive: 0 }, { timeout: 10000 });
             } catch (err) {
                 console.log(`[ollamaLocal] Erro ao descarregar modelo anterior (${oldModel}):`, err && err.message);
             }
@@ -830,10 +667,7 @@ class OllamaLocalService {
             try {
                 console.log(`[ollamaLocal] Carregando novo modelo antecipadamente: ${newModel} (keep_alive: 30m). RAM livre: ${freeRamGB.toFixed(1)}GB`);
                 // Envia prompt vazio só pra forçar o carregamento do modelo na memória
-                await axios.post(`${host}/api/generate`, {
-                    model: newModel,
-                    keep_alive: "30m"
-                }, { timeout: 120000 }); // Permite até 2 min para carregar
+                await axios.post(`${host}/api/generate`, { model: newModel, keep_alive: '30m' }, { timeout: 120000 });
                 console.log(`[ollamaLocal] Modelo ${newModel} carregado com sucesso.`);
             } catch (err) {
                 console.log(`[ollamaLocal] Erro ao carregar novo modelo (${newModel}):`, err && err.message);
@@ -842,7 +676,7 @@ class OllamaLocalService {
     }
 
     resetSession() {
-        delete this.sessions['default'];
+        this.sessions = {};
     }
 }
 

@@ -78,6 +78,11 @@ function createStreamRouter({ onChunk, hasTools }) {
     answerBuffer += chunk;
     if (!hasTools) {
       if (onChunk) { onChunk(chunk); streamedAnything = true; }
+      // Sem ferramentas de TEXTO não há nada retido: o token já foi pra tela.
+      // Sem marcar isso, um flushAnswer() no fim do turno reemitia a resposta
+      // INTEIRA — que é o que acontece no tool calling nativo, onde o texto
+      // streama direto e mesmo assim o turno termina com flush.
+      emitidoAte = answerBuffer.length;
       return;
     }
     if (!streamDecided) {
