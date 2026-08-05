@@ -295,6 +295,13 @@ helpers.setupTray = function() {
           helpers.createConfigWindow();
         }
       },
+      {
+        label: "Nexa AI Assistant (Janela Flutuante)",
+        click: () => {
+          const { toggleNexaWindow } = require("./nexa/index.js");
+          toggleNexaWindow();
+        }
+      },
       { type: "separator" },
       {
         label: "Sair",

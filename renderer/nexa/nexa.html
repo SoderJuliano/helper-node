@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Nexa AI Assistant</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-app-region: drag;
+    }
+
+    body, html {
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    #nexaCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: grab;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="nexaCanvas"></canvas>
+
+  <!-- Módulos de Composição e Animação Procedural 2D -->
+  <script src="nexaCharacter.js"></script>
+  <script src="nexaBreathing.js"></script>
+  <script src="nexaBlink.js"></script>
+  <script src="nexaLook.js"></script>
+  <script src="nexaTalking.js"></script>
+  <script src="nexaAnimationController.js"></script>
+  <script src="nexaRenderer.js"></script>
+</body>
+</html>
