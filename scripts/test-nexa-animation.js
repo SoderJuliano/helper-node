@@ -15,7 +15,7 @@ console.log("🧪 Iniciando testes dos controladores de animação 2D da Nexa...
 
 // Teste 1: Validação do NexaCharacter e Pivô da Boca
 const character = new NexaCharacter();
-assert.strictEqual(character.layers.length, 22, "Devem existir 22 camadas no mapa do personagem");
+assert.strictEqual(character.layers.length, 23, "Devem existir 23 camadas no mapa do personagem");
 
 const mouthLayer = character.layerMap["mouth"];
 assert.ok(mouthLayer, "Camada da boca deve existir");
