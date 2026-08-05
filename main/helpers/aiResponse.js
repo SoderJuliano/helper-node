@@ -445,9 +445,9 @@ helpers.triggerTtsPlaybackIfEnabled = function(fullResponse) {
     const summary = googleTtsService.extractVoiceSummary(cleanResponse);
     if (!summary || !summary.trim()) return;
 
-    const voiceToUse = isNexaOn ? "pt-BR-Neural2-C" : (cfg.voiceName || 'pt-BR-Neural2-C');
-    const speakingRate = isNexaOn ? 1.08 : 1.0;
-    const pitch = isNexaOn ? 7.5 : 0.0;
+    const voiceToUse = cfg.voiceName || 'pt-BR-Neural2-C';
+    const speakingRate = cfg.speakingRate !== undefined ? cfg.speakingRate : 1.0;
+    const pitch = cfg.pitch !== undefined ? cfg.pitch : 0.0;
 
     console.log(`🔊 Sintetizando resumo por voz Google TTS (Nexa=${isNexaOn}, pitch=${pitch}, rate=${speakingRate}):`, summary);
     googleTtsService.synthesizeText(summary, {

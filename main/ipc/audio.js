@@ -249,9 +249,9 @@ ipcMain.handle("google-tts-synthesize", async (event, text, voiceName) => {
     const isNexaOn = !!(nexaCfg && nexaCfg.enabled);
     if (!cfg.enabled && !isNexaOn) return { error: "Modo de voz desativado." };
 
-    const voiceToUse = isNexaOn ? "pt-BR-Neural2-C" : (voiceName || cfg.voiceName || "pt-BR-Neural2-C");
-    const speakingRate = isNexaOn ? 1.08 : 1.0;
-    const pitch = isNexaOn ? 7.5 : 0.0;
+    const voiceToUse = voiceName || cfg.voiceName || "pt-BR-Neural2-C";
+    const speakingRate = cfg.speakingRate !== undefined ? cfg.speakingRate : 1.0;
+    const pitch = cfg.pitch !== undefined ? cfg.pitch : 0.0;
 
     const audioBuf = await googleTtsService.synthesizeText(text, {
       keyOrPath: cfg.keyPathOrKey,

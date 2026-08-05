@@ -144,13 +144,15 @@ class NexaIntroAnimation {
       }
     }
 
-    // Se o frame tiver menos de 15% de pixels laranjas (transparentes),
-    // significa que é um frame corrompido/glitch do decodificador ou frame vazio.
-    // Nesse caso, encerramos a animação de entrada de forma imediata e limpa.
-    if (transparentCount < totalPixels * 0.15) {
-      this.finished = true;
-      this.isPlaying = false;
-      return;
+    // Se o vídeo já estiver pronto e tocando, valida se o frame é corrompido ou vazio (glitch de decodificação).
+    // Usamos um limite de 1% (0.01) de pixels laranjas para evitar que animações em close-up sejam interrompidas.
+    if (this.video.readyState >= 2 && this.video.currentTime > 0.1) {
+      if (transparentCount < totalPixels * 0.01) {
+        console.warn("[NexaIntroAnimation] Glitch de decodificação detectado. Finalizando precocemente.");
+        this.finished = true;
+        this.isPlaying = false;
+        return;
+      }
     }
 
     this.offscreenCtx.putImageData(imgData, 0, 0);
