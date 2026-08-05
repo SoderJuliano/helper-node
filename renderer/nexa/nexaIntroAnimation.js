@@ -43,10 +43,13 @@ class NexaIntroAnimation {
     if (!this.video) {
       this.init();
     }
+    try {
+      this.video.currentTime = 0;
+    } catch (_) {}
     this.video.play().then(() => {
       this.isPlaying = true;
       this.finished = false;
-      console.log("[NexaIntroAnimation] Reproduzindo vídeo de entrada...");
+      console.log("[NexaIntroAnimation] Reproduzindo vídeo:", this.videoPath);
     }).catch((err) => {
       console.error("[NexaIntroAnimation] Falha ao iniciar reprodução:", err);
       this.finished = true;
