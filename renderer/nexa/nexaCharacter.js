@@ -103,11 +103,11 @@ class NexaCharacter {
       { name: "back_hair", file: "back hair.png", group: "body", pivotX: 644.0, pivotY: 154.5 },
       { name: "legwear", file: "legwear.png", group: "body", pivotX: 640.0, pivotY: 800.0 },
       { name: "footwear", file: "footwear.png", group: "body", pivotX: 640.0, pivotY: 1100.0 },
-      { name: "neck", file: "neck.png", group: "body", pivotX: 648.0, pivotY: 230.0 },
-      { name: "neckwear", file: "neckwear.png", group: "body", pivotX: 648.0, pivotY: 250.0 },
       { name: "topwear", file: "topwear.png", group: "body", pivotX: 644.5, pivotY: 398.0 },
       { name: "bottomwear", file: "bottomwear.png", group: "body", pivotX: 640.0, pivotY: 600.0 },
       { name: "objects", file: "objects.png", group: "body", pivotX: 644.5, pivotY: 398.0 },
+      { name: "neck", file: "neck.png", group: "body", pivotX: 648.0, pivotY: 230.0 },
+      { name: "neckwear", file: "neckwear.png", group: "body", pivotX: 648.0, pivotY: 250.0 },
       { name: "handwear", file: "handwear.png", group: "body", pivotX: 640.0, pivotY: 480.0 },
       { name: "hand_pose_chin", file: "assets/hand_pose_chin.png", group: "head", pivotX: 640.0, pivotY: 480.0 },
       
