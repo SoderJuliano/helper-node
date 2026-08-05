@@ -30,21 +30,28 @@ class OpenAIService {
             console.log(`OpenAI session ${sessionId} expired and was cleared.`);
         }
 
+        let effectiveInstruction = instruction || configService.getPromptInstruction();
+        const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : null;
+        if (nexaCfg && nexaCfg.enabled) {
+            const { applyNexaPersonaIfNeeded } = require('../main/nexa/nexaPersona.js');
+            effectiveInstruction = applyNexaPersonaIfNeeded(effectiveInstruction, true);
+        }
+
         // Create a new session or update system prompt in the existing session
         if (!this.sessions[sessionId]) {
             console.log(`Creating new OpenAI session: ${sessionId}`);
             this.sessions[sessionId] = {
-                messages: [{ role: 'system', content: instruction || 'You are a helpful assistant.' }],
+                messages: [{ role: 'system', content: effectiveInstruction || 'You are a helpful assistant.' }],
                 lastActivity: now
             };
         } else {
             this.sessions[sessionId].lastActivity = now;
-            if (instruction) {
+            if (effectiveInstruction) {
                 const sysMsg = this.sessions[sessionId].messages.find(m => m.role === 'system');
                 if (sysMsg) {
-                    sysMsg.content = instruction;
+                    sysMsg.content = effectiveInstruction;
                 } else {
-                    this.sessions[sessionId].messages.unshift({ role: 'system', content: instruction });
+                    this.sessions[sessionId].messages.unshift({ role: 'system', content: effectiveInstruction });
                 }
             }
         }

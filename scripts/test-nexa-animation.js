@@ -15,7 +15,7 @@ console.log("🧪 Iniciando testes dos controladores de animação 2D da Nexa...
 
 // Teste 1: Validação do NexaCharacter e Pivô da Boca
 const character = new NexaCharacter();
-assert.strictEqual(character.layers.length, 21, "Devem existir 21 camadas no mapa do personagem");
+assert.strictEqual(character.layers.length, 22, "Devem existir 22 camadas no mapa do personagem");
 
 const mouthLayer = character.layerMap["mouth"];
 assert.ok(mouthLayer, "Camada da boca deve existir");
@@ -44,15 +44,25 @@ assert.ok(typeof lookData.headRotation === "number", "headRotation deve ser núm
 assert.ok(typeof lookData.eyeX === "number", "eyeX deve ser número");
 console.log("  ✅ Teste 4 Aprovado: NexaLook calcula inclinação e olhares.");
 
-// Teste 5: NexaTalking (Boca & Amplitude de Áudio)
+// Teste 5: NexaTalking (Boca, Espectro de Áudio & Portão de Ruído)
 const talking = new NexaTalking();
 const talkDataIdle = talking.update(0.016, false);
 assert.strictEqual(talkDataIdle.mouthScaleY, 1.0, "Boca em IDLE deve iniciar com escalaY 1.0");
 
-talking.targetAmplitude = 0.8; // Simula pico de volume do áudio TTS
+talking.targetAmplitude = 0.8; // Simula pico de fala com energia vocal
+talking.vowelDrive = 0.7;
+for (let i = 0; i < 10; i++) talking.update(0.016, true);
 const talkDataSpeaking = talking.update(0.016, true);
-assert.ok(talkDataSpeaking.mouthScaleY > 1.0, "Boca deve expandir durante o áudio de fala");
-console.log("  ✅ Teste 5 Aprovado: NexaTalking reage à amplitude do áudio.");
+assert.ok(talkDataSpeaking.mouthScaleY > 1.2, "Boca deve expandir durante a fala");
+
+talking.targetAmplitude = 0; // Simula pausa/silêncio (noise gate)
+talking.vowelDrive = 0;
+talking.sibilantDrive = 0;
+for (let i = 0; i < 10; i++) talking.update(0.016, true);
+const talkDataPause = talking.update(0.016, true);
+assert.ok(talkDataPause.mouthScaleY < talkDataSpeaking.mouthScaleY, "Boca deve fechar/reduzir abertura durante pausas de silêncio");
+
+console.log("  ✅ Teste 5 Aprovado: NexaTalking reage dinamicamente ao áudio e pausas.");
 
 // Teste 6: NexaAnimationController (Orquestrador)
 const controller = new NexaAnimationController(character);

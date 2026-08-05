@@ -195,11 +195,19 @@ function buildIdeAgentPrompt({ toolsSchema = [], wsPaths = [], nativeTools = fal
     ...reasoningRules(nativeTools),
   ];
 
-  const base = lines.join('\n');
+  let basePrompt = lines.join('\n');
+  try {
+    const configService = require('./configService');
+    const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : null;
+    if (nexaCfg && nexaCfg.enabled) {
+      const { applyNexaPersonaIfNeeded } = require('../main/nexa/nexaPersona.js');
+      basePrompt = applyNexaPersonaIfNeeded(basePrompt, true);
+    }
+  } catch (_) {}
   if (nativeTools) {
     // As ferramentas já chegam declaradas no tools[] da API; descrever de novo
     // em texto só duplica e convida o modelo a "emitir" chamada como prosa.
-    return base + [
+    return basePrompt + [
       '',
       '═══ FERRAMENTAS ═══',
       '',
@@ -211,7 +219,7 @@ function buildIdeAgentPrompt({ toolsSchema = [], wsPaths = [], nativeTools = fal
     ].join('\n');
   }
   const toolsAddon = buildOllamaToolsAddon(toolsSchema, wsPaths);
-  return toolsAddon ? `${base}\n${toolsAddon}` : base;
+  return toolsAddon ? `${basePrompt}\n${toolsAddon}` : basePrompt;
 }
 
 module.exports = { buildIdeAgentPrompt };

@@ -16,29 +16,28 @@ class NexaTalking {
   constructor() {
     this.audioCtx = null;
     this.analyser = null;
-    this.dataArray = null;
+    this.timeDataArray = null;
+    this.freqDataArray = null;
     this.sourceNode = null;
 
     this.currentAmplitude = 0;
     this.targetAmplitude = 0;
+    this.vowelDrive = 0;
+    this.sibilantDrive = 0;
 
     this.mouthScaleY = 1.0;
     this.mouthScaleX = 1.0;
     this.mouthOffsetY = 0;
     this.mouthState = MOUTH_STATES.CLOSED;
 
-    // Arquitetura pronta para futuramente mapear visemas/PNGs de boca adicionais
     this.visemeMap = {
       [MOUTH_STATES.CLOSED]: { scaleY: 1.0, scaleX: 1.0 },
-      [MOUTH_STATES.SMALL]: { scaleY: 1.4, scaleX: 1.05 },
-      [MOUTH_STATES.MEDIUM]: { scaleY: 2.1, scaleX: 1.12 },
-      [MOUTH_STATES.OPEN]: { scaleY: 2.8, scaleX: 1.18 }
+      [MOUTH_STATES.SMALL]: { scaleY: 1.35, scaleX: 1.04 },
+      [MOUTH_STATES.MEDIUM]: { scaleY: 1.95, scaleX: 1.08 },
+      [MOUTH_STATES.OPEN]: { scaleY: 2.5, scaleX: 1.12 }
     };
   }
 
-  /**
-   * Conecta um elemento HTMLAudioElement ao AnalyserNode da Web Audio API.
-   */
   connectAudioElement(audioElement) {
     try {
       if (!this.audioCtx) {
@@ -51,11 +50,12 @@ class NexaTalking {
       }
 
       this.analyser = this.audioCtx.createAnalyser();
-      this.analyser.fftSize = 128;
-      this.analyser.smoothingTimeConstant = 0.6; // Suavização nativa do AnalyserNode
+      this.analyser.fftSize = 256; // 128 bins de frequência (~172 Hz por bin)
+      this.analyser.smoothingTimeConstant = 0.5;
 
-      const bufferLength = this.analyser.frequencyBinCount;
-      this.dataArray = new Uint8Array(bufferLength);
+      const binCount = this.analyser.frequencyBinCount;
+      this.timeDataArray = new Uint8Array(binCount);
+      this.freqDataArray = new Uint8Array(binCount);
 
       if (this.sourceNode) {
         try { this.sourceNode.disconnect(); } catch (_) {}
@@ -65,7 +65,7 @@ class NexaTalking {
       this.sourceNode.connect(this.analyser);
       this.analyser.connect(this.audioCtx.destination);
 
-      console.log("[NexaTalking] Conectado ao AnalyserNode com sucesso.");
+      console.log("[NexaTalking] Conectado ao AnalyserNode de espectro de áudio com sucesso.");
     } catch (err) {
       console.warn("[NexaTalking] Aviso na conexão do AudioContext (modo fallback ativo):", err.message);
     }
@@ -73,10 +73,12 @@ class NexaTalking {
 
   update(deltaTime, isSpeaking = false) {
     if (!isSpeaking) {
-      // Suaviza o fechamento da boca ao parar de falar
-      this.mouthScaleY += (1.0 - this.mouthScaleY) * Math.min(1.0, deltaTime * 12.0);
-      this.mouthScaleX += (1.0 - this.mouthScaleX) * Math.min(1.0, deltaTime * 12.0);
-      this.mouthOffsetY += (0 - this.mouthOffsetY) * Math.min(1.0, deltaTime * 12.0);
+      // Retorno suave para o estado fechado quando não está falando
+      const releaseSpeed = Math.min(1.0, deltaTime * 14.0);
+      this.mouthScaleY += (1.0 - this.mouthScaleY) * releaseSpeed;
+      this.mouthScaleX += (1.0 - this.mouthScaleX) * releaseSpeed;
+      this.mouthOffsetY += (0 - this.mouthOffsetY) * releaseSpeed;
+      this.currentAmplitude += (0 - this.currentAmplitude) * releaseSpeed;
       this.mouthState = MOUTH_STATES.CLOSED;
       return {
         mouthScaleY: this.mouthScaleY,
@@ -86,46 +88,87 @@ class NexaTalking {
       };
     }
 
-    // Processa energia/amplitude do áudio do AnalyserNode
-    if (this.analyser && this.dataArray) {
-      this.analyser.getByteFrequencyData(this.dataArray);
-      let sum = 0;
-      for (let i = 0; i < this.dataArray.length; i++) {
-        sum += this.dataArray[i];
+    if (this.analyser && this.timeDataArray && this.freqDataArray) {
+      this.analyser.getByteTimeDomainData(this.timeDataArray);
+      this.analyser.getByteFrequencyData(this.freqDataArray);
+
+      // 1. RMS do domínio do tempo (volume global da forma de onda)
+      let sumSq = 0;
+      for (let i = 0; i < this.timeDataArray.length; i++) {
+        const norm = (this.timeDataArray[i] - 128) / 128.0;
+        sumSq += norm * norm;
       }
-      const average = sum / this.dataArray.length;
-      this.targetAmplitude = Math.min(1.0, average / 110.0);
+      const rms = Math.sqrt(sumSq / this.timeDataArray.length);
+
+      // 2. Análise de bandas do espectro de frequência
+      // Formantes vocais (Vogais: 300Hz - 2400Hz -> bins 2 a 14)
+      let vowelSum = 0;
+      for (let i = 2; i <= 14; i++) {
+        vowelSum += this.freqDataArray[i];
+      }
+      const rawVowel = vowelSum / (13 * 255.0);
+
+      // Fricativas / Sibilantes (Consoantes S, Z, T, CH: 3400Hz - 8600Hz -> bins 20 a 50)
+      let sibSum = 0;
+      for (let i = 20; i <= 50; i++) {
+        sibSum += this.freqDataArray[i];
+      }
+      const rawSibilant = sibSum / (31 * 255.0);
+
+      // Noise gate para silêncio e pausas entre palavras
+      if (rms < 0.012) {
+        this.targetAmplitude = 0;
+        this.vowelDrive = 0;
+        this.sibilantDrive = 0;
+      } else {
+        this.targetAmplitude = Math.min(1.0, (rms - 0.012) / 0.18);
+        // Nas consoantes sibilantes (S, T), a boca não deve abrir muito verticalmente
+        this.vowelDrive = Math.max(0, rawVowel - rawSibilant * 0.4);
+        this.sibilantDrive = rawSibilant;
+      }
     } else {
-      // Fallback sutil de modulação caso AudioContext falhe
-      this.targetAmplitude = 0.3 + Math.sin(Date.now() * 0.015) * 0.35;
+      // Fallback sutil de modulação caso AnalyserNode não esteja conectado em ambiente sem Web Audio API
+      if (this.targetAmplitude === 0) {
+        this.vowelDrive = 0;
+        this.sibilantDrive = 0;
+      } else {
+        if (!this.targetAmplitude) {
+          this.targetAmplitude = 0.4 + Math.sin(Date.now() * 0.015) * 0.3;
+        }
+        this.vowelDrive = this.targetAmplitude;
+        this.sibilantDrive = 0.1;
+      }
     }
 
-    // Aplica lerp constante para evitar tremulação abruta da boca
-    this.currentAmplitude += (this.targetAmplitude - this.currentAmplitude) * Math.min(1.0, deltaTime * 16.0);
+    // Seguidor de envelope assimétrico: Ataque rápido (32.0) / Relaxamento suave (14.0)
+    const attackReleaseSpeed = this.targetAmplitude > this.currentAmplitude ? 32.0 : 14.0;
+    this.currentAmplitude += (this.targetAmplitude - this.currentAmplitude) * Math.min(1.0, deltaTime * attackReleaseSpeed);
 
-    // Classifica o estado discreto da boca com base na energia
-    if (this.currentAmplitude < 0.12) {
+    // Classificação discreta da boca
+    if (this.currentAmplitude < 0.08) {
       this.mouthState = MOUTH_STATES.CLOSED;
-    } else if (this.currentAmplitude < 0.35) {
+    } else if (this.currentAmplitude < 0.32) {
       this.mouthState = MOUTH_STATES.SMALL;
-    } else if (this.currentAmplitude < 0.65) {
+    } else if (this.currentAmplitude < 0.62) {
       this.mouthState = MOUTH_STATES.MEDIUM;
     } else {
       this.mouthState = MOUTH_STATES.OPEN;
     }
 
-    const viseme = this.visemeMap[this.mouthState];
+    // Variação micro-orgânica das sílabas durante o fluxo da fala
+    const microSyllable = Math.sin(Date.now() * 0.028) * 0.07 * this.vowelDrive;
 
-    // Variação micro-orgânica para não parecer mecânico
-    const microVar = Math.sin(Date.now() * 0.02) * 0.1;
-    const targetScaleY = viseme.scaleY + microVar * this.currentAmplitude;
-    const targetScaleX = viseme.scaleX;
+    // Abertura vertical (scaleY): impulsionada pelas vogais
+    const targetScaleY = 1.0 + (this.currentAmplitude * 1.3) + (this.vowelDrive * 0.4) + microSyllable;
 
-    this.mouthScaleY += (targetScaleY - this.mouthScaleY) * Math.min(1.0, deltaTime * 14.0);
-    this.mouthScaleX += (targetScaleX - this.mouthScaleX) * Math.min(1.0, deltaTime * 14.0);
+    // Abertura horizontal (scaleX): impulsionada pelas fricativas/sibilantes
+    const targetScaleX = 1.0 + (this.currentAmplitude * 0.08) + (this.sibilantDrive * 0.06);
 
-    // Micro ajuste vertical do pivô para manter alinhamento anatômico perfeito
-    this.mouthOffsetY = (this.mouthScaleY - 1.0) * 0.5;
+    this.mouthScaleY += (targetScaleY - this.mouthScaleY) * Math.min(1.0, deltaTime * 20.0);
+    this.mouthScaleX += (targetScaleX - this.mouthScaleX) * Math.min(1.0, deltaTime * 20.0);
+
+    // Ajuste de compensação vertical do queixo
+    this.mouthOffsetY = (this.mouthScaleY - 1.0) * 1.3;
 
     return {
       mouthScaleY: this.mouthScaleY,
@@ -137,6 +180,8 @@ class NexaTalking {
 
   stop() {
     this.targetAmplitude = 0;
+    this.vowelDrive = 0;
+    this.sibilantDrive = 0;
     this.currentAmplitude = 0;
     this.mouthState = MOUTH_STATES.CLOSED;
   }

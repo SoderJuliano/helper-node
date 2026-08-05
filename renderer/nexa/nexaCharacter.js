@@ -108,6 +108,7 @@ class NexaCharacter {
       { name: "neckwear", file: "neckwear.png", group: "body", pivotX: 648.0, pivotY: 250.0 },
       { name: "topwear", file: "topwear.png", group: "body", pivotX: 644.5, pivotY: 398.0 },
       { name: "handwear", file: "handwear.png", group: "body", pivotX: 640.0, pivotY: 480.0 },
+      { name: "hand_pose_chin", file: "assets/hand_pose_chin.png", group: "head", pivotX: 640.0, pivotY: 480.0 },
       
       // Grupo de Cabeça & Rosto
       { name: "head", file: "head.png", group: "head", pivotX: 645.5, pivotY: 161.0 },

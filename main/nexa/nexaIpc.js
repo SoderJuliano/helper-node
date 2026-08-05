@@ -30,6 +30,23 @@ function registerNexaIpc() {
     return isNexaWindowOpen();
   });
 
+  ipcMain.handle("nexa:get-config", () => {
+    const { configService } = require("../globals.js");
+    return configService.getNexaConfig();
+  });
+
+  ipcMain.on("nexa:save-config", (event, cfg) => {
+    const { configService } = require("../globals.js");
+    const oldCfg = configService.getNexaConfig();
+    configService.setNexaConfig(cfg);
+    console.log("[NexaIPC] Configuração da Nexa salva:", cfg);
+    if (cfg && cfg.enabled && !oldCfg.enabled) {
+      createNexaWindow();
+    } else if (cfg && cfg.enabled === false && oldCfg.enabled) {
+      closeNexaWindow();
+    }
+  });
+
   ipcMain.on("nexa:tts-ended", () => {
     console.log("[NexaIPC] Recebido término de reprodução de TTS -> transicionando para IDLE");
     if (nexaState.getState() === "SPEAKING") {

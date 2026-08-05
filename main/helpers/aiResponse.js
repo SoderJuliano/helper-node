@@ -405,8 +405,16 @@ helpers.formatToHTML = function(text) {
 helpers.appendVoiceSummaryInstructionIfNeeded = function(instructionOrPrompt) {
   try {
     const cfg = configService.getGoogleTtsConfig();
-    if (!cfg || !cfg.enabled) return instructionOrPrompt;
-    const directive = "\n\n[INSTRUÇÃO DE MODO DE VOZ ATIVO]\nSua resposta DEVE incluir ao final a tag <voice_summary>resumo sucinto em 1 a 2 frases para ser lido em voz alta. NUNCA inclua códigos, tabelas ou exemplos longos dentro da tag voice_summary. Se houver códigos ou exemplos na resposta, peça para o usuário olhá-los na tela.</voice_summary>";
+    const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : null;
+    const isNexaOn = !!(nexaCfg && nexaCfg.enabled);
+    const isTtsOn = !!(cfg && cfg.enabled);
+
+    if (!isTtsOn && !isNexaOn) return instructionOrPrompt;
+
+    const voiceSpeakerNote = isNexaOn
+      ? " O resumo DEVE ser escrito em PRIMEIRA PESSOA PELA NEXA (ex: 'Pronto! Analisei e fiz os ajustes...'). NUNCA narre em terceira pessoa nem mencione assistentes genéricos ou nomes de terceiros."
+      : "";
+    const directive = `\n\n[INSTRUÇÃO DE MODO DE VOZ ATIVO]\nSua resposta DEVE incluir ao final a tag <voice_summary>resumo sucinto em 1 a 2 frases para ser lido em voz alta (no mesmo idioma da sua resposta).${voiceSpeakerNote} NUNCA inclua códigos, tabelas ou exemplos longos dentro da tag voice_summary. Se houver códigos ou exemplos na resposta, peça para o usuário olhá-los na tela.</voice_summary>`;
     return (instructionOrPrompt || "") + directive;
   } catch (e) {
     return instructionOrPrompt;
@@ -416,22 +424,33 @@ helpers.appendVoiceSummaryInstructionIfNeeded = function(instructionOrPrompt) {
 helpers.triggerTtsPlaybackIfEnabled = function(fullResponse) {
   try {
     const cfg = configService.getGoogleTtsConfig();
-    if (!cfg || !cfg.enabled) return;
-    if (!state.mainWindow || state.mainWindow.isDestroyed()) return;
+    const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : null;
+    const isNexaOn = !!(nexaCfg && nexaCfg.enabled);
+    const isTtsOn = !!(cfg && cfg.enabled);
+
+    if (!isTtsOn && !isNexaOn) return;
+    if (!cfg || !cfg.keyPathOrKey || !cfg.keyPathOrKey.trim()) return;
 
     const summary = googleTtsService.extractVoiceSummary(fullResponse);
     if (!summary || !summary.trim()) return;
 
-    console.log("🔊 Sintetizando resumo por voz Google TTS:", summary);
+    const voiceToUse = isNexaOn ? "pt-BR-Neural2-C" : (cfg.voiceName || 'pt-BR-Neural2-C');
+
+    console.log("🔊 Sintetizando resumo por voz Google TTS (Nexa=" + isNexaOn + "):", summary);
     googleTtsService.synthesizeText(summary, {
       keyOrPath: cfg.keyPathOrKey,
-      voiceName: cfg.voiceName || 'pt-BR-Neural2-C'
+      voiceName: voiceToUse
     }).then(buf => {
+      const audioPayload = {
+        audioBase64: buf.toString("base64"),
+        text: summary
+      };
+      // Emite o evento global do IPCMain para acionar nexaIntegration e a janela do renderer
+      const { ipcMain } = require("electron");
+      ipcMain.emit("play-tts-audio", null, audioPayload);
+
       if (state.mainWindow && !state.mainWindow.isDestroyed()) {
-        state.mainWindow.webContents.send("play-tts-audio", {
-          audioBase64: buf.toString("base64"),
-          text: summary
-        });
+        state.mainWindow.webContents.send("play-tts-audio", audioPayload);
       }
     }).catch(err => {
       console.error("🔊 Erro no Google TTS playback:", err && err.message);

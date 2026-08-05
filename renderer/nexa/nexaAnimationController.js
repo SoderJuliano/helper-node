@@ -9,6 +9,7 @@ const _NexaBreathing = typeof NexaBreathing !== "undefined" ? NexaBreathing : re
 const _NexaBlink = typeof NexaBlink !== "undefined" ? NexaBlink : require("./nexaBlink.js").NexaBlink;
 const _NexaLook = typeof NexaLook !== "undefined" ? NexaLook : require("./nexaLook.js").NexaLook;
 const _NexaTalking = typeof NexaTalking !== "undefined" ? NexaTalking : require("./nexaTalking.js").NexaTalking;
+const _NexaThinking = typeof NexaThinking !== "undefined" ? NexaThinking : require("./nexaThinking.js").NexaThinking;
 
 class NexaAnimationController {
   constructor(characterInstance) {
@@ -23,6 +24,7 @@ class NexaAnimationController {
     this.blink = new _NexaBlink();
     this.look = new _NexaLook();
     this.talking = new _NexaTalking();
+    this.thinking = new _NexaThinking();
   }
 
   setState(newState) {
@@ -73,7 +75,10 @@ class NexaAnimationController {
     // 3. Atualiza olhar e inclinação de cabeça
     const lookData = this.look.update(deltaTime, this.currentState);
 
-    // 4. Atualiza animação de fala sincronizada por áudio TTS
+    // 4. Atualiza controlador de pensamento (THINKING)
+    const thinkingData = this.thinking.update(deltaTime, this.currentState);
+
+    // 5. Atualiza animação de fala sincronizada por áudio TTS
     const isSpeaking = this.currentState === "SPEAKING";
     const talkData = this.talking.update(deltaTime, isSpeaking);
 
@@ -88,15 +93,37 @@ class NexaAnimationController {
     bodyNode.scaleY = breath.scaleY;
     bodyNode.rotation = breath.rotation;
 
-    // Cabeça: Movimentos do controlador Look
+    // Cabeça: Movimentos do controlador Look + Thinking
     headNode.x = lookData.headX;
-    headNode.y = lookData.headY;
-    headNode.rotation = lookData.headRotation;
+    headNode.y = lookData.headY + thinkingData.headY;
+    headNode.rotation = lookData.headRotation + thinkingData.headTilt;
 
-    // Olhos: Pupilas (offsetX/Y), Piscar (scaleY)
-    eyesNode.offsetX = lookData.eyeX;
-    eyesNode.offsetY = lookData.eyeY;
+    // Olhos: Pupilas (offsetX/Y), Piscar (scaleY), Thinking
+    eyesNode.offsetX = lookData.eyeX + thinkingData.eyeX;
+    eyesNode.offsetY = lookData.eyeY + thinkingData.eyeY;
     eyesNode.scaleY = blinkData.eyeScaleY;
+
+    // Mão / Braços: Transição de opacidade para a pose de raciocínio (mão no queixo)
+    if (this.character.layerMap) {
+      const handChinLayer = this.character.layerMap["hand_pose_chin"];
+      const handwearLayer = this.character.layerMap["handwear"];
+      const blendSpeed = Math.min(1.0, deltaTime * 8.0);
+
+      if (handChinLayer && handwearLayer) {
+        if (thinkingData.handOnChin) {
+          handChinLayer.opacity += (1.0 - handChinLayer.opacity) * blendSpeed;
+          handwearLayer.opacity += (0.0 - handwearLayer.opacity) * blendSpeed;
+        } else {
+          handChinLayer.opacity += (0.0 - handChinLayer.opacity) * blendSpeed;
+          handwearLayer.opacity += (1.0 - handwearLayer.opacity) * blendSpeed;
+        }
+      }
+    }
+
+    // Sobrancelha: Ajuste de expressão
+    if (this.character.layerMap && this.character.layerMap["eyebrow"]) {
+      this.character.layerMap["eyebrow"].y = thinkingData.eyebrowY;
+    }
 
     // Boca: Amplitude do áudio e pivô anatômico preservado
     mouthNode.scaleY = talkData.mouthScaleY;

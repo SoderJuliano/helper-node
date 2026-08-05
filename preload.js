@@ -286,6 +286,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onTerminalClosed: (cb) => ipcRenderer.on("terminal:closed", (event, data) => cb(data)),
 
   // === Nexa Module API ===
+  getNexaConfig: () => ipcRenderer.invoke("nexa:get-config"),
+  saveNexaConfig: (cfg) => ipcRenderer.send("nexa:save-config", cfg),
   toggleNexa: () => ipcRenderer.invoke("nexa:toggle"),
   getNexaState: () => ipcRenderer.invoke("nexa:get-state"),
   isNexaOpen: () => ipcRenderer.invoke("nexa:is-open"),
