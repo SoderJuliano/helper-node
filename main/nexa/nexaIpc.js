@@ -35,6 +35,11 @@ function registerNexaIpc() {
     return configService.getNexaConfig();
   });
 
+  ipcMain.handle("nexa:get-animations", () => {
+    const { NEXA_ANIMATIONS } = require("./nexaAnimations.js");
+    return NEXA_ANIMATIONS;
+  });
+
   ipcMain.on("nexa:save-config", (event, cfg) => {
     const { configService } = require("../globals.js");
     const oldCfg = configService.getNexaConfig();

@@ -6,7 +6,63 @@
 
 const { nexaState } = require("./nexaState.js");
 const { sendStateToNexaWindow, isNexaWindowOpen } = require("./nexaWindow.js");
-const { ipcMain } = require("electron");
+const { ipcMain, app, BrowserWindow } = require("electron");
+const { NexaJsonStreamParser, parseNexaResponse, handleNexaActions } = require("./nexaResponseHelper.js");
+const { configService, helpers } = require("../globals.js");
+
+function hookWebContents(webContents) {
+  if (webContents._nexaHooked) return;
+  webContents._nexaHooked = true;
+
+  const originalSend = webContents.send;
+  
+  let streamParser = null;
+  let rawStreamResponse = "";
+
+  webContents.send = function(channel, ...args) {
+    const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : null;
+    const isNexaOn = !!(nexaCfg && nexaCfg.enabled);
+
+    if (isNexaOn) {
+      if (channel === "gemini-stream-chunk") {
+        if (!streamParser) {
+          streamParser = new NexaJsonStreamParser();
+          rawStreamResponse = "";
+        }
+        const chunk = args[0];
+        rawStreamResponse += chunk;
+        const cleanChunk = streamParser.processChunk(chunk);
+        if (cleanChunk) {
+          return originalSend.call(webContents, "gemini-stream-chunk", cleanChunk);
+        }
+        return; // Filtra para que o renderer não receba a estrutura do JSON
+      }
+      
+      if (channel === "gemini-stream-complete") {
+        if (streamParser) {
+          const result = parseNexaResponse(rawStreamResponse, streamParser.responseText);
+          handleNexaActions(result);
+          streamParser = null;
+        }
+        return originalSend.call(webContents, "gemini-stream-complete");
+      }
+
+      if (channel === "gemini-response" || channel === "openai-final-response") {
+        const payload = args[0]; // { resposta, usedKnowledge, ... }
+        if (payload && payload.resposta) {
+          const result = parseNexaResponse(payload.resposta);
+          handleNexaActions(result);
+          
+          // Formata e substitui a resposta enviada ao renderer
+          payload.resposta = helpers.formatToHTML(result.response);
+        }
+        return originalSend.call(webContents, channel, ...args);
+      }
+    }
+
+    return originalSend.apply(webContents, arguments);
+  };
+}
 
 function setupNexaIntegration() {
   // Sincroniza mudanças de estado com a janela da Nexa
@@ -22,6 +78,16 @@ function setupNexaIntegration() {
     }
     return originalEmit.apply(ipcMain, arguments);
   };
+
+  // Hook em todas as novas janelas do Electron
+  app.on("browser-window-created", (event, win) => {
+    hookWebContents(win.webContents);
+  });
+
+  // Hook nas janelas já ativas
+  BrowserWindow.getAllWindows().forEach(win => {
+    hookWebContents(win.webContents);
+  });
 }
 
 function handleCoreEventForNexa(channel, args) {

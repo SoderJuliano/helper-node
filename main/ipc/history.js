@@ -139,6 +139,11 @@ ipcMain.handle('new-chat', async () => {
     // Garante que a nova conversa comece 100% limpa sem --continue / --resume
     try { GeminiCliProvider.shutdown().catch(() => {}); } catch (_) {}
     try { ClaudeCliProvider.shutdown().catch(() => {}); } catch (_) {}
+    // Limpa histórico de animações da Nexa
+    try {
+      const nexaHistory = require("../nexa/nexaHistory.js");
+      nexaHistory.clearHistory();
+    } catch (_) {}
     return session;
   } catch (error) {
     console.error('Erro ao criar novo chat:', error);

@@ -19,6 +19,19 @@ document.addEventListener("DOMContentLoaded", async () => {
   window.addEventListener("resize", resizeCanvas);
   resizeCanvas();
 
+  // Busca a configuração da Nexa e o trim da animação
+  let introTrimEndMs = 100;
+  try {
+    if (window.electronAPI && window.electronAPI.getNexaConfig) {
+      const nexaCfg = await window.electronAPI.getNexaConfig();
+      if (nexaCfg && nexaCfg.introTrimEndMs !== undefined) {
+        introTrimEndMs = nexaCfg.introTrimEndMs;
+      }
+    }
+  } catch (err) {
+    console.warn("[NexaRenderer] Erro ao buscar configuração da Nexa:", err);
+  }
+
   // Inicializa o personagem e controladores procedurais
   const character = new NexaCharacter();
   const animController = new NexaAnimationController(character);
@@ -31,7 +44,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   // Inicializa o reprodutor de animação de entrada 2D
-  const introAnimation = typeof NexaIntroAnimation !== "undefined" ? new NexaIntroAnimation() : null;
+  const introAnimation = typeof NexaIntroAnimation !== "undefined" ? new NexaIntroAnimation({ introTrimEndMs }) : null;
   if (introAnimation) {
     introAnimation.play();
   }
@@ -39,10 +52,46 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Inicializa a animação de tédio/idle (Animated_anime_girl_idling_202608051517.mp4)
   const idleBoringPath = "/home/soder/Documents/nexa-workspace/animacoes_google_flow/Animated_anime_girl_idling_202608051517.mp4";
   const idleBoringAnimation = typeof NexaIntroAnimation !== "undefined"
-    ? new NexaIntroAnimation({ videoPath: idleBoringPath })
+    ? new NexaIntroAnimation({ videoPath: idleBoringPath, introTrimEndMs })
     : null;
 
+  let currentVideoAnimation = introAnimation;
   let idleTime = 0;
+
+  // Busca o catálogo de animações do Main
+  let animationsCatalog = {};
+  if (window.electronAPI && window.electronAPI.getAnimations) {
+    window.electronAPI.getAnimations().then((catalog) => {
+      animationsCatalog = catalog || {};
+      console.log("[NexaRenderer] Catálogo de animações carregado:", Object.keys(animationsCatalog));
+    }).catch(err => {
+      console.warn("[NexaRenderer] Erro ao carregar catálogo de animações:", err);
+    });
+  }
+
+  // Ouvinte para reprodução de animações enviadas pela IA
+  if (window.electronAPI && window.electronAPI.onPlayAnimation) {
+    window.electronAPI.onPlayAnimation(({ name }) => {
+      console.log("[NexaRenderer] Evento de animação recebido:", name);
+      const animDef = animationsCatalog[name];
+      if (!animDef) {
+        console.warn("[NexaRenderer] Animação ausente no catálogo local:", name);
+        return;
+      }
+
+      if (animDef.videoPath) {
+        if (currentVideoAnimation && currentVideoAnimation.isPlaying) {
+          currentVideoAnimation.stop();
+        }
+        console.log("[NexaRenderer] Iniciando animação de vídeo:", name);
+        currentVideoAnimation = new NexaIntroAnimation({ videoPath: animDef.videoPath, introTrimEndMs });
+        currentVideoAnimation.play();
+      } else if (animDef.procedural) {
+        console.log("[NexaRenderer] Iniciando animação procedural:", name);
+        animController.playProceduralReaction(name);
+      }
+    });
+  }
 
   // 1. Escuta de IPC: Mudança de Estado (IDLE, LISTENING, THINKING, SPEAKING)
   if (window.electronAPI && window.electronAPI.onNexaStateChange) {
@@ -124,20 +173,26 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // Se o estado mudar de IDLE, interrompe a animação de tédio imediatamente
     if (currentState !== "IDLE") {
-      if (idleBoringAnimation && idleBoringAnimation.isPlaying && !idleBoringAnimation.isFinished()) {
-        idleBoringAnimation.stop();
-        console.log("[NexaRenderer] Animação de tédio interrompida por mudança de estado para:", currentState);
+      if (currentVideoAnimation && currentVideoAnimation.isPlaying && !currentVideoAnimation.isFinished()) {
+        if (currentVideoAnimation === idleBoringAnimation || currentVideoAnimation !== introAnimation) {
+          currentVideoAnimation.stop();
+          console.log("[NexaRenderer] Animação de vídeo interrompida por mudança de estado para:", currentState);
+        }
       }
       idleTime = 0;
     }
 
-    if (introAnimation && !introAnimation.isFinished()) {
-      introAnimation.update(deltaTime);
-      introAnimation.render(ctx, canvas.width, canvas.height);
-    } else if (idleBoringAnimation && !idleBoringAnimation.isFinished() && idleBoringAnimation.isPlaying) {
-      idleBoringAnimation.update(deltaTime);
-      idleBoringAnimation.render(ctx, canvas.width, canvas.height);
-    } else {
+    let rendered = false;
+
+    if (currentVideoAnimation && !currentVideoAnimation.isFinished() && currentVideoAnimation.isPlaying) {
+      currentVideoAnimation.update(deltaTime);
+      currentVideoAnimation.render(ctx, canvas.width, canvas.height);
+      if (!currentVideoAnimation.isFinished()) {
+        rendered = true;
+      }
+    }
+
+    if (!rendered) {
       animController.update(deltaTime);
       animController.render(ctx, canvas.width, canvas.height);
 
@@ -148,7 +203,10 @@ document.addEventListener("DOMContentLoaded", async () => {
           idleTime = 0;
           if (Math.random() < 0.25) {
             console.log("[NexaRenderer] Sorteando animação idle/boring de 8s...");
-            idleBoringAnimation.play();
+            if (idleBoringAnimation) {
+              idleBoringAnimation.play();
+              currentVideoAnimation = idleBoringAnimation;
+            }
           }
         }
       }

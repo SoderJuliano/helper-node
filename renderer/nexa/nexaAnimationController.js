@@ -25,6 +25,17 @@ class NexaAnimationController {
     this.look = new _NexaLook();
     this.talking = new _NexaTalking();
     this.thinking = new _NexaThinking();
+
+    // Reações procedurais temporárias
+    this.activeReaction = null;
+    this.reactionTime = 0.0;
+    this.reactionDuration = 3.0; // 3 segundos de duração
+  }
+
+  playProceduralReaction(name) {
+    this.activeReaction = name;
+    this.reactionTime = 0.0;
+    console.log(`[NexaAnimationController] Iniciando reação procedural: ${name}`);
   }
 
   setState(newState) {
@@ -82,6 +93,29 @@ class NexaAnimationController {
     const isSpeaking = this.currentState === "SPEAKING";
     const talkData = this.talking.update(deltaTime, isSpeaking);
 
+    // 6. Atualiza reações procedurais
+    let reactionHeadRot = 0;
+    let reactionHeadY = 0;
+    let reactionMouthScaleX = 1.0;
+    let reactionMouthScaleY = 1.0;
+    let reactionMouthOffsetY = 0;
+
+    if (this.activeReaction === "heart") {
+      this.reactionTime += deltaTime;
+      if (this.reactionTime < this.reactionDuration) {
+        const t = this.reactionTime / this.reactionDuration;
+        const pulse = Math.sin(t * Math.PI); // Curva senoidal suave de 0 a 1 a 0
+        
+        reactionHeadRot = 0.12 * pulse;       // Inclina cabeça
+        reactionHeadY = 3.0 * pulse;          // Move um pouco para baixo
+        reactionMouthScaleX = 1.0 + 0.15 * pulse; // Sorriso horizontal
+        reactionMouthScaleY = 1.0 - 0.15 * pulse; // Redução vertical da boca para fazer sorriso
+        reactionMouthOffsetY = -2.0 * pulse;
+      } else {
+        this.activeReaction = null;
+      }
+    }
+
     // Aplica transformações combinadas no modelo de camadas do personagem
     const bodyNode = this.character.nodes.body;
     const headNode = this.character.nodes.head;
@@ -93,10 +127,10 @@ class NexaAnimationController {
     bodyNode.scaleY = breath.scaleY;
     bodyNode.rotation = breath.rotation;
 
-    // Cabeça: Movimentos do controlador Look + Thinking
+    // Cabeça: Movimentos do controlador Look + Thinking + Reação
     headNode.x = lookData.headX;
-    headNode.y = lookData.headY + thinkingData.headY;
-    headNode.rotation = lookData.headRotation + thinkingData.headTilt;
+    headNode.y = lookData.headY + thinkingData.headY + reactionHeadY;
+    headNode.rotation = lookData.headRotation + thinkingData.headTilt + reactionHeadRot;
 
     // Olhos: Pupilas (offsetX/Y), Piscar (scaleY), Thinking
     eyesNode.offsetX = lookData.eyeX + thinkingData.eyeX;
@@ -125,10 +159,10 @@ class NexaAnimationController {
       this.character.layerMap["eyebrow"].y = thinkingData.eyebrowY;
     }
 
-    // Boca: Amplitude do áudio e pivô anatômico preservado
-    mouthNode.scaleY = talkData.mouthScaleY;
-    mouthNode.scaleX = talkData.mouthScaleX;
-    mouthNode.offsetY = talkData.mouthOffsetY;
+    // Boca: Amplitude do áudio e pivô anatômico preservado + Reação
+    mouthNode.scaleY = talkData.mouthScaleY * reactionMouthScaleY;
+    mouthNode.scaleX = talkData.mouthScaleX * reactionMouthScaleX;
+    mouthNode.offsetY = talkData.mouthOffsetY + reactionMouthOffsetY;
   }
 
   render(ctx, canvasWidth, canvasHeight) {

@@ -12,6 +12,7 @@ class NexaIntroAnimation {
     this.videoPath = options.videoPath || "/home/soder/Documents/nexa-workspace/animacoes_google_flow/White-haired_girl_waving_202608051124.mp4";
     this.offscreenCanvas = null;
     this.offscreenCtx = null;
+    this.introTrimEndMs = options.introTrimEndMs !== undefined ? options.introTrimEndMs : 100;
   }
 
   init() {
@@ -75,7 +76,8 @@ class NexaIntroAnimation {
       }
       const duration = this.video.duration || 0;
       const currentTime = this.video.currentTime || 0;
-      if (duration > 0 && currentTime >= duration - 0.25) {
+      const trimSeconds = this.introTrimEndMs / 1000.0;
+      if (duration > 0 && currentTime >= duration - trimSeconds) {
         this.finished = true;
         this.isPlaying = false;
         return true;
@@ -97,9 +99,14 @@ class NexaIntroAnimation {
     const vidW = this.video.videoWidth || 720;
     const vidH = this.video.videoHeight || 1280;
 
-    const scale = Math.min(canvasWidth / vidW, canvasHeight / vidH);
-    const drawW = Math.round(vidW * scale);
-    const drawH = Math.round(vidH * scale);
+    // Calcula a escala exata baseada na escala do personagem (1280x1280)
+    const charScale = Math.min(canvasWidth / 1280, canvasHeight / 1280);
+    const charOffsetX = (canvasWidth - 1280 * charScale) / 2;
+    const charOffsetY = (canvasHeight - 1280 * charScale) / 2;
+
+    // Dimensões do canvas offscreen arredondadas para inteiros para a filtragem Chroma Key
+    const drawW = Math.round(vidW * charScale);
+    const drawH = Math.round(vidH * charScale);
 
     if (drawW <= 0 || drawH <= 0) return;
 
@@ -149,10 +156,12 @@ class NexaIntroAnimation {
     this.offscreenCtx.putImageData(imgData, 0, 0);
 
     ctx.save();
-    // Desenha o canvas processado centralizado na tela
-    const offsetX = (canvasWidth - drawW) / 2;
-    const offsetY = (canvasHeight - drawH) / 2;
-    ctx.drawImage(this.offscreenCanvas, offsetX, offsetY);
+    // Desenha o canvas processado utilizando o enquadramento exato e escala float do personagem
+    const exactX = charOffsetX + 280 * charScale;
+    const exactY = charOffsetY;
+    const exactW = 720 * charScale;
+    const exactH = 1280 * charScale;
+    ctx.drawImage(this.offscreenCanvas, exactX, exactY, exactW, exactH);
     ctx.restore();
   }
 }

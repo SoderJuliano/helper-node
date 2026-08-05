@@ -431,7 +431,18 @@ helpers.triggerTtsPlaybackIfEnabled = function(fullResponse) {
     if (!isTtsOn && !isNexaOn) return;
     if (!cfg || !cfg.keyPathOrKey || !cfg.keyPathOrKey.trim()) return;
 
-    const summary = googleTtsService.extractVoiceSummary(fullResponse);
+    let cleanResponse = fullResponse;
+    if (isNexaOn && fullResponse) {
+      try {
+        const { parseNexaResponse } = require("../nexa/nexaResponseHelper.js");
+        const parsed = parseNexaResponse(fullResponse);
+        cleanResponse = parsed.response;
+      } catch (err) {
+        console.warn("[aiResponse] Falha ao extrair resposta para TTS:", err.message);
+      }
+    }
+
+    const summary = googleTtsService.extractVoiceSummary(cleanResponse);
     if (!summary || !summary.trim()) return;
 
     const voiceToUse = isNexaOn ? "pt-BR-Neural2-C" : (cfg.voiceName || 'pt-BR-Neural2-C');
