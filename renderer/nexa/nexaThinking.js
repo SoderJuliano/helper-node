@@ -34,22 +34,16 @@ class NexaThinking {
     this.isThinking = true;
     this.time = 0;
 
-    // Sorteia tipo de pose de pensamento
+    // Sorteia tipo de pose de pensamento (GAZE_UP_RIGHT, GAZE_UP_LEFT ou TILT_SIDE)
     const rand = Math.random();
-    if (rand < 0.30) {
+    if (rand < 0.35) {
       this.currentPoseType = "GAZE_UP_RIGHT";
-      this.handOnChinActive = false;
-    } else if (rand < 0.60) {
+    } else if (rand < 0.70) {
       this.currentPoseType = "GAZE_UP_LEFT";
-      this.handOnChinActive = false;
-    } else if (rand < 0.80) {
-      this.currentPoseType = "TILT_SIDE";
-      this.handOnChinActive = false;
     } else {
-      // ~20% de chance de acionar a pose especial com mão no queixo
-      this.currentPoseType = "HAND_CHIN";
-      this.handOnChinActive = true;
+      this.currentPoseType = "TILT_SIDE";
     }
+    this.handOnChinActive = false;
 
     this.recalculateTargets();
   }
@@ -90,14 +84,6 @@ class NexaThinking {
         this.eyeYTarget = -2.0;
         this.handYTarget = 0;
         this.eyebrowYTarget = 0.5;
-        break;
-      case "HAND_CHIN":
-        this.headTiltTarget = 0.05;
-        this.headYTarget = 1.5;
-        this.eyeXTarget = 2.5;
-        this.eyeYTarget = -3.0;
-        this.handYTarget = -12.0; // Mão aproxima do queixo
-        this.eyebrowYTarget = -2.0;
         break;
     }
   }
