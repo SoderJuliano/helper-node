@@ -131,7 +131,21 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (window.electronAPI && window.electronAPI.onPlayTtsAudio) {
     window.electronAPI.onPlayTtsAudio(({ audioBase64 }) => {
       console.log("[NexaRenderer] Recebido áudio TTS -> iniciando reprodução e sincronização...");
-      playTtsAudio(audioBase64);
+      
+      const isCustomAnimPlaying = currentVideoAnimation && 
+                                  currentVideoAnimation.isPlaying && 
+                                  !currentVideoAnimation.isFinished() &&
+                                  currentVideoAnimation !== introAnimation && 
+                                  currentVideoAnimation !== idleBoringAnimation;
+      
+      if (isCustomAnimPlaying) {
+        console.log("[NexaRenderer] Atrasando áudio TTS em 2s para priorizar animação de vídeo...");
+        setTimeout(() => {
+          playTtsAudio(audioBase64);
+        }, 2000);
+      } else {
+        playTtsAudio(audioBase64);
+      }
     });
   }
 
