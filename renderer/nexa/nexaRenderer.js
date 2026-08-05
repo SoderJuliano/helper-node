@@ -198,9 +198,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Se o estado mudar de IDLE, interrompe a animação de tédio imediatamente
     if (currentState !== "IDLE") {
       if (currentVideoAnimation && currentVideoAnimation.isPlaying && !currentVideoAnimation.isFinished()) {
-        if (currentVideoAnimation === idleBoringAnimation || currentVideoAnimation !== introAnimation) {
+        if (currentVideoAnimation === idleBoringAnimation) {
           currentVideoAnimation.stop();
-          console.log("[NexaRenderer] Animação de vídeo interrompida por mudança de estado para:", currentState);
+          console.log("[NexaRenderer] Animação de tédio interrompida por mudança de estado para:", currentState);
         }
       }
       idleTime = 0;
