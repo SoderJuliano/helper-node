@@ -30,9 +30,15 @@ const NEXA_ANIMATIONS = {
   },
   heart: {
     name: "heart",
-    description: "Nexa expressa carinho e gratidão inclinando a cabeça, sorrindo e piscando.",
+    description: "Nexa faz um coração com as mãos para expressar carinho ou quando gosta de algo.",
     category: "affection",
-    procedural: true
+    videoPath: "/home/soder/Documents/nexa-workspace/animacoes_google_flow/Anime_character_making_finger_heart_202608051641.mp4"
+  },
+  cute: {
+    name: "cute",
+    description: "Nexa leva as mãos ao rosto demonstrando timidez, afeto e gratidão (cute cute).",
+    category: "affection",
+    videoPath: "/home/soder/Documents/nexa-workspace/animacoes_google_flow/Anime_girl_thanking_gesture_202608051654.mp4"
   }
 };
 
