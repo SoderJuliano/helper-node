@@ -592,6 +592,9 @@
     if (window.CodeNavigation) {
       window.CodeNavigation.attach(cmInst, filePath);
     }
+    if (window.ImportChecker) {
+      window.ImportChecker.attach(cmInst, filePath);
+    }
     setTimeout(() => {
       cmInst.refresh();
       if (typeof lineNum === 'number' && lineNum > 0) {

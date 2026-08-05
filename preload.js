@@ -110,6 +110,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   codeNavGetImplementations: (payload) => ipcRenderer.invoke("code-nav-get-implementations", payload),
   codeNavGetGutterInfo: (payload) => ipcRenderer.invoke("code-nav-get-gutter-info", payload),
   codeNavReindex: (payload) => ipcRenderer.invoke("code-nav-reindex", payload),
+  // Checador de Imports (sublinhado vermelho + auto-import, JS/TS e Java)
+  importCheckGetDiagnostics: (payload) => ipcRenderer.invoke("import-check-get-diagnostics", payload),
+  importCheckGetQuickFixes: (payload) => ipcRenderer.invoke("import-check-get-quickfixes", payload),
+  importCheckGetJavaStatus: (payload) => ipcRenderer.invoke("import-check-get-java-status", payload),
   onShortcutsChanged: (callback) => ipcRenderer.on("shortcuts-changed", () => callback()),
   getDebugModeStatus: () => ipcRenderer.invoke("get-debug-mode-status"), // Added for debug mode access
   getStealthModeStatus: () => ipcRenderer.invoke("get-stealth-mode-status"),
