@@ -34,6 +34,7 @@ const nexaFiles = [
   "renderer/nexa/nexaLook.js",
   "renderer/nexa/nexaTalking.js",
   "renderer/nexa/nexaThinking.js",
+  "renderer/nexa/nexaIntroAnimation.js",
   "renderer/nexa/nexaAnimationController.js",
 ];
 

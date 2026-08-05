@@ -435,11 +435,15 @@ helpers.triggerTtsPlaybackIfEnabled = function(fullResponse) {
     if (!summary || !summary.trim()) return;
 
     const voiceToUse = isNexaOn ? "pt-BR-Neural2-C" : (cfg.voiceName || 'pt-BR-Neural2-C');
+    const speakingRate = isNexaOn ? 1.08 : 1.0;
+    const pitch = isNexaOn ? 7.5 : 0.0;
 
-    console.log("🔊 Sintetizando resumo por voz Google TTS (Nexa=" + isNexaOn + "):", summary);
+    console.log(`🔊 Sintetizando resumo por voz Google TTS (Nexa=${isNexaOn}, pitch=${pitch}, rate=${speakingRate}):`, summary);
     googleTtsService.synthesizeText(summary, {
       keyOrPath: cfg.keyPathOrKey,
-      voiceName: voiceToUse
+      voiceName: voiceToUse,
+      speakingRate,
+      pitch
     }).then(buf => {
       const audioPayload = {
         audioBase64: buf.toString("base64"),

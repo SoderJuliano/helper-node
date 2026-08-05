@@ -99,6 +99,10 @@ function updateNexaStatus(isEnabled) {
   if (googleTtsVoiceWrapper) {
     googleTtsVoiceWrapper.style.display = isEnabled ? "none" : "block";
   }
+  const googleTtsToggleItem = document.getElementById("google-tts-toggle-item");
+  if (googleTtsToggleItem) {
+    googleTtsToggleItem.style.display = isEnabled ? "none" : "flex";
+  }
   if (isEnabled && googleTtsContainer) {
     googleTtsContainer.style.display = "block";
   }
@@ -115,9 +119,17 @@ const googleTtsTestResult = document.getElementById("google-tts-test-result");
 
 function updateGoogleTtsStatus(isEnabled) {
   if (googleTtsStatus) googleTtsStatus.textContent = isEnabled ? "ON" : "OFF";
+  const isNexa = nexaToggle ? nexaToggle.checked : false;
   if (googleTtsContainer) {
-    const isNexa = nexaToggle ? nexaToggle.checked : false;
     googleTtsContainer.style.display = (isEnabled || isNexa) ? "block" : "none";
+  }
+  const googleTtsVoiceWrapper = document.getElementById("google-tts-voice-wrapper");
+  if (googleTtsVoiceWrapper) {
+    googleTtsVoiceWrapper.style.display = isNexa ? "none" : "block";
+  }
+  const googleTtsToggleItem = document.getElementById("google-tts-toggle-item");
+  if (googleTtsToggleItem) {
+    googleTtsToggleItem.style.display = isNexa ? "none" : "flex";
   }
 }
 

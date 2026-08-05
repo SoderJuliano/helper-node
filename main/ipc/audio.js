@@ -245,11 +245,19 @@ ipcMain.handle("google-tts-list-voices", async (event, keyPathOrKey) => {
 ipcMain.handle("google-tts-synthesize", async (event, text, voiceName) => {
   try {
     const cfg = configService.getGoogleTtsConfig();
-    if (!cfg.enabled) return { error: "Modo de voz desativado." };
-    const voiceToUse = voiceName || cfg.voiceName || "pt-BR-Neural2-C";
+    const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : null;
+    const isNexaOn = !!(nexaCfg && nexaCfg.enabled);
+    if (!cfg.enabled && !isNexaOn) return { error: "Modo de voz desativado." };
+
+    const voiceToUse = isNexaOn ? "pt-BR-Neural2-C" : (voiceName || cfg.voiceName || "pt-BR-Neural2-C");
+    const speakingRate = isNexaOn ? 1.08 : 1.0;
+    const pitch = isNexaOn ? 7.5 : 0.0;
+
     const audioBuf = await googleTtsService.synthesizeText(text, {
       keyOrPath: cfg.keyPathOrKey,
-      voiceName: voiceToUse
+      voiceName: voiceToUse,
+      speakingRate,
+      pitch
     });
     return { audioBase64: audioBuf.toString("base64") };
   } catch (err) {

@@ -30,6 +30,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     console.error("[NexaRenderer] Erro crítico ao carregar camadas PNG.");
   }
 
+  // Inicializa o reprodutor de animação de entrada 2D
+  const introAnimation = typeof NexaIntroAnimation !== "undefined" ? new NexaIntroAnimation() : null;
+  if (introAnimation) {
+    introAnimation.play();
+  }
+
   // 1. Escuta de IPC: Mudança de Estado (IDLE, LISTENING, THINKING, SPEAKING)
   if (window.electronAPI && window.electronAPI.onNexaStateChange) {
     window.electronAPI.onNexaStateChange(({ state }) => {
@@ -106,8 +112,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     const deltaTime = Math.min(0.1, (currentTime - lastTime) / 1000.0);
     lastTime = currentTime;
 
-    animController.update(deltaTime);
-    animController.render(ctx, canvas.width, canvas.height);
+    if (introAnimation && !introAnimation.isFinished()) {
+      introAnimation.update(deltaTime);
+      introAnimation.render(ctx, canvas.width, canvas.height);
+    } else {
+      animController.update(deltaTime);
+      animController.render(ctx, canvas.width, canvas.height);
+    }
 
     requestAnimationFrame(renderLoop);
   }

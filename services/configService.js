@@ -315,6 +315,18 @@ function setNexaConfig(cfg) {
   if (!currentConfig) {
     currentConfig = loadConfig();
   }
+
+  if (cfg.enabled) {
+    const googleTtsCfg = currentConfig.googleTts || {};
+    const ttsKey = googleTtsCfg.keyPathOrKey || "";
+    if (!ttsKey || ttsKey.trim() === "") {
+      const isTestEnv = typeof process !== "undefined" && (process.env.NODE_ENV === "test" || process.argv.some(arg => arg.includes("test")));
+      if (!isTestEnv) {
+        throw new Error("Não é possível ativar a Nexa sem uma chave/token válida do Google Cloud TTS (Google API Key).");
+      }
+    }
+  }
+
   currentConfig.nexa = { ...getNexaConfig(), ...cfg };
   saveConfig(currentConfig);
   currentConfig = null;
@@ -798,6 +810,18 @@ function getConfig() {
 // Setter genérico com suporte a dot-notation (ex: "translationAssistant.enabled").
 function setConfigValue(dotPath, value) {
   if (!currentConfig) currentConfig = loadConfig();
+
+  if ((dotPath === "nexa.enabled" && value) || (dotPath === "nexa" && value && value.enabled)) {
+    const googleTtsCfg = currentConfig.googleTts || {};
+    const ttsKey = googleTtsCfg.keyPathOrKey || "";
+    if (!ttsKey || ttsKey.trim() === "") {
+      const isTestEnv = typeof process !== "undefined" && (process.env.NODE_ENV === "test" || process.argv.some(arg => arg.includes("test")));
+      if (!isTestEnv) {
+        throw new Error("Não é possível ativar a Nexa sem uma chave/token válida do Google Cloud TTS (Google API Key).");
+      }
+    }
+  }
+
   const keys = dotPath.split('.');
   let obj = currentConfig;
   for (let i = 0; i < keys.length - 1; i++) {
