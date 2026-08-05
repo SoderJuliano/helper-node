@@ -58,6 +58,10 @@ function registerNexaIpc() {
       nexaState.setState("IDLE");
     }
   });
+
+  ipcMain.on("nexa:log-to-main", (event, { level, msg }) => {
+    console.log(`[Renderer ${level.toUpperCase()}] ${msg}`);
+  });
 }
 
 module.exports = {

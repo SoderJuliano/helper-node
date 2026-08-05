@@ -296,4 +296,5 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onNexaStateChange: (cb) => ipcRenderer.on("nexa:state-change", (event, data) => cb(data)),
   onPlayTtsAudio: (cb) => ipcRenderer.on("play-tts-audio", (event, data) => cb(data)),
   onPlayAnimation: (cb) => ipcRenderer.on("nexa:play-animation", (event, data) => cb(data)),
+  logToMain: (level, msg) => ipcRenderer.send("nexa:log-to-main", { level, msg }),
 });
