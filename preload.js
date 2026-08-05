@@ -284,4 +284,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   terminalResize: (dim) => ipcRenderer.send("terminal:resize", dim),
   onTerminalOutput: (cb) => ipcRenderer.on("terminal:output", (event, data) => cb(data)),
   onTerminalClosed: (cb) => ipcRenderer.on("terminal:closed", (event, data) => cb(data)),
+
+  // === Nexa Module API ===
+  toggleNexa: () => ipcRenderer.invoke("nexa:toggle"),
+  getNexaState: () => ipcRenderer.invoke("nexa:get-state"),
+  isNexaOpen: () => ipcRenderer.invoke("nexa:is-open"),
+  sendNexaTtsEnded: () => ipcRenderer.send("nexa:tts-ended"),
+  onNexaStateChange: (cb) => ipcRenderer.on("nexa:state-change", (event, data) => cb(data)),
+  onPlayTtsAudio: (cb) => ipcRenderer.on("play-tts-audio", (event, data) => cb(data)),
 });
