@@ -758,7 +758,10 @@
     return !!(cm && cm.hasFocus());
   }
 
-  window.EditorController = { openFile, saveActive, closeEditor, isDirty, focusSearch, hasOpenFile, renamePath, hasFocus, closeAllTabs, toggleChatVisibility };
+  // getCm: a instância do CodeMirror é única e reaproveitada entre arquivos, mas
+  // quem precisa marcar texto no arquivo recém-aberto (realce de ocorrências)
+  // não tem como alcançá-la de fora sem isto.
+  window.EditorController = { openFile, saveActive, closeEditor, isDirty, focusSearch, hasOpenFile, renamePath, hasFocus, closeAllTabs, toggleChatVisibility, getCm: () => cm };
 
   if (window.electronAPI && window.electronAPI.onFileMutated) {
     window.electronAPI.onFileMutated(onFileMutated);

@@ -144,6 +144,14 @@
            (antes ficava "puxado" 16px pra trás por faltar esse espaço). */
         .ws-tree-chevron-spacer { width: 0.85em; height: 0.85em; flex-shrink: 0; display: inline-block; }
         .ws-tree-node.dir.collapsed .ws-tree-chevron { transform: rotate(-90deg); }
+        /* Ocupa exatamente o lugar do chevron enquanto a pasta carrega, pra
+           linha não "pular" quando o spinner some. */
+        .ws-tree-spinner {
+            width: 0.85em; height: 0.85em; flex-shrink: 0;
+            color: var(--accent-2, #7aa2f7);
+            animation: ws-tree-spin .7s linear infinite;
+        }
+        @keyframes ws-tree-spin { to { transform: rotate(360deg); } }
         .ws-tree-node.drag-over {
             background: rgba(255, 255, 255, 0.08) !important;
             outline: 1px dashed var(--accent-2) !important;

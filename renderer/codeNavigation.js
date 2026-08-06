@@ -443,14 +443,25 @@
 
       for (const item of items) {
         if (!item.line || !item.target) continue;
+        const isMethod = item.kind === 'interface-method';
         const iconEl = document.createElement('div');
-        iconEl.className = 'code-nav-gutter-icon';
-        iconEl.textContent = 'I↓';
-        iconEl.title = `Ir para implementação: ${item.symbol || 'Classe'}`;
-        iconEl.addEventListener('click', (ev) => {
+        iconEl.className = 'code-nav-gutter-icon' + (isMethod ? ' method' : '');
+        iconEl.textContent = isMethod ? '↓' : 'I↓';
+        iconEl.title = isMethod
+          ? `Ir para a implementação de ${item.symbol}()`
+          : `Ir para implementação: ${item.symbol || 'Classe'}`;
+        iconEl.addEventListener('click', async (ev) => {
           ev.stopPropagation();
-          if (window.EditorController && item.target.filePath) {
-            window.EditorController.openFile(item.target.filePath, item.target.line);
+          if (!window.EditorController || !item.target.filePath) return;
+          await window.EditorController.openFile(item.target.filePath, item.target.line);
+          // Deixa o nome realçado no destino até o usuário clicar em qualquer
+          // outro lugar — senão ele chega no arquivo sem saber onde olhar.
+          if (window.CodeHighlight && item.symbol) {
+            const destCm = window.EditorController.getCm && window.EditorController.getCm();
+            if (destCm) {
+              window.CodeHighlight.attach(destCm);
+              window.CodeHighlight.pin(destCm, item.symbol);
+            }
           }
         });
 
@@ -926,6 +937,9 @@
 
     // Atualiza calha de implementações
     updateGutterMarkers(cm, filePath);
+
+    // Realce de ocorrências da palavra selecionada.
+    if (window.CodeHighlight) window.CodeHighlight.attach(cm);
 
     const wrapper = cm.getWrapperElement();
     if (wrapper._hasCodeNav) return;

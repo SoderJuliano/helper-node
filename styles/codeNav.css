@@ -30,6 +30,31 @@
   transform: scale(1.15);
 }
 
+/* Ícone por MÉTODO — cor diferente da do ícone da interface/classe, pra dar
+   pra distinguir de relance "isto leva à classe" de "isto leva a este método". */
+.code-nav-gutter-icon.method {
+  background: rgba(122, 162, 247, 0.16);
+  color: #7aa2f7;
+}
+.code-nav-gutter-icon.method:hover {
+  background: rgba(122, 162, 247, 0.42);
+  color: #ffffff;
+}
+
+/* Ocorrências da palavra selecionada (todas as iguais acendem juntas). */
+.cm-occurrence-highlight {
+  background: rgba(122, 162, 247, 0.22);
+  border-bottom: 1px solid rgba(122, 162, 247, 0.75);
+  border-radius: 2px;
+}
+
+/* Destino de "ir para a implementação": mais forte, some ao clicar fora. */
+.cm-occurrence-target {
+  background: rgba(80, 250, 123, 0.22);
+  border-bottom: 2px solid #50fa7b;
+  border-radius: 2px;
+}
+
 /* Link de método/função sob Ctrl + Hover */
 .cm-nav-link {
   text-decoration: underline !important;

@@ -173,11 +173,46 @@
                 renderTree();
             }
 
+            // ⚠️ NÃO chamar renderTree() aqui.
+            //
+            // Isto rodava `fetchAndUpdateGitStatus().then(renderTree)` a cada 8s,
+            // e renderTree faz `wsTree.innerHTML = ''` e reconstrói TODOS os nós
+            // (cada um com 9 listeners). Se o rebuild caía entre o mousedown e o
+            // mouseup, o elemento sob o cursor era destruído e o navegador NUNCA
+            // emitia o `click` — o clique simplesmente sumia. Era a causa de
+            // "clico e nada acontece, clico 7-10 vezes até abrir".
+            //
+            // Git status só muda cor: dá pra aplicar nas classes dos nós que já
+            // estão na tela, sem tocar na estrutura nem nos listeners.
             setInterval(() => {
                 if (wsProjectMain && wsProjectMain.dataset && wsProjectMain.dataset.path) {
-                    fetchAndUpdateGitStatus().then(() => renderTree());
+                    fetchAndUpdateGitStatus().then(() => applyGitStatusClasses());
                 }
             }, 8000);
+
+            // Atualiza só as classes de cor do git, in-place.
+            function applyGitStatusClasses() {
+                if (!wsTree) return;
+                const projectPath = wsProjectMain ? wsProjectMain.dataset.path : '';
+                const mods = currentGitStatus.modifiedFiles || {};
+                const dirs = currentGitStatus.modifiedDirs || {};
+                for (const node of wsTree.querySelectorAll('.ws-tree-node[data-path]')) {
+                    const abs = node.dataset.path;
+                    let rel = abs;
+                    if (projectPath && rel.startsWith(projectPath)) {
+                        rel = rel.substring(projectPath.length).replace(/^[/\\]+/, '').replace(/\\/g, '/');
+                    } else {
+                        rel = rel.replace(/\\/g, '/');
+                    }
+                    const isDir = node.classList.contains('dir');
+                    node.classList.remove('git-modified', 'git-untracked', 'git-dir-modified');
+                    if (isDir) {
+                        if (dirs[rel]) node.classList.add('git-dir-modified');
+                    } else if (mods[rel]) {
+                        node.classList.add(mods[rel] === 'U' ? 'git-untracked' : 'git-modified');
+                    }
+                }
+            }
 
             let refreshTreeTimeout = null;
             function triggerTreeRefresh() {

@@ -268,21 +268,28 @@ class SymbolIndexer {
       // 4. Métodos / Funções
       const methodPatterns = [
         // async function foo(...) / function foo(...) / function* foo(...)
-        /(?:async\s+)?function\*?\s+([A-Za-z0-9_$]+)\s*\(/,
+        { re: /(?:async\s+)?function\*?\s+([A-Za-z0-9_$]+)\s*\(/, g: 1 },
         // const foo = (...) => / let foo = async () => / var foo = function()
-        /(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_$]+|\bfunction\b)/,
+        { re: /(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_$]+|\bfunction\b)/, g: 1 },
         // foo(...) { / async foo(...) { (métodos de classe/objeto)
-        /^\s*(?:async\s+)?([A-Za-z0-9_$]+)\s*\([^)]*\)\s*\{/,
+        { re: /^\s*(?:async\s+)?([A-Za-z0-9_$]+)\s*\([^)]*\)\s*\{/, g: 1 },
         // foo: function(...) / foo: async function(...)
-        /([A-Za-z0-9_$]+)\s*:\s*(?:async\s+)?function/,
+        { re: /([A-Za-z0-9_$]+)\s*:\s*(?:async\s+)?function/, g: 1 },
         // Java/C#/PHP/C++: public void foo(...) / static async Task<Bar> foo(...)
-        /(?:public|protected|private|static|final|async|override)\s+(?:[A-Za-z0-9_$<>[\]]+\s+)+([A-Za-z0-9_$]+)\s*\([^)]*\)/
+        { re: /(?:public|protected|private|static|final|async|override)\s+(?:[A-Za-z0-9_$<>[\]]+\s+)+([A-Za-z0-9_$]+)\s*\([^)]*\)/, g: 1 },
+        // Declaração SEM corpo, terminada em ';' — método de interface Java
+        // (`void processar(String id);`), método abstrato, e assinatura de
+        // TypeScript em interface. Nenhum padrão acima pegava isto: os de Java
+        // exigem um modificador (interface não tem) e os de corpo exigem '{'
+        // (aqui a linha termina em ';'). Era por isso que só a INTERFACE
+        // ganhava ícone de implementação, nunca os métodos dela.
+        { re: /^\s*(?:public\s+|protected\s+|default\s+|static\s+|abstract\s+)*[A-Za-z0-9_$<>[\],\s]+?\s+([A-Za-z0-9_$]+)\s*\([^)]*\)\s*(?:throws\s+[A-Za-z0-9_$.,\s]+)?;\s*$/, g: 1 },
       ];
 
       for (const pattern of methodPatterns) {
-        const m = lineText.match(pattern);
-        if (m && m[1]) {
-          const methodName = m[1];
+        const m = lineText.match(pattern.re);
+        if (m && m[pattern.g]) {
+          const methodName = m[pattern.g];
           if (['if', 'for', 'while', 'switch', 'catch', 'constructor', 'function', 'class', 'return', 'import', 'export', 'require'].includes(methodName)) {
             continue;
           }

@@ -18,6 +18,9 @@ var creatingFolderParent = null;
     const TREE_DIR_IC = '<svg class="ws-tree-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
     const TREE_CHEVRON_IC = '<svg class="ws-tree-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
     const TREE_CHEVRON_SPACER = '<span class="ws-tree-chevron-spacer"></span>';
+    // Feedback de "seu clique pegou": pasta grande demora pra listar e sem isto
+    // o usuário clica de novo achando que não funcionou.
+    const TREE_SPINNER_IC = '<svg class="ws-tree-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 3a9 9 0 1 0 9 9"/></svg>';
 
     // Attach Empty Note logic
     const wsEmptyNote = document.getElementById('ws-empty-note');
@@ -59,8 +62,17 @@ var creatingFolderParent = null;
             // e inseridos em treeEntries logo depois do nó pai.
             async function toggleDir(e) {
                 if (!e.collapsed) { e.collapsed = true; renderTree(); return; }
-                if (e.lazy && !e.loaded && !e.loading) {
+
+                // Já está buscando: o clique CONTOU, só não terminou. Antes isso
+                // retornava calado e parecia que o clique não pegou.
+                if (e.loading) return;
+
+                // Busca sob demanda quando os filhos não vieram na carga inicial
+                // — seja por ser pasta pesada (node_modules, target) ou por ter
+                // sido cortada pelo limite. Ver markIncomplete no main.
+                if (e.lazy && !e.loaded) {
                     e.loading = true;
+                    e.collapsed = false;   // já abre: o spinner aparece no lugar
                     renderTree();
                     let res = null;
                     try {
@@ -79,6 +91,7 @@ var creatingFolderParent = null;
                         treeEntries.splice(idx + 1, 0, ...children);
                     }
                     e.loaded = true;
+                    e.empty = !(res && res.entries && res.entries.length);
                 }
                 e.collapsed = false;
                 renderTree();
@@ -151,7 +164,11 @@ var creatingFolderParent = null;
                 (shouldDim ? (isMatch ? ' match' : ' dim') : '') +
                 gitClass + featuredClass;
             node.style.paddingLeft = (4 + e.depth * 12) + 'px';
-            node.innerHTML = e.isDir ? (TREE_CHEVRON_IC + dirIconHtml) : (TREE_CHEVRON_SPACER + window.fileIconHtml(e.name));
+            // dataset.path deixa a atualização de git status achar o nó sem
+            // reconstruir a árvore inteira (ver applyGitStatusClasses).
+            node.dataset.path = e.path;
+            const chevron = e.loading ? TREE_SPINNER_IC : TREE_CHEVRON_IC;
+            node.innerHTML = e.isDir ? (chevron + dirIconHtml) : (TREE_CHEVRON_SPACER + window.fileIconHtml(e.name));
 
             // Wire events (drag, context menu, double click to view)
             if (typeof window.wireTreeNodeEvents === 'function') {
