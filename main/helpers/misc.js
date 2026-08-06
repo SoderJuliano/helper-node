@@ -24,18 +24,32 @@ helpers.checkBackendStatus = async function() {
   }
 }
 
-helpers.realtimeProviderResponder = async function(transcript) {
+helpers.realtimeProviderResponder = async function(transcript, image) {
   const aiModel = configService.getAiModel();
   const kb = await helpers.knowledgeBlockForOllama(transcript);
   const text = kb ? `${kb}\n\n---\n\nFALA: ${transcript}` : transcript;
+  
+  const opts = {
+    sessionId: "realtime-assistant",
+  };
+  if (image) {
+    opts.imageBase64 = image;
+  }
+  
   if (aiModel === "ollamaLocal") {
     const OllamaLocalService = require('../../services/ollamaLocalService');
-    return await OllamaLocalService.responder(text);
+    return await OllamaLocalService.responder(text, opts);
   }
+  
+  // Se estiver no modo Apenas Nexa, deixa o prompt de instrução vazio no responder
+  // para que a identidade mimada da Nexa tenha precedência no applyNexaPersonaIfNeeded
+  const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : null;
+  const isOnlyNexa = !!(nexaCfg && nexaCfg.enabled && nexaCfg.onlyNexa);
+  
   // backend remoto (llama / llama-stream)
   return await BackendService.responder(text, {
-    sessionId: "realtime-assistant",
-    instruction: REALTIME_COPILOT_INSTRUCTION,
+    ...opts,
+    instruction: isOnlyNexa ? "" : REALTIME_COPILOT_INSTRUCTION,
   });
 }
 

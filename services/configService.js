@@ -204,6 +204,7 @@ const defaultConfig = {
   // Identidade e janela da assistente Nexa
   nexa: {
     enabled: false,
+    onlyNexa: false,
   },
 };
 

@@ -182,8 +182,47 @@ class RealtimeAssistantService {
       // Sua fala em modo both: ja transcreveu — nao gera sugestao.
       if (!respondToSegment) return;
 
+      let image = null;
       try {
-        const resp = await this._askAI(askText);
+        const nexaCfg = this.configService.getNexaConfig ? this.configService.getNexaConfig() : null;
+        const isOnlyNexa = !!(nexaCfg && nexaCfg.enabled && nexaCfg.onlyNexa);
+
+        if (isOnlyNexa) {
+          const clean = askText.toLowerCase();
+          const mentionsNexa = clean.includes("nexa");
+          const questionWords = ["?", "como", "quem", "onde", "por que", "porquê", "qual", "o que", "quanto", "quando", "quais", "consegue", "você", "voce", "me diz"];
+          const isQuestion = questionWords.some(word => clean.includes(word));
+
+          if (!mentionsNexa && !isQuestion) {
+            console.log(`[realtime] Apenas Nexa ignorou fala (sem menção ou pergunta): "${askText}"`);
+            // Salva na memória do contexto temporário de conversação para contexto futuro
+            this.contextMessages.push({ role: "user", content: askText });
+            return;
+          }
+
+          // Se for responder, avisa a janela da Nexa para entrar em LISTENING (ativa animação de escuta)
+          const { nexaState } = require("../main/nexa/nexaState.js");
+          nexaState.setState("LISTENING");
+
+          // Verifica se a fala do usuário solicita ver algo ou a aparência (webcam)
+          const visionKeywords = ["olha", "olhar", "veja", "ver", "visual", "aparencia", "aparência", "roupa", "óculos", "oculos", "cabelo", "rosto", "cara", "me vê", "me ve", "estou bonito", "estou bonita", "minha cara", "look", "see", "watch", "my face", "my outfit", "glasses", "hair", "appearance", "can you see", "how do i look"];
+          const wantsVision = visionKeywords.some(word => clean.includes(word));
+
+          if (wantsVision) {
+            console.log("[realtime] Pergunta visual detectada. Solicitando frame da webcam...");
+            const { requestWebcamCapture } = require("../main/nexa/nexaWindow.js");
+            image = await requestWebcamCapture();
+            if (image) {
+              console.log("[realtime] Frame da webcam capturado com sucesso!");
+            }
+          }
+        }
+      } catch (err) {
+        console.error("[realtime] Erro ao verificar comportamento de visão/modo Apenas Nexa:", err.message);
+      }
+
+      try {
+        const resp = await this._askAI(askText, image);
         if (isContinuation) {
           // Marca a resposta do trecho anterior como superada — a pergunta continuava.
           this.emitUpdate({
@@ -310,9 +349,9 @@ class RealtimeAssistantService {
   }
 
   // ---------- AI ----------
-  async _askAI(transcript) {
+  async _askAI(transcript, image) {
     if (!this.aiResponder) throw new Error("Nenhum provider configurado para o modo em tempo real offline.");
-    const r = await this.aiResponder(transcript);
+    const r = await this.aiResponder(transcript, image);
     return (r || "").trim() || "(sem resposta)";
   }
 

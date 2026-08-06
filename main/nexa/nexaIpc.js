@@ -49,6 +49,9 @@ function registerNexaIpc() {
       createNexaWindow();
     } else if (cfg && cfg.enabled === false && oldCfg.enabled) {
       closeNexaWindow();
+    } else {
+      const { applyNexaOnlyMode } = require("./nexaWindow.js");
+      applyNexaOnlyMode(cfg);
     }
   });
 

@@ -297,4 +297,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onPlayTtsAudio: (cb) => ipcRenderer.on("play-tts-audio", (event, data) => cb(data)),
   onPlayAnimation: (cb) => ipcRenderer.on("nexa:play-animation", (event, data) => cb(data)),
   logToMain: (level, msg) => ipcRenderer.send("nexa:log-to-main", { level, msg }),
+  onRequestWebcam: (cb) => ipcRenderer.on("nexa:request-webcam", (event, data) => cb(data)),
+  sendWebcamReply: (requestId, base64) => ipcRenderer.send("nexa:webcam-reply-" + requestId, base64),
 });

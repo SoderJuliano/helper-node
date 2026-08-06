@@ -43,6 +43,7 @@ helpers.createConfigWindow = function() {
 
   state.configWindow.loadFile("config.html");
   helpers.applyStealthProtection(state.configWindow);
+  state.configWindow.setAlwaysOnTop(true, "screen-saver");
 
   state.configWindow.on("closed", () => {
     state.configWindow = null;
@@ -77,6 +78,7 @@ helpers.createPreferencesWindow = function() {
 
   state.preferencesWindow.loadFile("preferences.html");
   helpers.applyStealthProtection(state.preferencesWindow);
+  state.preferencesWindow.setAlwaysOnTop(true, "screen-saver");
 
   state.preferencesWindow.on("closed", () => {
     state.preferencesWindow = null;
@@ -360,6 +362,17 @@ helpers.createWindow = async function() {
       icon: APP_ICON,
       nodeIntegration: false,
     });
+
+    // Sobrescreve o método show para evitar que a janela principal apareça se o modo Apenas Nexa estiver ativo
+    const originalShow = state.mainWindow.show;
+    state.mainWindow.show = function() {
+      const nexaCfg = configService.getNexaConfig();
+      if (nexaCfg && nexaCfg.enabled && nexaCfg.onlyNexa) {
+        console.log("[MainWindow] Interceptado show() — ignorado porque o modo Apenas Nexa está ativo.");
+        return;
+      }
+      return originalShow.apply(this, arguments);
+    };
 
     helpers.applyStealthProtection(state.mainWindow);
 

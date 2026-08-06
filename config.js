@@ -92,6 +92,13 @@ const copilotCliStatusResult = document.getElementById("copilot-cli-status-resul
 // Nexa elements
 const nexaToggle = document.getElementById("nexa-toggle");
 const nexaStatus = document.getElementById("nexa-status");
+const nexaOnlyToggle = document.getElementById("nexa-only-toggle");
+const nexaOnlyStatus = document.getElementById("nexa-only-status");
+const nexaOnlyItem = document.getElementById("nexa-only-item");
+
+function updateNexaOnlyStatus(isEnabled) {
+  if (nexaOnlyStatus) nexaOnlyStatus.textContent = isEnabled ? "ON" : "OFF";
+}
 
 function updateNexaStatus(isEnabled) {
   if (nexaStatus) nexaStatus.textContent = isEnabled ? "ON" : "OFF";
@@ -105,6 +112,9 @@ function updateNexaStatus(isEnabled) {
   }
   if (isEnabled && googleTtsContainer) {
     googleTtsContainer.style.display = "block";
+  }
+  if (nexaOnlyItem) {
+    nexaOnlyItem.style.display = isEnabled ? "flex" : "none";
   }
 }
 
@@ -334,6 +344,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (nexaToggle && nexaCfg) {
       nexaToggle.checked = !!nexaCfg.enabled;
       updateNexaStatus(!!nexaCfg.enabled);
+      if (nexaOnlyToggle) {
+        nexaOnlyToggle.checked = !!nexaCfg.onlyNexa;
+        updateNexaOnlyStatus(!!nexaCfg.onlyNexa);
+      }
     }
   } catch (e) {
     console.warn("Nexa config load failed:", e);
@@ -782,6 +796,12 @@ if (nexaToggle) {
     }
     const toast = document.getElementById("nexa-error-toast");
     if (toast) toast.style.display = "none";
+  });
+}
+
+if (nexaOnlyToggle) {
+  nexaOnlyToggle.addEventListener("change", () => {
+    updateNexaOnlyStatus(nexaOnlyToggle.checked);
   });
 }
 
@@ -1344,7 +1364,11 @@ saveButton.addEventListener("click", async () => {
 
   // Save Nexa mode
   if (nexaToggle) {
-    ipcRenderer.send("nexa:save-config", { enabled: isNexaOn });
+    const isNexaOnly = nexaOnlyToggle ? nexaOnlyToggle.checked : false;
+    ipcRenderer.send("nexa:save-config", {
+      enabled: isNexaOn,
+      onlyNexa: isNexaOnly
+    });
   }
 
   // Save Google TTS config (se Nexa estiver ON, força voz por padrão para Loli)

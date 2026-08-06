@@ -144,8 +144,17 @@ function processChunk(pcm, st, source) {
   const rms = calcRms(pcm);
   if (rms > (st.peakRms || 0)) st.peakRms = rms;
   const chunkMs = (pcm.length / BYTES_PER_SEC) * 1000;
-  const silenceLimit = SILENCE_DURATION[source] || 1200;
-  const maxSegmentLimit = MAX_SEGMENT_MS[source] || 60000;
+  let silenceLimit = SILENCE_DURATION[source] || 1200;
+  let maxSegmentLimit = MAX_SEGMENT_MS[source] || 60000;
+
+  try {
+    const { configService } = require('../main/globals.js');
+    const nexaCfg = configService.getNexaConfig();
+    if (nexaCfg && nexaCfg.enabled && nexaCfg.onlyNexa && source === 'mic') {
+      silenceLimit = 800; // 800ms silêncio para transcrever rápido
+      maxSegmentLimit = 15000; // 15s teto por segmento
+    }
+  } catch (_) {}
 
   if (rms > SILENCE_RMS) {
     st.hasSpeech = true;

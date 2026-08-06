@@ -16,6 +16,12 @@ const NEXA_ANIMATIONS = {
     category: "idle",
     videoPath: "/home/soder/Documents/nexa-workspace/animacoes_google_flow/Animated_anime_girl_idling_202608051517.mp4"
   },
+  adjust_glasses: {
+    name: "adjust_glasses",
+    description: "Nexa ajusta os óculos com a mão.",
+    category: "idle",
+    videoPath: "/home/soder/Documents/nexa-workspace/animacoes_google_flow/Animated_character_adjusting_gla…_202608052214.mp4"
+  },
   floating: {
     name: "floating",
     description: "Nexa flutua suavemente no ar.",
@@ -39,6 +45,18 @@ const NEXA_ANIMATIONS = {
     description: "Nexa leva as mãos ao rosto demonstrando timidez, afeto e gratidão (cute cute).",
     category: "affection",
     videoPath: "/home/soder/Documents/nexa-workspace/animacoes_google_flow/Anime_girl_thanking_gesture_202608051654.mp4"
+  },
+  listening: {
+    name: "listening",
+    description: "Nexa entra em pose de escuta atenta.",
+    category: "action",
+    videoPath: "/home/soder/Documents/nexa-workspace/animacoes_google_flow/Anime_girl_listening_animation_202608052231.mp4"
+  },
+  thinking: {
+    name: "thinking",
+    description: "Nexa fica pensativa em pose de reflexão (estilo pensando/loading).",
+    category: "action",
+    videoPath: "/home/soder/Documents/nexa-workspace/animacoes_google_flow/Anime_girl_thinking_poses_202608052317.mp4"
   }
 };
 

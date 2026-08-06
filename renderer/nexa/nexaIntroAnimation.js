@@ -13,6 +13,9 @@ class NexaIntroAnimation {
     this.offscreenCanvas = null;
     this.offscreenCtx = null;
     this.introTrimEndMs = options.introTrimEndMs !== undefined ? options.introTrimEndMs : 100;
+    this.loop = options.loop !== undefined ? !!options.loop : false;
+    this.playbackRate = options.playbackRate !== undefined ? options.playbackRate : 1.0;
+    this.trimStartMs = options.trimStartMs !== undefined ? options.trimStartMs : 0;
   }
 
   init() {
@@ -20,9 +23,14 @@ class NexaIntroAnimation {
     this.video.src = `file://${this.videoPath}`;
     this.video.muted = true;
     this.video.autoplay = false;
-    this.video.loop = false;
+    this.video.loop = this.loop;
+    this.video.playbackRate = this.playbackRate;
     this.video.setAttribute("playsinline", "");
     this.video.setAttribute("webkit-playsinline", "");
+
+    this.video.onloadedmetadata = () => {
+      this.video.playbackRate = this.playbackRate;
+    };
 
     this.offscreenCanvas = document.createElement("canvas");
     this.offscreenCtx = this.offscreenCanvas.getContext("2d", { willReadFrequently: true });
@@ -45,11 +53,15 @@ class NexaIntroAnimation {
       this.init();
     }
     try {
-      this.video.currentTime = 0;
+      this.video.playbackRate = this.playbackRate;
+      this.video.currentTime = this.trimStartMs / 1000.0;
     } catch (_) {}
+    
+    // Set status flags synchronously before the promise resolves to avoid frame gaps
+    this.isPlaying = true;
+    this.finished = false;
+
     this.video.play().then(() => {
-      this.isPlaying = true;
-      this.finished = false;
       console.log("[NexaIntroAnimation] Reproduzindo vídeo:", this.videoPath);
     }).catch((err) => {
       console.error("[NexaIntroAnimation] Falha ao iniciar reprodução:", err);
@@ -67,6 +79,7 @@ class NexaIntroAnimation {
   }
 
   isFinished() {
+    if (this.loop) return false;
     if (this.finished) return true;
     if (this.video) {
       if (this.video.ended) {
