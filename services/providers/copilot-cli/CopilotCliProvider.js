@@ -48,7 +48,9 @@ class CopilotCliProvider {
   getModels()     { return getModels(); }
 
   // Main entry point called from main/ipc/chat.js.
-  async send(prompt, projectPath, sender) {
+  // opts.attachments = caminhos de imagem/PDF anexados no workspace; vão como
+  // `--attachment` (o CLI lê o arquivo), nunca transcritos dentro do prompt.
+  async send(prompt, projectPath, sender, opts = {}) {
     const os = require('os');
     const fs = require('fs');
     let cwd = projectPath;
@@ -118,7 +120,7 @@ class CopilotCliProvider {
         reject(new Error(msg));
       });
 
-      proc.start({ cwd, model: this._model, prompt }).then(() => {
+      proc.start({ cwd, model: this._model, prompt, attachments: opts.attachments }).then(() => {
         heartbeat = setInterval(emitHeartbeat, HEARTBEAT_MS);
         emitHeartbeat();
       }).catch((err) => {

@@ -348,6 +348,48 @@ helpers.getEffectiveAiModel = function() {
   return edition.isLite() ? 'openIa' : configService.getAiModel();
 }
 
+// Arquivo binário lido como utf8 vira lixo cheio de bytes NUL. Isso nunca fez
+// sentido no prompt (queima contexto sem informar nada), e no Copilot CLI era
+// FATAL: o prompt vai como argv (`-p <texto>`) e o Node recusa argumento com
+// NUL — `ERR_INVALID_ARG_VALUE`, o que derrubava o envio ao anexar QUALQUER
+// imagem, até um PNG de 1x1. Detecta pelo conteúdo (não pela extensão) pra
+// pegar também .zip/.class/.bin sem manter lista.
+helpers.isBinaryFile = function(filePath) {
+  const fsMod = require('fs');
+  let fd = null;
+  try {
+    fd = fsMod.openSync(filePath, 'r');
+    const buf = Buffer.alloc(8192);
+    const read = fsMod.readSync(fd, buf, 0, buf.length, 0);
+    return buf.subarray(0, read).includes(0);
+  } catch (_) {
+    return false;
+  } finally {
+    if (fd !== null) { try { fsMod.closeSync(fd); } catch (_) {} }
+  }
+}
+
+// Extensões que o Copilot CLI aceita em `--attachment` ("image or native
+// document", conforme `copilot --help`). Só imagem/PDF entram: mandar um .zip
+// nessa flag faz o CLI recusar a invocação inteira.
+const ATTACHABLE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.pdf']);
+
+// Anexos que devem ir como arquivo de verdade pro CLI em vez de inline no
+// prompt. Usado pelo provider do Copilot (`--attachment`).
+helpers.getAttachableFilePaths = function() {
+  try {
+    const fsMod = require('fs');
+    const pathMod = require('path');
+    return workspace.list()
+      .filter(a => a.type === 'file' && ATTACHABLE_EXT.has(pathMod.extname(a.path).toLowerCase()))
+      .map(a => a.path)
+      .filter(p => { try { return fsMod.statSync(p).isFile(); } catch (_) { return false; } });
+  } catch (err) {
+    console.warn("Falhou ao listar anexos de imagem/documento:", err.message);
+    return [];
+  }
+}
+
 helpers.appendAttachmentsContext = function(prompt) {
   try {
     const attachments = workspace.list().filter(a => a.type === 'file');
@@ -355,15 +397,15 @@ helpers.appendAttachmentsContext = function(prompt) {
       let contextHeader = "=== ARQUIVOS ANEXADOS AO CONTEXTO ===\n";
       contextHeader += "O usuário selecionou e anexou manualmente os seguintes arquivos no workspace:\n";
       for (const att of attachments) {
-        contextHeader += `- Caminho: ${att.path}\n`;
         try {
           const fs = require('fs');
-          if (fs.existsSync(att.path)) {
-            const stat = fs.statSync(att.path);
-            if (stat.isFile() && stat.size < 150 * 1024) {
-              const content = fs.readFileSync(att.path, 'utf8');
-              contextHeader += `\n--- Conteúdo do arquivo (${att.path}) ---\n${content}\n--- Fim do arquivo ---\n\n`;
-            }
+          if (!fs.existsSync(att.path)) { contextHeader += `- Caminho: ${att.path}\n`; continue; }
+          const stat = fs.statSync(att.path);
+          const binary = stat.isFile() && helpers.isBinaryFile(att.path);
+          contextHeader += `- Caminho: ${att.path}${binary ? ' (binário/imagem — anexado como arquivo, não transcrito aqui)' : ''}\n`;
+          if (!binary && stat.isFile() && stat.size < 150 * 1024) {
+            const content = fs.readFileSync(att.path, 'utf8');
+            contextHeader += `\n--- Conteúdo do arquivo (${att.path}) ---\n${content}\n--- Fim do arquivo ---\n\n`;
           }
         } catch (_) {}
       }

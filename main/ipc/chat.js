@@ -79,13 +79,15 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
       const projectPath = workspace.getProjectPath();
       const copilotModel = configService.getCopilotCliModel();
       CopilotCliProvider.setModel(copilotModel);
-      let safePrompt = promptWithHistory;
-      if (safePrompt.length > 24000) {
-        safePrompt = safePrompt.slice(0, 4000) + "\n\n[...histórico antigo omitido pra caber na linha de comando...]\n\n" + safePrompt.slice(-20000);
-      }
-      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(safePrompt));
+      // Nada de recortar o prompt aqui: o corte tem que vir DEPOIS do contexto
+      // de anexos (era o bug — capava o histórico e deixava os anexos estourarem
+      // a linha de comando do mesmo jeito). Quem mede o limite real de argv é o
+      // CopilotCliProcess, que conhece os outros argumentos do spawn.
+      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(promptWithHistory));
       try {
-        await CopilotCliProvider.send(finalPrompt, projectPath, event.sender);
+        await CopilotCliProvider.send(finalPrompt, projectPath, event.sender, {
+          attachments: helpers.getAttachableFilePaths(),
+        });
       } catch (cpErr) {
         console.error('[copilot-cli] send error:', cpErr.message);
         try { event.sender.send('gemini-stream-complete'); } catch (_) {}

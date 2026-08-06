@@ -1,20 +1,67 @@
 // Spawns a single `copilot -p <prompt> --allow-all-tools` invocation and
 // captures its stdout. One instance per send() call — not a persistent REPL.
 //
-// ⚠️ Flags abaixo foram confirmados contra a doc oficial (docs.github.com/
-// copilot/reference/copilot-cli-reference/cli-programmatic-reference), NÃO
-// contra `copilot --help` rodado de verdade nesta máquina (aqui não tem o
-// binário instalado). Existe divergência entre fontes sobre o nome exato da
-// flag de bypass total: a doc "programmatic reference" usa `--allow-all-tools`,
-// mas outra página da mesma doc.github.com (autopilot) cita `--allow-all`
-// (alias `--yolo`). Fica ALLOW_ALL_FLAG como constante única — se o binário
-// recusar a flag, é o primeiro lugar a corrigir, com `copilot --help` real.
+// Flags conferidas contra `copilot --help` real (2026-08-06): `--allow-all-tools`,
+// `--add-dir`, `--model` e `--attachment` existem. `--allow-all`/`--yolo` também,
+// como equivalente de allow-all-tools + paths + urls; ficamos no mais restrito.
 const { spawn, execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
 const CANDIDATE_BINARIES = ['copilot'];
-const ALLOW_ALL_FLAG = '--allow-all-tools'; // ver aviso acima antes de mudar
+const ALLOW_ALL_FLAG = '--allow-all-tools';
+
+// O Copilot CLI é o único provider que recebe o prompt por ARGV (`-p <texto>`):
+// Claude e agy leem do stdin justamente pra escapar desse teto. O `copilot --help`
+// não expõe forma de passar o prompt por stdin, então o jeito é caber no limite.
+// Windows: CreateProcess corta a linha de comando inteira em 32767 chars (spawn
+// devolve ENAMETOOLONG); Linux tem teto de 128KB por argumento.
+const MAX_CMDLINE_CHARS = process.platform === 'win32' ? 30000 : 100000;
+
+// Recorta o prompt pra caber na linha de comando junto dos outros argumentos,
+// mantendo o começo (instruções/sistema) e o fim (a pergunta atual).
+function fitPromptToCommandLine(prompt, command, otherArgs) {
+  const overhead = command.length + otherArgs.reduce((n, a) => n + String(a).length + 3, 0) + 64;
+  const budget = Math.max(2000, MAX_CMDLINE_CHARS - overhead);
+  if (prompt.length <= budget) return prompt;
+
+  const marker = '\n\n[...trecho omitido pra caber na linha de comando do Copilot CLI...]\n\n';
+  const keep = budget - marker.length;
+  const head = Math.floor(keep * 0.25);
+  const tail = keep - head;
+  console.warn(`[copilot-cli] prompt de ${prompt.length} chars truncado para ${budget} (limite de argv).`);
+  return prompt.slice(0, head) + marker + prompt.slice(-tail);
+}
+
+// Rede de segurança: argv com byte NUL faz o spawn estourar ERR_INVALID_ARG_VALUE
+// antes mesmo do CLI subir. A origem (anexo binário inlinado no prompt) já é
+// tratada em helpers.appendAttachmentsContext, mas um NUL vindo de qualquer
+// outro caminho não pode derrubar o envio.
+function stripNulls(text) {
+  return typeof text === 'string' && text.includes('\0') ? text.replace(/\0/g, '') : text;
+}
+
+const MAX_ATTACHMENTS = 10;
+
+// Um caminho inexistente em `--attachment` faz o CLI abortar a invocação inteira,
+// então filtramos antes em vez de deixar o erro voltar como "Copilot falhou".
+function dedupeExisting(paths) {
+  if (!Array.isArray(paths) || !paths.length) return [];
+  const seen = new Set();
+  const out = [];
+  for (const p of paths) {
+    if (typeof p !== 'string' || !p) continue;
+    const abs = path.resolve(p);
+    if (seen.has(abs)) continue;
+    seen.add(abs);
+    try {
+      if (!fs.statSync(abs).isFile()) continue;
+    } catch (_) { continue; }
+    out.push(abs);
+    if (out.length >= MAX_ATTACHMENTS) break;
+  }
+  return out;
+}
 
 function getEnrichedEnv() {
   const env = { ...process.env, HOME: process.env.HOME || require('os').homedir() };
@@ -193,8 +240,11 @@ class CopilotCliProcess {
 
   get pid() { return this._proc ? this._proc.pid : null; }
 
-  // opts: { cwd, model, prompt, binary }
-  async start({ cwd, model, prompt, binary }) {
+  // opts: { cwd, model, prompt, binary, attachments }
+  // `attachments` = caminhos de imagem/PDF que vão em `--attachment` em vez de
+  // serem transcritos no prompt (o CLI só aceita a flag em modo não-interativo,
+  // que é exatamente o nosso `-p`).
+  async start({ cwd, model, prompt, binary, attachments }) {
     if (this.alive) throw new Error('CopilotCliProcess already running');
 
     const bin = binary || await resolveBinary();
@@ -206,12 +256,12 @@ class CopilotCliProcess {
       );
     }
 
-    const args = [
-      '-p', prompt,
-      ALLOW_ALL_FLAG,
-      '--add-dir', cwd,
-    ];
-    if (model) args.push('--model', model);
+    const tailArgs = [ALLOW_ALL_FLAG, '--add-dir', cwd];
+    if (model) tailArgs.push('--model', model);
+    for (const att of dedupeExisting(attachments)) tailArgs.push('--attachment', att);
+
+    const safePrompt = fitPromptToCommandLine(stripNulls(prompt || ''), bin, tailArgs);
+    const args = ['-p', safePrompt, ...tailArgs];
 
     const env = getEnrichedEnv();
 
@@ -280,4 +330,7 @@ class CopilotCliProcess {
   }
 }
 
-module.exports = { CopilotCliProcess, resolveBinary, getEnrichedEnv, buildSpawnCommand, ALLOW_ALL_FLAG };
+module.exports = {
+  CopilotCliProcess, resolveBinary, getEnrichedEnv, buildSpawnCommand, ALLOW_ALL_FLAG,
+  fitPromptToCommandLine, stripNulls, dedupeExisting, MAX_CMDLINE_CHARS,
+};
