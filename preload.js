@@ -135,6 +135,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
   triggerTtsPlayback: (text) => ipcRenderer.send("trigger-tts-stream-playback", text),
   processPastedImage: (base64Image) =>
     ipcRenderer.send("process-pasted-image", base64Image),
+  // Modo IDE: imagem colada vira ANEXO (caminho), não texto no input.
+  isIdeProjectMode: () => ipcRenderer.invoke("is-ide-project-mode"),
+  onImageAttached: (cb) => ipcRenderer.on("image-attached", (event, data) => cb(data)),
+  // Lê a imagem direto do clipboard do SO. Necessário porque o evento `paste`
+  // do Chromium só dispara quando já existe campo editável em foco — na tela
+  // hero não há, e sem isso "Ctrl+V não anexa nada".
+  readClipboardImage: () => ipcRenderer.invoke("read-clipboard-image"),
   processManualInputWithImage: (data) =>
     ipcRenderer.send("process-manual-input-with-image", data),
   

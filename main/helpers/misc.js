@@ -396,11 +396,15 @@ helpers.appendAttachmentsContext = function(prompt) {
     if (attachments.length > 0) {
       let contextHeader = "=== ARQUIVOS ANEXADOS AO CONTEXTO ===\n";
       contextHeader += "O usuário selecionou e anexou manualmente os seguintes arquivos no workspace:\n";
+      let hasPastedImage = false;
       for (const att of attachments) {
         try {
           const fs = require('fs');
           if (!fs.existsSync(att.path)) { contextHeader += `- Caminho: ${att.path}\n`; continue; }
           const stat = fs.statSync(att.path);
+          // Imagem colada tem bloco próprio: caminho + OCR + instrução de abrir.
+          const pasted = helpers.pastedImageContextFor && helpers.pastedImageContextFor(att);
+          if (pasted) { contextHeader += pasted; hasPastedImage = true; continue; }
           const binary = stat.isFile() && helpers.isBinaryFile(att.path);
           contextHeader += `- Caminho: ${att.path}${binary ? ' (binário/imagem — anexado como arquivo, não transcrito aqui)' : ''}\n`;
           if (!binary && stat.isFile() && stat.size < 150 * 1024) {
@@ -409,7 +413,13 @@ helpers.appendAttachmentsContext = function(prompt) {
           }
         } catch (_) {}
       }
-      contextHeader += "=== FIM DO CONTEXTO DE ANEXOS ===\n\nPor favor, utilize os caminhos e conteúdos acima para responder à pergunta atual.\n\nPergunta:\n";
+      contextHeader += "=== FIM DO CONTEXTO DE ANEXOS ===\n\n";
+      if (hasPastedImage) {
+        contextHeader += "ABRA a imagem no caminho indicado com sua ferramenta de leitura de arquivo "
+          + "antes de responder — ela é a fonte da pergunta (print de console, erro, tela). "
+          + "Use o texto do OCR para localizar o ponto correspondente no código do projeto.\n\n";
+      }
+      contextHeader += "Por favor, utilize os caminhos e conteúdos acima para responder à pergunta atual.\n\nPergunta:\n";
       return contextHeader + prompt;
     }
   } catch (err) {

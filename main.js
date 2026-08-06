@@ -28,6 +28,8 @@ require("./main/helpers/aiResponse.js");
 require("./main/helpers/getIaResponse.js");
 require("./main/helpers/capture.js");
 require("./main/helpers/misc.js");
+// Depois de misc.js: usa helpers.getEffectiveAiModel em runtime.
+require("./main/helpers/imagePaste.js");
 
 // Register IPC handlers
 require("./main/ipc/window.js")();
@@ -103,6 +105,13 @@ const { initializeNexa } = require("./main/nexa/index.js");
 app.whenReady().then(async () => {
   configService.initialize();
   initializeNexa();
+  // Imagens coladas antigas que ninguém referencia mais (as ainda anexadas
+  // são preservadas — não some print debaixo de uma conversa em andamento).
+  try {
+    const imageAttachments = require('./services/imageAttachments.js');
+    const { workspace: ws } = require('./main/globals.js');
+    imageAttachments.purgeOld(ws.list().map(a => a.path));
+  } catch (_) {}
   // Modo de Teste do Tradutor é só por sessão — nunca persiste entre aberturas.
   try { configService.setTranslationAssistantConfig({ testMode: false }); } catch (_) {}
   helperTools.initialize(configService.getHelperToolsConfig());

@@ -56,6 +56,7 @@ function fileIconHtml(name) {
     const wsProjectName = document.getElementById('ws-project-name');
     const wsProjectMain = document.getElementById('ws-project-main');
     const FILE_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+    const IMAGE_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>';
 
     // Reexibe/oculta o painel conforme o acesso ao workspace e recarrega a lista.
     async function refreshWorkspacePanel() {
@@ -204,13 +205,18 @@ function fileIconHtml(name) {
                 }
             }
 
+            // Windows usa "\" — split('/') devolvia o caminho inteiro como nome.
+            function baseName(p) {
+                return String(p || '').split(/[\\/]/).filter(Boolean).slice(-1)[0] || String(p || '');
+            }
+
             function renderWorkspacePanel(attachments) {
                 const list = attachments || [];
                 const dir = list.find(a => a.type === 'dir');
                 const files = list.filter(a => a.type === 'file');
 
                 if (dir) {
-                    const name = dir.path.split('/').filter(Boolean).slice(-1)[0] || dir.path;
+                    const name = baseName(dir.path);
                     if (wsProjectMain && wsProjectMain.dataset.path !== dir.path) collapseProjectTree();
                     if (wsActions) wsActions.style.display = 'none';
                     if (wsProject) wsProject.style.display = '';
@@ -239,11 +245,13 @@ function fileIconHtml(name) {
 
                     const ic = document.createElement('span');
                     ic.className = 'ws-chip-ic';
-                    ic.innerHTML = FILE_ICON_SVG;
+                    // Imagem colada tem ícone próprio pra se distinguir de um
+                    // arquivo do projeto que o usuário anexou de propósito.
+                    ic.innerHTML = a.origin === 'paste' ? IMAGE_ICON_SVG : FILE_ICON_SVG;
 
                     const label = document.createElement('span');
                     label.className = 'ws-chip-label';
-                    label.textContent = a.path.split('/').slice(-1)[0];
+                    label.textContent = a.origin === 'paste' ? 'imagem colada' : baseName(a.path);
 
                     chip.addEventListener('click', (e) => {
                         if (e.target.closest('.ws-chip-x')) return;

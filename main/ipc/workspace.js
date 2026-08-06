@@ -381,6 +381,18 @@ ipcMain.handle("editor-save-file", async (event, payload) => {
 });
 
 ipcMain.handle("workspace:remove", (event, id) => {
+  // Imagem colada vive numa pasta nossa: tirar o chip apaga o arquivo também,
+  // senão a pasta acumula print que ninguém mais referencia. Arquivo do
+  // usuário (isManagedPath false) nunca é tocado.
+  try {
+    const imageAttachments = require("../../services/imageAttachments.js");
+    const target = workspace.list().find(a => a.id === id);
+    if (target && target.origin === 'paste' && imageAttachments.isManagedPath(target.path)) {
+      require("fs").unlinkSync(target.path);
+    }
+  } catch (e) {
+    console.warn("[workspace] falha ao apagar imagem colada:", e && e.message);
+  }
   workspace.removePath(id);
   helpers.syncTerminalCwd();
   if (state.mainWindow && !state.mainWindow.isDestroyed()) {

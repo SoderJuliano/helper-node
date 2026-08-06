@@ -41,7 +41,11 @@ class AgenticWorkflowService {
         this.activeSessions.add(sessionId);
         this.senderBySession.set(sessionId, eventSender);
 
-        const { token, model, baseInstruction } = baseOpts;
+        // imageBase64: imagem colada pelo usuário (modo IDE). Vai SÓ na fase de
+        // descoberta — é lá que o modelo interpreta o pedido; repetir nas 3
+        // fases seguintes quadruplicaria o custo da imagem sem ganho, já que
+        // elas trabalham em cima do que a descoberta concluiu.
+        const { token, model, baseInstruction, imageBase64 } = baseOpts;
         const debugMode = configService.getDebugModeStatus();
         const workspaceEnabled = configService.getWorkspaceAccessEnabled();
         const aiSessionId = `agentic-${sessionId}`;
@@ -106,7 +110,7 @@ class AgenticWorkflowService {
                 token,
                 discoveryInstruction,
                 model,
-                null,
+                imageBase64 || null,
                 { 
                     tools: schema.toOpenAITools(discoveryTools),
                     onToolCall: (name, args) => this.handleToolCall(name, args, sessionId),

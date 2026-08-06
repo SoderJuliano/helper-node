@@ -115,6 +115,9 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
         if (useAgentic) { try { workspace.resetContextSent(); } catch (_) {} }
 
         const _wsText2 = await helpers.prependWorkspaceContextIfNeeded(promptWithHistory, openAiModel);
+        // ChatGPT/Codex não leem imagem por caminho nem por ferramenta — só
+        // pelo canal de visão da API. Só aqui o base64 é legítimo.
+        const _imgInline = helpers.inlineImageForProvider(aiModel);
 
         if (useAgentic) {
             console.log('🤖 IPC: Iniciando AGENTIC WORKFLOW (multi-fase)...');
@@ -124,7 +127,7 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
             try {
               resposta = await agenticWorkflow.run(
                   _wsText2,
-                  { token, model: openAiModel, baseInstruction: instruction },
+                  { token, model: openAiModel, baseInstruction: instruction, imageBase64: _imgInline },
                   event.sender
               );
             } catch (err) {
@@ -142,7 +145,7 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
               token,
               ht.instruction || instruction,
               ht.model || openAiModel,
-              null,
+              _imgInline,
               ht.opts
             );
         }

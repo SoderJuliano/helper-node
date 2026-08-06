@@ -21,7 +21,8 @@
     "test:noclose": "node ./scripts/test-backend-noclose.js",
     "test:ollama": "node ./scripts/test-ollama-local.js",
     "test:ollama:ide": "node ./scripts/test-ollama-stream.js",
-    "test:terminal": "node ./scripts/test-terminal.js"
+    "test:terminal": "node ./scripts/test-terminal.js",
+    "test:paste": "node ./scripts/test-paste-image.js"
   },
   "dependencies": {
     "@ricky0123/vad-web": "^0.0.30",
