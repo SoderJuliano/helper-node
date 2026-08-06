@@ -163,7 +163,12 @@ function trocarWorkspace(raiz) {
       if (tg && tg.getAttribute('aria-expanded') !== 'true') tg.click();
       await new Promise(r => setTimeout(r, 1200));
     })()`);
-    const nosAntes = await cdp.evaluate('(() => { const n = document.querySelectorAll("#ws-tree .ws-tree-node")[0]; if(!n) return null; n.dataset.marcaTeste = "1"; return document.querySelectorAll("#ws-tree .ws-tree-node").length; })()');
+    let nosAntes = null;
+    for (let i = 0; i < 12; i++) {
+      nosAntes = await cdp.evaluate('(() => { const n = document.querySelectorAll("#ws-tree .ws-tree-node")[0]; if(!n) return null; n.dataset.marcaTeste = "1"; return document.querySelectorAll("#ws-tree .ws-tree-node").length; })()');
+      if (nosAntes) break;
+      await sleep(500);
+    }
     if (nosAntes) {
       // 9s cobre o ciclo de 8s que antes fazia innerHTML='' e recriava tudo.
       await sleep(9500);
@@ -174,8 +179,15 @@ function trocarWorkspace(raiz) {
     }
 
     console.log('\n4. ícone de implementação por MÉTODO');
-    const gutter = await cdp.evaluate(
-      `window.electronAPI.codeNavGetGutterInfo({ filePath: ${JSON.stringify(proj.iface)} })`);
+    // A indexação roda em segundo plano; perguntar antes dela terminar devolve
+    // lista vazia por motivo legítimo. Espera o índice ficar pronto.
+    let gutter = [];
+    for (let i = 0; i < 25; i++) {
+      gutter = await cdp.evaluate(
+        `window.electronAPI.codeNavGetGutterInfo({ filePath: ${JSON.stringify(proj.iface)} })`) || [];
+      if (gutter.length) break;
+      await sleep(600);
+    }
     const metodos = (gutter || []).filter(g => g.kind === 'interface-method');
     assert(metodos.length === 3, `3 ícones de método (veio ${metodos.length})`);
     const proc = metodos.find(m => m.symbol === 'processar');
@@ -209,6 +221,41 @@ function trocarWorkspace(raiz) {
       return document.querySelectorAll('.cm-occurrence-highlight').length;
     })()`);
     assert(limpou === 0, `realce some ao desselecionar (sobraram ${limpou})`);
+
+    console.log('\n6. busca de usos sai do índice em memória (não do disco)');
+    // Roda a cada hover sobre um identificador, no processo main. Quando relia
+    // todo o projeto do disco levava 722ms num projeto de 2.000 arquivos — e o
+    // app inteiro ficava parado nesse tempo.
+    const tUso = Date.now();
+    const usos = await cdp.evaluate(
+      `window.electronAPI.codeNavFindUsages({ filePath: ${JSON.stringify(proj.iface)}, symbol: 'processar' })`);
+    const msUso = Date.now() - tUso;
+    assert(Array.isArray(usos), 'findUsages responde');
+    assert(msUso < 300, `busca de usos rápida (${msUso}ms, era ~700ms relendo o disco)`);
+
+    console.log('\n7. nome do arquivo cabe na aba');
+    const aba = await cdp.evaluate(`(() => {
+      const el = document.querySelector('.fv-tab.active .fv-tab-name') || document.querySelector('.fv-tab-name');
+      if (!el) return null;
+      const tab = el.closest('.fv-tab');
+      return {
+        texto: el.textContent,
+        scrollW: el.scrollWidth, clientW: el.clientWidth,
+        larguraAba: tab ? Math.round(tab.getBoundingClientRect().width) : null,
+      };
+    })()`);
+    if (aba) {
+      assert(aba.texto === 'PagamentoServiceImpl.java', `aba mostra o nome completo ("${aba.texto}")`);
+      assert(aba.scrollW <= aba.clientW + 1,
+        `nome não cortado (precisa ${aba.scrollW}px, tem ${aba.clientW}px; aba ${aba.larguraAba}px)`);
+    } else {
+      fail('nenhuma aba encontrada');
+    }
+
+    console.log('\n8. entrada da Nexa fora da UI');
+    const nexaNaUi = await cdp.evaluate(
+      `!!document.body.innerHTML.match(/Nexa AI Assistant/)`);
+    assert(!nexaNaUi, 'nenhum label da Nexa na interface');
 
     const erros = (logs.join('').match(/Uncaught (?:Reference|Type)Error[^"\n]*/g) || [])
       .filter(e => !/defineSimpleMode/.test(e));

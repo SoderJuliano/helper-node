@@ -54,7 +54,14 @@
             cursor: pointer;
             user-select: none;
             transition: all 0.15s ease;
-            max-width: 160px;
+            /* O nome vinha cortado ("PagamentoServiceImpl.java" → "Servic…")
+               NÃO por causa do max-width, e sim porque a aba é um flex item e
+               encolhia: medida em 42px de largura, sobrando 5px pro nome que
+               precisa de 162px. `flex-shrink: 0` faz a aba manter o tamanho
+               natural e o container (que já tem overflow-x: auto) rolar, igual
+               VS Code. max-width só limita nome absurdamente longo. */
+            flex: 0 0 auto;
+            max-width: 280px;
             white-space: nowrap;
             height: 22px;
             margin-top: 4px;

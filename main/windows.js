@@ -295,13 +295,9 @@ helpers.setupTray = function() {
           helpers.createConfigWindow();
         }
       },
-      {
-        label: "Nexa AI Assistant (Janela Flutuante)",
-        click: () => {
-          const { toggleNexaWindow } = require("./nexa/index.js");
-          toggleNexaWindow();
-        }
-      },
+      // A Nexa veio de outra branch e ainda não é pra estar exposta aqui. O
+      // módulo continua no repositório (main/nexa/, renderer/nexa/) pra quando
+      // for integrada de verdade — só o ponto de entrada da UI saiu.
       { type: "separator" },
       {
         label: "Sair",

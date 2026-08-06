@@ -17,6 +17,47 @@ const IGNORED_DIRS = new Set([
   'coverage', '.output', 'out', 'temp', 'tmp', 'logs', '.bundle'
 ]);
 
+// Palavras que nunca valem como "uso" — encher o índice com elas é só custo.
+const USAGE_STOPWORDS = new Set([
+  'if', 'for', 'while', 'switch', 'catch', 'function', 'class', 'return',
+  'import', 'export', 'require', 'const', 'let', 'var', 'new', 'typeof',
+  'instanceof', 'void', 'delete', 'true', 'false', 'null', 'undefined', 'this',
+  'super', 'async', 'await', 'yield', 'try', 'finally', 'else', 'case', 'break',
+  'public', 'private', 'protected', 'static', 'final', 'package', 'interface',
+  'extends', 'implements', 'throws', 'throw', 'int', 'boolean', 'double', 'float',
+  'long', 'char', 'byte', 'short', 'String', 'default', 'continue', 'abstract',
+]);
+
+const ENCLOSING_FUNC_RE = /(?:async\s+)?function\*?\s+([A-Za-z0-9_$]+)|(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=|([A-Za-z0-9_$]+)\s*\([^)]*\)\s*\{/;
+const IDENTIFIER_RE = /[A-Za-z_$][A-Za-z0-9_$]*/g;
+
+// Declaração não é "uso" — é onde a coisa nasce. O findUsages antigo descobria
+// isso montando uma regex por símbolo e relendo o arquivo; aqui a checagem é
+// pelo texto que ANTECEDE o identificador, com regex fixa, então custa quase
+// nada e roda uma vez só, na indexação.
+const DECL_PREFIX_RES = [
+  /(?:const|let|var|class|interface|enum|function|def)\s+$/,             // const foo / class Foo
+  /(?:async\s+)?function\*?\s+$/,                                        // function foo
+  /(?:public|private|protected|static|final|abstract|readonly)\s+(?:[A-Za-z0-9_$<>[\],]+\s+)*$/, // private String campo / public void foo
+  /(?:import|from|package)\s+$/,
+];
+
+function isDeclarationAt(lineText, index) {
+  if (index === 0) return false;
+  const antes = lineText.slice(0, index);
+  for (const re of DECL_PREFIX_RES) {
+    if (re.test(antes)) return true;
+  }
+  return false;
+}
+
+// Teto por símbolo. Sem isto, um identificador comum num projeto grande gera
+// dezenas de milhares de entradas — medido: 120.000 usos de um único método.
+// Ninguém lê 120 mil ocorrências, e serializar isso por IPC custa mais que a
+// própria busca.
+const MAX_USAGES_PER_SYMBOL = 300;
+const MIN_USAGE_SYMBOL_LEN = 3;
+
 function normalizePath(p) {
   if (!p) return '';
   let norm = path.normalize(p).replace(/\\/g, '/');
@@ -35,6 +76,11 @@ class SymbolIndexer {
     this.implementationsMap = new Map();
     // symbolName -> Set of { filePath, line, col, kind, className }
     this.symbolMap = new Map();
+    // symbolName -> [{ filePath, line, col, lineText, callerName }]
+    // Índice invertido de USOS, montado na indexação do projeto. É o que
+    // permite responder "onde isto é usado" sem tocar no disco.
+    this.usageMap = new Map();
+    this.usagesTruncated = new Set(); // símbolos que bateram o teto
 
     this.indexingSessionId = 0;
     this.isIndexing = false;
@@ -46,6 +92,8 @@ class SymbolIndexer {
     this.fileMap.clear();
     this.implementationsMap.clear();
     this.symbolMap.clear();
+    this.usageMap.clear();
+    this.usagesTruncated.clear();
     this.isIndexing = false;
     this.indexingProgress = { total: 0, processed: 0 };
   }
@@ -217,10 +265,21 @@ class SymbolIndexer {
 
     let currentInterface = null;
     let currentClass = null;
+    let currentEnclosingFunc = null;
 
     for (let i = 0; i < lines.length; i++) {
       const lineText = lines[i];
       const lineNum = i + 1; // 1-indexed
+
+      // 0. Índice invertido de usos (símbolo → onde aparece).
+      // Construído aqui porque já estamos varrendo cada linha do projeto uma
+      // vez. Sem ele, findUsages relia TODOS os arquivos do disco a cada hover.
+      this.indexUsagesInLine(normPath, lineText, lineNum, () => currentEnclosingFunc);
+      const encMatch = lineText.match(ENCLOSING_FUNC_RE);
+      if (encMatch) {
+        const fn = encMatch[1] || encMatch[2] || encMatch[3];
+        if (fn && !USAGE_STOPWORDS.has(fn)) currentEnclosingFunc = fn;
+      }
 
       // 1. Imports
       const importMatch = lineText.match(/(?:import|using|use|require)\s+([^;'"\n]+)/);
@@ -313,6 +372,42 @@ class SymbolIndexer {
     this.fileMap.set(normPath, fileData);
   }
 
+  // Extrai identificadores da linha e registra onde cada um aparece.
+  // Chamado uma vez por linha durante a indexação — o custo fica na abertura do
+  // projeto (em segundo plano), não no hover do usuário.
+  indexUsagesInLine(normPath, lineText, lineNum, getEnclosing) {
+    if (!lineText) return;
+    const trimmed = lineText.trim();
+    if (!trimmed) return;
+    // Linha inteira de comentário não é uso.
+    if (trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*')
+      || trimmed.startsWith('#') || trimmed.startsWith('<!--')) return;
+
+    const comentarioInline = lineText.indexOf('//');
+    IDENTIFIER_RE.lastIndex = 0;
+    let m;
+    const jaNestaLinha = new Set();
+    while ((m = IDENTIFIER_RE.exec(lineText)) !== null) {
+      const nome = m[0];
+      if (nome.length < MIN_USAGE_SYMBOL_LEN || USAGE_STOPWORDS.has(nome)) continue;
+      if (comentarioInline !== -1 && m.index > comentarioInline) continue;
+      if (jaNestaLinha.has(nome)) continue; // uma entrada por símbolo por linha
+      jaNestaLinha.add(nome);
+
+      let lista = this.usageMap.get(nome);
+      if (!lista) { lista = []; this.usageMap.set(nome, lista); }
+      if (lista.length >= MAX_USAGES_PER_SYMBOL) { this.usagesTruncated.add(nome); continue; }
+      lista.push({
+        filePath: normPath,
+        line: lineNum,
+        col: m.index + 1,
+        lineText: trimmed,
+        callerName: getEnclosing() || null,
+        isDef: isDeclarationAt(lineText, m.index),
+      });
+    }
+  }
+
   addSymbol(name, item) {
     if (!this.symbolMap.has(name)) {
       this.symbolMap.set(name, []);
@@ -333,6 +428,13 @@ class SymbolIndexer {
     this.implementationsMap.forEach((set, implName) => {
       const updated = new Set([...set].filter(item => item.filePath !== normPath));
       this.implementationsMap.set(implName, updated);
+    });
+
+    // Sem isto, reindexar um arquivo salvo duplicaria os usos dele no índice.
+    this.usageMap.forEach((list, name) => {
+      const filtrada = list.filter(u => u.filePath !== normPath);
+      if (filtrada.length) this.usageMap.set(name, filtrada);
+      else this.usageMap.delete(name);
     });
 
     this.fileMap.delete(normPath);
@@ -428,6 +530,33 @@ class SymbolIndexer {
     const normCurrent = normalizePath(currentFilePath);
     if (normCurrent && !this.fileMap.has(normCurrent) && fs.existsSync(normCurrent)) {
       this.indexSingleFile(normCurrent);
+    }
+
+    // Caminho rápido: índice invertido montado na abertura do projeto.
+    //
+    // Antes daqui existia (e ainda existe abaixo, como fallback) uma varredura
+    // que RELIA todos os arquivos do projeto do disco a cada chamada. Como isto
+    // é chamado a cada hover sobre um identificador, e roda no processo main,
+    // o app inteiro congelava enquanto durava — medido em 722ms num projeto de
+    // 2.000 arquivos, a cada passada do mouse.
+    if (this.usageMap.size > 0) {
+      const achados = this.usageMap.get(cleanSymbol);
+      if (achados) {
+        const defLines = new Set(
+          (this.symbolMap.get(cleanSymbol) || []).map(d => `${d.filePath}:${d.line}`)
+        );
+        return achados
+          .filter(u => !u.isDef && !defLines.has(`${u.filePath}:${u.line}`))
+          .map(({ isDef, ...u }) => ({
+            ...u,
+            relativePath: this.projectPath
+              ? path.relative(this.projectPath, u.filePath).replace(/\\/g, '/')
+              : u.filePath,
+            fileName: path.basename(u.filePath),
+          }));
+      }
+      // Símbolo indexado e sem ocorrência = resposta legítima "nenhum uso".
+      if (this.fileMap.has(normCurrent)) return [];
     }
 
     // 1. Obter lista de todos os arquivos a verificar

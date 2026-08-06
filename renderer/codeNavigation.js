@@ -945,20 +945,54 @@
     if (wrapper._hasCodeNav) return;
     wrapper._hasCodeNav = true;
 
+    // A indexação roda em segundo plano e pode não ter terminado quando o
+    // arquivo abriu — nesse caso o gutter vinha VAZIO e os ícones só apareciam
+    // se o usuário fechasse e reabrisse a aba. Refaz a calha quando o índice
+    // termina. Abaixo do guard de propósito: um listener só, não um por
+    // arquivo aberto.
+    if (window.electronAPI && window.electronAPI.onSymbolIndexerStatus) {
+      window.electronAPI.onSymbolIndexerStatus((data) => {
+        if (data && data.status === 'completed' && activeCm && currentFilePath) {
+          updateGutterMarkers(activeCm, currentFilePath);
+        }
+      });
+    }
+
     // Menu de contexto no clique do botão direito (Renomear método / Copiar seleção)
     wrapper.addEventListener('contextmenu', (e) => {
       showEditorContextMenu(cm, currentFilePath, e);
     });
 
     // Mousemove para efeito de link sob Ctrl & Usages Badge sob hover normal
-    wrapper.addEventListener('mousemove', (e) => {
+    //
+    // ⚠️ Throttled por rAF de propósito. `cm.coordsChar()` força medição de
+    // layout no CodeMirror, e isto rodava em TODO evento de mousemove (~60-120
+    // por segundo ao mover o mouse) — era metade da sensação de "editor pesado,
+    // scroll travando". Além do rAF, se o cursor continua no mesmo caractere
+    // não há nada novo a calcular.
+    let rafPendente = false;
+    let ultimaPos = null;
+    const onMouseMove = (e) => {
+      if (rafPendente) return;
+      rafPendente = true;
+      requestAnimationFrame(() => {
+        rafPendente = false;
+        const pos = cm.coordsChar({ left: e.clientX, top: e.clientY });
+        const mesma = ultimaPos && pos && ultimaPos.line === pos.line && ultimaPos.ch === pos.ch;
+        if (mesma && !e.ctrlKey && !e.metaKey) return;
+        ultimaPos = pos ? { line: pos.line, ch: pos.ch } : null;
+        handleMouseMove(e, pos);
+      });
+    };
+    wrapper.addEventListener('mousemove', onMouseMove);
+
+    const handleMouseMove = (e, posPreCalculada) => {
       if (e.ctrlKey || e.metaKey) {
         removeActiveUsagesBadge();
         clearTimeout(usagesTimer);
         lastHoveredSymbol = null;
 
-        const pos = cm.coordsChar({ left: e.clientX, top: e.clientY });
-        const item = getSymbolOrPathAtPos(cm, pos);
+        const item = getSymbolOrPathAtPos(cm, posPreCalculada);
 
         if (item && item.symbol && item.range) {
           clearHoverMarker();
@@ -973,8 +1007,8 @@
 
       clearHoverMarker();
 
-      // Busca de Usages sob Hover sem Ctrl
-      const pos = cm.coordsChar({ left: e.clientX, top: e.clientY });
+      // Busca de Usages sob Hover sem Ctrl — reusa a posição já medida.
+      const pos = posPreCalculada;
       const item = getSymbolOrPathAtPos(cm, pos);
 
       if (item && item.symbol && !item.isPath) {
@@ -998,7 +1032,7 @@
           }
         }
       }
-    });
+    };
 
     wrapper.addEventListener('mouseleave', () => {
       clearHoverMarker();
