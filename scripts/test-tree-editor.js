@@ -252,7 +252,32 @@ function trocarWorkspace(raiz) {
       fail('nenhuma aba encontrada');
     }
 
-    console.log('\n8. entrada da Nexa fora da UI');
+    console.log('\n8. bloco de código grande na resposta do chat');
+    // O parser de cerca antigo fechava o bloco na primeira crase tripla que
+    // achasse EM QUALQUER LUGAR, inclusive no meio de uma linha de código. Um
+    // bloco de 300 linhas virava 5 no <pre> (o resto virava texto solto, então
+    // o usuário via tudo mas copiava só 5 linhas), e bloco sem fechamento não
+    // gerava <pre> nenhum ("copiei a resposta e veio sem o bloco").
+    const md = await cdp.evaluate(`(() => {
+      var NL = String.fromCharCode(10), F = String.fromCharCode(96,96,96), D = String.fromCharCode(36);
+      function corpo(n){var a=[];for(var i=1;i<=n;i++)a.push('  const linha'+i+' = v('+i+');');return a.join(NL);}
+      function linhasNoPre(md){
+        var d=document.createElement('div'); d.innerHTML=window.renderMarkdown(md,'t');
+        var c=d.querySelector('pre code'); return c?c.textContent.split(NL).length:0;
+      }
+      return {
+        normal:      linhasNoPre('x'+NL+NL+F+'js'+NL+corpo(300)+NL+F),
+        meioDaLinha: linhasNoPre('x'+NL+NL+F+'js'+NL+corpo(5)+NL+'  log("'+F+'");'+NL+corpo(294)+NL+F),
+        semFechar:   linhasNoPre('x'+NL+NL+F+'js'+NL+corpo(300)),
+        cifrao:      linhasNoPre('x'+NL+NL+F+'js'+NL+'  s = "'+D+"'"+'";'+NL+corpo(299)+NL+F)
+      };
+    })()`);
+    assert(md && md.normal === 300, `bloco normal íntegro (${md && md.normal}/300 linhas)`);
+    assert(md && md.meioDaLinha === 300, `crase tripla no meio da linha não corta o bloco (${md && md.meioDaLinha}/300)`);
+    assert(md && md.semFechar === 300, `bloco sem cerca de fechamento vira <pre> mesmo assim (${md && md.semFechar}/300)`);
+    assert(md && md.cifrao === 300, `código com $' não corrompe o bloco (${md && md.cifrao}/300)`);
+
+    console.log('\n9. entrada da Nexa fora da UI');
     const nexaNaUi = await cdp.evaluate(
       `!!document.body.innerHTML.match(/Nexa AI Assistant/)`);
     assert(!nexaNaUi, 'nenhum label da Nexa na interface');
