@@ -71,9 +71,12 @@
   border-radius: 6px;
   padding: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65);
-  min-width: 320px;
-  max-width: 500px;
-  max-height: 360px;
+  /* Era 320-500px de largura e 360px de altura: o nome da classe onde o método
+     é usado não cabia e saía com reticências, que é justamente a informação
+     que se procura nessa lista. Agora acompanha a janela. */
+  min-width: 520px;
+  max-width: min(900px, 90vw);
+  max-height: min(560px, 70vh);
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
@@ -106,11 +109,23 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
   padding: 6px 8px;
   border-radius: 4px;
   cursor: pointer;
   margin-bottom: 2px;
   transition: background 0.15s ease;
+}
+
+/* O nome do arquivo/classe é o que importa: pode encolher por último e, se
+   ainda assim não couber, corta pelo INÍCIO do caminho, não pelo fim do nome. */
+.code-nav-popup-item > :first-child {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  overflow: hidden;
 }
 
 .code-nav-popup-item:hover,
@@ -122,14 +137,20 @@
   font-weight: 500;
   color: var(--text, #e3e3e6);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: 0 0 auto; /* nunca encolhe: é o nome da classe */
 }
 
 .code-nav-popup-path {
   font-size: 11px;
   color: var(--text-3, #888);
   margin-left: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  /* Caminho longo perde o começo (…/service/impl/Foo.java), que é a parte
+     menos informativa — o fim identifica o arquivo. */
+  direction: rtl;
+  text-align: left;
+  min-width: 0;
 }
 
 .code-nav-popup-badge {
@@ -403,3 +424,20 @@
 
 
 
+
+/* ── Régua de limite de coluna ─────────────────────────────────────────────
+   Linha vertical discreta marcando o limite de comprimento da linha, igual ao
+   "ruler" do VS Code e ao "hard wrap guide" do IntelliJ. Desenhada como
+   background do scroller do CodeMirror pra não criar elemento por linha nem
+   entrar no fluxo do texto (zero custo de layout ao rolar).
+   A posição em px é calculada em JS a partir da largura real do caractere,
+   porque a fonte é configurável. */
+.CodeMirror .cm-column-ruler {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.085);
+  pointer-events: none;
+  z-index: 1;
+}

@@ -702,19 +702,57 @@ class SymbolIndexer {
     if (formatted.length === 1) return formatted;
 
     const currentData = this.fileMap.get(normCurrent);
-    const sorted = [...formatted].sort((a, b) => {
-      if (a.filePath === normCurrent && b.filePath !== normCurrent) return -1;
-      if (b.filePath === normCurrent && a.filePath !== normCurrent) return 1;
-      if (currentData && currentData.imports.length > 0) {
-        const aImport = currentData.imports.some(imp => imp.text.includes(path.basename(a.filePath, path.extname(a.filePath))));
-        const bImport = currentData.imports.some(imp => imp.text.includes(path.basename(b.filePath, path.extname(b.filePath))));
-        if (aImport && !bImport) return -1;
-        if (!aImport && bImport) return 1;
-      }
-      return 0;
-    });
 
-    return sorted;
+    // Tipo do RECEPTOR da chamada: em `pagamentoService.processar(id)`, descobre
+    // que `pagamentoService` é do tipo `PagamentoService` e põe a definição
+    // dentro desse tipo em primeiro lugar. Sem isto, um método com o mesmo nome
+    // na interface e na implementação empatava e o app abria uma lista em vez
+    // de ir direto ao destino óbvio.
+    const tipoReceptor = this.resolveReceiverType(normCurrent, symbolName, lineText);
+
+    const pontos = (c) => {
+      let p = 0;
+      if (tipoReceptor) {
+        const base = path.basename(c.filePath, path.extname(c.filePath));
+        if (c.className === tipoReceptor) p += 100;
+        if (base === tipoReceptor) p += 80;
+      }
+      if (currentData && currentData.imports.length > 0) {
+        const base = path.basename(c.filePath, path.extname(c.filePath));
+        if (currentData.imports.some(imp => imp.text.includes(base))) p += 20;
+      }
+      // Sem receptor identificado, a definição no próprio arquivo é a aposta
+      // melhor (chamada de método local). Com receptor, ela não tem prioridade.
+      if (!tipoReceptor && c.filePath === normCurrent) p += 50;
+      return p;
+    };
+
+    return [...formatted].sort((a, b) => pontos(b) - pontos(a));
+  }
+
+  // Descobre o tipo declarado da variável que recebe a chamada.
+  // Só olha o arquivo atual — é uma leitura só, e é onde a declaração está em
+  // praticamente todo caso real (campo injetado ou variável local).
+  resolveReceiverType(normCurrent, symbolName, lineText) {
+    if (!lineText || !symbolName) return null;
+    const mRec = lineText.match(
+      new RegExp(`([A-Za-z_$][A-Za-z0-9_$]*)\\s*\\.\\s*${symbolName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`)
+    );
+    if (!mRec) return null;
+    const receptor = mRec[1];
+    // `this.foo()` / `super.foo()` não dizem nada sobre tipo externo.
+    if (receptor === 'this' || receptor === 'super') return null;
+    // O próprio receptor pode ser um tipo (chamada estática: Service.metodo()).
+    if (/^[A-Z]/.test(receptor)) return receptor;
+
+    let conteudo = '';
+    try { conteudo = fs.readFileSync(normCurrent, 'utf8'); } catch (_) { return null; }
+    // `private PagamentoService pagamentoService;`, `PagamentoService x = ...`,
+    // parâmetro `(PagamentoService pagamentoService)`.
+    const mTipo = conteudo.match(
+      new RegExp(`([A-Z][A-Za-z0-9_$]*)(?:<[^>]*>)?\\s+${receptor}\\b\\s*[;=,)]`)
+    );
+    return mTipo ? mTipo[1] : null;
   }
 
   // Encontra implementações para uma interface ou método de interface

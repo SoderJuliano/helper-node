@@ -561,12 +561,22 @@
 
     if (!Array.isArray(matches) || matches.length === 0) return;
 
-    if (matches.length === 1) {
-      if (window.EditorController && matches[0].filePath) {
-        await window.EditorController.openFile(matches[0].filePath, matches[0].line);
+    // Vai DIRETO pro melhor candidato, sempre. Abrir uma lista quando havia
+    // mais de um match transformava "Ctrl+clique num método da service" numa
+    // janela de escolha — e o destino óbvio (a própria service) já é o primeiro
+    // da lista, ordenado pelo tipo do receptor no symbolIndexer. Pra descer da
+    // interface até a implementação existe o ícone na calha.
+    const alvo = matches[0];
+    if (window.EditorController && alvo.filePath) {
+      await window.EditorController.openFile(alvo.filePath, alvo.line);
+      // Realça o nome no destino até o próximo clique, igual ao ícone da calha.
+      if (window.CodeHighlight && item.symbol) {
+        const destCm = window.EditorController.getCm && window.EditorController.getCm();
+        if (destCm) {
+          window.CodeHighlight.attach(destCm);
+          window.CodeHighlight.pin(destCm, item.symbol);
+        }
       }
-    } else {
-      showDefinitionPopup(matches, item.symbol, mouseEvent.clientX, mouseEvent.clientY);
     }
   }
 
@@ -938,8 +948,11 @@
     // Atualiza calha de implementações
     updateGutterMarkers(cm, filePath);
 
-    // Realce de ocorrências da palavra selecionada.
-    if (window.CodeHighlight) window.CodeHighlight.attach(cm);
+    // Realce de ocorrências da palavra selecionada + régua de coluna.
+    if (window.CodeHighlight) {
+      window.CodeHighlight.attach(cm);
+      window.CodeHighlight.attachRuler(cm);
+    }
 
     const wrapper = cm.getWrapperElement();
     if (wrapper._hasCodeNav) return;

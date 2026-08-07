@@ -103,7 +103,18 @@ function montarProjeto() {
     fs.mkdirSync(d, { recursive: true });
     for (let c = 1; c <= 20; c++) fs.writeFileSync(path.join(d, 'C' + c + '.java'), 'class C{}');
   }
-  return { raiz, iface: path.join(src, 'PagamentoService.java') };
+  // Controller que CHAMA a service — usado pra checar que o Ctrl+clique num
+  // método chamado vai direto pra service, sem lista de escolha.
+  fs.writeFileSync(path.join(src, 'PagamentoController.java'),
+    'package com.exemplo;\n\npublic class PagamentoController {\n'
+    + '    private PagamentoService pagamentoService;\n\n'
+    + '    public void endpoint(String id) {\n'
+    + '        pagamentoService.processar(id);\n    }\n}\n');
+  return {
+    raiz,
+    iface: path.join(src, 'PagamentoService.java'),
+    controller: path.join(src, 'PagamentoController.java'),
+  };
 }
 
 // Não há IPC de "abrir projeto" sem diálogo (é por seleção do usuário), então o
@@ -251,6 +262,30 @@ function trocarWorkspace(raiz) {
     } else {
       fail('nenhuma aba encontrada');
     }
+
+    console.log('\n7b. navegação e régua no editor');
+    // Ctrl+clique num método chamado sobre uma service tem que ir DIRETO pra
+    // service, não abrir lista de escolha: o desempate usa o tipo do receptor.
+    const nav = await cdp.evaluate(
+      `window.electronAPI.codeNavFindDefinition({
+         filePath: ${JSON.stringify(proj.controller)},
+         symbol: 'processar',
+         lineText: '        pagamentoService.processar(id);'
+       })`);
+    assert(Array.isArray(nav) && nav.length > 0, 'achou definição de "processar"');
+    if (Array.isArray(nav) && nav.length) {
+      assert(/PagamentoService\.java$/.test(nav[0].filePath.replace(/\\/g, '/')),
+        `1º destino é a service, não a impl (${path.basename(nav[0].filePath)})`);
+    }
+
+    const regua = await cdp.evaluate(`(() => {
+      const el = document.querySelector('.CodeMirror .cm-column-ruler');
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { largura: Math.round(r.width), altura: Math.round(r.height), left: Math.round(r.left) };
+    })()`);
+    assert(regua && regua.largura <= 2 && regua.altura > 0,
+      `régua de coluna desenhada (${regua ? regua.largura + 'x' + regua.altura + 'px @ ' + regua.left : 'ausente'})`);
 
     console.log('\n8. bloco de código grande na resposta do chat');
     // O parser de cerca antigo fechava o bloco na primeira crase tripla que

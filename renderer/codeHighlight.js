@@ -94,5 +94,57 @@
     if (wrapper && !wrapper.contains(ev.target)) clear();
   }, true);
 
-  window.CodeHighlight = { attach, markAll, pin, clear };
+  // ── Régua de limite de coluna ───────────────────────────────────────────
+  // Linha vertical discreta no limite de comprimento da linha, como o "ruler"
+  // do VS Code e o "hard wrap guide" do IntelliJ.
+  //
+  // Um elemento só, posicionado no scroller — não um por linha. A posição vem
+  // da largura REAL do caractere (defaultCharWidth), porque a fonte do editor é
+  // configurável; recalcula quando a fonte muda ou a janela é redimensionada.
+  const COLUNA_PADRAO = 120;
+
+  function colunaConfigurada() {
+    const salvo = parseInt(localStorage.getItem('editor_column_ruler'), 10);
+    if (Number.isFinite(salvo) && salvo > 0) return salvo;
+    return COLUNA_PADRAO;
+  }
+
+  function posicionarRegua(cm) {
+    if (!cm) return;
+    const scroller = cm.getScrollerElement();
+    if (!scroller) return;
+
+    const coluna = colunaConfigurada();
+    if (coluna <= 0) { // 0 desliga
+      const antiga = scroller.querySelector('.cm-column-ruler');
+      if (antiga) antiga.remove();
+      return;
+    }
+
+    let regua = scroller.querySelector('.cm-column-ruler');
+    if (!regua) {
+      regua = document.createElement('div');
+      regua.className = 'cm-column-ruler';
+      scroller.appendChild(regua);
+    }
+    const larguraChar = cm.defaultCharWidth();
+    if (!larguraChar) return;
+    // gutters ficam à esquerda do texto; a régua conta a partir do texto.
+    const offsetGutter = cm.getGutterElement() ? cm.getGutterElement().offsetWidth : 0;
+    regua.style.left = (offsetGutter + coluna * larguraChar) + 'px';
+    // Cobre a altura toda, inclusive o que está rolado.
+    regua.style.height = Math.max(scroller.scrollHeight, scroller.clientHeight) + 'px';
+  }
+
+  function attachRuler(cm) {
+    if (!cm || cm._hasColumnRuler) return;
+    cm._hasColumnRuler = true;
+    posicionarRegua(cm);
+    // `refresh` cobre troca de fonte, resize e troca de arquivo.
+    cm.on('refresh', () => posicionarRegua(cm));
+    cm.on('changes', () => posicionarRegua(cm));
+    window.addEventListener('resize', () => posicionarRegua(cm));
+  }
+
+  window.CodeHighlight = { attach, markAll, pin, clear, attachRuler, posicionarRegua };
 })();
