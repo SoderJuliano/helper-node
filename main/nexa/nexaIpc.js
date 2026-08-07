@@ -40,6 +40,18 @@ function registerNexaIpc() {
     return NEXA_ANIMATIONS;
   });
 
+  ipcMain.handle("nexa:read-file", async (event, filePath) => {
+    const fs = require("fs");
+    try {
+      if (!filePath) return { ok: false, error: "Caminho vazio" };
+      if (!fs.existsSync(filePath)) return { ok: false, error: "Arquivo não existe" };
+      const content = fs.readFileSync(filePath, "utf8");
+      return { ok: true, content };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
+
   ipcMain.on("nexa:save-config", (event, cfg) => {
     const { configService } = require("../globals.js");
     const oldCfg = configService.getNexaConfig();

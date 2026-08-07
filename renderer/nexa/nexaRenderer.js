@@ -67,26 +67,48 @@ document.addEventListener("DOMContentLoaded", async () => {
     console.error("[NexaRenderer] Erro crítico ao carregar camadas PNG.");
   }
 
-  // Inicializa o reprodutor de animação de entrada 2D
-  const introAnimation = typeof NexaIntroAnimation !== "undefined" ? new NexaIntroAnimation({ introTrimEndMs }) : null;
+  // Inicializa o reprodutor de animação de entrada 2D via Lottie (wave_lottie)
+  const introLottiePath = "/home/soder/Documents/nexa-workspace/lottie/wave_lottie/animations/main.json";
+  const introAnimation = typeof NexaLottieAnimation !== "undefined" ? new NexaLottieAnimation({ animationPath: introLottiePath, loop: false }) : null;
   if (introAnimation) {
     introAnimation.play();
   }
 
-  // Inicializa a animação de tédio/idle (Animated_anime_girl_idling_202608051517.mp4)
-  const idleBoringPath = "/home/soder/Documents/nexa-workspace/animacoes_google_flow/Animated_anime_girl_idling_202608051517.mp4";
-  const idleBoringAnimation = typeof NexaIntroAnimation !== "undefined"
-    ? new NexaIntroAnimation({ videoPath: idleBoringPath, introTrimEndMs })
+  // Inicializa a animação de tédio/idle via Lottie (idle_lottie)
+  const idleBoringLottiePath = "/home/soder/Documents/nexa-workspace/lottie/idle_lottie/animations/main.json";
+  const idleBoringAnimation = typeof NexaLottieAnimation !== "undefined"
+    ? new NexaLottieAnimation({ animationPath: idleBoringLottiePath, loop: false })
     : null;
 
-  // Inicializa a animação de ajustar óculos/idle (Animated_character_adjusting_gla…_202608052214.mp4)
-  const idleGlassesPath = "/home/soder/Documents/nexa-workspace/animacoes_google_flow/Animated_character_adjusting_gla…_202608052214.mp4";
-  const idleGlassesAnimation = typeof NexaIntroAnimation !== "undefined"
-    ? new NexaIntroAnimation({ videoPath: idleGlassesPath, introTrimEndMs })
+  // Inicializa a animação de ajustar óculos/idle via Lottie (adjust_glasses_lottie)
+  const idleGlassesLottiePath = "/home/soder/Documents/nexa-workspace/lottie/adjust_glasses_lottie/animations/main.json";
+  const idleGlassesAnimation = typeof NexaLottieAnimation !== "undefined"
+    ? new NexaLottieAnimation({ animationPath: idleGlassesLottiePath, loop: false })
+    : null;
+
+  // Inicializa a animação de se espreguiçar/idle via Lottie (stretching_lottie)
+  const idleStretchingLottiePath = "/home/soder/Documents/nexa-workspace/lottie/stretching_lottie/animations/main.json";
+  const idleStretchingAnimation = typeof NexaLottieAnimation !== "undefined"
+    ? new NexaLottieAnimation({ animationPath: idleStretchingLottiePath, loop: false })
+    : null;
+
+  // Inicializa a animação de agachar/idle via Lottie (squatting_lottie)
+  const idleSquattingLottiePath = "/home/soder/Documents/nexa-workspace/lottie/squatting_lottie/animations/main.json";
+  const idleSquattingAnimation = typeof NexaLottieAnimation !== "undefined"
+    ? new NexaLottieAnimation({ animationPath: idleSquattingLottiePath, loop: false })
+    : null;
+
+  // Inicializa a animação de dormir via Lottie (sleeping_lottie)
+  const idleSleepingLottiePath = "/home/soder/Documents/nexa-workspace/lottie/sleeping_lottie/animations/main.json";
+  const idleSleepingAnimation = typeof NexaLottieAnimation !== "undefined"
+    ? new NexaLottieAnimation({ animationPath: idleSleepingLottiePath, loop: true })
     : null;
 
   let currentVideoAnimation = introAnimation;
   let idleTime = 0;
+  let sleepingTime = 0;
+  const SLEEP_TIMEOUT = 10 * 60; // 10 minutos (600s)
+  let isSleeping = false;
 
   // Busca o catálogo de animações do Main
   let animationsCatalog = {};
@@ -109,7 +131,14 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
       }
 
-      if (animDef.videoPath) {
+      if (animDef.lottiePath) {
+        if (currentVideoAnimation && currentVideoAnimation.isPlaying) {
+          currentVideoAnimation.stop();
+        }
+        console.log("[NexaRenderer] Iniciando animação Lottie:", name);
+        currentVideoAnimation = new NexaLottieAnimation({ animationPath: animDef.lottiePath, loop: false });
+        currentVideoAnimation.play();
+      } else if (animDef.videoPath) {
         if (currentVideoAnimation && currentVideoAnimation.isPlaying) {
           currentVideoAnimation.stop();
         }
@@ -133,11 +162,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (currentVideoAnimation && currentVideoAnimation.isPlaying) {
           currentVideoAnimation.stop();
         }
-        const listeningPath = "/home/soder/Documents/nexa-workspace/animacoes_google_flow/Anime_girl_listening_animation_202608052231.mp4";
+        const listeningLottiePath = "/home/soder/Documents/nexa-workspace/lottie/listening_lottie/animations/main.json";
         console.log("[NexaRenderer] Transicionando para LISTENING. Iniciando animação de escuta.");
-        currentVideoAnimation = new NexaIntroAnimation({
-          videoPath: listeningPath,
-          introTrimEndMs,
+        currentVideoAnimation = new NexaLottieAnimation({
+          animationPath: listeningLottiePath,
           loop: false
         });
         currentVideoAnimation.play();
@@ -145,18 +173,17 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (currentVideoAnimation && currentVideoAnimation.isPlaying) {
           currentVideoAnimation.stop();
         }
-        const thinkingPath = "/home/soder/Documents/nexa-workspace/animacoes_google_flow/Anime_girl_thinking_poses_202608052317.mp4";
+        const thinkingLottiePath = "/home/soder/Documents/nexa-workspace/lottie/thinking_lottie/animations/main.json";
         console.log("[NexaRenderer] Transicionando para THINKING. Iniciando animação de pensamento.");
-        currentVideoAnimation = new NexaIntroAnimation({
-          videoPath: thinkingPath,
-          introTrimEndMs,
+        currentVideoAnimation = new NexaLottieAnimation({
+          animationPath: thinkingLottiePath,
           loop: true // loop while waiting for AI
         });
         currentVideoAnimation.play();
       } else {
         // Se mudou para qualquer outro estado (como SPEAKING ou IDLE), para animações de escuta ou pensamento
         if (currentVideoAnimation && currentVideoAnimation.isPlaying) {
-          const pathStr = currentVideoAnimation.videoPath || "";
+          const pathStr = currentVideoAnimation.videoPath || currentVideoAnimation.animationPath || "";
           if (pathStr.includes("thinking") || pathStr.includes("listening")) {
             console.log("[NexaRenderer] Parando animação de escuta/pensamento por transição de estado.");
             currentVideoAnimation.stop();
@@ -177,7 +204,11 @@ document.addEventListener("DOMContentLoaded", async () => {
                                   currentVideoAnimation.isPlaying && 
                                   !currentVideoAnimation.isFinished() &&
                                   currentVideoAnimation !== introAnimation && 
-                                  currentVideoAnimation !== idleBoringAnimation;
+                                  currentVideoAnimation !== idleBoringAnimation &&
+                                  currentVideoAnimation !== idleGlassesAnimation &&
+                                  currentVideoAnimation !== idleStretchingAnimation &&
+                                  currentVideoAnimation !== idleSquattingAnimation &&
+                                  currentVideoAnimation !== idleSleepingAnimation;
       
       if (isCustomAnimPlaying) {
         console.log("[NexaRenderer] Atrasando áudio TTS em 2s para priorizar animação de vídeo...");
@@ -250,15 +281,28 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const currentState = animController.getCurrentState();
 
-    // Se o estado mudar de IDLE, interrompe a animação de tédio ou óculos imediatamente
+    // Se o estado mudar de IDLE, interrompe as animações idle/sleeping imediatamente e acorda a Nexa
     if (currentState !== "IDLE") {
+      if (isSleeping) {
+        console.log("[NexaRenderer] Nexa acordou devido a atividade/novo estado:", currentState);
+        isSleeping = false;
+        if (currentVideoAnimation === idleSleepingAnimation) {
+          idleSleepingAnimation.stop();
+          currentVideoAnimation = null;
+        }
+      }
       if (currentVideoAnimation && currentVideoAnimation.isPlaying && !currentVideoAnimation.isFinished()) {
-        if (currentVideoAnimation === idleBoringAnimation || currentVideoAnimation === idleGlassesAnimation) {
+        if (currentVideoAnimation === idleBoringAnimation || 
+            currentVideoAnimation === idleGlassesAnimation ||
+            currentVideoAnimation === idleStretchingAnimation ||
+            currentVideoAnimation === idleSquattingAnimation ||
+            currentVideoAnimation === idleSleepingAnimation) {
           currentVideoAnimation.stop();
-          console.log("[NexaRenderer] Animação de tédio/óculos interrompida por mudança de estado para:", currentState);
+          console.log("[NexaRenderer] Animação idle interrompida por mudança de estado para:", currentState);
         }
       }
       idleTime = 0;
+      sleepingTime = 0;
     }
 
     let rendered = false;
@@ -275,21 +319,47 @@ document.addEventListener("DOMContentLoaded", async () => {
       animController.update(deltaTime);
       animController.render(ctx, canvas.width, canvas.height);
 
-      // Sorteio aleatório para a animação idle (tédio ou óculos)
-      if (currentState === "IDLE" && (!introAnimation || introAnimation.isFinished())) {
+      // Controle do tempo de inatividade para dormir (10 minutos)
+      if (currentState === "IDLE") {
+        if (!isSleeping) {
+          sleepingTime += deltaTime;
+          if (sleepingTime >= SLEEP_TIMEOUT) {
+            console.log("[NexaRenderer] Nexa adormeceu devido a inatividade de 10 minutos.");
+            isSleeping = true;
+            if (currentVideoAnimation && currentVideoAnimation.isPlaying) {
+              currentVideoAnimation.stop();
+            }
+            if (idleSleepingAnimation) {
+              idleSleepingAnimation.play();
+              currentVideoAnimation = idleSleepingAnimation;
+            }
+          }
+        }
+      }
+
+      // Sorteio aleatório para as animações idle normais (somente se não estiver dormindo)
+      if (currentState === "IDLE" && !isSleeping && (!introAnimation || introAnimation.isFinished())) {
         idleTime += deltaTime;
         if (idleTime >= 4.0) {
           idleTime = 0;
           if (Math.random() < 0.25) {
-            const showGlasses = Math.random() < 0.5;
-            if (showGlasses && idleGlassesAnimation) {
+            const r = Math.random();
+            if (r < 0.30 && idleGlassesAnimation) {
               console.log("[NexaRenderer] Sorteando animação de ajustar óculos...");
               idleGlassesAnimation.play();
               currentVideoAnimation = idleGlassesAnimation;
-            } else if (idleBoringAnimation) {
+            } else if (r < 0.60 && idleBoringAnimation) {
               console.log("[NexaRenderer] Sorteando animação idle/boring...");
               idleBoringAnimation.play();
               currentVideoAnimation = idleBoringAnimation;
+            } else if (r < 0.90 && idleStretchingAnimation) {
+              console.log("[NexaRenderer] Sorteando animação de se espreguiçar...");
+              idleStretchingAnimation.play();
+              currentVideoAnimation = idleStretchingAnimation;
+            } else if (idleSquattingAnimation) {
+              console.log("[NexaRenderer] Sorteando animação de agachar...");
+              idleSquattingAnimation.play();
+              currentVideoAnimation = idleSquattingAnimation;
             }
           }
         }
@@ -312,17 +382,22 @@ document.addEventListener("DOMContentLoaded", async () => {
         window.electronAPI.startWindowDrag();
       }
 
+      // Se ela estiver dormindo, NÃO interrompe o sono nem inicia a animação de flutuação!
+      if (isSleeping) {
+        console.log("[NexaRenderer] Janela arrastada enquanto dorme. Mantendo o sono.");
+        return;
+      }
+
       // Interrompe a animação de vídeo atual
       if (currentVideoAnimation && currentVideoAnimation.isPlaying) {
         currentVideoAnimation.stop();
       }
 
-      // Inicia a animação de flutuar (floating) em loop
-      const floatingPath = "/home/soder/Documents/nexa-workspace/animacoes_google_flow/Anime_girl_floating_in_air_202608051113.mp4";
+      // Inicia a animação de flutuar (floating) em loop via Lottie
+      const floatingLottiePath = "/home/soder/Documents/nexa-workspace/lottie/floating_lottie/animations/main.json";
       console.log("[NexaRenderer] Arrastando janela. Iniciando animação de flutuação.");
-      currentVideoAnimation = new NexaIntroAnimation({
-        videoPath: floatingPath,
-        introTrimEndMs,
+      currentVideoAnimation = new NexaLottieAnimation({
+        animationPath: floatingLottiePath,
         loop: true
       });
       currentVideoAnimation.play();
@@ -339,13 +414,19 @@ document.addEventListener("DOMContentLoaded", async () => {
         window.electronAPI.endWindowDrag();
       }
 
-      // Prepara a animação de queda/aterrissagem (landing) sem loop, a 1.5x de velocidade,
+      // Se ela estiver dormindo, NÃO inicia animação de pouso!
+      if (isSleeping) {
+        console.log("[NexaRenderer] Janela solta enquanto dorme. Mantendo o sono.");
+        return;
+      }
+
+      // Prepara a animação de queda/aterrissagem (landing) sem loop, a 1.5x de velocidade via Lottie,
       // cortando os primeiros 150ms (piscada estática) e os últimos 350ms (quadrado branco do final)
-      const landingPath = "/home/soder/Documents/nexa-workspace/animacoes_google_flow/Anime_girl_lands_on_feet_202608051122.mp4";
+      const landingLottiePath = "/home/soder/Documents/nexa-workspace/lottie/landing_lottie/animations/main.json";
       console.log("[NexaRenderer] Soltou janela. Iniciando carregamento do pouso...");
       
-      const landingAnim = new NexaIntroAnimation({
-        videoPath: landingPath,
+      const landingAnim = new NexaLottieAnimation({
+        animationPath: landingLottiePath,
         introTrimEndMs: 350,
         loop: false,
         playbackRate: 1.5,
@@ -357,7 +438,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       // Espera até que o primeiro frame da animação de pouso esteja carregado e pronto para renderizar
       const checkReadyInterval = setInterval(() => {
-        if (landingAnim.video && landingAnim.video.readyState >= 3) {
+        if (landingAnim.canvas) {
           clearInterval(checkReadyInterval);
           
           if (oldAnim && oldAnim.isPlaying && oldAnim !== landingAnim) {
