@@ -68,38 +68,38 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   // Inicializa o reprodutor de animação de entrada 2D via Lottie (wave_lottie)
-  const introLottiePath = "/home/soder/Documents/nexa-workspace/lottie/wave_lottie/animations/main.json";
+  const introLottiePath = "renderer/nexa/assets/lottie/wave_lottie/animations/main.json";
   const introAnimation = typeof NexaLottieAnimation !== "undefined" ? new NexaLottieAnimation({ animationPath: introLottiePath, loop: false }) : null;
   if (introAnimation) {
     introAnimation.play();
   }
 
   // Inicializa a animação de tédio/idle via Lottie (idle_lottie)
-  const idleBoringLottiePath = "/home/soder/Documents/nexa-workspace/lottie/idle_lottie/animations/main.json";
+  const idleBoringLottiePath = "renderer/nexa/assets/lottie/idle_lottie/animations/main.json";
   const idleBoringAnimation = typeof NexaLottieAnimation !== "undefined"
     ? new NexaLottieAnimation({ animationPath: idleBoringLottiePath, loop: false })
     : null;
 
   // Inicializa a animação de ajustar óculos/idle via Lottie (adjust_glasses_lottie)
-  const idleGlassesLottiePath = "/home/soder/Documents/nexa-workspace/lottie/adjust_glasses_lottie/animations/main.json";
+  const idleGlassesLottiePath = "renderer/nexa/assets/lottie/adjust_glasses_lottie/animations/main.json";
   const idleGlassesAnimation = typeof NexaLottieAnimation !== "undefined"
     ? new NexaLottieAnimation({ animationPath: idleGlassesLottiePath, loop: false })
     : null;
 
   // Inicializa a animação de se espreguiçar/idle via Lottie (stretching_lottie)
-  const idleStretchingLottiePath = "/home/soder/Documents/nexa-workspace/lottie/stretching_lottie/animations/main.json";
+  const idleStretchingLottiePath = "renderer/nexa/assets/lottie/stretching_lottie/animations/main.json";
   const idleStretchingAnimation = typeof NexaLottieAnimation !== "undefined"
     ? new NexaLottieAnimation({ animationPath: idleStretchingLottiePath, loop: false })
     : null;
 
   // Inicializa a animação de agachar/idle via Lottie (squatting_lottie)
-  const idleSquattingLottiePath = "/home/soder/Documents/nexa-workspace/lottie/squatting_lottie/animations/main.json";
+  const idleSquattingLottiePath = "renderer/nexa/assets/lottie/squatting_lottie/animations/main.json";
   const idleSquattingAnimation = typeof NexaLottieAnimation !== "undefined"
     ? new NexaLottieAnimation({ animationPath: idleSquattingLottiePath, loop: false })
     : null;
 
   // Inicializa a animação de dormir via Lottie (sleeping_lottie)
-  const idleSleepingLottiePath = "/home/soder/Documents/nexa-workspace/lottie/sleeping_lottie/animations/main.json";
+  const idleSleepingLottiePath = "renderer/nexa/assets/lottie/sleeping_lottie/animations/main.json";
   const idleSleepingAnimation = typeof NexaLottieAnimation !== "undefined"
     ? new NexaLottieAnimation({ animationPath: idleSleepingLottiePath, loop: true })
     : null;
@@ -162,7 +162,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (currentVideoAnimation && currentVideoAnimation.isPlaying) {
           currentVideoAnimation.stop();
         }
-        const listeningLottiePath = "/home/soder/Documents/nexa-workspace/lottie/listening_lottie/animations/main.json";
+        const listeningLottiePath = "renderer/nexa/assets/lottie/listening_lottie/animations/main.json";
         console.log("[NexaRenderer] Transicionando para LISTENING. Iniciando animação de escuta.");
         currentVideoAnimation = new NexaLottieAnimation({
           animationPath: listeningLottiePath,
@@ -173,7 +173,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (currentVideoAnimation && currentVideoAnimation.isPlaying) {
           currentVideoAnimation.stop();
         }
-        const thinkingLottiePath = "/home/soder/Documents/nexa-workspace/lottie/thinking_lottie/animations/main.json";
+        const thinkingLottiePath = "renderer/nexa/assets/lottie/thinking_lottie/animations/main.json";
         console.log("[NexaRenderer] Transicionando para THINKING. Iniciando animação de pensamento.");
         currentVideoAnimation = new NexaLottieAnimation({
           animationPath: thinkingLottiePath,
@@ -394,7 +394,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
 
       // Inicia a animação de flutuar (floating) em loop via Lottie
-      const floatingLottiePath = "/home/soder/Documents/nexa-workspace/lottie/floating_lottie/animations/main.json";
+      const floatingLottiePath = "renderer/nexa/assets/lottie/floating_lottie/animations/main.json";
       console.log("[NexaRenderer] Arrastando janela. Iniciando animação de flutuação.");
       currentVideoAnimation = new NexaLottieAnimation({
         animationPath: floatingLottiePath,
@@ -422,7 +422,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       // Prepara a animação de queda/aterrissagem (landing) sem loop, a 1.5x de velocidade via Lottie,
       // cortando os primeiros 150ms (piscada estática) e os últimos 350ms (quadrado branco do final)
-      const landingLottiePath = "/home/soder/Documents/nexa-workspace/lottie/landing_lottie/animations/main.json";
+      const landingLottiePath = "renderer/nexa/assets/lottie/landing_lottie/animations/main.json";
       console.log("[NexaRenderer] Soltou janela. Iniciando carregamento do pouso...");
       
       const landingAnim = new NexaLottieAnimation({

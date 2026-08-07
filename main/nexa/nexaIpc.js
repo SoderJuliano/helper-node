@@ -42,10 +42,18 @@ function registerNexaIpc() {
 
   ipcMain.handle("nexa:read-file", async (event, filePath) => {
     const fs = require("fs");
+    const path = require("path");
     try {
       if (!filePath) return { ok: false, error: "Caminho vazio" };
-      if (!fs.existsSync(filePath)) return { ok: false, error: "Arquivo não existe" };
-      const content = fs.readFileSync(filePath, "utf8");
+      let resolvedPath = filePath;
+      if (!path.isAbsolute(filePath)) {
+        // Resolve caminhos relativos em relação à raiz do projeto (helper-node/)
+        resolvedPath = path.join(__dirname, "../../", filePath);
+      }
+      if (!fs.existsSync(resolvedPath)) {
+        return { ok: false, error: `Arquivo não encontrado: ${resolvedPath}` };
+      }
+      const content = fs.readFileSync(resolvedPath, "utf8");
       return { ok: true, content };
     } catch (e) {
       return { ok: false, error: e.message };
