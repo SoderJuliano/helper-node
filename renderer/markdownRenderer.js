@@ -247,9 +247,15 @@
                      .replace(/<p>\s*<\/p>/g, '');
 
             // 7. Restaura blocos protegidos
-            blocks.forEach((b, i) => { out = out.replace(`\x00B${i}\x00`, b); });
-
-            return out;
+            //
+            // ⚠️ O replacement PRECISA ser função. Com string, o replace
+            // interpreta `$&`, `$'`, "$`" e `$n` como padrões de substituição:
+            // um bloco de código contendo `$'` fazia o replace inserir todo o
+            // texto DEPOIS do bloco, e "$`" todo o texto ANTES — o conteúdo
+            // saía corrompido/duplicado (medido: 300 linhas com `$'` viravam
+            // 13.689 chars de 10.691). Código com regex e shell script cai
+            // nisso o tempo todo.
+            blocks.forEach((b, i) => { out = out.replace(`\x00B${i}\x00`, () => b); });
 
             return out;
         }

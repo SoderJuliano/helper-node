@@ -1,15 +1,24 @@
 // Spawns a single `copilot -p <prompt> --allow-all-tools` invocation and
 // captures its stdout. One instance per send() call — not a persistent REPL.
 //
-// Flags conferidas contra `copilot --help` real (2026-08-06): `--allow-all-tools`,
-// `--add-dir`, `--model` e `--attachment` existem. `--allow-all`/`--yolo` também,
-// como equivalente de allow-all-tools + paths + urls; ficamos no mais restrito.
+// Flags conferidas contra `copilot --help` real.
 const { spawn, execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
 const CANDIDATE_BINARIES = ['copilot'];
-const ALLOW_ALL_FLAG = '--allow-all-tools';
+
+// `--allow-all-tools` sozinho NÃO basta: ele libera as ferramentas, mas a
+// verificação de CAMINHO continua ligada, então o CLI ficava pedindo permissão
+// pra ler/escrever fora do diretório e despejando erro na tela — em modo
+// não-interativo não existe ninguém pra responder esse prompt.
+// `--allow-all` é o equivalente a allow-all-tools + allow-all-paths +
+// allow-all-urls (mesmo efeito de `--yolo`).
+const ALLOW_ALL_FLAG = '--allow-all';
+
+// Sem isto o agente pode parar e usar a ferramenta `ask_user` esperando resposta
+// que nunca vem — o processo fica pendurado até o watchdog matar.
+const NO_ASK_FLAG = '--no-ask-user';
 
 // O Copilot CLI é o único provider que recebe o prompt por ARGV (`-p <texto>`):
 // Claude e agy leem do stdin justamente pra escapar desse teto. O `copilot --help`
@@ -256,7 +265,7 @@ class CopilotCliProcess {
       );
     }
 
-    const tailArgs = [ALLOW_ALL_FLAG, '--add-dir', cwd];
+    const tailArgs = [ALLOW_ALL_FLAG, NO_ASK_FLAG, '--add-dir', cwd];
     if (model) tailArgs.push('--model', model);
     for (const att of dedupeExisting(attachments)) tailArgs.push('--attachment', att);
 
@@ -331,6 +340,7 @@ class CopilotCliProcess {
 }
 
 module.exports = {
-  CopilotCliProcess, resolveBinary, getEnrichedEnv, buildSpawnCommand, ALLOW_ALL_FLAG,
+  CopilotCliProcess, resolveBinary, getEnrichedEnv, buildSpawnCommand,
+  ALLOW_ALL_FLAG, NO_ASK_FLAG,
   fitPromptToCommandLine, stripNulls, dedupeExisting, MAX_CMDLINE_CHARS,
 };
