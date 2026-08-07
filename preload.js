@@ -109,6 +109,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   codeNavFindUsages: (payload) => ipcRenderer.invoke("code-nav-find-usages", payload),
   codeNavGetImplementations: (payload) => ipcRenderer.invoke("code-nav-get-implementations", payload),
   codeNavGetGutterInfo: (payload) => ipcRenderer.invoke("code-nav-get-gutter-info", payload),
+  // Bibliotecas Java do projeto (pom.xml / build.gradle no repositório local)
+  libsList: () => ipcRenderer.invoke("libs:list"),
+  libsOpenClass: (payload) => ipcRenderer.invoke("libs:open-class", payload),
   codeNavReindex: (payload) => ipcRenderer.invoke("code-nav-reindex", payload),
   // Checador de Imports (sublinhado vermelho + auto-import, JS/TS e Java)
   importCheckGetDiagnostics: (payload) => ipcRenderer.invoke("import-check-get-diagnostics", payload),
