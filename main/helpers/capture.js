@@ -317,6 +317,7 @@ helpers.captureRegionNative = async function() {
     backgroundColor: '#00000000',
     frame: false,
     transparent: true,
+    thickFrame: false,
     alwaysOnTop: true,
     skipTaskbar: true,
     hasShadow: false,

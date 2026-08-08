@@ -32,6 +32,7 @@ helpers.createConfigWindow = function() {
     backgroundColor: "#00000000",
     transparent: true,
     frame: false,
+    thickFrame: false,
     hasShadow: process.platform !== 'win32',
     webPreferences: {
       nodeIntegration: true,
@@ -67,6 +68,7 @@ helpers.createPreferencesWindow = function() {
     backgroundColor: "#00000000",
     transparent: true,
     frame: false,
+    thickFrame: false,
     hasShadow: process.platform !== 'win32',
     webPreferences: {
       nodeIntegration: true,
@@ -97,6 +99,7 @@ helpers.createOsInputWindow = function() {
     backgroundColor: '#00000000',
     frame: false,
     transparent: true,
+    thickFrame: false,
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: false,
@@ -183,6 +186,7 @@ helpers.createOsNotificationWindow = function(type, content) {
     backgroundColor: '#00000000',
     frame: false,
     transparent: true,
+    thickFrame: false,
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: false,
@@ -347,7 +351,7 @@ helpers.createWindow = async function() {
       backgroundColor: "#00000000",
       transparent: true,
       frame: false,
-      titleBarStyle: "hidden",
+      thickFrame: false,
       hasShadow: false,
       webPreferences: {
         nodeIntegration: false,

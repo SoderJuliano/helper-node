@@ -116,6 +116,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     ? new NexaLottieAnimation({ animationPath: idleSleepingLottiePath, loop: true })
     : null;
 
+  // TEMPORÁRIO: idle base em Lottie (8s, loop) no lugar do personagem PSD.
+  // As 23 camadas PNG do PSD nunca entraram no repositório — o assetsPath acima
+  // aponta para uma pasta da máquina Linux onde o layerdiff rodou. Enquanto elas
+  // não chegam, este Lottie ocupa o estado de repouso, que era o único momento em
+  // que o personagem procedural aparecia. A animação de fala segue intocada.
+  const baseIdleLottiePath = "renderer/nexa/assets/lottie/base_idle_lottie/animations/main.json";
+  const baseIdleAnimation = typeof NexaLottieAnimation !== "undefined"
+    ? new NexaLottieAnimation({ animationPath: baseIdleLottiePath, loop: true })
+    : null;
+
   let currentVideoAnimation = introAnimation;
   let idleTime = 0;
   let sleepingTime = 0;
@@ -312,7 +322,18 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (!rendered) {
       animController.update(deltaTime);
-      animController.render(ctx, canvas.width, canvas.height);
+
+      // O idle base entra aqui, no lugar do animController.render (personagem PSD).
+      // O play() é preguiçoso de propósito: init() faz innerHTML="" no
+      // #lottieContainer compartilhado, e chamá-lo cedo derrubaria o canvas da
+      // intro. Nunca vira currentVideoAnimation, senão `rendered` ficaria true e
+      // o sorteio das idles aleatórias abaixo nunca rodaria.
+      if (baseIdleAnimation) {
+        if (!baseIdleAnimation.isPlaying) baseIdleAnimation.play();
+        baseIdleAnimation.render(ctx, canvas.width, canvas.height);
+      } else {
+        animController.render(ctx, canvas.width, canvas.height);
+      }
 
       // Controle do tempo de inatividade para dormir (10 minutos)
       if (currentState === "IDLE") {

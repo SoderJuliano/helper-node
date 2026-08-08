@@ -163,7 +163,9 @@ const LER_BUFFER = `(() => {
     await sleep(3000);
     const st = await cdp.evaluate(LER_BUFFER);
     const texto = st.linhas.join('\n');
-    assert(/## master|## HEAD|branch/i.test(texto), `git status apareceu na tela`);
+    // Casa o cabeçalho de QUALQUER branch (`## avatar...`), não só master/HEAD —
+    // a versão antiga acusava falha sempre que o teste rodava fora da master.
+    assert(/##\s+\S+/.test(texto), `git status apareceu na tela`);
     assert(st.comCor > 0, `saída COLORIDA: ${st.comCor} de ${st.celulas} células com cor/negrito`);
     assert(!/\x1b|\[3[0-9]m|\[0m/.test(texto), 'nenhum lixo de escape ANSI vazou como texto');
 

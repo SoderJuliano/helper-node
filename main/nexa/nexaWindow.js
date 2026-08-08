@@ -43,6 +43,7 @@ function createNexaWindow() {
     backgroundColor: "#00000000",
     transparent: true,
     frame: false,
+    thickFrame: false,
     alwaysOnTop: true,
     skipTaskbar: isStealth,
     resizable: false,
