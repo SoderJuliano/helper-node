@@ -72,12 +72,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   const character = new NexaCharacter();
   const animController = new NexaAnimationController(character);
 
-  // Caminho absoluto das camadas PNG geradas
-  const assetsPath = "/home/soder/Documents/nexa-workspace/see-through/workspace/layerdiff_output/Nexa_front_cutout";
-  const loaded = await character.loadAssets(assetsPath);
-  if (!loaded) {
-    console.error("[NexaRenderer] Erro crítico ao carregar camadas PNG.");
-  }
+  // Caminho absoluto das camadas PNG geradas (PSD ainda não baixado nesta máquina).
+  // Comentado de propósito: o personagem procedural baseado em PSD fica em espera
+  // aqui pra ser reativado depois, quando as camadas chegarem. Enquanto isso, o
+  // baseIdleAnimation (Lottie) assume o repouso e o speakingAnimation assume a fala.
+  // const assetsPath = "/home/soder/Documents/nexa-workspace/see-through/workspace/layerdiff_output/Nexa_front_cutout";
+  // const loaded = await character.loadAssets(assetsPath);
+  // if (!loaded) {
+  //   console.error("[NexaRenderer] Erro crítico ao carregar camadas PNG.");
+  // }
 
   // Inicializa o reprodutor de animação de entrada 2D via Lottie (wave_lottie)
   const introLottiePath = "renderer/nexa/assets/lottie/wave_lottie/animations/main.json";
@@ -124,6 +127,21 @@ document.addEventListener("DOMContentLoaded", async () => {
   const baseIdleLottiePath = "renderer/nexa/assets/lottie/base_idle_lottie/animations/main.json";
   const baseIdleAnimation = typeof NexaLottieAnimation !== "undefined"
     ? new NexaLottieAnimation({ animationPath: baseIdleLottiePath, loop: true })
+    : null;
+
+  // Animação de fala via Lottie (loop). Não é sincronizada com o áudio (lip-sync),
+  // só dá a impressão de fala enquanto o TTS toca: inicia com o áudio e para no fim.
+  const speakingLottiePath = "renderer/nexa/assets/lottie/speaking_lottie/animations/main.json";
+  const speakingAnimation = typeof NexaLottieAnimation !== "undefined"
+    ? new NexaLottieAnimation({ animationPath: speakingLottiePath, loop: true })
+    : null;
+
+  // Animação de "escrevendo código no terminal" (loop). Entra SÓ quando o app está
+  // mexendo em arquivos — ler/escrever/editar —, nunca por estar raciocinando
+  // (THINKING) ou respondendo (SPEAKING). Quem decide é o main, em nexaIntegration.js.
+  const writingLottiePath = "renderer/nexa/assets/lottie/writing_code_lottie/animations/main.json";
+  const writingAnimation = typeof NexaLottieAnimation !== "undefined"
+    ? new NexaLottieAnimation({ animationPath: writingLottiePath, loop: true })
     : null;
 
   let currentVideoAnimation = introAnimation;
@@ -202,12 +220,30 @@ document.addEventListener("DOMContentLoaded", async () => {
           loop: true // loop while waiting for AI
         });
         currentVideoAnimation.play();
+      } else if (newState === "SPEAKING") {
+        if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== speakingAnimation) {
+          currentVideoAnimation.stop();
+        }
+        if (speakingAnimation) {
+          console.log("[NexaRenderer] Transicionando para SPEAKING. Iniciando animação de fala em loop.");
+          speakingAnimation.play();
+          currentVideoAnimation = speakingAnimation;
+        }
+      } else if (newState === "WORKING") {
+        if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== writingAnimation) {
+          currentVideoAnimation.stop();
+        }
+        if (writingAnimation) {
+          console.log("[NexaRenderer] Transicionando para WORKING. Iniciando animação de escrita de arquivos.");
+          writingAnimation.play();
+          currentVideoAnimation = writingAnimation;
+        }
       } else {
-        // Se mudou para qualquer outro estado (como SPEAKING ou IDLE), para animações de escuta ou pensamento
+        // Se mudou para qualquer outro estado (como IDLE), para animações de escuta, pensamento, fala ou escrita
         if (currentVideoAnimation && currentVideoAnimation.isPlaying) {
           const pathStr = currentVideoAnimation.videoPath || currentVideoAnimation.animationPath || "";
-          if (pathStr.includes("thinking") || pathStr.includes("listening")) {
-            console.log("[NexaRenderer] Parando animação de escuta/pensamento por transição de estado.");
+          if (pathStr.includes("thinking") || pathStr.includes("listening") || pathStr.includes("speaking") || pathStr.includes("writing")) {
+            console.log("[NexaRenderer] Parando animação de escuta/pensamento/fala por transição de estado.");
             currentVideoAnimation.stop();
           }
         }
@@ -248,6 +284,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       currentAudio.onended = () => {
         console.log("[NexaRenderer] Áudio TTS concluído.");
         currentAudio = null;
+        stopSpeakingAnimation();
         animController.setState("IDLE");
         if (window.electronAPI && window.electronAPI.sendNexaTtsEnded) {
           window.electronAPI.sendNexaTtsEnded();
@@ -257,6 +294,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       currentAudio.onerror = (err) => {
         console.error("[NexaRenderer] Erro no áudio TTS:", err);
         currentAudio = null;
+        stopSpeakingAnimation();
         animController.setState("IDLE");
         if (window.electronAPI && window.electronAPI.sendNexaTtsEnded) {
           window.electronAPI.sendNexaTtsEnded();
@@ -265,6 +303,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       currentAudio.play().catch((err) => {
         console.error("[NexaRenderer] Falha na reprodução:", err);
+        stopSpeakingAnimation();
         animController.setState("IDLE");
         if (window.electronAPI && window.electronAPI.sendNexaTtsEnded) {
           window.electronAPI.sendNexaTtsEnded();
@@ -272,9 +311,20 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
     } catch (e) {
       console.error("[NexaRenderer] Exceção ao tocar TTS:", e);
+      stopSpeakingAnimation();
       animController.setState("IDLE");
       if (window.electronAPI && window.electronAPI.sendNexaTtsEnded) {
         window.electronAPI.sendNexaTtsEnded();
+      }
+    }
+  }
+
+  // Para a animação de fala em loop de forma imediata (sem esperar o round-trip de IPC do estado)
+  function stopSpeakingAnimation() {
+    if (speakingAnimation && speakingAnimation.isPlaying) {
+      speakingAnimation.stop();
+      if (currentVideoAnimation === speakingAnimation) {
+        currentVideoAnimation = null;
       }
     }
   }

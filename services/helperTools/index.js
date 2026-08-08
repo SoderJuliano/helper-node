@@ -3,6 +3,7 @@
 
 const path = require("path");
 const fs = require("fs");
+const { EventEmitter } = require("events");
 const { DEFAULT_HELPER_TOOLS_CONFIG } = require("./config");
 const platform = require("./platforms/detect");
 const policy = require("./policy");
@@ -16,6 +17,15 @@ const executor = require("./executor");
 
 let _cfg = { ...DEFAULT_HELPER_TOOLS_CONFIG };
 let _initialized = false;
+
+/**
+ * Barramento de eventos do módulo: "tool-start" e "tool-end", ambos com { name }.
+ * É um EventEmitter e não IPC do Electron de propósito — este service também roda
+ * em Node puro (scripts de teste), onde `require("electron")` quebraria.
+ * Quem consome hoje: main/nexa/nexaIntegration.js, para acender o estado WORKING
+ * da Nexa enquanto tools de arquivo estão rodando.
+ */
+const events = new EventEmitter();
 
 /**
  * Inicializa o módulo. Deve ser chamado uma vez no boot do app (main.js)
@@ -137,7 +147,16 @@ module.exports = {
   shouldForceHeavyModel,
   getSystemPromptAddon,
   // Execução de tools
-  executeTool: (name, args, ctx) => executor.execute(name, args, { ...ctx, cfg: _cfg }),
+  executeTool: async (name, args, ctx) => {
+    // try/catch em volta do emit: um listener quebrado não pode derrubar a tool.
+    try { events.emit("tool-start", { name }); } catch (_) {}
+    try {
+      return await executor.execute(name, args, { ...ctx, cfg: _cfg });
+    } finally {
+      try { events.emit("tool-end", { name }); } catch (_) {}
+    }
+  },
+  events,
   // Schemas para passar pra IA
   getOpenAIToolsSchema: schema.toOpenAITools,
   getTextToolDescription: schema.toTextDescription,

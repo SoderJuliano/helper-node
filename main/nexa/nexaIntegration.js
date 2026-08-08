@@ -10,6 +10,60 @@ const { ipcMain, app, BrowserWindow } = require("electron");
 const { NexaJsonStreamParser, parseNexaResponse, handleNexaActions } = require("./nexaResponseHelper.js");
 const { configService, helpers } = require("../globals.js");
 
+// Tools que contam como "mexendo em arquivo". Só estas acendem o WORKING —
+// runCommand/runShellAdvanced (terminal), captura de tela e consultas de
+// pacotes/apps ficam de fora de propósito: o pedido era ler e escrever ARQUIVO,
+// não "app ocupado".
+const FILE_TOOLS = new Set([
+  "readFile", "readFileChunk", "writeFile", "appendToFile", "patchFile",
+  "deleteFile", "listDir", "fileInfo", "findFiles", "searchInFiles"
+]);
+
+// Segura o WORKING por um instante depois da última tool. Sem isso, uma sequência
+// típica (searchInFiles -> readFile -> writeFile) faria a animação piscar entre
+// cada chamada, porque há milissegundos de folga entre uma e outra.
+const WORKING_EXIT_DELAY_MS = 1200;
+
+let activeFileTools = 0;
+let stateBeforeWorking = null;
+let workingExitTimer = null;
+
+function onFileToolStart({ name } = {}) {
+  if (!FILE_TOOLS.has(name)) return;
+
+  activeFileTools++;
+  if (workingExitTimer) {
+    clearTimeout(workingExitTimer);
+    workingExitTimer = null;
+  }
+
+  const current = nexaState.getState();
+  // SPEAKING não é interrompido: a animação de fala acompanha um áudio que já
+  // está tocando, e cortá-la no meio deixa a Nexa muda com a boca parada.
+  if (current !== "WORKING" && current !== "SPEAKING") {
+    stateBeforeWorking = current;
+    nexaState.setState("WORKING");
+  }
+}
+
+function onFileToolEnd({ name } = {}) {
+  if (!FILE_TOOLS.has(name)) return;
+
+  activeFileTools = Math.max(0, activeFileTools - 1);
+  if (activeFileTools > 0) return;
+
+  if (workingExitTimer) clearTimeout(workingExitTimer);
+  workingExitTimer = setTimeout(() => {
+    workingExitTimer = null;
+    if (activeFileTools > 0) return;
+    if (nexaState.getState() !== "WORKING") return;
+
+    const back = stateBeforeWorking && stateBeforeWorking !== "WORKING" ? stateBeforeWorking : "IDLE";
+    stateBeforeWorking = null;
+    nexaState.setState(back);
+  }, WORKING_EXIT_DELAY_MS);
+}
+
 function hookWebContents(webContents) {
   if (webContents._nexaHooked) return;
   webContents._nexaHooked = true;
@@ -88,6 +142,18 @@ function setupNexaIntegration() {
   BrowserWindow.getAllWindows().forEach(win => {
     hookWebContents(win.webContents);
   });
+
+  // Estado WORKING: escuta a execução de tools de arquivo. O helperTools expõe um
+  // EventEmitter próprio (não IPC), então isto não acopla o service ao Electron.
+  try {
+    const helperTools = require("../../services/helperTools");
+    if (helperTools && helperTools.events) {
+      helperTools.events.on("tool-start", onFileToolStart);
+      helperTools.events.on("tool-end", onFileToolEnd);
+    }
+  } catch (e) {
+    console.warn("[NexaIntegration] Não foi possível escutar eventos do helperTools:", e.message);
+  }
 }
 
 function handleCoreEventForNexa(channel, args) {
@@ -125,6 +191,7 @@ function handleCoreEventForNexa(channel, args) {
   // 4. Recebimento de Áudio do Google TTS
   if (channel === "play-tts-audio") {
     nexaState.setState("SPEAKING");
+    console.log("[DEBUG-TMP] play-tts-audio recebido. isNexaWindowOpen():", isNexaWindowOpen(), "args.length:", args.length, "args[1] keys:", args[1] && Object.keys(args[1]));
     // Repassa também a payload do áudio TTS para a janela da Nexa se ela estiver aberta
     if (isNexaWindowOpen()) {
       const { state } = require("../globals.js");
@@ -132,7 +199,12 @@ function handleCoreEventForNexa(channel, args) {
         const audioData = args[1];
         try {
           state.nexaWindow.webContents.send("play-tts-audio", audioData);
-        } catch (_) {}
+          console.log("[DEBUG-TMP] forward para nexaWindow enviado com sucesso.");
+        } catch (e) {
+          console.log("[DEBUG-TMP] ERRO ao enviar para nexaWindow:", e.message);
+        }
+      } else {
+        console.log("[DEBUG-TMP] nexaWindow ausente ou destruída no momento do forward.");
       }
     }
   }
