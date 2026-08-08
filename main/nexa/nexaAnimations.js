@@ -79,6 +79,12 @@ const NEXA_ANIMATIONS = {
     description: "Nexa fica pensativa em pose de reflexão (estilo pensando/loading).",
     category: "action",
     lottiePath: path.join(__dirname, "../../renderer/nexa/assets/lottie/thinking_lottie/animations/main.json")
+  },
+  speaking: {
+    name: "speaking",
+    description: "Nexa fala em loop, sem sincronia labial real com o áudio (apenas para dar a impressão de fala).",
+    category: "action",
+    lottiePath: path.join(__dirname, "../../renderer/nexa/assets/lottie/speaking_lottie/animations/main.json")
   }
 };
 
