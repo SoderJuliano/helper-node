@@ -138,47 +138,25 @@
             overflow: hidden;
             box-sizing: border-box;
         }
+        /* Container do xterm.js. NÃO usar white-space/word-break aqui: quem
+           quebra linha agora é o emulador, na largura que ele informou ao PTY.
+           Forçar quebra no CSS era parte do motivo de o texto sumir na direita. */
         .terminal-screen {
             flex-grow: 1;
-            overflow-y: auto;
-            white-space: pre-wrap;
-            word-break: break-all;
-            color: #d8dee9;
-            margin-bottom: 8px;
-            padding-right: 4px;
+            min-height: 0;   /* deixa o flex encolher — sem isto o fit() mede errado */
+            overflow: hidden;
             text-align: left;
-            user-select: text;
-            -webkit-user-select: text;
         }
-        .terminal-screen::-webkit-scrollbar {
-            width: 4px;
-        }
-        .terminal-screen::-webkit-scrollbar-thumb {
-            background: var(--border-strong);
-            border-radius: 2px;
-        }
-        .terminal-input-row {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            border-top: 1px solid rgba(255, 255, 255, 0.05);
-            padding-top: 6px;
-        }
-        .terminal-prompt {
-            color: var(--accent-2);
-            font-weight: bold;
-            user-select: none;
-        }
-        #terminal-input-field {
-            flex-grow: 1;
-            background: transparent;
-            border: none;
-            outline: none;
-            color: #ffffff;
-            font-family: inherit;
-            font-size: inherit;
+        .terminal-screen .xterm {
+            height: 100%;
             padding: 0;
-            margin: 0;
+        }
+        .terminal-screen .xterm-viewport::-webkit-scrollbar {
+            width: 6px;
+        }
+        .terminal-screen .xterm-viewport::-webkit-scrollbar-thumb {
+            background: var(--border-strong);
+            border-radius: 3px;
         }
         body.terminal-active #composer > *:not(#composer-collapse-toggle),
         body.split-active #composer > *:not(#composer-collapse-toggle) {

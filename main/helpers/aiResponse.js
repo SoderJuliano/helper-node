@@ -5,7 +5,12 @@ const {
   OpenAIService, RealtimeAssistantService, RealtimeOpenAiService, ipcService,
   configService, edition, knowledgeBase, fileEditService, historyService,
   helperTools, workspace, agenticWorkflow, ollamaAgenticWorkflow,
-  translationAssistant, visionGuide, platformScreenCapture, googleTtsService, runTestMode,
+  translationAssistant, visionGuide, platformScreenCapture, runTestMode,
+  // googleTtsService estava sendo USADO aqui (triggerTtsPlaybackIfEnabled) sem
+  // constar nesta lista: era um ReferenceError puro, engolido pelo try/catch da
+  // própria função. O modo de voz nunca chegou a sintetizar nada — só o card
+  // visual, que é renderizado no renderer, dava sinal de vida.
+  googleTtsService,
   analyzeInterviewImage, cloudTranscribeAudio,
   APP_ICON, HIDE_FROM_TASKBAR, IMAGE_COOLDOWN_MS, AUDIO_TMP_DIR,
   audioFilePath, SCREENSHOT_DIRS, PROJECT_SEARCH_SKIP_DIRS, TREE_HEAVY_DIRS,
@@ -400,8 +405,16 @@ helpers.formatToHTML = function(text) {
 helpers.appendVoiceSummaryInstructionIfNeeded = function(instructionOrPrompt) {
   try {
     const cfg = configService.getGoogleTtsConfig();
-    if (!cfg || !cfg.enabled) return instructionOrPrompt;
-    const directive = "\n\n[INSTRUÇÃO DE MODO DE VOZ ATIVO]\nSua resposta DEVE incluir ao final a tag <voice_summary>resumo sucinto em 1 a 2 frases para ser lido em voz alta. NUNCA inclua códigos, tabelas ou exemplos longos dentro da tag voice_summary. Se houver códigos ou exemplos na resposta, peça para o usuário olhá-los na tela.</voice_summary>";
+    const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : null;
+    const isNexaOn = !!(nexaCfg && nexaCfg.enabled);
+    const isTtsOn = !!(cfg && cfg.enabled);
+
+    if (!isTtsOn && !isNexaOn) return instructionOrPrompt;
+
+    const voiceSpeakerNote = isNexaOn
+      ? " O resumo DEVE ser escrito em PRIMEIRA PESSOA PELA NEXA (ex: 'Pronto! Analisei e fiz os ajustes...'). NUNCA narre em terceira pessoa nem mencione assistentes genéricos ou nomes de terceiros."
+      : "";
+    const directive = `\n\n[INSTRUÇÃO DE MODO DE VOZ ATIVO]\nSua resposta DEVE incluir ao final a tag <voice_summary>resumo sucinto em 1 a 2 frases para ser lido em voz alta (no mesmo idioma da sua resposta).${voiceSpeakerNote} NUNCA inclua códigos, tabelas ou exemplos longos dentro da tag voice_summary. Se houver códigos ou exemplos na resposta, peça para o usuário olhá-los na tela.</voice_summary>`;
     return (instructionOrPrompt || "") + directive;
   } catch (e) {
     return instructionOrPrompt;
@@ -411,22 +424,48 @@ helpers.appendVoiceSummaryInstructionIfNeeded = function(instructionOrPrompt) {
 helpers.triggerTtsPlaybackIfEnabled = function(fullResponse) {
   try {
     const cfg = configService.getGoogleTtsConfig();
-    if (!cfg || !cfg.enabled) return;
-    if (!state.mainWindow || state.mainWindow.isDestroyed()) return;
+    const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : null;
+    const isNexaOn = !!(nexaCfg && nexaCfg.enabled);
+    const isTtsOn = !!(cfg && cfg.enabled);
 
-    const summary = googleTtsService.extractVoiceSummary(fullResponse);
+    if (!isTtsOn && !isNexaOn) return;
+    if (!cfg || !cfg.keyPathOrKey || !cfg.keyPathOrKey.trim()) return;
+
+    let cleanResponse = fullResponse;
+    if (isNexaOn && fullResponse) {
+      try {
+        const { parseNexaResponse } = require("../nexa/nexaResponseHelper.js");
+        const parsed = parseNexaResponse(fullResponse);
+        cleanResponse = parsed.response;
+      } catch (err) {
+        console.warn("[aiResponse] Falha ao extrair resposta para TTS:", err.message);
+      }
+    }
+
+    const summary = googleTtsService.extractVoiceSummary(cleanResponse);
     if (!summary || !summary.trim()) return;
 
-    console.log("🔊 Sintetizando resumo por voz Google TTS:", summary);
+    const voiceToUse = cfg.voiceName || 'pt-BR-Neural2-C';
+    const speakingRate = cfg.speakingRate !== undefined ? cfg.speakingRate : 1.0;
+    const pitch = cfg.pitch !== undefined ? cfg.pitch : 0.0;
+
+    console.log(`🔊 Sintetizando resumo por voz Google TTS (Nexa=${isNexaOn}, pitch=${pitch}, rate=${speakingRate}):`, summary);
     googleTtsService.synthesizeText(summary, {
       keyOrPath: cfg.keyPathOrKey,
-      voiceName: cfg.voiceName || 'pt-BR-Neural2-C'
+      voiceName: voiceToUse,
+      speakingRate,
+      pitch
     }).then(buf => {
+      const audioPayload = {
+        audioBase64: buf.toString("base64"),
+        text: summary
+      };
+      // Emite o evento global do IPCMain para acionar nexaIntegration e a janela do renderer
+      const { ipcMain } = require("electron");
+      ipcMain.emit("play-tts-audio", null, audioPayload);
+
       if (state.mainWindow && !state.mainWindow.isDestroyed()) {
-        state.mainWindow.webContents.send("play-tts-audio", {
-          audioBase64: buf.toString("base64"),
-          text: summary
-        });
+        state.mainWindow.webContents.send("play-tts-audio", audioPayload);
       }
     }).catch(err => {
       console.error("🔊 Erro no Google TTS playback:", err && err.message);

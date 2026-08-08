@@ -101,6 +101,9 @@ const TREE_HEAVY_DIRS = new Set([
 const state = {
   terminalProcess: null,
   terminalPty: null,
+  // Último cols/rows informado pelo xterm. Guardado pra descartar os resizes
+  // repetidos que o ResizeObserver dispara sem o tamanho ter mudado.
+  terminalSize: null,
   currentTerminalProjectPath: null,
   backendIsOnline: false,
   configWindow: null,

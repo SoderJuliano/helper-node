@@ -123,6 +123,15 @@ class GeminiCliSession extends EventEmitter {
       finalPrompt = historyContext + prompt;
     }
 
+    try {
+      const configService = require('../../configService');
+      const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : null;
+      if (nexaCfg && nexaCfg.enabled) {
+        const { applyNexaPersonaIfNeeded } = require('../../../main/nexa/nexaPersona.js');
+        finalPrompt = applyNexaPersonaIfNeeded(finalPrompt, true);
+      }
+    } catch (_) {}
+
     const runAttempt = (currentPrompt, currentIsContinue, retriesLeft) => {
       return new Promise((resolve, reject) => {
         let completed = false;

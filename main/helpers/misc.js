@@ -24,19 +24,98 @@ helpers.checkBackendStatus = async function() {
   }
 }
 
-helpers.realtimeProviderResponder = async function(transcript) {
-  const aiModel = configService.getAiModel();
+const NEXA_VOICE_INSTRUCTION = `[INSTRUÇÃO DE FALA EM TEMPO REAL — NEXA]
+Você é a Nexa (assistente digital feminina, inteligente, descontraída, informal e natural).
+Responda de forma extremamente curta (1 a 2 frases diretas no máximo) em português (pt-BR).
+NUNCA use clichês de robô como 'Estou pronta para ajudar', 'Como posso ajudar?' ou 'No que posso te ajudar?'.
+Sua resposta DEVE ser envolta na tag <voice_summary>sua resposta aqui</voice_summary>.`;
+
+helpers.realtimeProviderResponder = async function(transcript, image) {
+  const aiModel = helpers.getEffectiveAiModel ? helpers.getEffectiveAiModel() : configService.getAiModel();
+  console.log(`[realtimeProviderResponder] Processando fala via modelo selecionado: "${aiModel}" (fala: "${transcript}")`);
   const kb = await helpers.knowledgeBlockForOllama(transcript);
   const text = kb ? `${kb}\n\n---\n\nFALA: ${transcript}` : transcript;
+  
+  const opts = {
+    sessionId: "realtime-assistant",
+  };
+  if (image) {
+    opts.imageBase64 = image;
+  }
+  
+  if (aiModel === "geminiCli") {
+    try {
+      const GeminiCliProvider = require('../../services/providers/gemini-cli/GeminiCliProvider');
+      const workspace = require('./workspace');
+      const projectPath = workspace.getProjectPath();
+      const mockSender = { send: () => {} };
+      const prompt = `${NEXA_VOICE_INSTRUCTION}\n\n${text}`;
+      const res = await GeminiCliProvider.send(prompt, projectPath, mockSender);
+      const outputText = typeof res === 'object' ? (res.text || res.response || '') : String(res);
+      console.log(`[realtimeProviderResponder] Resposta obtida do GeminiCliProvider (${configService.getGeminiCliModel()}): "${outputText}"`);
+      return outputText;
+    } catch (gErr) {
+      console.error(`[realtimeProviderResponder] Erro no GeminiCliProvider:`, gErr.message);
+      throw gErr;
+    }
+  }
+
+  if (aiModel === "claudeCli") {
+    try {
+      const ClaudeCliProvider = require('../../services/providers/claude-cli/ClaudeCliProvider');
+      const workspace = require('./workspace');
+      const projectPath = workspace.getProjectPath();
+      const mockSender = { send: () => {} };
+      const prompt = `${NEXA_VOICE_INSTRUCTION}\n\n${text}`;
+      const res = await ClaudeCliProvider.send(prompt, projectPath, mockSender);
+      const outputText = typeof res === 'object' ? (res.text || res.response || '') : String(res);
+      console.log(`[realtimeProviderResponder] Resposta obtida do ClaudeCliProvider: "${outputText}"`);
+      return outputText;
+    } catch (cErr) {
+      console.error(`[realtimeProviderResponder] Erro no ClaudeCliProvider:`, cErr.message);
+      throw cErr;
+    }
+  }
+
+  if (aiModel === "copilotCli") {
+    try {
+      const CopilotCliProvider = require('../../services/providers/copilot-cli/CopilotCliProvider');
+      const workspace = require('./workspace');
+      const projectPath = workspace.getProjectPath();
+      const mockSender = { send: () => {} };
+      const prompt = `${NEXA_VOICE_INSTRUCTION}\n\n${text}`;
+      const res = await CopilotCliProvider.send(prompt, projectPath, mockSender);
+      const outputText = typeof res === 'object' ? (res.text || res.response || '') : String(res);
+      console.log(`[realtimeProviderResponder] Resposta obtida do CopilotCliProvider: "${outputText}"`);
+      return outputText;
+    } catch (cpErr) {
+      console.error(`[realtimeProviderResponder] Erro no CopilotCliProvider:`, cpErr.message);
+      throw cpErr;
+    }
+  }
+
   if (aiModel === "ollamaLocal") {
     const OllamaLocalService = require('../../services/ollamaLocalService');
-    return await OllamaLocalService.responder(text);
+    return await OllamaLocalService.responder(text, opts);
   }
-  // backend remoto (llama / llama-stream)
-  return await BackendService.responder(text, {
-    sessionId: "realtime-assistant",
-    instruction: REALTIME_COPILOT_INSTRUCTION,
-  });
+
+  if (aiModel === "openIa") {
+    const OpenAIService = require('../../services/openAiService');
+    return await OpenAIService.responder(text, opts);
+  }
+  
+  // Modelo remoto backend (llama / qwen)
+  try {
+    const result = await BackendService.responder(text, {
+      ...opts,
+      instruction: NEXA_VOICE_INSTRUCTION,
+    });
+    console.log(`[realtimeProviderResponder] Resposta obtida do BackendService: "${result}"`);
+    return result;
+  } catch (err) {
+    console.error(`[realtimeProviderResponder] Erro ao obter resposta do BackendService:`, err);
+    throw err;
+  }
 }
 
 helpers.clearOsNotifAutoClose = function() {

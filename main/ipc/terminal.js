@@ -16,11 +16,44 @@ const {
 } = require('../globals.js');
 
 module.exports = function registerIpc() {
-ipcMain.handle("terminal:init", async (event) => {
+// Tamanho da janela do PTY. O front-end mede o xterm e manda o valor real; isto
+// é só o ponto de partida até a primeira medida chegar.
+//
+// Isto ficou HARDCODED em 120x30 sem nenhum resize por muito tempo, e era a
+// causa do "o terminal corta as letras na direita mesmo grande": o shell
+// formatava a saída pra 120 colunas independentemente do tamanho real do
+// painel, então tudo que passava disso era quebrado/escondido.
+const COLS_PADRAO = 120;
+const ROWS_PADRAO = 30;
+
+// Função `cd` que mostra a pasta e `git add` que já imprime o status curto.
+// Sintaxe bash — só faz sentido em shell POSIX, nunca no cmd.exe.
+function injetarHelpersPosix(escrever) {
+  try {
+    escrever('cd() { builtin cd "$@" && printf "\\033[32m📁 Pasta atual: %s\\033[0m\\n" "$(pwd)"; }\n');
+    escrever('git() { if [ "$1" = "add" ]; then command git "$@" && command git status -s; else command git "$@"; fi; }\n');
+  } catch (e) {
+    console.warn("[terminal] falha ao injetar helpers POSIX:", e.message);
+  }
+}
+
+function dimensoesValidas(dim) {
+  const cols = Math.floor(Number(dim && dim.cols));
+  const rows = Math.floor(Number(dim && dim.rows));
+  if (!Number.isFinite(cols) || !Number.isFinite(rows)) return null;
+  // Teto generoso; piso pra nunca mandar 0 (ConPTY aborta com tamanho zero).
+  if (cols < 20 || rows < 4 || cols > 1000 || rows > 400) return null;
+  return { cols, rows };
+}
+
+ipcMain.handle("terminal:init", async (event, dim) => {
   helpers.killTerminal();
 
   const projectPath = helpers.getActiveProjectPath();
   state.currentTerminalProjectPath = projectPath;
+
+  const inicial = dimensoesValidas(dim) || { cols: COLS_PADRAO, rows: ROWS_PADRAO };
+  state.terminalSize = inicial;
 
   const isWin = process.platform === "win32";
   const env = {
@@ -41,49 +74,62 @@ ipcMain.handle("terminal:init", async (event) => {
     MANPAGER: "cat",
   };
 
-  // === Windows: ConPTY de verdade via node-pty ===
-  // O `import pty` do Python é Unix-only; no Windows usamos node-pty, que expõe
-  // o ConPTY (mesmo motor do terminal do VS Code). Assim Ctrl+C, prompt vivo,
-  // cores e programas interativos funcionam. O binário é N-API (prebuild
-  // win32-x64/arm64), então carrega no Electron sem recompilar.
-  if (isWin) {
-    try {
-      const pty = require("node-pty");
-      const shell = process.env.COMSPEC || "cmd.exe";
-      state.terminalPty = pty.spawn(shell, [], {
-        name: "xterm-256color",
-        cols: 120,
-        rows: 30,
-        cwd: projectPath,
-        env: { ...env, TERM: "xterm-256color" },
-      });
+  // === PTY de verdade via node-pty (todas as plataformas) ===
+  // No Windows expõe o ConPTY; no Linux/macOS, o forkpty. É o mesmo motor do
+  // terminal do VS Code, e é o único caminho que suporta resize — que o
+  // fallback de Python abaixo não tem. O binário é N-API (prebuild), então
+  // carrega no Electron sem recompilar; se não carregar, o Linux ainda cai no
+  // Python e o Windows reporta o erro.
+  try {
+    const pty = require("node-pty");
+    const shell = isWin
+      ? (process.env.COMSPEC || "cmd.exe")
+      : (process.env.SHELL || "/bin/bash");
+    state.terminalPty = pty.spawn(shell, isWin ? [] : ["-i"], {
+      name: "xterm-256color",
+      cols: inicial.cols,
+      rows: inicial.rows,
+      cwd: projectPath,
+      env: { ...env, TERM: "xterm-256color" },
+    });
 
-      state.terminalPty.onData((chunk) => {
-        if (state.mainWindow && !state.mainWindow.isDestroyed()) {
-          state.mainWindow.webContents.send("terminal:output", { type: "stdout", data: chunk });
-        }
-      });
+    state.terminalPty.onData((chunk) => {
+      if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+        state.mainWindow.webContents.send("terminal:output", { type: "stdout", data: chunk });
+      }
+    });
 
-      state.terminalPty.onExit(({ exitCode }) => {
-        if (state.mainWindow && !state.mainWindow.isDestroyed()) {
-          state.mainWindow.webContents.send("terminal:closed", { code: exitCode });
-        }
-        state.terminalPty = null;
-      });
+    state.terminalPty.onExit(({ exitCode }) => {
+      if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+        state.mainWindow.webContents.send("terminal:closed", { code: exitCode });
+      }
+      state.terminalPty = null;
+    });
 
-      return { ok: true, shell, projectPath, pty: true };
-    } catch (e) {
-      console.error("[terminal:init] node-pty falhou:", e.message);
+    // Mesmos atalhos de sempre no shell POSIX: `cd` mostra a pasta e `git add`
+    // já imprime o status curto. Sintaxe bash — não faz sentido no cmd.exe.
+    if (!isWin) injetarHelpersPosix((s) => state.terminalPty.write(s));
+
+    return { ok: true, shell, projectPath, pty: true };
+  } catch (e) {
+    console.error("[terminal:init] node-pty indisponível:", e.message);
+    state.terminalPty = null;
+    if (isWin) {
       if (state.mainWindow && !state.mainWindow.isDestroyed()) {
         state.mainWindow.webContents.send("terminal:output", { type: "stderr", data: `Falha ao iniciar o terminal (node-pty): ${e.message}\r\n` });
         state.mainWindow.webContents.send("terminal:closed", { code: -1 });
       }
-      state.terminalPty = null;
       return { ok: false, error: e.message };
     }
+    // Linux/macOS seguem pro fallback de Python abaixo.
   }
 
-  // === Linux/macOS: pty via Python (comportamento original, intocado) ===
+  // === Fallback Linux/macOS: pty via Python ===
+  // Sem resize: o tamanho vai só no COLUMNS/LINES do ambiente, então o shell
+  // nasce certo mas não acompanha o redimensionamento da janela. Quem tiver o
+  // node-pty instalado não passa por aqui.
+  env.COLUMNS = String(inicial.cols);
+  env.LINES = String(inicial.rows);
   const shell = process.env.SHELL || "/bin/bash";
   const ptyCode = `import pty, os; os.environ['TERM']='linux'; pty.spawn(['${shell}', '-i'])`;
   try {
@@ -113,11 +159,8 @@ ipcMain.handle("terminal:init", async (event) => {
   state.terminalProcess.stdout.setEncoding("utf8");
   state.terminalProcess.stderr.setEncoding("utf8");
 
-  // Injeta função cd personalizada e helper do git (feedback visual de 'git
-  // add'/'commit') — sintaxe bash, só faz sentido em shell POSIX.
   if (state.terminalProcess.stdin && state.terminalProcess.stdin.writable) {
-    state.terminalProcess.stdin.write('cd() { builtin cd "$@" && printf "\\033[32m📁 Pasta atual: %s\\033[0m\\n" "$(pwd)"; }\n');
-    state.terminalProcess.stdin.write('git() { if [ "$1" = "add" ]; then command git "$@" && command git status -s; else command git "$@"; fi; }\n');
+    injetarHelpersPosix((s) => state.terminalProcess.stdin.write(s));
   }
 
   state.terminalProcess.stdout.on("data", (chunk) => {
@@ -152,11 +195,33 @@ ipcMain.handle("terminal:init", async (event) => {
 });
 
 ipcMain.on("terminal:input", (event, data) => {
-  // ConPTY (node-pty) espera CR (\r) como Enter; o front-end manda \n. Os chars
-  // de controle (Ctrl+C = \x03 etc.) passam intactos. No child_process (Linux)
-  // manda como está.
-  const payload = state.terminalPty ? String(data).replace(/\n/g, "\r") : data;
+  // Agora quem digita é o xterm.js, e ele já manda o byte que o terminal espera:
+  // Enter = CR (\r), Ctrl+C = \x03, setas = \x1b[A… Tudo passa CRU pro PTY — é
+  // isso que faz o vim do `git pull` ser usável em vez de adivinhação.
+  //
+  // A exceção é o fallback de Python (child_process, sem PTY do nosso lado):
+  // ali o stdin do shell quer LF, então o CR do xterm vira \n.
+  const payload = state.terminalPty ? data : String(data).replace(/\r/g, "\n");
   helpers.writeToTerminal(payload);
+});
+
+// O xterm mede o painel e manda cols/rows reais. Sem isto o shell formata pra
+// uma largura que não é a da tela e o texto some na borda direita.
+ipcMain.on("terminal:resize", (event, dim) => {
+  const tamanho = dimensoesValidas(dim);
+  if (!tamanho) return;
+  if (state.terminalSize &&
+      state.terminalSize.cols === tamanho.cols &&
+      state.terminalSize.rows === tamanho.rows) {
+    return; // ResizeObserver dispara muito; só age quando mudou de verdade.
+  }
+  state.terminalSize = tamanho;
+  if (!state.terminalPty) return; // fallback de Python não suporta resize
+  try {
+    state.terminalPty.resize(tamanho.cols, tamanho.rows);
+  } catch (e) {
+    console.warn("[terminal:resize] falhou:", e.message);
+  }
 });
 
 };

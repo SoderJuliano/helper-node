@@ -39,6 +39,7 @@ require("./main/ipc/audio.js")();
 require("./main/ipc/shortcuts.js")();
 require("./main/ipc/history.js")();
 require("./main/ipc/codeNav.js")();
+require("./main/ipc/importCheck.js")();
 
 // Unhandled exception silencers
 for (const stream of [process.stdout, process.stderr]) {
@@ -97,8 +98,11 @@ class Notification {
 // Shared status checks (e.g. sharingCheckInterval)
 state.sharingCheckInterval = setInterval(helpers.checkScreenSharing, 1000);
 
+const { initializeNexa } = require("./main/nexa/index.js");
+
 app.whenReady().then(async () => {
   configService.initialize();
+  initializeNexa();
   // Modo de Teste do Tradutor é só por sessão — nunca persiste entre aberturas.
   try { configService.setTranslationAssistantConfig({ testMode: false }); } catch (_) {}
   helperTools.initialize(configService.getHelperToolsConfig());

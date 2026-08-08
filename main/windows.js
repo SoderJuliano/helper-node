@@ -43,6 +43,7 @@ helpers.createConfigWindow = function() {
 
   state.configWindow.loadFile("config.html");
   helpers.applyStealthProtection(state.configWindow);
+  state.configWindow.setAlwaysOnTop(true, "screen-saver");
 
   state.configWindow.on("closed", () => {
     state.configWindow = null;
@@ -77,6 +78,7 @@ helpers.createPreferencesWindow = function() {
 
   state.preferencesWindow.loadFile("preferences.html");
   helpers.applyStealthProtection(state.preferencesWindow);
+  state.preferencesWindow.setAlwaysOnTop(true, "screen-saver");
 
   state.preferencesWindow.on("closed", () => {
     state.preferencesWindow = null;

@@ -412,7 +412,7 @@
         </div>
 
         <!-- Modo Interativo de Voz (Google Text-to-Speech) -->
-        <div class="setting-item" title="Ativa a resposta falada por áudio no modo janela usando o Google Cloud Text-to-Speech.">
+        <div class="setting-item" id="google-tts-toggle-item" title="Ativa a resposta falada por áudio no modo janela usando o Google Cloud Text-to-Speech.">
             <label for="google-tts-toggle">Modo Interativo de Voz (Google TTS)</label>
             <span id="google-tts-status" style="font-weight: bold; margin-left: 10px; min-width: 30px; text-align: center; -webkit-app-region: no-drag;">OFF</span>
             <label class="switch">
@@ -429,9 +429,16 @@
                 <input type="text" id="google-tts-key" class="custom-input" placeholder="Ex: C:\Users\nome\Documentos\chave.json ou AIzaSy...">
             </div>
             
-            <!-- TODO: Menu de seleção de vozes customizadas (Loli, Jarvis, etc.) reservado para atualizações futuras de Avatar -->
-            <div style="margin-bottom: 10px; font-size: 12px; color: #aaa;">
-                <span style="color: #00d4aa; font-weight: bold;">Voz Ativa:</span> Profissional padrão PT-BR (Neural)
+            <div id="google-tts-voice-wrapper" style="margin-bottom: 10px;">
+                <label for="google-tts-voice-select" style="font-size: 13px; color: #00aaff; display: block; margin-bottom: 4px;">Voz do Assistente:</label>
+                <select id="google-tts-voice-select" class="custom-select" style="width: 100%;">
+                    <option value="pt-BR-Neural2-C" selected>Feminina Neural (Loli / Suave - Neural2-C)</option>
+                    <option value="pt-BR-Neural2-B">Masculina Neural (Jarvis / Tech - Neural2-B)</option>
+                    <option value="pt-BR-Chirp3-HD-Aoede">Feminina HD (Aoede - Chirp3)</option>
+                    <option value="pt-BR-Chirp3-HD-Fenrir">Masculina HD (Fenrir - Chirp3)</option>
+                    <option value="pt-BR-Wavenet-A">Feminina Wavenet (Wavenet-A)</option>
+                    <option value="pt-BR-Wavenet-B">Masculina Wavenet (Wavenet-B)</option>
+                </select>
             </div>
 
             <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px;">
@@ -787,6 +794,7 @@
         </div>
 
     </div>
+    <div id="nexa-error-toast" style="display:none; margin-bottom:10px; padding:10px 14px; background:rgba(255, 77, 77, 0.9); color:#fff; border-radius:6px; font-size:13px; font-weight:bold; text-align:center; -webkit-app-region:no-drag; border:1px solid #ff6b6b;"></div>
     <div style="display:flex; gap:10px; align-items:center; -webkit-app-region:no-drag;">
         <button id="save-btn" style="flex:1;">Salvar e Fechar</button>
         <button id="open-preferences-btn" style="flex:1; margin-top:15px; background-color:#333;">Preferências do Usuário</button>

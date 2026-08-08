@@ -151,7 +151,17 @@
 
             // Reprodução de áudio TTS quando o modo de voz está ativo
             if (window.electronAPI && window.electronAPI.onPlayTtsAudio) {
-                window.electronAPI.onPlayTtsAudio(({ audioBase64, text }) => {
+                window.electronAPI.onPlayTtsAudio(async ({ audioBase64, text }) => {
+                    try {
+                        if (window.electronAPI.getNexaConfig) {
+                            const nexaCfg = await window.electronAPI.getNexaConfig();
+                            if (nexaCfg && nexaCfg.enabled) {
+                                // A janela da Nexa reproduz e anima o áudio da fala exclusivamente
+                                return;
+                            }
+                        }
+                    } catch (_) {}
+
                     try {
                         if (window.currentTtsAudio) {
                             window.currentTtsAudio.pause();

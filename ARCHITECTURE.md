@@ -35,6 +35,31 @@ if (provider === 'claudeCli')    → ClaudeCliProvider (singleton)
 
 Chave `provider` vem de `configService.getAiProvider()`. Sem fallback automático.
 
+### Ollama Local (`services/ollamaLocalService.js`) — modo offline
+
+Fala com o `ollama serve` da própria máquina (`:11434`). Em **modo IDE**
+(ferramentas + pasta anexada) o turno é montado por `ollamaLocalTurn.js` e usa
+**um prompt só**, o de agente (`idePrompt.js`) — nunca o prompt de copiloto de
+tela empilhado com o addon de ferramentas.
+
+Dois protocolos de ferramenta, e quem escolhe é o Ollama, não o código:
+
+| | quando | como |
+|---|---|---|
+| **nativo** | `/api/show` lista `tools` em `capabilities` (qwen3.6, gemma3…) | `tools[]` no `/api/chat`, resposta em `message.tool_calls`, resultado volta como `role:"tool"` |
+| **texto** | resto (ou Ollama antigo, que não manda `capabilities`) | `TOOL_CALL: {...}` parseado do texto |
+
+`400` recusando `tools[]` refaz o turno inteiro no protocolo de texto (o prompt
+de sistema muda junto — não dá pra só tirar o `tools[]`).
+
+**Escrita em disco** é liberada por TAMANHO do modelo (`≥ 10B`, de
+`/api/show`): modelo pequeno reescreve arquivo inteiro achando que está
+editando. Escapes: `HELPER_OLLAMA_ALLOW_WRITE=1`, `HELPER_OLLAMA_MIN_WRITE_B`,
+`HELPER_OLLAMA_TEXT_TOOLS=1` (força o protocolo de texto).
+
+Regressão: `npm run test:ollama` (stream/num_ctx) e `npm run test:ollama:ide`
+(protocolos, prompt, gate de escrita).
+
 ### OpenAI (`services/openAIService.js`)
 - Function calling para helperTools
 - Streaming token a token via SSE
@@ -321,7 +346,9 @@ services/
   realtimeOpenAiService.js       ← realtime online (OpenAI)
   realtimeAudioCapture.js        ← captura parec + VAD
   openAIService.js               ← client OpenAI (streaming, tools, vision)
-  ollamaLocalService.js          ← client Ollama local
+  ollamaLocalService.js          ← client Ollama local (tool loop, 2 protocolos)
+  ollamaLocalCaps.js             ← /api/show: suporta tools? tamanho do modelo?
+  ollamaLocalTurn.js             ← montagem do turno + execução das ferramentas
   edition.js                     ← lite vs full
   ipcService.js                  ← servidor Express interno (hotkeys globais)
 ```

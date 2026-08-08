@@ -19,7 +19,7 @@ const SAMPLE_RATE = 16000;
 const BYTES_PER_SAMPLE = 2;                              // s16le
 const BYTES_PER_SEC = SAMPLE_RATE * BYTES_PER_SAMPLE;    // 32000 bytes/s
 const CHUNK_SIZE = BYTES_PER_SEC / 10;                   // 100ms por janela
-const SILENCE_RMS = 300;                                 // abaixo disso = silêncio
+const SILENCE_RMS = 150;                                 // abaixo disso = silêncio (ajustado para alta sensibilidade do mic)
 // Silêncio p/ fechar segmento. 'sys' (interlocutor) é o caminho de FALLBACK
 // quando a sessão de transcrição em streaming não está de pé — nesse caso cada
 // ms aqui é latência pura antes da resposta, então fica curto. A fusão por
@@ -144,8 +144,8 @@ function processChunk(pcm, st, source) {
   const rms = calcRms(pcm);
   if (rms > (st.peakRms || 0)) st.peakRms = rms;
   const chunkMs = (pcm.length / BYTES_PER_SEC) * 1000;
-  const silenceLimit = SILENCE_DURATION[source] || 1200;
-  const maxSegmentLimit = MAX_SEGMENT_MS[source] || 60000;
+  let silenceLimit = SILENCE_DURATION[source] || 1200;
+  let maxSegmentLimit = MAX_SEGMENT_MS[source] || 60000;
 
   if (rms > SILENCE_RMS) {
     st.hasSpeech = true;

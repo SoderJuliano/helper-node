@@ -89,6 +89,35 @@ const copilotCliInfo = document.getElementById("copilot-cli-info");
 const checkCopilotCliBtn = document.getElementById("check-copilot-cli-btn");
 const copilotCliStatusResult = document.getElementById("copilot-cli-status-result");
 
+// Nexa elements
+const nexaToggle = document.getElementById("nexa-toggle");
+const nexaStatus = document.getElementById("nexa-status");
+const nexaOnlyToggle = document.getElementById("nexa-only-toggle");
+const nexaOnlyStatus = document.getElementById("nexa-only-status");
+const nexaOnlyItem = document.getElementById("nexa-only-item");
+
+function updateNexaOnlyStatus(isEnabled) {
+  if (nexaOnlyStatus) nexaOnlyStatus.textContent = isEnabled ? "ON" : "OFF";
+}
+
+function updateNexaStatus(isEnabled) {
+  if (nexaStatus) nexaStatus.textContent = isEnabled ? "ON" : "OFF";
+  const googleTtsVoiceWrapper = document.getElementById("google-tts-voice-wrapper");
+  if (googleTtsVoiceWrapper) {
+    googleTtsVoiceWrapper.style.display = isEnabled ? "none" : "block";
+  }
+  const googleTtsToggleItem = document.getElementById("google-tts-toggle-item");
+  if (googleTtsToggleItem) {
+    googleTtsToggleItem.style.display = isEnabled ? "none" : "flex";
+  }
+  if (isEnabled && googleTtsContainer) {
+    googleTtsContainer.style.display = "block";
+  }
+  if (nexaOnlyItem) {
+    nexaOnlyItem.style.display = isEnabled ? "flex" : "none";
+  }
+}
+
 // Google TTS elements
 const googleTtsToggle = document.getElementById("google-tts-toggle");
 const googleTtsStatus = document.getElementById("google-tts-status");
@@ -100,7 +129,18 @@ const googleTtsTestResult = document.getElementById("google-tts-test-result");
 
 function updateGoogleTtsStatus(isEnabled) {
   if (googleTtsStatus) googleTtsStatus.textContent = isEnabled ? "ON" : "OFF";
-  if (googleTtsContainer) googleTtsContainer.style.display = isEnabled ? "block" : "none";
+  const isNexa = nexaToggle ? nexaToggle.checked : false;
+  if (googleTtsContainer) {
+    googleTtsContainer.style.display = (isEnabled || isNexa) ? "block" : "none";
+  }
+  const googleTtsVoiceWrapper = document.getElementById("google-tts-voice-wrapper");
+  if (googleTtsVoiceWrapper) {
+    googleTtsVoiceWrapper.style.display = isNexa ? "none" : "block";
+  }
+  const googleTtsToggleItem = document.getElementById("google-tts-toggle-item");
+  if (googleTtsToggleItem) {
+    googleTtsToggleItem.style.display = isNexa ? "none" : "flex";
+  }
 }
 
 // Helper function to update the debug mode status text
@@ -297,6 +337,23 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   // -------------------------
+  // Load Nexa AI Assistant mode
+  // -------------------------
+  try {
+    const nexaCfg = await ipcRenderer.invoke("nexa:get-config");
+    if (nexaToggle && nexaCfg) {
+      nexaToggle.checked = !!nexaCfg.enabled;
+      updateNexaStatus(!!nexaCfg.enabled);
+      if (nexaOnlyToggle) {
+        nexaOnlyToggle.checked = !!nexaCfg.onlyNexa;
+        updateNexaOnlyStatus(!!nexaCfg.onlyNexa);
+      }
+    }
+  } catch (e) {
+    console.warn("Nexa config load failed:", e);
+  }
+
+  // -------------------------
   // Load realtime assistant mode
   // -------------------------
   const isRealtimeAssistant = await ipcRenderer.invoke("get-realtime-assistant-status");
@@ -371,7 +428,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   } catch (e) {
     console.warn("get-app-version failed:", e);
   }
-  
+
   // Always load OpenAI token, regardless of current model
   const savedToken = await ipcRenderer.invoke("get-open-ia-token");
   if (savedToken) {
@@ -729,6 +786,25 @@ if (stealthModeToggle) {
   });
 }
 
+// Handle Nexa toggle live update
+if (nexaToggle) {
+  nexaToggle.addEventListener("change", () => {
+    const enabled = nexaToggle.checked;
+    updateNexaStatus(enabled);
+    if (enabled && googleTtsContainer) {
+      googleTtsContainer.style.display = "block";
+    }
+    const toast = document.getElementById("nexa-error-toast");
+    if (toast) toast.style.display = "none";
+  });
+}
+
+if (nexaOnlyToggle) {
+  nexaOnlyToggle.addEventListener("change", () => {
+    updateNexaOnlyStatus(nexaOnlyToggle.checked);
+  });
+}
+
 // Handle Google TTS toggle live update & test
 if (googleTtsToggle) {
   googleTtsToggle.addEventListener("change", async () => {
@@ -736,7 +812,7 @@ if (googleTtsToggle) {
     updateGoogleTtsStatus(enabled);
 
     const keyPathOrKey = googleTtsKey ? googleTtsKey.value.trim() : "";
-    const voiceName = "pt-BR-Neural2-C"; // Voz profissional padrão (TODO: menu futuro de vozes)
+    const voiceName = googleTtsVoiceSelect ? googleTtsVoiceSelect.value : "pt-BR-Neural2-C";
 
     if (enabled && googleTtsTestResult) {
       googleTtsTestResult.style.color = "#ffb74d";
@@ -769,11 +845,12 @@ const saveGoogleTtsParams = () => {
   ipcRenderer.send("save-google-tts-config", {
     enabled: googleTtsToggle.checked,
     keyPathOrKey: googleTtsKey ? googleTtsKey.value.trim() : "",
-    voiceName: "pt-BR-Neural2-C"
+    voiceName: googleTtsVoiceSelect ? googleTtsVoiceSelect.value : "pt-BR-Neural2-C"
   });
 };
 
 if (googleTtsKey) googleTtsKey.addEventListener("blur", saveGoogleTtsParams);
+if (googleTtsVoiceSelect) googleTtsVoiceSelect.addEventListener("change", saveGoogleTtsParams);
 
 if (googleTtsTestBtn) {
   googleTtsTestBtn.addEventListener("click", async () => {
@@ -845,18 +922,18 @@ function updateOllamaPullCmd() {
 
 async function populateOllamaLocalModels(savedModel = null) {
   if (!ollamaLocalModelSelect) return;
-  
+
   const currentVal = savedModel || ollamaLocalModelSelect.value;
-  
+
   try {
     const res = await ipcRenderer.invoke('check-ollama-local-status');
     ollamaLocalModelSelect.innerHTML = '';
-    
+
     let models = [];
     if (res && res.running && Array.isArray(res.models)) {
       models = res.models;
     }
-    
+
     if (models.length > 0) {
       // Adiciona cada modelo como uma opção
       models.forEach(model => {
@@ -865,7 +942,7 @@ async function populateOllamaLocalModels(savedModel = null) {
         option.textContent = model;
         ollamaLocalModelSelect.appendChild(option);
       });
-      
+
       // Se o modelo configurado atualmente não estiver na lista instalada, adiciona ele no final
       if (currentVal && !models.includes(currentVal)) {
         const option = document.createElement('option');
@@ -873,7 +950,7 @@ async function populateOllamaLocalModels(savedModel = null) {
         option.textContent = `${currentVal} (não baixado)`;
         ollamaLocalModelSelect.appendChild(option);
       }
-      
+
       // Seleciona o modelo atual/configurado
       if (currentVal) {
         ollamaLocalModelSelect.value = currentVal;
@@ -908,7 +985,7 @@ async function populateOllamaLocalModels(savedModel = null) {
       ollamaLocalModelSelect.innerHTML = '<option value="" disabled>Erro ao carregar modelos</option>';
     }
   }
-  
+
   updateOllamaPullCmd();
 }
 
@@ -927,7 +1004,7 @@ async function populateGeminiCliModels(savedModel = null) {
         option.textContent = text;
         geminiCliModelSelect.appendChild(option);
       });
-      
+
       const hasModel = models.some(m => (m.id || m.value || m) === currentVal);
       if (currentVal && !hasModel) {
         const option = document.createElement('option');
@@ -935,7 +1012,7 @@ async function populateGeminiCliModels(savedModel = null) {
         option.textContent = `${currentVal} (indisponível)`;
         geminiCliModelSelect.appendChild(option);
       }
-      
+
       if (currentVal) {
         geminiCliModelSelect.value = currentVal;
       } else {
@@ -977,7 +1054,7 @@ async function populateClaudeCliModels(savedModel = null) {
         option.textContent = text;
         claudeCliModelSelect.appendChild(option);
       });
-      
+
       const hasModel = models.some(m => (m.id || m.value || m) === currentVal);
       if (currentVal && !hasModel) {
         const option = document.createElement('option');
@@ -985,7 +1062,7 @@ async function populateClaudeCliModels(savedModel = null) {
         option.textContent = `${currentVal} (indisponível)`;
         claudeCliModelSelect.appendChild(option);
       }
-      
+
       if (currentVal) {
         claudeCliModelSelect.value = currentVal;
       } else {
@@ -1269,6 +1346,15 @@ if (checkGeminiCliBtn) {
 
 // Save everything
 saveButton.addEventListener("click", async () => {
+  // Save Google TTS config
+  if (googleTtsToggle) {
+    ipcRenderer.send("save-google-tts-config", {
+      enabled: googleTtsToggle.checked,
+      keyPathOrKey: googleTtsKey ? googleTtsKey.value.trim() : "",
+      voiceName: googleTtsVoiceSelect ? googleTtsVoiceSelect.value : "pt-BR-Neural2-C"
+    });
+  }
+
   // Save prompt instruction
   ipcRenderer.send("save-prompt-instruction", instructionTextarea.value);
 
@@ -1304,7 +1390,7 @@ saveButton.addEventListener("click", async () => {
 
   // Save AI model
   ipcRenderer.send("set-ai-model", aiModelSelect.value);
-  
+
   // Save OpenAI model
   ipcRenderer.send("set-openai-model", openAiModelSelect.value);
 

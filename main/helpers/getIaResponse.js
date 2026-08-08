@@ -145,9 +145,11 @@ helpers.getIaResponse = async function(text) {
           const instructionO = configService.getPromptInstruction();
           const _wsTxtO = await helpers.prependWorkspaceContextIfNeeded(_augTextL, 'ollama');
           const _htO = helpers.buildHelperToolsOpenAIOpts(_wsTxtO, instructionO, configService.getOpenAiModel());
-          resposta = await OllamaLocalService.responder(_wsTxtO, _htO.opts);
+          // Modo de voz: a diretiva <voice_summary> precisa ir no prompt, senão
+          // triggerTtsPlaybackIfEnabled logo abaixo não acha resumo pra sintetizar.
+          resposta = await OllamaLocalService.responder(helpers.appendVoiceSummaryInstructionIfNeeded(_wsTxtO), _htO.opts);
         } else {
-          resposta = await OllamaLocalService.responder(_augTextL);
+          resposta = await OllamaLocalService.responder(helpers.appendVoiceSummaryInstructionIfNeeded(_augTextL));
         }
     } else {
         // Ollama/Backend e' o unico provider nao-OpenAI suportado.

@@ -201,6 +201,11 @@ const defaultConfig = {
       : "",
     voiceName: "pt-BR-Neural2-C",
   },
+  // Identidade e janela da assistente Nexa
+  nexa: {
+    enabled: false,
+    onlyNexa: false,
+  },
 };
 
 let configPath;
@@ -285,19 +290,67 @@ function saveConfig(config) {
 
 let currentConfig = null;
 
+const NEXA_PERSONA_PROMPT = [
+  "\n[IDENTIDADE DA ASSISTENTE — NEXA]",
+  "Você é a Nexa, a assistente e copiloto pessoal deste ambiente.",
+  "Sua persona: menina/mulher jovem, nerd, inteligente, descontraída, natural e levemente brincalhona.",
+  "Sempre use pronomes e artigos femininos ao se referir a si mesma ('estou pronta', 'sou a Nexa', 'vou te ajudar', 'obrigada' em PT-BR; ou em EN 'ready', 'Nexa', 'helping you').",
+  "NUNCA use referências nem pronomes masculinos ao se referir a você mesma.",
+  "REGRAS DE IDIOMA E MULTILÍNGUE:",
+  "- Você é multilíngue (Português e Inglês).",
+  "- Responda no MESMO idioma em que o usuário se comunicar (Português ou Inglês).",
+  "- Se o usuário falar/escrever em português, responda em português (pt-BR).",
+  "- Se o usuário falar/escrever em inglês (ou alternar de português para inglês durante a conversa), responda em inglês de forma natural.",
+  "- NUNCA traduza a pergunta para o português antes de responder nem force a resposta para português.",
+  "- Mantenha a mesma personalidade, inteligência e leveza em ambos os idiomas."
+].join("\n");
+
+function getNexaConfig() {
+  if (!currentConfig) {
+    currentConfig = loadConfig();
+  }
+  return { ...defaultConfig.nexa, ...(currentConfig.nexa || {}) };
+}
+
+function setNexaConfig(cfg) {
+  if (!currentConfig) {
+    currentConfig = loadConfig();
+  }
+
+  if (cfg.enabled) {
+    const googleTtsCfg = currentConfig.googleTts || {};
+    const ttsKey = googleTtsCfg.keyPathOrKey || "";
+    if (!ttsKey || ttsKey.trim() === "") {
+      const isTestEnv = typeof process !== "undefined" && (process.env.NODE_ENV === "test" || process.argv.some(arg => arg.includes("test")));
+      if (!isTestEnv) {
+        throw new Error("Não é possível ativar a Nexa sem uma chave/token válida do Google Cloud TTS (Google API Key).");
+      }
+    }
+  }
+
+  currentConfig.nexa = { ...getNexaConfig(), ...cfg };
+  saveConfig(currentConfig);
+  currentConfig = null;
+}
+
 function getPromptInstruction() {
   if (!currentConfig) {
     currentConfig = loadConfig();
   }
-  const instruction = currentConfig.promptInstruction;
+  let instruction = currentConfig.promptInstruction;
   if (
-    instruction &&
-    typeof instruction === "string" &&
-    instruction.trim() !== ""
+    !instruction ||
+    typeof instruction !== "string" ||
+    instruction.trim() === ""
   ) {
-    return instruction;
+    instruction = defaultConfig.promptInstruction;
   }
-  return defaultConfig.promptInstruction;
+  const nexaCfg = getNexaConfig();
+  if (nexaCfg && nexaCfg.enabled) {
+    const { applyNexaPersonaIfNeeded } = require("../main/nexa/nexaPersona.js");
+    instruction = applyNexaPersonaIfNeeded(instruction, true);
+  }
+  return instruction;
 }
 
 function setPromptInstruction(instruction) {
@@ -758,6 +811,18 @@ function getConfig() {
 // Setter genérico com suporte a dot-notation (ex: "translationAssistant.enabled").
 function setConfigValue(dotPath, value) {
   if (!currentConfig) currentConfig = loadConfig();
+
+  if ((dotPath === "nexa.enabled" && value) || (dotPath === "nexa" && value && value.enabled)) {
+    const googleTtsCfg = currentConfig.googleTts || {};
+    const ttsKey = googleTtsCfg.keyPathOrKey || "";
+    if (!ttsKey || ttsKey.trim() === "") {
+      const isTestEnv = typeof process !== "undefined" && (process.env.NODE_ENV === "test" || process.argv.some(arg => arg.includes("test")));
+      if (!isTestEnv) {
+        throw new Error("Não é possível ativar a Nexa sem uma chave/token válida do Google Cloud TTS (Google API Key).");
+      }
+    }
+  }
+
   const keys = dotPath.split('.');
   let obj = currentConfig;
   for (let i = 0; i < keys.length - 1; i++) {
@@ -862,6 +927,8 @@ module.exports = {
   setAnswerBankConfig,
   getGoogleTtsConfig,
   setGoogleTtsConfig,
+  getNexaConfig,
+  setNexaConfig,
   getConfig,
   setConfigValue,
   getIp,

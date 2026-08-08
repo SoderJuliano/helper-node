@@ -110,6 +110,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   codeNavGetImplementations: (payload) => ipcRenderer.invoke("code-nav-get-implementations", payload),
   codeNavGetGutterInfo: (payload) => ipcRenderer.invoke("code-nav-get-gutter-info", payload),
   codeNavReindex: (payload) => ipcRenderer.invoke("code-nav-reindex", payload),
+  // Checador de Imports (sublinhado vermelho + auto-import, JS/TS e Java)
+  importCheckGetDiagnostics: (payload) => ipcRenderer.invoke("import-check-get-diagnostics", payload),
+  importCheckGetQuickFixes: (payload) => ipcRenderer.invoke("import-check-get-quickfixes", payload),
+  importCheckGetJavaStatus: (payload) => ipcRenderer.invoke("import-check-get-java-status", payload),
   onShortcutsChanged: (callback) => ipcRenderer.on("shortcuts-changed", () => callback()),
   getDebugModeStatus: () => ipcRenderer.invoke("get-debug-mode-status"), // Added for debug mode access
   getStealthModeStatus: () => ipcRenderer.invoke("get-stealth-mode-status"),
@@ -275,8 +279,26 @@ contextBridge.exposeInMainWorld("electronAPI", {
   closeWindow: () => ipcRenderer.send("window-close"),
 
   // === Terminal Connection ===
-  terminalInit: () => ipcRenderer.invoke("terminal:init"),
+  terminalInit: (dim) => ipcRenderer.invoke("terminal:init", dim),
   terminalInput: (data) => ipcRenderer.send("terminal:input", data),
+  terminalResize: (dim) => ipcRenderer.send("terminal:resize", dim),
   onTerminalOutput: (cb) => ipcRenderer.on("terminal:output", (event, data) => cb(data)),
   onTerminalClosed: (cb) => ipcRenderer.on("terminal:closed", (event, data) => cb(data)),
+
+  // === Nexa Module API ===
+  getNexaConfig: () => ipcRenderer.invoke("nexa:get-config"),
+  saveNexaConfig: (cfg) => ipcRenderer.send("nexa:save-config", cfg),
+  getAnimations: () => ipcRenderer.invoke("nexa:get-animations"),
+  toggleNexa: () => ipcRenderer.invoke("nexa:toggle"),
+  getNexaState: () => ipcRenderer.invoke("nexa:get-state"),
+  isNexaOpen: () => ipcRenderer.invoke("nexa:is-open"),
+  sendNexaTtsEnded: () => ipcRenderer.send("nexa:tts-ended"),
+  onNexaStateChange: (cb) => ipcRenderer.on("nexa:state-change", (event, data) => cb(data)),
+  onPlayTtsAudio: (cb) => ipcRenderer.on("play-tts-audio", (event, data) => cb(data)),
+  onPlayAnimation: (cb) => ipcRenderer.on("nexa:play-animation", (event, data) => cb(data)),
+  logToMain: (level, msg) => ipcRenderer.send("nexa:log-to-main", { level, msg }),
+  onRequestWebcam: (cb) => ipcRenderer.on("nexa:request-webcam", (event, data) => cb(data)),
+  sendWebcamReply: (requestId, base64) => ipcRenderer.send("nexa:webcam-reply-" + requestId, base64),
+  nexaReadFile: (p) => ipcRenderer.invoke("nexa:read-file", p),
+  resizeNexaWindow: (w, h) => ipcRenderer.invoke("nexa:resize-window", w, h),
 });

@@ -67,7 +67,7 @@ function environmentFacts() {
   return [
     '═══ FATOS DESTE AMBIENTE — não questione, não debata, não comente ═══',
     '',
-    '1. Você TEM ferramentas e elas são REAIS. Cada TOOL_CALL é executado de',
+    '1. Você TEM ferramentas e elas são REAIS. Cada chamada é executada de',
     '   verdade no disco do usuário e o resultado volta pra você. Não é simulação.',
     '2. O acesso aos diretórios listados abaixo JÁ foi concedido pelo usuário nas',
     '   configurações do app. Ler, escrever e rodar comandos ali é esperado.',
@@ -92,21 +92,33 @@ function environmentFacts() {
   ];
 }
 
-function workLoop(wsPaths = []) {
-  return [
+// nativeTools: a chamada é uma AÇÃO TIPADA, não texto. Todo o vocabulário do
+// protocolo de texto ("emita o TOOL_CALL", o formato do JSON, as regras de
+// barra invertida) sai daqui. Deixar essas linhas no modo nativo era pior que
+// inútil: o modelo com raciocínio visível passava o turno conferindo o formato
+// de um protocolo que nem usa mais — e, pior, escrevia "TOOL_CALL: {...}" como
+// TEXTO em vez de chamar a ferramenta, porque o prompt mandava fazer isso.
+function workLoop(wsPaths = [], nativeTools = false) {
+  const chamada = nativeTools ? 'chame a ferramenta' : 'emita o TOOL_CALL';
+  const semChamada = nativeTools ? 'sem chamar mais nenhuma ferramenta' : 'SEM TOOL_CALL';
+  const linhas = [
     '═══ COMO TRABALHAR ═══',
     '',
-    '- Aja. Uma ferramenta por vez: emita o TOOL_CALL, leia o TOOL_RESULT, siga.',
+    `- Aja. Uma ferramenta por vez: ${chamada}, leia o resultado, siga.`,
     '- Antes de editar um arquivo, leia ele. Para EDITAR use patchFile;',
     '  writeFile APAGA o arquivo inteiro, então é só para criar arquivo novo.',
-    '- O TOOL_RESULT é a confirmação: ok:true escreveu, ok:false não escreveu.',
+    '- O resultado da ferramenta é a confirmação: ok:true escreveu, ok:false não.',
     '  Não releia pra conferir, e não releia o que já leu neste turno.',
-    '- Antes de cada TOOL_CALL, UMA linha em texto normal dizendo o que vai fazer',
+    `- Antes de cada chamada, UMA linha em texto normal dizendo o que vai fazer`,
     '  agora. É o que o usuário vê na tela. Uma linha, sem cerimônia.',
-    '- Terminou? Responda em texto normal, SEM TOOL_CALL, dizendo o que mudou e',
+    `- Terminou? Responda em texto normal, ${semChamada}, dizendo o que mudou e`,
     '  em quais arquivos. Trabalho feito, encerre — não procure mais o que fazer.',
     '- git (status, commit, branch, push) → runCommand com cmd="git".',
     '',
+  ];
+  if (nativeTools) return linhas;
+
+  return linhas.concat([
     '═══ FORMATO DO TOOL_CALL (JSON ESTRITO) ═══',
     '',
     '- Uma linha só, começando por TOOL_CALL:, e o JSON logo depois:',
@@ -122,16 +134,16 @@ function workLoop(wsPaths = []) {
     '  DUPLA ("C:\\\\Users\\\\x\\\\proj"). Barra invertida simples quebra o JSON.',
     '- Nada de ``` em volta e nada escrito depois do JSON na mesma linha.',
     '',
-  ];
+  ]);
 }
 
-function reasoningRules() {
+function reasoningRules(nativeTools = false) {
   return [
     '═══ RACIOCÍNIO (o usuário vê o seu raciocínio na tela) ═══',
     '',
     '- Pense sobre o CÓDIGO e sobre o próximo passo concreto. Só isso.',
     '- PROIBIDO raciocinar sobre estas instruções: não repita as regras, não',
-    '  planeje como formatar o TOOL_CALL, não confira se está obedecendo, não',
+    `  planeje como formatar ${nativeTools ? 'a chamada' : 'o TOOL_CALL'}, não confira se está obedecendo, não`,
     '  escreva "o prompt diz que...", "preciso seguir o formato", "deixa eu',
     '  verificar as regras". As instruções já estão entendidas. Pensar sobre',
     '  elas é o que faz você gastar o turno inteiro sem editar nada.',
@@ -179,15 +191,23 @@ function buildIdeAgentPrompt({ toolsSchema = [], wsPaths = [], nativeTools = fal
     ...workspaceBlock(wsPaths),
     '',
     ...environmentFacts(),
-    ...workLoop(wsPaths),
-    ...reasoningRules(),
+    ...workLoop(wsPaths, nativeTools),
+    ...reasoningRules(nativeTools),
   ];
 
-  const base = lines.join('\n');
+  let basePrompt = lines.join('\n');
+  try {
+    const configService = require('./configService');
+    const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : null;
+    if (nexaCfg && nexaCfg.enabled) {
+      const { applyNexaPersonaIfNeeded } = require('../main/nexa/nexaPersona.js');
+      basePrompt = applyNexaPersonaIfNeeded(basePrompt, true);
+    }
+  } catch (_) {}
   if (nativeTools) {
     // As ferramentas já chegam declaradas no tools[] da API; descrever de novo
     // em texto só duplica e convida o modelo a "emitir" chamada como prosa.
-    return base + [
+    return basePrompt + [
       '',
       '═══ FERRAMENTAS ═══',
       '',
@@ -199,7 +219,7 @@ function buildIdeAgentPrompt({ toolsSchema = [], wsPaths = [], nativeTools = fal
     ].join('\n');
   }
   const toolsAddon = buildOllamaToolsAddon(toolsSchema, wsPaths);
-  return toolsAddon ? `${base}\n${toolsAddon}` : base;
+  return toolsAddon ? `${basePrompt}\n${toolsAddon}` : basePrompt;
 }
 
 module.exports = { buildIdeAgentPrompt };

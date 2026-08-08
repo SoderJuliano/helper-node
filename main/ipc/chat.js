@@ -159,9 +159,9 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
             const instructionO = configService.getPromptInstruction();
             const _wsTxtO = await helpers.prependWorkspaceContextIfNeeded(_augTextL, 'ollama');
             const _htO = helpers.buildHelperToolsOpenAIOpts(_wsTxtO, instructionO, configService.getOpenAiModel());
-            resposta = await OllamaLocalService.responder(_wsTxtO, _htO.opts);
+            resposta = await OllamaLocalService.responder(helpers.appendVoiceSummaryInstructionIfNeeded(_wsTxtO), _htO.opts);
           } else {
-            resposta = await OllamaLocalService.responder(_augTextL);
+            resposta = await OllamaLocalService.responder(helpers.appendVoiceSummaryInstructionIfNeeded(_augTextL));
           }
         } catch (ollamaError) {
           console.error("IPC: Ollama Local falhou:", ollamaError && ollamaError.message);
@@ -236,11 +236,12 @@ ipcMain.on("send-to-gemini-vision", async (event, { text, image }) => {
       const _wsTxt = await helpers.prependWorkspaceContextIfNeeded(baseTxt, 'ollama');
       let resposta;
       const htEnabled = configService.getHelperToolsEnabled && configService.getHelperToolsEnabled();
+      const _visTxt = helpers.appendVoiceSummaryInstructionIfNeeded(_wsTxt);
       if (htEnabled) {
         const _ht = helpers.buildHelperToolsOpenAIOpts(_wsTxt, instructionO, configService.getOpenAiModel());
-        resposta = await OllamaLocalService.responder(_wsTxt, _ht.opts);
+        resposta = await OllamaLocalService.responder(_visTxt, _ht.opts);
       } else {
-        resposta = await OllamaLocalService.responder(_wsTxt);
+        resposta = await OllamaLocalService.responder(_visTxt);
       }
       event.sender.send("gemini-response", { resposta, usedKnowledge: false });
       helpers.triggerTtsPlaybackIfEnabled(resposta);
@@ -300,9 +301,14 @@ ipcMain.on("stop-agentic-workflow", (event, sessionId) => {
 });
 
 ipcMain.on("clear-ai-sessions", () => {
-  console.log("🧹 Limpando sessões de IA (OpenAI + Backend + Gemini + Claude)...");
+  console.log("🧹 Limpando sessões de IA (OpenAI + Backend + Ollama Local + Gemini + Claude)...");
   if (OpenAIService.sessions) OpenAIService.sessions = {};
   BackendService.clearSessions();
+  // O Ollama Local guarda o histórico DENTRO do processo (sessions[sessionId]),
+  // e ficou de fora desta limpeza desde sempre: clicar em "Novo Chat" abria uma
+  // sessão nova na tela e o modelo continuava respondendo com o contexto da
+  // conversa anterior.
+  try { require('../../services/ollamaLocalService').resetSession(); } catch (_) {}
   GeminiCliProvider.shutdown().catch((e) => {
     console.warn('[gemini-cli] clear-ai-sessions shutdown error:', e.message);
   });
@@ -322,9 +328,14 @@ ipcMain.on("send-to-gemini-stream", async (event, text, sessionId) => {
       const _kbL = await helpers.knowledgeBlockForOllama(text);
       const _augTextL = _kbL ? _kbL + "\n\n---\n\n" + _wsTxt : _wsTxt;
       const _ht = helpers.buildHelperToolsOpenAIOpts(_augTextL, instructionO, configService.getOpenAiModel());
+      // Modo de voz: sem esta diretiva o modelo nunca emite <voice_summary>, e o
+      // renderer chama o TTS no fim do stream com uma resposta que não tem
+      // resumo nenhum pra ler. Os provedores CLI já recebiam isso; o Ollama
+      // Local era o único que ficou de fora.
+      const _finalL = helpers.appendVoiceSummaryInstructionIfNeeded(_augTextL);
 
       await OllamaLocalService.responderStream(
-        _augTextL,
+        _finalL,
         // onChunk
         (chunk) => {
           event.sender.send("gemini-stream-chunk", chunk);

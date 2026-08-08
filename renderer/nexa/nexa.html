@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Nexa AI Assistant</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-app-region: no-drag;
+    }
+
+    body, html {
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    #nexaCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: grab;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="nexaCanvas"></canvas>
+  <div id="lottieContainer" style="position: absolute; visibility: hidden; width: 270px; height: 480px; pointer-events: none;"></div>
+
+  <!-- Módulos de Composição e Animação Procedural 2D -->
+  <script src="../../node_modules/lottie-web/build/player/lottie.min.js"></script>
+  <script src="nexaCharacter.js"></script>
+  <script src="nexaBreathing.js"></script>
+  <script src="nexaBlink.js"></script>
+  <script src="nexaLook.js"></script>
+  <script src="nexaTalking.js"></script>
+  <script src="nexaThinking.js"></script>
+  <script src="nexaIntroAnimation.js"></script>
+  <script src="nexaLottieAnimation.js"></script>
+  <script src="nexaAnimationController.js"></script>
+  <script src="nexaRenderer.js"></script>
+</body>
+</html>
