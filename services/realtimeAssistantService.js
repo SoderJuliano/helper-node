@@ -134,6 +134,7 @@ class RealtimeAssistantService {
       try { if (fs.existsSync(wavPath)) fs.unlinkSync(wavPath); } catch (_) {}
       return;
     }
+
     // No modo 'both', a SUA fala (mic) so' e' transcrita — nao gera sugestao.
     // Senao, quando voce LE a sugestao em voz alta, o mic re-dispara a IA (loop).
     const respondToSegment = (source === 'sys') || (mode === 'mic');
@@ -183,46 +184,11 @@ class RealtimeAssistantService {
       if (!respondToSegment) return;
 
       let image = null;
-      try {
-        const nexaCfg = this.configService.getNexaConfig ? this.configService.getNexaConfig() : null;
-        const isOnlyNexa = !!(nexaCfg && nexaCfg.enabled && nexaCfg.onlyNexa);
-
-        if (isOnlyNexa) {
-          const clean = askText.toLowerCase();
-          const mentionsNexa = clean.includes("nexa");
-          const questionWords = ["?", "como", "quem", "onde", "por que", "porquê", "qual", "o que", "quanto", "quando", "quais", "consegue", "você", "voce", "me diz"];
-          const isQuestion = questionWords.some(word => clean.includes(word));
-
-          if (!mentionsNexa && !isQuestion) {
-            console.log(`[realtime] Apenas Nexa ignorou fala (sem menção ou pergunta): "${askText}"`);
-            // Salva na memória do contexto temporário de conversação para contexto futuro
-            this.contextMessages.push({ role: "user", content: askText });
-            return;
-          }
-
-          // Se for responder, avisa a janela da Nexa para entrar em LISTENING (ativa animação de escuta)
-          const { nexaState } = require("../main/nexa/nexaState.js");
-          nexaState.setState("LISTENING");
-
-          // Verifica se a fala do usuário solicita ver algo ou a aparência (webcam)
-          const visionKeywords = ["olha", "olhar", "veja", "ver", "visual", "aparencia", "aparência", "roupa", "óculos", "oculos", "cabelo", "rosto", "cara", "me vê", "me ve", "estou bonito", "estou bonita", "minha cara", "look", "see", "watch", "my face", "my outfit", "glasses", "hair", "appearance", "can you see", "how do i look"];
-          const wantsVision = visionKeywords.some(word => clean.includes(word));
-
-          if (wantsVision) {
-            console.log("[realtime] Pergunta visual detectada. Solicitando frame da webcam...");
-            const { requestWebcamCapture } = require("../main/nexa/nexaWindow.js");
-            image = await requestWebcamCapture();
-            if (image) {
-              console.log("[realtime] Frame da webcam capturado com sucesso!");
-            }
-          }
-        }
-      } catch (err) {
-        console.error("[realtime] Erro ao verificar comportamento de visão/modo Apenas Nexa:", err.message);
-      }
 
       try {
+        console.log(`[realtime] Fala aprovada para resposta! Texto: "${askText}"`);
         const resp = await this._askAI(askText, image);
+        console.log(`[realtime] Resposta da IA obtida: "${resp}"`);
         if (isContinuation) {
           // Marca a resposta do trecho anterior como superada — a pergunta continuava.
           this.emitUpdate({
@@ -234,7 +200,10 @@ class RealtimeAssistantService {
         }
         this.emitUpdate({ type: "segment_response", id, iteration, response: resp, timestamp: new Date().toISOString() });
         await this._writeHistory(askText, resp);
-      } catch (err) { this._handleAIError(err, id, iteration); }
+      } catch (err) {
+        console.error(`[realtime] Erro ao obter resposta da IA para "${askText}":`, err);
+        this._handleAIError(err, id, iteration);
+      }
     });
   }
 
@@ -262,9 +231,11 @@ class RealtimeAssistantService {
   // Para audios > 90s, acelera 1.3x com ffmpeg antes (cabe melhor no budget).
   async _runWhisperAdaptive(id, wavPath) {
     const whisperBin = whisperBinPath();
-    const modelMed = path.join(__dirname, "..", "whisper", "models", "ggml-medium.bin");
-    const modelSm  = path.join(__dirname, "..", "whisper", "models", "ggml-small.bin");
-    const model = fs.existsSync(modelMed) ? modelMed : (fs.existsSync(modelSm) ? modelSm : null);
+    const modelBase = path.join(__dirname, "..", "whisper", "models", "ggml-base.bin");
+    const modelTiny = path.join(__dirname, "..", "whisper", "models", "ggml-tiny.bin");
+    const modelSm   = path.join(__dirname, "..", "whisper", "models", "ggml-small.bin");
+    const modelMed  = path.join(__dirname, "..", "whisper", "models", "ggml-medium.bin");
+    const model = fs.existsSync(modelBase) ? modelBase : (fs.existsSync(modelTiny) ? modelTiny : (fs.existsSync(modelSm) ? modelSm : (fs.existsSync(modelMed) ? modelMed : null)));
     if (!fs.existsSync(whisperBin) || !model) {
       throw new Error("whisper-cli ou modelo indisponivel");
     }
@@ -273,12 +244,8 @@ class RealtimeAssistantService {
     let dur = 0;
     try { dur = Math.max(0, (fs.statSync(wavPath).size - 44) / (SAMPLE_RATE * 2)); } catch (_) {}
 
-    // Best-of / beam adaptativo (mantem modelo medium sempre)
-    let bestOf, beam, atempo;
-    if (dur <= 15)      { bestOf = 5; beam = 5; atempo = 1.0; }
-    else if (dur <= 45) { bestOf = 3; beam = 3; atempo = 1.0; }
-    else if (dur <= 90) { bestOf = 1; beam = 1; atempo = 1.0; }
-    else                { bestOf = 1; beam = 1; atempo = 1.3; }
+    // Whisper rápido no CPU (best-of 1, beam-size 1 para latência ultrabaixa < 300ms)
+    let bestOf = 1, beam = 1, atempo = 1.0;
 
     // Pre-processa com ffmpeg se atempo != 1.0
     let inputPath = wavPath;

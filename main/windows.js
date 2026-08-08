@@ -297,13 +297,6 @@ helpers.setupTray = function() {
           helpers.createConfigWindow();
         }
       },
-      {
-        label: "Nexa AI Assistant (Janela Flutuante)",
-        click: () => {
-          const { toggleNexaWindow } = require("./nexa/index.js");
-          toggleNexaWindow();
-        }
-      },
       { type: "separator" },
       {
         label: "Sair",
@@ -362,17 +355,6 @@ helpers.createWindow = async function() {
       icon: APP_ICON,
       nodeIntegration: false,
     });
-
-    // Sobrescreve o método show para evitar que a janela principal apareça se o modo Apenas Nexa estiver ativo
-    const originalShow = state.mainWindow.show;
-    state.mainWindow.show = function() {
-      const nexaCfg = configService.getNexaConfig();
-      if (nexaCfg && nexaCfg.enabled && nexaCfg.onlyNexa) {
-        console.log("[MainWindow] Interceptado show() — ignorado porque o modo Apenas Nexa está ativo.");
-        return;
-      }
-      return originalShow.apply(this, arguments);
-    };
 
     helpers.applyStealthProtection(state.mainWindow);
 

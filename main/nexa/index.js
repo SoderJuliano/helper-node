@@ -12,14 +12,6 @@ function initializeNexa() {
   console.log("🤖 [Nexa Module] Inicializando módulo isolado da Nexa...");
   registerNexaIpc();
   setupNexaIntegration();
-  const { configService } = require("../globals.js");
-  const nexaCfg = configService.getNexaConfig();
-  if (nexaCfg && nexaCfg.enabled) {
-    console.log("🤖 [Nexa Module] Nexa está HABILITADA nas configurações. Criando janela...");
-    createNexaWindow();
-  } else {
-    console.log("🤖 [Nexa Module] Nexa está DESABILITADA (OFF). Nenhuma janela criada.");
-  }
 }
 
 module.exports = {

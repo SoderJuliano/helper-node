@@ -1346,37 +1346,12 @@ if (checkGeminiCliBtn) {
 
 // Save everything
 saveButton.addEventListener("click", async () => {
-  // Validação obrigatória da Nexa + Google TTS JSON
-  const isNexaOn = nexaToggle ? nexaToggle.checked : false;
-  const ttsKey = googleTtsKey ? googleTtsKey.value.trim() : "";
-
-  if (isNexaOn && !ttsKey) {
-    const toast = document.getElementById("nexa-error-toast");
-    if (toast) {
-      toast.textContent = "Para usar a Nexa, adicione as credenciais do Google Text-to-Speech.";
-      toast.style.display = "block";
-      toast.scrollIntoView({ behavior: "smooth" });
-    } else {
-      alert("Para usar a Nexa, adicione as credenciais do Google Text-to-Speech.");
-    }
-    return; // BLOQUEIA O SALVAMENTO
-  }
-
-  // Save Nexa mode
-  if (nexaToggle) {
-    const isNexaOnly = nexaOnlyToggle ? nexaOnlyToggle.checked : false;
-    ipcRenderer.send("nexa:save-config", {
-      enabled: isNexaOn,
-      onlyNexa: isNexaOnly
-    });
-  }
-
-  // Save Google TTS config (se Nexa estiver ON, força voz por padrão para Loli)
+  // Save Google TTS config
   if (googleTtsToggle) {
     ipcRenderer.send("save-google-tts-config", {
-      enabled: isNexaOn ? true : googleTtsToggle.checked,
-      keyPathOrKey: ttsKey,
-      voiceName: isNexaOn ? "pt-BR-Neural2-C" : (googleTtsVoiceSelect ? googleTtsVoiceSelect.value : "pt-BR-Neural2-C")
+      enabled: googleTtsToggle.checked,
+      keyPathOrKey: googleTtsKey ? googleTtsKey.value.trim() : "",
+      voiceName: googleTtsVoiceSelect ? googleTtsVoiceSelect.value : "pt-BR-Neural2-C"
     });
   }
 

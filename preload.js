@@ -300,4 +300,5 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onRequestWebcam: (cb) => ipcRenderer.on("nexa:request-webcam", (event, data) => cb(data)),
   sendWebcamReply: (requestId, base64) => ipcRenderer.send("nexa:webcam-reply-" + requestId, base64),
   nexaReadFile: (p) => ipcRenderer.invoke("nexa:read-file", p),
+  resizeNexaWindow: (w, h) => ipcRenderer.invoke("nexa:resize-window", w, h),
 });

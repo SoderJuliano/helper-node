@@ -43,9 +43,18 @@ class NexaLottieAnimation {
             container.innerHTML = "";
 
             // Extrai a pasta de assets (diretório pai do arquivo JSON de animação)
-            // Ex: /path/to/lottie/idle_lottie/animations/main.json -> /path/to/lottie/idle_lottie/images/
+            // Ex: /path/to/lottie/idle_lottie/animations/main.json -> file:///path/to/lottie/idle_lottie/images/
             let assetsPath = "";
-            const parts = this.animationPath.split("/");
+            let animPath = (this.animationPath || "").replace(/\\/g, "/");
+            if (!animPath.startsWith("/") && !animPath.startsWith("file://")) {
+              const pageDir = window.location.pathname.substring(0, window.location.pathname.lastIndexOf("/"));
+              if (animPath.startsWith("renderer/nexa/")) {
+                animPath = pageDir + "/" + animPath.substring("renderer/nexa/".length);
+              } else {
+                animPath = pageDir + "/" + animPath;
+              }
+            }
+            const parts = animPath.split("/");
             if (parts.length > 2) {
               assetsPath = parts.slice(0, -2).join("/") + "/images/";
             }

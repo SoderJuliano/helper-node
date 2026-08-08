@@ -43,6 +43,18 @@ document.addEventListener("DOMContentLoaded", async () => {
   window.addEventListener("resize", resizeCanvas);
   resizeCanvas();
 
+  // Permite redimensionar a janela flutuante da Nexa usando a roda do mouse (Ctrl/Shift + Scroll ou Scroll na janela)
+  window.addEventListener("wheel", (e) => {
+    if (e.ctrlKey || e.shiftKey) {
+      e.preventDefault();
+      const delta = e.deltaY < 0 ? 30 : -30;
+      const newSize = Math.max(180, Math.min(800, window.innerWidth + delta));
+      if (window.electronAPI && window.electronAPI.resizeNexaWindow) {
+        window.electronAPI.resizeNexaWindow(newSize, newSize);
+      }
+    }
+  }, { passive: false });
+
   // Busca a configuração da Nexa e o trim da animação
   let introTrimEndMs = 100;
   try {
@@ -200,24 +212,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     window.electronAPI.onPlayTtsAudio(({ audioBase64 }) => {
       console.log("[NexaRenderer] Recebido áudio TTS -> iniciando reprodução e sincronização...");
       
-      const isCustomAnimPlaying = currentVideoAnimation && 
-                                  currentVideoAnimation.isPlaying && 
-                                  !currentVideoAnimation.isFinished() &&
-                                  currentVideoAnimation !== introAnimation && 
-                                  currentVideoAnimation !== idleBoringAnimation &&
-                                  currentVideoAnimation !== idleGlassesAnimation &&
-                                  currentVideoAnimation !== idleStretchingAnimation &&
-                                  currentVideoAnimation !== idleSquattingAnimation &&
-                                  currentVideoAnimation !== idleSleepingAnimation;
-      
-      if (isCustomAnimPlaying) {
-        console.log("[NexaRenderer] Atrasando áudio TTS em 2s para priorizar animação de vídeo...");
-        setTimeout(() => {
-          playTtsAudio(audioBase64);
-        }, 2000);
-      } else {
-        playTtsAudio(audioBase64);
-      }
+      playTtsAudio(audioBase64);
     });
   }
 
