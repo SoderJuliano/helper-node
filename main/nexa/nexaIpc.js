@@ -62,16 +62,15 @@ function registerNexaIpc() {
 
   ipcMain.on("nexa:save-config", (event, cfg) => {
     const { configService } = require("../globals.js");
-    const oldCfg = configService.getNexaConfig();
     configService.setNexaConfig(cfg);
     console.log("[NexaIPC] Configuração da Nexa salva:", cfg);
-    if (cfg && cfg.enabled && !oldCfg.enabled) {
+    // Idempotente de propósito: antes isso só reagia à TRANSIÇÃO OFF->ON, então
+    // salvar com a Nexa já marcada como ligada (config antiga) não abria nada e
+    // ela ficava invisível para sempre. createNexaWindow() já reusa a janela viva.
+    if (cfg && cfg.enabled) {
       createNexaWindow();
-    } else if (cfg && cfg.enabled === false && oldCfg.enabled) {
-      closeNexaWindow();
     } else {
-      const { applyNexaOnlyMode } = require("./nexaWindow.js");
-      applyNexaOnlyMode(cfg);
+      closeNexaWindow();
     }
   });
 

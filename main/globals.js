@@ -140,6 +140,7 @@ const state = {
   regionSelectWindow: null,
   regionCaptureBuffer: null,
   mainWindow: null,
+  nexaWindow: null,
   sharingCheckInterval: null,
   globalBypassAllConfirmations: false
 };
