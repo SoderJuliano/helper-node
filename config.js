@@ -90,15 +90,10 @@ const checkCopilotCliBtn = document.getElementById("check-copilot-cli-btn");
 const copilotCliStatusResult = document.getElementById("copilot-cli-status-result");
 
 // Nexa elements
+// O "Apenas Nexa (Modo Imersivo)" foi removido junto com a janela fullscreen
+// dedicada da Nexa; só o toggle da Nexa em si continua na tela.
 const nexaToggle = document.getElementById("nexa-toggle");
 const nexaStatus = document.getElementById("nexa-status");
-const nexaOnlyToggle = document.getElementById("nexa-only-toggle");
-const nexaOnlyStatus = document.getElementById("nexa-only-status");
-const nexaOnlyItem = document.getElementById("nexa-only-item");
-
-function updateNexaOnlyStatus(isEnabled) {
-  if (nexaOnlyStatus) nexaOnlyStatus.textContent = isEnabled ? "ON" : "OFF";
-}
 
 function updateNexaStatus(isEnabled) {
   if (nexaStatus) nexaStatus.textContent = isEnabled ? "ON" : "OFF";
@@ -112,9 +107,6 @@ function updateNexaStatus(isEnabled) {
   }
   if (isEnabled && googleTtsContainer) {
     googleTtsContainer.style.display = "block";
-  }
-  if (nexaOnlyItem) {
-    nexaOnlyItem.style.display = isEnabled ? "flex" : "none";
   }
 }
 
@@ -344,10 +336,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (nexaToggle && nexaCfg) {
       nexaToggle.checked = !!nexaCfg.enabled;
       updateNexaStatus(!!nexaCfg.enabled);
-      if (nexaOnlyToggle) {
-        nexaOnlyToggle.checked = !!nexaCfg.onlyNexa;
-        updateNexaOnlyStatus(!!nexaCfg.onlyNexa);
-      }
     }
   } catch (e) {
     console.warn("Nexa config load failed:", e);
@@ -796,12 +784,6 @@ if (nexaToggle) {
     }
     const toast = document.getElementById("nexa-error-toast");
     if (toast) toast.style.display = "none";
-  });
-}
-
-if (nexaOnlyToggle) {
-  nexaOnlyToggle.addEventListener("change", () => {
-    updateNexaOnlyStatus(nexaOnlyToggle.checked);
   });
 }
 
@@ -1346,12 +1328,36 @@ if (checkGeminiCliBtn) {
 
 // Save everything
 saveButton.addEventListener("click", async () => {
-  // Save Google TTS config
+  // Validação obrigatória da Nexa + Google TTS JSON
+  const isNexaOn = nexaToggle ? nexaToggle.checked : false;
+  const ttsKey = googleTtsKey ? googleTtsKey.value.trim() : "";
+
+  if (isNexaOn && !ttsKey) {
+    const toast = document.getElementById("nexa-error-toast");
+    if (toast) {
+      toast.textContent = "Para usar a Nexa, adicione as credenciais do Google Text-to-Speech.";
+      toast.style.display = "block";
+      toast.scrollIntoView({ behavior: "smooth" });
+    } else {
+      alert("Para usar a Nexa, adicione as credenciais do Google Text-to-Speech.");
+    }
+    return; // BLOQUEIA O SALVAMENTO
+  }
+
+  // Save Nexa mode (onlyNexa saiu junto com a janela fullscreen dedicada)
+  if (nexaToggle) {
+    ipcRenderer.send("nexa:save-config", {
+      enabled: isNexaOn,
+      onlyNexa: false
+    });
+  }
+
+  // Save Google TTS config (se Nexa estiver ON, força voz padrão da persona)
   if (googleTtsToggle) {
     ipcRenderer.send("save-google-tts-config", {
-      enabled: googleTtsToggle.checked,
-      keyPathOrKey: googleTtsKey ? googleTtsKey.value.trim() : "",
-      voiceName: googleTtsVoiceSelect ? googleTtsVoiceSelect.value : "pt-BR-Neural2-C"
+      enabled: isNexaOn ? true : googleTtsToggle.checked,
+      keyPathOrKey: ttsKey,
+      voiceName: isNexaOn ? "pt-BR-Neural2-C" : (googleTtsVoiceSelect ? googleTtsVoiceSelect.value : "pt-BR-Neural2-C")
     });
   }
 
