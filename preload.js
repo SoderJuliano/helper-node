@@ -114,6 +114,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   importCheckGetDiagnostics: (payload) => ipcRenderer.invoke("import-check-get-diagnostics", payload),
   importCheckGetQuickFixes: (payload) => ipcRenderer.invoke("import-check-get-quickfixes", payload),
   importCheckGetJavaStatus: (payload) => ipcRenderer.invoke("import-check-get-java-status", payload),
+  // Dependências Java (nó "Dependencies" da árvore — Maven/Gradle)
+  javaDepsListJars: (payload) => ipcRenderer.invoke("java-deps:list-jars", payload),
+  javaDepsListClasses: (payload) => ipcRenderer.invoke("java-deps:list-classes", payload),
   onShortcutsChanged: (callback) => ipcRenderer.on("shortcuts-changed", () => callback()),
   getDebugModeStatus: () => ipcRenderer.invoke("get-debug-mode-status"), // Added for debug mode access
   getStealthModeStatus: () => ipcRenderer.invoke("get-stealth-mode-status"),

@@ -93,6 +93,18 @@ helpers.isLikelyBinaryBuffer = function(buffer) {
   return suspicious / limit > 0.2;
 }
 
+// Detecta se uma pasta é a raiz de um projeto Java (Maven ou Gradle) — usado
+// pra pendurar o nó sintético "Dependencies" dentro do PRÓPRIO projeto na
+// árvore (uma pasta aberta pode conter vários projetos, cada um com as suas).
+function detectJavaProjectType(absPath) {
+  try {
+    if (fs2.existsSync(path.join(absPath, 'pom.xml'))) return 'maven';
+    if (fs2.existsSync(path.join(absPath, 'build.gradle')) || fs2.existsSync(path.join(absPath, 'build.gradle.kts'))) return 'gradle';
+  } catch (_) {}
+  return null;
+}
+helpers.detectJavaProjectType = detectJavaProjectType;
+
 helpers.pushTreeNode = function(entries, absPath, name, depth, isDir) {
   const heavy = isDir && TREE_HEAVY_DIRS.has(name);
   entries.push(
@@ -100,6 +112,12 @@ helpers.pushTreeNode = function(entries, absPath, name, depth, isDir) {
       ? { path: absPath, name, depth, isDir, lazy: true }
       : { path: absPath, name, depth, isDir }
   );
+  if (isDir) {
+    const javaType = detectJavaProjectType(absPath);
+    if (javaType) {
+      entries.push({ path: absPath, name: 'Dependencies', depth: depth + 1, isDir: true, lazy: true, synthetic: 'java-deps', javaType });
+    }
+  }
   return heavy;
 }
 
@@ -146,6 +164,15 @@ helpers.walkTreeInto = function(entries, dirPath, depth, localBudget, globalLimi
 
 helpers.collectProjectEntries = function(root, limit = 4000, perTopLevelBudget = 800) {
   const entries = [];
+
+  // A própria pasta raiz aberta pode já SER um projeto Java (caso comum de
+  // abrir um projeto Maven/Gradle isolado, em vez de uma pasta com vários
+  // projetos dentro) — nesse caso ela nunca passa por pushTreeNode (só os
+  // filhos dela viram nós), então o marcador precisa ser injetado aqui.
+  const rootJavaType = detectJavaProjectType(root);
+  if (rootJavaType) {
+    entries.push({ path: root, name: 'Dependencies', depth: 0, isDir: true, lazy: true, synthetic: 'java-deps', javaType: rootJavaType });
+  }
 
   // Passo 1: todas as entradas de topo (raiz do projeto) SEMPRE aparecem,
   // sem limite — é o que garante que nenhuma pasta/arquivo do nível
@@ -196,6 +223,12 @@ helpers.collectDirChildren = function(dirPath, limit = 3000) {
     const absPath = path.join(dirPath, dirent.name);
     const isDir = dirent.isDirectory();
     entries.push({ path: absPath, name: dirent.name, depth: 0, isDir, ...(isDir ? { lazy: true } : {}) });
+    if (isDir) {
+      const javaType = detectJavaProjectType(absPath);
+      if (javaType) {
+        entries.push({ path: absPath, name: 'Dependencies', depth: 1, isDir: true, lazy: true, synthetic: 'java-deps', javaType });
+      }
+    }
   }
   return entries;
 }

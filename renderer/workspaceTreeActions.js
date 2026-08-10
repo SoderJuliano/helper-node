@@ -28,8 +28,12 @@
             node.insertBefore(checkbox, node.firstChild);
         }
         
-        node.draggable = (renamingPath !== e.path);
+        // Nós sintéticos (Dependencies/jar/classe/status do classpath Java) não
+        // existem no disco: sem arrastar, sem soltar em cima, sem menu de
+        // contexto (renomear/excluir/anexar não fazem sentido pra eles).
+        node.draggable = (renamingPath !== e.path) && !e.synthetic;
         node.addEventListener('dragstart', (ev) => {
+            if (e.synthetic) return;
             ev.dataTransfer.setData('text/plain', e.path);
             ev.dataTransfer.effectAllowed = 'move';
             node.style.opacity = '0.5';
@@ -39,6 +43,7 @@
             document.querySelectorAll('.ws-tree-node').forEach(n => n.classList.remove('drag-over'));
         });
         node.addEventListener('dragover', (ev) => {
+            if (e.synthetic) return;
             ev.preventDefault();
             ev.dataTransfer.dropEffect = 'move';
             if (e.isDir) {
@@ -49,25 +54,26 @@
             node.classList.remove('drag-over');
         });
         node.addEventListener('drop', async (ev) => {
+            if (e.synthetic) return;
             ev.preventDefault();
             node.classList.remove('drag-over');
             const srcPath = ev.dataTransfer.getData('text/plain');
             if (!srcPath || srcPath === e.path) return;
-            
+
             let destDir = e.path;
             if (!e.isDir) {
                 const lastSlash = Math.max(e.path.lastIndexOf('/'), e.path.lastIndexOf('\\'));
                 destDir = e.path.substring(0, lastSlash);
             }
-            
+
             const srcParent = srcPath.substring(0, Math.max(srcPath.lastIndexOf('/'), srcPath.lastIndexOf('\\')));
             if (srcParent === destDir) return;
-            
+
             if (destDir.startsWith(srcPath + '/') || destDir.startsWith(srcPath + '\\') || destDir === srcPath) {
                 if (typeof showToast === 'function') showToast('Não é possível mover uma pasta para dentro dela mesma.');
                 return;
             }
-            
+
             const res = await window.electronAPI.moveItem(srcPath, destDir);
             if (res.ok) {
                 await refreshProjectTree();
@@ -77,12 +83,14 @@
         });
 
         node.addEventListener('contextmenu', (ev) => {
+            if (e.synthetic) { ev.preventDefault(); ev.stopPropagation(); return; }
             showTreeContextMenu(ev, e);
         });
 
         // Double click/Click listener to open file
         node.addEventListener('click', (ev) => {
             if (ev.target.closest('.ws-tree-chevron') || ev.target.closest('.ws-tree-checkbox') || renamingPath) return;
+            if (e.synthetic === 'java-deps-status') return; // linha informativa, não navegável
             if (e.isDir) {
                 toggleDir(e);
             } else {

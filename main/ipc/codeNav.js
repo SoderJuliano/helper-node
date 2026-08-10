@@ -3,6 +3,7 @@
 
 const { ipcMain } = require('electron');
 const symbolIndexer = require('../../services/symbolIndexer.js');
+const javaImportChecker = require('../../services/javaImportChecker.js');
 
 function ensureIndexed(filePath) {
   if (!symbolIndexer.projectPath) {
@@ -22,10 +23,28 @@ function ensureIndexed(filePath) {
 }
 
 module.exports = function registerCodeNavIPC() {
-  ipcMain.handle('code-nav-find-definition', async (event, { filePath, symbol, lineText }) => {
+  ipcMain.handle('code-nav-find-definition', async (event, { filePath, symbol, lineText, content }) => {
     try {
       ensureIndexed(filePath);
-      return symbolIndexer.findDefinition(filePath, symbol, lineText);
+      const matches = symbolIndexer.findDefinition(filePath, symbol, lineText);
+      if (Array.isArray(matches) && matches.length > 0) return matches;
+
+      // Não achou no código do próprio projeto — se for Java, tenta resolver
+      // como uma classe vinda de um jar do classpath ("ir para dentro da
+      // dependência", igual IntelliJ faz com External Libraries).
+      if (filePath && filePath.toLowerCase().endsWith('.java')) {
+        const dep = javaImportChecker.resolveSymbolToJar(filePath, symbol, lineText, content || '');
+        if (dep) {
+          return [{
+            filePath: javaImportChecker.encodeVirtualPath(dep.jarPath, dep.fqcn),
+            line: 1,
+            symbol,
+            kind: 'class',
+            isDependency: true,
+          }];
+        }
+      }
+      return matches;
     } catch (e) {
       console.error('[codeNav] Erro ao buscar definição:', e);
       return null;

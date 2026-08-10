@@ -580,8 +580,13 @@
     const cmInst = ensureCm();
     if (!cmInst) return;
     const ext = extOf(filePath);
-    langEl.textContent = LANG_LABEL_BY_EXT[ext] || (ext || 'texto').toUpperCase();
+    // Classe dentro de um jar de dependência (nó "Dependencies" da árvore) —
+    // caminho virtual (<jar>!Classe.java), somente leitura: não tem onde
+    // salvar de volta, e lint/go-to-definition não fazem sentido nele.
+    const isDependencySource = filePath.includes('.jar!');
+    langEl.textContent = (LANG_LABEL_BY_EXT[ext] || (ext || 'texto').toUpperCase()) + (isDependencySource ? ' · lib' : '');
     cmInst.setOption('mode', CM_MODE_BY_EXT[ext] || null);
+    cmInst.setOption('readOnly', isDependencySource);
 
     if (cmInst.getValue() !== doc.content) {
       cmInst.setValue(doc.content);
@@ -589,11 +594,13 @@
     }
     updateDirtyIndicator();
     renderTabs();
-    if (window.CodeNavigation) {
-      window.CodeNavigation.attach(cmInst, filePath);
-    }
-    if (window.ImportChecker) {
-      window.ImportChecker.attach(cmInst, filePath);
+    if (!isDependencySource) {
+      if (window.CodeNavigation) {
+        window.CodeNavigation.attach(cmInst, filePath);
+      }
+      if (window.ImportChecker) {
+        window.ImportChecker.attach(cmInst, filePath);
+      }
     }
     setTimeout(() => {
       cmInst.refresh();
@@ -619,6 +626,10 @@
     if (!activePath) return;
     const doc = openFiles.get(activePath);
     if (!doc) return;
+    if (activePath.includes('.jar!')) {
+      setSaveStatus('Arquivo de dependência é somente leitura');
+      return;
+    }
     if (!window.electronAPI || !window.electronAPI.editorSaveFile) {
       setSaveStatus('Salvar indisponível');
       return;

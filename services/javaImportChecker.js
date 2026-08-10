@@ -16,7 +16,8 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
-const { execFile } = require('child_process');
+const zlib = require('zlib');
+const { execFile, execFileSync } = require('child_process');
 
 const JDK_ALWAYS_OK_PREFIXES = ['java.', 'javax.', 'jakarta.', 'sun.', 'jdk.', 'org.w3c.', 'org.xml.'];
 
@@ -160,6 +161,86 @@ function readZipClassEntries(jarPath) {
   return results;
 }
 
+// Extrai o conteúdo (descomprimido) de UMA entrada específica do zip — usado
+// pra ler o .java de dentro de um "-sources.jar". Reaproveita a busca no
+// central directory de readZipClassEntries, mas também segue o local file
+// header (que pode ter name/extra length diferentes do central dir) pra achar
+// onde os bytes de dados realmente começam.
+function readZipEntryContent(zipPath, entryName) {
+  let fd;
+  try {
+    fd = fs.openSync(zipPath, 'r');
+    const size = fs.fstatSync(fd).size;
+    if (size < 22) return null;
+
+    const tailSize = Math.min(size, 65557);
+    const tailBuf = Buffer.alloc(tailSize);
+    fs.readSync(fd, tailBuf, 0, tailSize, size - tailSize);
+
+    let eocdOffset = -1;
+    for (let i = tailBuf.length - 22; i >= 0; i--) {
+      if (tailBuf.readUInt32LE(i) === 0x06054b50) { eocdOffset = i; break; }
+    }
+    if (eocdOffset === -1) return null;
+
+    const totalEntries = tailBuf.readUInt16LE(eocdOffset + 10);
+    const centralDirOffset = tailBuf.readUInt32LE(eocdOffset + 16);
+    if (centralDirOffset >= size) return null;
+
+    const cdSize = size - centralDirOffset;
+    const cdBuf = Buffer.alloc(cdSize);
+    fs.readSync(fd, cdBuf, 0, cdSize, centralDirOffset);
+
+    let pos = 0;
+    let count = 0;
+    let localHeaderOffset = -1;
+    let compMethod = -1;
+    let compSize = -1;
+    while (pos + 46 <= cdBuf.length && count < totalEntries) {
+      const sig = cdBuf.readUInt32LE(pos);
+      if (sig !== 0x02014b50) break;
+      const method = cdBuf.readUInt16LE(pos + 10);
+      const csize = cdBuf.readUInt32LE(pos + 20);
+      const nameLen = cdBuf.readUInt16LE(pos + 28);
+      const extraLen = cdBuf.readUInt16LE(pos + 30);
+      const commentLen = cdBuf.readUInt16LE(pos + 32);
+      const lho = cdBuf.readUInt32LE(pos + 42);
+      const nameStart = pos + 46;
+      if (nameStart + nameLen > cdBuf.length) break;
+      const name = cdBuf.toString('utf8', nameStart, nameStart + nameLen);
+      if (name === entryName) {
+        localHeaderOffset = lho;
+        compMethod = method;
+        compSize = csize;
+        break;
+      }
+      pos = nameStart + nameLen + extraLen + commentLen;
+      count++;
+    }
+    if (localHeaderOffset === -1) return null;
+
+    const lfhBuf = Buffer.alloc(30);
+    fs.readSync(fd, lfhBuf, 0, 30, localHeaderOffset);
+    if (lfhBuf.readUInt32LE(0) !== 0x04034b50) return null;
+    const lNameLen = lfhBuf.readUInt16LE(26);
+    const lExtraLen = lfhBuf.readUInt16LE(28);
+    const dataOffset = localHeaderOffset + 30 + lNameLen + lExtraLen;
+
+    const dataBuf = Buffer.alloc(compSize);
+    fs.readSync(fd, dataBuf, 0, compSize, dataOffset);
+
+    if (compMethod === 0) return dataBuf.toString('utf8');
+    if (compMethod === 8) return zlib.inflateRawSync(dataBuf).toString('utf8');
+    return null;
+  } catch (_) {
+    return null;
+  } finally {
+    if (fd !== undefined) {
+      try { fs.closeSync(fd); } catch (_) {}
+    }
+  }
+}
+
 function walkClassDir(dirRoot) {
   const results = [];
   const stack = [dirRoot];
@@ -185,8 +266,11 @@ function walkClassDir(dirRoot) {
 }
 
 // Adiciona uma entrada "com/foo/Bar$Inner.class" ao índice como
-// com.foo.Bar$Inner e com.foo.Bar.Inner (import usa notação com ponto)
-function addClassEntry(entryName, allClasses, knownPackages, simpleNameIndex) {
+// com.foo.Bar$Inner e com.foo.Bar.Inner (import usa notação com ponto).
+// `classSource`/`sourcePath`, quando informados, registram de qual jar (ou
+// diretório de classes) a classe veio — é o que permite "ir para dentro da
+// dependência" ao clicar num import (ver resolveSymbolToJar).
+function addClassEntry(entryName, allClasses, knownPackages, simpleNameIndex, classSource, sourcePath) {
   if (!entryName.endsWith('.class')) return;
   const dotted = entryName.slice(0, -6).replace(/\//g, '.');
   const variants = dotted.includes('$') ? [dotted, dotted.replace(/\$/g, '.')] : [dotted];
@@ -199,6 +283,9 @@ function addClassEntry(entryName, allClasses, knownPackages, simpleNameIndex) {
     const simpleName = parts[parts.length - 1];
     if (!simpleNameIndex.has(simpleName)) simpleNameIndex.set(simpleName, new Set());
     simpleNameIndex.get(simpleName).add(fqn);
+    if (classSource && sourcePath && !classSource.has(fqn)) {
+      classSource.set(fqn, sourcePath);
+    }
   }
 }
 
@@ -354,6 +441,8 @@ allprojects { proj ->
 const projectCache = new Map();
 
 function buildIndexFromClasspathEntries(entries, moduleDir, entry) {
+  entry.classpathEntries = entries.filter((p) => p.toLowerCase().endsWith('.jar'));
+
   // Processa em lotes pra não travar o event loop com muitos jars grandes
   const items = [...entries];
   let idx = 0;
@@ -366,11 +455,11 @@ function buildIndexFromClasspathEntries(entries, moduleDir, entry) {
         const st = fs.statSync(p);
         if (st.isDirectory()) {
           for (const rel of walkClassDir(p)) {
-            addClassEntry(rel, entry.allClasses, entry.knownPackages, entry.simpleNameIndex);
+            addClassEntry(rel, entry.allClasses, entry.knownPackages, entry.simpleNameIndex, entry.classSource, p);
           }
         } else if (p.toLowerCase().endsWith('.jar')) {
           for (const name of readZipClassEntries(p)) {
-            addClassEntry(name, entry.allClasses, entry.knownPackages, entry.simpleNameIndex);
+            addClassEntry(name, entry.allClasses, entry.knownPackages, entry.simpleNameIndex, entry.classSource, p);
           }
         }
       } catch (_) {
@@ -425,6 +514,8 @@ function getOrBuildProjectIndex(filePath) {
     allClasses: new Set(),
     knownPackages: new Set(),
     simpleNameIndex: new Map(),
+    classSource: new Map(),
+    classpathEntries: [],
     error: null,
     lastAttemptAt: Date.now(),
   };
@@ -554,6 +645,142 @@ function getDiagnostics(filePath, content) {
   return diagnostics;
 }
 
+// ---------------------------------------------------------------------------
+// "Ir para dentro da dependência" — resolve o import clicado pra um jar do
+// classpath, e dá acesso ao código-fonte (.java) de dentro dele, igual ao
+// IntelliJ abrir uma classe de "External Libraries".
+// ---------------------------------------------------------------------------
+
+// Caminho virtual usado como "filePath" nas abas do editor pra uma classe
+// dentro de um jar: <jar>!<pacote/Classe>.java — nunca existe no disco de
+// verdade, é interceptado em read-file-content (main/ipc/workspace.js).
+function encodeVirtualPath(jarPath, fqcn) {
+  return String(jarPath).replace(/\\/g, '/') + '!' + fqcn.replace(/\./g, '/') + '.java';
+}
+
+function parseVirtualPath(vpath) {
+  const norm = String(vpath).replace(/\\/g, '/');
+  const m = /^(.*\.jar)!(.+)\.java$/.exec(norm);
+  if (!m) return null;
+  return { jarPath: m[1], fqcn: m[2].replace(/\//g, '.') };
+}
+
+function isVirtualPath(vpath) {
+  return typeof vpath === 'string' && /\.jar!.+\.java$/.test(vpath.replace(/\\/g, '/'));
+}
+
+// Dado o clique num símbolo (linha do import, ou uso do símbolo em outro
+// lugar do arquivo — nesse caso precisa do conteúdo pra achar o import
+// correspondente), acha se ele resolve pra uma classe vinda de um jar do
+// classpath (e não do código-fonte do próprio projeto, que o symbolIndexer
+// já resolve sozinho).
+function resolveSymbolToJar(filePath, symbol, lineText, content) {
+  if (!isSupported(filePath) || !symbol) return null;
+  let proj;
+  try {
+    proj = getOrBuildProjectIndex(filePath);
+  } catch (_) {
+    return null;
+  }
+  if (!proj || proj.status !== 'ready') return null;
+
+  let fqn = null;
+  const impMatch = lineText && lineText.match(/^\s*import\s+(?:static\s+)?([\w.]+)(\.\*)?\s*;/);
+  if (impMatch && !impMatch[2] && impMatch[1].split('.').pop() === symbol) {
+    fqn = impMatch[1];
+  } else if (content) {
+    const found = collectImports(content).find((i) => !i.isWildcard && i.fqn.split('.').pop() === symbol);
+    if (found) fqn = found.fqn;
+  }
+  if (!fqn) return null;
+
+  const jarPath = proj.classSource.get(fqn);
+  if (!jarPath || !jarPath.toLowerCase().endsWith('.jar')) return null; // veio de diretório de classes, não de jar — sem source pra mostrar
+  return { fqn, jarPath };
+}
+
+// Deriva groupId:artifactId:version a partir do layout padrão do repositório
+// local do Maven (~/.m2/repository/<grupo/.../artefato/versão/artefato-versão.jar>).
+// Só funciona se o jar realmente veio de lá (é o caso comum).
+function mavenCoordsFromJarPath(jarPath) {
+  const norm = String(jarPath).replace(/\\/g, '/');
+  const idx = norm.toLowerCase().indexOf('/repository/');
+  if (idx === -1) return null;
+  const rel = norm.slice(idx + '/repository/'.length);
+  const parts = rel.split('/');
+  if (parts.length < 4) return null;
+  const fileName = parts[parts.length - 1];
+  const version = parts[parts.length - 2];
+  const artifactId = parts[parts.length - 3];
+  const groupId = parts.slice(0, parts.length - 3).join('.');
+  if (!groupId || !fileName.startsWith(`${artifactId}-${version}`)) return null;
+  return { groupId, artifactId, version };
+}
+
+// Baixa o "-sources.jar" pro repositório local via `mvn dependency:get`
+// (não altera o pom do projeto — só popula o cache local do Maven, igual o
+// IntelliJ faz quando você clica numa dependência sem source baixado ainda).
+function downloadMavenSourcesJar(coords) {
+  const cmd = process.platform === 'win32' ? 'mvn.cmd' : 'mvn';
+  const artifact = `${coords.groupId}:${coords.artifactId}:${coords.version}:jar:sources`;
+  try {
+    execFileSync(cmd, ['-q', '-B', 'dependency:get', `-Dartifact=${artifact}`], {
+      cwd: os.tmpdir(),
+      timeout: 30000,
+      shell: true,
+      stdio: 'ignore',
+    });
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+// Conteúdo .java de uma classe de dependência. Tenta o "-sources.jar" irmão
+// do jar binário no repositório local; se não existir, tenta baixar (só
+// Maven — Gradle usa outro layout de cache e ficaria fora do escopo aqui).
+function getClassSource(jarPath, fqcn) {
+  const rel = fqcn.replace(/\./g, '/') + '.java';
+  const sourcesJar = jarPath.replace(/\.jar$/i, '-sources.jar');
+
+  if (fs.existsSync(sourcesJar)) {
+    const content = readZipEntryContent(sourcesJar, rel);
+    if (content != null) return { available: true, content };
+  }
+
+  const coords = mavenCoordsFromJarPath(jarPath);
+  if (coords && downloadMavenSourcesJar(coords) && fs.existsSync(sourcesJar)) {
+    const content = readZipEntryContent(sourcesJar, rel);
+    if (content != null) return { available: true, content };
+  }
+
+  return { available: false, reason: 'Sem código-fonte disponível para esta dependência (sources jar não encontrado nem baixável).' };
+}
+
+// Lista os jars do classpath resolvido de um projeto Java (Maven/Gradle),
+// dada a pasta do projeto (não um arquivo) — usado pelo nó "Dependencies" da
+// árvore de arquivos. `status` pode ser 'building' enquanto mvn/gradle roda.
+function listDependencyJars(dirPath) {
+  const proj = getOrBuildProjectIndex(path.join(dirPath, '__helper_ide_dep_probe__.java'));
+  if (!proj) return { status: 'unsupported' };
+  if (proj.status !== 'ready') return { status: proj.status, error: proj.error };
+  const jars = (proj.classpathEntries || []).map((p) => ({ path: p, name: path.basename(p) }));
+  jars.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+  return { status: 'ready', jars };
+}
+
+// Lista as classes (FQN) dentro de um jar — filhos do nó do jar na árvore.
+function listJarClasses(jarPath) {
+  const fqns = new Set();
+  for (const entryName of readZipClassEntries(jarPath)) {
+    if (!entryName.endsWith('.class')) continue;
+    const dotted = entryName.slice(0, -6).replace(/\//g, '.');
+    if (/\$\d/.test(dotted)) continue; // classes anônimas/sintéticas (Foo$1) não interessam na navegação
+    fqns.add(dotted.replace(/\$/g, '.'));
+  }
+  return Array.from(fqns).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+}
+
 // Status da resolução de classpath pro arquivo (pra UI mostrar "indexando..." se quiser)
 function getStatus(filePath) {
   const found = findJavaProjectRoot(filePath);
@@ -578,4 +805,11 @@ module.exports = {
   getDiagnostics,
   getStatus,
   reset,
+  resolveSymbolToJar,
+  encodeVirtualPath,
+  parseVirtualPath,
+  isVirtualPath,
+  getClassSource,
+  listDependencyJars,
+  listJarClasses,
 };
