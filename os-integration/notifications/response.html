@@ -458,6 +458,24 @@
             window.addEventListener('mouseup', end);
             window.addEventListener('blur', end);
         })();
+
+        // === PASS-THROUGH DE MOUSE (Windows/macOS) ===
+        // Passa cliques no fundo transparente para as janelas de trás, religando interatividade ao passar nos botões/card/texto.
+        (function () {
+            const api = window.electronAPI || {};
+            if (!api.setIgnoreMouseEvents || api.platform === 'linux') return;
+            window.addEventListener('mousemove', (e) => {
+                const isInteractive = e.target && e.target.closest && e.target.closest('#response-content, .close-btn, .copy-all-btn, #drag-strip, .copy-button, pre, code, button, a, input, textarea');
+                if (isInteractive) {
+                    api.setIgnoreMouseEvents(false);
+                } else {
+                    api.setIgnoreMouseEvents(true, { forward: true });
+                }
+            });
+            window.addEventListener('mouseleave', () => {
+                api.setIgnoreMouseEvents(true, { forward: true });
+            });
+        })();
     </script>
 </body>
 </html>

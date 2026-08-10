@@ -81,8 +81,7 @@ helpers.startResponseAutoClose = function() {
     remaining -= (now - last);
     last = now;
     if (remaining <= 0) {
-      helpers.clearOsNotifAutoClose();
-      try { win.close(); } catch (_) {}
+      helpers.destroyNotificationWindow();
     }
   }, POLL_MS);
 }
