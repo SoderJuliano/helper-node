@@ -24,7 +24,7 @@
     "test:terminal": "node ./scripts/test-terminal.js",
     "test:paste": "node ./scripts/test-paste-image.js",
     "test:tree": "node ./scripts/test-tree-editor.js",
-    "test:libs": "node ./scripts/test-java-libs.js"
+    "test:javadeps": "node ./scripts/test-java-deps.js"
   },
   "dependencies": {
     "@ricky0123/vad-web": "^0.0.30",

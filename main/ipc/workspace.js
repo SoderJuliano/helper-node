@@ -84,20 +84,6 @@ ipcMain.handle("workspace:pick-dir", async () => {
       console.warn('[claude-cli] changeProject error:', e.message)
     );
   }
-  // Índice das classes das bibliotecas (só o índice central dos -sources.jar,
-  // ~40ms num projeto Spring). Fora do caminho crítico: se falhar, o projeto
-  // abre igual, só o Ctrl+clique em símbolo de lib deixa de funcionar.
-  if (oldPath !== newPath && newPath) {
-    setTimeout(() => {
-      try {
-        const libSources = require("../../services/javaLibs/sourceIndex.js");
-        libSources.limpar();
-        libSources.indexar(newPath);
-      } catch (e) {
-        console.warn("[javaLibs] índice de bibliotecas falhou:", e.message);
-      }
-    }, 0);
-  }
   if (state.mainWindow && !state.mainWindow.isDestroyed()) {
     state.mainWindow.webContents.send("workspace-changed", { attachments: workspace.list() });
   }
@@ -353,16 +339,22 @@ ipcMain.handle("search-project-content", async (_event, query) => {
 ipcMain.handle("read-file-content", async (event, filePath) => {
   try {
     if (!filePath) return { ok: false, error: "path vazio" };
+    // Classe dentro de um jar de dependência (nó "Dependencies" da árvore) —
+    // caminho virtual, nunca existe no disco, fica fora do sandbox do
+    // workspace de propósito (é leitura, vem do próprio classpath resolvido
+    // do projeto, igual "External Libraries" do IntelliJ).
+    if (filePath.includes(".jar!")) {
+      const javaImportChecker = require("../../services/javaImportChecker.js");
+      const parsed = javaImportChecker.parseVirtualPath(filePath);
+      if (!parsed) return { ok: false, error: "caminho de dependência inválido" };
+      const res = javaImportChecker.getClassSource(parsed.jarPath, parsed.fqcn);
+      if (!res.available) return { ok: false, error: res.reason || "sem código-fonte disponível" };
+      return { ok: true, path: filePath, content: res.content, ext: "java", bytes: res.content.length, mtimeMs: 0 };
+    }
     if (workspace.resolvePortalPath) {
       filePath = workspace.resolvePortalPath(filePath);
     }
-    // Fonte de biblioteca extraído do -sources.jar vive no cache do app, fora
-    // do workspace. É conteúdo que o próprio helper-node escreveu a partir de
-    // um jar já presente na máquina, então liberar a LEITURA dele não amplia o
-    // alcance de nada (a escrita continua barrada pela checagem do save).
-    let deLib = false;
-    try { deLib = require("../../services/javaLibs/sourceIndex.js").ehCaminhoDeCache(filePath); } catch (_) {}
-    if (!deLib && workspace.isPathAllowed && !workspace.isPathAllowed(filePath)) {
+    if (workspace.isPathAllowed && !workspace.isPathAllowed(filePath)) {
       return { ok: false, error: "arquivo fora do projeto/workspace" };
     }
     if (!fs2.existsSync(filePath)) return { ok: false, error: "arquivo não existe" };
@@ -382,6 +374,7 @@ ipcMain.handle("editor-save-file", async (event, payload) => {
   try {
     let { path: filePath, content, expectedMtimeMs } = payload || {};
     if (!filePath) return { ok: false, error: "path vazio" };
+    if (filePath.includes(".jar!")) return { ok: false, error: "arquivo de dependência é somente leitura" };
     if (workspace.resolvePortalPath) {
       filePath = workspace.resolvePortalPath(filePath);
     }

@@ -557,7 +557,10 @@
     if (!item || !item.symbol) return;
 
     const lineText = cm.getLine(pos.line) || '';
-    const matches = await window.electronAPI.codeNavFindDefinition({ filePath, symbol: item.symbol, lineText });
+    // `content` só é usado pro fallback de dependência Java (clique num uso do
+    // símbolo, não na linha do import — precisa do arquivo inteiro pra achar
+    // qual import corresponde ao símbolo clicado).
+    const matches = await window.electronAPI.codeNavFindDefinition({ filePath, symbol: item.symbol, lineText, content: cm.getValue() });
 
     if (!Array.isArray(matches) || matches.length === 0) return;
 

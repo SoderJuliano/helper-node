@@ -313,6 +313,18 @@
         .ws-tree-node.git-dir-modified > .ws-tree-ic {
             color: #e5c07b !important;
         }
+        /* Nós sintéticos do classpath Java (Dependencies/jar/classe/status) —
+           não existem no disco do projeto, ganham um tom levemente diferente
+           pra não parecerem editáveis igual arquivo/pasta normal. */
+        .ws-tree-node-synthetic {
+            opacity: 0.88;
+        }
+        .ws-tree-ic-deps, .ws-tree-ic-jar {
+            color: #c084fc;
+        }
+        .ws-tree-ic-class {
+            color: #82aaff;
+        }
         .ws-tree-git-tag {
             margin-left: auto;
             font-size: 9.5px;

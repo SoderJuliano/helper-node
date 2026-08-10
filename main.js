@@ -42,6 +42,7 @@ require("./main/ipc/shortcuts.js")();
 require("./main/ipc/history.js")();
 require("./main/ipc/codeNav.js")();
 require("./main/ipc/importCheck.js")();
+require("./main/ipc/javaDeps.js")();
 
 // Unhandled exception silencers
 for (const stream of [process.stdout, process.stderr]) {

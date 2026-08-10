@@ -109,14 +109,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
   codeNavFindUsages: (payload) => ipcRenderer.invoke("code-nav-find-usages", payload),
   codeNavGetImplementations: (payload) => ipcRenderer.invoke("code-nav-get-implementations", payload),
   codeNavGetGutterInfo: (payload) => ipcRenderer.invoke("code-nav-get-gutter-info", payload),
-  // Bibliotecas Java do projeto (pom.xml / build.gradle no repositório local)
-  libsList: () => ipcRenderer.invoke("libs:list"),
-  libsOpenClass: (payload) => ipcRenderer.invoke("libs:open-class", payload),
   codeNavReindex: (payload) => ipcRenderer.invoke("code-nav-reindex", payload),
   // Checador de Imports (sublinhado vermelho + auto-import, JS/TS e Java)
   importCheckGetDiagnostics: (payload) => ipcRenderer.invoke("import-check-get-diagnostics", payload),
   importCheckGetQuickFixes: (payload) => ipcRenderer.invoke("import-check-get-quickfixes", payload),
   importCheckGetJavaStatus: (payload) => ipcRenderer.invoke("import-check-get-java-status", payload),
+  // Dependências Java (nó "Dependencies" da árvore — Maven/Gradle)
+  javaDepsListJars: (payload) => ipcRenderer.invoke("java-deps:list-jars", payload),
+  javaDepsListClasses: (payload) => ipcRenderer.invoke("java-deps:list-classes", payload),
   onShortcutsChanged: (callback) => ipcRenderer.on("shortcuts-changed", () => callback()),
   getDebugModeStatus: () => ipcRenderer.invoke("get-debug-mode-status"), // Added for debug mode access
   getStealthModeStatus: () => ipcRenderer.invoke("get-stealth-mode-status"),

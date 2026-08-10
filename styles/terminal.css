@@ -380,19 +380,3 @@
             align-items: center;
         }
 
-        /* Nó "Bibliotecas": mostra de relance se a lib tem fonte navegável.
-           Sem o -sources.jar baixado não existe codigo pra abrir — e o usuario
-           precisa saber disso antes de clicar. */
-        .ws-lib-tag {
-            margin-left: auto;
-            font-size: 9px;
-            padding: 1px 5px;
-            border-radius: 3px;
-            flex-shrink: 0;
-            font-family: var(--font-ui);
-        }
-        .ws-lib-tag.com-fonte { background: rgba(80,250,123,0.15); color: #50fa7b; }
-        .ws-lib-tag.sem-fonte { background: rgba(255,255,255,0.06); color: var(--text-3); }
-        .ws-lib-tag.ausente   { background: rgba(255,82,82,0.14); color: #ff8a80; }
-        .ws-tree-node.ws-lib { cursor: default; }
-        .ws-tree-node.ws-lib:hover { background: rgba(255,255,255,0.05); }
