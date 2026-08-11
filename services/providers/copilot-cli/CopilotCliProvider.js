@@ -18,6 +18,7 @@
 
 const { CopilotCliProcess, resolveBinary } = require('./CopilotCliProcess');
 const { getModels, getDefaultModel } = require('./CopilotCliModels');
+const modelAccess = require('./CopilotCliModelAccess');
 
 const HEARTBEAT_MS = 2500;
 
@@ -94,6 +95,12 @@ class CopilotCliProvider {
       proc.onStderr((line) => { errBuf += line + '\n'; });
 
       proc.onClose((code) => {
+        // O aviso de modelo indisponível sai junto com a resposta normal (o
+        // CLI cai noutro modelo e segue), então tem que ser lido tanto no
+        // sucesso quanto no erro — senão o modelo bloqueado nunca some do
+        // seletor.
+        this._aprenderAcessoDeModelo(buf + '\n' + errBuf, sender);
+
         if (code === 0) {
           const text = buf.trim();
           safeClose(false, undefined);
@@ -133,6 +140,40 @@ class CopilotCliProvider {
 
       this._currentProc = proc;
     });
+  }
+
+  // Registra o "Model X is not available" que o CLI emite quando a conta/org
+  // não libera o modelo, tira X do seletor e move a seleção pro modelo em que
+  // o próprio CLI caiu — sem isso o usuário continuaria com um modelo morto
+  // escolhido nas configurações e levaria o aviso a cada envio.
+  _aprenderAcessoDeModelo(saida, sender) {
+    let info;
+    try { info = modelAccess.learnFromOutput(saida); } catch (_) { return; }
+    if (!info || !info.blocked) return;
+
+    const novo = info.fallback || getDefaultModel();
+    if (this._model === info.blocked) this._model = novo;
+
+    try {
+      const configService = require('../../configService');
+      if (configService.getCopilotCliModel() === info.blocked) {
+        configService.setCopilotCliModel(novo);
+      }
+    } catch (_) {}
+
+    // A lista do seletor é buscada sob demanda; sem avisar, ela só se atualiza
+    // quando o usuário reabre as configurações.
+    try {
+      sender.send('copilot-cli-status', {
+        state: 'model-blocked', blocked: info.blocked, fallback: novo,
+      });
+    } catch (_) {}
+    try {
+      const { BrowserWindow } = require('electron');
+      BrowserWindow.getAllWindows().forEach((w) => {
+        if (w && !w.isDestroyed()) w.webContents.send('ai-model-changed', { provider: 'copilotCli', model: novo });
+      });
+    } catch (_) {}
   }
 
   // Aborta o processo em curso (chamado pelo botão interromper).

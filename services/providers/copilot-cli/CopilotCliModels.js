@@ -21,14 +21,17 @@
 // Se a sondagem falhar, retornamos LISTA VAZIA — nunca um nome inventado.
 //
 // ⚠️ LIMITE CONHECIDO: `help config` lista o catálogo que o binário conhece,
-// que pode ser MAIOR do que o que a sua conta/org liberou (o picker interativo
-// mostra só o subconjunto liberado). Filtrar por conta exigiria capturar o TUI
-// com pty. Ver README/discussão antes de "consertar" isso adivinhando.
+// que é MAIOR do que o que a sua conta/org liberou (o picker interativo mostra
+// só o subconjunto liberado). Como o CLI não tem nenhum comando não-interativo
+// que devolva a lista já filtrada, o que sai daqui passa pelo
+// CopilotCliModelAccess, que esconde os modelos que a sua conta já recusou.
+// Ver o cabeçalho daquele módulo antes de mexer.
 
 const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { resolveBinary, getEnrichedEnv } = require('./CopilotCliProcess');
+const modelAccess = require('./CopilotCliModelAccess');
 
 // 'auto' é aceito pelo --model (documentado no próprio --help: "use 'auto' to
 // let Copilot pick automatically") e é o que o picker mostra como 1ª opção.
@@ -141,7 +144,17 @@ async function fetchModels() {
   return models;
 }
 
+// O cache (memória e disco) guarda sempre o CATÁLOGO CRU. A filtragem por
+// conta é aplicada na saída, nunca no que é gravado — assim um modelo que a
+// org libere depois volta sozinho quando o registro expira, sem precisar
+// invalidar o cache do catálogo.
 async function getModels() {
+  return modelAccess.filterModels(await getCatalog());
+}
+
+// Catálogo sem filtro (o que o binário conhece). Usado pelo seletor via
+// getModels e pelo diagnóstico scripts/probe-copilot-models.js.
+async function getCatalog() {
   if (cachedModels && Date.now() - lastFetchTime < MEMORY_TTL) return cachedModels;
 
   const disk = readDiskCache();
@@ -181,4 +194,7 @@ function getDefaultModel() {
   return DEFAULT_MODEL;
 }
 
-module.exports = { DEFAULT_MODEL, getModels, getDefaultModel, refresh, parseModelIdsFromHelpConfig };
+module.exports = {
+  DEFAULT_MODEL, getModels, getCatalog, getDefaultModel, refresh,
+  parseModelIdsFromHelpConfig,
+};
