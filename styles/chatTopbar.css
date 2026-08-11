@@ -1,0 +1,47 @@
+/* =====================================================================
+   TOPBAR DO CHAT — barra fina flutuante sobre o topo da conversa.
+   Extraída de chat.css (que passou de 500 linhas, regra 11).
+
+   Tudo aqui é filho direto de .chat-topbar de propósito: é o flex dela
+   (justify-content: flex-end + o padding-right que reserva os controles
+   de janela) que garante que os botões nunca se sobreponham. Botão novo
+   nessa barra entra como filho, não como position:absolute solto.
+   ===================================================================== */
+
+/* Header fino do chat com Copy All */
+.chat-topbar {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 30;
+    height: 38px; display: flex; align-items: center; justify-content: flex-end;
+    padding: 0 120px 0 14px;
+    background: linear-gradient(to bottom, var(--bg-base) 55%, rgba(14,17,22,0));
+    pointer-events: none;
+}
+.chat-topbar > * { pointer-events: auto; }
+
+#copy-all-btn {
+    display: none;
+    background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+    color: var(--text-3); font-size: 11px; font-family: var(--font-ui);
+    padding: 4px 10px; border-radius: 6px; cursor: pointer;
+    transition: background .15s, color .15s, border-color .15s;
+}
+#copy-all-btn:hover { background: rgba(255,255,255,0.09); color: var(--text); border-color: var(--border-strong); }
+#copy-all-btn.copied { color: var(--accent-2); border-color: var(--accent-border); background: var(--accent-soft); }
+
+/* Seta "ir pro mais recente". Aparece só quando há conversa abaixo da área
+   visível (restaurar um histórico grande cai no topo) e some sozinha quando o
+   scroll chega no fim. Ver renderer/scrollToLatest.js. */
+#scroll-to-latest {
+    display: none;
+    align-items: center; gap: 5px;
+    margin-right: 8px;
+    background: var(--accent-soft, rgba(255,255,255,0.05));
+    border: 1px solid var(--accent-border, var(--border));
+    color: var(--accent-2, var(--text-2));
+    font-size: 11px; font-family: var(--font-ui);
+    padding: 4px 10px 4px 8px; border-radius: 6px; cursor: pointer;
+    transition: background .15s, color .15s, border-color .15s;
+}
+#scroll-to-latest.visible { display: inline-flex; }
+#scroll-to-latest:hover { background: rgba(255,255,255,0.12); color: var(--text); border-color: var(--border-strong); }
+#scroll-to-latest svg { width: 13px; height: 13px; flex: 0 0 auto; }
