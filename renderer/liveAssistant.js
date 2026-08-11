@@ -55,11 +55,16 @@ var activeAgenticSession = null;
 
                     const stop = ph.querySelector('.ai-phase-stop');
                     if (stop) stop.addEventListener('click', () => {
+                        // Congela o stream ANTES do abort: o kill leva alguns
+                        // milissegundos e o texto desse intervalo ia pra tela.
+                        if (typeof window.cancelIaAndFreezeStream === 'function') {
+                            window.cancelIaAndFreezeStream();
+                        }
                         if (activeAgenticSession) {
                             window.electronAPI.stopAgenticWorkflow(activeAgenticSession);
-                            const txt = ph.querySelector('.ai-phase-text');
-                            if (txt) txt.textContent = 'Interrompendo…';
                         }
+                        const txt = ph.querySelector('.ai-phase-text');
+                        if (txt) txt.textContent = 'Interrompido pelo usuário';
                     });
                 }
                 const tag = ph.querySelector('.ai-phase-tag');

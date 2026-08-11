@@ -42,6 +42,12 @@ function friendlyError(err) {
 class CopilotCliProvider {
   constructor() {
     this._model = getDefaultModel();
+    // Interrupção pedida pelo usuário. Sem isto, matar o processo caía no
+    // branch de erro do onClose (código de saída ≠ 0) e o app mostrava um erro
+    // vermelho na tela como se a CLI tivesse quebrado — quando na verdade ela
+    // fez exatamente o que foi mandado. O Claude e o Gemini já tinham esse
+    // flag nas sessões deles; o copilot era o único sem.
+    this._aborted = false;
   }
 
   setModel(model) { this._model = model || getDefaultModel(); }
@@ -58,6 +64,9 @@ class CopilotCliProvider {
     if (!cwd || cwd === '/' || !fs.existsSync(cwd)) {
       cwd = (process.cwd() && process.cwd() !== '/') ? process.cwd() : os.homedir();
     }
+
+    // Turno novo: o abort do turno anterior não pode silenciar este.
+    this._aborted = false;
 
     this._emitStatus(sender, { state: 'busy', projectPath: cwd });
 
@@ -88,13 +97,29 @@ class CopilotCliProvider {
     let streamedBytes = 0;
     return new Promise((resolve, reject) => {
       proc.onData((chunk) => {
+        // Depois do "Parar IA", NADA mais vai pra tela. O kill leva alguns
+        // milissegundos (SIGINT, espera, taskkill) e o que já estava no pipe
+        // continuava sendo despejado no chat nesse meio-tempo — era isso que
+        // fazia o Copilot "seguir printando" depois de interrompido.
+        if (this._aborted) return;
         buf += chunk;
         streamedBytes += chunk.length;
         try { sender.send('gemini-stream-chunk', chunk); } catch (_) {}
       });
-      proc.onStderr((line) => { errBuf += line + '\n'; });
+      proc.onStderr((line) => { if (!this._aborted) errBuf += line + '\n'; });
 
       proc.onClose((code) => {
+        // Interrompido pelo usuário: encerra QUIETO. Um processo morto a pedido
+        // sai com código ≠ 0, e tratar isso como falha era o que pintava o erro
+        // vermelho ("Copilot CLI: exited with code ...") logo depois do clique
+        // em Parar IA. Mesmo caminho que o ClaudeCliSession já fazia.
+        if (this._aborted) {
+          safeClose(false, 'Interrompido');
+          this._emitStatus(sender, { state: 'done', projectPath: cwd });
+          resolve({ text: buf.trim() });
+          return;
+        }
+
         // O aviso de modelo indisponível sai junto com a resposta normal (o
         // CLI cai noutro modelo e segue), então tem que ser lido tanto no
         // sucesso quanto no erro — senão o modelo bloqueado nunca some do
@@ -120,6 +145,12 @@ class CopilotCliProvider {
       });
 
       proc.onError((err) => {
+        // Idem: matar o processo pode disparar 'error' em vez de 'close'.
+        if (this._aborted) {
+          safeClose(false, 'Interrompido');
+          resolve({ text: buf.trim() });
+          return;
+        }
         safeClose(true);
         const msg = friendlyError(err);
         try { sender.send('transcription-error', msg); } catch (_) {}
@@ -177,7 +208,10 @@ class CopilotCliProvider {
   }
 
   // Aborta o processo em curso (chamado pelo botão interromper).
+  // O flag é levantado ANTES do kill: kill() leva até 800ms (SIGINT, espera,
+  // taskkill) e sem isso os chunks desse intervalo ainda iam pra tela.
   async abortCurrent() {
+    this._aborted = true;
     if (this._currentProc) {
       await this._currentProc.kill().catch(() => {});
       console.log('[copilot-cli] abortado');

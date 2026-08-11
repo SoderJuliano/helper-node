@@ -91,10 +91,18 @@ function autoScrollSeNoFim(el) {
 
             // ===== STREAMING LISTENERS =====
             window.electronAPI.onStreamChunk((chunk) => {
+                // Turno interrompido pelo usuário: descarta. Sem esta guarda,
+                // qualquer chunk que chegasse depois do "Parar IA" continuava
+                // sendo escrito no chat — e, se um erro já tivesse limpado a
+                // tela, o texto reaparecia colado na mensagem de erro. A trava
+                // do lado do provider (CopilotCliProvider._aborted) resolve a
+                // origem; esta é a rede de proteção pros outros provedores.
+                if (window.iaCancelled) return;
+
                 const transcriptionElement = document.getElementById('transcription');
-                
+
                 console.log('Chunk recebido:', JSON.stringify(chunk), 'Length:', chunk.length);
-                
+
                 // Cria o elemento de streaming na primeira chunk
                 if (!streamingElement) {
                     console.log('Criando novo elemento de streaming');
@@ -296,6 +304,9 @@ function autoScrollSeNoFim(el) {
             // Listener para auto-stream após transcrição de áudio
             window.electronAPI.onAutoStream(async (text) => {
                 console.log('Auto-streaming after transcription:', text);
+                // Turno novo (voz): destrava o stream — este caminho não passa
+                // pelo startProcessing nem pelo sentToAI.
+                window.iaCancelled = false;
                 let activeSessionId = null;
                 if (window.historySession) {
                     activeSessionId = await window.historySession.ensureSessionForFirstQuestion(text);
