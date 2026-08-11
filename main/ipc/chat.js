@@ -294,15 +294,28 @@ ipcMain.on("send-to-gemini-vision", async (event, { text, image }) => {
   }
 });
 
+// Interrompe QUALQUER CLI rodando agora (claude / agy / copilot).
+// Existem dois caminhos de "parar" na UI e eles não faziam a mesma coisa: o ×
+// do bloco "Pensando" e o botão flutuante "■ Parar IA" caem em
+// `cancel-ia-request`, que só abortava backend/agente/ollama e NUNCA falava com
+// as CLIs. O resultado era o front voltar ao normal enquanto o processo
+// continuava gastando token e escrevendo nos arquivos do projeto. Agora os dois
+// caminhos passam por aqui. O copilot também estava de fora do único caminho
+// que funcionava.
+function abortRunningCliProviders() {
+  let projectPath = null;
+  try { projectPath = workspace.getProjectPath(); } catch (_) {}
+  try { ClaudeCliProvider.abortCurrent(projectPath).catch(() => {}); } catch (_) {}
+  try { GeminiCliProvider.abortCurrent && GeminiCliProvider.abortCurrent(projectPath).catch(() => {}); } catch (_) {}
+  try { CopilotCliProvider.abortCurrent && CopilotCliProvider.abortCurrent().catch(() => {}); } catch (_) {}
+}
+
 ipcMain.on("stop-agentic-workflow", (event, sessionId) => {
   agenticWorkflow.stop(sessionId);
   if (typeof ollamaAgenticWorkflow !== 'undefined') {
     ollamaAgenticWorkflow.stop(sessionId);
   }
-  // Para CLIs: aborta o processo em curso para o projeto ativo.
-  const projectPath = workspace.getProjectPath();
-  ClaudeCliProvider.abortCurrent(projectPath).catch(() => {});
-  GeminiCliProvider.abortCurrent && GeminiCliProvider.abortCurrent(projectPath).catch(() => {});
+  abortRunningCliProviders();
 });
 
 ipcMain.on("clear-ai-sessions", () => {
@@ -451,6 +464,17 @@ ipcMain.on("cancel-ia-request", () => {
   try {
     const OllamaLocalService = require('../../services/ollamaLocalService');
     OllamaLocalService.abortCurrentRequest();
+  } catch (_) {}
+  // As CLIs (claude/agy/copilot) ficavam de fora daqui: a tela parava, o
+  // processo não.
+  abortRunningCliProviders();
+  // Sem sessionId neste canal — o botão "Parar IA" é global, então derruba
+  // todo turno agêntico em andamento.
+  try { agenticWorkflow.stopAll && agenticWorkflow.stopAll(); } catch (_) {}
+  try {
+    if (typeof ollamaAgenticWorkflow !== 'undefined' && ollamaAgenticWorkflow.stopAll) {
+      ollamaAgenticWorkflow.stopAll();
+    }
   } catch (_) {}
   console.log("IA request cancelled");
 });

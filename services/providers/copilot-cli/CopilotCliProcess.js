@@ -5,6 +5,7 @@
 const { spawn, execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { killProcessTree } = require('../killProcessTree');
 
 const CANDIDATE_BINARIES = ['copilot'];
 
@@ -316,10 +317,14 @@ class CopilotCliProcess {
   // SIGKILL como último recurso — mesmo padrão do ClaudeCliProcess.
   async kill() {
     if (!this.alive || !this._proc) return;
-    try { this._proc.kill('SIGINT'); } catch (_) {}
+    // killProcessTree: mesmo sem shell aqui, o `copilot` roda ferramentas em
+    // subprocessos próprios — matar só o pai deixava esses filhos vivos
+    // escrevendo nos arquivos depois do "Parar IA".
+    const proc = this._proc;
+    await killProcessTree(proc, 'SIGINT');
     await new Promise(resolve => setTimeout(resolve, 800));
     if (this.alive) {
-      try { this._proc.kill('SIGKILL'); } catch (_) {}
+      await killProcessTree(proc, 'SIGKILL');
     }
     this.alive = false;
     this._proc = null;

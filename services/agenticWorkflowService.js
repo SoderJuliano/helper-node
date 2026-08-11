@@ -272,6 +272,14 @@ class AgenticWorkflowService {
         this.activeSessions.delete(sessionId);
     }
 
+    // O botão flutuante "Parar IA" não carrega sessionId — sem isto ele deixava
+    // o turno agêntico em andamento continuar.
+    stopAll() {
+        if (this.activeSessions.size === 0) return;
+        console.log(`[AgenticWorkflow] Stopping ALL sessions (${this.activeSessions.size})`);
+        this.activeSessions.clear();
+    }
+
     isAborted(sessionId) {
         return !this.activeSessions.has(sessionId);
     }

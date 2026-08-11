@@ -3,6 +3,7 @@
 
 const { spawn } = require('child_process');
 const { execFile } = require('child_process');
+const { killProcessTree } = require('../killProcessTree');
 
 const CANDIDATE_COMMANDS = ['agy', 'gemini', 'gemini-cli'];
 
@@ -197,14 +198,14 @@ class GeminiCliProcess {
   // Force kill the process
   async kill() {
     if (!this.alive || !this._proc) return;
-    try {
-      this._proc.kill('SIGINT');
-    } catch (_) {}
+    // killProcessTree e não this._proc.kill(): com shell:true no Windows o
+    // filho direto é o cmd.exe, e matá-lo deixava o `agy` de verdade vivo
+    // escrevendo nos arquivos do projeto depois do "Parar IA".
+    const proc = this._proc;
+    await killProcessTree(proc, 'SIGINT');
     await new Promise(resolve => setTimeout(resolve, 800));
     if (this.alive) {
-      try {
-        this._proc.kill('SIGKILL');
-      } catch (_) {}
+      await killProcessTree(proc, 'SIGKILL');
     }
     this.alive = false;
     this._proc = null;
