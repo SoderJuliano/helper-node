@@ -26,6 +26,8 @@
     "test:tree": "node ./scripts/test-tree-editor.js",
     "test:javadeps": "node ./scripts/test-java-deps.js",
     "test:killtree": "node ./scripts/test-kill-tree.js",
+    "test:copilotstop": "node ./scripts/test-copilot-stop.js",
+    "probe:copilot-models": "node ./scripts/probe-copilot-models.js",
     "test:scroll": "node ./scripts/test-scroll-latest.js"
   },
   "dependencies": {
