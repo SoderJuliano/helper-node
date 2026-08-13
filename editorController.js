@@ -388,7 +388,30 @@
       });
 
       container.appendChild(tab);
+
+      if (filePath === activePath) {
+        setTimeout(() => {
+          try {
+            tab.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+          } catch (_) {}
+        }, 0);
+      }
     });
+
+    const handleWheelScroll = (ev) => {
+      const tabsContainer = document.getElementById('fv-tabs-container');
+      if (!tabsContainer) return;
+      const delta = Math.abs(ev.deltaX) > Math.abs(ev.deltaY) ? ev.deltaX : ev.deltaY;
+      if (delta !== 0) {
+        ev.preventDefault();
+        tabsContainer.scrollLeft += delta;
+      }
+    };
+
+    if (container && !container._hasWheelScroll) {
+      container._hasWheelScroll = true;
+      container.addEventListener('wheel', handleWheelScroll, { passive: false });
+    }
 
     const header = document.querySelector('.fv-header');
     if (header && !header._hasContextMenu) {
@@ -398,6 +421,14 @@
           showTabContextMenu(ev, activePath);
         }
       });
+    }
+
+    if (header && !header._hasWheelScroll) {
+      header._hasWheelScroll = true;
+      header.addEventListener('wheel', (ev) => {
+        if (ev.target.closest('#fv-close') || ev.target.closest('.fv-lang') || ev.target.closest('.fv-save-status')) return;
+        handleWheelScroll(ev);
+      }, { passive: false });
     }
   }
 

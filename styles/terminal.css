@@ -33,11 +33,30 @@
             overflow-x: auto;
             flex: 1;
             margin-right: 12px;
-            scrollbar-width: none; /* Hide scrollbar */
+            scrollbar-width: thin;
+            scrollbar-color: transparent transparent;
             height: 100%;
+            transition: scrollbar-color 0.2s ease;
+        }
+        .fv-tabs-container:hover {
+            scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
         }
         .fv-tabs-container::-webkit-scrollbar {
-            display: none;
+            height: 3px;
+        }
+        .fv-tabs-container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .fv-tabs-container::-webkit-scrollbar-thumb {
+            background: transparent;
+            border-radius: 3px;
+            transition: background 0.2s ease;
+        }
+        .fv-tabs-container:hover::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.25);
+        }
+        .fv-tabs-container::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.45);
         }
         .fv-tab {
             display: flex;
