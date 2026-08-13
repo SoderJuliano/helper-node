@@ -105,6 +105,20 @@ class SymbolIndexer {
     if (!cleanPath) return null;
 
     const normCurrent = normalizePath(currentFilePath);
+    const isJavaFile = normCurrent.toLowerCase().endsWith('.java');
+
+    // Se for arquivo Java ou símbolo sem / ou \ e sem extensão de arquivo explícita,
+    // NÃO tratar como caminho relativo de arquivo no projeto para evitar falsos positivos
+    // (ex: resolver um tipo Java "User" ou "Service" para "User.html" no projeto).
+    const isExplicitPath = cleanPath.startsWith('./') || cleanPath.startsWith('../') ||
+      cleanPath.startsWith('.\\') || cleanPath.startsWith('..\\') ||
+      cleanPath.includes('/') || cleanPath.includes('\\');
+
+    if (!isExplicitPath) {
+      if (isJavaFile) return null;
+      if (!/\.[a-zA-Z0-9]+$/.test(cleanPath)) return null;
+    }
+
     const currentDir = normCurrent ? path.dirname(normCurrent) : '';
     const projDir = this.projectPath || currentDir;
 
@@ -118,7 +132,9 @@ class SymbolIndexer {
       if (projDir) basePaths.push(path.resolve(projDir, cleanPath));
     }
 
-    const extsToTry = ['', '.js', '.ts', '.jsx', '.tsx', '.json', '.html', '.css', '/index.js', '/index.ts'];
+    const extsToTry = isJavaFile
+      ? ['', '.java']
+      : ['', '.js', '.ts', '.jsx', '.tsx', '.json', '/index.js', '/index.ts'];
 
     for (const base of basePaths) {
       for (const ext of extsToTry) {
