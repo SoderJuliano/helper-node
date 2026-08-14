@@ -28,19 +28,29 @@ const NO_ASK_FLAG = '--no-ask-user';
 // devolve ENAMETOOLONG); Linux tem teto de 128KB por argumento.
 const MAX_CMDLINE_CHARS = process.platform === 'win32' ? 30000 : 100000;
 
-// Recorta o prompt pra caber na linha de comando junto dos outros argumentos,
-// mantendo o começo (instruções/sistema) e o fim (a pergunta atual).
-function fitPromptToCommandLine(prompt, command, otherArgs) {
+// Quando o prompt excede o limite da linha de comando do SO (ex.: 30k chars no Windows por conta de objetos/JSONs gigantes colados):
+// Em vez de fatiar o texto e omitir o meio com [...trecho omitido...], salvamos o prompt COMPLETO
+// em um arquivo temporário no workspace e instruímos o Copilot a lê-lo 100% sem nenhuma omissão.
+function fitPromptToCommandLine(prompt, command, otherArgs, cwd) {
   const overhead = command.length + otherArgs.reduce((n, a) => n + String(a).length + 3, 0) + 64;
   const budget = Math.max(2000, MAX_CMDLINE_CHARS - overhead);
-  if (prompt.length <= budget) return prompt;
+  if (prompt.length <= budget) {
+    return { promptText: prompt, tempFile: null };
+  }
 
-  const marker = '\n\n[...trecho omitido pra caber na linha de comando do Copilot CLI...]\n\n';
-  const keep = budget - marker.length;
-  const head = Math.floor(keep * 0.25);
-  const tail = keep - head;
-  console.warn(`[copilot-cli] prompt de ${prompt.length} chars truncado para ${budget} (limite de argv).`);
-  return prompt.slice(0, head) + marker + prompt.slice(-tail);
+  try {
+    const tempFileName = `.copilot_prompt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.txt`;
+    const tempFilePath = path.join(cwd || process.cwd(), tempFileName);
+    fs.writeFileSync(tempFilePath, prompt, 'utf8');
+    console.log(`[copilot-cli] Prompt grande (${prompt.length} chars) salvo em ${tempFileName} para envio 100% integral sem omissões.`);
+
+    const instructionPrompt = `O usuário enviou uma mensagem/pergunta contendo objetos ou código extenso. O enunciado e todos os objetos colados pelo usuário foram salvos INTEGRALMENTE sem nenhuma omissão no arquivo "${tempFileName}" no diretório do projeto. Por favor, abra e leia o arquivo "${tempFileName}" completamente e responda ao usuário de forma precisa.`;
+
+    return { promptText: instructionPrompt, tempFile: tempFilePath };
+  } catch (err) {
+    console.warn(`[copilot-cli] Falha ao salvar prompt em arquivo temporário:`, err.message);
+    return { promptText: prompt, tempFile: null };
+  }
 }
 
 // Rede de segurança: argv com byte NUL faz o spawn estourar ERR_INVALID_ARG_VALUE
@@ -270,8 +280,9 @@ class CopilotCliProcess {
     if (model) tailArgs.push('--model', model);
     for (const att of dedupeExisting(attachments)) tailArgs.push('--attachment', att);
 
-    const safePrompt = fitPromptToCommandLine(stripNulls(prompt || ''), bin, tailArgs);
-    const args = ['-p', safePrompt, ...tailArgs];
+    const { promptText, tempFile } = fitPromptToCommandLine(stripNulls(prompt || ''), bin, tailArgs, cwd);
+    this._tempPromptFile = tempFile;
+    const args = ['-p', promptText, ...tailArgs];
 
     const env = getEnrichedEnv();
 
@@ -289,6 +300,17 @@ class CopilotCliProcess {
     this._proc.stdout.setEncoding('utf8');
     this._proc.stderr.setEncoding('utf8');
 
+    const cleanupTempFile = () => {
+      if (this._tempPromptFile) {
+        try {
+          if (fs.existsSync(this._tempPromptFile)) {
+            fs.unlinkSync(this._tempPromptFile);
+          }
+        } catch (_) {}
+        this._tempPromptFile = null;
+      }
+    };
+
     this._proc.stdout.on('data', (chunk) => {
       if (this._onData) this._onData(chunk);
     });
@@ -302,11 +324,13 @@ class CopilotCliProcess {
 
     this._proc.on('close', (code, signal) => {
       this.alive = false;
+      cleanupTempFile();
       if (this._onClose) this._onClose(code, signal);
     });
 
     this._proc.on('error', (err) => {
       this.alive = false;
+      cleanupTempFile();
       if (this._onError) this._onError(err);
     });
 
