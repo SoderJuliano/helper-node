@@ -221,6 +221,17 @@ app.whenReady().then(async () => {
     const initialDebugStatus = configService.getDebugModeStatus();
     state.mainWindow.webContents.send("debug-status-changed", initialDebugStatus);
   }
+
+  // Inicializa o watcher de arquivos em tempo real para o projeto ativo no workspace
+  try {
+    const activeDir = (workspace.list() || []).find((a) => a.type === 'dir');
+    if (activeDir && activeDir.path) {
+      const workspaceWatcher = require('./services/workspaceWatcher.js');
+      workspaceWatcher.startWatchingProject(activeDir.path);
+    }
+  } catch (err) {
+    console.warn('[workspaceWatcher] Erro ao auto-iniciar no boot:', err.message);
+  }
   
   // Inicializar monitoramento de clipboard se print mode estiver ativo
   const initialPrintMode = configService.getPrintModeStatus();

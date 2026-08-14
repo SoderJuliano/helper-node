@@ -73,6 +73,16 @@ ipcMain.handle("workspace:pick-dir", async () => {
     } catch (err) {
       console.warn('[symbolIndexer] Falha ao indexar novo projeto:', err.message);
     }
+    try {
+      const workspaceWatcher = require('../../services/workspaceWatcher.js');
+      if (newPath) {
+        workspaceWatcher.startWatchingProject(newPath);
+      } else {
+        workspaceWatcher.stopWatching();
+      }
+    } catch (err) {
+      console.warn('[workspaceWatcher] Falha ao alterar watcher:', err.message);
+    }
     if (activeProvider === 'geminiCli') {
       GeminiCliProvider.changeProject(oldPath, newPath).catch(e =>
         console.warn('[workspace] GeminiCliProvider.changeProject falhou:', e.message)

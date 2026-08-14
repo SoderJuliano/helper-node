@@ -31,7 +31,8 @@
     "probe:copilot-models": "node ./scripts/probe-copilot-models.js",
     "test:scroll": "node ./scripts/test-scroll-latest.js",
     "test:tabscroll": "node ./scripts/test-tab-scroll.js",
-    "test:terminalpaste": "node ./scripts/test-terminal-paste.js"
+    "test:terminalpaste": "node ./scripts/test-terminal-paste.js",
+    "test:tabsync": "node ./scripts/test-realtime-tab-sync.js"
   },
   "dependencies": {
     "@ricky0123/vad-web": "^0.0.30",

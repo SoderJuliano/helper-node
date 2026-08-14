@@ -606,6 +606,17 @@
       }
       doc = { content: res.content, originalContent: res.content, mtimeMs: res.mtimeMs, dirty: false };
       openFiles.set(filePath, doc);
+    } else if (!doc.dirty && !filePath.includes('.jar!')) {
+      try {
+        if (window.electronAPI && window.electronAPI.readFileContent) {
+          const res = await window.electronAPI.readFileContent(filePath);
+          if (res && res.ok && typeof res.content === 'string') {
+            doc.content = res.content;
+            doc.originalContent = res.content;
+            if (res.mtimeMs) doc.mtimeMs = res.mtimeMs;
+          }
+        }
+      } catch (_) {}
     }
 
     const cmInst = ensureCm();
@@ -742,16 +753,81 @@
 
   function hasOpenFile() { return !!activePath; }
 
-  // Reage a mutações de arquivo vindas de qualquer origem (ver main.js:
-  // emitFileMutated). Só sinaliza — nunca sobrescreve o buffer sozinho, nunca
-  // bloqueia nada. É o "indicativo em tempo real" pedido: se a IA mexeu no
-  // MESMO arquivo que está aberto agora, avisa; se não é o arquivo aberto,
-  // ignora silenciosamente.
-  function onFileMutated({ path: p, origin } = {}) {
-    if (!p || origin === 'user') return;
-    if (p !== activePath) return;
-    const label = origin === 'openai' ? 'ChatGPT' : origin === 'claude-cli' ? 'Claude Code' : origin === 'gemini-cli' ? 'Gemini CLI' : (origin || 'IA');
-    setConflictBanner(`⚠ ${label} está mexendo neste arquivo agora`);
+  // Reage a mutações de arquivo vindas de qualquer origem (disk, git pull, OpenAI, Claude CLI, Gemini CLI, etc.).
+  // Atualiza abas abertas em TEMPO REAL (estilo VS Code / IntelliJ IDEA).
+  async function onFileMutated({ path: p, origin, content, mtimeMs } = {}) {
+    if (!p) return;
+    const filePath = normPath(p);
+    const doc = openFiles.get(filePath);
+
+    // Se o arquivo não está aberto em nenhuma aba do editor, ignora (0 overhead)
+    if (!doc) return;
+
+    if (origin === 'user') {
+      setConflictBanner('');
+      return;
+    }
+
+    let freshContent = content;
+    let freshMtimeMs = mtimeMs || 0;
+
+    if (freshContent === undefined) {
+      try {
+        if (window.electronAPI && window.electronAPI.readFileContent) {
+          const res = await window.electronAPI.readFileContent(filePath);
+          if (res && res.ok && typeof res.content === 'string') {
+            freshContent = res.content;
+            freshMtimeMs = res.mtimeMs || 0;
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (freshContent === undefined) return;
+
+    if (!doc.dirty && doc.content === freshContent) return;
+
+    // A. ABA LIMPA (o usuário NÃO digitou alterações não salvas nesta aba):
+    // Atualiza o conteúdo em tempo real sem perder o cursor, rolagem nem foco!
+    if (!doc.dirty) {
+      doc.content = freshContent;
+      doc.originalContent = freshContent;
+      if (freshMtimeMs) doc.mtimeMs = freshMtimeMs;
+
+      if (filePath === activePath && cm) {
+        if (cm.getValue() !== freshContent) {
+          const cursor = cm.getCursor();
+          const scrollInfo = cm.getScrollInfo();
+
+          cm.setValue(freshContent);
+
+          try {
+            cm.setCursor(cursor);
+            cm.scrollTo(scrollInfo.left, scrollInfo.top);
+          } catch (_) {}
+
+          clearGhostText();
+        }
+
+        const label = origin === 'disk'
+          ? 'Atualizado do disco (git/terminal) ✓'
+          : origin === 'openai' ? 'Atualizado por ChatGPT ✓'
+          : origin === 'claude-cli' ? 'Atualizado por Claude Code ✓'
+          : origin === 'gemini-cli' ? 'Atualizado por Gemini CLI ✓'
+          : `Atualizado por ${origin || 'IA'} ✓`;
+
+        setConflictBanner('');
+        setSaveStatus(label);
+        setTimeout(() => {
+          const statusEl = document.getElementById('fv-save-status');
+          if (statusEl && statusEl.textContent === label) {
+            setSaveStatus('');
+          }
+        }, 1800);
+      }
+    } else {
+      setConflictBanner('⚠ Arquivo alterado no disco (você possui alterações não salvas)');
+    }
   }
 
   function renamePath(oldPath, newPath) {
