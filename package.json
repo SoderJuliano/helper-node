@@ -33,7 +33,8 @@
     "test:tabscroll": "node ./scripts/test-tab-scroll.js",
     "test:terminalpaste": "node ./scripts/test-terminal-paste.js",
     "test:tabsync": "node ./scripts/test-realtime-tab-sync.js",
-    "test:copilotlarge": "node ./scripts/test-copilot-large-object.js"
+    "test:copilotlarge": "node ./scripts/test-copilot-large-object.js",
+    "test:terminalspace": "node ./scripts/test-terminal-space.js"
   },
   "dependencies": {
     "@ricky0123/vad-web": "^0.0.30",
