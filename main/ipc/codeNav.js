@@ -37,9 +37,10 @@ module.exports = function registerCodeNavIPC() {
         if (dep) {
           return [{
             filePath: javaImportChecker.encodeVirtualPath(dep.jarPath, dep.fqcn),
-            line: 1,
+            line: dep.targetLine || 1,
             symbol,
-            kind: 'class',
+            kind: dep.isMethod ? 'method' : 'class',
+            className: dep.className || dep.fqcn.split('.').pop(),
             isDependency: true,
           }];
         }

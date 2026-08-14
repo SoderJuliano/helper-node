@@ -777,10 +777,20 @@ function buildIndexFromClasspathEntries(entries, moduleDir, entry, key) {
         });
         saveDiskCache();
       }
+      notifyJavaDepsChanged(moduleDir, 'ready');
     }
   }
 
   processBatch();
+}
+
+function notifyJavaDepsChanged(rootDir, status) {
+  try {
+    const { state } = require('../main/globals.js');
+    if (state && state.mainWindow && !state.mainWindow.isDestroyed()) {
+      state.mainWindow.webContents.send('java-deps-changed', { rootDir, status });
+    }
+  } catch (_) {}
 }
 
 function buildClasspathIndexAsync(found, entry, key) {
@@ -792,6 +802,7 @@ function buildClasspathIndexAsync(found, entry, key) {
         ? `Comando de build não encontrado (${found.type === 'maven' ? 'mvn/mvnw' : 'gradle/gradlew'})`
         : err.message;
       console.warn(`[javaImportChecker] Falha ao resolver classpath (${found.type}) em ${found.rootDir}:`, entry.error);
+      notifyJavaDepsChanged(found.rootDir, 'error');
       return;
     }
     buildIndexFromClasspathEntries(cpEntries, found.moduleDir, entry, key);
@@ -807,10 +818,17 @@ function getOrBuildProjectIndex(filePath) {
   const existing = projectCache.get(key);
 
   if (existing && existing.buildFileMtime === mtime) {
+    if (existing.status === 'building' && (Date.now() - existing.lastAttemptAt) > CLASSPATH_TIMEOUT_MS) {
+      existing.status = 'error';
+      existing.error = 'Timeout ao resolver classpath (mais de 2min)';
+      notifyJavaDepsChanged(found.rootDir, 'error');
+    }
     return existing;
   }
-  if (existing && existing.status === 'building' && (Date.now() - existing.lastAttemptAt) < BUILD_FILE_POLL_MS) {
-    return existing;
+  if (existing && existing.status === 'building') {
+    if ((Date.now() - existing.lastAttemptAt) < CLASSPATH_TIMEOUT_MS) {
+      return existing;
+    }
   }
 
   const diskEntry = projectCacheDisk.get(key);
@@ -909,34 +927,52 @@ function isVirtualPath(vpath) {
   return typeof vpath === 'string' && /\.jar!.+\.java$/.test(vpath.replace(/\\/g, '/'));
 }
 
-function resolveSymbolToJar(filePath, symbol, lineText, content) {
-  if (!isSupported(filePath) || !symbol) return null;
-  let proj;
-  try {
-    proj = getOrBuildProjectIndex(filePath);
-  } catch (_) {
-    return null;
-  }
-  if (!proj || proj.status !== 'ready') return null;
+function findSymbolLineInClassSource(content, symbol) {
+  if (!content || !symbol) return 1;
+  const lines = content.split(/\r?\n/);
+  const escaped = symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+  // 1. Definição de método em Java / classe descompilada
+  const methodRegex = new RegExp(`(?:public|protected|private|static|final|async|synchronized|default|native|abstract|\\s)+\\b${escaped}\\s*\\(`);
+  for (let i = 0; i < lines.length; i++) {
+    if (methodRegex.test(lines[i])) return i + 1;
+  }
+
+  // 2. Campo ou constante enum
+  const fieldRegex = new RegExp(`\\b${escaped}\\b\\s*(?:[;=,)]|$)`);
+  for (let i = 0; i < lines.length; i++) {
+    if (fieldRegex.test(lines[i])) return i + 1;
+  }
+
+  // 3. Primeira Ocorrência do identificador
+  const wordRegex = new RegExp(`\\b${escaped}\\b`);
+  for (let i = 0; i < lines.length; i++) {
+    if (wordRegex.test(lines[i])) return i + 1;
+  }
+
+  return 1;
+}
+
+function resolveClassFqn(proj, className, lineText, content) {
+  if (!proj || !className) return null;
   let fqn = null;
 
-  // 1. Tenta por linha de import explícito (ex: `import com.acme.dto.UserDto;`)
+  // 1. Import explícito na própria linha
   const impMatch = lineText && lineText.match(/^\s*import\s+(?:static\s+)?([\w.]+)(\.\*)?\s*;/);
-  if (impMatch && !impMatch[2] && impMatch[1].split('.').pop() === symbol) {
+  if (impMatch && !impMatch[2] && impMatch[1].split('.').pop() === className) {
     fqn = impMatch[1];
   }
 
-  // 2. Tenta varrer os imports do conteúdo do arquivo (incluindo wildcard imports `import com.acme.dto.*;`)
+  // 2. Direct & wildcard imports no arquivo
   if (!fqn && content) {
     const imports = collectImports(content);
-    const foundDirect = imports.find((i) => !i.isWildcard && i.fqn.split('.').pop() === symbol);
+    const foundDirect = imports.find((i) => !i.isWildcard && i.fqn.split('.').pop() === className);
     if (foundDirect) {
       fqn = foundDirect.fqn;
     } else {
       const wildcards = imports.filter((i) => i.isWildcard);
       for (const w of wildcards) {
-        const candidate = `${w.fqn}.${symbol}`;
+        const candidate = `${w.fqn}.${className}`;
         if (proj.allClasses.has(candidate) && proj.classSource.has(candidate)) {
           fqn = candidate;
           break;
@@ -945,20 +981,20 @@ function resolveSymbolToJar(filePath, symbol, lineText, content) {
     }
   }
 
-  // 3. Fallback: mesmo pacote do arquivo atual
+  // 3. Mesmo pacote
   if (!fqn && content) {
     const pkgMatch = /^\s*package\s+([\w.]+)\s*;/m.exec(content);
     if (pkgMatch) {
-      const samePkgCandidate = `${pkgMatch[1]}.${symbol}`;
+      const samePkgCandidate = `${pkgMatch[1]}.${className}`;
       if (proj.allClasses.has(samePkgCandidate) && proj.classSource.has(samePkgCandidate)) {
         fqn = samePkgCandidate;
       }
     }
   }
 
-  // 4. Fallback: busca por nome simples no índice do projeto (DTOs, Records, Enums, Classes de libs referenciadas)
-  if (!fqn && proj.simpleNameIndex && proj.simpleNameIndex.has(symbol)) {
-    const candidates = Array.from(proj.simpleNameIndex.get(symbol));
+  // 4. Busca por nome simples no índice de dependências (simpleNameIndex)
+  if (!fqn && proj.simpleNameIndex && proj.simpleNameIndex.has(className)) {
+    const candidates = Array.from(proj.simpleNameIndex.get(className));
     for (const cand of candidates) {
       if (proj.classSource.has(cand)) {
         fqn = cand;
@@ -972,6 +1008,109 @@ function resolveSymbolToJar(filePath, symbol, lineText, content) {
   const jarPath = proj.classSource.get(fqn);
   if (!jarPath || !jarPath.toLowerCase().endsWith('.jar')) return null;
   return { fqn, jarPath };
+}
+
+function resolveSymbolToJar(filePath, symbol, lineText, content) {
+  if (!isSupported(filePath) || !symbol) return null;
+  let proj;
+  try {
+    proj = getOrBuildProjectIndex(filePath);
+  } catch (_) {
+    return null;
+  }
+  if (!proj || proj.status !== 'ready') return null;
+
+  // A. Primeiro tenta resolver `symbol` diretamente como uma Classe
+  const classRes = resolveClassFqn(proj, symbol, lineText, content);
+  if (classRes) {
+    return {
+      fqn: classRes.fqn,
+      jarPath: classRes.jarPath,
+      targetLine: 1,
+      className: symbol,
+      isMethod: false,
+    };
+  }
+
+  const escapedSym = symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  // B. Método/Campo estático chamado com receptor de Classe ou Variável: `Receptor.symbol(...)`
+  if (lineText) {
+    const mRec = lineText.match(new RegExp(`([A-Za-z_$][A-Za-z0-9_$]*)\\s*\\.\\s*${escapedSym}\\b`));
+    if (mRec && mRec[1] && mRec[1] !== 'this' && mRec[1] !== 'super') {
+      const receptor = mRec[1];
+      let targetClassName = null;
+
+      if (/^[A-Z]/.test(receptor)) {
+        // Receptor com inicial maiúscula (chamada estática tipo StringUtils.isBlank)
+        targetClassName = receptor;
+      } else if (content) {
+        // Receptor com inicial minúscula (variável local, ex: `userDto.getId()`)
+        const mType = content.match(new RegExp(`([A-Z][A-Za-z0-9_$]*)(?:<[^>]*>)?\\s+${receptor}\\b`));
+        if (mType) targetClassName = mType[1];
+      }
+
+      if (targetClassName) {
+        const recRes = resolveClassFqn(proj, targetClassName, lineText, content);
+        if (recRes) {
+          const src = getClassSource(recRes.jarPath, recRes.fqn);
+          const targetLine = src && src.available ? findSymbolLineInClassSource(src.content, symbol) : 1;
+          return {
+            fqn: recRes.fqn,
+            jarPath: recRes.jarPath,
+            targetLine,
+            className: targetClassName,
+            isMethod: true,
+          };
+        }
+      }
+    }
+  }
+
+  // C. Import estático explícito no arquivo: `import static com.acme.Utils.myMethod;` ou wildcard `import static com.acme.Utils.*;`
+  if (content) {
+    const staticImports = [];
+    const RE_STATIC = /^\s*import\s+static\s+([\w.]+)(\.\*)?\s*;/gm;
+    let m;
+    while ((m = RE_STATIC.exec(content)) !== null) {
+      staticImports.push({ fqn: m[1], isWildcard: Boolean(m[2]) });
+    }
+
+    // 1. Direct static import: `import static com.acme.Utils.symbol;`
+    const foundDirectStatic = staticImports.find((i) => !i.isWildcard && i.fqn.split('.').pop() === symbol);
+    if (foundDirectStatic) {
+      const parts = foundDirectStatic.fqn.split('.');
+      parts.pop(); // Remove o nome do método/campo
+      const classFqn = parts.join('.');
+      const className = classFqn.split('.').pop();
+      if (proj.classSource.has(classFqn)) {
+        const jarPath = proj.classSource.get(classFqn);
+        if (jarPath && jarPath.toLowerCase().endsWith('.jar')) {
+          const src = getClassSource(jarPath, classFqn);
+          const targetLine = src && src.available ? findSymbolLineInClassSource(src.content, symbol) : 1;
+          return { fqn: classFqn, jarPath, targetLine, className, isMethod: true };
+        }
+      }
+    }
+
+    // 2. Wildcard static import: `import static com.acme.Utils.*;`
+    const wildcardStatics = staticImports.filter((i) => i.isWildcard);
+    for (const ws of wildcardStatics) {
+      const classFqn = ws.fqn;
+      if (proj.classSource.has(classFqn)) {
+        const jarPath = proj.classSource.get(classFqn);
+        if (jarPath && jarPath.toLowerCase().endsWith('.jar')) {
+          const src = getClassSource(jarPath, classFqn);
+          if (src && src.available && new RegExp(`\\b${escapedSym}\\b`).test(src.content)) {
+            const targetLine = findSymbolLineInClassSource(src.content, symbol);
+            return { fqn: classFqn, jarPath, targetLine, className: classFqn.split('.').pop(), isMethod: true };
+          }
+        }
+      }
+    }
+  }
+
+  return null;
 }
 
 function mavenCoordsFromJarPath(jarPath) {

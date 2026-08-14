@@ -117,6 +117,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Dependências Java (nó "Dependencies" da árvore — Maven/Gradle)
   javaDepsListJars: (payload) => ipcRenderer.invoke("java-deps:list-jars", payload),
   javaDepsListClasses: (payload) => ipcRenderer.invoke("java-deps:list-classes", payload),
+  onJavaDepsChanged: (cb) => ipcRenderer.on("java-deps-changed", (event, data) => cb(data)),
   onShortcutsChanged: (callback) => ipcRenderer.on("shortcuts-changed", () => callback()),
   getDebugModeStatus: () => ipcRenderer.invoke("get-debug-mode-status"), // Added for debug mode access
   getStealthModeStatus: () => ipcRenderer.invoke("get-stealth-mode-status"),
@@ -156,6 +157,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   triggerToggleRecording: () => ipcRenderer.send("renderer-toggle-recording"),
   resizeOverlay: (height) => ipcRenderer.send("resize-overlay", height),
   copyToClipboard: (text) => ipcRenderer.send("copy-to-clipboard", text),
+  readClipboardText: () => ipcRenderer.invoke("read-clipboard-text"),
   // Region select overlay → main
   regionSelected: (rect) => ipcRenderer.send("region-selected", rect),
   regionCancelled: () => ipcRenderer.send("region-cancelled"),

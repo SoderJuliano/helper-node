@@ -92,6 +92,36 @@ var isTerminalInitialized = false;
             // testar de verdade olhando o que foi pra tela.
             window._term = term;
 
+            // Função utilitária para ler o clipboard e colar no terminal
+            async function colarTextoNoTerminal() {
+                let texto = '';
+                if (window.electronAPI && typeof window.electronAPI.readClipboardText === 'function') {
+                    try {
+                        texto = await window.electronAPI.readClipboardText();
+                    } catch (_) {}
+                }
+
+                if (!texto && navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
+                    try {
+                        texto = await navigator.clipboard.readText();
+                    } catch (_) {}
+                }
+
+                if (texto && window.electronAPI && typeof window.electronAPI.terminalInput === 'function') {
+                    window.electronAPI.terminalInput(texto);
+                }
+            }
+            window._colarTextoNoTerminal = colarTextoNoTerminal;
+
+            // Captura eventos nativos de paste do xterm
+            if (term.onPaste) {
+                term.onPaste((data) => {
+                    if (data && window.electronAPI && window.electronAPI.terminalInput) {
+                        window.electronAPI.terminalInput(data);
+                    }
+                });
+            }
+
             // Cada tecla vai crua pro PTY. É o que faltava pro vim do `git pull`:
             // antes o <input> só mandava a linha inteira no Enter, então dentro do
             // editor era chute.
@@ -102,23 +132,51 @@ var isTerminalInitialized = false;
             });
 
             // Ctrl+C: com seleção, copia; sem seleção, deixa o PTY receber o \x03.
+            // Ctrl+V / Cmd+V / Shift+Insert: cola o último texto copiado no terminal.
             term.attachCustomKeyEventHandler((e) => {
                 if (e.type !== 'keydown') return true;
-                if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'c') {
+                const k = e.key ? e.key.toLowerCase() : '';
+
+                // Ctrl+C / Cmd+C com texto selecionado
+                if ((e.ctrlKey || e.metaKey) && !e.altKey && k === 'c') {
                     const sel = term.getSelection();
                     if (sel && sel.trim()) {
-                        navigator.clipboard.writeText(sel).catch(() => {});
+                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                            navigator.clipboard.writeText(sel).catch(() => {});
+                        } else if (window.electronAPI && window.electronAPI.copyToClipboard) {
+                            window.electronAPI.copyToClipboard(sel);
+                        }
                         term.clearSelection();
                         return false;
                     }
                 }
-                if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'v') {
-                    navigator.clipboard.readText()
-                        .then((t) => t && window.electronAPI.terminalInput(t))
-                        .catch(() => {});
+
+                // Ctrl+V, Cmd+V, Ctrl+Shift+V, Shift+Insert -> Colar do clipboard
+                const isPaste = ((e.ctrlKey || e.metaKey) && !e.altKey && k === 'v') ||
+                                (e.shiftKey && (e.key === 'Insert' || e.code === 'Insert'));
+
+                if (isPaste) {
+                    colarTextoNoTerminal();
                     return false;
                 }
+
                 return true;
+            });
+
+            // Clique com botão direito: se houver seleção copia, se não houver cola
+            host.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                const sel = term && term.getSelection();
+                if (sel && sel.trim()) {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(sel).catch(() => {});
+                    } else if (window.electronAPI && window.electronAPI.copyToClipboard) {
+                        window.electronAPI.copyToClipboard(sel);
+                    }
+                    term.clearSelection();
+                } else {
+                    colarTextoNoTerminal();
+                }
             });
 
             return term;

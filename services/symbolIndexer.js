@@ -342,22 +342,21 @@ class SymbolIndexer {
 
       // 4. Métodos / Funções
       const methodPatterns = [
-        // async function foo(...) / function foo(...) / function* foo(...)
-        { re: /(?:async\s+)?function\*?\s+([A-Za-z0-9_$]+)\s*\(/, g: 1 },
+        // async function foo(...) / function foo(...) / function* foo(...) / static function foo(...)
+        { re: /(?:public\s+|protected\s+|private\s+)?(?:static\s+)?(?:async\s+)?function\*?\s+([A-Za-z0-9_$]+)\s*\(/, g: 1 },
         // const foo = (...) => / let foo = async () => / var foo = function()
         { re: /(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_$]+|\bfunction\b)/, g: 1 },
-        // foo(...) { / async foo(...) { (métodos de classe/objeto)
-        { re: /^\s*(?:async\s+)?([A-Za-z0-9_$]+)\s*\([^)]*\)\s*\{/, g: 1 },
+        // foo(...) { / static foo(...) { / static async foo(...) { / public static foo(...) { (métodos JS/TS)
+        { re: /^\s*(?:public\s+|protected\s+|private\s+)?(?:static\s+)?(?:async\s+|get\s+|set\s+)?([A-Za-z0-9_$]+)\s*\([^)]*\)\s*\{/, g: 1 },
         // foo: function(...) / foo: async function(...)
         { re: /([A-Za-z0-9_$]+)\s*:\s*(?:async\s+)?function/, g: 1 },
-        // Java/C#/PHP/C++: public void foo(...) / static async Task<Bar> foo(...)
-        { re: /(?:public|protected|private|static|final|async|override)\s+(?:[A-Za-z0-9_$<>[\]]+\s+)+([A-Za-z0-9_$]+)\s*\([^)]*\)/, g: 1 },
-        // Declaração SEM corpo, terminada em ';' — método de interface Java
-        // (`void processar(String id);`), método abstrato, e assinatura de
-        // TypeScript em interface. Nenhum padrão acima pegava isto: os de Java
-        // exigem um modificador (interface não tem) e os de corpo exigem '{'
-        // (aqui a linha termina em ';'). Era por isso que só a INTERFACE
-        // ganhava ícone de implementação, nunca os métodos dela.
+        // Java/C#/PHP/C++/Kotlin: public void foo(...) / static async Task<Bar> foo(...) / public static <K, V> Map<K, V> foo(...)
+        { re: /(?:public|protected|private|static|final|async|override|synchronized|default|native)\s+(?:[A-Za-z0-9_$<>[\].,\s]+\s+)+([A-Za-z0-9_$]+)\s*\([^)]*\)/, g: 1 },
+        // Python: def foo(...) / async def foo(...)
+        { re: /(?:async\s+)?def\s+([A-Za-z0-9_$]+)\s*\(/, g: 1 },
+        // Go / Rust: func foo / fn foo
+        { re: /(?:pub\s+)?(?:async\s+)?(?:func|fn)\s+(?:\([^)]+\)\s+)?([A-Za-z0-9_$]+)\s*\(/, g: 1 },
+        // Declaração SEM corpo, terminada em ';' — método de interface Java / TS
         { re: /^\s*(?:public\s+|protected\s+|default\s+|static\s+|abstract\s+)*[A-Za-z0-9_$<>[\],\s]+?\s+([A-Za-z0-9_$]+)\s*\([^)]*\)\s*(?:throws\s+[A-Za-z0-9_$.,\s]+)?;\s*$/, g: 1 },
       ];
 
@@ -365,7 +364,7 @@ class SymbolIndexer {
         const m = lineText.match(pattern.re);
         if (m && m[pattern.g]) {
           const methodName = m[pattern.g];
-          if (['if', 'for', 'while', 'switch', 'catch', 'constructor', 'function', 'class', 'return', 'import', 'export', 'require'].includes(methodName)) {
+          if (['if', 'for', 'while', 'switch', 'catch', 'constructor', 'function', 'class', 'return', 'import', 'export', 'require', 'static', 'async', 'get', 'set', 'public', 'private', 'protected', 'def', 'fn', 'func'].includes(methodName)) {
             continue;
           }
           const col = lineText.indexOf(methodName) + 1;
@@ -473,19 +472,23 @@ class SymbolIndexer {
     // Expressões regulares para capturar declaração/definição de símbolo
     const defRegexes = [
       // async function foo / function foo / function* foo
-      new RegExp(`(?:async\\s+)?function\\*?\\s+${escaped}\\s*\\(`),
+      new RegExp(`(?:public\\s+|protected\\s+|private\\s+)?(?:static\\s+)?(?:async\\s+)?function\\*?\\s+${escaped}\\s*\\(`),
       // const foo / let foo / var foo (com ou sem = e qualquer valor)
       new RegExp(`(?:const|let|var)\\s+${escaped}\\b`),
       // this.foo = ... / foo = ...
       new RegExp(`(?:this\\.)?${escaped}\\s*=\\s*(?:async\\s*)?(?:\\([^)]*\\)|[A-Za-z0-9_$]+|function)`),
       // foo(...) { / async foo(...) { / get foo() / set foo() / static foo()
-      new RegExp(`(?:async\\s+|get\\s+|set\\s+|static\\s+)?${escaped}\\s*\\([^)]*\\)\\s*\\{`),
+      new RegExp(`(?:public\\s+|protected\\s+|private\\s+|static\\s+|async\\s+|get\\s+|set\\s+)*${escaped}\\s*\\([^)]*\\)\\s*\\{`),
       // foo: function / foo: async function / foo: (
       new RegExp(`${escaped}\\s*:\\s*(?:async\\s+)?(?:function|\\()`),
-      // class Foo / interface Foo
-      new RegExp(`(?:class|interface)\\s+${escaped}\\b`),
-      // Java/C#/C++: tipoRetorno foo(...)
-      new RegExp(`(?:public|protected|private|static|final|async|override)\\s+(?:[A-Za-z0-9_$<>\\[\\]]+\\s+)+${escaped}\\s*\\(`)
+      // class Foo / interface Foo / enum Foo / record Foo
+      new RegExp(`(?:class|interface|enum|record)\\s+${escaped}\\b`),
+      // Java/C#/C++/PHP: tipoRetorno foo(...)
+      new RegExp(`(?:public|protected|private|static|final|async|override|synchronized|default|native)\\s+(?:[A-Za-z0-9_$<>\\[\\],\\s]+\\s+)+${escaped}\\s*\\(`),
+      // Python: def foo(...)
+      new RegExp(`(?:async\\s+)?def\\s+${escaped}\\s*\\(`),
+      // Go / Rust: func foo / fn foo
+      new RegExp(`(?:func|fn)\\s+(?:\\([^)]+\\)\\s+)?${escaped}\\s*\\(`)
     ];
 
     for (let i = 0; i < lines.length; i++) {

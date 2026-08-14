@@ -142,8 +142,17 @@ var creatingFolderParent = null;
 
                     e.loading = false;
                     const idx = treeEntries.indexOf(e);
-                    if (children && children.length && idx !== -1) {
-                        treeEntries.splice(idx + 1, 0, ...children);
+                    if (idx !== -1) {
+                        let removeCount = 0;
+                        while (idx + 1 + removeCount < treeEntries.length && treeEntries[idx + 1 + removeCount].depth > e.depth) {
+                            removeCount++;
+                        }
+                        if (removeCount > 0) {
+                            treeEntries.splice(idx + 1, removeCount);
+                        }
+                        if (children && children.length) {
+                            treeEntries.splice(idx + 1, 0, ...children);
+                        }
                     }
                     e.loaded = !retry;
                 }
@@ -480,6 +489,20 @@ var creatingFolderParent = null;
                 if (wsTreeTrashBtn) {
                     wsTreeTrashBtn.style.display = selectedPaths.size > 0 ? 'flex' : 'none';
                 }
+            }
+
+            if (window.electronAPI && window.electronAPI.onJavaDepsChanged) {
+                window.electronAPI.onJavaDepsChanged(() => {
+                    const depsNode = treeEntries.find(e => e.synthetic === 'java-deps');
+                    if (depsNode) {
+                        depsNode.loaded = false;
+                        depsNode.loading = false;
+                        if (!depsNode.collapsed) {
+                            depsNode.collapsed = true;
+                            toggleDir(depsNode);
+                        }
+                    }
+                });
             }
 
     // Expose functions globally

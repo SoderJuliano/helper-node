@@ -86,6 +86,14 @@ ipcMain.on("copy-to-clipboard", (event, text) => {
   }
 });
 
+ipcMain.handle("read-clipboard-text", async () => {
+  try {
+    return clipboard.readText() || "";
+  } catch (e) {
+    return "";
+  }
+});
+
 ipcMain.on("resize-overlay", (event, height) => {
   if (!state.osNotificationWindow || state.osNotificationWindow.isDestroyed()) return;
   try {
