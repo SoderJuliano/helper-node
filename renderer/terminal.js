@@ -137,17 +137,6 @@ var isTerminalInitialized = false;
                 if (e.type !== 'keydown') return true;
                 const k = e.key ? e.key.toLowerCase() : '';
 
-                // Tecla Espaço: garante o caractere ' ' (0x20) mesmo se modificadores (Ctrl/Alt)
-                // ficarem presos na memória do xterm ao alternar de projeto ou perder foco.
-                if (e.key === ' ' || e.code === 'Space' || e.keyCode === 32) {
-                    if (!e.ctrlKey && !e.altKey && !e.metaKey) {
-                        if (window.electronAPI && typeof window.electronAPI.terminalInput === 'function') {
-                            window.electronAPI.terminalInput(' ');
-                        }
-                        return false;
-                    }
-                }
-
                 // Ctrl+C / Cmd+C com texto selecionado
                 if ((e.ctrlKey || e.metaKey) && !e.altKey && k === 'c') {
                     const sel = term.getSelection();
