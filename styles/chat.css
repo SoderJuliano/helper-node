@@ -66,24 +66,8 @@
         }
         #main.is-empty .composer-hint { opacity: 0; }
 
-        /* Header fino do chat com Copy All */
-        .chat-topbar {
-            position: absolute; top: 0; left: 0; right: 0; z-index: 30;
-            height: 38px; display: flex; align-items: center; justify-content: flex-end;
-            padding: 0 120px 0 14px;
-            background: linear-gradient(to bottom, var(--bg-base) 55%, rgba(14,17,22,0));
-            pointer-events: none;
-        }
-        .chat-topbar > * { pointer-events: auto; }
-        #copy-all-btn {
-            display: none;
-            background: rgba(255,255,255,0.05); border: 1px solid var(--border);
-            color: var(--text-3); font-size: 11px; font-family: var(--font-ui);
-            padding: 4px 10px; border-radius: 6px; cursor: pointer;
-            transition: background .15s, color .15s, border-color .15s;
-        }
-        #copy-all-btn:hover { background: rgba(255,255,255,0.09); color: var(--text); border-color: var(--border-strong); }
-        #copy-all-btn.copied { color: var(--accent-2); border-color: var(--accent-border); background: var(--accent-soft); }
+        /* Topbar do chat (.chat-topbar, #copy-all-btn, #scroll-to-latest):
+           extraída para styles/chatTopbar.css. */
 
         /* #transcription — área central rolável de mensagens.
            O &lt;script&gt; posiciona #transcription com position:fixed via CSS antigo;

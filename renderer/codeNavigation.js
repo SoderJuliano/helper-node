@@ -443,14 +443,25 @@
 
       for (const item of items) {
         if (!item.line || !item.target) continue;
+        const isMethod = item.kind === 'interface-method';
         const iconEl = document.createElement('div');
-        iconEl.className = 'code-nav-gutter-icon';
-        iconEl.textContent = 'I↓';
-        iconEl.title = `Ir para implementação: ${item.symbol || 'Classe'}`;
-        iconEl.addEventListener('click', (ev) => {
+        iconEl.className = 'code-nav-gutter-icon' + (isMethod ? ' method' : '');
+        iconEl.textContent = isMethod ? '↓' : 'I↓';
+        iconEl.title = isMethod
+          ? `Ir para a implementação de ${item.symbol}()`
+          : `Ir para implementação: ${item.symbol || 'Classe'}`;
+        iconEl.addEventListener('click', async (ev) => {
           ev.stopPropagation();
-          if (window.EditorController && item.target.filePath) {
-            window.EditorController.openFile(item.target.filePath, item.target.line);
+          if (!window.EditorController || !item.target.filePath) return;
+          await window.EditorController.openFile(item.target.filePath, item.target.line);
+          // Deixa o nome realçado no destino até o usuário clicar em qualquer
+          // outro lugar — senão ele chega no arquivo sem saber onde olhar.
+          if (window.CodeHighlight && item.symbol) {
+            const destCm = window.EditorController.getCm && window.EditorController.getCm();
+            if (destCm) {
+              window.CodeHighlight.attach(destCm);
+              window.CodeHighlight.pin(destCm, item.symbol);
+            }
           }
         });
 
@@ -546,16 +557,29 @@
     if (!item || !item.symbol) return;
 
     const lineText = cm.getLine(pos.line) || '';
-    const matches = await window.electronAPI.codeNavFindDefinition({ filePath, symbol: item.symbol, lineText });
+    // `content` só é usado pro fallback de dependência Java (clique num uso do
+    // símbolo, não na linha do import — precisa do arquivo inteiro pra achar
+    // qual import corresponde ao símbolo clicado).
+    const matches = await window.electronAPI.codeNavFindDefinition({ filePath, symbol: item.symbol, lineText, content: cm.getValue() });
 
     if (!Array.isArray(matches) || matches.length === 0) return;
 
-    if (matches.length === 1) {
-      if (window.EditorController && matches[0].filePath) {
-        await window.EditorController.openFile(matches[0].filePath, matches[0].line);
+    // Vai DIRETO pro melhor candidato, sempre. Abrir uma lista quando havia
+    // mais de um match transformava "Ctrl+clique num método da service" numa
+    // janela de escolha — e o destino óbvio (a própria service) já é o primeiro
+    // da lista, ordenado pelo tipo do receptor no symbolIndexer. Pra descer da
+    // interface até a implementação existe o ícone na calha.
+    const alvo = matches[0];
+    if (window.EditorController && alvo.filePath) {
+      await window.EditorController.openFile(alvo.filePath, alvo.line);
+      // Realça o nome no destino até o próximo clique, igual ao ícone da calha.
+      if (window.CodeHighlight && item.symbol) {
+        const destCm = window.EditorController.getCm && window.EditorController.getCm();
+        if (destCm) {
+          window.CodeHighlight.attach(destCm);
+          window.CodeHighlight.pin(destCm, item.symbol);
+        }
       }
-    } else {
-      showDefinitionPopup(matches, item.symbol, mouseEvent.clientX, mouseEvent.clientY);
     }
   }
 
@@ -927,9 +951,28 @@
     // Atualiza calha de implementações
     updateGutterMarkers(cm, filePath);
 
+    // Realce de ocorrências da palavra selecionada + régua de coluna.
+    if (window.CodeHighlight) {
+      window.CodeHighlight.attach(cm);
+      window.CodeHighlight.attachRuler(cm);
+    }
+
     const wrapper = cm.getWrapperElement();
     if (wrapper._hasCodeNav) return;
     wrapper._hasCodeNav = true;
+
+    // A indexação roda em segundo plano e pode não ter terminado quando o
+    // arquivo abriu — nesse caso o gutter vinha VAZIO e os ícones só apareciam
+    // se o usuário fechasse e reabrisse a aba. Refaz a calha quando o índice
+    // termina. Abaixo do guard de propósito: um listener só, não um por
+    // arquivo aberto.
+    if (window.electronAPI && window.electronAPI.onSymbolIndexerStatus) {
+      window.electronAPI.onSymbolIndexerStatus((data) => {
+        if (data && data.status === 'completed' && activeCm && currentFilePath) {
+          updateGutterMarkers(activeCm, currentFilePath);
+        }
+      });
+    }
 
     // Menu de contexto no clique do botão direito (Renomear método / Copiar seleção)
     wrapper.addEventListener('contextmenu', (e) => {
@@ -937,14 +980,35 @@
     });
 
     // Mousemove para efeito de link sob Ctrl & Usages Badge sob hover normal
-    wrapper.addEventListener('mousemove', (e) => {
+    //
+    // ⚠️ Throttled por rAF de propósito. `cm.coordsChar()` força medição de
+    // layout no CodeMirror, e isto rodava em TODO evento de mousemove (~60-120
+    // por segundo ao mover o mouse) — era metade da sensação de "editor pesado,
+    // scroll travando". Além do rAF, se o cursor continua no mesmo caractere
+    // não há nada novo a calcular.
+    let rafPendente = false;
+    let ultimaPos = null;
+    const onMouseMove = (e) => {
+      if (rafPendente) return;
+      rafPendente = true;
+      requestAnimationFrame(() => {
+        rafPendente = false;
+        const pos = cm.coordsChar({ left: e.clientX, top: e.clientY });
+        const mesma = ultimaPos && pos && ultimaPos.line === pos.line && ultimaPos.ch === pos.ch;
+        if (mesma && !e.ctrlKey && !e.metaKey) return;
+        ultimaPos = pos ? { line: pos.line, ch: pos.ch } : null;
+        handleMouseMove(e, pos);
+      });
+    };
+    wrapper.addEventListener('mousemove', onMouseMove);
+
+    const handleMouseMove = (e, posPreCalculada) => {
       if (e.ctrlKey || e.metaKey) {
         removeActiveUsagesBadge();
         clearTimeout(usagesTimer);
         lastHoveredSymbol = null;
 
-        const pos = cm.coordsChar({ left: e.clientX, top: e.clientY });
-        const item = getSymbolOrPathAtPos(cm, pos);
+        const item = getSymbolOrPathAtPos(cm, posPreCalculada);
 
         if (item && item.symbol && item.range) {
           clearHoverMarker();
@@ -959,8 +1023,8 @@
 
       clearHoverMarker();
 
-      // Busca de Usages sob Hover sem Ctrl
-      const pos = cm.coordsChar({ left: e.clientX, top: e.clientY });
+      // Busca de Usages sob Hover sem Ctrl — reusa a posição já medida.
+      const pos = posPreCalculada;
       const item = getSymbolOrPathAtPos(cm, pos);
 
       if (item && item.symbol && !item.isPath) {
@@ -984,7 +1048,7 @@
           }
         }
       }
-    });
+    };
 
     wrapper.addEventListener('mouseleave', () => {
       clearHoverMarker();

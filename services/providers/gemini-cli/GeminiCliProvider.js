@@ -72,8 +72,8 @@ class GeminiCliProvider {
     return this._model;
   }
 
-  getModels() {
-    return getModels();
+  getModels(force = false) {
+    return getModels(force);
   }
 
   // Main entry point called by main.js.
@@ -252,11 +252,20 @@ class GeminiCliProvider {
   }
 
   // Aborta o processo em curso para um projeto (chamado pelo botão interromper).
+  // Se a chave não bater, aborta TODAS as sessões: `send()` normaliza o cwd e
+  // `getProjectPath()` muda conforme os anexos, então o projectPath de quem
+  // manda parar nem sempre é a chave com que a sessão foi criada — e errar a
+  // chave deixava a CLI rodando solta, ainda escrevendo nos arquivos.
   async abortCurrent(projectPath) {
-    const session = this._sessions.get(projectPath);
+    const session = projectPath ? this._sessions.get(projectPath) : null;
     if (session) {
       await session.stop().catch(() => {});
       console.log(`[gemini-cli] abortado: ${projectPath}`);
+      return;
+    }
+    for (const [key, s] of this._sessions) {
+      await s.stop().catch(() => {});
+      console.log(`[gemini-cli] abortado (fallback): ${key}`);
     }
   }
 

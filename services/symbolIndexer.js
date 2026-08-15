@@ -17,6 +17,47 @@ const IGNORED_DIRS = new Set([
   'coverage', '.output', 'out', 'temp', 'tmp', 'logs', '.bundle'
 ]);
 
+// Palavras que nunca valem como "uso" — encher o índice com elas é só custo.
+const USAGE_STOPWORDS = new Set([
+  'if', 'for', 'while', 'switch', 'catch', 'function', 'class', 'return',
+  'import', 'export', 'require', 'const', 'let', 'var', 'new', 'typeof',
+  'instanceof', 'void', 'delete', 'true', 'false', 'null', 'undefined', 'this',
+  'super', 'async', 'await', 'yield', 'try', 'finally', 'else', 'case', 'break',
+  'public', 'private', 'protected', 'static', 'final', 'package', 'interface',
+  'extends', 'implements', 'throws', 'throw', 'int', 'boolean', 'double', 'float',
+  'long', 'char', 'byte', 'short', 'String', 'default', 'continue', 'abstract',
+]);
+
+const ENCLOSING_FUNC_RE = /(?:async\s+)?function\*?\s+([A-Za-z0-9_$]+)|(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=|([A-Za-z0-9_$]+)\s*\([^)]*\)\s*\{/;
+const IDENTIFIER_RE = /[A-Za-z_$][A-Za-z0-9_$]*/g;
+
+// Declaração não é "uso" — é onde a coisa nasce. O findUsages antigo descobria
+// isso montando uma regex por símbolo e relendo o arquivo; aqui a checagem é
+// pelo texto que ANTECEDE o identificador, com regex fixa, então custa quase
+// nada e roda uma vez só, na indexação.
+const DECL_PREFIX_RES = [
+  /(?:const|let|var|class|interface|enum|function|def)\s+$/,             // const foo / class Foo
+  /(?:async\s+)?function\*?\s+$/,                                        // function foo
+  /(?:public|private|protected|static|final|abstract|readonly)\s+(?:[A-Za-z0-9_$<>[\],]+\s+)*$/, // private String campo / public void foo
+  /(?:import|from|package)\s+$/,
+];
+
+function isDeclarationAt(lineText, index) {
+  if (index === 0) return false;
+  const antes = lineText.slice(0, index);
+  for (const re of DECL_PREFIX_RES) {
+    if (re.test(antes)) return true;
+  }
+  return false;
+}
+
+// Teto por símbolo. Sem isto, um identificador comum num projeto grande gera
+// dezenas de milhares de entradas — medido: 120.000 usos de um único método.
+// Ninguém lê 120 mil ocorrências, e serializar isso por IPC custa mais que a
+// própria busca.
+const MAX_USAGES_PER_SYMBOL = 300;
+const MIN_USAGE_SYMBOL_LEN = 3;
+
 function normalizePath(p) {
   if (!p) return '';
   let norm = path.normalize(p).replace(/\\/g, '/');
@@ -35,6 +76,11 @@ class SymbolIndexer {
     this.implementationsMap = new Map();
     // symbolName -> Set of { filePath, line, col, kind, className }
     this.symbolMap = new Map();
+    // symbolName -> [{ filePath, line, col, lineText, callerName }]
+    // Índice invertido de USOS, montado na indexação do projeto. É o que
+    // permite responder "onde isto é usado" sem tocar no disco.
+    this.usageMap = new Map();
+    this.usagesTruncated = new Set(); // símbolos que bateram o teto
 
     this.indexingSessionId = 0;
     this.isIndexing = false;
@@ -46,6 +92,8 @@ class SymbolIndexer {
     this.fileMap.clear();
     this.implementationsMap.clear();
     this.symbolMap.clear();
+    this.usageMap.clear();
+    this.usagesTruncated.clear();
     this.isIndexing = false;
     this.indexingProgress = { total: 0, processed: 0 };
   }
@@ -57,6 +105,20 @@ class SymbolIndexer {
     if (!cleanPath) return null;
 
     const normCurrent = normalizePath(currentFilePath);
+    const isJavaFile = normCurrent.toLowerCase().endsWith('.java');
+
+    // Se for arquivo Java ou símbolo sem / ou \ e sem extensão de arquivo explícita,
+    // NÃO tratar como caminho relativo de arquivo no projeto para evitar falsos positivos
+    // (ex: resolver um tipo Java "User" ou "Service" para "User.html" no projeto).
+    const isExplicitPath = cleanPath.startsWith('./') || cleanPath.startsWith('../') ||
+      cleanPath.startsWith('.\\') || cleanPath.startsWith('..\\') ||
+      cleanPath.includes('/') || cleanPath.includes('\\');
+
+    if (!isExplicitPath) {
+      if (isJavaFile) return null;
+      if (!/\.[a-zA-Z0-9]+$/.test(cleanPath)) return null;
+    }
+
     const currentDir = normCurrent ? path.dirname(normCurrent) : '';
     const projDir = this.projectPath || currentDir;
 
@@ -70,7 +132,9 @@ class SymbolIndexer {
       if (projDir) basePaths.push(path.resolve(projDir, cleanPath));
     }
 
-    const extsToTry = ['', '.js', '.ts', '.jsx', '.tsx', '.json', '.html', '.css', '/index.js', '/index.ts'];
+    const extsToTry = isJavaFile
+      ? ['', '.java']
+      : ['', '.js', '.ts', '.jsx', '.tsx', '.json', '/index.js', '/index.ts'];
 
     for (const base of basePaths) {
       for (const ext of extsToTry) {
@@ -217,10 +281,21 @@ class SymbolIndexer {
 
     let currentInterface = null;
     let currentClass = null;
+    let currentEnclosingFunc = null;
 
     for (let i = 0; i < lines.length; i++) {
       const lineText = lines[i];
       const lineNum = i + 1; // 1-indexed
+
+      // 0. Índice invertido de usos (símbolo → onde aparece).
+      // Construído aqui porque já estamos varrendo cada linha do projeto uma
+      // vez. Sem ele, findUsages relia TODOS os arquivos do disco a cada hover.
+      this.indexUsagesInLine(normPath, lineText, lineNum, () => currentEnclosingFunc);
+      const encMatch = lineText.match(ENCLOSING_FUNC_RE);
+      if (encMatch) {
+        const fn = encMatch[1] || encMatch[2] || encMatch[3];
+        if (fn && !USAGE_STOPWORDS.has(fn)) currentEnclosingFunc = fn;
+      }
 
       // 1. Imports
       const importMatch = lineText.match(/(?:import|using|use|require)\s+([^;'"\n]+)/);
@@ -267,23 +342,29 @@ class SymbolIndexer {
 
       // 4. Métodos / Funções
       const methodPatterns = [
-        // async function foo(...) / function foo(...) / function* foo(...)
-        /(?:async\s+)?function\*?\s+([A-Za-z0-9_$]+)\s*\(/,
+        // async function foo(...) / function foo(...) / function* foo(...) / static function foo(...)
+        { re: /(?:public\s+|protected\s+|private\s+)?(?:static\s+)?(?:async\s+)?function\*?\s+([A-Za-z0-9_$]+)\s*\(/, g: 1 },
         // const foo = (...) => / let foo = async () => / var foo = function()
-        /(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_$]+|\bfunction\b)/,
-        // foo(...) { / async foo(...) { (métodos de classe/objeto)
-        /^\s*(?:async\s+)?([A-Za-z0-9_$]+)\s*\([^)]*\)\s*\{/,
+        { re: /(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_$]+|\bfunction\b)/, g: 1 },
+        // foo(...) { / static foo(...) { / static async foo(...) { / public static foo(...) { (métodos JS/TS)
+        { re: /^\s*(?:public\s+|protected\s+|private\s+)?(?:static\s+)?(?:async\s+|get\s+|set\s+)?([A-Za-z0-9_$]+)\s*\([^)]*\)\s*\{/, g: 1 },
         // foo: function(...) / foo: async function(...)
-        /([A-Za-z0-9_$]+)\s*:\s*(?:async\s+)?function/,
-        // Java/C#/PHP/C++: public void foo(...) / static async Task<Bar> foo(...)
-        /(?:public|protected|private|static|final|async|override)\s+(?:[A-Za-z0-9_$<>[\]]+\s+)+([A-Za-z0-9_$]+)\s*\([^)]*\)/
+        { re: /([A-Za-z0-9_$]+)\s*:\s*(?:async\s+)?function/, g: 1 },
+        // Java/C#/PHP/C++/Kotlin: public void foo(...) / static async Task<Bar> foo(...) / public static <K, V> Map<K, V> foo(...)
+        { re: /(?:public|protected|private|static|final|async|override|synchronized|default|native)\s+(?:[A-Za-z0-9_$<>[\].,\s]+\s+)+([A-Za-z0-9_$]+)\s*\([^)]*\)/, g: 1 },
+        // Python: def foo(...) / async def foo(...)
+        { re: /(?:async\s+)?def\s+([A-Za-z0-9_$]+)\s*\(/, g: 1 },
+        // Go / Rust: func foo / fn foo
+        { re: /(?:pub\s+)?(?:async\s+)?(?:func|fn)\s+(?:\([^)]+\)\s+)?([A-Za-z0-9_$]+)\s*\(/, g: 1 },
+        // Declaração SEM corpo, terminada em ';' — método de interface Java / TS
+        { re: /^\s*(?:public\s+|protected\s+|default\s+|static\s+|abstract\s+)*[A-Za-z0-9_$<>[\],\s]+?\s+([A-Za-z0-9_$]+)\s*\([^)]*\)\s*(?:throws\s+[A-Za-z0-9_$.,\s]+)?;\s*$/, g: 1 },
       ];
 
       for (const pattern of methodPatterns) {
-        const m = lineText.match(pattern);
-        if (m && m[1]) {
-          const methodName = m[1];
-          if (['if', 'for', 'while', 'switch', 'catch', 'constructor', 'function', 'class', 'return', 'import', 'export', 'require'].includes(methodName)) {
+        const m = lineText.match(pattern.re);
+        if (m && m[pattern.g]) {
+          const methodName = m[pattern.g];
+          if (['if', 'for', 'while', 'switch', 'catch', 'constructor', 'function', 'class', 'return', 'import', 'export', 'require', 'static', 'async', 'get', 'set', 'public', 'private', 'protected', 'def', 'fn', 'func'].includes(methodName)) {
             continue;
           }
           const col = lineText.indexOf(methodName) + 1;
@@ -304,6 +385,42 @@ class SymbolIndexer {
     }
 
     this.fileMap.set(normPath, fileData);
+  }
+
+  // Extrai identificadores da linha e registra onde cada um aparece.
+  // Chamado uma vez por linha durante a indexação — o custo fica na abertura do
+  // projeto (em segundo plano), não no hover do usuário.
+  indexUsagesInLine(normPath, lineText, lineNum, getEnclosing) {
+    if (!lineText) return;
+    const trimmed = lineText.trim();
+    if (!trimmed) return;
+    // Linha inteira de comentário não é uso.
+    if (trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*')
+      || trimmed.startsWith('#') || trimmed.startsWith('<!--')) return;
+
+    const comentarioInline = lineText.indexOf('//');
+    IDENTIFIER_RE.lastIndex = 0;
+    let m;
+    const jaNestaLinha = new Set();
+    while ((m = IDENTIFIER_RE.exec(lineText)) !== null) {
+      const nome = m[0];
+      if (nome.length < MIN_USAGE_SYMBOL_LEN || USAGE_STOPWORDS.has(nome)) continue;
+      if (comentarioInline !== -1 && m.index > comentarioInline) continue;
+      if (jaNestaLinha.has(nome)) continue; // uma entrada por símbolo por linha
+      jaNestaLinha.add(nome);
+
+      let lista = this.usageMap.get(nome);
+      if (!lista) { lista = []; this.usageMap.set(nome, lista); }
+      if (lista.length >= MAX_USAGES_PER_SYMBOL) { this.usagesTruncated.add(nome); continue; }
+      lista.push({
+        filePath: normPath,
+        line: lineNum,
+        col: m.index + 1,
+        lineText: trimmed,
+        callerName: getEnclosing() || null,
+        isDef: isDeclarationAt(lineText, m.index),
+      });
+    }
   }
 
   addSymbol(name, item) {
@@ -328,6 +445,13 @@ class SymbolIndexer {
       this.implementationsMap.set(implName, updated);
     });
 
+    // Sem isto, reindexar um arquivo salvo duplicaria os usos dele no índice.
+    this.usageMap.forEach((list, name) => {
+      const filtrada = list.filter(u => u.filePath !== normPath);
+      if (filtrada.length) this.usageMap.set(name, filtrada);
+      else this.usageMap.delete(name);
+    });
+
     this.fileMap.delete(normPath);
   }
 
@@ -348,19 +472,23 @@ class SymbolIndexer {
     // Expressões regulares para capturar declaração/definição de símbolo
     const defRegexes = [
       // async function foo / function foo / function* foo
-      new RegExp(`(?:async\\s+)?function\\*?\\s+${escaped}\\s*\\(`),
+      new RegExp(`(?:public\\s+|protected\\s+|private\\s+)?(?:static\\s+)?(?:async\\s+)?function\\*?\\s+${escaped}\\s*\\(`),
       // const foo / let foo / var foo (com ou sem = e qualquer valor)
       new RegExp(`(?:const|let|var)\\s+${escaped}\\b`),
       // this.foo = ... / foo = ...
       new RegExp(`(?:this\\.)?${escaped}\\s*=\\s*(?:async\\s*)?(?:\\([^)]*\\)|[A-Za-z0-9_$]+|function)`),
       // foo(...) { / async foo(...) { / get foo() / set foo() / static foo()
-      new RegExp(`(?:async\\s+|get\\s+|set\\s+|static\\s+)?${escaped}\\s*\\([^)]*\\)\\s*\\{`),
+      new RegExp(`(?:public\\s+|protected\\s+|private\\s+|static\\s+|async\\s+|get\\s+|set\\s+)*${escaped}\\s*\\([^)]*\\)\\s*\\{`),
       // foo: function / foo: async function / foo: (
       new RegExp(`${escaped}\\s*:\\s*(?:async\\s+)?(?:function|\\()`),
-      // class Foo / interface Foo
-      new RegExp(`(?:class|interface)\\s+${escaped}\\b`),
-      // Java/C#/C++: tipoRetorno foo(...)
-      new RegExp(`(?:public|protected|private|static|final|async|override)\\s+(?:[A-Za-z0-9_$<>\\[\\]]+\\s+)+${escaped}\\s*\\(`)
+      // class Foo / interface Foo / enum Foo / record Foo
+      new RegExp(`(?:class|interface|enum|record)\\s+${escaped}\\b`),
+      // Java/C#/C++/PHP: tipoRetorno foo(...)
+      new RegExp(`(?:public|protected|private|static|final|async|override|synchronized|default|native)\\s+(?:[A-Za-z0-9_$<>\\[\\],\\s]+\\s+)+${escaped}\\s*\\(`),
+      // Python: def foo(...)
+      new RegExp(`(?:async\\s+)?def\\s+${escaped}\\s*\\(`),
+      // Go / Rust: func foo / fn foo
+      new RegExp(`(?:func|fn)\\s+(?:\\([^)]+\\)\\s+)?${escaped}\\s*\\(`)
     ];
 
     for (let i = 0; i < lines.length; i++) {
@@ -421,6 +549,33 @@ class SymbolIndexer {
     const normCurrent = normalizePath(currentFilePath);
     if (normCurrent && !this.fileMap.has(normCurrent) && fs.existsSync(normCurrent)) {
       this.indexSingleFile(normCurrent);
+    }
+
+    // Caminho rápido: índice invertido montado na abertura do projeto.
+    //
+    // Antes daqui existia (e ainda existe abaixo, como fallback) uma varredura
+    // que RELIA todos os arquivos do projeto do disco a cada chamada. Como isto
+    // é chamado a cada hover sobre um identificador, e roda no processo main,
+    // o app inteiro congelava enquanto durava — medido em 722ms num projeto de
+    // 2.000 arquivos, a cada passada do mouse.
+    if (this.usageMap.size > 0) {
+      const achados = this.usageMap.get(cleanSymbol);
+      if (achados) {
+        const defLines = new Set(
+          (this.symbolMap.get(cleanSymbol) || []).map(d => `${d.filePath}:${d.line}`)
+        );
+        return achados
+          .filter(u => !u.isDef && !defLines.has(`${u.filePath}:${u.line}`))
+          .map(({ isDef, ...u }) => ({
+            ...u,
+            relativePath: this.projectPath
+              ? path.relative(this.projectPath, u.filePath).replace(/\\/g, '/')
+              : u.filePath,
+            fileName: path.basename(u.filePath),
+          }));
+      }
+      // Símbolo indexado e sem ocorrência = resposta legítima "nenhum uso".
+      if (this.fileMap.has(normCurrent)) return [];
     }
 
     // 1. Obter lista de todos os arquivos a verificar
@@ -566,19 +721,57 @@ class SymbolIndexer {
     if (formatted.length === 1) return formatted;
 
     const currentData = this.fileMap.get(normCurrent);
-    const sorted = [...formatted].sort((a, b) => {
-      if (a.filePath === normCurrent && b.filePath !== normCurrent) return -1;
-      if (b.filePath === normCurrent && a.filePath !== normCurrent) return 1;
-      if (currentData && currentData.imports.length > 0) {
-        const aImport = currentData.imports.some(imp => imp.text.includes(path.basename(a.filePath, path.extname(a.filePath))));
-        const bImport = currentData.imports.some(imp => imp.text.includes(path.basename(b.filePath, path.extname(b.filePath))));
-        if (aImport && !bImport) return -1;
-        if (!aImport && bImport) return 1;
-      }
-      return 0;
-    });
 
-    return sorted;
+    // Tipo do RECEPTOR da chamada: em `pagamentoService.processar(id)`, descobre
+    // que `pagamentoService` é do tipo `PagamentoService` e põe a definição
+    // dentro desse tipo em primeiro lugar. Sem isto, um método com o mesmo nome
+    // na interface e na implementação empatava e o app abria uma lista em vez
+    // de ir direto ao destino óbvio.
+    const tipoReceptor = this.resolveReceiverType(normCurrent, symbolName, lineText);
+
+    const pontos = (c) => {
+      let p = 0;
+      if (tipoReceptor) {
+        const base = path.basename(c.filePath, path.extname(c.filePath));
+        if (c.className === tipoReceptor) p += 100;
+        if (base === tipoReceptor) p += 80;
+      }
+      if (currentData && currentData.imports.length > 0) {
+        const base = path.basename(c.filePath, path.extname(c.filePath));
+        if (currentData.imports.some(imp => imp.text.includes(base))) p += 20;
+      }
+      // Sem receptor identificado, a definição no próprio arquivo é a aposta
+      // melhor (chamada de método local). Com receptor, ela não tem prioridade.
+      if (!tipoReceptor && c.filePath === normCurrent) p += 50;
+      return p;
+    };
+
+    return [...formatted].sort((a, b) => pontos(b) - pontos(a));
+  }
+
+  // Descobre o tipo declarado da variável que recebe a chamada.
+  // Só olha o arquivo atual — é uma leitura só, e é onde a declaração está em
+  // praticamente todo caso real (campo injetado ou variável local).
+  resolveReceiverType(normCurrent, symbolName, lineText) {
+    if (!lineText || !symbolName) return null;
+    const mRec = lineText.match(
+      new RegExp(`([A-Za-z_$][A-Za-z0-9_$]*)\\s*\\.\\s*${symbolName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`)
+    );
+    if (!mRec) return null;
+    const receptor = mRec[1];
+    // `this.foo()` / `super.foo()` não dizem nada sobre tipo externo.
+    if (receptor === 'this' || receptor === 'super') return null;
+    // O próprio receptor pode ser um tipo (chamada estática: Service.metodo()).
+    if (/^[A-Z]/.test(receptor)) return receptor;
+
+    let conteudo = '';
+    try { conteudo = fs.readFileSync(normCurrent, 'utf8'); } catch (_) { return null; }
+    // `private PagamentoService pagamentoService;`, `PagamentoService x = ...`,
+    // parâmetro `(PagamentoService pagamentoService)`.
+    const mTipo = conteudo.match(
+      new RegExp(`([A-Z][A-Za-z0-9_$]*)(?:<[^>]*>)?\\s+${receptor}\\b\\s*[;=,)]`)
+    );
+    return mTipo ? mTipo[1] : null;
   }
 
   // Encontra implementações para uma interface ou método de interface

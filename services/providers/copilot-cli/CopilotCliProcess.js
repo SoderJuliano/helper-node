@@ -1,20 +1,87 @@
 // Spawns a single `copilot -p <prompt> --allow-all-tools` invocation and
 // captures its stdout. One instance per send() call — not a persistent REPL.
 //
-// ⚠️ Flags abaixo foram confirmados contra a doc oficial (docs.github.com/
-// copilot/reference/copilot-cli-reference/cli-programmatic-reference), NÃO
-// contra `copilot --help` rodado de verdade nesta máquina (aqui não tem o
-// binário instalado). Existe divergência entre fontes sobre o nome exato da
-// flag de bypass total: a doc "programmatic reference" usa `--allow-all-tools`,
-// mas outra página da mesma doc.github.com (autopilot) cita `--allow-all`
-// (alias `--yolo`). Fica ALLOW_ALL_FLAG como constante única — se o binário
-// recusar a flag, é o primeiro lugar a corrigir, com `copilot --help` real.
+// Flags conferidas contra `copilot --help` real.
 const { spawn, execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { killProcessTree } = require('../killProcessTree');
 
 const CANDIDATE_BINARIES = ['copilot'];
-const ALLOW_ALL_FLAG = '--allow-all-tools'; // ver aviso acima antes de mudar
+
+// `--allow-all-tools` sozinho NÃO basta: ele libera as ferramentas, mas a
+// verificação de CAMINHO continua ligada, então o CLI ficava pedindo permissão
+// pra ler/escrever fora do diretório e despejando erro na tela — em modo
+// não-interativo não existe ninguém pra responder esse prompt.
+// `--allow-all` é o equivalente a allow-all-tools + allow-all-paths +
+// allow-all-urls (mesmo efeito de `--yolo`).
+const ALLOW_ALL_FLAG = '--allow-all';
+
+// Sem isto o agente pode parar e usar a ferramenta `ask_user` esperando resposta
+// que nunca vem — o processo fica pendurado até o watchdog matar.
+const NO_ASK_FLAG = '--no-ask-user';
+
+// O Copilot CLI é o único provider que recebe o prompt por ARGV (`-p <texto>`):
+// Claude e agy leem do stdin justamente pra escapar desse teto. O `copilot --help`
+// não expõe forma de passar o prompt por stdin, então o jeito é caber no limite.
+// Windows: CreateProcess corta a linha de comando inteira em 32767 chars (spawn
+// devolve ENAMETOOLONG); Linux tem teto de 128KB por argumento.
+const MAX_CMDLINE_CHARS = process.platform === 'win32' ? 30000 : 100000;
+
+// Quando o prompt excede o limite da linha de comando do SO (ex.: 30k chars no Windows por conta de objetos/JSONs gigantes colados):
+// Em vez de fatiar o texto e omitir o meio com [...trecho omitido...], salvamos o prompt COMPLETO
+// em um arquivo temporário no workspace e instruímos o Copilot a lê-lo 100% sem nenhuma omissão.
+function fitPromptToCommandLine(prompt, command, otherArgs, cwd) {
+  const overhead = command.length + otherArgs.reduce((n, a) => n + String(a).length + 3, 0) + 64;
+  const budget = Math.max(2000, MAX_CMDLINE_CHARS - overhead);
+  if (prompt.length <= budget) {
+    return { promptText: prompt, tempFile: null };
+  }
+
+  try {
+    const tempFileName = `.copilot_prompt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.txt`;
+    const tempFilePath = path.join(cwd || process.cwd(), tempFileName);
+    fs.writeFileSync(tempFilePath, prompt, 'utf8');
+    console.log(`[copilot-cli] Prompt grande (${prompt.length} chars) salvo em ${tempFileName} para envio 100% integral sem omissões.`);
+
+    const instructionPrompt = `O usuário enviou uma mensagem/pergunta contendo objetos ou código extenso. O enunciado e todos os objetos colados pelo usuário foram salvos INTEGRALMENTE sem nenhuma omissão no arquivo "${tempFileName}" no diretório do projeto. Por favor, abra e leia o arquivo "${tempFileName}" completamente e responda ao usuário de forma precisa.`;
+
+    return { promptText: instructionPrompt, tempFile: tempFilePath };
+  } catch (err) {
+    console.warn(`[copilot-cli] Falha ao salvar prompt em arquivo temporário:`, err.message);
+    return { promptText: prompt, tempFile: null };
+  }
+}
+
+// Rede de segurança: argv com byte NUL faz o spawn estourar ERR_INVALID_ARG_VALUE
+// antes mesmo do CLI subir. A origem (anexo binário inlinado no prompt) já é
+// tratada em helpers.appendAttachmentsContext, mas um NUL vindo de qualquer
+// outro caminho não pode derrubar o envio.
+function stripNulls(text) {
+  return typeof text === 'string' && text.includes('\0') ? text.replace(/\0/g, '') : text;
+}
+
+const MAX_ATTACHMENTS = 10;
+
+// Um caminho inexistente em `--attachment` faz o CLI abortar a invocação inteira,
+// então filtramos antes em vez de deixar o erro voltar como "Copilot falhou".
+function dedupeExisting(paths) {
+  if (!Array.isArray(paths) || !paths.length) return [];
+  const seen = new Set();
+  const out = [];
+  for (const p of paths) {
+    if (typeof p !== 'string' || !p) continue;
+    const abs = path.resolve(p);
+    if (seen.has(abs)) continue;
+    seen.add(abs);
+    try {
+      if (!fs.statSync(abs).isFile()) continue;
+    } catch (_) { continue; }
+    out.push(abs);
+    if (out.length >= MAX_ATTACHMENTS) break;
+  }
+  return out;
+}
 
 function getEnrichedEnv() {
   const env = { ...process.env, HOME: process.env.HOME || require('os').homedir() };
@@ -193,8 +260,11 @@ class CopilotCliProcess {
 
   get pid() { return this._proc ? this._proc.pid : null; }
 
-  // opts: { cwd, model, prompt, binary }
-  async start({ cwd, model, prompt, binary }) {
+  // opts: { cwd, model, prompt, binary, attachments }
+  // `attachments` = caminhos de imagem/PDF que vão em `--attachment` em vez de
+  // serem transcritos no prompt (o CLI só aceita a flag em modo não-interativo,
+  // que é exatamente o nosso `-p`).
+  async start({ cwd, model, prompt, binary, attachments }) {
     if (this.alive) throw new Error('CopilotCliProcess already running');
 
     const bin = binary || await resolveBinary();
@@ -206,12 +276,13 @@ class CopilotCliProcess {
       );
     }
 
-    const args = [
-      '-p', prompt,
-      ALLOW_ALL_FLAG,
-      '--add-dir', cwd,
-    ];
-    if (model) args.push('--model', model);
+    const tailArgs = [ALLOW_ALL_FLAG, NO_ASK_FLAG, '--add-dir', cwd];
+    if (model) tailArgs.push('--model', model);
+    for (const att of dedupeExisting(attachments)) tailArgs.push('--attachment', att);
+
+    const { promptText, tempFile } = fitPromptToCommandLine(stripNulls(prompt || ''), bin, tailArgs, cwd);
+    this._tempPromptFile = tempFile;
+    const args = ['-p', promptText, ...tailArgs];
 
     const env = getEnrichedEnv();
 
@@ -229,6 +300,17 @@ class CopilotCliProcess {
     this._proc.stdout.setEncoding('utf8');
     this._proc.stderr.setEncoding('utf8');
 
+    const cleanupTempFile = () => {
+      if (this._tempPromptFile) {
+        try {
+          if (fs.existsSync(this._tempPromptFile)) {
+            fs.unlinkSync(this._tempPromptFile);
+          }
+        } catch (_) {}
+        this._tempPromptFile = null;
+      }
+    };
+
     this._proc.stdout.on('data', (chunk) => {
       if (this._onData) this._onData(chunk);
     });
@@ -242,11 +324,13 @@ class CopilotCliProcess {
 
     this._proc.on('close', (code, signal) => {
       this.alive = false;
+      cleanupTempFile();
       if (this._onClose) this._onClose(code, signal);
     });
 
     this._proc.on('error', (err) => {
       this.alive = false;
+      cleanupTempFile();
       if (this._onError) this._onError(err);
     });
 
@@ -257,10 +341,14 @@ class CopilotCliProcess {
   // SIGKILL como último recurso — mesmo padrão do ClaudeCliProcess.
   async kill() {
     if (!this.alive || !this._proc) return;
-    try { this._proc.kill('SIGINT'); } catch (_) {}
+    // killProcessTree: mesmo sem shell aqui, o `copilot` roda ferramentas em
+    // subprocessos próprios — matar só o pai deixava esses filhos vivos
+    // escrevendo nos arquivos depois do "Parar IA".
+    const proc = this._proc;
+    await killProcessTree(proc, 'SIGINT');
     await new Promise(resolve => setTimeout(resolve, 800));
     if (this.alive) {
-      try { this._proc.kill('SIGKILL'); } catch (_) {}
+      await killProcessTree(proc, 'SIGKILL');
     }
     this.alive = false;
     this._proc = null;
@@ -280,4 +368,8 @@ class CopilotCliProcess {
   }
 }
 
-module.exports = { CopilotCliProcess, resolveBinary, getEnrichedEnv, buildSpawnCommand, ALLOW_ALL_FLAG };
+module.exports = {
+  CopilotCliProcess, resolveBinary, getEnrichedEnv, buildSpawnCommand,
+  ALLOW_ALL_FLAG, NO_ASK_FLAG,
+  fitPromptToCommandLine, stripNulls, dedupeExisting, MAX_CMDLINE_CHARS,
+};

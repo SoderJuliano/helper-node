@@ -51,9 +51,14 @@ helpers.syncTerminalCwd = function(forceMessage = false) {
     state.currentTerminalProjectPath = newProjectPath;
     if (state.terminalPty || (state.terminalProcess && state.terminalProcess.stdin && state.terminalProcess.stdin.writable)) {
       try {
-        // `cd "caminho"` funciona tanto em bash/zsh quanto em cmd.exe/PowerShell.
+        const isWin = process.platform === "win32";
+        let cleanPath = newProjectPath;
+        if (isWin) {
+          cleanPath = cleanPath.replace(/\//g, '\\');
+        }
         const nl = state.terminalPty ? "\r" : "\n";
-        helpers.writeToTerminal(`cd "${newProjectPath.replace(/"/g, '\\"')}"${nl}`);
+        // Cancela qualquer linha parcialmente digitada pelo usuário e muda o diretório limpo
+        helpers.writeToTerminal(`\x03${isWin ? 'cd /d' : 'cd'} "${cleanPath.replace(/"/g, '\\"')}"${nl}`);
         if (state.mainWindow && !state.mainWindow.isDestroyed()) {
           state.mainWindow.webContents.send("terminal:output", {
             type: "stdout",

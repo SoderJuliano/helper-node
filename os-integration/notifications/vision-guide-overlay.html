@@ -401,12 +401,15 @@
       // é maior que o próprio conteúdo, então isso é raro na prática. (No Linux
       // o app-region nativo cuida do arraste; isto é Win/mac.)
       window.addEventListener('mousemove', (e) => {
-        const isInteractive = e.target.closest('#pos-header, #status-bar, .pos-btn, pre, .copy-btn, code.inline-code, #messages');
+        const isInteractive = e.target && e.target.closest && e.target.closest('#pos-header, #status-bar, .pos-btn, pre, .copy-btn, code.inline-code, #messages');
         if (isInteractive) {
           api.setIgnoreMouseEvents(false);
         } else {
           api.setIgnoreMouseEvents(true, { forward: true });
         }
+      });
+      window.addEventListener('mouseleave', () => {
+        api.setIgnoreMouseEvents(true, { forward: true });
       });
     })();
 

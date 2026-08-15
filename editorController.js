@@ -388,7 +388,30 @@
       });
 
       container.appendChild(tab);
+
+      if (filePath === activePath) {
+        setTimeout(() => {
+          try {
+            tab.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+          } catch (_) {}
+        }, 0);
+      }
     });
+
+    const handleWheelScroll = (ev) => {
+      const tabsContainer = document.getElementById('fv-tabs-container');
+      if (!tabsContainer) return;
+      const delta = Math.abs(ev.deltaX) > Math.abs(ev.deltaY) ? ev.deltaX : ev.deltaY;
+      if (delta !== 0) {
+        ev.preventDefault();
+        tabsContainer.scrollLeft += delta;
+      }
+    };
+
+    if (container && !container._hasWheelScroll) {
+      container._hasWheelScroll = true;
+      container.addEventListener('wheel', handleWheelScroll, { passive: false });
+    }
 
     const header = document.querySelector('.fv-header');
     if (header && !header._hasContextMenu) {
@@ -398,6 +421,14 @@
           showTabContextMenu(ev, activePath);
         }
       });
+    }
+
+    if (header && !header._hasWheelScroll) {
+      header._hasWheelScroll = true;
+      header.addEventListener('wheel', (ev) => {
+        if (ev.target.closest('#fv-close') || ev.target.closest('.fv-lang') || ev.target.closest('.fv-save-status')) return;
+        handleWheelScroll(ev);
+      }, { passive: false });
     }
   }
 
@@ -575,13 +606,29 @@
       }
       doc = { content: res.content, originalContent: res.content, mtimeMs: res.mtimeMs, dirty: false };
       openFiles.set(filePath, doc);
+    } else if (!doc.dirty && !filePath.includes('.jar!')) {
+      try {
+        if (window.electronAPI && window.electronAPI.readFileContent) {
+          const res = await window.electronAPI.readFileContent(filePath);
+          if (res && res.ok && typeof res.content === 'string') {
+            doc.content = res.content;
+            doc.originalContent = res.content;
+            if (res.mtimeMs) doc.mtimeMs = res.mtimeMs;
+          }
+        }
+      } catch (_) {}
     }
 
     const cmInst = ensureCm();
     if (!cmInst) return;
     const ext = extOf(filePath);
-    langEl.textContent = LANG_LABEL_BY_EXT[ext] || (ext || 'texto').toUpperCase();
+    // Classe dentro de um jar de dependência (nó "Dependencies" da árvore) —
+    // caminho virtual (<jar>!Classe.java), somente leitura: não tem onde
+    // salvar de volta, e lint/go-to-definition não fazem sentido nele.
+    const isDependencySource = filePath.includes('.jar!');
+    langEl.textContent = (LANG_LABEL_BY_EXT[ext] || (ext || 'texto').toUpperCase()) + (isDependencySource ? ' · lib' : '');
     cmInst.setOption('mode', CM_MODE_BY_EXT[ext] || null);
+    cmInst.setOption('readOnly', isDependencySource);
 
     if (cmInst.getValue() !== doc.content) {
       cmInst.setValue(doc.content);
@@ -589,11 +636,13 @@
     }
     updateDirtyIndicator();
     renderTabs();
-    if (window.CodeNavigation) {
-      window.CodeNavigation.attach(cmInst, filePath);
-    }
-    if (window.ImportChecker) {
-      window.ImportChecker.attach(cmInst, filePath);
+    if (!isDependencySource) {
+      if (window.CodeNavigation) {
+        window.CodeNavigation.attach(cmInst, filePath);
+      }
+      if (window.ImportChecker) {
+        window.ImportChecker.attach(cmInst, filePath);
+      }
     }
     setTimeout(() => {
       cmInst.refresh();
@@ -619,6 +668,10 @@
     if (!activePath) return;
     const doc = openFiles.get(activePath);
     if (!doc) return;
+    if (activePath.includes('.jar!')) {
+      setSaveStatus('Arquivo de dependência é somente leitura');
+      return;
+    }
     if (!window.electronAPI || !window.electronAPI.editorSaveFile) {
       setSaveStatus('Salvar indisponível');
       return;
@@ -700,16 +753,81 @@
 
   function hasOpenFile() { return !!activePath; }
 
-  // Reage a mutações de arquivo vindas de qualquer origem (ver main.js:
-  // emitFileMutated). Só sinaliza — nunca sobrescreve o buffer sozinho, nunca
-  // bloqueia nada. É o "indicativo em tempo real" pedido: se a IA mexeu no
-  // MESMO arquivo que está aberto agora, avisa; se não é o arquivo aberto,
-  // ignora silenciosamente.
-  function onFileMutated({ path: p, origin } = {}) {
-    if (!p || origin === 'user') return;
-    if (p !== activePath) return;
-    const label = origin === 'openai' ? 'ChatGPT' : origin === 'claude-cli' ? 'Claude Code' : origin === 'gemini-cli' ? 'Gemini CLI' : (origin || 'IA');
-    setConflictBanner(`⚠ ${label} está mexendo neste arquivo agora`);
+  // Reage a mutações de arquivo vindas de qualquer origem (disk, git pull, OpenAI, Claude CLI, Gemini CLI, etc.).
+  // Atualiza abas abertas em TEMPO REAL (estilo VS Code / IntelliJ IDEA).
+  async function onFileMutated({ path: p, origin, content, mtimeMs } = {}) {
+    if (!p) return;
+    const filePath = normPath(p);
+    const doc = openFiles.get(filePath);
+
+    // Se o arquivo não está aberto em nenhuma aba do editor, ignora (0 overhead)
+    if (!doc) return;
+
+    if (origin === 'user') {
+      setConflictBanner('');
+      return;
+    }
+
+    let freshContent = content;
+    let freshMtimeMs = mtimeMs || 0;
+
+    if (freshContent === undefined) {
+      try {
+        if (window.electronAPI && window.electronAPI.readFileContent) {
+          const res = await window.electronAPI.readFileContent(filePath);
+          if (res && res.ok && typeof res.content === 'string') {
+            freshContent = res.content;
+            freshMtimeMs = res.mtimeMs || 0;
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (freshContent === undefined) return;
+
+    if (!doc.dirty && doc.content === freshContent) return;
+
+    // A. ABA LIMPA (o usuário NÃO digitou alterações não salvas nesta aba):
+    // Atualiza o conteúdo em tempo real sem perder o cursor, rolagem nem foco!
+    if (!doc.dirty) {
+      doc.content = freshContent;
+      doc.originalContent = freshContent;
+      if (freshMtimeMs) doc.mtimeMs = freshMtimeMs;
+
+      if (filePath === activePath && cm) {
+        if (cm.getValue() !== freshContent) {
+          const cursor = cm.getCursor();
+          const scrollInfo = cm.getScrollInfo();
+
+          cm.setValue(freshContent);
+
+          try {
+            cm.setCursor(cursor);
+            cm.scrollTo(scrollInfo.left, scrollInfo.top);
+          } catch (_) {}
+
+          clearGhostText();
+        }
+
+        const label = origin === 'disk'
+          ? 'Atualizado do disco (git/terminal) ✓'
+          : origin === 'openai' ? 'Atualizado por ChatGPT ✓'
+          : origin === 'claude-cli' ? 'Atualizado por Claude Code ✓'
+          : origin === 'gemini-cli' ? 'Atualizado por Gemini CLI ✓'
+          : `Atualizado por ${origin || 'IA'} ✓`;
+
+        setConflictBanner('');
+        setSaveStatus(label);
+        setTimeout(() => {
+          const statusEl = document.getElementById('fv-save-status');
+          if (statusEl && statusEl.textContent === label) {
+            setSaveStatus('');
+          }
+        }, 1800);
+      }
+    } else {
+      setConflictBanner('⚠ Arquivo alterado no disco (você possui alterações não salvas)');
+    }
   }
 
   function renamePath(oldPath, newPath) {
@@ -758,7 +876,10 @@
     return !!(cm && cm.hasFocus());
   }
 
-  window.EditorController = { openFile, saveActive, closeEditor, isDirty, focusSearch, hasOpenFile, renamePath, hasFocus, closeAllTabs, toggleChatVisibility };
+  // getCm: a instância do CodeMirror é única e reaproveitada entre arquivos, mas
+  // quem precisa marcar texto no arquivo recém-aberto (realce de ocorrências)
+  // não tem como alcançá-la de fora sem isto.
+  window.EditorController = { openFile, saveActive, closeEditor, isDirty, focusSearch, hasOpenFile, renamePath, hasFocus, closeAllTabs, toggleChatVisibility, getCm: () => cm };
 
   if (window.electronAPI && window.electronAPI.onFileMutated) {
     window.electronAPI.onFileMutated(onFileMutated);

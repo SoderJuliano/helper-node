@@ -91,7 +91,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Gemini CLI provider
   getGeminiCliModel: () => ipcRenderer.invoke("get-gemini-cli-model"),
   setGeminiCliModel: (model) => ipcRenderer.send("set-gemini-cli-model", model),
-  getGeminiCliModels: () => ipcRenderer.invoke("get-gemini-cli-models"),
+  getGeminiCliModels: (force) => ipcRenderer.invoke("get-gemini-cli-models", force),
   checkGeminiCliInstalled: () => ipcRenderer.invoke("check-gemini-cli-installed"),
   geminiCliRestartSession: () => ipcRenderer.invoke("gemini-cli-restart-session"),
   onGeminiCliStatus: (cb) => ipcRenderer.on("gemini-cli-status", (event, data) => cb(data)),
@@ -114,6 +114,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   importCheckGetDiagnostics: (payload) => ipcRenderer.invoke("import-check-get-diagnostics", payload),
   importCheckGetQuickFixes: (payload) => ipcRenderer.invoke("import-check-get-quickfixes", payload),
   importCheckGetJavaStatus: (payload) => ipcRenderer.invoke("import-check-get-java-status", payload),
+  // Dependências Java (nó "Dependencies" da árvore — Maven/Gradle)
+  javaDepsListJars: (payload) => ipcRenderer.invoke("java-deps:list-jars", payload),
+  javaDepsListClasses: (payload) => ipcRenderer.invoke("java-deps:list-classes", payload),
+  onJavaDepsChanged: (cb) => ipcRenderer.on("java-deps-changed", (event, data) => cb(data)),
   onShortcutsChanged: (callback) => ipcRenderer.on("shortcuts-changed", () => callback()),
   getDebugModeStatus: () => ipcRenderer.invoke("get-debug-mode-status"), // Added for debug mode access
   getStealthModeStatus: () => ipcRenderer.invoke("get-stealth-mode-status"),
@@ -135,6 +139,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
   triggerTtsPlayback: (text) => ipcRenderer.send("trigger-tts-stream-playback", text),
   processPastedImage: (base64Image) =>
     ipcRenderer.send("process-pasted-image", base64Image),
+  // Modo IDE: imagem colada vira ANEXO (caminho), não texto no input.
+  isIdeProjectMode: () => ipcRenderer.invoke("is-ide-project-mode"),
+  onImageAttached: (cb) => ipcRenderer.on("image-attached", (event, data) => cb(data)),
+  // Lê a imagem direto do clipboard do SO. Necessário porque o evento `paste`
+  // do Chromium só dispara quando já existe campo editável em foco — na tela
+  // hero não há, e sem isso "Ctrl+V não anexa nada".
+  readClipboardImage: () => ipcRenderer.invoke("read-clipboard-image"),
   processManualInputWithImage: (data) =>
     ipcRenderer.send("process-manual-input-with-image", data),
   
@@ -146,6 +157,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   triggerToggleRecording: () => ipcRenderer.send("renderer-toggle-recording"),
   resizeOverlay: (height) => ipcRenderer.send("resize-overlay", height),
   copyToClipboard: (text) => ipcRenderer.send("copy-to-clipboard", text),
+  readClipboardText: () => ipcRenderer.invoke("read-clipboard-text"),
   // Region select overlay → main
   regionSelected: (rect) => ipcRenderer.send("region-selected", rect),
   regionCancelled: () => ipcRenderer.send("region-cancelled"),

@@ -39,6 +39,25 @@ ipcMain.on("process-pasted-image", (event, base64Image) => {
   }
 
   console.log("Main process received pasted image.");
+
+  // Modo IDE (projeto aberto): a imagem vira ARQUIVO anexado ao contexto em vez
+  // de virar texto no input. Print de console/erro de métrica precisa ser visto,
+  // não transcrito. Fora do modo IDE nada muda — segue o OCR de sempre.
+  if (helpers.isIdeProjectMode()) {
+    helpers.attachImageToWorkspace(base64Image, { prefix: 'paste', sender: event.sender })
+      .then((att) => {
+        if (att) return;
+        // Não deu pra anexar (disco cheio, permissão): cai no fluxo antigo em
+        // vez de engolir a imagem do usuário.
+        console.warn('[paste] anexo falhou, caindo no OCR tradicional.');
+        if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+          TesseractService.processPastedImage(base64Image, state.mainWindow).catch(() => {});
+        }
+      })
+      .catch((e) => console.error('[paste] erro no anexo de imagem:', e && e.message));
+    return;
+  }
+
   if (state.mainWindow && !state.mainWindow.isDestroyed()) {
     // Feedback visual (idempotente — se JS paste handler ja disparou, vira no-op rapido)
     state.mainWindow.webContents.send('screen-capturing', true);
@@ -57,6 +76,22 @@ ipcMain.on("process-pasted-image", (event, base64Image) => {
         }
       }
     );
+  }
+});
+
+ipcMain.handle("is-ide-project-mode", () => helpers.isIdeProjectMode());
+
+// Ctrl+V na tela hero: nada está focado, então o evento `paste` do Chromium não
+// dispara e o renderer não tem como ler o clipboard. Aqui ele pede pro main.
+ipcMain.handle("read-clipboard-image", () => {
+  try {
+    const { clipboard } = require('electron');
+    const img = clipboard.readImage();
+    if (!img || img.isEmpty()) return null;
+    return img.toDataURL();
+  } catch (e) {
+    console.warn('[clipboard] leitura de imagem falhou:', e && e.message);
+    return null;
   }
 });
 

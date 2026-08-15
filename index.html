@@ -187,6 +187,13 @@
                 </button>
                 <div class="chat-area">
                     <div class="chat-topbar">
+                        <!-- Fica DENTRO da topbar (flex, justify-end) de propósito: assim o
+                             layout garante que nunca cobre o "Copiar tudo" nem os controles
+                             de janela, que a topbar já reserva com o padding-right. -->
+                        <button id="scroll-to-latest" title="Ir para a mensagem mais recente" type="button">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                            <span>Mais recente</span>
+                        </button>
                         <button id="copy-all-btn" class="copy-all-fixed-btn">Copiar tudo</button>
                     </div>
 
@@ -355,6 +362,7 @@
          principal (abaixo), que referencia window.EditorController nos
          handlers de clique (tree, chip da IA). -->
     <script src="editorController.js"></script>
+    <script src="renderer/codeHighlight.js"></script>
     <script src="renderer/codeNavigation.js"></script>
     <script src="renderer/importChecker.js"></script>
 
@@ -365,6 +373,7 @@
     <script src="renderer/chatInput.js"></script>
     <script src="renderer/markdownRenderer.js"></script>
     <script src="renderer/chatMessages.js"></script>
+    <script src="renderer/scrollToLatest.js"></script>
     <script src="renderer/liveAssistant.js"></script>
     <script src="renderer/chatHistory.js"></script>
     <script src="renderer/realtimeAssistant.js"></script>

@@ -22,7 +22,20 @@
     "test:noclose": "node ./scripts/test-backend-noclose.js",
     "test:ollama": "node ./scripts/test-ollama-local.js",
     "test:ollama:ide": "node ./scripts/test-ollama-stream.js",
-    "test:terminal": "node ./scripts/test-terminal.js"
+    "test:terminal": "node ./scripts/test-terminal.js",
+    "test:paste": "node ./scripts/test-paste-image.js",
+    "test:tree": "node ./scripts/test-tree-editor.js",
+    "test:javadeps": "node ./scripts/test-java-deps.js",
+    "test:killtree": "node ./scripts/test-kill-tree.js",
+    "test:copilotstop": "node ./scripts/test-copilot-stop.js",
+    "test:stopnoerror": "node ./scripts/test-stop-no-error.js",
+    "probe:copilot-models": "node ./scripts/probe-copilot-models.js",
+    "test:scroll": "node ./scripts/test-scroll-latest.js",
+    "test:tabscroll": "node ./scripts/test-tab-scroll.js",
+    "test:terminalpaste": "node ./scripts/test-terminal-paste.js",
+    "test:tabsync": "node ./scripts/test-realtime-tab-sync.js",
+    "test:copilotlarge": "node ./scripts/test-copilot-large-object.js",
+    "test:terminalspace": "node ./scripts/test-terminal-space.js"
   },
   "dependencies": {
     "@ricky0123/vad-web": "^0.0.30",

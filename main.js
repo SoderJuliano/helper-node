@@ -28,6 +28,8 @@ require("./main/helpers/aiResponse.js");
 require("./main/helpers/getIaResponse.js");
 require("./main/helpers/capture.js");
 require("./main/helpers/misc.js");
+// Depois de misc.js: usa helpers.getEffectiveAiModel em runtime.
+require("./main/helpers/imagePaste.js");
 
 // Register IPC handlers
 require("./main/ipc/window.js")();
@@ -40,6 +42,7 @@ require("./main/ipc/shortcuts.js")();
 require("./main/ipc/history.js")();
 require("./main/ipc/codeNav.js")();
 require("./main/ipc/importCheck.js")();
+require("./main/ipc/javaDeps.js")();
 
 // Unhandled exception silencers
 for (const stream of [process.stdout, process.stderr]) {
@@ -103,6 +106,13 @@ const { initializeNexa } = require("./main/nexa/index.js");
 app.whenReady().then(async () => {
   configService.initialize();
   initializeNexa();
+  // Imagens coladas antigas que ninguém referencia mais (as ainda anexadas
+  // são preservadas — não some print debaixo de uma conversa em andamento).
+  try {
+    const imageAttachments = require('./services/imageAttachments.js');
+    const { workspace: ws } = require('./main/globals.js');
+    imageAttachments.purgeOld(ws.list().map(a => a.path));
+  } catch (_) {}
   // Modo de Teste do Tradutor é só por sessão — nunca persiste entre aberturas.
   try { configService.setTranslationAssistantConfig({ testMode: false }); } catch (_) {}
   helperTools.initialize(configService.getHelperToolsConfig());
@@ -210,6 +220,17 @@ app.whenReady().then(async () => {
   if (state.mainWindow && !state.mainWindow.isDestroyed()) {
     const initialDebugStatus = configService.getDebugModeStatus();
     state.mainWindow.webContents.send("debug-status-changed", initialDebugStatus);
+  }
+
+  // Inicializa o watcher de arquivos em tempo real para o projeto ativo no workspace
+  try {
+    const activeDir = (workspace.list() || []).find((a) => a.type === 'dir');
+    if (activeDir && activeDir.path) {
+      const workspaceWatcher = require('./services/workspaceWatcher.js');
+      workspaceWatcher.startWatchingProject(activeDir.path);
+    }
+  } catch (err) {
+    console.warn('[workspaceWatcher] Erro ao auto-iniciar no boot:', err.message);
   }
   
   // Inicializar monitoramento de clipboard se print mode estiver ativo

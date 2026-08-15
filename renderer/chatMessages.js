@@ -170,6 +170,11 @@ var isEditingQuestion = false;
         // Window keydowns for audio trigger controls
 
         async function sentToAI(text) {
+            // Destrava o stream aqui também, não só no startProcessing(): o OCR
+            // (ipcOcr.js) e o auto-stream de voz chamam este caminho SEM passar
+            // pelo startProcessing, e um flag preso em true deixaria o chat mudo
+            // — falha pior do que a que a guarda conserta.
+            window.iaCancelled = false;
             let activeSessionId = null;
             if (window.historySession) {
                 activeSessionId = await window.historySession.ensureSessionForFirstQuestion(text);
@@ -191,6 +196,7 @@ var isEditingQuestion = false;
         // (se houver). Usado no chat quando o backend é OpenAI — antes a imagem
         // era jogada fora e só o OCR ia pro modelo.
         async function sentImageToAI(text, image) {
+            window.iaCancelled = false; // turno novo: destrava o stream
             const q = (text && text.trim()) ? text.trim() : 'Image in context';
             if (window.historySession) {
                 await window.historySession.ensureSessionForFirstQuestion(q);
@@ -343,18 +349,13 @@ var isEditingQuestion = false;
 
             // Só aqui (envio confirmado) cancela a requisição em andamento —
             // abrir o editor por engano não pode matar uma resposta em curso.
-            window.electronAPI.cancelIaRequest();
-            stopProcessing();
+            // (o startProcessing() do novo envio limpa o window.iaCancelled)
+            cancelIaAndFreezeStream();
 
             // Limpa qualquer elemento de streaming anterior
             const transcriptionElement = document.getElementById('transcription');
             const existingStreamingElements = transcriptionElement.querySelectorAll('.streaming-response, .response-text');
             existingStreamingElements.forEach(el => el.remove());
-            
-            // Força reset COMPLETO das variáveis de streaming
-            streamingElement = null;
-            streamingText = '';
-            typingCursor = null;
             console.log('Variáveis de streaming resetadas globalmente');
             
             // Recria o span com o novo texto dentro de um interaction-block
@@ -418,6 +419,34 @@ var isEditingQuestion = false;
             window.electronAPI.stopNotifications();
         }
         
+        // Interromper de verdade = pedir o abort NO MAIN e FECHAR a resposta
+        // atual aqui. Só chamar cancelIaRequest não bastava: a resposta em curso
+        // seguia "aberta" no renderer (streamingElement/streamingText vivos), e
+        // qualquer chunk atrasado continuava sendo escrito na tela depois do
+        // clique — inclusive dentro da mensagem de erro, quando havia uma.
+        //
+        // O reset NÃO pode morar em stopProcessing(): o fim normal do stream
+        // chama stopProcessing() ANTES de ler streamingText pra salvar no
+        // histórico e mandar pro TTS. Zerar ali apagaria a resposta boa.
+        function cancelIaAndFreezeStream() {
+            window.iaCancelled = true;
+            if (window.electronAPI && window.electronAPI.cancelIaRequest) {
+                window.electronAPI.cancelIaRequest();
+            }
+            // Congela o que já apareceu: tira o cursor piscando e fecha o
+            // elemento atual, sem apagar o texto que o usuário já leu.
+            try {
+                if (typeof typingCursor !== 'undefined' && typingCursor && typingCursor.parentNode) {
+                    typingCursor.remove();
+                }
+            } catch (_) {}
+            streamingElement = null;
+            streamingText = '';
+            typingCursor = null;
+            stopProcessing();
+        }
+        window.cancelIaAndFreezeStream = cancelIaAndFreezeStream;
+
         // Botão de parar FIXO na tela. O botão × dentro do bloco "Pensando"
         // rolava junto com a conversa: com um raciocínio longo ele saía da área
         // visível e não havia como interromper a IA. Este fica sempre no mesmo
@@ -431,10 +460,7 @@ var isEditingQuestion = false;
                 btn.textContent = '■ Parar IA';
                 btn.title = 'Interromper a IA';
                 btn.addEventListener('click', () => {
-                    if (window.electronAPI && window.electronAPI.cancelIaRequest) {
-                        window.electronAPI.cancelIaRequest();
-                    }
-                    stopProcessing();
+                    cancelIaAndFreezeStream();
                 });
                 document.body.appendChild(btn);
             }
@@ -448,6 +474,10 @@ var isEditingQuestion = false;
 
         function startProcessing() {
             console.log('startProcessing chamado');
+            // Turno novo: destrava o stream. Sem isto, um único "Parar IA"
+            // deixaria o chat mudo para sempre — a guarda do onStreamChunk
+            // descartaria toda resposta seguinte.
+            window.iaCancelled = false;
             const robot = document.getElementById('robot');
             if (robot) robot.style.display = 'block';
             console.log('Robô definido como visível');
@@ -474,10 +504,7 @@ var isEditingQuestion = false;
                         if (stop) stop.addEventListener('click', (e) => {
                             e.stopPropagation();
                             console.log('Botão interromper clicado');
-                            if (window.electronAPI && window.electronAPI.cancelIaRequest) {
-                                window.electronAPI.cancelIaRequest();
-                            }
-                            stopProcessing();
+                            cancelIaAndFreezeStream();
                             const txt = ph.querySelector('.ai-phase-text');
                             if (txt) txt.textContent = 'Interrompido pelo usuário';
                             ph.classList.add('done');

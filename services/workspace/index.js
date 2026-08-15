@@ -42,7 +42,12 @@ function ensureAgyTrustedWorkspace(absPath) {
   }
 }
 
-async function addPath(absPath, type) {
+// opts:
+//   trustAgy: false  → não registra a pasta nos workspaces confiáveis do agy.
+//     Usado por imagem colada, que vive numa pasta do app: não faz sentido
+//     declarar ~/.config/helper-node como workspace de trabalho do agy.
+//   meta: {...}      → campos extras gravados no anexo (origin, ocrText, ...).
+async function addPath(absPath, type, opts = {}) {
   if (!absPath) throw new Error("path vazio");
   absPath = path.resolve(store.resolvePortalPath(absPath));
   if (!fs.existsSync(absPath)) throw new Error("path não existe: " + absPath);
@@ -51,7 +56,9 @@ async function addPath(absPath, type) {
   if (resolvedType === "dir" && !st.isDirectory()) throw new Error("não é diretório");
   if (resolvedType === "file" && !st.isFile()) throw new Error("não é arquivo");
 
-  ensureAgyTrustedWorkspace(resolvedType === "dir" ? absPath : path.dirname(absPath));
+  if (opts.trustAgy !== false) {
+    ensureAgyTrustedWorkspace(resolvedType === "dir" ? absPath : path.dirname(absPath));
+  }
 
   let sizeBytes = 0, fileCount = 0;
   if (resolvedType === "file") {
@@ -65,6 +72,7 @@ async function addPath(absPath, type) {
     sizeBytes,
     fileCount,
     ok: true,
+    ...(opts.meta || {}),
   });
   return store.list();
 }

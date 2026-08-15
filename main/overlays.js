@@ -279,6 +279,11 @@ helpers.createCaptureWindow = function() {
   try { state.osCaptureWindow.setAlwaysOnTop(true, 'screen-saver'); } catch (_) {}
   try { state.osCaptureWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true }); } catch (_) {}
 
+  // Passa cliques do mouse pra tras no Windows/macOS (icone de captura nao deve bloquear cliques)
+  if (process.platform !== 'linux') {
+    try { state.osCaptureWindow.setIgnoreMouseEvents(true, { forward: true }); } catch (_) {}
+  }
+
   // Load capture animation
   const capturePath = path.join(ROOT_DIR, 'os-integration', 'notifications', 'capture.html');
   state.osCaptureWindow.loadFile(capturePath).catch(error => {

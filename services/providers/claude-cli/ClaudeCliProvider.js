@@ -255,11 +255,20 @@ class ClaudeCliProvider {
   }
 
   // Aborta o processo em curso para um projeto (chamado pelo botão interromper).
+  // Se a chave não bater, aborta TODAS as sessões: `send()` normaliza o cwd
+  // (fallback quando o caminho não existe) e `getProjectPath()` muda conforme
+  // os anexos, então o projectPath de quem manda parar nem sempre é a chave com
+  // que a sessão foi criada — e errar a chave deixava a CLI rodando solta.
   async abortCurrent(projectPath) {
-    const session = this._sessions.get(projectPath);
+    const session = projectPath ? this._sessions.get(projectPath) : null;
     if (session) {
       await session.abort().catch(() => {});
       console.log(`[claude-cli] abortado: ${projectPath}`);
+      return;
+    }
+    for (const [key, s] of this._sessions) {
+      await s.abort().catch(() => {});
+      console.log(`[claude-cli] abortado (fallback): ${key}`);
     }
   }
 

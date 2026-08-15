@@ -585,7 +585,10 @@
 
         <!-- Gemini CLI (Antigravity): select de modelo + aviso de instalação manual -->
         <div class="setting-item" id="gemini-cli-model-container" style="display: none;">
-            <label for="gemini-cli-model-select">Modelo Antigravity (agy)</label>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                <label for="gemini-cli-model-select" style="margin-bottom: 0;">Modelo Antigravity (agy)</label>
+                <span id="gemini-cli-model-spinner" class="ai-activity-spinner" style="display: none; width: 13px; height: 13px;"></span>
+            </div>
             <!-- Sem <option> fixo: a lista vem do próprio binário `agy` via
                  populateGeminiCliModels(). Nome de modelo escrito aqui vira nome
                  errado na tela assim que o CLI muda a linha. -->
@@ -666,7 +669,9 @@
             </select>
         </div>
         <div id="copilot-cli-model-note" style="display: none; margin: -8px 0 12px 0; padding: 8px 10px; background: rgba(255,180,77,0.08); border-radius: 4px; font-size: 11.5px; color: #ffb74d; -webkit-app-region: no-drag;">
-            Lista lida do binário <code>copilot</code> (<code>copilot help config</code>). É o catálogo que o CLI conhece — sua organização pode liberar só um subconjunto. Se escolher um modelo que a org bloqueou, o próprio CLI avisa e cai no padrão dele.
+            Lista lida do binário <code>copilot</code> (<code>copilot help config</code>) — o catálogo que o CLI conhece, do qual sua organização costuma liberar só um subconjunto. Quando um modelo é recusado pela org, o app registra e o esconde daqui (o registro expira em 30 dias, então liberações novas voltam sozinhas).
+            <button type="button" id="copilot-reset-blocked-btn" style="margin-left: 6px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18); color: #ffd9a0; font-size: 11px; padding: 2px 8px; border-radius: 4px; cursor: pointer;">Mostrar todos de novo</button>
+            <span id="copilot-reset-blocked-result" style="margin-left: 6px; color: #9ef0a8;"></span>
         </div>
 
         <div id="copilot-cli-info" style="display: none; margin-top: 12px; padding: 14px; background-color: rgba(0,0,0,0.5); border-radius: 5px; font-size: 12.5px; line-height: 1.5; color: #ddd; -webkit-app-region: no-drag;">

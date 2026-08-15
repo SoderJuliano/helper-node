@@ -214,6 +214,14 @@ Resposta (UMA palavra):`;
         try { BackendService.abortCurrentRequest(); } catch (_) {}
     }
 
+    // O botão flutuante "Parar IA" não carrega sessionId — sem isto ele deixava
+    // o turno agêntico em andamento continuar.
+    stopAll() {
+        if (this.activeSessions.size === 0) return;
+        this.activeSessions.clear();
+        try { BackendService.abortCurrentRequest(); } catch (_) {}
+    }
+
     isAborted(sessionId) {
         return !this.activeSessions.has(sessionId);
     }

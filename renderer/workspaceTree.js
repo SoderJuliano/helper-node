@@ -18,6 +18,15 @@ var creatingFolderParent = null;
     const TREE_DIR_IC = '<svg class="ws-tree-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
     const TREE_CHEVRON_IC = '<svg class="ws-tree-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
     const TREE_CHEVRON_SPACER = '<span class="ws-tree-chevron-spacer"></span>';
+    // Feedback de "seu clique pegou": pasta grande demora pra listar e sem isto
+    // o usuário clica de novo achando que não funcionou.
+    const TREE_SPINNER_IC = '<svg class="ws-tree-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 3a9 9 0 1 0 9 9"/></svg>';
+    // "Dependencies" (nó sintético do classpath Maven/Gradle) e seus filhos
+    // (jar → classes) — não são pastas/arquivos de verdade, ganham ícones
+    // próprios pra não parecerem editáveis.
+    const TREE_DEPS_IC = '<svg class="ws-tree-ic ws-tree-ic-deps" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>';
+    const TREE_JAR_IC = '<svg class="ws-tree-ic ws-tree-ic-jar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="1"/><path d="M8 3v18M16 3v18M4 8h4M16 8h4M4 13h4M16 13h4"/></svg>';
+    const TREE_CLASS_IC = '<svg class="ws-tree-ic ws-tree-ic-class" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9 8.5c-1.5 0-3 1-3 3.5s1.5 3.5 3 3.5c1 0 1.8-.4 2.3-1"/></svg>';
 
     // Attach Empty Note logic
     const wsEmptyNote = document.getElementById('ws-empty-note');
@@ -57,28 +66,95 @@ var creatingFolderParent = null;
             // dist, .git, etc. — ver TREE_HEAVY_DIRS no main.js) só aparecem
             // como nó; os filhos são buscados sob demanda na primeira expansão
             // e inseridos em treeEntries logo depois do nó pai.
+            // Busca os filhos de um nó sintético do "Dependencies" (Maven/Gradle) —
+            // não é uma pasta de verdade, então não passa por getDirChildren.
+            // Retorna { entries, retry } — `retry` mantém o nó não-`loaded` (ex.:
+            // classpath ainda resolvendo) pra tentar de novo na próxima expansão.
+            async function fetchJavaDepsChildren(e) {
+                if (!window.electronAPI || !window.electronAPI.javaDepsListJars) return { entries: [], retry: false };
+                let res = null;
+                try { res = await window.electronAPI.javaDepsListJars({ dirPath: e.path }); } catch (_) {}
+                if (!res || res.status === 'building') {
+                    return { entries: [{ path: e.path + '#building', name: 'Resolvendo classpath (mvn/gradle)…', depth: 0, isDir: false, synthetic: 'java-deps-status' }], retry: true };
+                }
+                if (res.status === 'error') {
+                    return { entries: [{ path: e.path + '#error', name: 'Erro ao resolver classpath: ' + (res.error || '?'), depth: 0, isDir: false, synthetic: 'java-deps-status' }], retry: false };
+                }
+                const jars = res.jars || [];
+                if (!jars.length) {
+                    return { entries: [{ path: e.path + '#empty', name: '(nenhuma dependência resolvida)', depth: 0, isDir: false, synthetic: 'java-deps-status' }], retry: false };
+                }
+                return { entries: jars.map((j) => ({ path: j.path, name: j.name, depth: 0, isDir: true, lazy: true, synthetic: 'java-jar' })), retry: false };
+            }
+
+            async function fetchJavaJarChildren(e) {
+                if (!window.electronAPI || !window.electronAPI.javaDepsListClasses) return { entries: [], retry: false };
+                let res = null;
+                try { res = await window.electronAPI.javaDepsListClasses({ jarPath: e.path }); } catch (_) {}
+                const classes = (res && res.classes) || [];
+                if (!classes.length) {
+                    return { entries: [{ path: e.path + '#empty', name: '(sem classes)', depth: 0, isDir: false, synthetic: 'java-deps-status' }], retry: false };
+                }
+                return { entries: classes.map((c) => ({ path: c.virtualPath, name: c.fqcn, depth: 0, isDir: false, synthetic: 'java-class' })), retry: false };
+            }
+
             async function toggleDir(e) {
                 if (!e.collapsed) { e.collapsed = true; renderTree(); return; }
-                if (e.lazy && !e.loaded && !e.loading) {
+
+                // Já está buscando: o clique CONTOU, só não terminou. Antes isso
+                // retornava calado e parecia que o clique não pegou.
+                if (e.loading) return;
+
+                // Busca sob demanda quando os filhos não vieram na carga inicial
+                // — seja por ser pasta pesada (node_modules, target) ou por ter
+                // sido cortada pelo limite. Ver markIncomplete no main.
+                if (e.lazy && !e.loaded) {
                     e.loading = true;
+                    e.collapsed = false;   // já abre: o spinner aparece no lugar
                     renderTree();
-                    let res = null;
-                    try {
-                        res = window.electronAPI.getDirChildren
-                            ? await window.electronAPI.getDirChildren(e.path)
-                            : null;
-                    } catch (_) {}
+
+                    let children = null;
+                    let retry = false;
+                    if (e.synthetic === 'java-deps') {
+                        const r = await fetchJavaDepsChildren(e);
+                        children = r.entries.map((entry) => ({ ...entry, depth: e.depth + 1 + entry.depth, collapsed: entry.isDir }));
+                        retry = r.retry;
+                    } else if (e.synthetic === 'java-jar') {
+                        const r = await fetchJavaJarChildren(e);
+                        children = r.entries.map((entry) => ({ ...entry, depth: e.depth + 1 + entry.depth, collapsed: entry.isDir }));
+                        retry = r.retry;
+                    } else {
+                        let res = null;
+                        try {
+                            res = window.electronAPI.getDirChildren
+                                ? await window.electronAPI.getDirChildren(e.path)
+                                : null;
+                        } catch (_) {}
+                        if (res && res.ok && res.entries && res.entries.length) {
+                            children = res.entries.map((entry) => ({
+                                ...entry,
+                                depth: e.depth + 1 + entry.depth, // depth do backend é relativo (filho imediato = 0)
+                                collapsed: entry.isDir,
+                            }));
+                        }
+                        e.empty = !(res && res.entries && res.entries.length);
+                    }
+
                     e.loading = false;
                     const idx = treeEntries.indexOf(e);
-                    if (res && res.ok && res.entries && res.entries.length && idx !== -1) {
-                        const children = res.entries.map((entry) => ({
-                            ...entry,
-                            depth: e.depth + 1 + entry.depth, // depth do backend é relativo (filho imediato = 0)
-                            collapsed: entry.isDir,
-                        }));
-                        treeEntries.splice(idx + 1, 0, ...children);
+                    if (idx !== -1) {
+                        let removeCount = 0;
+                        while (idx + 1 + removeCount < treeEntries.length && treeEntries[idx + 1 + removeCount].depth > e.depth) {
+                            removeCount++;
+                        }
+                        if (removeCount > 0) {
+                            treeEntries.splice(idx + 1, removeCount);
+                        }
+                        if (children && children.length) {
+                            treeEntries.splice(idx + 1, 0, ...children);
+                        }
                     }
-                    e.loaded = true;
+                    e.loaded = !retry;
                 }
                 e.collapsed = false;
                 renderTree();
@@ -125,7 +201,10 @@ var creatingFolderParent = null;
             let featuredClass = '';
             let dirIconHtml = TREE_DIR_IC;
 
-            if (!e.isDir) {
+            if (e.synthetic) {
+                // Nó sintético (Dependencies/jar/classe/status) — nunca tem cor de
+                // git, nunca é "featured": não existe no disco do projeto.
+            } else if (!e.isDir) {
                 gitStatus = currentGitStatus.modifiedFiles ? currentGitStatus.modifiedFiles[relPath] : null;
                 if (gitStatus) {
                     gitClass = (gitStatus === 'U') ? ' git-untracked' : ' git-modified';
@@ -149,9 +228,24 @@ var creatingFolderParent = null;
             node.className = 'ws-tree-node ' + (e.isDir ? 'dir' : 'file') +
                 (e.collapsed ? ' collapsed' : '') +
                 (shouldDim ? (isMatch ? ' match' : ' dim') : '') +
+                (e.synthetic ? ' ws-tree-node-synthetic' : '') +
                 gitClass + featuredClass;
             node.style.paddingLeft = (4 + e.depth * 12) + 'px';
-            node.innerHTML = e.isDir ? (TREE_CHEVRON_IC + dirIconHtml) : (TREE_CHEVRON_SPACER + window.fileIconHtml(e.name));
+            // dataset.path deixa a atualização de git status achar o nó sem
+            // reconstruir a árvore inteira (ver applyGitStatusClasses).
+            node.dataset.path = e.path;
+            const chevron = e.loading ? TREE_SPINNER_IC : TREE_CHEVRON_IC;
+            if (e.synthetic === 'java-deps') {
+                node.innerHTML = chevron + TREE_DEPS_IC;
+            } else if (e.synthetic === 'java-jar') {
+                node.innerHTML = chevron + TREE_JAR_IC;
+            } else if (e.synthetic === 'java-class') {
+                node.innerHTML = TREE_CHEVRON_SPACER + TREE_CLASS_IC;
+            } else if (e.synthetic === 'java-deps-status') {
+                node.innerHTML = TREE_CHEVRON_SPACER;
+            } else {
+                node.innerHTML = e.isDir ? (chevron + dirIconHtml) : (TREE_CHEVRON_SPACER + window.fileIconHtml(e.name));
+            }
 
             // Wire events (drag, context menu, double click to view)
             if (typeof window.wireTreeNodeEvents === 'function') {
@@ -208,7 +302,18 @@ var creatingFolderParent = null;
             } else {
                 const label = document.createElement('span');
                 label.className = 'ws-tree-label';
-                label.textContent = e.name;
+                if (e.synthetic === 'java-class') {
+                    // FQN completo é o path de navegação, mas na árvore mostra só o
+                    // nome simples (igual IntelliJ) — o FQN completo fica no title.
+                    label.textContent = e.name.split('.').pop();
+                    node.title = e.name;
+                } else if (e.synthetic === 'java-deps-status') {
+                    label.textContent = e.name;
+                    label.style.opacity = '0.6';
+                    label.style.fontStyle = 'italic';
+                } else {
+                    label.textContent = e.name;
+                }
                 node.appendChild(label);
             }
 
@@ -384,6 +489,20 @@ var creatingFolderParent = null;
                 if (wsTreeTrashBtn) {
                     wsTreeTrashBtn.style.display = selectedPaths.size > 0 ? 'flex' : 'none';
                 }
+            }
+
+            if (window.electronAPI && window.electronAPI.onJavaDepsChanged) {
+                window.electronAPI.onJavaDepsChanged(() => {
+                    const depsNode = treeEntries.find(e => e.synthetic === 'java-deps');
+                    if (depsNode) {
+                        depsNode.loaded = false;
+                        depsNode.loading = false;
+                        if (!depsNode.collapsed) {
+                            depsNode.collapsed = true;
+                            toggleDir(depsNode);
+                        }
+                    }
+                });
             }
 
     // Expose functions globally

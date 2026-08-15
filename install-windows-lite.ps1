@@ -54,13 +54,42 @@ $gitCmd = Get-Command git -ErrorAction SilentlyContinue
 if (Test-Path $InstallDir) {
     if ($gitCmd -and (Test-Path (Join-Path $InstallDir '.git'))) {
         Write-Step "Instalacao existente encontrada em $InstallDir - atualizando..."
+
+        # O app rodando MANTEM arquivos abertos e no Windows o git nao sobrescreve
+        # arquivo em uso: pull e reset falhavam os dois calados (--quiet, sem
+        # verificacao) e o instalador seguia dizendo "Instalado!" com o codigo
+        # ANTIGO no disco. Ver o mesmo bloco no install-windows-full.ps1.
+        Get-Process -Name electron -ErrorAction SilentlyContinue |
+            Where-Object { $_.Path -and $_.Path.StartsWith($InstallDir, [StringComparison]::OrdinalIgnoreCase) } |
+            ForEach-Object {
+                Write-Step "Fechando instancia em execucao (PID $($_.Id)) pra liberar os arquivos..."
+                try { Stop-Process -Id $_.Id -Force -ErrorAction Stop; Start-Sleep -Milliseconds 800 } catch {}
+            }
+
         Push-Location $InstallDir
-        git pull --quiet --ff-only
+        $antes = (git rev-parse HEAD 2>$null)
+        git fetch origin master
+        if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Fatal "nao consegui buscar as atualizacoes do GitHub (rede/credenciais?)." }
+
+        $alvo = (git rev-parse 'origin/master' 2>$null)
+        git pull --ff-only origin master
         if ($LASTEXITCODE -ne 0) {
-            git fetch --quiet origin
-            git reset --hard --quiet 'origin/HEAD'
+            Write-Step "pull --ff-only falhou (alteracao local?) - forcando pra origin/master..."
+            git reset --hard 'origin/master'
         }
+        $depois = (git rev-parse HEAD 2>$null)
         Pop-Location
+
+        if ($depois -ne $alvo) {
+            Write-Fatal ("a atualizacao NAO foi aplicada (esta em $($depois.Substring(0,7)), " +
+                "deveria estar em $($alvo.Substring(0,7))). Feche o Helper Node e rode de novo; " +
+                "se persistir, apague $InstallDir e reinstale.")
+        }
+        if ($antes -eq $depois) {
+            Write-Ok "ja estava na versao mais recente ($($depois.Substring(0,7)))"
+        } else {
+            Write-Ok "atualizado: $($antes.Substring(0,7)) -> $($depois.Substring(0,7))"
+        }
     } else {
         Write-Step "Copia anterior sem git encontrada - reinstalando do zero..."
         Remove-Item -Recurse -Force $InstallDir

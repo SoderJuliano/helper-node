@@ -213,6 +213,12 @@ helpers.createOsNotificationWindow = function(type, content) {
 
   // Proteção multicamada: setContentProtection + xprop X11 UTILITY atom
   helpers.applyStealthProtection(state.osNotificationWindow);
+  // Passa cliques de mouse pras janelas de baixo no Windows/macOS por padrao
+  // (loading/recording sao puramente visuais; response religa ao hover em elementos interativos)
+  if (process.platform !== 'linux') {
+    try { state.osNotificationWindow.setIgnoreMouseEvents(true, { forward: true }); } catch (_) {}
+  }
+
   // Mantém SEMPRE acima de tudo (inclusive janelas em fullscreen de browser)
   state.osNotificationWindow.setAlwaysOnTop(true, 'screen-saver');
   state.osNotificationWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });

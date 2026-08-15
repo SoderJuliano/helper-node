@@ -33,11 +33,30 @@
             overflow-x: auto;
             flex: 1;
             margin-right: 12px;
-            scrollbar-width: none; /* Hide scrollbar */
+            scrollbar-width: thin;
+            scrollbar-color: transparent transparent;
             height: 100%;
+            transition: scrollbar-color 0.2s ease;
+        }
+        .fv-tabs-container:hover {
+            scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
         }
         .fv-tabs-container::-webkit-scrollbar {
-            display: none;
+            height: 3px;
+        }
+        .fv-tabs-container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .fv-tabs-container::-webkit-scrollbar-thumb {
+            background: transparent;
+            border-radius: 3px;
+            transition: background 0.2s ease;
+        }
+        .fv-tabs-container:hover::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.25);
+        }
+        .fv-tabs-container::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.45);
         }
         .fv-tab {
             display: flex;
@@ -54,7 +73,14 @@
             cursor: pointer;
             user-select: none;
             transition: all 0.15s ease;
-            max-width: 160px;
+            /* O nome vinha cortado ("PagamentoServiceImpl.java" → "Servic…")
+               NÃO por causa do max-width, e sim porque a aba é um flex item e
+               encolhia: medida em 42px de largura, sobrando 5px pro nome que
+               precisa de 162px. `flex-shrink: 0` faz a aba manter o tamanho
+               natural e o container (que já tem overflow-x: auto) rolar, igual
+               VS Code. max-width só limita nome absurdamente longo. */
+            flex: 0 0 auto;
+            max-width: 280px;
             white-space: nowrap;
             height: 22px;
             margin-top: 4px;
@@ -144,6 +170,14 @@
            (antes ficava "puxado" 16px pra trás por faltar esse espaço). */
         .ws-tree-chevron-spacer { width: 0.85em; height: 0.85em; flex-shrink: 0; display: inline-block; }
         .ws-tree-node.dir.collapsed .ws-tree-chevron { transform: rotate(-90deg); }
+        /* Ocupa exatamente o lugar do chevron enquanto a pasta carrega, pra
+           linha não "pular" quando o spinner some. */
+        .ws-tree-spinner {
+            width: 0.85em; height: 0.85em; flex-shrink: 0;
+            color: var(--accent-2, #7aa2f7);
+            animation: ws-tree-spin .7s linear infinite;
+        }
+        @keyframes ws-tree-spin { to { transform: rotate(360deg); } }
         .ws-tree-node.drag-over {
             background: rgba(255, 255, 255, 0.08) !important;
             outline: 1px dashed var(--accent-2) !important;
@@ -364,3 +398,4 @@
             display: flex;
             align-items: center;
         }
+

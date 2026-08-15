@@ -88,10 +88,52 @@
             });
 
             // 1. Protege blocos ``` ... ```
-            out = out.replace(/```([\w-]*)\n?([\s\S]*?)```/g, (_, lang, code) => {
-                const id = `${pfx}-cb-${Date.now()}-${blocks.length}`;
-                return hold(`<pre>${copyBtn()}<code id="${id}" class="language-${lang || 'text'}">${escapeHTML(code.trim())}</code></pre>`);
-            });
+            //
+            // Varredura por LINHA, não regex sobre o texto todo. O regex antigo
+            // (/```([\w-]*)\n?([\s\S]*?)```/) fechava o bloco na primeira crase
+            // tripla que encontrasse EM QUALQUER LUGAR — inclusive no meio de
+            // uma linha de código, como console.log("```"). Dois estragos,
+            // ambos reproduzidos com bloco de 300 linhas:
+            //
+            //   crase tripla no meio  -> <pre> ficava com 5 linhas e as outras
+            //                            295 viravam texto solto (o usuário
+            //                            continuava VENDO tudo, mas copiar o
+            //                            bloco trazia só as 5);
+            //   bloco sem fechamento  -> nenhum <pre> era criado e o código
+            //                            inteiro virava parágrafo — "copiei a
+            //                            resposta e veio sem o bloco".
+            //
+            // Regra do CommonMark: a cerca de fechamento tem que estar sozinha
+            // na linha e ser pelo menos tão longa quanto a de abertura; bloco
+            // sem fechamento vai até o fim do texto.
+            out = (() => {
+                const linhas = out.split('\n');
+                const saida = [];
+                let i = 0;
+                while (i < linhas.length) {
+                    const abre = linhas[i].match(/^\s*(`{3,})\s*([\w+#.-]*)\s*$/);
+                    if (!abre) { saida.push(linhas[i]); i++; continue; }
+
+                    const cerca = abre[1];
+                    const lang = abre[2];
+                    const corpo = [];
+                    let j = i + 1;
+                    let fechou = false;
+                    for (; j < linhas.length; j++) {
+                        const fim = linhas[j].match(/^\s*(`{3,})\s*$/);
+                        if (fim && fim[1].length >= cerca.length) { fechou = true; break; }
+                        corpo.push(linhas[j]);
+                    }
+
+                    const id = `${pfx}-cb-${Date.now()}-${blocks.length}`;
+                    saida.push(hold(
+                        `<pre>${copyBtn()}<code id="${id}" class="language-${lang || 'text'}">`
+                        + `${escapeHTML(corpo.join('\n').trim())}</code></pre>`
+                    ));
+                    i = fechou ? j + 1 : j; // sem fechamento, consome até o fim
+                }
+                return saida.join('\n');
+            })();
 
             // 2. Código inline `x` → <code> inline (NÃO bloco)
             out = out.replace(/`([^`\n]+)`/g, (_, code) =>
@@ -247,9 +289,15 @@
                      .replace(/<p>\s*<\/p>/g, '');
 
             // 7. Restaura blocos protegidos
-            blocks.forEach((b, i) => { out = out.replace(`\x00B${i}\x00`, b); });
-
-            return out;
+            //
+            // ⚠️ O replacement PRECISA ser função. Com string, o replace
+            // interpreta `$&`, `$'`, "$`" e `$n` como padrões de substituição:
+            // um bloco de código contendo `$'` fazia o replace inserir todo o
+            // texto DEPOIS do bloco, e "$`" todo o texto ANTES — o conteúdo
+            // saía corrompido/duplicado (medido: 300 linhas com `$'` viravam
+            // 13.689 chars de 10.691). Código com regex e shell script cai
+            // nisso o tempo todo.
+            blocks.forEach((b, i) => { out = out.replace(`\x00B${i}\x00`, () => b); });
 
             return out;
         }

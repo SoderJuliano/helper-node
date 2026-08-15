@@ -73,6 +73,16 @@ ipcMain.handle("workspace:pick-dir", async () => {
     } catch (err) {
       console.warn('[symbolIndexer] Falha ao indexar novo projeto:', err.message);
     }
+    try {
+      const workspaceWatcher = require('../../services/workspaceWatcher.js');
+      if (newPath) {
+        workspaceWatcher.startWatchingProject(newPath);
+      } else {
+        workspaceWatcher.stopWatching();
+      }
+    } catch (err) {
+      console.warn('[workspaceWatcher] Falha ao alterar watcher:', err.message);
+    }
     if (activeProvider === 'geminiCli') {
       GeminiCliProvider.changeProject(oldPath, newPath).catch(e =>
         console.warn('[workspace] GeminiCliProvider.changeProject falhou:', e.message)
@@ -339,6 +349,18 @@ ipcMain.handle("search-project-content", async (_event, query) => {
 ipcMain.handle("read-file-content", async (event, filePath) => {
   try {
     if (!filePath) return { ok: false, error: "path vazio" };
+    // Classe dentro de um jar de dependência (nó "Dependencies" da árvore) —
+    // caminho virtual, nunca existe no disco, fica fora do sandbox do
+    // workspace de propósito (é leitura, vem do próprio classpath resolvido
+    // do projeto, igual "External Libraries" do IntelliJ).
+    if (filePath.includes(".jar!")) {
+      const javaImportChecker = require("../../services/javaImportChecker.js");
+      const parsed = javaImportChecker.parseVirtualPath(filePath);
+      if (!parsed) return { ok: false, error: "caminho de dependência inválido" };
+      const res = javaImportChecker.getClassSource(parsed.jarPath, parsed.fqcn);
+      if (!res.available) return { ok: false, error: res.reason || "sem código-fonte disponível" };
+      return { ok: true, path: filePath, content: res.content, ext: "java", bytes: res.content.length, mtimeMs: 0 };
+    }
     if (workspace.resolvePortalPath) {
       filePath = workspace.resolvePortalPath(filePath);
     }
@@ -362,6 +384,7 @@ ipcMain.handle("editor-save-file", async (event, payload) => {
   try {
     let { path: filePath, content, expectedMtimeMs } = payload || {};
     if (!filePath) return { ok: false, error: "path vazio" };
+    if (filePath.includes(".jar!")) return { ok: false, error: "arquivo de dependência é somente leitura" };
     if (workspace.resolvePortalPath) {
       filePath = workspace.resolvePortalPath(filePath);
     }
@@ -381,6 +404,18 @@ ipcMain.handle("editor-save-file", async (event, payload) => {
 });
 
 ipcMain.handle("workspace:remove", (event, id) => {
+  // Imagem colada vive numa pasta nossa: tirar o chip apaga o arquivo também,
+  // senão a pasta acumula print que ninguém mais referencia. Arquivo do
+  // usuário (isManagedPath false) nunca é tocado.
+  try {
+    const imageAttachments = require("../../services/imageAttachments.js");
+    const target = workspace.list().find(a => a.id === id);
+    if (target && target.origin === 'paste' && imageAttachments.isManagedPath(target.path)) {
+      require("fs").unlinkSync(target.path);
+    }
+  } catch (e) {
+    console.warn("[workspace] falha ao apagar imagem colada:", e && e.message);
+  }
   workspace.removePath(id);
   helpers.syncTerminalCwd();
   if (state.mainWindow && !state.mainWindow.isDestroyed()) {

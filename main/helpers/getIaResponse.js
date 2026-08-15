@@ -128,7 +128,9 @@ helpers.getIaResponse = async function(text) {
         clearInterval(state.waitingNotificationInterval);
         state.waitingNotificationInterval = null;
         try {
-          await CopilotCliProvider.send(finalPrompt, projectPath, state.mainWindow.webContents);
+          await CopilotCliProvider.send(finalPrompt, projectPath, state.mainWindow.webContents, {
+            attachments: helpers.getAttachableFilePaths(),
+          });
         } catch (cpErr) {
           console.error('[copilot-cli getIaResponse] send error:', cpErr.message);
           try { state.mainWindow.webContents.send('gemini-stream-complete'); } catch (_) {}

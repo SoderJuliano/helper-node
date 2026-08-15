@@ -79,13 +79,15 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
       const projectPath = workspace.getProjectPath();
       const copilotModel = configService.getCopilotCliModel();
       CopilotCliProvider.setModel(copilotModel);
-      let safePrompt = promptWithHistory;
-      if (safePrompt.length > 24000) {
-        safePrompt = safePrompt.slice(0, 4000) + "\n\n[...histórico antigo omitido pra caber na linha de comando...]\n\n" + safePrompt.slice(-20000);
-      }
-      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(safePrompt));
+      // Nada de recortar o prompt aqui: o corte tem que vir DEPOIS do contexto
+      // de anexos (era o bug — capava o histórico e deixava os anexos estourarem
+      // a linha de comando do mesmo jeito). Quem mede o limite real de argv é o
+      // CopilotCliProcess, que conhece os outros argumentos do spawn.
+      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(promptWithHistory));
       try {
-        await CopilotCliProvider.send(finalPrompt, projectPath, event.sender);
+        await CopilotCliProvider.send(finalPrompt, projectPath, event.sender, {
+          attachments: helpers.getAttachableFilePaths(),
+        });
       } catch (cpErr) {
         console.error('[copilot-cli] send error:', cpErr.message);
         try { event.sender.send('gemini-stream-complete'); } catch (_) {}
@@ -113,6 +115,9 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
         if (useAgentic) { try { workspace.resetContextSent(); } catch (_) {} }
 
         const _wsText2 = await helpers.prependWorkspaceContextIfNeeded(promptWithHistory, openAiModel);
+        // ChatGPT/Codex não leem imagem por caminho nem por ferramenta — só
+        // pelo canal de visão da API. Só aqui o base64 é legítimo.
+        const _imgInline = helpers.inlineImageForProvider(aiModel);
 
         if (useAgentic) {
             console.log('🤖 IPC: Iniciando AGENTIC WORKFLOW (multi-fase)...');
@@ -122,7 +127,7 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
             try {
               resposta = await agenticWorkflow.run(
                   _wsText2,
-                  { token, model: openAiModel, baseInstruction: instruction },
+                  { token, model: openAiModel, baseInstruction: instruction, imageBase64: _imgInline },
                   event.sender
               );
             } catch (err) {
@@ -140,7 +145,7 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
               token,
               ht.instruction || instruction,
               ht.model || openAiModel,
-              null,
+              _imgInline,
               ht.opts
             );
         }
@@ -289,15 +294,28 @@ ipcMain.on("send-to-gemini-vision", async (event, { text, image }) => {
   }
 });
 
+// Interrompe QUALQUER CLI rodando agora (claude / agy / copilot).
+// Existem dois caminhos de "parar" na UI e eles não faziam a mesma coisa: o ×
+// do bloco "Pensando" e o botão flutuante "■ Parar IA" caem em
+// `cancel-ia-request`, que só abortava backend/agente/ollama e NUNCA falava com
+// as CLIs. O resultado era o front voltar ao normal enquanto o processo
+// continuava gastando token e escrevendo nos arquivos do projeto. Agora os dois
+// caminhos passam por aqui. O copilot também estava de fora do único caminho
+// que funcionava.
+function abortRunningCliProviders() {
+  let projectPath = null;
+  try { projectPath = workspace.getProjectPath(); } catch (_) {}
+  try { ClaudeCliProvider.abortCurrent(projectPath).catch(() => {}); } catch (_) {}
+  try { GeminiCliProvider.abortCurrent && GeminiCliProvider.abortCurrent(projectPath).catch(() => {}); } catch (_) {}
+  try { CopilotCliProvider.abortCurrent && CopilotCliProvider.abortCurrent().catch(() => {}); } catch (_) {}
+}
+
 ipcMain.on("stop-agentic-workflow", (event, sessionId) => {
   agenticWorkflow.stop(sessionId);
   if (typeof ollamaAgenticWorkflow !== 'undefined') {
     ollamaAgenticWorkflow.stop(sessionId);
   }
-  // Para CLIs: aborta o processo em curso para o projeto ativo.
-  const projectPath = workspace.getProjectPath();
-  ClaudeCliProvider.abortCurrent(projectPath).catch(() => {});
-  GeminiCliProvider.abortCurrent && GeminiCliProvider.abortCurrent(projectPath).catch(() => {});
+  abortRunningCliProviders();
 });
 
 ipcMain.on("clear-ai-sessions", () => {
@@ -447,6 +465,17 @@ ipcMain.on("cancel-ia-request", () => {
     const OllamaLocalService = require('../../services/ollamaLocalService');
     OllamaLocalService.abortCurrentRequest();
   } catch (_) {}
+  // As CLIs (claude/agy/copilot) ficavam de fora daqui: a tela parava, o
+  // processo não.
+  abortRunningCliProviders();
+  // Sem sessionId neste canal — o botão "Parar IA" é global, então derruba
+  // todo turno agêntico em andamento.
+  try { agenticWorkflow.stopAll && agenticWorkflow.stopAll(); } catch (_) {}
+  try {
+    if (typeof ollamaAgenticWorkflow !== 'undefined' && ollamaAgenticWorkflow.stopAll) {
+      ollamaAgenticWorkflow.stopAll();
+    }
+  } catch (_) {}
   console.log("IA request cancelled");
 });
 
@@ -522,7 +551,7 @@ ipcMain.on("set-gemini-cli-model", (event, model) => {
   broadcastAiModelChange({ provider: 'geminiCli', model });
 });
 
-ipcMain.handle("get-gemini-cli-models", () => GeminiCliProvider.getModels());
+ipcMain.handle("get-gemini-cli-models", (event, force) => GeminiCliProvider.getModels(force));
 
 ipcMain.handle("check-gemini-cli-installed", async () => {
   try {

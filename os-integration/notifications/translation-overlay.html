@@ -516,12 +516,15 @@
       const api = window.electronAPI || {};
       if (!api.setIgnoreMouseEvents || api.platform === 'linux') return;
       window.addEventListener('mousemove', (e) => {
-        const isInteractive = e.target.closest('#pos-header, .pos-btn, #status-bar, #messages, pre, code, button, a');
+        const isInteractive = e.target && e.target.closest && e.target.closest('#pos-header, .pos-btn, #status-bar, #messages, pre, code, button, a');
         if (isInteractive) {
           api.setIgnoreMouseEvents(false);
         } else {
           api.setIgnoreMouseEvents(true, { forward: true });
         }
+      });
+      window.addEventListener('mouseleave', () => {
+        api.setIgnoreMouseEvents(true, { forward: true });
       });
     })();
 
