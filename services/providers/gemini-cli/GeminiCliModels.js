@@ -94,21 +94,31 @@ function labelFromId(id) {
   return label;
 }
 
-// Uma linha = um ID. Descarta cabeçalho/ruído: ID de modelo não tem espaço.
+// Uma linha por modelo: extrai o ID (primeiro token) e o rótulo (se houver após espaço/tab).
 // Exportada para teste sem spawnar o binário.
 function parseModelIds(out) {
   if (!out) return [];
-  const ids = [];
+  const results = [];
   const seen = new Set();
-  for (const raw of out.replace(/\[[0-9;]*[a-zA-Z]/g, '').split(/\r?\n/)) {
+  const cleaned = out.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '').replace(/\[[0-9;]*[a-zA-Z]/g, '');
+  for (const raw of cleaned.split(/\r?\n/)) {
     const line = raw.trim();
-    if (!line || /\s/.test(line)) continue;
-    if (!/^[a-z0-9][a-z0-9._-]*$/i.test(line)) continue;
-    if (seen.has(line)) continue;
-    seen.add(line);
-    ids.push(line);
+    if (!line) continue;
+
+    const parts = line.split(/\s+/);
+    const id = parts[0];
+
+    if (!/^[a-z0-9][a-z0-9._-]*$/i.test(id)) continue;
+    if (/^(fetching|available|loading|error|warning|models|usage)$/i.test(id)) continue;
+    if (seen.has(id)) continue;
+    seen.add(id);
+
+    const rawLabel = parts.slice(1).join(' ').trim();
+    const label = rawLabel || labelFromId(id);
+
+    results.push({ id, value: id, label });
   }
-  return ids;
+  return results;
 }
 
 async function fetchModels() {
@@ -116,10 +126,10 @@ async function fetchModels() {
   if (!bin) return null;
 
   const out = await runAgy(bin, ['models'], PROBE_TIMEOUT);
-  const ids = parseModelIds(out);
-  if (!ids.length) return null;
+  const models = parseModelIds(out);
+  if (!models.length) return null;
 
-  return ids.map(id => ({ id, label: labelFromId(id) }));
+  return models;
 }
 
 function refresh() {
@@ -141,8 +151,13 @@ function refresh() {
   return inFlight;
 }
 
-async function getModels() {
-  if (cachedModels && Date.now() - lastFetchTime < MEMORY_TTL) return cachedModels;
+async function getModels(force = false) {
+  if (!force && cachedModels && Date.now() - lastFetchTime < MEMORY_TTL) return cachedModels;
+
+  if (force) {
+    const fresh = await refresh();
+    if (fresh && fresh.length) return fresh;
+  }
 
   const disk = readDiskCache();
   if (disk && !cachedModels) {

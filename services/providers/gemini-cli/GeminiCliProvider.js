@@ -72,8 +72,8 @@ class GeminiCliProvider {
     return this._model;
   }
 
-  getModels() {
-    return getModels();
+  getModels(force = false) {
+    return getModels(force);
   }
 
   // Main entry point called by main.js.

@@ -91,7 +91,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Gemini CLI provider
   getGeminiCliModel: () => ipcRenderer.invoke("get-gemini-cli-model"),
   setGeminiCliModel: (model) => ipcRenderer.send("set-gemini-cli-model", model),
-  getGeminiCliModels: () => ipcRenderer.invoke("get-gemini-cli-models"),
+  getGeminiCliModels: (force) => ipcRenderer.invoke("get-gemini-cli-models", force),
   checkGeminiCliInstalled: () => ipcRenderer.invoke("check-gemini-cli-installed"),
   geminiCliRestartSession: () => ipcRenderer.invoke("gemini-cli-restart-session"),
   onGeminiCliStatus: (cb) => ipcRenderer.on("gemini-cli-status", (event, data) => cb(data)),

@@ -571,7 +571,10 @@
 
         <!-- Gemini CLI (Antigravity): select de modelo + aviso de instalação manual -->
         <div class="setting-item" id="gemini-cli-model-container" style="display: none;">
-            <label for="gemini-cli-model-select">Modelo Antigravity (agy)</label>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                <label for="gemini-cli-model-select" style="margin-bottom: 0;">Modelo Antigravity (agy)</label>
+                <span id="gemini-cli-model-spinner" class="ai-activity-spinner" style="display: none; width: 13px; height: 13px;"></span>
+            </div>
             <!-- Sem <option> fixo: a lista vem do próprio binário `agy` via
                  populateGeminiCliModels(). Nome de modelo escrito aqui vira nome
                  errado na tela assim que o CLI muda a linha. -->

@@ -913,11 +913,14 @@ async function populateOllamaLocalModels(savedModel = null) {
   updateOllamaPullCmd();
 }
 
-async function populateGeminiCliModels(savedModel = null) {
+async function populateGeminiCliModels(savedModel = null, force = false) {
   if (!geminiCliModelSelect) return;
   const currentVal = savedModel || geminiCliModelSelect.value;
+  const spinner = document.getElementById("gemini-cli-model-spinner");
+  if (spinner) spinner.style.display = "inline-block";
+  geminiCliModelSelect.disabled = true;
   try {
-    const models = await ipcRenderer.invoke('get-gemini-cli-models');
+    const models = await ipcRenderer.invoke('get-gemini-cli-models', force);
     geminiCliModelSelect.innerHTML = '';
     if (models && models.length) {
       models.forEach(m => {
@@ -945,7 +948,7 @@ async function populateGeminiCliModels(savedModel = null) {
     } else {
       const option = document.createElement('option');
       option.value = '';
-      option.textContent = 'Nenhum modelo Gemini CLI encontrado';
+      option.textContent = 'Nenhum modelo Antigravity (agy) encontrado';
       option.disabled = true;
       geminiCliModelSelect.appendChild(option);
     }
@@ -960,6 +963,9 @@ async function populateGeminiCliModels(savedModel = null) {
     } else {
       geminiCliModelSelect.innerHTML = '<option value="" disabled>Erro ao carregar modelos</option>';
     }
+  } finally {
+    if (spinner) spinner.style.display = "none";
+    geminiCliModelSelect.disabled = false;
   }
 }
 
@@ -1132,7 +1138,7 @@ aiModelSelect.addEventListener('change', () => {
     } else {
       releaseOllamaLocalExclusivity();
       if (v === 'geminiCli') {
-        populateGeminiCliModels();
+        populateGeminiCliModels(null, true);
       } else if (v === 'claudeCli') {
         populateClaudeCliModels();
       } else if (v === 'copilotCli') {

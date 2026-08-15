@@ -25,17 +25,28 @@
             let CLAUDE_CLI_MODELS = [];
             // Copilot CLI: preenchido por loadCliModels() a partir do binário `copilot`.
             let COPILOT_CLI_MODELS = [];
-            // Gemini CLI model list (initially mirrored, loaded dynamically later)
-            let GEMINI_CLI_MODELS = [
-                { value: 'Gemini 3.5 Flash (High)',      label: 'Gemini 3.5 Flash (High)'      },
-                { value: 'Gemini 3.5 Flash (Medium)',    label: 'Gemini 3.5 Flash (Medium)'    },
-                { value: 'Gemini 3.5 Flash (Low)',       label: 'Gemini 3.5 Flash (Low)'       },
-                { value: 'Gemini 3.1 Pro (High)',        label: 'Gemini 3.1 Pro (High)'        },
-                { value: 'Gemini 3.1 Pro (Low)',         label: 'Gemini 3.1 Pro (Low)'         },
-                { value: 'Claude Sonnet 4.6 (Thinking)', label: 'Claude Sonnet 4.6 (Thinking)' },
-                { value: 'Claude Opus 4.6 (Thinking)',   label: 'Claude Opus 4.6 (Thinking)'   },
-                { value: 'GPT-OSS 120B (Medium)',        label: 'GPT-OSS 120B (Medium)'        },
-            ];
+            // Antigravity CLI (agy): preenchido por agy models via getGeminiCliModels().
+            // NUNCA hardcoded.
+            let GEMINI_CLI_MODELS = [];
+
+            function formatAgyLabel(id) {
+                if (!id) return 'Gemini CLI';
+                const parts = String(id).split('-');
+                const BRANDS = { gemini: 'Gemini', claude: 'Claude', gpt: 'GPT', grok: 'Grok', kimi: 'Kimi' };
+                const brand = BRANDS[parts[0]];
+                if (!brand) return id;
+
+                const TIERS = new Set(['high', 'medium', 'low', 'thinking', 'fast', 'mini']);
+                const tier = [];
+                while (parts.length > 1 && TIERS.has(parts[parts.length - 1].toLowerCase())) {
+                    tier.unshift(parts.pop());
+                }
+
+                const cap = (w) => w.charAt(0).toUpperCase() + w.slice(1);
+                let label = [brand, ...parts.slice(1).map(cap)].join(' ');
+                if (tier.length) label += ` (${tier.map(cap).join(' ')})`;
+                return label;
+            }
 
             async function loadCliModels() {
                 try {
@@ -54,7 +65,7 @@
                     if (Array.isArray(geminiRes) && geminiRes.length) {
                         GEMINI_CLI_MODELS = geminiRes.map(m => ({
                             value: m.id || m.value || m,
-                            label: m.label || m.id || m.value || m
+                            label: m.label || formatAgyLabel(m.id || m.value || m)
                         }));
                     }
                 } catch (e) {
@@ -88,10 +99,10 @@
                     const found = OPENAI_MODELS.find(x => x.value === m);
                     composerModelName.textContent = found ? found.label : m;
                 } else if (provider === 'geminiCli') {
-                    let m = 'Gemini 3.5 Flash (Medium)';
+                    let m = '';
                     try { m = (await window.electronAPI.getGeminiCliModel()) || m; } catch (_) {}
-                    const found = GEMINI_CLI_MODELS.find(x => x.value === m);
-                    composerModelName.textContent = found ? found.label : m;
+                    const found = GEMINI_CLI_MODELS.find(x => x.value === m || x.id === m);
+                    composerModelName.textContent = found ? found.label : (m ? formatAgyLabel(m) : 'Gemini CLI');
                 } else if (provider === 'claudeCli') {
                     let m = 'sonnet';
                     try { m = (await window.electronAPI.getClaudeCliModel()) || m; } catch (_) {}
@@ -179,9 +190,68 @@
                 setTimeout(() => document.addEventListener('click', closer, true), 0);
             }
 
+            function setButtonLoading(anchor, isLoading) {
+                if (!anchor) return;
+                const caret = anchor.querySelector('.cm-caret');
+                let spinEl = anchor.querySelector('.composer-model-spinner');
+                if (isLoading) {
+                    if (!spinEl) {
+                        spinEl = document.createElement('span');
+                        spinEl.className = 'ai-activity-spinner composer-model-spinner';
+                        anchor.appendChild(spinEl);
+                    }
+                    if (caret) caret.style.display = 'none';
+                    spinEl.style.display = 'inline-block';
+                    anchor.style.pointerEvents = 'none';
+                } else {
+                    if (caret) caret.style.display = '';
+                    if (spinEl) spinEl.style.display = 'none';
+                    anchor.style.pointerEvents = 'auto';
+                }
+            }
+
             async function showModelMenu(anchor) {
                 const provider = anchor.dataset.provider || 'openIa';
-                await loadCliModels();
+                
+                if (provider === 'geminiCli') {
+                    // Imediatamente no 1º clique: ativa o spinner síncrono antes de qualquer requisição
+                    setButtonLoading(anchor, true);
+                    try {
+                        let currentVal = '';
+                        try { currentVal = await window.electronAPI.getGeminiCliModel(); } catch (_) {}
+
+                        const res = await window.electronAPI.getGeminiCliModels(true);
+                        if (Array.isArray(res) && res.length) {
+                            GEMINI_CLI_MODELS = res.map(m => ({
+                                value: m.id || m.value || m,
+                                label: m.label || formatAgyLabel(m.id || m.value || m)
+                            }));
+                        }
+
+                        const menuList = GEMINI_CLI_MODELS.length ? GEMINI_CLI_MODELS : (
+                            currentVal ? [{ value: currentVal, label: formatAgyLabel(currentVal) }] : []
+                        );
+
+                        if (menuList.length === 0) {
+                            if (typeof showToast === 'function') showToast('Nenhum modelo retornado pelo agy');
+                            return;
+                        }
+
+                        _buildModelMenu(anchor, menuList, () => currentVal, (opt) => {
+                            currentVal = opt.value;
+                            try { window.electronAPI.setGeminiCliModel(opt.value); } catch (_) {}
+                            composerModelName.textContent = opt.label;
+                            if (typeof showToast === 'function') showToast('Modelo Antigravity: ' + opt.label);
+                        });
+                    } catch (e) {
+                        console.warn('Falha ao consultar modelos do agy:', e);
+                        if (typeof showToast === 'function') showToast('Erro ao carregar modelos Antigravity');
+                    } finally {
+                        setButtonLoading(anchor, false);
+                    }
+                    return;
+                }
+
                 if (provider === 'openIa' || provider === 'openIaCodex') {
                     let currentVal = '';
                     try { currentVal = await window.electronAPI.getOpenaiModel(); } catch (_) {}
@@ -198,27 +268,31 @@
                     try {
                         const token = await window.electronAPI.getOpeniaToken();
                         if (token) {
-                            if (typeof showToast === 'function') showToast('Carregando modelos OpenAI...');
-                            const res = await fetch("https://api.openai.com/v1/models", {
-                                method: "GET",
-                                headers: {
-                                    "Authorization": `Bearer ${token}`
-                                }
-                            });
-                            if (res.ok) {
-                                const data = await res.json();
-                                if (data.data && Array.isArray(data.data)) {
-                                    const dynamicModels = data.data
-                                        .map(m => m.id)
-                                        .filter(id => id.startsWith('gpt-') || id.startsWith('o1-') || id.startsWith('o3-'))
-                                        .sort()
-                                        .map(id => ({ value: id, label: id }));
-                                    
-                                    if (dynamicModels.length > 0) {
-                                        openOpenaiMenu(dynamicModels);
-                                        return;
+                            setButtonLoading(anchor, true);
+                            try {
+                                const res = await fetch("https://api.openai.com/v1/models", {
+                                    method: "GET",
+                                    headers: {
+                                        "Authorization": `Bearer ${token}`
+                                    }
+                                });
+                                if (res.ok) {
+                                    const data = await res.json();
+                                    if (data.data && Array.isArray(data.data)) {
+                                        const dynamicModels = data.data
+                                            .map(m => m.id)
+                                            .filter(id => id.startsWith('gpt-') || id.startsWith('o1-') || id.startsWith('o3-'))
+                                            .sort()
+                                            .map(id => ({ value: id, label: id }));
+                                        
+                                        if (dynamicModels.length > 0) {
+                                            openOpenaiMenu(dynamicModels);
+                                            return;
+                                        }
                                     }
                                 }
+                            } finally {
+                                setButtonLoading(anchor, false);
                             }
                         }
                     } catch (e) {
@@ -227,31 +301,66 @@
                     
                     // Fallback
                     openOpenaiMenu(OPENAI_MODELS);
-                } else if (provider === 'geminiCli') {
+                    return;
+                }
+
+                if (provider === 'claudeCli') {
+                    if (!CLAUDE_CLI_MODELS.length) {
+                        setButtonLoading(anchor, true);
+                        try {
+                            const claudeRes = await window.electronAPI.getClaudeCliModels();
+                            if (Array.isArray(claudeRes) && claudeRes.length) {
+                                CLAUDE_CLI_MODELS = claudeRes.map(m => ({
+                                    value: m.id || m.value || m,
+                                    label: m.label || m.id || m.value || m
+                                }));
+                            }
+                        } catch (e) {
+                            console.warn('Failed to load Claude CLI models:', e);
+                        } finally {
+                            setButtonLoading(anchor, false);
+                        }
+                    }
                     let currentVal = '';
-                    _buildModelMenu(anchor, GEMINI_CLI_MODELS, () => currentVal, (opt) => {
-                        currentVal = opt.value;
-                        try { window.electronAPI.setGeminiCliModel(opt.value); } catch (_) {}
-                        composerModelName.textContent = opt.label;
-                        if (typeof showToast === 'function') showToast('Modelo: ' + opt.label);
-                    });
-                } else if (provider === 'claudeCli') {
-                    let currentVal = '';
+                    try { currentVal = await window.electronAPI.getClaudeCliModel(); } catch (_) {}
                     _buildModelMenu(anchor, CLAUDE_CLI_MODELS, () => currentVal, (opt) => {
                         currentVal = opt.value;
                         try { window.electronAPI.setClaudeCliModel(opt.value); } catch (_) {}
                         composerModelName.textContent = opt.label;
                         if (typeof showToast === 'function') showToast('Modelo: ' + opt.label);
                     });
-                } else if (provider === 'copilotCli') {
+                    return;
+                }
+
+                if (provider === 'copilotCli') {
+                    if (!COPILOT_CLI_MODELS.length) {
+                        setButtonLoading(anchor, true);
+                        try {
+                            const copilotRes = await window.electronAPI.getCopilotCliModels();
+                            if (Array.isArray(copilotRes) && copilotRes.length) {
+                                COPILOT_CLI_MODELS = copilotRes.map(m => ({
+                                    value: m.id || m.value || m,
+                                    label: m.label || m.id || m.value || m
+                                }));
+                            }
+                        } catch (e) {
+                            console.warn('Failed to load Copilot CLI models:', e);
+                        } finally {
+                            setButtonLoading(anchor, false);
+                        }
+                    }
                     let currentVal = '';
+                    try { currentVal = await window.electronAPI.getCopilotCliModel(); } catch (_) {}
                     _buildModelMenu(anchor, COPILOT_CLI_MODELS, () => currentVal, (opt) => {
                         currentVal = opt.value;
                         try { window.electronAPI.setCopilotCliModel(opt.value); } catch (_) {}
                         composerModelName.textContent = opt.label;
                         if (typeof showToast === 'function') showToast('Modelo: ' + opt.label);
                     });
-                } else if (provider === 'llama' || provider === 'llama-stream') {
+                    return;
+                }
+
+                if (provider === 'llama' || provider === 'llama-stream') {
                     try {
                         let currentVal = '';
                         try { currentVal = await window.electronAPI.getBackendModel(); } catch (_) {}

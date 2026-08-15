@@ -551,7 +551,7 @@ ipcMain.on("set-gemini-cli-model", (event, model) => {
   broadcastAiModelChange({ provider: 'geminiCli', model });
 });
 
-ipcMain.handle("get-gemini-cli-models", () => GeminiCliProvider.getModels());
+ipcMain.handle("get-gemini-cli-models", (event, force) => GeminiCliProvider.getModels(force));
 
 ipcMain.handle("check-gemini-cli-installed", async () => {
   try {

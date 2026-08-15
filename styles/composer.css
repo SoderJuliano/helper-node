@@ -334,6 +334,7 @@
         .composer-model:hover { background: var(--bg-surface); border-color: var(--border-strong); color: var(--text-2); }
         .composer-model > svg:first-child { width: 13px; height: 13px; opacity: .7; flex-shrink: 0; }
         .composer-model .cm-caret { width: 11px; height: 11px; opacity: .55; flex-shrink: 0; }
+        .composer-model .composer-model-spinner { width: 11px; height: 11px; margin-left: 2px; flex-shrink: 0; }
         .composer-model span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
         .composer-hint {
