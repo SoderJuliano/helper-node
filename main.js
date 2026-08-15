@@ -348,6 +348,10 @@ app.on("will-quit", () => {
     try { state.tray.destroy(); } catch (_) {}
     state.tray = null;
   }
+  try {
+    const { closeNexaWindow } = require("./main/nexa/index.js");
+    closeNexaWindow();
+  } catch (_) {}
   // CLI providers: encerra processos de forma limpa.
   GeminiCliProvider.shutdown().catch(e => console.warn('[gemini-cli] shutdown error:', e.message));
   ClaudeCliProvider.shutdown().catch(e => console.warn('[claude-cli] shutdown error:', e.message));

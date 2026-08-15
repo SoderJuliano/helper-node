@@ -133,7 +133,9 @@ function requestWebcamCapture() {
 
 function closeNexaWindow() {
   if (state.nexaWindow && !state.nexaWindow.isDestroyed()) {
-    state.nexaWindow.close();
+    try {
+      state.nexaWindow.close();
+    } catch (_) {}
   }
   state.nexaWindow = null;
   nexaState.reset();

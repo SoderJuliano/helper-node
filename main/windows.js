@@ -404,9 +404,24 @@ helpers.createWindow = async function() {
       helpers.registerGlobalShortcuts();
     });
 
+    state.mainWindow.on("close", () => {
+      try {
+        const { closeNexaWindow } = require("./nexa/index.js");
+        closeNexaWindow();
+      } catch (err) {
+        console.warn("[main] Erro ao fechar janela da Nexa no fechamento da principal:", err.message);
+      }
+    });
+
     state.mainWindow.on("closed", () => {
       console.log("Main window closed");
       state.mainWindow = null;
+      try {
+        const { closeNexaWindow } = require("./nexa/index.js");
+        closeNexaWindow();
+      } catch (err) {
+        console.warn("[main] Erro ao fechar janela da Nexa no fechamento da principal:", err.message);
+      }
     });
 
     const indexPath = path.join(ROOT_DIR, "index.html");
