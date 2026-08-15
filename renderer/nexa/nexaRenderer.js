@@ -119,7 +119,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Animação de "escrevendo código no terminal" (loop). Entra SÓ quando o app está
   // mexendo em arquivos — ler/escrever/editar —, nunca por estar raciocinando
   // (THINKING) ou respondendo (SPEAKING). Quem decide é o main, em nexaIntegration.js.
-  const writingLottiePath = "renderer/nexa/assets/lottie/writing_code_lottie/animations/main.json";
+  const writingLottiePath = "renderer/nexa/assets/lottie/typing_lottie/animations/main.json";
   const writingAnimation = typeof NexaLottieAnimation !== "undefined"
     ? new NexaLottieAnimation({ animationPath: writingLottiePath, loop: true })
     : null;

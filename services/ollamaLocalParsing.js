@@ -123,11 +123,58 @@ function parseOllamaToolCalls(text) {
         if (!objStr) break;
         try {
           const obj = JSON.parse(objStr);
-          if (obj && obj.name && knownNames.has(obj.name)) {
+          if (obj && obj.name && (knownNames.has(obj.name) || knownNames.has(obj.name.toLowerCase()))) {
             calls.push({ raw: objStr, obj });
           }
         } catch (_) {}
         i = open + (objStr ? objStr.length : 1);
+      }
+
+      // 4. Chamadas estilo função: toolName(path="...", pattern="...") ou toolName({"path": "..."})
+      if (calls.length === 0) {
+        const fnRe = /\b([a-zA-Z0-9_]+)\s*\(([\s\S]*?)\)/g;
+        let fnM;
+        while ((fnM = fnRe.exec(text)) !== null) {
+          const fnName = fnM[1];
+          if (knownNames.has(fnName) || knownNames.has(fnName.toLowerCase())) {
+            const rawArgs = fnM[2].trim();
+            let argsObj = {};
+            if (rawArgs.startsWith('{') && rawArgs.endsWith('}')) {
+              try { argsObj = JSON.parse(rawArgs); } catch (_) {}
+            } else {
+              const argPairRe = /([a-zA-Z0-9_]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^,\s\)]+))/g;
+              let pairM;
+              while ((pairM = argPairRe.exec(rawArgs)) !== null) {
+                const k = pairM[1];
+                const v = pairM[2] !== undefined ? pairM[2] : (pairM[3] !== undefined ? pairM[3] : pairM[4]);
+                argsObj[k] = v;
+              }
+            }
+            if (Object.keys(argsObj).length > 0) {
+              calls.push({ raw: fnM[0], obj: { name: fnName, args: argsObj } });
+            }
+          }
+        }
+      }
+
+      // 5. Blocos posicionais de busca (ex.: caminho\npadrão\nextensão)
+      if (calls.length === 0) {
+        const searchBlockRe = /(?:^|\n)\s*([/~A-Za-z]:?[^\n\r*?"<>|]+)\s*\n\s*([^\n\r]+)\s*\n\s*(\*[\w.*{},-]+)\s*(?:\n|$)/g;
+        let sbM;
+        while ((sbM = searchBlockRe.exec(text)) !== null) {
+          const p = sbM[1].trim();
+          const pat = sbM[2].trim();
+          const glob = sbM[3].trim();
+          if (p.startsWith('/') || /^[A-Za-z]:/.test(p) || p.startsWith('.')) {
+            calls.push({
+              raw: sbM[0].trim(),
+              obj: {
+                name: 'searchInFiles',
+                args: { path: p, pattern: pat, filePattern: glob }
+              }
+            });
+          }
+        }
       }
     }
   }
