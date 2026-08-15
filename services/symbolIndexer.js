@@ -14,7 +14,7 @@ const SUPPORTED_EXTS = new Set([
 const IGNORED_DIRS = new Set([
   'node_modules', '.git', 'dist', 'build', 'target', '.idea', '.vscode', '.claude', '.gemini',
   'vendor', 'bin', 'obj', '.next', '.nuxt', '.cache', '__pycache__', 'venv', '.venv', 'env',
-  'coverage', '.output', 'out', 'temp', 'tmp', 'logs', '.bundle'
+  'coverage', '.output', 'out', 'temp', 'tmp', 'logs', '.bundle', 'whisper', 'assets', 'images', 'audio'
 ]);
 
 // Palavras que nunca valem como "uso" — encher o índice com elas é só custo.
@@ -178,8 +178,8 @@ class SymbolIndexer {
       this.indexingProgress = { total: files.length, processed: 0 };
       this.notifyStatus('indexing', this.indexingProgress);
 
-      // 2. Processa a indexação dos arquivos em micro-lotes (30 arquivos por vez)
-      const BATCH_SIZE = 30;
+      // 2. Processa a indexação dos arquivos em micro-lotes (5 arquivos por vez com pausa real)
+      const BATCH_SIZE = 5;
       for (let i = 0; i < files.length; i += BATCH_SIZE) {
         if (this.indexingSessionId !== currentSession) return; // cancelado
 
@@ -190,8 +190,8 @@ class SymbolIndexer {
 
         this.indexingProgress.processed = Math.min(i + BATCH_SIZE, files.length);
 
-        // Libera o Event Loop para processar eventos de UI e IPC do Windows
-        await new Promise((resolve) => setImmediate(resolve));
+        // Libera o Event Loop para processar eventos de UI e IPC com pausa real
+        await new Promise((resolve) => setTimeout(resolve, 20));
       }
 
       if (this.indexingSessionId === currentSession) {
@@ -237,8 +237,8 @@ class SymbolIndexer {
       } catch (_) {}
 
       dirsVisited++;
-      if (dirsVisited % 40 === 0) {
-        await new Promise((resolve) => setImmediate(resolve));
+      if (dirsVisited % 20 === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
       }
     }
     return results;
@@ -262,6 +262,8 @@ class SymbolIndexer {
     let content = contentOverride;
     if (content === null) {
       try {
+        const stat = fs.statSync(filePath);
+        if (stat.size > 200 * 1024) return; // ignora arquivos gigantes (>200KB)
         content = fs.readFileSync(filePath, 'utf8');
       } catch (_) {
         return;

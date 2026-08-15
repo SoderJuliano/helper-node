@@ -16,12 +16,14 @@ const {
 } = require('./globals.js');
 
 helpers.createConfigWindow = function() {
-  if (state.configWindow) {
+  if (state.configWindow && !state.configWindow.isDestroyed()) {
+    state.configWindow.show();
     state.configWindow.focus();
     return;
   }
 
   const isStealth = configService.getStealthModeStatus();
+  const isLinux = process.platform === 'linux';
 
   state.configWindow = new BrowserWindow({
     width: 640,
@@ -29,11 +31,11 @@ helpers.createConfigWindow = function() {
     minWidth: 480,
     minHeight: 420,
     title: "Configurações",
-    backgroundColor: "#00000000",
-    transparent: true,
+    backgroundColor: "#1a1a1a",
+    transparent: false,
     frame: false,
     thickFrame: false,
-    hasShadow: process.platform !== 'win32',
+    hasShadow: true,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -43,8 +45,7 @@ helpers.createConfigWindow = function() {
   });
 
   state.configWindow.loadFile("config.html");
-  helpers.applyStealthProtection(state.configWindow);
-  state.configWindow.setAlwaysOnTop(true, "screen-saver");
+  state.configWindow.setAlwaysOnTop(true, isLinux ? "floating" : "screen-saver");
 
   state.configWindow.on("closed", () => {
     state.configWindow = null;
@@ -52,12 +53,14 @@ helpers.createConfigWindow = function() {
 }
 
 helpers.createPreferencesWindow = function() {
-  if (state.preferencesWindow) {
+  if (state.preferencesWindow && !state.preferencesWindow.isDestroyed()) {
+    state.preferencesWindow.show();
     state.preferencesWindow.focus();
     return;
   }
 
   const isStealth = configService.getStealthModeStatus();
+  const isLinux = process.platform === 'linux';
 
   state.preferencesWindow = new BrowserWindow({
     width: 640,
@@ -65,11 +68,11 @@ helpers.createPreferencesWindow = function() {
     minWidth: 480,
     minHeight: 460,
     title: "Preferências do Usuário",
-    backgroundColor: "#00000000",
-    transparent: true,
+    backgroundColor: "#1a1a1a",
+    transparent: false,
     frame: false,
     thickFrame: false,
-    hasShadow: process.platform !== 'win32',
+    hasShadow: true,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -79,8 +82,7 @@ helpers.createPreferencesWindow = function() {
   });
 
   state.preferencesWindow.loadFile("preferences.html");
-  helpers.applyStealthProtection(state.preferencesWindow);
-  state.preferencesWindow.setAlwaysOnTop(true, "screen-saver");
+  state.preferencesWindow.setAlwaysOnTop(true, isLinux ? "floating" : "screen-saver");
 
   state.preferencesWindow.on("closed", () => {
     state.preferencesWindow = null;

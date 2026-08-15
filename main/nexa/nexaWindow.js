@@ -59,7 +59,8 @@ function createNexaWindow() {
     },
   });
 
-  state.nexaWindow.setAlwaysOnTop(true, "screen-saver");
+  const isLinux = process.platform === "linux";
+  state.nexaWindow.setAlwaysOnTop(true, isLinux ? "floating" : "screen-saver");
   state.nexaWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
   const nexaHtmlPath = path.join(ROOT_DIR, "renderer", "nexa", "nexa.html");

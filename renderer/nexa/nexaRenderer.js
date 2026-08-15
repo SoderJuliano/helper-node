@@ -5,29 +5,9 @@
  */
 
 document.addEventListener("DOMContentLoaded", async () => {
-  // Redireciona logs do console do renderer para o main process
   const originalLog = console.log;
   const originalError = console.error;
   const originalWarn = console.warn;
-
-  console.log = (...args) => {
-    originalLog(...args);
-    if (window.electronAPI && window.electronAPI.logToMain) {
-      window.electronAPI.logToMain("log", args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(" "));
-    }
-  };
-  console.error = (...args) => {
-    originalError(...args);
-    if (window.electronAPI && window.electronAPI.logToMain) {
-      window.electronAPI.logToMain("error", args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(" "));
-    }
-  };
-  console.warn = (...args) => {
-    originalWarn(...args);
-    if (window.electronAPI && window.electronAPI.logToMain) {
-      window.electronAPI.logToMain("warn", args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(" "));
-    }
-  };
 
   const canvas = document.getElementById("nexaCanvas");
   if (!canvas) return;
