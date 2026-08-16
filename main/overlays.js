@@ -230,6 +230,12 @@ helpers.createRealtimeAssistantOverlay = function() {
   if (state.realtimeOverlayWindow && !state.realtimeOverlayWindow.isDestroyed()) {
     return state.realtimeOverlayWindow;
   }
+  // Trava estrita: se a opção estiver desligada e nenhum serviço de tempo real ativo, NUNCA cria a janela
+  const isEnabled = typeof configService.getRealtimeAssistantStatus === 'function' ? configService.getRealtimeAssistantStatus() : false;
+  const isAnyActive = typeof helpers.anyRealtimeActive === 'function' ? helpers.anyRealtimeActive() : false;
+  if (!isEnabled && !isAnyActive) {
+    return null;
+  }
   const b = helpers.computeVisionGuideOverlayBounds();
   console.log(`[realtime-assistant-overlay] criando: x=${b.x} y=${b.y} w=${b.width} h=${b.height}`);
 
@@ -307,13 +313,28 @@ helpers.createRealtimeAssistantOverlay = function() {
 
 helpers.destroyRealtimeAssistantOverlay = function() {
   if (state.realtimeOverlayWindow && !state.realtimeOverlayWindow.isDestroyed()) {
-    try { state.realtimeOverlayWindow.close(); } catch (_) {}
+    try {
+      state.realtimeOverlayWindow.removeAllListeners();
+      state.realtimeOverlayWindow.destroy();
+    } catch (_) {}
   }
   state.realtimeOverlayWindow = null;
+  state.realtimeOverlayMinimized = false;
 }
 
 helpers.sendToRealtimeAssistantOverlay = function(channel, payload) {
   if (state.realtimeOverlayWindow && !state.realtimeOverlayWindow.isDestroyed()) {
+    // Se estava minimizado, desarma o estado e reexibe a janela na nova fala ou resposta
+    if (state.realtimeOverlayMinimized && payload && (payload.type === 'segment_start' || payload.type === 'segment_whisper_correction' || payload.type === 'segment_response' || payload.type === 'segment_partial')) {
+      state.realtimeOverlayMinimized = false;
+      try {
+        if (typeof state.realtimeOverlayWindow.showInactive === 'function') {
+          state.realtimeOverlayWindow.showInactive();
+        } else {
+          state.realtimeOverlayWindow.show();
+        }
+      } catch (_) {}
+    }
     try { state.realtimeOverlayWindow.webContents.send(channel, payload); } catch (_) {}
   }
 }

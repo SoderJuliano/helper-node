@@ -418,7 +418,11 @@ class RealtimeOpenAiService {
       w.webContents.send('realtime-assistant-update', payload);
     }
     try {
-      if (this.configService && this.configService.getOsIntegrationStatus && this.configService.getOsIntegrationStatus()) {
+      const isStopped = payload && payload.type === 'state' && payload.state === 'stopped';
+      const isEnabled = this.configService && typeof this.configService.getRealtimeAssistantStatus === 'function' ? this.configService.getRealtimeAssistantStatus() : false;
+      const isOs = this.configService && typeof this.configService.getOsIntegrationStatus === 'function' ? this.configService.getOsIntegrationStatus() : false;
+
+      if (isOs && isEnabled && !isStopped && this.active) {
         const { helpers } = require('../main/globals');
         if (helpers) {
           if (helpers.createRealtimeAssistantOverlay) {

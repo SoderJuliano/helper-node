@@ -69,6 +69,9 @@ helpers.stopAllRealtime = function() {
   const tasks = [];
   if (realtimeOpenAiService.isActive()) tasks.push(realtimeOpenAiService.stop().catch(() => {}));
   if (realtimeAssistantService.isActive()) tasks.push(realtimeAssistantService.stop().catch(() => {}));
+  if (typeof helpers.destroyRealtimeAssistantOverlay === 'function') {
+    helpers.destroyRealtimeAssistantOverlay();
+  }
   return Promise.all(tasks);
 }
 

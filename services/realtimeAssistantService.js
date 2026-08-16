@@ -397,8 +397,12 @@ class RealtimeAssistantService {
       w.webContents.send("realtime-assistant-update", payload);
     }
     try {
+      const isStopped = payload && payload.type === 'state' && payload.state === 'stopped';
       const configService = require('./configService');
-      if (configService && configService.getOsIntegrationStatus && configService.getOsIntegrationStatus()) {
+      const isEnabled = configService && typeof configService.getRealtimeAssistantStatus === 'function' ? configService.getRealtimeAssistantStatus() : false;
+      const isOs = configService && typeof configService.getOsIntegrationStatus === 'function' ? configService.getOsIntegrationStatus() : false;
+
+      if (isOs && isEnabled && !isStopped && this.active) {
         const { helpers } = require('../main/globals');
         if (helpers) {
           if (helpers.createRealtimeAssistantOverlay) {
