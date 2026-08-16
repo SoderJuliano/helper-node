@@ -36,15 +36,15 @@ console.log("  ✅ Teste 1 Aprovado: Nexa OFF preserva comportamento original in
 // 2. Teste Nexa = ON (Precedência da Diretiva Suprema Nexa no TOPO ABSOLUTO)
 configService.setNexaConfig({ enabled: true });
 
-const promptOn = configService.getPromptInstruction();
+const promptOn = applyNexaPersonaIfNeeded(configService.getPromptInstruction(), true);
 assert.ok(promptOn.startsWith("═══ DIRETIVA DE SISTEMA E IDENTIDADE SUPREMA"), "Nexa ON: Diretiva da Nexa deve estar no TOPO ABSOLUTO");
 assert.ok(promptOn.includes("SEU ÚNICO NOME E IDENTIDADE É NEXA"), "Nexa ON: Deve declarar explicitamente que o único nome é Nexa");
 assert.ok(promptOn.includes("NUNCA se identifique como Antigravity, Helper Node"), "Nexa ON: Deve vetar Antigravity e Helper Node");
 
-const idePromptOn = buildIdeAgentPrompt({ wsPaths: ["/test"] });
+const idePromptOn = applyNexaPersonaIfNeeded(buildIdeAgentPrompt({ wsPaths: ["/test"] }), true);
 assert.ok(idePromptOn.startsWith("═══ DIRETIVA DE SISTEMA E IDENTIDADE SUPREMA"), "Nexa ON: IDE Agent Prompt deve conter a diretiva no topo");
 
-console.log("  ✅ Teste 2 Aprovado: Nexa ON injeta precedência no topo de todos os prompts de sistema.");
+console.log("  ✅ Teste 2 Aprovado: Nexa ON injeta precedência no topo quando chamada para o contexto da Nexa.");
 
 // 3. Teste de Voice Summary com Persona Nexa
 const voiceInstruction = helpers.appendVoiceSummaryInstructionIfNeeded("Instrução base");

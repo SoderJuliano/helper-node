@@ -143,11 +143,6 @@ class BackendService {
       }
 
       let promptInstruction = customInstruction || configService.getPromptInstruction();
-      const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : null;
-      if (nexaCfg && nexaCfg.enabled) {
-        const { applyNexaPersonaIfNeeded } = require('../main/nexa/nexaPersona.js');
-        promptInstruction = applyNexaPersonaIfNeeded(promptInstruction, true);
-      }
 
       let promptWithContext = conversationContext
         ? `${promptInstruction}\n\nConversation context:\n${conversationContext}\nPlease respond to the latest human message.`

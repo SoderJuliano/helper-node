@@ -196,14 +196,6 @@ function buildIdeAgentPrompt({ toolsSchema = [], wsPaths = [], nativeTools = fal
   ];
 
   let basePrompt = lines.join('\n');
-  try {
-    const configService = require('./configService');
-    const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : null;
-    if (nexaCfg && nexaCfg.enabled) {
-      const { applyNexaPersonaIfNeeded } = require('../main/nexa/nexaPersona.js');
-      basePrompt = applyNexaPersonaIfNeeded(basePrompt, true);
-    }
-  } catch (_) {}
   if (nativeTools) {
     // As ferramentas já chegam declaradas no tools[] da API; descrever de novo
     // em texto só duplica e convida o modelo a "emitir" chamada como prosa.

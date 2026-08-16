@@ -151,12 +151,6 @@ async function prepareTurn({ host, model, texto, opts = {}, sessions }) {
     systemPrompt = opts.instruction || configService.getPromptInstruction() || 'You are a helpful assistant.';
   }
 
-  const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : null;
-  if (nexaCfg && nexaCfg.enabled) {
-    const { applyNexaPersonaIfNeeded } = require('../main/nexa/nexaPersona.js');
-    systemPrompt = applyNexaPersonaIfNeeded(systemPrompt, true);
-  }
-
   if (!sessions[sessionId]) {
     sessions[sessionId] = { messages: [{ role: 'system', content: systemPrompt }], lastActivity: agora };
   } else {

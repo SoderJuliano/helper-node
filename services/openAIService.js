@@ -31,11 +31,6 @@ class OpenAIService {
         }
 
         let effectiveInstruction = instruction || configService.getPromptInstruction();
-        const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : null;
-        if (nexaCfg && nexaCfg.enabled) {
-            const { applyNexaPersonaIfNeeded } = require('../main/nexa/nexaPersona.js');
-            effectiveInstruction = applyNexaPersonaIfNeeded(effectiveInstruction, true);
-        }
 
         // Create a new session or update system prompt in the existing session
         if (!this.sessions[sessionId]) {

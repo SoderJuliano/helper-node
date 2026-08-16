@@ -77,37 +77,14 @@ function hookWebContents(webContents) {
     const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : null;
     const isNexaOn = !!(nexaCfg && nexaCfg.enabled);
 
-    if (isNexaOn) {
-      if (channel === "gemini-stream-chunk") {
-        if (!streamParser) {
-          streamParser = new NexaJsonStreamParser();
-          rawStreamResponse = "";
-        }
-        const chunk = args[0];
-        rawStreamResponse += chunk;
-        const cleanChunk = streamParser.processChunk(chunk);
-        if (cleanChunk) {
-          return originalSend.call(webContents, "gemini-stream-chunk", cleanChunk);
-        }
-        return; // Filtra para que o renderer não receba a estrutura do JSON
-      }
-      
-      if (channel === "gemini-stream-complete") {
-        if (streamParser) {
-          const result = parseNexaResponse(rawStreamResponse, streamParser.responseText);
-          handleNexaActions(result);
-          streamParser = null;
-        }
-        return originalSend.call(webContents, "gemini-stream-complete");
-      }
 
+
+    if (isNexaOn) {
       if (channel === "gemini-response" || channel === "openai-final-response") {
-        const payload = args[0]; // { resposta, usedKnowledge, ... }
-        if (payload && payload.resposta) {
+        const payload = args[0];
+        if (payload && typeof payload.resposta === "string" && payload.resposta.trim().startsWith("{") && payload.resposta.includes('"animation"')) {
           const result = parseNexaResponse(payload.resposta);
           handleNexaActions(result);
-          
-          // Formata e substitui a resposta enviada ao renderer
           payload.resposta = helpers.formatToHTML(result.response);
         }
         return originalSend.call(webContents, channel, ...args);

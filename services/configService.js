@@ -345,11 +345,6 @@ function getPromptInstruction() {
   ) {
     instruction = defaultConfig.promptInstruction;
   }
-  const nexaCfg = getNexaConfig();
-  if (nexaCfg && nexaCfg.enabled) {
-    const { applyNexaPersonaIfNeeded } = require("../main/nexa/nexaPersona.js");
-    instruction = applyNexaPersonaIfNeeded(instruction, true);
-  }
   return instruction;
 }
 

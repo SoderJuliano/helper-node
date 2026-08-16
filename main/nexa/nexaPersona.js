@@ -43,7 +43,9 @@ function applyNexaPersonaIfNeeded(basePrompt, isNexaEnabled) {
   if (!isNexaEnabled) return basePrompt;
 
   const { configService } = require("../globals.js");
-  const nexaCfg = configService.getNexaConfig();
+  const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : null;
+  if (!nexaCfg || !nexaCfg.enabled) return basePrompt;
+
   const isOnlyNexa = !!(nexaCfg && nexaCfg.onlyNexa);
 
   const systemPrompt = isOnlyNexa ? NEXA_ONLY_SYSTEM_PROMPT : NEXA_SYSTEM_OVERRIDE_PROMPT;
