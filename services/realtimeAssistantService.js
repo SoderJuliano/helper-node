@@ -211,7 +211,15 @@ class RealtimeAssistantService {
 
       try {
         console.log(`[realtime] Fala aprovada para resposta! Texto: "${askText}"`);
-        const resp = await this._askAI(askText, image);
+        const resp = await this._askAI(askText, image, (partial) => {
+          this.emitUpdate({
+            type: "segment_response",
+            id, iteration,
+            response: partial,
+            audioSource: source,
+            timestamp: new Date().toISOString(),
+          });
+        });
         console.log(`[realtime] Resposta da IA obtida: "${resp}"`);
         if (isContinuation) {
           // Marca a resposta do trecho anterior como superada — a pergunta continuava.
@@ -341,9 +349,9 @@ class RealtimeAssistantService {
   }
 
   // ---------- AI ----------
-  async _askAI(transcript, image) {
+  async _askAI(transcript, image, onDelta) {
     if (!this.aiResponder) throw new Error("Nenhum provider configurado para o modo em tempo real offline.");
-    const r = await this.aiResponder(transcript, image);
+    const r = await this.aiResponder(transcript, image, onDelta, this._buildContext());
     return (r || "").trim() || "(sem resposta)";
   }
 

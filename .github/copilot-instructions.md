@@ -86,6 +86,10 @@ package.sh                 # build .deb e .pkg.tar.zst
   - **Disparo especulativo**: `realtimeQuestionHeuristics.js` detecta pergunta fechada no transcript parcial (heurística LOCAL, sem round-trip) e responde antes do fim do turno.
 - **OFFLINE** (Full + backend `llama`/`llama-stream` ou `ollamaLocal`): `realtimeAssistantService` (Whisper local, mesmo motor de captura do online). A **resposta vai pro provider selecionado** (não OpenAI) via `aiResponder` injetado no main.js. Regra do projeto: sem fallback entre providers.
 - UI: ambos emitem `realtime-assistant-update` (`segment_start`/`segment_whisper_correction`/`segment_response`...). O online NÃO emite `segment_partial` (sem preview ao vivo — OpenAI é batch).
+- 🚨 **REGRAS SAGRADAS DO MODO EM TEMPO REAL (NUNCA QUEBRAR):**
+  1. **Respostas SEMPRE Ultra-Curtas (1 a 2 linhas):** O prompt (`services/realtimeCopilotPrompt.js` e `main/globals.js`) DEVE exigir respostas ultra-concisas destacando termos em **negrito** (ex: `**DDD (Domain-Driven Design)** — Modelagem focada nas regras de negócio e domínio do cliente`). NUNCA gerar parágrafos longos, redações ou 9 mil linhas — o usuário precisa bater o olho em 2 segundos durante uma entrevista.
+  2. **Perguntas de Follow-up:** Se a pergunta for de continuação (ex: *"quando usar ele?"*), responder em no máximo 2 a 3 bullets de 1 linha. Passar apenas tópicos recentes no contexto para não duplicar respostas anteriores.
+  3. **UI Limpa e Ctrl+C Nativo:** NÃO poluir a janela com botões de copiar em cada bloco de texto. O `Ctrl+C` funciona nativamente sobre a seleção de texto mantendo a janela com `focusable: true` e `showInactive()`.
 
 **Assistente de Tradução (entrevistas) — `services/translationAssistant/`:**
 - `vadEngine` (parec) captura `mic` (você) + `sys` (entrevistador, monitor do sink ativo). `index.js` orquestra.

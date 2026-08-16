@@ -23,7 +23,7 @@
       height: 100%;
       font-family: 'DM Sans', 'Roboto', 'Inter', system-ui, sans-serif;
       color: #ececec;
-      user-select: none;
+      user-select: text;
       overflow: hidden;
     }
 
@@ -566,6 +566,29 @@
             inlineCode.style.color = '';
             inlineCode.title = originalTitle;
           }, 1000);
+        } catch (_) {}
+      }
+    });
+
+    // Global copy & Ctrl+C support
+    document.addEventListener('keydown', async (e) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
+        const sel = window.getSelection()?.toString();
+        if (sel && sel.trim().length > 0) {
+          try {
+            if (api.copyToClipboard) api.copyToClipboard(sel);
+            else await navigator.clipboard.writeText(sel);
+          } catch (_) {}
+        }
+      }
+    });
+
+    document.addEventListener('copy', (e) => {
+      const sel = window.getSelection()?.toString();
+      if (sel && sel.trim().length > 0) {
+        try {
+          if (api.copyToClipboard) api.copyToClipboard(sel);
+          if (e.clipboardData) e.clipboardData.setData('text/plain', sel);
         } catch (_) {}
       }
     });

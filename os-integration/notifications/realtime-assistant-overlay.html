@@ -20,7 +20,7 @@
       height: 100%;
       font-family: 'DM Sans', 'Inter', system-ui, sans-serif;
       color: #ececec;
-      user-select: none;
+      user-select: text;
       overflow: hidden;
     }
 
@@ -51,6 +51,7 @@
       flex-shrink: 0;
       -webkit-app-region: drag;
       cursor: move;
+      user-select: none;
     }
     html.manual-drag #pos-header { -webkit-app-region: no-drag !important; }
     #pos-header .title {
@@ -64,6 +65,7 @@
       display: flex;
       align-items: center;
       gap: 5px;
+      user-select: none;
     }
     .pos-btn {
       background: transparent;
@@ -81,6 +83,7 @@
       padding: 0;
       line-height: 1;
       -webkit-app-region: no-drag;
+      user-select: none;
     }
     .pos-btn:hover  { background: rgba(255,255,255,0.09); color: rgba(255,255,255,0.85); }
     .pos-btn:active { background: rgba(255,255,255,0.16); }
@@ -97,6 +100,7 @@
       gap: 8px;
       flex-shrink: 0;
       background: rgba(0, 0, 0, 0.12);
+      user-select: none;
     }
     #status-dot {
       width: 7px; height: 7px;
@@ -104,6 +108,7 @@
       background: #555;
       transition: background 0.3s;
       flex-shrink: 0;
+      user-select: none;
     }
     #status-dot.listening { background: #38bdf8; animation: pulse 1.8s infinite; }
     #status-dot.speaking  { background: #4ade80; animation: pulse 0.8s infinite; }
@@ -125,6 +130,7 @@
       flex-direction: column;
       gap: 12px;
       scroll-behavior: smooth;
+      user-select: text;
     }
     #messages::-webkit-scrollbar       { width: 5px; }
     #messages::-webkit-scrollbar-track { background: transparent; }
@@ -140,6 +146,7 @@
       background: rgba(56, 189, 248, 0.06);
       border-radius: 0 8px 8px 0;
       animation: fadein 0.25s ease;
+      user-select: text;
     }
     .tip-block.mic-turn {
       border-left-color: #38bdf8;
@@ -199,8 +206,9 @@
       font-size: 12px;
       line-height: 1.55;
       position: relative;
+      user-select: text;
     }
-    .tip-body pre code { font-family: inherit; color: #86efac; white-space: pre; }
+    .tip-body pre code { font-family: inherit; color: #86efac; white-space: pre; user-select: text; }
     .tip-body code.inline-code {
       background: rgba(255,255,255,0.1);
       padding: 2px 5px;
@@ -229,6 +237,7 @@
       border-radius: 3px;
       cursor: pointer;
       -webkit-app-region: no-drag;
+      user-select: none;
     }
     .copy-btn:hover  { background: rgba(255,255,255,0.14); color: #fff; }
     .copy-btn.copied { background: rgba(74,222,128,0.25); border-color: rgba(74,222,128,0.4); color: #4ade80; }
@@ -465,7 +474,7 @@
       });
     })();
 
-    // Copy to clipboard
+    // Copy to clipboard (pre code and inline code click)
     document.addEventListener('click', async (e) => {
       const btn = e.target.closest('.copy-btn');
       if (btn) {
@@ -495,6 +504,39 @@
             inlineCode.style.background = originalBg;
             inlineCode.style.color = '';
           }, 1000);
+        } catch (_) {}
+      }
+    });
+
+    // Global Ctrl+C / copy support on selection
+    document.addEventListener('keydown', async (e) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
+        const sel = window.getSelection()?.toString();
+        if (sel && sel.trim().length > 0) {
+          try {
+            if (api.copyToClipboard) api.copyToClipboard(sel);
+            else await navigator.clipboard.writeText(sel);
+          } catch (_) {}
+        }
+      }
+    });
+
+    document.addEventListener('copy', (e) => {
+      const sel = window.getSelection()?.toString();
+      if (sel && sel.trim().length > 0) {
+        try {
+          if (api.copyToClipboard) api.copyToClipboard(sel);
+          if (e.clipboardData) e.clipboardData.setData('text/plain', sel);
+        } catch (_) {}
+      }
+    });
+
+    document.addEventListener('copy', (e) => {
+      const sel = window.getSelection()?.toString();
+      if (sel && sel.trim().length > 0) {
+        try {
+          if (api.copyToClipboard) api.copyToClipboard(sel);
+          if (e.clipboardData) e.clipboardData.setData('text/plain', sel);
         } catch (_) {}
       }
     });

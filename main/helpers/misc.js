@@ -24,14 +24,28 @@ helpers.checkBackendStatus = async function() {
   }
 }
 
-helpers.realtimeProviderResponder = async function(transcript, image) {
+helpers.realtimeProviderResponder = async function(transcript, image, onDelta, contextMessages = []) {
   const aiModel = helpers.getEffectiveAiModel ? helpers.getEffectiveAiModel() : configService.getAiModel();
   console.log(`[realtimeProviderResponder] Processando fala via modelo selecionado: "${aiModel}" (fala: "${transcript}")`);
   const kb = await helpers.knowledgeBlockForOllama(transcript);
-  const text = kb ? `${kb}\n\n---\n\nFALA: ${transcript}` : transcript;
+
+  // Formata o histórico recente de perguntas para resolver pronomes sem repetir respostas passadas
+  let contextBlock = "";
+  if (Array.isArray(contextMessages) && contextMessages.length > 0) {
+    const recentQuestions = contextMessages
+      .filter(m => m.role === 'user' && m.content && m.content.trim())
+      .slice(-3)
+      .map(m => `• "${m.content.trim()}"`);
+    if (recentQuestions.length > 0) {
+      contextBlock = `[Tópicos/Perguntas recentes da conversa]:\n${recentQuestions.join('\n')}\n\n`;
+    }
+  }
+
+  const promptText = `${contextBlock}${kb ? `${kb}\n\n---\n\n` : ''}Fala capturada: "${transcript}"`;
   
   const opts = {
     sessionId: "realtime-assistant",
+    onDelta,
   };
   if (image) {
     opts.imageBase64 = image;
@@ -42,10 +56,25 @@ helpers.realtimeProviderResponder = async function(transcript, image) {
       const GeminiCliProvider = require('../../services/providers/gemini-cli/GeminiCliProvider');
       const workspace = require('./workspace');
       const projectPath = workspace.getProjectPath();
-      const mockSender = { send: () => {} };
-      const prompt = `${REALTIME_COPILOT_INSTRUCTION}\n\n${text}`;
-      const res = await GeminiCliProvider.send(prompt, projectPath, mockSender);
+      let acc = '';
+      let lastEmit = 0;
+      const streamSender = {
+        send: (ch, data) => {
+          if (ch === 'gemini-stream-chunk' && typeof onDelta === 'function' && data) {
+            const chunkText = typeof data === 'string' ? data : (data.text || data.chunk || '');
+            acc += chunkText;
+            const now = Date.now();
+            if (now - lastEmit > 40) {
+              lastEmit = now;
+              onDelta(acc);
+            }
+          }
+        }
+      };
+      const prompt = `${REALTIME_COPILOT_INSTRUCTION}\n\n${promptText}`;
+      const res = await GeminiCliProvider.send(prompt, projectPath, streamSender);
       const outputText = typeof res === 'object' ? (res.text || res.response || '') : String(res);
+      if (typeof onDelta === 'function') onDelta(outputText);
       console.log(`[realtimeProviderResponder] Resposta obtida do GeminiCliProvider (${configService.getGeminiCliModel()}): "${outputText}"`);
       return outputText;
     } catch (gErr) {
@@ -59,10 +88,25 @@ helpers.realtimeProviderResponder = async function(transcript, image) {
       const ClaudeCliProvider = require('../../services/providers/claude-cli/ClaudeCliProvider');
       const workspace = require('./workspace');
       const projectPath = workspace.getProjectPath();
-      const mockSender = { send: () => {} };
-      const prompt = `${REALTIME_COPILOT_INSTRUCTION}\n\n${text}`;
-      const res = await ClaudeCliProvider.send(prompt, projectPath, mockSender);
+      let acc = '';
+      let lastEmit = 0;
+      const streamSender = {
+        send: (ch, data) => {
+          if (ch === 'claude-stream-chunk' && typeof onDelta === 'function' && data) {
+            const chunkText = typeof data === 'string' ? data : (data.text || data.chunk || '');
+            acc += chunkText;
+            const now = Date.now();
+            if (now - lastEmit > 40) {
+              lastEmit = now;
+              onDelta(acc);
+            }
+          }
+        }
+      };
+      const prompt = `${REALTIME_COPILOT_INSTRUCTION}\n\n${promptText}`;
+      const res = await ClaudeCliProvider.send(prompt, projectPath, streamSender);
       const outputText = typeof res === 'object' ? (res.text || res.response || '') : String(res);
+      if (typeof onDelta === 'function') onDelta(outputText);
       console.log(`[realtimeProviderResponder] Resposta obtida do ClaudeCliProvider: "${outputText}"`);
       return outputText;
     } catch (cErr) {
@@ -76,10 +120,25 @@ helpers.realtimeProviderResponder = async function(transcript, image) {
       const CopilotCliProvider = require('../../services/providers/copilot-cli/CopilotCliProvider');
       const workspace = require('./workspace');
       const projectPath = workspace.getProjectPath();
-      const mockSender = { send: () => {} };
-      const prompt = `${REALTIME_COPILOT_INSTRUCTION}\n\n${text}`;
-      const res = await CopilotCliProvider.send(prompt, projectPath, mockSender);
+      let acc = '';
+      let lastEmit = 0;
+      const streamSender = {
+        send: (ch, data) => {
+          if (ch === 'copilot-stream-chunk' && typeof onDelta === 'function' && data) {
+            const chunkText = typeof data === 'string' ? data : (data.text || data.chunk || '');
+            acc += chunkText;
+            const now = Date.now();
+            if (now - lastEmit > 40) {
+              lastEmit = now;
+              onDelta(acc);
+            }
+          }
+        }
+      };
+      const prompt = `${REALTIME_COPILOT_INSTRUCTION}\n\n${promptText}`;
+      const res = await CopilotCliProvider.send(prompt, projectPath, streamSender);
       const outputText = typeof res === 'object' ? (res.text || res.response || '') : String(res);
+      if (typeof onDelta === 'function') onDelta(outputText);
       console.log(`[realtimeProviderResponder] Resposta obtida do CopilotCliProvider: "${outputText}"`);
       return outputText;
     } catch (cpErr) {
@@ -90,7 +149,7 @@ helpers.realtimeProviderResponder = async function(transcript, image) {
 
   if (aiModel === "ollamaLocal") {
     const OllamaLocalService = require('../../services/ollamaLocalService');
-    return await OllamaLocalService.responder(text, {
+    return await OllamaLocalService.responder(promptText, {
       ...opts,
       instruction: REALTIME_COPILOT_INSTRUCTION,
     });
@@ -98,7 +157,7 @@ helpers.realtimeProviderResponder = async function(transcript, image) {
 
   if (aiModel === "openIa" || aiModel === "openIaCodex") {
     const OpenAIService = require('../../services/openAIService');
-    return await OpenAIService.responder(text, {
+    return await OpenAIService.responder(promptText, {
       ...opts,
       instruction: REALTIME_COPILOT_INSTRUCTION,
     });
@@ -106,7 +165,7 @@ helpers.realtimeProviderResponder = async function(transcript, image) {
   
   // Modelo remoto backend (llama / qwen)
   try {
-    const result = await BackendService.responder(text, {
+    const result = await BackendService.responder(promptText, {
       ...opts,
       instruction: REALTIME_COPILOT_INSTRUCTION,
     });

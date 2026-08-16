@@ -43,7 +43,7 @@ helpers.createTranslationOverlay = function() {
     minimizable: false,
     maximizable: false,
     fullscreenable: false,
-    focusable: false,      // overlay tipo FPS counter — nunca rouba foco
+    focusable: true,       // permite foco via clique/seleção para Ctrl+C sem roubar foco inicial
     hasShadow: false,
     // Sem `type: 'toolbar'` — em COSMIC/XWayland causa erro kAtomsToCache
     // e parece levar o compositor a centralizar a janela.
@@ -72,11 +72,14 @@ helpers.createTranslationOverlay = function() {
 
   state.translationOverlayWindow.once('ready-to-show', () => {
     helpers.forceTranslationOverlayPosition('ready-to-show');
-    try { state.translationOverlayWindow.show(); } catch (_) {}
+    try {
+      if (typeof state.translationOverlayWindow.showInactive === 'function') {
+        state.translationOverlayWindow.showInactive();
+      } else {
+        state.translationOverlayWindow.show();
+      }
+    } catch (_) {}
     helpers.forceTranslationOverlayPosition('post-show');
-    // NÃO usamos setIgnoreMouseEvents — em Linux/Wayland o `forward: true`
-    // não funciona, então mouseenter no header nunca chega ao JS e o drag
-    // quebra. focusable=false já garante que a janela não rouba foco.
   });
 
   state.translationOverlayWindow.webContents.on('did-finish-load', () => {
@@ -151,7 +154,7 @@ helpers.createVisionGuideOverlay = function() {
     minimizable: false,
     maximizable: false,
     fullscreenable: false,
-    focusable: false,
+    focusable: true,
     hasShadow: false,
     show: false,
     title: 'helper-node-vision-guide-overlay',
@@ -172,7 +175,13 @@ helpers.createVisionGuideOverlay = function() {
 
   state.visionGuideOverlayWindow.once('ready-to-show', () => {
     try { state.visionGuideOverlayWindow.setBounds(helpers.computeVisionGuideOverlayBounds()); } catch (_) {}
-    try { state.visionGuideOverlayWindow.show(); } catch (_) {}
+    try {
+      if (typeof state.visionGuideOverlayWindow.showInactive === 'function') {
+        state.visionGuideOverlayWindow.showInactive();
+      } else {
+        state.visionGuideOverlayWindow.show();
+      }
+    } catch (_) {}
   });
 
   state.visionGuideOverlayWindow.webContents.on('did-finish-load', () => {
@@ -238,7 +247,7 @@ helpers.createRealtimeAssistantOverlay = function() {
     minimizable: false,
     maximizable: false,
     fullscreenable: false,
-    focusable: false,
+    focusable: true,
     hasShadow: false,
     show: false,
     title: 'helper-node-realtime-assistant-overlay',
@@ -259,7 +268,13 @@ helpers.createRealtimeAssistantOverlay = function() {
 
   state.realtimeOverlayWindow.once('ready-to-show', () => {
     try { state.realtimeOverlayWindow.setBounds(helpers.computeVisionGuideOverlayBounds()); } catch (_) {}
-    try { state.realtimeOverlayWindow.show(); } catch (_) {}
+    try {
+      if (typeof state.realtimeOverlayWindow.showInactive === 'function') {
+        state.realtimeOverlayWindow.showInactive();
+      } else {
+        state.realtimeOverlayWindow.show();
+      }
+    } catch (_) {}
   });
 
   state.realtimeOverlayWindow.webContents.on('did-finish-load', () => {

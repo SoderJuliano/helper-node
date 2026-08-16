@@ -310,10 +310,8 @@ class RealtimeOpenAiService {
 
     const userPrompt =
       (ragBlock ? ragBlock + '\n\n---\n\n' : '') +
-      `TRANSCRIÇÃO do áudio captado (transcrita pela OpenAI, alta qualidade):\n\n` +
-      `"${transcript}"\n\n` +
-      `Aja segundo as regras do system prompt. Se for incompreensível ou sem ` +
-      `conteúdo útil, responda APENAS '(trecho sem conteúdo relevante)'.`;
+      `TRANSCRIÇÃO do áudio captado:\n"${transcript}"\n\n` +
+      `Aja segundo o system prompt (respostas ultra-curtas em 1-2 linhas com termos em negrito). Se for ruído/saudação sem pergunta, responda '(trecho sem conteúdo relevante)'.`;
 
     const stream = typeof onDelta === 'function';
     const payload = {

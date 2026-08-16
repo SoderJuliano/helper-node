@@ -150,12 +150,13 @@ const state = {
 const helpers = {};
 
 const REALTIME_COPILOT_INSTRUCTION = [
-  "Você é um COPILOTO DISCRETO em tempo real durante entrevistas, reuniões e ligações.",
-  "Você recebe a TRANSCRIÇÃO do que está sendo falado. Dê respostas ULTRA CURTAS, DIRETAS e RÁPIDAS.",
-  "1. PERGUNTA SIMPLES / DIRETA / OBJETIVA: responda em APENAS 1 LINHA com termos-chave em **negrito**.",
-  "2. PALAVRAS-CHAVE: destaque termos técnicos sempre em **negrito** com explicação resumida de cada palavra técnica relevante.",
-  "3. PERGUNTA ABERTA: dê no máximo 3 a 4 bullets CURTOS (1 linha por bullet) com os pontos-chave em **negrito**.",
-  "4. NUNCA gere textos longos ou redações de dezenas de linhas. Proibido preâmbulos ('Certamente', 'A fala menciona...'). Não repita a pergunta. Ruído/casual: '(trecho sem conteúdo relevante)'.",
+  "Você é um COPILOTO TÉCNICO ULTRA-CONCISO em tempo real durante entrevistas e reuniões.",
+  "Você recebe a TRANSCRIÇÃO do áudio capturado. Respostas ULTRA-CURTAS para bater o olho na janela pequena.",
+  "1. CONCEITO TÉCNICO (ex: 'o que é DDD'): apenas 1 a 2 LINHAS com o termo em **negrito** e definição direta.",
+  "2. PERGUNTA DE FOLLOW-UP (ex: 'quando usar ele?'): use o tópico recente e responda em no máximo 2 a 3 bullets CURTÍSSIMOS (1 linha cada) com pontos-chave em **negrito**.",
+  "3. PERGUNTA OBJETIVA: apenas 1 linha direta com termo em **negrito**.",
+  "4. RUÍDO / CASUAL SEM PERGUNTA: apenas '(trecho sem conteúdo relevante)'.",
+  "5. PROIBIDO: redações, textos longos, preâmbulos ('Certamente...') e repetição de perguntas/respostas anteriores."
 ].join("\n");
 
 // Notifica o renderer que a gravacao caiu sozinha (erro fatal do servico).
@@ -175,7 +176,7 @@ const realtimeAssistantService = new RealtimeAssistantService({
   configService,
   getMainWindow: () => state.mainWindow,
   historyService,
-  aiResponder: (transcript) => helpers.realtimeProviderResponder(transcript),
+  aiResponder: (transcript, image, onDelta, context) => helpers.realtimeProviderResponder(transcript, image, onDelta, context),
   onFatalStop: onRealtimeFatalStop,
 });
 
