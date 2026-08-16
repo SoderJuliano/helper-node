@@ -24,12 +24,6 @@ helpers.checkBackendStatus = async function() {
   }
 }
 
-const NEXA_VOICE_INSTRUCTION = `[INSTRUÇÃO DE FALA EM TEMPO REAL — NEXA]
-Você é a Nexa (assistente digital feminina, inteligente, descontraída, informal e natural).
-Responda de forma extremamente curta (1 a 2 frases diretas no máximo) em português (pt-BR).
-NUNCA use clichês de robô como 'Estou pronta para ajudar', 'Como posso ajudar?' ou 'No que posso te ajudar?'.
-Sua resposta DEVE ser envolta na tag <voice_summary>sua resposta aqui</voice_summary>.`;
-
 helpers.realtimeProviderResponder = async function(transcript, image) {
   const aiModel = helpers.getEffectiveAiModel ? helpers.getEffectiveAiModel() : configService.getAiModel();
   console.log(`[realtimeProviderResponder] Processando fala via modelo selecionado: "${aiModel}" (fala: "${transcript}")`);
@@ -49,7 +43,7 @@ helpers.realtimeProviderResponder = async function(transcript, image) {
       const workspace = require('./workspace');
       const projectPath = workspace.getProjectPath();
       const mockSender = { send: () => {} };
-      const prompt = `${NEXA_VOICE_INSTRUCTION}\n\n${text}`;
+      const prompt = `${REALTIME_COPILOT_INSTRUCTION}\n\n${text}`;
       const res = await GeminiCliProvider.send(prompt, projectPath, mockSender);
       const outputText = typeof res === 'object' ? (res.text || res.response || '') : String(res);
       console.log(`[realtimeProviderResponder] Resposta obtida do GeminiCliProvider (${configService.getGeminiCliModel()}): "${outputText}"`);
@@ -66,7 +60,7 @@ helpers.realtimeProviderResponder = async function(transcript, image) {
       const workspace = require('./workspace');
       const projectPath = workspace.getProjectPath();
       const mockSender = { send: () => {} };
-      const prompt = `${NEXA_VOICE_INSTRUCTION}\n\n${text}`;
+      const prompt = `${REALTIME_COPILOT_INSTRUCTION}\n\n${text}`;
       const res = await ClaudeCliProvider.send(prompt, projectPath, mockSender);
       const outputText = typeof res === 'object' ? (res.text || res.response || '') : String(res);
       console.log(`[realtimeProviderResponder] Resposta obtida do ClaudeCliProvider: "${outputText}"`);
@@ -83,7 +77,7 @@ helpers.realtimeProviderResponder = async function(transcript, image) {
       const workspace = require('./workspace');
       const projectPath = workspace.getProjectPath();
       const mockSender = { send: () => {} };
-      const prompt = `${NEXA_VOICE_INSTRUCTION}\n\n${text}`;
+      const prompt = `${REALTIME_COPILOT_INSTRUCTION}\n\n${text}`;
       const res = await CopilotCliProvider.send(prompt, projectPath, mockSender);
       const outputText = typeof res === 'object' ? (res.text || res.response || '') : String(res);
       console.log(`[realtimeProviderResponder] Resposta obtida do CopilotCliProvider: "${outputText}"`);
@@ -96,19 +90,25 @@ helpers.realtimeProviderResponder = async function(transcript, image) {
 
   if (aiModel === "ollamaLocal") {
     const OllamaLocalService = require('../../services/ollamaLocalService');
-    return await OllamaLocalService.responder(text, opts);
+    return await OllamaLocalService.responder(text, {
+      ...opts,
+      instruction: REALTIME_COPILOT_INSTRUCTION,
+    });
   }
 
-  if (aiModel === "openIa") {
-    const OpenAIService = require('../../services/openAiService');
-    return await OpenAIService.responder(text, opts);
+  if (aiModel === "openIa" || aiModel === "openIaCodex") {
+    const OpenAIService = require('../../services/openAIService');
+    return await OpenAIService.responder(text, {
+      ...opts,
+      instruction: REALTIME_COPILOT_INSTRUCTION,
+    });
   }
   
   // Modelo remoto backend (llama / qwen)
   try {
     const result = await BackendService.responder(text, {
       ...opts,
-      instruction: NEXA_VOICE_INSTRUCTION,
+      instruction: REALTIME_COPILOT_INSTRUCTION,
     });
     console.log(`[realtimeProviderResponder] Resposta obtida do BackendService: "${result}"`);
     return result;
@@ -182,6 +182,13 @@ helpers.switchToOsIntegrationMode = function() {
     helpers.sendToVisionGuideOverlay('vision-guide-status', 'watching');
     try { visionGuide.triggerIntroduction(); } catch (e) { console.warn('[vision-guide] falha ao triggar intro:', e.message); }
   }
+  // Se o assistente em tempo real estiver ativo ou configurado como ON, abre o overlay do assistente
+  if (configService.getRealtimeAssistantStatus()) {
+    helpers.createRealtimeAssistantOverlay();
+    if (!helpers.anyRealtimeActive() && configService.getOpenIaToken()) {
+      helpers.toggleRealtimeAssistantRecording().catch((e) => console.error('[realtime] falha ao iniciar:', e.message));
+    }
+  }
 }
 
 helpers.switchToNormalMode = function() {
@@ -197,10 +204,8 @@ helpers.switchToNormalMode = function() {
   helpers.destroyNotificationWindow(); // Use helper function instead
   helpers.destroyCaptureWindow(); // Close capture window
   helpers.destroyTranslationOverlay(); // Fecha overlay dedicado do tradutor se aberto
-  helpers.destroyVisionGuideOverlay(); // Fecha overlay dedicado do tutor se aberto
-
-  // Stop capture tool monitoring when leaving OS integration mode
-  helpers.stopCaptureToolMonitoring();
+  helpers.destroyVisionGuideOverlay(); // Fecha overlay do tutor se aberto
+  helpers.destroyRealtimeAssistantOverlay(); // Fecha overlay do assistente se aberto
 
   // Show main window
   if (state.mainWindow && !state.mainWindow.isDestroyed()) {
@@ -348,11 +353,13 @@ helpers.registerGlobalShortcuts = async function() {
 
 helpers.getAudioSources = async function() {
   const sources = ['@DEFAULT_SOURCE@'];
-  try {
-    const { stdout } = await execPromise('pactl get-default-sink');
-    sources.push(stdout.trim() + '.monitor');
-  } catch (e) {
-    sources.push('@DEFAULT_MONITOR@');
+  if (process.platform === 'linux') {
+    try {
+      const { stdout } = await execPromise('pactl get-default-sink');
+      sources.push(stdout.trim() + '.monitor');
+    } catch (e) {
+      sources.push('@DEFAULT_MONITOR@');
+    }
   }
   return sources;
 }
@@ -362,9 +369,18 @@ helpers.toggleRealtimeAssistantRecording = async function() {
     await helpers.stopAllRealtime();
     state.isRecording = false;
 
+    if (configService.getOsIntegrationStatus()) {
+      helpers.sendToRealtimeAssistantOverlay("toggle-recording", {
+        isRecording: false,
+        isRealtimeAssistant: true,
+        audioFilePath,
+      });
+    }
+
     if (state.mainWindow && !state.mainWindow.isDestroyed()) {
       state.mainWindow.webContents.send("toggle-recording", {
         isRecording: state.isRecording,
+        isRealtimeAssistant: true,
         audioFilePath,
       });
     }
@@ -406,9 +422,19 @@ helpers.toggleRealtimeAssistantRecording = async function() {
   await service.start();
   state.isRecording = true;
 
+  if (configService.getOsIntegrationStatus()) {
+    helpers.createRealtimeAssistantOverlay();
+    helpers.sendToRealtimeAssistantOverlay("toggle-recording", {
+      isRecording: true,
+      isRealtimeAssistant: true,
+      audioFilePath,
+    });
+  }
+
   if (state.mainWindow && !state.mainWindow.isDestroyed()) {
     state.mainWindow.webContents.send("toggle-recording", {
       isRecording: state.isRecording,
+      isRealtimeAssistant: true,
       audioFilePath,
     });
   }

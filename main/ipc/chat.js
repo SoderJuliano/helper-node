@@ -251,7 +251,54 @@ ipcMain.on("send-to-gemini-vision", async (event, { text, image }) => {
       event.sender.send("gemini-response", { resposta, usedKnowledge: false });
       helpers.triggerTtsPlaybackIfEnabled(resposta);
       return;
-    } else if (aiModel !== 'openIa') {
+    } else if (aiModel === 'geminiCli') {
+      const ocr = await TesseractService.getTextFromImage(image).catch(() => '');
+      const baseTxt = (text && text.trim() ? `${text}\n\n` : '')
+        + (ocr && ocr.trim() ? `Conteúdo extraído da imagem:\n${ocr}` : '');
+      const projectPath = workspace.getProjectPath();
+      const geminiModel = configService.getGeminiCliModel();
+      GeminiCliProvider.setModel(geminiModel);
+      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(baseTxt));
+      try {
+        await GeminiCliProvider.send(finalPrompt, projectPath, event.sender, null, []);
+      } catch (gcliErr) {
+        console.error('[gemini-cli send-to-gemini-vision] send error:', gcliErr.message);
+        try { event.sender.send('gemini-stream-complete'); } catch (_) {}
+      }
+      return;
+    } else if (aiModel === 'claudeCli') {
+      const ocr = await TesseractService.getTextFromImage(image).catch(() => '');
+      const baseTxt = (text && text.trim() ? `${text}\n\n` : '')
+        + (ocr && ocr.trim() ? `Conteúdo extraído da imagem:\n${ocr}` : '');
+      const projectPath = workspace.getProjectPath();
+      const claudeModel = configService.getClaudeCliModel();
+      ClaudeCliProvider.setModel(claudeModel);
+      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(baseTxt));
+      try {
+        await ClaudeCliProvider.send(finalPrompt, projectPath, event.sender, null, []);
+      } catch (ccliErr) {
+        console.error('[claude-cli send-to-gemini-vision] send error:', ccliErr.message);
+        try { event.sender.send('gemini-stream-complete'); } catch (_) {}
+      }
+      return;
+    } else if (aiModel === 'copilotCli') {
+      const ocr = await TesseractService.getTextFromImage(image).catch(() => '');
+      const baseTxt = (text && text.trim() ? `${text}\n\n` : '')
+        + (ocr && ocr.trim() ? `Conteúdo extraído da imagem:\n${ocr}` : '');
+      const projectPath = workspace.getProjectPath();
+      const copilotModel = configService.getCopilotCliModel();
+      CopilotCliProvider.setModel(copilotModel);
+      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(baseTxt));
+      try {
+        await CopilotCliProvider.send(finalPrompt, projectPath, event.sender, {
+          attachments: helpers.getAttachableFilePaths(),
+        });
+      } catch (cpErr) {
+        console.error('[copilot-cli send-to-gemini-vision] send error:', cpErr.message);
+        try { event.sender.send('gemini-stream-complete'); } catch (_) {}
+      }
+      return;
+    } else if (aiModel !== 'openIa' && aiModel !== 'openIaCodex') {
       // Backends sem visão (Ollama/full offline): cai no OCR + texto.
       const ocr = await TesseractService.getTextFromImage(image).catch(() => '');
       const instructionO = configService.getPromptInstruction();

@@ -2,12 +2,8 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>Vision Guide</title>
+  <title>Assistente em Tempo Real</title>
   <script>
-    // Windows/macOS: marca a raiz p/ desligar o -webkit-app-region:drag (instável
-    // em janelas transparentes) ANTES do primeiro paint. Linux fica sem a classe
-    // e usa o drag nativo do app-region. Roda no head porque o preload já expôs
-    // window.electronAPI antes dos scripts da página.
     try {
       if (window.electronAPI && window.electronAPI.platform !== 'linux') {
         document.documentElement.classList.add('manual-drag');
@@ -29,23 +25,23 @@
     }
 
     body {
-      background: rgba(18, 18, 24, 0.72);
+      background: rgba(18, 22, 30, 0.76);
       -webkit-backdrop-filter: blur(14px) saturate(140%);
       backdrop-filter: blur(14px) saturate(140%);
       display: flex;
       flex-direction: column;
       border-radius: 10px;
-      border: 1px solid rgba(139, 92, 246, 0.18);
+      border: 1px solid rgba(56, 189, 248, 0.22);
     }
     @supports not (backdrop-filter: blur(1px)) {
-      body { background: #16161c; }
+      body { background: #12161e; }
     }
 
     /* ---------- HEADER ---------- */
     #pos-header {
       height: 26px;
       min-height: 26px;
-      background: rgba(139, 92, 246, 0.08);
+      background: rgba(56, 189, 248, 0.08);
       border-bottom: 1px solid rgba(255, 255, 255, 0.06);
       display: flex;
       align-items: center;
@@ -56,9 +52,6 @@
       -webkit-app-region: drag;
       cursor: move;
     }
-    /* Windows/macOS: nunca deixa o header virar região de arraste nativa —
-       isso engolia o mousedown (botões/drag não respondiam) e mostrava o
-       cursor de "proibido" ao tentar mover a janela transparente. */
     html.manual-drag #pos-header { -webkit-app-region: no-drag !important; }
     #pos-header .title {
       margin-right: auto;
@@ -67,7 +60,7 @@
       font-weight: 700;
       letter-spacing: 0.08em;
       text-transform: uppercase;
-      color: #c4b5fd;
+      color: #38bdf8;
       display: flex;
       align-items: center;
       gap: 5px;
@@ -75,7 +68,7 @@
     .pos-btn {
       background: transparent;
       border: none;
-      color: rgba(255, 255, 255, 0.30);
+      color: rgba(255, 255, 255, 0.35);
       font-size: 10px;
       width: 20px;
       height: 18px;
@@ -92,27 +85,18 @@
     .pos-btn:hover  { background: rgba(255,255,255,0.09); color: rgba(255,255,255,0.85); }
     .pos-btn:active { background: rgba(255,255,255,0.16); }
 
-    /* Botão [h] de ajuda: um pouco mais visível — é a ação de "me destrava". */
-    .pos-btn-help {
-      color: #c4b5fd;
-      font-weight: 700;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 11px;
-    }
-    .pos-btn-help:hover { background: rgba(139, 92, 246, 0.28); color: #fff; }
-    .pos-btn-help.asked { background: rgba(74, 222, 128, 0.28); color: #4ade80; }
-
-    /* ---------- STATUS ---------- */
+    /* ---------- STATUS BAR ---------- */
     #status-bar {
       padding: 7px 14px;
       font-size: 11px;
-      letter-spacing: 0.05em;
-      color: rgba(255, 255, 255, 0.45);
+      letter-spacing: 0.04em;
+      color: rgba(255, 255, 255, 0.65);
       border-bottom: 1px solid rgba(255, 255, 255, 0.05);
       display: flex;
       align-items: center;
       gap: 8px;
       flex-shrink: 0;
+      background: rgba(0, 0, 0, 0.12);
     }
     #status-dot {
       width: 7px; height: 7px;
@@ -121,9 +105,11 @@
       transition: background 0.3s;
       flex-shrink: 0;
     }
-    #status-dot.watching { background: #a78bfa; animation: pulse 2.4s infinite; }
-    #status-dot.thinking { background: #facc15; animation: pulse 1s infinite; }
-    #status-dot.error    { background: #f87171; }
+    #status-dot.listening { background: #38bdf8; animation: pulse 1.8s infinite; }
+    #status-dot.speaking  { background: #4ade80; animation: pulse 0.8s infinite; }
+    #status-dot.thinking  { background: #facc15; animation: pulse 1s infinite; }
+    #status-dot.paused    { background: #64748b; }
+    #status-dot.error     { background: #f87171; }
     @keyframes pulse {
       0%, 100% { opacity: 1; transform: scale(1); }
       50%      { opacity: 0.35; transform: scale(0.85); }
@@ -150,11 +136,24 @@
       flex-direction: column;
       gap: 5px;
       padding: 10px 12px;
-      border-left: 2px solid #a78bfa;
-      background: rgba(167, 139, 250, 0.06);
+      border-left: 2px solid #38bdf8;
+      background: rgba(56, 189, 248, 0.06);
       border-radius: 0 8px 8px 0;
       animation: fadein 0.25s ease;
     }
+    .tip-block.mic-turn {
+      border-left-color: #38bdf8;
+      background: rgba(56, 189, 248, 0.07);
+    }
+    .tip-block.sys-turn {
+      border-left-color: #a78bfa;
+      background: rgba(167, 139, 250, 0.07);
+    }
+    .tip-block.assistant-turn {
+      border-left-color: #4ade80;
+      background: rgba(74, 222, 128, 0.07);
+    }
+
     @keyframes fadein {
       from { opacity: 0; transform: translateY(4px); }
       to   { opacity: 1; transform: translateY(0); }
@@ -162,29 +161,42 @@
     .tip-time {
       font-size: 10px;
       letter-spacing: 0.08em;
-      color: rgba(196,181,253,0.6);
       text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-weight: 600;
+    }
+    .tip-block.mic-turn .tip-time {
+      color: #38bdf8;
+    }
+    .tip-block.sys-turn .tip-time {
+      color: #c4b5fd;
+    }
+    .tip-block.assistant-turn .tip-time {
+      color: #4ade80;
     }
     .tip-body {
-      font-size: 14px;
+      font-size: 13.5px;
       line-height: 1.6;
       color: #f3f4f6;
       word-wrap: break-word;
       overflow-wrap: break-word;
+      user-select: text;
     }
     .tip-body p { margin: 0 0 6px 0; }
     .tip-body p:last-child { margin-bottom: 0; }
     .tip-body strong { color: #fff; font-weight: 700; }
 
     .tip-body pre {
-      background: rgba(0,0,0,0.45);
+      background: rgba(0,0,0,0.5);
       border: 1px solid rgba(255,255,255,0.08);
       border-radius: 6px;
       padding: 10px 12px;
       margin: 8px 0 4px 0;
       overflow-x: auto;
       font-family: 'JetBrains Mono', monospace;
-      font-size: 12.5px;
+      font-size: 12px;
       line-height: 1.55;
       position: relative;
     }
@@ -200,7 +212,7 @@
       transition: background 0.15s, color 0.15s;
     }
     .tip-body code.inline-code:hover {
-      background: rgba(139, 92, 246, 0.25);
+      background: rgba(56, 189, 248, 0.25);
       color: #fff;
     }
 
@@ -227,9 +239,9 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      color: rgba(255,255,255,0.28);
+      color: rgba(255,255,255,0.32);
       font-size: 12px;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.04em;
       text-align: center;
       padding: 24px;
       line-height: 1.6;
@@ -238,49 +250,49 @@
 </head>
 <body>
   <div id="pos-header" draggable="false">
-    <span class="title">👁 Tutor</span>
+    <span class="title">🎙️ Assistente em Tempo Real</span>
     <button class="pos-btn" id="btn-left"    title="Esquerda" draggable="false">◀</button>
     <button class="pos-btn" id="btn-center"  title="Centro" draggable="false">◉</button>
     <button class="pos-btn" id="btn-right"   title="Direita" draggable="false">▶</button>
     <button class="pos-btn" id="btn-monitor" title="Próximo monitor" draggable="false">⊞</button>
-    <button class="pos-btn" id="btn-clear"   title="Limpar" draggable="false">🗑</button>
-    <button class="pos-btn pos-btn-help" id="btn-help" title="Me ajuda! Fiquei travado — refaz o plano do que falta" draggable="false">h</button>
-    <button class="pos-btn" id="btn-pause"   title="Pausar assistente" draggable="false">⏸</button>
-    <button class="pos-btn" id="btn-min"     title="Minimizar (volta sozinho na próxima dica)" draggable="false">–</button>
+    <button class="pos-btn" id="btn-clear"   title="Limpar mensagens" draggable="false">🗑</button>
+    <button class="pos-btn" id="btn-pause"   title="Pausar/Retomar captura (ou use Ctrl+D)" draggable="false">⏸</button>
+    <button class="pos-btn" id="btn-min"     title="Minimizar" draggable="false">–</button>
   </div>
 
   <div id="status-bar" draggable="false">
-    <div id="status-dot" class="watching" draggable="false"></div>
-    <span id="status-text" draggable="false">Observando…</span>
+    <div id="status-dot" class="listening" draggable="false"></div>
+    <span id="status-text" draggable="false">🎙️ Ouvindo microfone e áudio do sistema (ao vivo)...</span>
   </div>
 
   <div id="messages">
-    <div id="empty">Observando sua tela.<br>Vou te dar uma dica só quando fizer diferença — pode escrever à vontade.</div>
+    <div id="empty">Capturando áudio continuamente.<br>Fale ou reproduza som para ver a transcrição e respostas automáticas aqui.<br><span style="color:#38bdf8; font-size:11px; margin-top:4px; display:inline-block;">Dica: Use <strong>Ctrl+D</strong> a qualquer momento para pausar ou continuar.</span></div>
   </div>
 
   <script>
     const api = window.electronAPI || {};
+    let isListening = true;
 
-    function updateStatus(status) {
+    function updateStatus(status, customMsg) {
       const dot  = document.getElementById('status-dot');
       const text = document.getElementById('status-text');
       const map = {
-        watching: { cls: 'watching', txt: 'Observando…' },
-        thinking: { cls: 'thinking', txt: 'Analisando…' },
-        error:    { cls: 'error',    txt: 'Erro na análise' },
-        idle:     { cls: '',         txt: 'Pausado' },
+        listening: { cls: 'listening', txt: '🎙️ Ouvindo microfone e sistema (ao vivo)...' },
+        speaking:  { cls: 'speaking',  txt: '🗣️ Áudio detectado — transcrevendo...' },
+        thinking:  { cls: 'thinking',  txt: '🤖 Processando resposta com IA...' },
+        paused:    { cls: 'paused',    txt: '⏸️ Pausado — Pressione Ctrl+D para ouvir' },
+        error:     { cls: 'error',     txt: '⚠️ ' + (customMsg || 'Erro no áudio/IA') },
       };
-      const s = map[status] || map.watching;
+      const s = map[status] || map.listening;
       dot.className = '';
       if (s.cls) dot.classList.add(s.cls);
-      text.textContent = s.txt;
+      text.textContent = customMsg || s.txt;
     }
 
     function escapeHtml(s) {
       return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     }
 
-    // Markdown leve: ```lang\ncode\n``` → <pre><code>+copy; **bold**; `inline`; \n → <br>
     function renderHtml(text) {
       if (!text) return '';
       let html = '';
@@ -303,37 +315,103 @@
       return html;
     }
 
-    function addTip(data) {
-      const text = (data && data.text) || '';
-      if (!text) return;
+    let currentTurn = {
+      id: null,
+      audioSource: null,
+      userBlock: null,
+      assistantBlock: null,
+      lastUserText: '',
+      lastAssistantText: ''
+    };
+
+    function handleUserText(id, text, audioSource) {
+      if (!text || !text.trim()) return;
       const empty = document.getElementById('empty');
       if (empty) empty.remove();
 
       const container = document.getElementById('messages');
-      const block = document.createElement('div');
-      block.className = 'tip-block';
+      const src = audioSource || 'sys';
+      const isMic = (src === 'mic');
+      const roleClass = isMic ? 'mic-turn' : 'sys-turn';
+      const roleLabel = isMic ? '🎙️ Você (Microfone)' : '🔊 Interlocutor (Sistema)';
 
-      const now = new Date();
-      const hh = String(now.getHours()).padStart(2,'0');
-      const mm = String(now.getMinutes()).padStart(2,'0');
-      const ts = document.createElement('div');
-      ts.className = 'tip-time';
-      ts.textContent = 'Dica · ' + hh + ':' + mm;
-      block.appendChild(ts);
+      // Se já temos um bloco do mesmo tipo de áudio no turno atual antes da IA responder
+      if (currentTurn.userBlock && !currentTurn.assistantBlock && currentTurn.audioSource === src) {
+        currentTurn.id = id || currentTurn.id;
+        currentTurn.lastUserText = text;
+        const body = currentTurn.userBlock.querySelector('.tip-body');
+        if (body) body.innerHTML = renderHtml(text);
+      } else {
+        // Novo bloco de fala
+        const block = document.createElement('div');
+        block.className = `tip-block ${roleClass}`;
 
-      const body = document.createElement('div');
-      body.className = 'tip-body';
-      body.innerHTML = renderHtml(text);
-      block.appendChild(body);
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2,'0');
+        const mm = String(now.getMinutes()).padStart(2,'0');
+        const ts = document.createElement('div');
+        ts.className = 'tip-time';
+        ts.textContent = roleLabel + ' · ' + hh + ':' + mm;
+        block.appendChild(ts);
 
-      container.appendChild(block);
+        const body = document.createElement('div');
+        body.className = 'tip-body';
+        body.innerHTML = renderHtml(text);
+        block.appendChild(body);
+
+        container.appendChild(block);
+
+        currentTurn = {
+          id: id,
+          audioSource: src,
+          userBlock: block,
+          assistantBlock: null,
+          lastUserText: text,
+          lastAssistantText: ''
+        };
+      }
       container.scrollTop = container.scrollHeight;
-      requestAnimationFrame(() => { if (api.requestVisionGuideResize) api.requestVisionGuideResize(); });
     }
 
-    function clearTips() {
+    function handleAssistantText(id, text) {
+      if (!text || !text.trim()) return;
+      const empty = document.getElementById('empty');
+      if (empty) empty.remove();
+
       const container = document.getElementById('messages');
-      container.innerHTML = '<div id="empty">Histórico limpo.<br>Continuo observando.</div>';
+
+      if (currentTurn.assistantBlock) {
+        currentTurn.lastAssistantText = text;
+        const body = currentTurn.assistantBlock.querySelector('.tip-body');
+        if (body) body.innerHTML = renderHtml(text);
+      } else {
+        const block = document.createElement('div');
+        block.className = 'tip-block assistant-turn';
+
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2,'0');
+        const mm = String(now.getMinutes()).padStart(2,'0');
+        const ts = document.createElement('div');
+        ts.className = 'tip-time';
+        ts.textContent = '🤖 Resposta IA · ' + hh + ':' + mm;
+        block.appendChild(ts);
+
+        const body = document.createElement('div');
+        body.className = 'tip-body';
+        body.innerHTML = renderHtml(text);
+        block.appendChild(body);
+
+        container.appendChild(block);
+        currentTurn.assistantBlock = block;
+        currentTurn.lastAssistantText = text;
+      }
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function clearMessages() {
+      currentTurn = { id: null, userBlock: null, assistantBlock: null, lastUserText: '', lastAssistantText: '' };
+      const container = document.getElementById('messages');
+      container.innerHTML = '<div id="empty">Histórico limpo.<br>Continuo ouvindo áudio em segundo plano.</div>';
     }
 
     // Botões de posição
@@ -341,37 +419,19 @@
     document.getElementById('btn-center').addEventListener('click', () => api.overlayPosition?.('center'));
     document.getElementById('btn-right').addEventListener('click', () => api.overlayPosition?.('right'));
     document.getElementById('btn-monitor').addEventListener('click', () => api.overlayPosition?.('next-monitor'));
-    document.getElementById('btn-clear').addEventListener('click', () => clearTips());
-    document.getElementById('btn-min')?.addEventListener('click', () => api.visionGuideMinimize?.());
-
-    // Botão [h] "me ajuda, travei": tira um print agora e pede pro tutor revisar o
-    // que já foi feito e refazer o plano só com o que falta (ou resolver o bug da
-    // tela). Feedback verde rápido pra confirmar que o pedido foi enviado.
-    const btnHelp = document.getElementById('btn-help');
-    btnHelp?.addEventListener('click', () => {
-      api.visionGuideHelp?.();
-      btnHelp.classList.add('asked');
-      updateStatus('thinking');
-      setTimeout(() => btnHelp.classList.remove('asked'), 1200);
+    document.getElementById('btn-clear').addEventListener('click', () => clearMessages());
+    document.getElementById('btn-min')?.addEventListener('click', () => {
+      if (api.realtimeMinimize) api.realtimeMinimize();
+      else if (api.visionGuideMinimize) api.visionGuideMinimize();
     });
 
-    // Pausar / continuar o assistente (para prints + áudio). O main confirma o
-    // novo estado por 'vision-guide-paused' e aí trocamos o ícone e o status.
     const btnPause = document.getElementById('btn-pause');
-    btnPause?.addEventListener('click', () => api.visionGuideTogglePause?.());
-    if (api.onVisionGuidePaused) api.onVisionGuidePaused((paused) => {
-      if (btnPause) {
-        btnPause.textContent = paused ? '▶' : '⏸';
-        btnPause.title = paused ? 'Continuar assistente' : 'Pausar assistente';
-      }
-      updateStatus(paused ? 'idle' : 'watching');
+    btnPause?.addEventListener('click', () => {
+      window.electronAPI?.toggleRecordingShortcut?.();
     });
 
-    // Mata o drag-and-drop nativo do HTML5 (o cursor de "proibido" que aparecia
-    // ao arrastar) em qualquer parte do overlay.
+    // Drag manual (Windows/macOS)
     document.addEventListener('dragstart', (e) => e.preventDefault());
-
-    // Drag manual (Windows/macOS) — no Linux o app-region nativo (CSS) funciona.
     (function () {
       if (api.platform === 'linux' || !api.startWindowDrag) return;
       const handles = [document.getElementById('pos-header'), document.getElementById('status-bar')].filter(Boolean);
@@ -389,17 +449,9 @@
       window.addEventListener('blur', end);
     })();
 
-    // Toggle ignore mouse events on hover (Windows/macOS)
+    // Click-through pass-through
     (function () {
-      const api = window.electronAPI || {};
       if (!api.setIgnoreMouseEvents || api.platform === 'linux') return;
-      // CLICK-THROUGH: capturam o mouse (1) as áreas de ARRASTE — header e
-      // status-bar —, (2) as áreas de CÓPIA — botões, blocos <pre>, botão copy
-      // e código inline — e (3) a área de MENSAGENS (#messages), pra dar pra
-      // rolar com a roda do mouse e ler dicas anteriores. Só o que sobra fora
-      // da janela em si passa o clique PRA TRÁS, pra tela real — a janela nunca
-      // é maior que o próprio conteúdo, então isso é raro na prática. (No Linux
-      // o app-region nativo cuida do arraste; isto é Win/mac.)
       window.addEventListener('mousemove', (e) => {
         const isInteractive = e.target && e.target.closest && e.target.closest('#pos-header, #status-bar, .pos-btn, pre, .copy-btn, code.inline-code, #messages');
         if (isInteractive) {
@@ -413,9 +465,8 @@
       });
     })();
 
-    // Copy buttons and inline code click-to-copy (delegado)
+    // Copy to clipboard
     document.addEventListener('click', async (e) => {
-      // 1. Botão de copiar em blocos <pre>
       const btn = e.target.closest('.copy-btn');
       if (btn) {
         const pre = btn.closest('pre');
@@ -431,52 +482,97 @@
         return;
       }
 
-      // 2. Clique em código inline <code> (fora de <pre>)
       const inlineCode = e.target.closest('.tip-body code.inline-code');
       if (inlineCode) {
         try {
           const originalText = inlineCode.textContent;
           if (api.copyToClipboard) api.copyToClipboard(originalText);
           else await navigator.clipboard.writeText(originalText);
-          
-          // Efeito visual temporário (piscar verde)
           const originalBg = inlineCode.style.background;
-          inlineCode.style.background = 'rgba(74, 222, 128, 0.35)'; // Fundo verde transparente
-          inlineCode.style.color = '#4ade80';
-          const originalTitle = inlineCode.title;
-          inlineCode.title = 'Copiado!';
-          
+          inlineCode.style.background = 'rgba(56, 189, 248, 0.35)';
+          inlineCode.style.color = '#38bdf8';
           setTimeout(() => {
             inlineCode.style.background = originalBg;
             inlineCode.style.color = '';
-            inlineCode.title = originalTitle;
           }, 1000);
         } catch (_) {}
       }
     });
 
-    // Wiring IPC
-    if (api.onVisionGuideMessage) api.onVisionGuideMessage((data) => addTip(data));
-    if (api.onVisionGuideStatus)  api.onVisionGuideStatus((status) => updateStatus(status));
-    if (api.onVisionGuideClear)   api.onVisionGuideClear(() => clearTips());
-
-    if (api.onRealtimeAssistantUpdate) {
-      api.onRealtimeAssistantUpdate((payload) => {
-        if (!payload || !payload.type) return;
-        if (payload.type === 'segment_start') {
-          updateStatus('thinking');
-        } else if (payload.type === 'segment_whisper_correction' && payload.text) {
-          updateStatus('thinking');
-        } else if (payload.type === 'segment_response' && payload.response) {
-          addTip({ text: payload.response });
-          updateStatus('watching');
-        } else if (payload.type === 'segment_error') {
-          updateStatus('error');
+    // Listening status updates from Main process
+    if (api.onToggleRecording) {
+      api.onToggleRecording((event, data) => {
+        if (!data) return;
+        isListening = !!data.isRecording;
+        if (isListening) {
+          updateStatus('listening');
+          if (btnPause) { btnPause.textContent = '⏸'; btnPause.title = 'Pausar assistente (ou use Ctrl+D)'; }
+        } else {
+          updateStatus('paused');
+          if (btnPause) { btnPause.textContent = '▶'; btnPause.title = 'Continuar assistente (ou use Ctrl+D)'; }
         }
       });
     }
 
-    updateStatus('watching');
+    // Realtime events
+    if (api.onRealtimeAssistantUpdate) {
+      api.onRealtimeAssistantUpdate((payload) => {
+        if (!payload || !payload.type) return;
+
+        switch (payload.type) {
+          case 'state':
+            if (payload.state === 'started') {
+              isListening = true;
+              updateStatus('listening');
+            } else if (payload.state === 'stopped') {
+              isListening = false;
+              updateStatus('paused');
+            }
+            break;
+
+          case 'segment_start':
+            updateStatus('speaking');
+            if (currentTurn.assistantBlock) {
+              currentTurn = { id: null, userBlock: null, assistantBlock: null, lastUserText: '', lastAssistantText: '' };
+            }
+            break;
+
+          case 'segment_partial':
+            {
+              const isMic = (payload.audioSource === 'mic');
+              updateStatus('speaking', isMic ? '🎙️ Você falando...' : '🔊 Interlocutor falando...');
+              if (payload.text && payload.text.trim().length > 3) {
+                handleUserText(payload.id, payload.text, payload.audioSource || 'sys');
+              }
+            }
+            break;
+
+          case 'segment_whisper_correction':
+            updateStatus('thinking');
+            if (payload.text && payload.text.trim().length > 0) {
+              handleUserText(payload.id, payload.text, payload.audioSource || 'sys');
+            }
+            break;
+
+          case 'segment_response':
+            updateStatus('listening');
+            if (payload.response && payload.response.trim().length > 0) {
+              handleAssistantText(payload.id, payload.response);
+            }
+            break;
+
+          case 'segment_error':
+            updateStatus('error', payload.message || 'Erro ao gerar resposta');
+            break;
+
+          case 'fatal_error':
+            updateStatus('error', payload.message || 'Erro fatal');
+            break;
+        }
+      });
+    }
+
+    updateStatus('listening');
   </script>
 </body>
 </html>

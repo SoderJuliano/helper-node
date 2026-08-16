@@ -247,14 +247,6 @@ function disableHelperToolsIfOtherEnabled(toggle) {
 function applyRealtimeAssistantExclusivity() {
   if (!realtimeAssistantToggle.checked) return;
 
-  debugModeToggle.checked = false;
-  printModeToggle.checked = false;
-  osIntegrationToggle.checked = false;
-
-  updateDebugModeStatus(false);
-  updatePrintModeStatus(false);
-  updateOsIntegrationStatus(false);
-
   // Assistente em tempo real e Tradutor são EXCLUSIVOS (ambos capturam áudio e
   // respondem) — ligar o assistente desliga o tradutor.
   const _ta = document.getElementById('translation-enabled');
@@ -266,7 +258,7 @@ function applyRealtimeAssistantExclusivity() {
 }
 
 function disableRealtimeIfOtherEnabled(toggle) {
-  if (toggle.checked && realtimeAssistantToggle.checked) {
+  if (toggle === helperToolsToggle && toggle.checked && realtimeAssistantToggle.checked) {
     realtimeAssistantToggle.checked = false;
     updateRealtimeAssistantStatus(false);
   }
@@ -746,7 +738,6 @@ function checkBackendToolsAvailability() {
 
 // Handle debug toggle live update
 debugModeToggle.addEventListener("change", () => {
-  disableRealtimeIfOtherEnabled(debugModeToggle);
   disableHelperToolsIfOtherEnabled(debugModeToggle);
   updateDebugModeStatus(debugModeToggle.checked);
   applyBackendUrlVisibility();
@@ -754,14 +745,12 @@ debugModeToggle.addEventListener("change", () => {
 
 // Handle print mode toggle live update
 printModeToggle.addEventListener("change", () => {
-  disableRealtimeIfOtherEnabled(printModeToggle);
   disableHelperToolsIfOtherEnabled(printModeToggle);
   updatePrintModeStatus(printModeToggle.checked);
 });
 
 // Handle OS integration toggle live update
 osIntegrationToggle.addEventListener("change", () => {
-  disableRealtimeIfOtherEnabled(osIntegrationToggle);
   disableHelperToolsIfOtherEnabled(osIntegrationToggle);
   updateOsIntegrationStatus(osIntegrationToggle.checked);
 });

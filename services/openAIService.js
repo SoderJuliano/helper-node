@@ -1,7 +1,15 @@
 const { ipcMain } = require('electron');
 const axios = require('axios');
+const https = require('https');
 const configService = require('./configService');
 const { supportsReasoningEffort } = require('./openAiRealtimeModels');
+
+const openAiHttpsAgent = new https.Agent({
+    keepAlive: true,
+    keepAliveMsecs: 10000,
+    maxSockets: 50,
+    timeout: 60000,
+});
 
 class OpenAIService {
     constructor() {
@@ -12,6 +20,13 @@ class OpenAIService {
     initialize() {
         // This service is now initialized in main.js, but the request handling is done via direct calls,
         // not via ipc events to the service itself. This initialize method is kept for consistency.
+    }
+
+    async responder(text, opts = {}) {
+        const token = configService.getOpenIaToken();
+        const model = opts.model || configService.getOpenAiModel();
+        const instruction = opts.instruction || configService.getPromptInstruction();
+        return await this.makeOpenAIRequest(text, token, instruction, model, opts.imageBase64, opts);
     }
 
     async makeOpenAIRequest(prompt, token, instruction, model, imageBase64, opts = {}) {
@@ -123,21 +138,29 @@ class OpenAIService {
                     return await axios.post(
                         'https://api.openai.com/v1/chat/completions',
                         requestPayload,
-                        { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } }
+                        {
+                            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                            timeout: 60000,
+                            httpsAgent: openAiHttpsAgent,
+                        }
                     );
                 } catch (err) {
                     const isRateLimit = err.response && err.response.status === 429;
                     const isServerError = err.response && err.response.status >= 500;
+                    const isNetworkError = !err.response || 
+                        ['ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED', 'EAI_AGAIN', 'ERR_NETWORK', 'EPIPE', 'ERR_BAD_RESPONSE'].includes(err.code) ||
+                        (err.message && (err.message.includes('socket hang up') || err.message.includes('ECONNRESET') || err.message.includes('timeout')));
                     
-                    if ((isRateLimit || isServerError) && attempt < retries) {
+                    if ((isRateLimit || isServerError || isNetworkError) && attempt < retries) {
                         let waitMs = delayMs * Math.pow(2, attempt - 1);
-                        if (isRateLimit && err.response.headers && err.response.headers['retry-after']) {
+                        if (isRateLimit && err.response && err.response.headers && err.response.headers['retry-after']) {
                             const seconds = parseFloat(err.response.headers['retry-after']);
                             if (!isNaN(seconds)) {
                                 waitMs = (seconds * 1000) + 200;
                             }
                         }
-                        console.warn(`[OpenAI API] Erro ${err.response ? err.response.status : 'Rede'} (tentativa ${attempt}/${retries}). Aguardando ${Math.round(waitMs)}ms antes de tentar de novo...`);
+                        const reason = err.code || (err.response ? `HTTP ${err.response.status}` : err.message);
+                        console.warn(`[OpenAI API] Erro de ${reason} (tentativa ${attempt}/${retries}). Aguardando ${Math.round(waitMs)}ms antes de tentar de novo...`);
                         await new Promise(resolve => setTimeout(resolve, waitMs));
                     } else {
                         throw err;
@@ -257,6 +280,10 @@ class OpenAIService {
             // Não deve cair aqui
             return '(loop tool-calling encerrado inesperadamente.)';
         } catch (error) {
+            const apiErrMsg = error.response?.data?.error?.message 
+                || (typeof error.response?.data === 'string' ? error.response.data : null)
+                || error.message 
+                || 'Erro desconhecido ao chamar OpenAI API';
             console.error('Error calling OpenAI API:', error.response ? error.response.data : error.message);
             // No caminho tool-calling com sessao, NAO mexemos no historico aqui
             // porque o turno inteiro foi mantido em copia local (nada persistido).
@@ -264,7 +291,7 @@ class OpenAIService {
             if (!stateless && !tools) {
                 this.sessions[sessionId].messages.pop();
             }
-            throw new Error('Failed to get a response from OpenAI.');
+            throw new Error(`OpenAI API falhou: ${apiErrMsg}`);
         }
     }
 

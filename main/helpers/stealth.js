@@ -1,7 +1,7 @@
 // main/helpers/stealth.js
 const {
   electron, path, os, crypto, exec, spawn, util, fs, fs2,
-  BackendService, GeminiCliProvider, ClaudeCliProvider, TesseractService,
+  BackendService, GeminiCliProvider, ClaudeCliProvider, CopilotCliProvider, TesseractService,
   OpenAIService, RealtimeAssistantService, RealtimeOpenAiService, ipcService,
   configService, edition, knowledgeBase, fileEditService, historyService,
   helperTools, workspace, agenticWorkflow, ollamaAgenticWorkflow,
@@ -193,68 +193,64 @@ helpers.processOsQuestion = async function(text, image = null, opts = {}) {
     let resposta;
 
     // === ROTEAMENTO INTELIGENTE: TEXTO vs VISÃO ===
-    // Política: imagem é ~150 tokens (low) ou ~1000+ tokens (high). Caro pra
-    // mandar sempre. Estratégia:
-    //   1) Roda OCR
-    //   2) Decide se o OCR "basta" (texto limpo, sem matemática complexa,
-    //      sem ruído fonético) → manda só TEXTO (barato)
-    //   3) Se o OCR estiver bagunçado, tiver matemática/equação, tabela,
-    //      gráfico, símbolos, ou for muito curto → manda IMAGEM em high detail
     let extractedText = '';
     let useVision = false;
     let visionReason = '';
 
     if (image) {
-      // Force-vision pula OCR completamente (mais rápido, e o OCR de tela
-      // cheia geralmente é só lixo de UI). A imagem fala por si.
+      // Sempre tenta OCR se a imagem estiver presente (essencial para modelos baseados em texto / CLI)
+      try {
+        extractedText = await TesseractService.getTextFromImage(image);
+        console.log(`✅ OCR: ${extractedText.substring(0, 100).replace(/\n/g, ' ')}...`);
+      } catch (ocrError) {
+        console.warn('OCR falhou:', ocrError.message || ocrError);
+        extractedText = '';
+      }
+
       if (opts.forceVision) {
         useVision = true;
         visionReason = 'forceVision (captura direta de tela/imagem)';
         console.log(`🧭 Roteamento: VISÃO — ${visionReason}`);
       } else {
-        try {
-          extractedText = await TesseractService.getTextFromImage(image);
-          console.log(`✅ OCR: ${extractedText.substring(0, 100).replace(/\n/g, ' ')}...`);
-        } catch (ocrError) {
-          console.warn('OCR falhou:', ocrError.message || ocrError);
-          extractedText = '';
-        }
-
         const decision = helpers.shouldUseVisionFor(extractedText);
         useVision = decision.useVision;
         visionReason = decision.reason;
         console.log(`🧭 Roteamento: ${useVision ? 'VISÃO' : 'TEXTO'} — ${visionReason}`);
       }
+    }
 
-      if (useVision) {
-        // PROMPT LIMPO no modo visão: o OCR ruim só confunde o modelo.
-        // O texto extra é mínimo — a imagem fala por si. Damos só dicas
-        // que o modelo precisa pra desambiguar (ex.: "x" pode ser multiplicação).
+    const sendImage = Boolean(useVision && image);
+
+    if (image) {
+      if (useVision && (aiModel === 'openIa' || aiModel === 'openIaCodex')) {
+        // PROMPT LIMPO no modo visão OpenAI: a imagem vai pelo canal de visão da API
         text = (text && text.trim() ? `${text}\n\n` : '')
           + 'Analise a IMAGEM com atenção. Responda conforme as regras do sistema.\n\n'
           + 'IMPORTANTE: na imagem, "x" entre dois números significa MULTIPLICAÇÃO '
           + '(ex.: "11x2" = 11 × 2 = 22, NÃO é 11 ao quadrado). '
           + 'Notação de potência seria "11²" ou "11^2".';
       } else {
-        // OCR limpo: monta um prompt de texto puro com o conteúdo extraído
-        text = (text && text.trim() ? `${text}\n\n` : '')
-          + `Conteúdo extraído de uma captura de tela:\n\n${extractedText}\n\nResponda conforme as regras do sistema.`;
+        // Modelos baseados em texto / CLI ou sem canal de visão nativo: usa OCR
+        const ocrContent = extractedText && extractedText.trim()
+          ? extractedText
+          : (text && text.trim() ? '' : 'Nenhum texto legível detectado na imagem por OCR.');
+        if (ocrContent) {
+          text = (text && text.trim() ? `${text}\n\n` : '')
+            + `Conteúdo extraído da captura de tela / imagem:\n\n${ocrContent}\n\nResponda conforme as regras do sistema.`;
+        }
       }
     }
 
-    if (aiModel === 'openIa') {
+    if (aiModel === 'openIa' || aiModel === 'openIaCodex') {
       const token = configService.getOpenIaToken();
       const instruction = helpers.withUserContext(configService.getPromptInstruction());
       if (!token) {
         console.log(`🔔 No OpenAI token, closing notification and showing error`);
-        // Immediately close any loading notification and wait
         helpers.destroyNotificationWindow();
         await new Promise(resolve => setTimeout(resolve, 200));
         helpers.createOsNotificationWindow('response', 'Token da OpenAI não configurado.');
         return;
       }
-      // Modelo dedicado pra visão: nano confunde notação básica em imagens.
-      // gpt-4o-mini é barato e muito mais preciso em OCR/visual reasoning.
       const openAiModel = sendImage
         ? configService.getOpenAiVisionModel()
         : configService.getOpenAiModel();
@@ -269,13 +265,12 @@ helpers.processOsQuestion = async function(text, image = null, opts = {}) {
             resposta = await agenticWorkflow.run(
                 _wsText3, 
                 { token, model: openAiModel, baseInstruction: instruction },
-                state.osNotificationWindow.webContents
+                state.osNotificationWindow && !state.osNotificationWindow.isDestroyed() ? state.osNotificationWindow.webContents : null
             );
           } catch (err) {
             resposta = `[Agentic Workflow] Interrompido ou falhou: ${err.message}`;
           }
       } else {
-          // helperTools só engaja em modo TEXTO (visão é one-shot stateless)
           const ht = sendImage
             ? { opts: { stateless: !!image } }
             : (() => {
@@ -283,19 +278,96 @@ helpers.processOsQuestion = async function(text, image = null, opts = {}) {
                 _ht.opts = { ..._ht.opts, stateless: !!image };
                 return _ht;
               })();
-          resposta = await OpenAIService.makeOpenAIRequest(
-            _wsText3,
-            token,
-            ht.instruction || instruction,
-            ht.model || openAiModel,
-            sendImage ? image : null,
-            // Capturas de tela são sempre one-shot: não reaproveita histórico
-            // (não faz sentido carregar a imagem anterior junto da próxima).
-            // Isso também elimina QUALQUER cache/contexto entre requests.
-            ht.opts
-          );
+          try {
+            resposta = await OpenAIService.makeOpenAIRequest(
+              _wsText3,
+              token,
+              ht.instruction || instruction,
+              ht.model || openAiModel,
+              sendImage ? image : null,
+              ht.opts
+            );
+          } catch (reqErr) {
+            if (sendImage && extractedText && extractedText.trim()) {
+              console.warn(`⚠️ Requisição OpenAI Vision falhou (${reqErr.message}). Tentando fallback com texto do OCR...`);
+              const textModel = configService.getOpenAiModel() || 'gpt-4.1-nano';
+              const textPrompt = `Conteúdo extraído da captura de tela / imagem:\n\n${extractedText}\n\nResponda conforme as regras do sistema.`;
+              resposta = await OpenAIService.makeOpenAIRequest(
+                textPrompt,
+                token,
+                instruction,
+                textModel,
+                null,
+                { stateless: true }
+              );
+            } else {
+              throw reqErr;
+            }
+          }
       }
-      console.log(`🤖 Got OpenAI response: ${resposta.substring(0, 50)}...`);
+      console.log(`🤖 Got OpenAI response: ${typeof resposta === 'string' ? resposta.substring(0, 50) : ''}...`);
+    } else if (aiModel === 'geminiCli') {
+        const projectPath = workspace.getProjectPath();
+        const geminiModel = configService.getGeminiCliModel();
+        GeminiCliProvider.setModel(geminiModel);
+        const instruction = helpers.withUserContext(configService.getPromptInstruction());
+        let finalPrompt = text;
+        if (!sendImage) {
+          finalPrompt = await helpers.prependWorkspaceContextIfNeeded(text, 'geminiCli');
+        }
+        finalPrompt = `${instruction}\n\n${finalPrompt}`;
+        const mockSender = state.osNotificationWindow && !state.osNotificationWindow.isDestroyed()
+          ? state.osNotificationWindow.webContents
+          : { send: () => {} };
+        try {
+          const res = await GeminiCliProvider.send(finalPrompt, projectPath, mockSender);
+          resposta = typeof res === 'object' ? (res.text || res.response || '') : String(res);
+        } catch (gErr) {
+          console.error('[gemini-cli processOsQuestion] erro:', gErr.message);
+          throw gErr;
+        }
+    } else if (aiModel === 'claudeCli') {
+        const projectPath = workspace.getProjectPath();
+        const claudeModel = configService.getClaudeCliModel();
+        ClaudeCliProvider.setModel(claudeModel);
+        const instruction = helpers.withUserContext(configService.getPromptInstruction());
+        let finalPrompt = text;
+        if (!sendImage) {
+          finalPrompt = await helpers.prependWorkspaceContextIfNeeded(text, 'claudeCli');
+        }
+        finalPrompt = `${instruction}\n\n${finalPrompt}`;
+        const mockSender = state.osNotificationWindow && !state.osNotificationWindow.isDestroyed()
+          ? state.osNotificationWindow.webContents
+          : { send: () => {} };
+        try {
+          const res = await ClaudeCliProvider.send(finalPrompt, projectPath, mockSender);
+          resposta = typeof res === 'object' ? (res.text || res.response || '') : String(res);
+        } catch (cErr) {
+          console.error('[claude-cli processOsQuestion] erro:', cErr.message);
+          throw cErr;
+        }
+    } else if (aiModel === 'copilotCli') {
+        const projectPath = workspace.getProjectPath();
+        const copilotModel = configService.getCopilotCliModel();
+        CopilotCliProvider.setModel(copilotModel);
+        const instruction = helpers.withUserContext(configService.getPromptInstruction());
+        let finalPrompt = text;
+        if (!sendImage) {
+          finalPrompt = await helpers.prependWorkspaceContextIfNeeded(text, 'copilotCli');
+        }
+        finalPrompt = `${instruction}\n\n${finalPrompt}`;
+        const mockSender = state.osNotificationWindow && !state.osNotificationWindow.isDestroyed()
+          ? state.osNotificationWindow.webContents
+          : { send: () => {} };
+        try {
+          const res = await CopilotCliProvider.send(finalPrompt, projectPath, mockSender, {
+            attachments: helpers.getAttachableFilePaths(),
+          });
+          resposta = typeof res === 'object' ? (res.text || res.response || '') : String(res);
+        } catch (cpErr) {
+          console.error('[copilot-cli processOsQuestion] erro:', cpErr.message);
+          throw cpErr;
+        }
     } else if (aiModel === 'ollamaLocal') {
       try {
         const OllamaLocalService = require('../../services/ollamaLocalService');
@@ -328,7 +400,7 @@ helpers.processOsQuestion = async function(text, image = null, opts = {}) {
               resposta = await ollamaAgenticWorkflow.run(
                   _wsTxtO3, 
                   { baseInstruction: instructionO3 },
-                  state.osNotificationWindow.webContents
+                  state.osNotificationWindow && !state.osNotificationWindow.isDestroyed() ? state.osNotificationWindow.webContents : null
               );
             } catch (err) {
               if (err && (err.message === 'Request cancelled' || err.message === 'Cancelado.')) return;
@@ -350,6 +422,17 @@ helpers.processOsQuestion = async function(text, image = null, opts = {}) {
 
     console.log(`🔔 Destroying loading notification and showing response`);
 
+    // Modo integrado (Stealth): NUNCA aciona Nexa. Se a resposta vier em JSON (por resíduo de modelo), extrai apenas o texto puro
+    if (typeof resposta === 'string' && (resposta.trim().startsWith('{') || resposta.includes('"response"'))) {
+      try {
+        const { parseNexaResponse } = require('../nexa/nexaResponseHelper.js');
+        const parsed = parseNexaResponse(resposta);
+        if (parsed && parsed.response) {
+          resposta = parsed.response;
+        }
+      } catch (_) {}
+    }
+
     const formattedResponse = helpers.formatToHTML(resposta);
     // CRITICAL: Ensure the loading notification is completely destroyed before creating response
     helpers.destroyNotificationWindow();
@@ -366,6 +449,6 @@ helpers.processOsQuestion = async function(text, image = null, opts = {}) {
     // Wait to ensure previous notification is completely destroyed
     await new Promise(resolve => setTimeout(resolve, 300));
     
-    helpers.createOsNotificationWindow('response', 'Erro ao gerar resposta.');
+    helpers.createOsNotificationWindow('response', error && error.message ? error.message : 'Erro ao gerar resposta.');
   }
-}
+};

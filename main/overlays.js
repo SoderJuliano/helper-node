@@ -217,6 +217,92 @@ helpers.sendToVisionGuideOverlay = function(channel, payload) {
   }
 }
 
+helpers.createRealtimeAssistantOverlay = function() {
+  if (state.realtimeOverlayWindow && !state.realtimeOverlayWindow.isDestroyed()) {
+    return state.realtimeOverlayWindow;
+  }
+  const b = helpers.computeVisionGuideOverlayBounds();
+  console.log(`[realtime-assistant-overlay] criando: x=${b.x} y=${b.y} w=${b.width} h=${b.height}`);
+
+  state.realtimeOverlayWindow = new BrowserWindow({
+    width: b.width, height: b.height, x: b.x, y: b.y,
+    backgroundColor: '#00000000',
+    useContentSize: false,
+    frame: false,
+    transparent: true,
+    thickFrame: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    movable: true,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    focusable: false,
+    hasShadow: false,
+    show: false,
+    title: 'helper-node-realtime-assistant-overlay',
+    webPreferences: {
+      preload: path.join(ROOT_DIR, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  state.realtimeOverlayWindow.setAlwaysOnTop(true, 'screen-saver');
+  state.realtimeOverlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  helpers.applyStealthProtection(state.realtimeOverlayWindow);
+
+  state.realtimeOverlayWindow.loadFile(
+    path.join(ROOT_DIR, 'os-integration', 'notifications', 'realtime-assistant-overlay.html')
+  );
+
+  state.realtimeOverlayWindow.once('ready-to-show', () => {
+    try { state.realtimeOverlayWindow.setBounds(helpers.computeVisionGuideOverlayBounds()); } catch (_) {}
+    try { state.realtimeOverlayWindow.show(); } catch (_) {}
+  });
+
+  state.realtimeOverlayWindow.webContents.on('did-finish-load', () => {
+    if (process.platform !== 'linux') {
+      try { state.realtimeOverlayWindow.setIgnoreMouseEvents(true, { forward: true }); } catch (_) {}
+    }
+  });
+
+  const keepOnTop = setInterval(() => {
+    if (!state.realtimeOverlayWindow || state.realtimeOverlayWindow.isDestroyed()) {
+      clearInterval(keepOnTop);
+      return;
+    }
+    if (state.realtimeOverlayMinimized) return;
+    try {
+      if (!state.realtimeOverlayWindow.isAlwaysOnTop()) {
+        state.realtimeOverlayWindow.setAlwaysOnTop(true, 'screen-saver');
+      }
+      state.realtimeOverlayWindow.moveTop();
+    } catch (_) {}
+  }, 2000);
+
+  state.realtimeOverlayWindow.on('closed', () => {
+    clearInterval(keepOnTop);
+    state.realtimeOverlayWindow = null;
+  });
+
+  return state.realtimeOverlayWindow;
+}
+
+helpers.destroyRealtimeAssistantOverlay = function() {
+  if (state.realtimeOverlayWindow && !state.realtimeOverlayWindow.isDestroyed()) {
+    try { state.realtimeOverlayWindow.close(); } catch (_) {}
+  }
+  state.realtimeOverlayWindow = null;
+}
+
+helpers.sendToRealtimeAssistantOverlay = function(channel, payload) {
+  if (state.realtimeOverlayWindow && !state.realtimeOverlayWindow.isDestroyed()) {
+    try { state.realtimeOverlayWindow.webContents.send(channel, payload); } catch (_) {}
+  }
+}
+
 helpers.destroyNotificationWindow = function() {
   helpers.clearOsNotifAutoClose();
   if (state.osNotificationWindow && !state.osNotificationWindow.isDestroyed()) {

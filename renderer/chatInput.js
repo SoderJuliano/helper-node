@@ -469,11 +469,10 @@ var promptHistoryDraft = '';
                 if (window.pendingChatImage && await backendSupportsVision()) {
                     sentImageToAI(text, window.pendingChatImage);
                 } else {
-                    const promptInstruction = await window.electronAPI.getPromptInstruction();
                     if (typeof window.lastOcrText === 'string' && window.lastOcrText.length > 0) {
-                        sentToAI(`${promptInstruction}${text}\n${window.lastOcrText}`);
+                        sentToAI(`${text}\n${window.lastOcrText}`);
                     } else {
-                        sentToAI(`${promptInstruction}${text}`);
+                        sentToAI(text);
                     }
                 }
                 pastedImageForManualInput = null;

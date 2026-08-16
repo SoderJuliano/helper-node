@@ -227,10 +227,6 @@ ipcMain.on("save-os-integration-status", (event, status) => {
     }
     return;
   }
-  if (status && configService.getRealtimeAssistantStatus()) {
-    configService.setRealtimeAssistantStatus(false);
-    helpers.stopAllRealtime();
-  }
 
   configService.setOsIntegrationStatus(status);
   console.log('OS Integration status changed to:', status);
@@ -278,23 +274,14 @@ ipcMain.on("save-realtime-assistant-status", async (event, status) => {
   console.log('Realtime assistant status changed to:', status);
 
   if (status) {
-    // Exclusividade: desliga os modos que podem conflitar
-    configService.setDebugModeStatus(false);
-    configService.setPrintModeStatus(false);
-    configService.setOsIntegrationStatus(false);
-
-    helpers.stopClipboardMonitoring();
-    helpers.stopCaptureToolMonitoring();
-    helpers.switchToNormalMode();
-
-    if (appConfig.notificationsEnabled && Notification.isSupported()) {
-      new Notification({
-        title: 'Helper-Node',
-        body: 'Assistente em tempo real habilitado. Inicie/parar com Ctrl+D.',
-        silent: true,
-      }).show();
+    if (configService.getOsIntegrationStatus()) {
+      helpers.createRealtimeAssistantOverlay();
+      if (!helpers.anyRealtimeActive() && configService.getOpenIaToken()) {
+        helpers.toggleRealtimeAssistantRecording().catch((e) => console.error('[realtime] falha ao iniciar:', e.message));
+      }
     }
   } else {
+    helpers.destroyRealtimeAssistantOverlay();
     await helpers.stopAllRealtime();
     state.isRecording = false;
 

@@ -62,6 +62,9 @@ ipcMain.on("renderer-toggle-recording", async () => {
 
 ipcMain.handle("get-audio-input-devices", async () => {
   try {
+    if (process.platform !== 'linux') {
+      return [];
+    }
     const { stdout } = await execPromise("LANG=C pactl list sources");
     const devices = [];
     let cur = null;
@@ -119,10 +122,12 @@ ipcMain.handle("translation-stop", async () => {
 });
 
 ipcMain.on('overlay-position', (event, position) => {
-  // Resolve a janela que pediu (tradutor OU tutor de visão) pelo sender.
+  // Resolve a janela que pediu (tradutor, tutor de visão OU assistente em tempo real) pelo sender.
   const sender = BrowserWindow.fromWebContents(event.sender);
   if (sender && state.visionGuideOverlayWindow && sender === state.visionGuideOverlayWindow) {
     helpers.positionTranslationOverlay(position, state.visionGuideOverlayWindow);
+  } else if (sender && state.realtimeOverlayWindow && sender === state.realtimeOverlayWindow) {
+    helpers.positionTranslationOverlay(position, state.realtimeOverlayWindow);
   } else {
     helpers.positionTranslationOverlay(position, state.translationOverlayWindow);
   }
@@ -134,6 +139,13 @@ ipcMain.on("request-translation-resize", () => {
 
 ipcMain.on("request-vision-guide-resize", () => {
   helpers.expandVisionGuideOverlayIfNeeded();
+});
+
+ipcMain.on("realtime-overlay-minimize", () => {
+  if (state.realtimeOverlayWindow && !state.realtimeOverlayWindow.isDestroyed()) {
+    state.realtimeOverlayMinimized = true;
+    try { state.realtimeOverlayWindow.hide(); } catch (_) {}
+  }
 });
 
 ipcMain.handle("get-vision-guide-config", () => {

@@ -278,8 +278,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("ide-autocomplete", payload),
   setEditorState: (state) => ipcRenderer.send("set-editor-state", state),
 
-  // Plataforma (renderer decide se usa drag manual — só Win/mac; Linux usa
-  // -webkit-app-region:drag nativo que funciona bem lá).
+  realtimeMinimize: () => ipcRenderer.send("realtime-overlay-minimize"),
   platform: process.platform,
   // Drag manual de janelas frameless (Windows/macOS): o app-region:drag é
   // instável em janelas transparent+frameless no Windows. Ver main.js.

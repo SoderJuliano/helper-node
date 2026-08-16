@@ -178,6 +178,10 @@ app.whenReady().then(async () => {
         const isOsIntegration = configService.getOsIntegrationStatus();
         if (isOsIntegration) {
           helpers.sendToTranslationOverlay('translation-result', data);
+          const responseText = data.response || data.text || '';
+          if (responseText && (!state.translationOverlayWindow || state.translationOverlayWindow.isDestroyed())) {
+            helpers.createOsNotificationWindow('response', responseText);
+          }
         }
         if (state.mainWindow && !state.mainWindow.isDestroyed()) {
           state.mainWindow.webContents.send('translation-result', data);
@@ -319,6 +323,21 @@ app.whenReady().then(async () => {
       }, 1500);
     }
   } catch (e) { console.error('[vision-guide] erro ao checar auto-start:', e.message); }
+
+  // Retoma o Assistente em Tempo Real se estava ligado no boot
+  try {
+    const isRealtime = configService.getRealtimeAssistantStatus();
+    const bootCfg = configService.getConfig();
+    if (isRealtime && bootCfg.openIaToken && !helpers.anyRealtimeActive()) {
+      setTimeout(() => {
+        helpers.toggleRealtimeAssistantRecording().catch((e) => {
+          console.error('[realtime] auto-start falhou:', e.message);
+        });
+      }, 1500);
+    }
+  } catch (e) {
+    console.error('[realtime] erro ao checar auto-start:', e.message);
+  }
 
   // Verifica o status do backend ao iniciar e depois periodicamente
   helpers.checkBackendStatus();

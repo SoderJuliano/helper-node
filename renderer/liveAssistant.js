@@ -220,7 +220,11 @@ var activeAgenticSession = null;
 
         window.electronAPI.onToggleRecording((event, data) => {
             if (!data) return;
-            toggleAnimation(data.isRecording);
+            if (!data.isRealtimeAssistant) {
+                toggleAnimation(data.isRecording);
+            } else if (!data.isRecording) {
+                toggleAnimation(false);
+            }
 
             // CHOKE-POINT ÚNICO do hero: sempre que QUALQUER áudio é ligado
             // (Assistente em Tempo Real, Tradutor ou gravação) em modo janela,

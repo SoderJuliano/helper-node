@@ -220,26 +220,30 @@ class RealtimeOpenAiService {
   // foi dito parece uma pergunta fechada, responde ANTES do fim do turno.
   _onStreamDelta(accumulated) {
     if (!this.active) return;
-    const cfg = this.configService.getConfig ? this.configService.getConfig() : {};
-    if (cfg.realtimeSpeculative === false) return;
+    try {
+      const cfg = this.configService.getConfig ? this.configService.getConfig() : {};
+      if (cfg.realtimeSpeculative === false) return;
 
-    const text = (accumulated || '').trim();
+      const text = (accumulated || '').trim();
 
-    // Aproveita que ja temos texto parcial pra adiantar o RAG — quando o turno
-    // fechar, o bloco ja esta pronto e nao custa nada no caminho critico.
-    this._rag.prefetch(text, this.configService.getOpenIaToken());
+      // Aproveita que ja temos texto parcial pra adiantar o RAG — quando o turno
+      // fechar, o bloco ja esta pronto e nao custa nada no caminho critico.
+      this._rag.prefetch(text, this.configService.getOpenIaToken());
 
-    if (text.length < SPECULATIVE_MIN_CHARS) return;
-    if (Date.now() - this._spec.at < SPECULATIVE_COOLDOWN_MS) return;
-    // Nada de novo alem do que ja foi especulado: espera crescer de verdade.
-    if (this._spec.text && text.startsWith(this._spec.text) &&
-        (text.length - this._spec.text.length) < SPECULATIVE_MIN_CHARS) return;
-    if (!looksLikeCompleteQuestion(text)) return;
+      if (text.length < SPECULATIVE_MIN_CHARS) return;
+      if (Date.now() - this._spec.at < SPECULATIVE_COOLDOWN_MS) return;
+      // Nada de novo alem do que ja foi especulado: espera crescer de verdade.
+      if (this._spec.text && text.startsWith(this._spec.text) &&
+          (text.length - this._spec.text.length) < SPECULATIVE_MIN_CHARS) return;
+      if (!looksLikeCompleteQuestion(text)) return;
 
-    this._spec = { text, at: Date.now(), id: null, iteration: null };
-    console.log(`[realtime-openai] disparo especulativo: "${text.slice(0, 70)}"`);
-    this._respond(text, 'sys', { speculative: true }).catch((e) =>
-      console.error('[realtime-openai] especulativo falhou:', e.message));
+      this._spec = { text, at: Date.now(), id: null, iteration: null };
+      console.log(`[realtime-openai] disparo especulativo: "${text.slice(0, 70)}"`);
+      this._respond(text, 'sys', { speculative: true }).catch((e) =>
+        console.error('[realtime-openai] especulativo falhou:', e.message));
+    } catch (e) {
+      console.error('[realtime-openai] erro em _onStreamDelta:', e.message);
+    }
   }
 
   // ---------- Pipeline de resposta (compartilhado stream/batch) ----------
@@ -250,8 +254,8 @@ class RealtimeOpenAiService {
     this.iterationCount += 1;
     const iteration = this.iterationCount;
 
-    this.emitUpdate({ type: 'segment_start', id, iteration, timestamp: new Date().toISOString() });
-    this.emitUpdate({ type: 'segment_whisper_correction', id, iteration, text: askText, source: 'openai', timestamp: new Date().toISOString() });
+    this.emitUpdate({ type: 'segment_start', id, iteration, audioSource: source, timestamp: new Date().toISOString() });
+    this.emitUpdate({ type: 'segment_whisper_correction', id, iteration, text: askText, audioSource: source, source: 'openai', timestamp: new Date().toISOString() });
     if (opts.speculative) { this._spec.id = id; this._spec.iteration = iteration; }
 
     const tAsk = Date.now();
@@ -263,9 +267,9 @@ class RealtimeOpenAiService {
           const since = opts.tStop ? ` | fim-da-fala->1o-token ${((tFirstToken - opts.tStop) / 1000).toFixed(2)}s` : '';
           console.log(`[realtime-openai] ttft ${((tFirstToken - tAsk) / 1000).toFixed(2)}s${since}`);
         }
-        this.emitUpdate({ type: 'segment_response', id, iteration, response: partial, source: 'openai', timestamp: new Date().toISOString() });
+        this.emitUpdate({ type: 'segment_response', id, iteration, response: partial, audioSource: source, source: 'openai', timestamp: new Date().toISOString() });
       });
-      this.emitUpdate({ type: 'segment_response', id, iteration, response, source: 'openai', timestamp: new Date().toISOString() });
+      this.emitUpdate({ type: 'segment_response', id, iteration, response, audioSource: source, source: 'openai', timestamp: new Date().toISOString() });
       if (!opts.speculative) {
         await this._writeHistory(askText, response);
         this.lastClosedBySource[source] = { id, text: askText, closedAt: Date.now() };
@@ -412,8 +416,22 @@ class RealtimeOpenAiService {
 
   emitUpdate(payload) {
     const w = this.getMainWindow();
-    if (!w || w.isDestroyed()) return;
-    w.webContents.send('realtime-assistant-update', payload);
+    if (w && !w.isDestroyed()) {
+      w.webContents.send('realtime-assistant-update', payload);
+    }
+    try {
+      if (this.configService && this.configService.getOsIntegrationStatus && this.configService.getOsIntegrationStatus()) {
+        const { helpers } = require('../main/globals');
+        if (helpers) {
+          if (helpers.createRealtimeAssistantOverlay) {
+            helpers.createRealtimeAssistantOverlay();
+          }
+          if (helpers.sendToRealtimeAssistantOverlay) {
+            helpers.sendToRealtimeAssistantOverlay('realtime-assistant-update', payload);
+          }
+        }
+      }
+    } catch (_) {}
   }
 }
 

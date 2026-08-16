@@ -59,29 +59,30 @@ configService.setNexaConfig({ enabled: false });
 let nexaCfg = configService.getNexaConfig();
 assert.strictEqual(nexaCfg.enabled, false, "Nexa deve estar OFF por padrão");
 let promptInst = configService.getPromptInstruction();
-assert.ok(!promptInst.includes("SEU ÚNICO NOME E IDENTIDADE É NEXA"), "Prompt não deve conter persona da Nexa quando OFF");
+assert.ok(!promptInst.includes("SEU ÚNICO NOME E IDENTIDADE É NEXA"), "getPromptInstruction não deve conter persona da Nexa quando OFF");
 
-// Teste Estado Nexa ON
+// Teste Estado Nexa ON via applyNexaPersonaIfNeeded
+const { applyNexaPersonaIfNeeded } = require("../main/nexa/nexaPersona.js");
 configService.setNexaConfig({ enabled: true });
 nexaCfg = configService.getNexaConfig();
 assert.strictEqual(nexaCfg.enabled, true, "Nexa deve estar ON após ativação");
 promptInst = configService.getPromptInstruction();
-assert.ok(promptInst.includes("SEU ÚNICO NOME E IDENTIDADE É NEXA"), "Prompt deve injetar a persona feminina da Nexa quando ON");
+assert.ok(!promptInst.includes("SEU ÚNICO NOME E IDENTIDADE É NEXA"), "getPromptInstruction deve permanecer limpo de forma isolada");
+
+const promptNexaOn = applyNexaPersonaIfNeeded(promptInst, true);
+assert.ok(promptNexaOn.includes("SEU ÚNICO NOME E IDENTIDADE É NEXA"), "applyNexaPersonaIfNeeded deve injetar a persona da Nexa quando ON");
 
 // Restaura estado para OFF para não sujar o ambiente
 configService.setNexaConfig({ enabled: false });
+const promptNexaOff = applyNexaPersonaIfNeeded(promptInst, false);
+assert.ok(!promptNexaOff.includes("SEU ÚNICO NOME E IDENTIDADE É NEXA"), "applyNexaPersonaIfNeeded NÃO deve injetar Nexa quando OFF");
 console.log("  ✅ Teste Config & Prompt Persona Nexa aprovado.");
 
-// 3. Validação do Prompt do Agente IDE com Nexa ON
+// 3. Validação do Prompt do Agente IDE
 const { buildIdeAgentPrompt } = require("../services/idePrompt.js");
-configService.setNexaConfig({ enabled: true });
-const idePromptOn = buildIdeAgentPrompt({ wsPaths: ["/test/path"] });
-assert.ok(idePromptOn.includes("SEU ÚNICO NOME E IDENTIDADE É NEXA"), "buildIdeAgentPrompt deve conter a persona da Nexa quando ON");
+const idePrompt = buildIdeAgentPrompt({ wsPaths: ["/test/path"] });
+assert.ok(!idePrompt.includes("SEU ÚNICO NOME E IDENTIDADE É NEXA"), "buildIdeAgentPrompt base NÃO deve conter a persona da Nexa");
 
-configService.setNexaConfig({ enabled: false });
-const idePromptOff = buildIdeAgentPrompt({ wsPaths: ["/test/path"] });
-assert.ok(!idePromptOff.includes("SEU ÚNICO NOME E IDENTIDADE É NEXA"), "buildIdeAgentPrompt NÃO deve conter a persona da Nexa quando OFF");
-
-console.log("  ✅ Teste IDE Agent Prompt Nexa aprovado.");
+console.log("  ✅ Teste IDE Agent Prompt aprovado.");
 
 console.log("🎉 AUDITORIA DE INTEGRAÇÃO DA NEXA CONCLUÍDA COM SUCESSO!");

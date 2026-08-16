@@ -22,6 +22,21 @@ const TRANSCRIBE_MODEL = 'gpt-4o-transcribe';
 // juntamos os textos e reprocessamos a pergunta inteira.
 const CONTINUATION_WINDOW_MS = 3000;
 
+function isAcousticEcho(text, otherClosed) {
+  if (!text || !otherClosed || !otherClosed.text) return false;
+  if (Date.now() - otherClosed.closedAt > 5000) return false;
+  const cleanA = text.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/g, ' ').trim();
+  const cleanB = otherClosed.text.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/g, ' ').trim();
+  if (!cleanA || !cleanB) return false;
+  if (cleanA === cleanB) return true;
+  if (cleanA.includes(cleanB) || cleanB.includes(cleanA)) {
+    const minLen = Math.min(cleanA.length, cleanB.length);
+    const maxLen = Math.max(cleanA.length, cleanB.length);
+    if (minLen >= 8 && (minLen / maxLen) > 0.7) return true;
+  }
+  return false;
+}
+
 // Transcrição própria (NÃO importa nada do Assistente de Tradução — totalmente
 // independente). Envia o WAV pro endpoint de transcrição da OpenAI.
 // `glossaryPrompt` enviesa o decoder pros termos técnicos da entrevista
@@ -99,9 +114,17 @@ async function handleBatchSegment(svc, audioPath, source) {
       return;
     }
 
+    // Eco acústico: se a outra fonte acabou de fechar o MESMO texto nos últimos 5s, descarta duplicata.
+    const otherSource = source === 'mic' ? 'sys' : 'mic';
+    const otherClosed = svc.lastClosedBySource[otherSource];
+    if (isAcousticEcho(transcript, otherClosed)) {
+      console.log(`[realtime-batch] Eco acústico detectado em ${source} duplicando ${otherSource}: "${transcript}" - descartando`);
+      return;
+    }
+
     // Texto definitivo (UI mostra "transcrito" + "pensando…"). noSuggestion=true
     // quando é a sua fala em modo both → a UI esconde a bolha do assistente.
-    svc.emitUpdate({ type: 'segment_whisper_correction', id, iteration, text: transcript, source: 'openai', noSuggestion: !respondToSegment, timestamp: new Date().toISOString() });
+    svc.emitUpdate({ type: 'segment_whisper_correction', id, iteration, text: transcript, audioSource: source, source: 'openai', noSuggestion: !respondToSegment, timestamp: new Date().toISOString() });
 
     // Banco de respostas: rastreia a pergunta do interlocutor (sys) e, quando VOCÊ
     // (mic) responde, avalia/guarda o par em background (não trava o pipeline).
@@ -127,20 +150,20 @@ async function handleBatchSegment(svc, audioPath, source) {
     const askText = isContinuation ? `${prevClosed.text} ${effectiveTranscript}`.trim() : effectiveTranscript;
     if (isContinuation) {
       // Mostra a pergunta completa (com o trecho anterior) na bolha de transcricao.
-      svc.emitUpdate({ type: 'segment_whisper_correction', id, iteration, text: askText, source: 'openai', timestamp: new Date().toISOString() });
+      svc.emitUpdate({ type: 'segment_whisper_correction', id, iteration, text: askText, audioSource: source, source: 'openai', timestamp: new Date().toISOString() });
     }
 
     // Streaming: emite segment_response parcial com o MESMO id; a UI atualiza a
     // bolha no lugar (rtSegments.get(payload.id)). Throttle já é feito no _askAI.
     const response = await svc._askAI(askText, token, (partial) => {
-      svc.emitUpdate({ type: 'segment_response', id, iteration, response: partial, source: 'openai', timestamp: new Date().toISOString() });
+      svc.emitUpdate({ type: 'segment_response', id, iteration, response: partial, audioSource: source, source: 'openai', timestamp: new Date().toISOString() });
     });
     if (isContinuation) {
       // Marca a resposta do trecho anterior como superada — a pergunta continuava.
-      svc.emitUpdate({ type: 'segment_response', id: prevClosed.id, response: '↳ pergunta continuou no trecho seguinte — veja a resposta completa abaixo.', timestamp: new Date().toISOString() });
+      svc.emitUpdate({ type: 'segment_response', id: prevClosed.id, response: '↳ pergunta continuou no trecho seguinte — veja a resposta completa abaixo.', audioSource: source, timestamp: new Date().toISOString() });
     }
     // Emite o texto final completo (garante o conteúdo inteiro mesmo se o último delta foi throttled).
-    svc.emitUpdate({ type: 'segment_response', id, iteration, response, source: 'openai', timestamp: new Date().toISOString() });
+    svc.emitUpdate({ type: 'segment_response', id, iteration, response, audioSource: source, source: 'openai', timestamp: new Date().toISOString() });
     await svc._writeHistory(askText, response);
     svc.lastClosedBySource[source] = { id, text: askText, closedAt: Date.now() };
   } catch (err) {

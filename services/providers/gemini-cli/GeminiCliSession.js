@@ -116,7 +116,23 @@ class GeminiCliSession extends EventEmitter {
       
       for (const msg of messagesToInclude) {
         const roleName = msg.role === 'user' ? 'Usuário' : 'IA';
-        historyContext += `[${roleName}]: ${msg.content}\n\n`;
+        let cleanContent = typeof msg.content === 'string' ? msg.content : String(msg.content || '');
+        if (cleanContent.includes("═══ DIRETIVA DE SISTEMA")) {
+          cleanContent = cleanContent.replace(/═══ DIRETIVA DE SISTEMA[\s\S]*?═════════════════════════════════════════════════════════════\s*/g, "");
+          cleanContent = cleanContent.replace(/═══ DIRETIVA DE SISTEMA[\s\S]*?Lembre-se: Toda a sua resposta deve ser um JSON válido e parseável\.\s*/g, "");
+        }
+        if (cleanContent.trim().startsWith("{") && cleanContent.includes('"response"')) {
+          try {
+            const parsed = JSON.parse(cleanContent);
+            if (parsed && typeof parsed.response === "string") {
+              cleanContent = parsed.response;
+            }
+          } catch (_) {}
+        }
+        cleanContent = cleanContent.trim();
+        if (cleanContent) {
+          historyContext += `[${roleName}]: ${cleanContent}\n\n`;
+        }
       }
       
       historyContext += "=== FIM DO CONTEXTO ===\n\nUse as informações acima como contexto para a próxima instrução. Não responda ao histórico, apenas use-o como base para a instrução atual.\n\nInstrução atual: ";

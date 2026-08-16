@@ -42,6 +42,21 @@ function whisperBinPath() {
   );
 }
 
+function isAcousticEcho(text, otherClosed) {
+  if (!text || !otherClosed || !otherClosed.text) return false;
+  if (Date.now() - otherClosed.closedAt > 5000) return false;
+  const cleanA = text.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/g, ' ').trim();
+  const cleanB = otherClosed.text.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/g, ' ').trim();
+  if (!cleanA || !cleanB) return false;
+  if (cleanA === cleanB) return true;
+  if (cleanA.includes(cleanB) || cleanB.includes(cleanA)) {
+    const minLen = Math.min(cleanA.length, cleanB.length);
+    const maxLen = Math.max(cleanA.length, cleanB.length);
+    if (minLen >= 8 && (minLen / maxLen) > 0.7) return true;
+  }
+  return false;
+}
+
 class RealtimeAssistantService {
   constructor({ configService, getMainWindow, onFatalStop, historyService, aiResponder }) {
     this.configService = configService;
@@ -142,7 +157,7 @@ class RealtimeAssistantService {
     const id = "seg_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
     this.iterationCount += 1;
     const iteration = this.iterationCount;
-    this.emitUpdate({ type: "segment_start", id, iteration, timestamp: new Date().toISOString() });
+    this.emitUpdate({ type: "segment_start", id, iteration, audioSource: source, timestamp: new Date().toISOString() });
 
     // Enfileira tudo (Whisper -> IA -> historico) — IA so chama UMA vez no fim.
     this._enqueueWhisper(async () => {
@@ -157,8 +172,16 @@ class RealtimeAssistantService {
 
       text = (text || "").trim();
       if (!text || text === '[BLANK_AUDIO]') {
-        this.emitUpdate({ type: "segment_whisper_correction", id, iteration, text: '(sem fala)', source: 'whisper', timestamp: new Date().toISOString() });
-        this.emitUpdate({ type: "segment_response", id, iteration, response: '(trecho sem conteúdo relevante)', timestamp: new Date().toISOString() });
+        this.emitUpdate({ type: "segment_whisper_correction", id, iteration, text: '(sem fala)', audioSource: source, source: 'whisper', timestamp: new Date().toISOString() });
+        this.emitUpdate({ type: "segment_response", id, iteration, response: '(trecho sem conteúdo relevante)', audioSource: source, timestamp: new Date().toISOString() });
+        return;
+      }
+
+      // Eco acústico: se a outra fonte acabou de fechar o MESMO texto nos últimos 5s, descarta duplicata.
+      const otherSource = source === 'mic' ? 'sys' : 'mic';
+      const otherClosed = this.lastClosedBySource[otherSource];
+      if (isAcousticEcho(text, otherClosed)) {
+        console.log(`[realtime] Eco acústico detectado em ${source} duplicando ${otherSource}: "${text}" - descartando`);
         return;
       }
 
@@ -173,6 +196,7 @@ class RealtimeAssistantService {
         type: "segment_whisper_correction",
         id, iteration,
         text: askText,
+        audioSource: source,
         source: "whisper",
         noSuggestion: !respondToSegment,
         timestamp: new Date().toISOString(),
@@ -195,10 +219,11 @@ class RealtimeAssistantService {
             type: "segment_response",
             id: prevClosed.id,
             response: "↳ pergunta continuou no trecho seguinte — veja a resposta completa abaixo.",
+            audioSource: source,
             timestamp: new Date().toISOString(),
           });
         }
-        this.emitUpdate({ type: "segment_response", id, iteration, response: resp, timestamp: new Date().toISOString() });
+        this.emitUpdate({ type: "segment_response", id, iteration, response: resp, audioSource: source, timestamp: new Date().toISOString() });
         await this._writeHistory(askText, resp);
       } catch (err) {
         console.error(`[realtime] Erro ao obter resposta da IA para "${askText}":`, err);
@@ -360,8 +385,23 @@ class RealtimeAssistantService {
 
   emitUpdate(payload) {
     const w = this.getMainWindow();
-    if (!w || w.isDestroyed()) return;
-    w.webContents.send("realtime-assistant-update", payload);
+    if (w && !w.isDestroyed()) {
+      w.webContents.send("realtime-assistant-update", payload);
+    }
+    try {
+      const configService = require('./configService');
+      if (configService && configService.getOsIntegrationStatus && configService.getOsIntegrationStatus()) {
+        const { helpers } = require('../main/globals');
+        if (helpers) {
+          if (helpers.createRealtimeAssistantOverlay) {
+            helpers.createRealtimeAssistantOverlay();
+          }
+          if (helpers.sendToRealtimeAssistantOverlay) {
+            helpers.sendToRealtimeAssistantOverlay('realtime-assistant-update', payload);
+          }
+        }
+      }
+    } catch (_) {}
   }
 }
 

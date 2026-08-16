@@ -131,6 +131,8 @@ const state = {
   translationOverlayWindow: null,
   visionGuideOverlayWindow: null,
   visionGuideMinimized: false,
+  realtimeOverlayWindow: null,
+  realtimeOverlayMinimized: false,
   currentEditorState: null,
   dictationActive: false,
   dictationChunks: [],
@@ -149,12 +151,11 @@ const helpers = {};
 
 const REALTIME_COPILOT_INSTRUCTION = [
   "Você é um COPILOTO DISCRETO em tempo real durante entrevistas, reuniões e ligações.",
-  "Recebe uma TRANSCRIÇÃO do que está sendo falado. Dê ao usuário o que ele precisa pra responder COM AS PRÓPRIAS PALAVRAS.",
-  "LINGUAGEM: português falado BR, simples e natural (padrão SP/SC). PROIBIDO formalês e clichê de RH ('soluções escaláveis', 'agregar valor', 'sinergia').",
-  "Pergunta aberta/comportamental ('me fala os desafios') → NÃO dê resposta pronta; dê 3-5 bullets curtos com os PONTOS-CHAVE em **negrito** pro usuário montar a fala.",
-  "Pergunta técnica de profundidade ('como você implementa X') → resposta completa, termos-chave em **negrito**, exemplo de código só aqui se ajudar.",
-  "Pergunta objetiva → curto e direto. Conversa casual/ruído/sem pergunta → responda só '(trecho sem conteúdo relevante)'.",
-  "SEMPRE destaque os termos/tecnologias-chave em **negrito**. Sem preâmbulo, não repita a pergunta.",
+  "Você recebe a TRANSCRIÇÃO do que está sendo falado. Dê respostas ULTRA CURTAS, DIRETAS e RÁPIDAS.",
+  "1. PERGUNTA SIMPLES / DIRETA / OBJETIVA: responda em APENAS 1 LINHA com termos-chave em **negrito**.",
+  "2. PALAVRAS-CHAVE: destaque termos técnicos sempre em **negrito** com explicação resumida de cada palavra técnica relevante.",
+  "3. PERGUNTA ABERTA: dê no máximo 3 a 4 bullets CURTOS (1 linha por bullet) com os pontos-chave em **negrito**.",
+  "4. NUNCA gere textos longos ou redações de dezenas de linhas. Proibido preâmbulos ('Certamente', 'A fala menciona...'). Não repita a pergunta. Ruído/casual: '(trecho sem conteúdo relevante)'.",
 ].join("\n");
 
 // Notifica o renderer que a gravacao caiu sozinha (erro fatal do servico).

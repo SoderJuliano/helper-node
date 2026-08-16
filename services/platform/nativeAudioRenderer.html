@@ -60,9 +60,12 @@ function attach(source, stream) {
     ipcRenderer.send('native-audio-pcm', { source, bytes });
   };
 
+  const muteGain = ctx.createGain();
+  muteGain.gain.value = 0;
   srcNode.connect(node);
-  node.connect(ctx.destination); // necessário p/ o ScriptProcessor disparar
-  active[source] = { stream, ctx, node, srcNode };
+  node.connect(muteGain);
+  muteGain.connect(ctx.destination); // Necessário p/ o ScriptProcessor disparar sem emitir áudio nos alto-falantes
+  active[source] = { stream, ctx, node, srcNode, muteGain };
   log(`${source}: capturando @ ${ctx.sampleRate}Hz -> 16kHz`);
 }
 
@@ -97,6 +100,7 @@ function stopSource(source) {
   const a = active[source];
   if (!a) return;
   try { a.node.disconnect(); } catch (_) {}
+  try { if (a.muteGain) a.muteGain.disconnect(); } catch (_) {}
   try { a.srcNode.disconnect(); } catch (_) {}
   try { a.ctx.close(); } catch (_) {}
   try { a.stream.getTracks().forEach((t) => t.stop()); } catch (_) {}

@@ -14,11 +14,14 @@ const { raceWithTimeout, RAG_TIMEOUT_MS } = require('./openAiRealtimeModels');
 class RealtimeRag {
   constructor(configService) {
     this.cfg = configService;
-    this.cache = { key: '', block: '' };
-    this.inFlight = null;
+    this._ragCache = { key: '', block: '' };
+    this._ragInFlight = null;
   }
 
-  reset() { this.cache = { key: '', block: '' }; this.inFlight = null; }
+  reset() {
+    this._ragCache = { key: '', block: '' };
+    this._ragInFlight = null;
+  }
 
   // Com o STT em streaming a gente ja tem o texto parcial ENQUANTO a pessoa fala,
   // entao da pra buscar os embeddings adiantado. Quando o turno fecha, o bloco ja
@@ -42,23 +45,25 @@ class RealtimeRag {
   // Dispara a busca em background sobre o transcript PARCIAL. Fire-and-forget:
   // nunca lanca e nunca bloqueia quem chamou.
   prefetch(text, token) {
-    if (!token || !this.enabled().any) return;
-    if (!text || text.length < 12) return;
-    if (this._ragCache.key === text || this._ragInFlight === text) return;
-    this._ragInFlight = text;
-    this.build(text, token)
-      .then((block) => { this._ragCache = { key: text, block }; })
-      .catch(() => {})
-      .finally(() => { if (this._ragInFlight === text) this._ragInFlight = null; });
+    try {
+      if (!token || !this.enabled().any) return;
+      if (!text || text.length < 12) return;
+      if (this._ragCache && (this._ragCache.key === text || this._ragInFlight === text)) return;
+      this._ragInFlight = text;
+      this.build(text, token)
+        .then((block) => { this._ragCache = { key: text, block }; })
+        .catch(() => {})
+        .finally(() => { if (this._ragInFlight === text) this._ragInFlight = null; });
+    } catch (_) {}
   }
 
   // Usa o cache quando ele foi construido sobre um prefixo da pergunta atual (o
   // caso normal com streaming). Senao busca na hora, ainda com o teto de tempo.
   async blockFor(transcript, token) {
-    if (!this.enabled().any) return '';
-    const cached = this._ragCache;
-    if (cached.key && transcript.startsWith(cached.key)) return cached.block;
     try {
+      if (!this.enabled().any) return '';
+      const cached = this._ragCache || { key: '', block: '' };
+      if (cached.key && transcript.startsWith(cached.key)) return cached.block;
       const block = await raceWithTimeout(this.build(transcript, token), RAG_TIMEOUT_MS, null);
       return block || '';
     } catch (_) { return ''; }

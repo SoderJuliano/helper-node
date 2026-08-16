@@ -111,6 +111,7 @@ helpers.stopCaptureToolMonitoring = function() {
 }
 
 helpers.detectCaptureTools = async function() {
+  if (process.platform !== 'linux') return false;
   try {
     // Lista de ferramentas de captura comuns no Linux
     const captureTools = [
