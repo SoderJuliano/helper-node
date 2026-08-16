@@ -99,22 +99,42 @@ function parseNexaResponse(rawText, fallbackText = "") {
     cleanText = cleanText.replace(/^```(json)?/i, "").replace(/```$/, "").trim();
   }
   
+  // Tenta parsear direto se já for um JSON limpo
   try {
     const parsed = JSON.parse(cleanText);
-    return {
-      response: parsed.response || "",
-      animation: parsed.animation || null,
-      remember: parsed.remember || null
-    };
-  } catch (err) {
-    console.warn("[NexaResponseHelper] Falha ao parsear resposta JSON da Nexa, usando fallback:", err.message);
-    const response = fallbackText || rawText;
-    return {
-      response,
-      animation: null,
-      remember: null
-    };
+    if (parsed && typeof parsed === "object" && parsed.response !== undefined) {
+      return {
+        response: parsed.response || "",
+        animation: parsed.animation || null,
+        remember: parsed.remember || null
+      };
+    }
+  } catch (e) {
+    // Tenta encontrar um bloco JSON dentro da string
   }
+
+  // Tenta extrair qualquer objeto JSON que contenha "response"
+  const jsonMatch = cleanText.match(/\{[\s\S]*?"response"\s*:[\s\S]*?\}/);
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        response: parsed.response || "",
+        animation: parsed.animation || null,
+        remember: parsed.remember || null
+      };
+    } catch (e) {
+      // Ignora erro e cai no fallback
+    }
+  }
+  
+  console.warn("[NexaResponseHelper] Falha ao parsear resposta JSON da Nexa, usando fallback");
+  const response = fallbackText || rawText;
+  return {
+    response,
+    animation: null,
+    remember: null
+  };
 }
 
 function handleNexaActions(parsedResult) {

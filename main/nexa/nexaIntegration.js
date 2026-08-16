@@ -79,16 +79,18 @@ function hookWebContents(webContents) {
 
 
 
-    if (isNexaOn) {
-      if (channel === "gemini-response" || channel === "openai-final-response") {
-        const payload = args[0];
-        if (payload && typeof payload.resposta === "string" && payload.resposta.trim().startsWith("{") && payload.resposta.includes('"animation"')) {
-          const result = parseNexaResponse(payload.resposta);
-          handleNexaActions(result);
+    if (channel === "gemini-response" || channel === "openai-final-response") {
+      const payload = args[0];
+      if (payload && typeof payload.resposta === "string" && (payload.resposta.includes('"response"') || payload.resposta.trim().startsWith("{"))) {
+        const result = parseNexaResponse(payload.resposta);
+        if (result && result.response) {
+          if (isNexaOn) {
+            handleNexaActions(result);
+          }
           payload.resposta = helpers.formatToHTML(result.response);
         }
-        return originalSend.call(webContents, channel, ...args);
       }
+      return originalSend.call(webContents, channel, ...args);
     }
 
     return originalSend.apply(webContents, arguments);
