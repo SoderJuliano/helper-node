@@ -92,7 +92,26 @@ var isTerminalInitialized = false;
             // testar de verdade olhando o que foi pra tela.
             window._term = term;
 
-            // Função utilitária para ler o clipboard e colar no terminal
+            // Trava de deduplicação para colar texto (evita envio duplo se o evento
+            // de teclado e o evento de paste do DOM dispararem em paralelo)
+            let lastPasteText = '';
+            let lastPasteTime = 0;
+
+            function enviarTextoParaTerminal(texto) {
+                if (!texto) return;
+                const now = Date.now();
+                if (texto === lastPasteText && (now - lastPasteTime) < 150) {
+                    return;
+                }
+                lastPasteText = texto;
+                lastPasteTime = now;
+
+                if (window.electronAPI && typeof window.electronAPI.terminalInput === 'function') {
+                    window.electronAPI.terminalInput(texto);
+                }
+            }
+
+            // Função utilitária para ler o clipboard e colar no terminal (usada por clique direito e scripts)
             async function colarTextoNoTerminal() {
                 let texto = '';
                 if (window.electronAPI && typeof window.electronAPI.readClipboardText === 'function') {
@@ -107,17 +126,17 @@ var isTerminalInitialized = false;
                     } catch (_) {}
                 }
 
-                if (texto && window.electronAPI && typeof window.electronAPI.terminalInput === 'function') {
-                    window.electronAPI.terminalInput(texto);
+                if (texto) {
+                    enviarTextoParaTerminal(texto);
                 }
             }
             window._colarTextoNoTerminal = colarTextoNoTerminal;
 
-            // Captura eventos nativos de paste do xterm
+            // Captura eventos nativos de paste do xterm (Ctrl+V, Shift+Insert, menu de contexto do SO)
             if (term.onPaste) {
                 term.onPaste((data) => {
-                    if (data && window.electronAPI && window.electronAPI.terminalInput) {
-                        window.electronAPI.terminalInput(data);
+                    if (data) {
+                        enviarTextoParaTerminal(data);
                     }
                 });
             }
@@ -132,7 +151,6 @@ var isTerminalInitialized = false;
             });
 
             // Ctrl+C: com seleção, copia; sem seleção, deixa o PTY receber o \x03.
-            // Ctrl+V / Cmd+V / Shift+Insert: cola o último texto copiado no terminal.
             term.attachCustomKeyEventHandler((e) => {
                 if (e.type !== 'keydown') return true;
                 const k = e.key ? e.key.toLowerCase() : '';
@@ -149,15 +167,6 @@ var isTerminalInitialized = false;
                         term.clearSelection();
                         return false;
                     }
-                }
-
-                // Ctrl+V, Cmd+V, Ctrl+Shift+V, Shift+Insert -> Colar do clipboard
-                const isPaste = ((e.ctrlKey || e.metaKey) && !e.altKey && k === 'v') ||
-                                (e.shiftKey && (e.key === 'Insert' || e.code === 'Insert'));
-
-                if (isPaste) {
-                    colarTextoNoTerminal();
-                    return false;
                 }
 
                 return true;
