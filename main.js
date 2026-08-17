@@ -9,8 +9,17 @@ const {
   clipboard,
 } = require("electron");
 
+if (process.platform === "linux") {
+  if (process.env.DISPLAY) {
+    app.commandLine.appendSwitch("ozone-platform", "x11");
+  } else if (process.env.WAYLAND_DISPLAY) {
+    app.commandLine.appendSwitch("ozone-platform-hint", "auto");
+    app.commandLine.appendSwitch("disable-features", "WaylandColorManagement,WaylandFractionalScaleV1");
+  }
+}
+
 // Require globals
-const { state, helpers, configService, helperTools, OpenAIService, historyService, ipcService, translationAssistant, visionGuide, GeminiCliProvider, ClaudeCliProvider } = require("./main/globals.js");
+const { state, helpers, configService, helperTools, OpenAIService, historyService, ipcService, translationAssistant, visionGuide, GeminiCliProvider, ClaudeCliProvider, workspace } = require("./main/globals.js");
 
 // Load modules to register helpers
 require("./main/state.js");
@@ -97,9 +106,6 @@ class Notification {
   removeAllListeners() { return this; }
   static isSupported() { return false; }
 }
-
-// Shared status checks (e.g. sharingCheckInterval)
-state.sharingCheckInterval = setInterval(helpers.checkScreenSharing, 1000);
 
 const { initializeNexa } = require("./main/nexa/index.js");
 
@@ -342,11 +348,6 @@ app.whenReady().then(async () => {
   // Verifica o status do backend ao iniciar e depois periodicamente
   helpers.checkBackendStatus();
   setInterval(helpers.checkBackendStatus, 60000); // Verifica a cada 60 segundos
-});
-
-// Ensure shortcuts are active after app is ready
-app.on("browser-window-focus", () => {
-  helpers.registerGlobalShortcuts();
 });
 
 app.on("window-all-closed", () => {

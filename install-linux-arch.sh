@@ -59,13 +59,13 @@ if [[ "${HELPER_SKIP_DEPS:-0}" == "1" ]]; then
   warn "HELPER_SKIP_DEPS=1 — pulando pacotes de sistema."
 else
   step "Instalando pacotes de sistema (vai pedir sua senha do sudo)..."
-  sudo pacman -Sy --needed --noconfirm \
+  sudo pacman -S --needed --noconfirm \
     git curl nodejs npm ffmpeg \
     gtk3 libnotify nss libxss libxtst at-spi2-core alsa-lib \
     xdg-utils xorg-xprop wl-clipboard \
     pipewire pipewire-pulse libpulse \
     imagemagick \
-    || fatal "Falha instalando pacotes via pacman."
+    || fatal "Falha instalando pacotes via pacman. Dica: se houver conflito de versões de bibliotecas (ex: ffmpeg), atualize seu sistema com: sudo pacman -Syu"
 
   # Ferramentas de captura dependem do compositor. COSMIC NÃO funciona com grim
   # — precisa do cosmic-screenshot (que costuma estar só no AUR); a lógica é a

@@ -5,29 +5,9 @@
  */
 
 document.addEventListener("DOMContentLoaded", async () => {
-  // Redireciona logs do console do renderer para o main process
   const originalLog = console.log;
   const originalError = console.error;
   const originalWarn = console.warn;
-
-  console.log = (...args) => {
-    originalLog(...args);
-    if (window.electronAPI && window.electronAPI.logToMain) {
-      window.electronAPI.logToMain("log", args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(" "));
-    }
-  };
-  console.error = (...args) => {
-    originalError(...args);
-    if (window.electronAPI && window.electronAPI.logToMain) {
-      window.electronAPI.logToMain("error", args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(" "));
-    }
-  };
-  console.warn = (...args) => {
-    originalWarn(...args);
-    if (window.electronAPI && window.electronAPI.logToMain) {
-      window.electronAPI.logToMain("warn", args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(" "));
-    }
-  };
 
   const canvas = document.getElementById("nexaCanvas");
   if (!canvas) return;
@@ -139,7 +119,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Animação de "escrevendo código no terminal" (loop). Entra SÓ quando o app está
   // mexendo em arquivos — ler/escrever/editar —, nunca por estar raciocinando
   // (THINKING) ou respondendo (SPEAKING). Quem decide é o main, em nexaIntegration.js.
-  const writingLottiePath = "renderer/nexa/assets/lottie/writing_code_lottie/animations/main.json";
+  const writingLottiePath = "renderer/nexa/assets/lottie/typing_lottie/animations/main.json";
   const writingAnimation = typeof NexaLottieAnimation !== "undefined"
     ? new NexaLottieAnimation({ animationPath: writingLottiePath, loop: true })
     : null;

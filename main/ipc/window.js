@@ -46,16 +46,18 @@ ipcMain.on('frameless-drag-start', (event) => {
   helpers.stopFramelessDrag();
   const cursor = screen.getCursorScreenPoint();
   const [wx, wy] = win.getPosition();
-  const [ww, wh] = win.getSize();            // trava o tamanho no início do arraste
+  const [ww, wh] = win.getSize(); // trava o tamanho no início do arraste
   const offsetX = cursor.x - wx;
   const offsetY = cursor.y - wy;
+  let dragTicks = 0;
+  const maxTicks = 60 * 10; // 10 segundos timeout de segurança
   const timer = setInterval(() => {
-    if (!win || win.isDestroyed()) { helpers.stopFramelessDrag(); return; }
+    dragTicks++;
+    if (!win || win.isDestroyed() || dragTicks > maxTicks) {
+      helpers.stopFramelessDrag();
+      return;
+    }
     const c = screen.getCursorScreenPoint();
-    // setBounds com largura/altura FIXAS (não setPosition): em telas com DPI
-    // fracionário (125%/150%), setPosition repetido numa janela transparent
-    // acumula erro de arredondamento e a janela vai CRESCENDO enquanto arrasta.
-    // Reafirmar o tamanho + arredondar as coordenadas a cada frame trava isso.
     try {
       win.setBounds({ x: Math.round(c.x - offsetX), y: Math.round(c.y - offsetY), width: ww, height: wh });
     } catch (_) {}

@@ -5,6 +5,11 @@ document.getElementById('win-maximize-btn')?.addEventListener('click', () => {
   ipcRenderer.send('window-toggle-maximize');
 });
 
+// Botão de fechar a janela
+document.getElementById('win-close-btn')?.addEventListener('click', () => {
+  window.close();
+});
+
 // Drag manual no Windows/macOS (app-region:drag é instável em janelas
 // transparent+frameless nesses SOs). No Linux o app-region nativo já funciona.
 if (process.platform !== 'linux') {

@@ -354,9 +354,12 @@ class OllamaLocalService {
 
                 const msg = (r.data && r.data.message) || {};
                 let content = stripThinkingBlock(msg.content || '');
-                const chamadas = nativeTools
+                let chamadas = nativeTools
                     ? normalizarChamadasNativas(msg.tool_calls)
                     : (modoIde ? normalizarChamadasTexto(parseOllamaToolCalls(content)) : []);
+                if (nativeTools && !chamadas.length && modoIde) {
+                    chamadas = normalizarChamadasTexto(parseOllamaToolCalls(content));
+                }
 
                 if (!content && !chamadas.length) throw new Error('Resposta vazia do Ollama');
                 ultimaResposta = content;
@@ -450,9 +453,7 @@ class OllamaLocalService {
                 console.log(`[ollamaLocal-stream] → ${model} @ ${host} (msgs=${this.sessions[sessionId].messages.length}, iter=${iter + 1}/${maxToolCalls})`);
 
                 const { createStreamRouter } = require('./backendStreamRouter');
-                // No protocolo nativo NÃO existe TOOL_CALL em texto pra esconder:
-                // segurar o começo da resposta só atrasaria o que o usuário vê.
-                const router = createStreamRouter({ onChunk, hasTools: modoIde && !nativeTools });
+                const router = createStreamRouter({ onChunk, hasTools: modoIde });
 
                 const { res: r } = await this._postChat(
                     host, model, this.sessions[sessionId].messages,
@@ -477,9 +478,12 @@ class OllamaLocalService {
                 }
 
                 const content = stripThinkingBlock(router.answer || '');
-                const chamadas = nativeTools
+                let chamadas = nativeTools
                     ? normalizarChamadasNativas(nativas)
                     : (modoIde ? normalizarChamadasTexto(parseOllamaToolCalls(content)) : []);
+                if (nativeTools && !chamadas.length && modoIde) {
+                    chamadas = normalizarChamadasTexto(parseOllamaToolCalls(content));
+                }
 
                 logDebug(`Fim da iteração ${iter + 1}. Content: "${content.slice(0, 200)}" | chamadas: ${chamadas.length}`);
                 if (!content && !router.thinking && !chamadas.length) throw new Error('Resposta vazia do Ollama');

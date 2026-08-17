@@ -85,6 +85,18 @@ const NEXA_ANIMATIONS = {
     description: "Nexa fala em loop, sem sincronia labial real com o áudio (apenas para dar a impressão de fala).",
     category: "action",
     lottiePath: path.join(__dirname, "../../renderer/nexa/assets/lottie/speaking_lottie/animations/main.json")
+  },
+  typing: {
+    name: "typing",
+    description: "Nexa digita em um terminal holográfico (usada durante escrita de arquivos ou modo IDE).",
+    category: "action",
+    lottiePath: path.join(__dirname, "../../renderer/nexa/assets/lottie/typing_lottie/animations/main.json")
+  },
+  coffee: {
+    name: "coffee",
+    description: "Nexa segura uma xícara de café e relaxa/aproveita a bebida.",
+    category: "idle",
+    lottiePath: path.join(__dirname, "../../renderer/nexa/assets/lottie/coffee_lottie/animations/main.json")
   }
 };
 

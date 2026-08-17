@@ -76,7 +76,7 @@ function applyNexaPersonaIfNeeded(basePrompt, isNexaEnabled) {
     "Você DEVE responder EXCLUSIVAMENTE em formato JSON estruturado, sem blocos de markdown envolta (como ```json ... ```), apenas o JSON puro, contendo exatamente os seguintes campos:",
     "{",
     "  \"response\": \"Sua resposta textual aqui (mantenha sua personalidade " + (isOnlyNexa ? "mimada, fofa e tsundere" : "nerd, simpática e leve") + ", e inclua a tag <voice_summary> no final se o modo de voz/fala estiver ativo)\",",
-    "  \"animation\": \"um dos nomes do catálogo (wave, idle_boring, adjust_glasses, floating, landing, heart, cute, listening) ou null\",",
+    "  \"animation\": \"um dos nomes do catálogo (wave, idle_boring, adjust_glasses, stretching_arms, squatting_doodling, sleeping, floating, landing, heart, cute, listening, thinking, speaking) ou null\",",
     "  \"remember\": \"opcional, uma frase curta em português resumindo fatos/preferências do usuário que você deseja salvar na sua memória persistente para lembrar em conversas futuras. Deixe vazio/null se não houver nada novo.\"",
     "}",
     "Lembre-se: Toda a sua resposta deve ser um JSON válido e parseável.",

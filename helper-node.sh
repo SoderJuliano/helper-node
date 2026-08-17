@@ -112,12 +112,15 @@ fi
 
 ELECTRON_ARGS=()
 
-# Ozone platform (X11/XWayland vs Wayland nativo) é decidido pelo main.js via
-# app.commandLine.appendSwitch("ozone-platform-hint", ...). Passar
-# --ozone-platform=wayland aqui, explícito, sobrescreve esse hint e força
-# Wayland nativo mesmo quando main.js pediu XWayland — quebrando o
-# posicionamento do overlay flutuante e o casamento de app_id do modo
-# stealth no compositor. Não definir a plataforma aqui.
+# Ozone platform (X11/XWayland vs Wayland nativo):
+# No Linux (KDE Wayland, GNOME Wayland, etc.), o backend Ozone Wayland tem conflitos
+# com janelas transparentes (wp_color_manager_v1 telas cinzas/travadas) e suporte a stealth xprop.
+# Usar X11 quando DISPLAY existir garante renderização perfeita, transparência e atalhos.
+if [ -n "${DISPLAY:-}" ]; then
+    ELECTRON_ARGS+=("--ozone-platform=x11")
+elif [ -n "${WAYLAND_DISPLAY:-}" ]; then
+    ELECTRON_ARGS+=("--ozone-platform=wayland" "--enable-features=UseOzonePlatform" "--disable-features=WaylandColorManagement,WaylandFractionalScaleV1")
+fi
 
 # If chrome-sandbox is not configured with SUID, fallback to no-sandbox
 if [ ! -u "$APP_DIR/node_modules/electron/dist/chrome-sandbox" ]; then
@@ -128,4 +131,4 @@ fi
 # embutido no binario aponta pra paths absolutos da maquina de build.
 export LD_LIBRARY_PATH="$APP_DIR/whisper/build/src:$APP_DIR/whisper/build/ggml/src${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
-exec "$ELECTRON_BIN" "$APP_DIR/main.js" "${ELECTRON_ARGS[@]}" "$@"
+exec "$ELECTRON_BIN" "${ELECTRON_ARGS[@]}" "$APP_DIR/main.js" "$@"
