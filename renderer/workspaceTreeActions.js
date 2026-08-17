@@ -522,6 +522,17 @@
                     } catch (e) { console.warn('file-written render failed:', e); }
                 });
             }
+
+            if (window.electronAPI && window.electronAPI.onFileMutated) {
+                window.electronAPI.onFileMutated(() => {
+                    if (typeof triggerTreeRefresh === 'function') {
+                        triggerTreeRefresh();
+                    }
+                    if (typeof fetchAndUpdateGitStatus === 'function') {
+                        fetchAndUpdateGitStatus();
+                    }
+                });
+            }
  // showAttachMenu, wsOpenProjectBtn, wsAddBtn clicks, delete selection, rename selection
 
     // Toast de Zoom (indica o nível de zoom do editor ou da árvore)

@@ -155,10 +155,16 @@ function isPathAllowed(absPath) {
   if (!absPath) return false;
   try {
     const resolved = resolvePortalPath(absPath);
-    const normResolved = path.resolve(resolved);
+    let normResolved = path.resolve(resolved);
+    if (process.platform === 'win32') {
+      normResolved = normResolved.toLowerCase();
+    }
     for (const a of state.attachments) {
       const aResolved = resolvePortalPath(a.path);
-      const normAttachment = path.resolve(aResolved);
+      let normAttachment = path.resolve(aResolved);
+      if (process.platform === 'win32') {
+        normAttachment = normAttachment.toLowerCase();
+      }
       if (normResolved === normAttachment) return true;
       if (a.type === "dir") {
         const relative = path.relative(normAttachment, normResolved);

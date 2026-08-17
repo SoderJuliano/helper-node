@@ -31,11 +31,29 @@
             }
         });
 
-        window.electronAPI.onWorkspaceFileWritten(async ({ filePath }) => {
-            if (typeof window.refreshProjectTree === 'function') {
+        window.electronAPI.onWorkspaceFileWritten(async (data) => {
+            if (typeof window.triggerTreeRefresh === 'function') {
+                window.triggerTreeRefresh();
+            } else if (typeof window.refreshProjectTree === 'function') {
                 await window.refreshProjectTree();
             }
+            if (typeof window.fetchAndUpdateGitStatus === 'function') {
+                window.fetchAndUpdateGitStatus();
+            }
         });
+
+        if (window.electronAPI.onFileMutated) {
+            window.electronAPI.onFileMutated(async (data) => {
+                if (typeof window.triggerTreeRefresh === 'function') {
+                    window.triggerTreeRefresh();
+                } else if (typeof window.refreshProjectTree === 'function') {
+                    await window.refreshProjectTree();
+                }
+                if (typeof window.fetchAndUpdateGitStatus === 'function') {
+                    window.fetchAndUpdateGitStatus();
+                }
+            });
+        }
 
         // Trigger loading file in viewer from config or other windows
         window.electronAPI.onOpenFileInViewer((filePath) => {

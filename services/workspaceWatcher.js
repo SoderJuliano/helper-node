@@ -59,17 +59,22 @@ function startWatchingProject(projectDir) {
         debounceTimers.delete(fullPath);
 
         try {
-          if (fs.existsSync(fullPath)) {
-            const st = fs.statSync(fullPath);
-            if (st.isFile()) {
-              const { helpers } = require('../main/globals.js');
-              if (helpers && helpers.emitFileMutated) {
-                helpers.emitFileMutated({ path: fullPath, origin: 'disk', mtimeMs: st.mtimeMs });
-              }
-            }
+          const exists = fs.existsSync(fullPath);
+          let mtimeMs = 0;
+          let isDir = false;
+          if (exists) {
+            try {
+              const st = fs.statSync(fullPath);
+              mtimeMs = st.mtimeMs;
+              isDir = st.isDirectory();
+            } catch (_) {}
+          }
+          const { helpers } = require('../main/globals.js');
+          if (helpers && helpers.emitFileMutated) {
+            helpers.emitFileMutated({ path: fullPath, origin: 'disk', mtimeMs, isDirectory: isDir, deleted: !exists });
           }
         } catch (_) {}
-      }, 120));
+      }, 100));
     });
     console.log(`[workspaceWatcher] Iniciado watcher em tempo real em: ${normProjectDir}`);
   } catch (err) {

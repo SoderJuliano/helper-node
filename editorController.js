@@ -755,13 +755,27 @@
 
   // Reage a mutações de arquivo vindas de qualquer origem (disk, git pull, OpenAI, Claude CLI, Gemini CLI, etc.).
   // Atualiza abas abertas em TEMPO REAL (estilo VS Code / IntelliJ IDEA).
-  async function onFileMutated({ path: p, origin, content, mtimeMs } = {}) {
+  async function onFileMutated({ path: p, origin, content, mtimeMs, deleted } = {}) {
     if (!p) return;
     const filePath = normPath(p);
+
+    // Garante que a árvore lateral e status git atualizem quando qualquer arquivo mudar
+    if (typeof window.triggerTreeRefresh === 'function') {
+      window.triggerTreeRefresh();
+    }
+    if (typeof window.fetchAndUpdateGitStatus === 'function') {
+      window.fetchAndUpdateGitStatus();
+    }
+
     const doc = openFiles.get(filePath);
 
-    // Se o arquivo não está aberto em nenhuma aba do editor, ignora (0 overhead)
+    // Se o arquivo não está aberto em nenhuma aba do editor, para por aqui
     if (!doc) return;
+
+    if (deleted) {
+      setConflictBanner('⚠ Arquivo foi excluído no disco');
+      return;
+    }
 
     if (origin === 'user') {
       setConflictBanner('');
@@ -810,7 +824,7 @@
         }
 
         const label = origin === 'disk'
-          ? 'Atualizado do disco (git/terminal) ✓'
+          ? 'Atualizado em tempo real ✓'
           : origin === 'openai' ? 'Atualizado por ChatGPT ✓'
           : origin === 'claude-cli' ? 'Atualizado por Claude Code ✓'
           : origin === 'gemini-cli' ? 'Atualizado por Gemini CLI ✓'
@@ -826,7 +840,7 @@
         }, 1800);
       }
     } else {
-      setConflictBanner('⚠ Arquivo alterado no disco (você possui alterações não salvas)');
+      setConflictBanner('⚠ Arquivo alterado externamente (você possui alterações não salvas)');
     }
   }
 
