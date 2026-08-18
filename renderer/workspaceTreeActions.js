@@ -213,11 +213,11 @@
                         rel = rel.replace(/\\/g, '/');
                     }
                     const isDir = node.classList.contains('dir');
-                    node.classList.remove('git-modified', 'git-untracked', 'git-dir-modified');
+                    node.classList.remove('git-modified', 'git-staged', 'git-untracked', 'git-dir-modified');
                     if (isDir) {
                         if (dirs[rel]) node.classList.add('git-dir-modified');
                     } else if (mods[rel]) {
-                        node.classList.add(mods[rel] === 'U' ? 'git-untracked' : 'git-modified');
+                        node.classList.add(mods[rel] === 'A' ? 'git-staged' : 'git-modified');
                     }
                 }
             }

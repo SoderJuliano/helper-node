@@ -207,7 +207,7 @@ var creatingFolderParent = null;
             } else if (!e.isDir) {
                 gitStatus = currentGitStatus.modifiedFiles ? currentGitStatus.modifiedFiles[relPath] : null;
                 if (gitStatus) {
-                    gitClass = (gitStatus === 'U') ? ' git-untracked' : ' git-modified';
+                    gitClass = (gitStatus === 'A') ? ' git-staged' : ' git-modified';
                 }
             } else {
                 if (currentGitStatus.modifiedDirs && currentGitStatus.modifiedDirs[relPath]) {

@@ -140,10 +140,57 @@
     scheduleBadgeRemoval(2500);
   }
 
+  // Identifica se uma ocorrência de uso pertence a um arquivo, classe ou método de teste
+  function isTestUsage(u) {
+    if (!u) return false;
+    const pathStr = (u.relativePath || u.filePath || '').toLowerCase();
+    const fileStr = (u.fileName || pathStr.split('/').pop() || '').toLowerCase();
+    const callerStr = (u.callerName || '').toLowerCase();
+
+    // 1. Arquivos ou caminhos de teste (*Test.java, *Tests.java, *test.js, *spec.ts, /test/, __tests__, etc.)
+    if (
+      /(?:^|[._/-])(?:test|tests|spec|specs|it|testcase|unittest)(?:[._/-]|\.|$)/i.test(fileStr) ||
+      fileStr.endsWith('test.java') || fileStr.endsWith('tests.java') ||
+      fileStr.endsWith('testcase.java') || fileStr.endsWith('test.js') ||
+      fileStr.endsWith('test.ts') || fileStr.endsWith('spec.js') ||
+      fileStr.endsWith('spec.ts') || fileStr.endsWith('test.py') ||
+      fileStr.startsWith('test_') ||
+      pathStr.includes('/test/') || pathStr.includes('\\test\\') ||
+      pathStr.includes('/tests/') || pathStr.includes('\\tests\\') ||
+      pathStr.includes('/src/test/') || pathStr.includes('\\src\\test\\') ||
+      pathStr.includes('__tests__') || pathStr.includes('__test__')
+    ) {
+      return true;
+    }
+
+    // 2. Métodos de teste (testMethod, shouldDoSomething, etc.)
+    if (
+      /^test/i.test(callerStr) ||
+      /test$/i.test(callerStr) ||
+      /^should/i.test(callerStr) ||
+      callerStr.includes('test')
+    ) {
+      return true;
+    }
+
+    return false;
+  }
+
   // Renderiza a janela detalhada de Chamadores (Usages Popup)
   function showUsagesPopup(usages, symbol, clientX, clientY) {
     removeActiveUsagesPopup();
     removeActivePopup();
+
+    const rawList = Array.isArray(usages) ? usages : [];
+
+    // Ordenação: implementações concretas e chamadores reais no topo, testes (*test*, *Test*, *spec*) sempre por último
+    const sortedUsages = [...rawList].sort((a, b) => {
+      const aTest = isTestUsage(a);
+      const bTest = isTestUsage(b);
+      if (aTest && !bTest) return 1;
+      if (!aTest && bTest) return -1;
+      return 0;
+    });
 
     const popup = document.createElement('div');
     popup.className = 'code-nav-popup code-nav-usages-popup';
@@ -155,17 +202,17 @@
 
     const title = document.createElement('span');
     title.className = 'code-nav-popup-title';
-    title.textContent = `🔗 Usos de "${symbol}" (${usages.length})`;
+    title.textContent = `🔗 Usos de "${symbol}" (${sortedUsages.length})`;
 
     const sub = document.createElement('span');
     sub.className = 'code-nav-popup-sub';
-    sub.textContent = usages.length > 0 ? 'Enter: abrir selecionado / Esc: fechar' : 'Sem chamadores no projeto';
+    sub.textContent = sortedUsages.length > 0 ? 'Enter: abrir selecionado / Esc: fechar' : 'Sem chamadores no projeto';
 
     header.appendChild(title);
     header.appendChild(sub);
     popup.appendChild(header);
 
-    if (usages.length === 0) {
+    if (sortedUsages.length === 0) {
       const emptyDiv = document.createElement('div');
       emptyDiv.style.padding = '12px';
       emptyDiv.style.color = '#888';
@@ -176,9 +223,10 @@
 
     let selectedIndex = 0;
 
-    const itemEls = usages.map((u, idx) => {
+    const itemEls = sortedUsages.map((u, idx) => {
+      const isTest = isTestUsage(u);
       const item = document.createElement('div');
-      item.className = 'code-nav-popup-item' + (idx === 0 ? ' selected' : '');
+      item.className = 'code-nav-popup-item' + (idx === 0 ? ' selected' : '') + (isTest ? ' code-nav-usage-test' : '');
       item.style.flexDirection = 'column';
       item.style.alignItems = 'flex-start';
 
@@ -205,13 +253,27 @@
       leftDiv.appendChild(pathSpan);
       topRow.appendChild(leftDiv);
 
+      const rightDiv = document.createElement('div');
+      rightDiv.style.display = 'flex';
+      rightDiv.style.alignItems = 'center';
+      rightDiv.style.flexShrink = '0';
+
       if (u.callerName) {
         const callerSpan = document.createElement('span');
         callerSpan.className = 'code-nav-popup-caller';
         callerSpan.textContent = `em ${u.callerName}()`;
-        topRow.appendChild(callerSpan);
+        rightDiv.appendChild(callerSpan);
       }
 
+      if (isTest) {
+        const testBadge = document.createElement('span');
+        testBadge.className = 'code-nav-popup-test-badge';
+        testBadge.textContent = 'test';
+        testBadge.title = 'Ocorrência em classe ou arquivo de teste';
+        rightDiv.appendChild(testBadge);
+      }
+
+      topRow.appendChild(rightDiv);
       item.appendChild(topRow);
 
       // Trecho da linha de código chamadora
@@ -255,8 +317,8 @@
         e.preventDefault();
         e.stopPropagation();
         document.removeEventListener('keydown', keyHandler, true);
-        if (usages[selectedIndex] && window.EditorController) {
-          const u = usages[selectedIndex];
+        if (sortedUsages[selectedIndex] && window.EditorController) {
+          const u = sortedUsages[selectedIndex];
           removeActiveUsagesPopup();
           window.EditorController.openFile(u.filePath, u.line, u.col);
         }
@@ -267,15 +329,17 @@
         document.removeEventListener('keydown', keyHandler, true);
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
-        if (usages.length > 0) {
-          selectedIndex = (selectedIndex + 1) % usages.length;
+        if (sortedUsages.length > 0) {
+          selectedIndex = (selectedIndex + 1) % sortedUsages.length;
           itemEls.forEach((el, idx) => el.classList.toggle('selected', idx === selectedIndex));
+          itemEls[selectedIndex]?.scrollIntoView({ block: 'nearest' });
         }
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        if (usages.length > 0) {
-          selectedIndex = (selectedIndex - 1 + usages.length) % usages.length;
+        if (sortedUsages.length > 0) {
+          selectedIndex = (selectedIndex - 1 + sortedUsages.length) % sortedUsages.length;
           itemEls.forEach((el, idx) => el.classList.toggle('selected', idx === selectedIndex));
+          itemEls[selectedIndex]?.scrollIntoView({ block: 'nearest' });
         }
       }
     };
@@ -547,6 +611,85 @@
     }
 
     return null;
+  }
+
+  // Checa se o símbolo na posição pos é especificamente uma assinatura, declaração ou chamada de método/função
+  // (Java Spring, JS/TS, Python, C#, etc.), descartando variáveis, classes, tipos e imports avulsos.
+  function isMethodAtPos(cm, pos, symbol) {
+    if (!cm || !pos || !symbol) return false;
+    const lineText = cm.getLine(pos.line) || '';
+    if (!lineText) return false;
+
+    const trimmedLine = lineText.trim();
+
+    // 1. Descartar completamente se a linha for import/package
+    if (/^(?:import|from|package|require|using|use)\b/i.test(trimmedLine)) {
+      return false;
+    }
+
+    const wordRange = cm.findWordAt(pos);
+    const word = cm.getRange(wordRange.anchor, wordRange.head).trim();
+    if (word !== symbol) return false;
+
+    const startCh = wordRange.anchor.ch;
+    const endCh = wordRange.head.ch;
+
+    const before = lineText.substring(0, startCh);
+    const after = lineText.substring(endCh);
+    const trimmedBefore = before.trim();
+    const trimmedAfter = after.trim();
+
+    // 2. Descartar se for declaração de classe, interface, enum, struct ou record
+    if (/(?:class|interface|enum|struct|record|type)\s+$/i.test(before)) {
+      return false;
+    }
+
+    // 3. Chamada de método ou função: seguido diretamente por '(' ou '<...>' seguido por '('
+    // Ex: foo(), obj.bar(), service.find<T>(x), this.doSomething(1, 2)
+    if (/^\s*(?:<[^>]+>\s*)?\(/i.test(after)) {
+      return true;
+    }
+
+    // 4. Declaração de função JS/TS com arrow function: const foo = () => ou let bar = async () =>
+    if (/(?:const|let|var)\s+$/i.test(before) && /^\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_$]+)\s*=>/i.test(after)) {
+      return true;
+    }
+
+    // 5. Declaração de função JS/TS com function keyword: const foo = function(...)
+    if (/(?:const|let|var)\s+$/i.test(before) && /^\s*=\s*(?:async\s*)?function\b/i.test(after)) {
+      return true;
+    }
+
+    // 6. Declaração de método em objeto/classe JS/TS: foo: () => ... ou foo: function(...)
+    if (/^\s*:\s*(?:async\s*)?(?:function\b|\([^)]*\)\s*=>)/i.test(after)) {
+      return true;
+    }
+
+    // 7. Python: def foo(...) ou async def foo(...)
+    if (/(?:async\s+)?def\s+$/i.test(before)) {
+      return true;
+    }
+
+    // 8. JS/TS: function foo(...) ou async function foo(...)
+    if (/(?:async\s+)?function\*?\s+$/i.test(before)) {
+      return true;
+    }
+
+    // 9. Java/C#/TS: declaração de método com visibilidade ou modificadores
+    // Ex: public void foo(...), private String getBar(...), static async Task<T> process(...)
+    if (/(?:public|private|protected|static|final|abstract|synchronized|native|default|override|async)\s+(?:[A-Za-z0-9_$<>[\].,\s]+\s+)*$/i.test(before) && trimmedAfter.startsWith('(')) {
+      return true;
+    }
+
+    // 10. Checagem de linha anterior com anotação Spring/Java (@Override, @GetMapping, @Bean, @Test, etc.)
+    if (pos.line > 0 && trimmedAfter.startsWith('(')) {
+      const prevLine = (cm.getLine(pos.line - 1) || '').trim();
+      if (prevLine.startsWith('@')) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   // Tenta resolver a definição de uma palavra ou caminho de arquivo ao clicar com Ctrl
@@ -863,8 +1006,20 @@
     const hasSelection = selection && selection.length > 0;
 
     const pos = cm.coordsChar({ left: event.clientX, top: event.clientY });
-    const item = getSymbolOrPathAtPos(cm, pos);
-    let targetSymbol = (item && item.symbol && !item.isPath) ? item.symbol : null;
+
+    // Se o usuário selecionou um símbolo ou palavra, usa a seleção como símbolo prioritário
+    let targetSymbol = null;
+    if (hasSelection) {
+      const trimmedSel = selection.trim();
+      if (/^[A-Za-z_$][\w$]*$/.test(trimmedSel)) {
+        targetSymbol = trimmedSel;
+      }
+    }
+
+    if (!targetSymbol) {
+      const item = getSymbolOrPathAtPos(cm, pos);
+      targetSymbol = (item && item.symbol && !item.isPath) ? item.symbol : null;
+    }
 
     if (!targetSymbol) {
       const wordRange = cm.findWordAt(pos);
@@ -881,6 +1036,21 @@
     activeEditorContextMenu = menu;
 
     if (targetSymbol) {
+      // 1. Opção "Achar Usos" / "Find Usages" (para qualquer símbolo: método, classe, variável, etc.)
+      const btnFindUsages = document.createElement('button');
+      btnFindUsages.className = 'menu-item-find-usages';
+      btnFindUsages.innerHTML = `<span class="menu-icon">🔍</span> <span>Achar Usos de '${targetSymbol}'</span>`;
+      btnFindUsages.addEventListener('click', async (ev) => {
+        ev.stopPropagation();
+        removeActiveEditorContextMenu();
+        if (window.electronAPI && window.electronAPI.codeNavFindUsages) {
+          const usages = await window.electronAPI.codeNavFindUsages({ filePath, symbol: targetSymbol });
+          showUsagesPopup(usages, targetSymbol, event.clientX, event.clientY);
+        }
+      });
+      menu.appendChild(btnFindUsages);
+
+      // 2. Opção "Renomear"
       const btnRename = document.createElement('button');
       btnRename.className = 'menu-item-rename menu-danger';
       btnRename.innerHTML = `<span class="menu-icon">✏️</span> <span>Renomear '${targetSymbol}'</span>`;
@@ -1023,11 +1193,11 @@
 
       clearHoverMarker();
 
-      // Busca de Usages sob Hover sem Ctrl — reusa a posição já medida.
+      // Busca de Usages sob Hover sem Ctrl — APENAS para métodos e assinaturas de métodos
       const pos = posPreCalculada;
       const item = getSymbolOrPathAtPos(cm, pos);
 
-      if (item && item.symbol && !item.isPath) {
+      if (item && item.symbol && !item.isPath && isMethodAtPos(cm, pos, item.symbol)) {
         if (item.symbol !== lastHoveredSymbol) {
           lastHoveredSymbol = item.symbol;
           clearTimeout(usagesTimer);

@@ -191,9 +191,13 @@ ipcMain.handle("get-project-git-status", async () => {
             if (!relPath) continue;
 
             let status = 'M';
-            if (code.includes('?') || code.includes('U')) status = 'U';
-            else if (code.includes('A')) status = 'A';
-            else if (code.includes('D')) status = 'D';
+            const x = code[0];
+            const y = code[1];
+            if ((x === 'A' || x === 'M' || x === 'R' || x === 'C') && (y === ' ' || y === '' || y === undefined)) {
+              status = 'A'; // Staged (git add já feito) -> Verde
+            } else {
+              status = 'M'; // Modificado ainda não adicionado / untracked -> Vermelho
+            }
 
             modifiedFiles[relPath] = status;
             count++;
