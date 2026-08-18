@@ -402,6 +402,16 @@ helpers.formatToHTML = function(text) {
   return formatted;
 }
 
+helpers.buildPromptWithHistory = function(currentText, pastMessages = [], opts = {}) {
+  try {
+    const { buildPromptWithHistory } = require('../../services/historyFormatter');
+    return buildPromptWithHistory(currentText, pastMessages, opts);
+  } catch (e) {
+    console.warn('[helpers.buildPromptWithHistory] fallback to currentText:', e.message);
+    return currentText;
+  }
+};
+
 helpers.appendVoiceSummaryInstructionIfNeeded = function(instructionOrPrompt) {
   try {
     const cfg = configService.getGoogleTtsConfig();

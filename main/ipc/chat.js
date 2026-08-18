@@ -34,12 +34,7 @@ ipcMain.on("send-to-gemini", async (event, text, sessionId) => {
       if (session && session.conversations && session.conversations.length > 1) {
         pastMessages = session.conversations.slice(0, -1);
         if (pastMessages.length > 0) {
-          let historyContext = "=== HISTÓRICO DA CONVERSA ANTERIOR ===\n";
-          for (const msg of pastMessages) {
-            historyContext += `[${msg.role === 'user' ? 'Usuário' : 'IA'}]: ${msg.content}\n\n`;
-          }
-          historyContext += "=== FIM DO HISTÓRICO ===\n\nPergunta atual: ";
-          promptWithHistory = historyContext + text;
+          promptWithHistory = helpers.buildPromptWithHistory(text, pastMessages);
         }
       }
     }

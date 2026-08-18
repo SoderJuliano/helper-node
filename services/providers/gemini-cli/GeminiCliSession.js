@@ -104,39 +104,8 @@ class GeminiCliSession extends EventEmitter {
         this._hasStarted = false;
         this._agyConvId = null;
       }
-      // Reidratação inteligente do contexto: últimas 30 mensagens
-      const historyLimit = 30;
-      let historyContext = "=== RECONSTRUÇÃO DO CONTEXTO DA CONVERSA ===\n";
-      const messagesToInclude = history.slice(-historyLimit);
-      const omittedCount = history.length - messagesToInclude.length;
-      
-      if (omittedCount > 0) {
-        historyContext += `[Mensagens anteriores omitidas para economizar contexto: ${omittedCount} mensagens]\n\n`;
-      }
-      
-      for (const msg of messagesToInclude) {
-        const roleName = msg.role === 'user' ? 'Usuário' : 'IA';
-        let cleanContent = typeof msg.content === 'string' ? msg.content : String(msg.content || '');
-        if (cleanContent.includes("═══ DIRETIVA DE SISTEMA")) {
-          cleanContent = cleanContent.replace(/═══ DIRETIVA DE SISTEMA[\s\S]*?═════════════════════════════════════════════════════════════\s*/g, "");
-          cleanContent = cleanContent.replace(/═══ DIRETIVA DE SISTEMA[\s\S]*?Lembre-se: Toda a sua resposta deve ser um JSON válido e parseável\.\s*/g, "");
-        }
-        if (cleanContent.trim().startsWith("{") && cleanContent.includes('"response"')) {
-          try {
-            const parsed = JSON.parse(cleanContent);
-            if (parsed && typeof parsed.response === "string") {
-              cleanContent = parsed.response;
-            }
-          } catch (_) {}
-        }
-        cleanContent = cleanContent.trim();
-        if (cleanContent) {
-          historyContext += `[${roleName}]: ${cleanContent}\n\n`;
-        }
-      }
-      
-      historyContext += "=== FIM DO CONTEXTO ===\n\nUse as informações acima como contexto para a próxima instrução. Não responda ao histórico, apenas use-o como base para a instrução atual.\n\nInstrução atual: ";
-      finalPrompt = historyContext + prompt;
+      const { buildPromptWithHistory } = require('../../historyFormatter');
+      finalPrompt = buildPromptWithHistory(prompt, history);
     }
 
     const runAttempt = (currentPrompt, currentIsContinue, retriesLeft) => {

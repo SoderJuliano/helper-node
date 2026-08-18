@@ -44,7 +44,24 @@ function fitPromptToCommandLine(prompt, command, otherArgs, cwd) {
     fs.writeFileSync(tempFilePath, prompt, 'utf8');
     console.log(`[copilot-cli] Prompt grande (${prompt.length} chars) salvo em ${tempFileName} para envio 100% integral sem omissões.`);
 
-    const instructionPrompt = `O usuário enviou uma mensagem/pergunta contendo objetos ou código extenso. O enunciado e todos os objetos colados pelo usuário foram salvos INTEGRALMENTE sem nenhuma omissão no arquivo "${tempFileName}" no diretório do projeto. Por favor, abra e leia o arquivo "${tempFileName}" completamente e responda ao usuário de forma precisa.`;
+    let currentInstruction = '';
+    const match = prompt.match(/🎯 INSTRUÇÃO ATUAL DO USUÁRIO[^\n]*\r?\n([\s\S]*?)(?:\r?\n═|$)/);
+    if (match && match[1]) {
+      currentInstruction = match[1].trim();
+    } else {
+      const matchLegacy = prompt.match(/=== FIM DO HISTÓRICO ===\r?\n\r?Pergunta atual:\s*([\s\S]*)$/i);
+      if (matchLegacy && matchLegacy[1]) {
+        currentInstruction = matchLegacy[1].trim();
+      }
+    }
+
+    let instructionPrompt;
+    if (currentInstruction) {
+      const preview = currentInstruction.length > 250 ? currentInstruction.slice(0, 250) + '...' : currentInstruction;
+      instructionPrompt = `INSTRUÇÃO ATUAL DO USUÁRIO QUE VOCÊ DEVE EXECUTAR/RESPONDER:\n"${preview}"\n\nO contexto completo, histórico e arquivos extensos foram salvos INTEGRALMENTE sem omissões em "${tempFileName}" no diretório do projeto. Por favor, leia "${tempFileName}" para ter todos os detalhes necessários e responda/execute a instrução atual com precisão.`;
+    } else {
+      instructionPrompt = `O usuário enviou uma mensagem/pergunta contendo objetos ou código extenso. O enunciado e todos os objetos colados pelo usuário foram salvos INTEGRALMENTE sem nenhuma omissão no arquivo "${tempFileName}" no diretório do projeto. Por favor, abra e leia o arquivo "${tempFileName}" completamente e responda ao usuário de forma precisa.`;
+    }
 
     return { promptText: instructionPrompt, tempFile: tempFilePath };
   } catch (err) {
