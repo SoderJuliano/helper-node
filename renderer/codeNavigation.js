@@ -1242,6 +1242,33 @@
       }
     });
 
+    // Atalho de teclado Alt+F7 (padrão IntelliJ) / Shift+F12 (VS Code) para Achar Usos
+    wrapper.addEventListener('keydown', async (e) => {
+      if ((e.altKey && e.key === 'F7') || (e.shiftKey && e.key === 'F12')) {
+        const cursor = cm.getCursor();
+        const selection = cm.getSelection().trim();
+        let targetSymbol = (/^[A-Za-z_$][\w$]*$/.test(selection)) ? selection : null;
+        if (!targetSymbol) {
+          const item = getSymbolOrPathAtPos(cm, cursor);
+          targetSymbol = (item && item.symbol && !item.isPath) ? item.symbol : null;
+        }
+        if (!targetSymbol) {
+          const wordRange = cm.findWordAt(cursor);
+          const word = cm.getRange(wordRange.anchor, wordRange.head).trim();
+          if (word && /^[A-Za-z_$][\w$]*$/.test(word)) {
+            targetSymbol = word;
+          }
+        }
+        if (targetSymbol && window.electronAPI && window.electronAPI.codeNavFindUsages) {
+          e.preventDefault();
+          e.stopPropagation();
+          const coords = cm.charCoords(cursor, 'window');
+          const usages = await window.electronAPI.codeNavFindUsages({ filePath: currentFilePath, symbol: targetSymbol });
+          showUsagesPopup(usages, targetSymbol, coords.left, coords.bottom);
+        }
+      }
+    });
+
     document.addEventListener('keyup', (e) => {
       if (e.key === 'Control' || e.key === 'Meta') {
         clearHoverMarker();
