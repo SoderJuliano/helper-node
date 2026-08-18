@@ -229,7 +229,10 @@ compartilhar entre devs, não pra distribuição tipo usuário final via loja.
   a build falhar o `npm install` não quebra. Ver `terminal:init` em `main.js`
   (branch `isWin`) + helpers `writeToTerminal`/`killTerminal`.
 - **`captureOneAnswer`** (`vadEngine`, só usado no testMode): usa `pw-record`.
-- **Pipeline local Whisper.cpp** (edição full sem OpenAI): os binários ainda são
-  compilados só pra Linux. A CAPTURA de áudio já é cross-platform; o que falta é
-  o build do `whisper-cli` pra Windows. Enquanto isso, no Windows use o modelo
-  OpenAI (o código cai automaticamente na nuvem quando não acha o binário).
+- **Pipeline local Whisper.cpp** (edição full sem OpenAI) ✅ PORTADO: `install-windows-full.ps1`
+  agora baixa automaticamente os binários oficiais do Whisper.cpp para Windows x64
+  (`whisper-cli.exe` + DLLs) e os modelos GGML (`ggml-base.bin`, `ggml-small.bin`)
+  com cache local em `%LOCALAPPDATA%\helper-node-whisper-cache`. O download é feito
+  apenas uma única vez e persiste entre atualizações e reinstalações. Em `audio.js`,
+  comandos e caminhos no Windows são executados com quote seguro e fallback adaptativo
+  de modelos.

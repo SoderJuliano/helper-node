@@ -185,7 +185,15 @@ helpers.getAudioDuration = async function(filePath) {
     console.log(`Duração do áudio: ${duration} segundos`);
     return duration;
   } catch (error) {
-    console.error("Erro ao obter duração do áudio:", error.message);
+    // Fallback sem ffprobe: para arquivo WAV (s16le 16kHz mono = 32000 bytes/s)
+    try {
+      if (filePath && fs2.existsSync(filePath)) {
+        const stats = fs2.statSync(filePath);
+        const duration = Math.max(0, (stats.size - 44) / 32000);
+        return duration;
+      }
+    } catch (_) {}
+    return 0;
   }
 }
 
@@ -200,26 +208,30 @@ helpers.transcribeAudio = async function(filePath, options = {}) {
       ROOT_DIR, "whisper", "build", "bin",
       process.platform === "win32" ? "whisper-cli.exe" : "whisper-cli"
     );
+    const modelPathBase = path.join(ROOT_DIR, "whisper/models/ggml-base.bin");
     const modelPathSmall = path.join(ROOT_DIR, "whisper/models/ggml-small.bin");
     const modelPathMedium = path.join(ROOT_DIR, "whisper/models/ggml-medium.bin");
+    const modelPathTiny = path.join(ROOT_DIR, "whisper/models/ggml-tiny.bin");
 
     // Determinar idioma do whisper com base na configuração do app
     const savedLang = configService.getLanguage();
     const whisperLang = savedLang === 'us-en' ? 'en' : 'pt';
 
-    // Escolher modelo e parâmetros com base na duração
-    // medium = melhor qualidade, entende nomes próprios e termos em inglês misturados com pt-br
-    // small = fallback para áudios longos (> 60s) onde velocidade importa mais
-    let modelPath, command;
-    if (duration > 60) {
-      modelPath = modelPathSmall;
-      command = `${whisperPath} -m ${modelPath} -f ${filePath} -l ${whisperLang} --threads 16 --no-timestamps --best-of 3 --beam-size 3`;
-      console.log("Usando modelo small (áudio longo)");
+    // Escolher modelo disponível
+    let modelPath;
+    if (duration && duration > 60) {
+      modelPath = fs2.existsSync(modelPathSmall) ? modelPathSmall : (fs2.existsSync(modelPathBase) ? modelPathBase : (fs2.existsSync(modelPathTiny) ? modelPathTiny : modelPathMedium));
+      console.log(`Usando modelo ${modelPath ? path.basename(modelPath) : 'default'} (áudio longo)`);
     } else {
-      modelPath = fs2.existsSync(modelPathMedium) ? modelPathMedium : modelPathSmall;
-      command = `${whisperPath} -m ${modelPath} -f ${filePath} -l ${whisperLang} --threads 18 --no-timestamps --best-of 5 --beam-size 5`;
-      console.log(`Usando modelo ${modelPath.includes('medium') ? 'medium' : 'small'}`);
+      modelPath = fs2.existsSync(modelPathMedium) ? modelPathMedium : (fs2.existsSync(modelPathSmall) ? modelPathSmall : (fs2.existsSync(modelPathBase) ? modelPathBase : modelPathTiny));
+      console.log(`Usando modelo ${modelPath ? path.basename(modelPath) : 'default'}`);
     }
+
+    if (!modelPath || !fs2.existsSync(modelPath)) {
+      throw new Error("Nenhum modelo Whisper encontrado em whisper/models/");
+    }
+
+    const command = `"${whisperPath}" -m "${modelPath}" -f "${filePath}" -l ${whisperLang} --threads 8 --no-timestamps --best-of 5 --beam-size 5`;
 
     console.log("Executing whisper:", command);
     return new Promise((resolve, reject) => {

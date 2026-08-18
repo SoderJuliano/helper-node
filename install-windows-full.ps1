@@ -17,10 +17,10 @@
 # valer a pena comprar um certificado de assinatura de código de verdade.
 #
 # Edição FULL: habilita na UI as opções de provedor local (Ollama / Claude CLI /
-# Gemini CLI). A transcrição offline local (Whisper.cpp) ainda NÃO está
-# portada pro Windows — use o modelo OpenAI pra transcrição em tempo real (ver
-# WINDOWS-PORT.md, "Gaps conhecidos"). Ollama/Claude CLI/Gemini CLI funcionam
-# normalmente se você já tiver essas ferramentas instaladas e no PATH.
+# Gemini CLI) e transcrição offline local via Whisper.cpp (binários Windows x64 +
+# modelos GGML baixados automaticamente uma única vez e cacheados localmente).
+# Ollama/Claude CLI/Gemini CLI funcionam normalmente se você já tiver essas
+# ferramentas instaladas e no PATH.
 
 $ErrorActionPreference = 'Stop'
 
@@ -167,7 +167,100 @@ if (-not (Test-Path $electronExe)) {
 }
 Write-Ok "Electron pronto"
 
-# 5) comando `helper-node` no PATH do usuario atual - sem precisar de admin
+# 5) Whisper.cpp & Modelos GGML (transcricao offline local — baixados uma unica vez)
+$WhisperDir = Join-Path $InstallDir 'whisper'
+$WhisperBinDir = Join-Path $WhisperDir 'build\bin'
+$WhisperModelsDir = Join-Path $WhisperDir 'models'
+$WhisperCliExe = Join-Path $WhisperBinDir 'whisper-cli.exe'
+
+$CacheDir = Join-Path $env:LOCALAPPDATA 'helper-node-whisper-cache'
+$CacheBinDir = Join-Path $CacheDir 'bin'
+$CacheModelsDir = Join-Path $CacheDir 'models'
+
+New-Item -ItemType Directory -Path $WhisperBinDir -Force | Out-Null
+New-Item -ItemType Directory -Path $WhisperModelsDir -Force | Out-Null
+New-Item -ItemType Directory -Path $CacheBinDir -Force | Out-Null
+New-Item -ItemType Directory -Path $CacheModelsDir -Force | Out-Null
+
+function Download-FileWithCache([string]$url, [string]$targetPath, [string]$cachedPath, [string]$label) {
+    if ((Test-Path $targetPath) -and ((Get-Item $targetPath).Length -gt 0)) {
+        Write-Ok "$label ja presente"
+        return
+    }
+    if ((Test-Path $cachedPath) -and ((Get-Item $cachedPath).Length -gt 0)) {
+        Write-Step "Restaurando $label do cache local..."
+        Copy-Item -Path $cachedPath -Destination $targetPath -Force
+        Write-Ok "$label restaurado do cache"
+        return
+    }
+    Write-Step "Baixando $label (uma unica vez)..."
+    $origProgress = $ProgressPreference
+    $ProgressPreference = 'SilentlyContinue'
+    try {
+        Invoke-WebRequest -Uri $url -OutFile $targetPath -UseBasicParsing
+        Copy-Item -Path $targetPath -Destination $cachedPath -Force
+        Write-Ok "$label pronto e salvo no cache"
+    } catch {
+        Write-Host "AVISO: Falha ao baixar $label ($($_.Exception.Message))" -ForegroundColor Yellow
+    } finally {
+        $ProgressPreference = $origProgress
+    }
+}
+
+$hasBin = (Test-Path $WhisperCliExe) -and ((Get-Item $WhisperCliExe).Length -gt 0)
+
+if (-not $hasBin) {
+    $cachedExe = Join-Path $CacheBinDir 'whisper-cli.exe'
+    if ((Test-Path $cachedExe) -and ((Get-Item $cachedExe).Length -gt 0)) {
+        Write-Step "Restaurando Whisper.cpp do cache local..."
+        Copy-Item -Path "$CacheBinDir\*" -Destination $WhisperBinDir -Recurse -Force
+        $hasBin = $true
+        Write-Ok "Whisper.cpp restaurado do cache"
+    }
+}
+
+if (-not $hasBin) {
+    Write-Step "Baixando Whisper.cpp pre-compilado para Windows x64 (uma unica vez)..."
+    $whisperZipUrl = 'https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.2/whisper-bin-x64.zip'
+    $tmpZip = Join-Path $env:TEMP 'whisper-bin-x64.zip'
+    $tmpExtract = Join-Path $env:TEMP 'whisper-bin-x64-extract'
+    $origProgress = $ProgressPreference
+    $ProgressPreference = 'SilentlyContinue'
+    try {
+        Invoke-WebRequest -Uri $whisperZipUrl -OutFile $tmpZip -UseBasicParsing
+        if (Test-Path $tmpExtract) { Remove-Item -Recurse -Force $tmpExtract }
+        Expand-Archive -Path $tmpZip -DestinationPath $tmpExtract -Force
+        
+        $srcDir = if (Test-Path (Join-Path $tmpExtract 'Release')) { Join-Path $tmpExtract 'Release' } else { $tmpExtract }
+        Copy-Item -Path "$srcDir\*" -Destination $WhisperBinDir -Recurse -Force
+        Copy-Item -Path "$srcDir\*" -Destination $CacheBinDir -Recurse -Force
+        
+        Remove-Item -Force $tmpZip -ErrorAction SilentlyContinue
+        Remove-Item -Recurse -Force $tmpExtract -ErrorAction SilentlyContinue
+        Write-Ok "Whisper.cpp binarios instalados e cacheados"
+    } catch {
+        Write-Host "AVISO: Nao foi possivel baixar o binario do Whisper ($($_.Exception.Message))." -ForegroundColor Yellow
+    } finally {
+        $ProgressPreference = $origProgress
+    }
+} else {
+    Write-Ok "Whisper.cpp binarios prontos"
+}
+
+# Baixar os modelos essenciais (ggml-base.bin e ggml-small.bin)
+Download-FileWithCache `
+    -url 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin' `
+    -targetPath (Join-Path $WhisperModelsDir 'ggml-base.bin') `
+    -cachedPath (Join-Path $CacheModelsDir 'ggml-base.bin') `
+    -label 'Modelo Whisper ggml-base.bin (~140 MB)'
+
+Download-FileWithCache `
+    -url 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin' `
+    -targetPath (Join-Path $WhisperModelsDir 'ggml-small.bin') `
+    -cachedPath (Join-Path $CacheModelsDir 'ggml-small.bin') `
+    -label 'Modelo Whisper ggml-small.bin (~460 MB)'
+
+# 6) comando `helper-node` no PATH do usuario atual - sem precisar de admin
 New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
 $cmdContent = @'
 @echo off
@@ -184,7 +277,7 @@ if ($userPath -notlike "*$BinDir*") {
     Write-Ok "Comando 'helper-node' ja estava no PATH"
 }
 
-# 6) atalhos (Area de Trabalho + Menu Iniciar)
+# 7) atalhos (Area de Trabalho + Menu Iniciar)
 $iconPath = Join-Path $InstallDir 'assets\windows.ico'
 $shell = New-Object -ComObject WScript.Shell
 function New-HelperShortcut([string]$LnkPath) {
@@ -206,9 +299,7 @@ Write-Host "=== Instalacao concluida (edicao: $Edition) ===" -ForegroundColor Ma
 Write-Host "Instalado em: $InstallDir"
 Write-Host "Pra abrir depois: clique no atalho, ou digite 'helper-node' num NOVO terminal PowerShell."
 Write-Host "Pra atualizar: rode este mesmo comando de novo (faz git pull + npm install)."
-Write-Host "Configure sua OpenAI API key na primeira execucao (Configuracoes)."
-Write-Host "Edicao FULL: opcoes de Ollama/Claude CLI/Gemini CLI habilitadas na UI (precisam estar instaladas" -ForegroundColor DarkGray
-Write-Host "  separadamente). Transcricao offline local (Whisper) ainda nao portada - use OpenAI." -ForegroundColor DarkGray
+Write-Host "Edicao FULL: Transcricao offline local (Whisper) e provedores locais prontos." -ForegroundColor Green
 Write-Host ""
 
 Write-Step "Abrindo o Helper Node..."
