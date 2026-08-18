@@ -569,7 +569,25 @@
     const langEl = document.getElementById('fv-lang');
     if (!viewer || !rawFilePath) return;
 
-    const filePath = normPath(rawFilePath);
+    let clean = String(rawFilePath).trim();
+    clean = clean.replace(/^['"`]|['"`]$/g, '');
+    clean = clean.replace(/^file:\/\/\/?([a-zA-Z]:)/, '$1').replace(/^file:\/\//, '');
+
+    if (typeof lineNum !== 'number') {
+      const hashMatch = clean.match(/#L?(\d+)(?:-L?\d+)?$/i);
+      if (hashMatch) {
+        lineNum = parseInt(hashMatch[1], 10);
+        clean = clean.replace(/#L?\d+(?:-L?\d+)?$/i, '');
+      } else {
+        const colonMatch = clean.match(/:(\d+)(?::\d+)?$/);
+        if (colonMatch) {
+          lineNum = parseInt(colonMatch[1], 10);
+          clean = clean.replace(/:\d+(?::\d+)?$/, '');
+        }
+      }
+    }
+
+    const filePath = normPath(clean);
     viewer.classList.add('open');
     setConflictBanner('');
     setSaveStatus('');

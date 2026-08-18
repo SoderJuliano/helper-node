@@ -353,6 +353,14 @@ ipcMain.handle("search-project-content", async (_event, query) => {
 ipcMain.handle("read-file-content", async (event, filePath) => {
   try {
     if (!filePath) return { ok: false, error: "path vazio" };
+    if (typeof filePath === 'string') {
+      filePath = filePath.replace(/^['"`]|['"`]$/g, '');
+      filePath = filePath.replace(/^file:\/\/\/?([a-zA-Z]:)/, '$1').replace(/^file:\/\//, '');
+      filePath = filePath.replace(/#L?\d+(?:-L?\d+)?$/i, '').replace(/:\d+(?::\d+)?$/, '');
+      if (process.platform === 'win32' && !filePath.includes('.jar!')) {
+        filePath = filePath.replace(/\//g, '\\');
+      }
+    }
     // Classe dentro de um jar de dependência (nó "Dependencies" da árvore) —
     // caminho virtual, nunca existe no disco, fica fora do sandbox do
     // workspace de propósito (é leitura, vem do próprio classpath resolvido
@@ -367,6 +375,15 @@ ipcMain.handle("read-file-content", async (event, filePath) => {
     }
     if (workspace.resolvePortalPath) {
       filePath = workspace.resolvePortalPath(filePath);
+    }
+    if (!path.isAbsolute(filePath)) {
+      const attachments = (workspace.list ? workspace.list() : []);
+      const dirAttach = attachments.find(a => a.type === 'dir');
+      const rootDir = dirAttach ? dirAttach.path : process.cwd();
+      const candidate = path.resolve(rootDir, filePath);
+      if (fs2.existsSync(candidate)) {
+        filePath = candidate;
+      }
     }
     if (workspace.isPathAllowed && !workspace.isPathAllowed(filePath)) {
       return { ok: false, error: "arquivo fora do projeto/workspace" };

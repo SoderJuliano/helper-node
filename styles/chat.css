@@ -351,6 +351,110 @@
         .tool-file-chip:hover { background: rgba(255,255,255,0.08); border-color: var(--border-strong); }
         .kb-used-badge { font-size: 11px; color: var(--accent-2); opacity: .85; margin-bottom: 6px; font-style: italic; }
 
+        /* Links de Arquivos e Ações (Edit / Read) no Chat */
+        .chat-link {
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .chat-file-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-family: var(--font-mono, monospace);
+            font-size: 0.9em;
+            color: var(--accent-2, #38bdf8);
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 4px;
+            padding: 1px 6px;
+            margin: 0 2px;
+            vertical-align: middle;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .chat-file-link:hover {
+            background: rgba(56, 189, 248, 0.15);
+            border-color: var(--accent-2, #38bdf8);
+            color: #ffffff;
+            text-decoration: none;
+            box-shadow: 0 0 8px rgba(56, 189, 248, 0.2);
+        }
+
+        .chat-file-link:active {
+            transform: scale(0.97);
+        }
+
+        .chat-file-link .file-link-icon {
+            width: 12px;
+            height: 12px;
+            flex-shrink: 0;
+            opacity: 0.85;
+        }
+
+        .chat-file-link .file-link-icon.edit {
+            color: #38bdf8;
+        }
+
+        .chat-file-link .file-link-icon.read {
+            color: #94a3b8;
+        }
+
+        .chat-file-action {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin: 3px 0;
+            vertical-align: middle;
+        }
+
+        .chat-action-badge {
+            font-size: 10px;
+            font-weight: 700;
+            font-family: var(--font-ui, system-ui, sans-serif);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 1px 5px;
+            border-radius: 3px;
+            line-height: 1.3;
+        }
+
+        .chat-action-badge.badge-edit {
+            background: rgba(56, 189, 248, 0.16);
+            color: #38bdf8;
+            border: 1px solid rgba(56, 189, 248, 0.35);
+        }
+
+        .chat-action-badge.badge-read {
+            background: rgba(148, 163, 184, 0.15);
+            color: #cbd5e1;
+            border: 1px solid rgba(148, 163, 184, 0.3);
+        }
+
+        .chat-web-link {
+            color: var(--accent-2, #38bdf8);
+            text-decoration: underline;
+            text-underline-offset: 3px;
+            transition: opacity 0.15s ease;
+        }
+
+        .chat-web-link:hover {
+            opacity: 0.85;
+        }
+
+        code.inline-code.is-file-path {
+            color: var(--accent-2, #38bdf8);
+            border-color: rgba(56, 189, 248, 0.25);
+            cursor: pointer;
+        }
+
+        code.inline-code.is-file-path:hover {
+            background: rgba(56, 189, 248, 0.12);
+            border-color: var(--accent-2, #38bdf8);
+        }
+
         /* Palavras-chave em destaque (realtime + tradutor) */
         .rt-assistant-text strong, .ia-response strong { font-size: 1.12em; font-weight: 700; color: var(--accent-2); letter-spacing: .2px; }
 

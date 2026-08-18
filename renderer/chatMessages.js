@@ -86,7 +86,37 @@ var isEditingQuestion = false;
         }
 
         document.addEventListener('click', async (e) => {
-            // Verifica se clicou em um bloco de código (pre > code)
+            // 1. Verifica se clicou em link de arquivo (.chat-file-link ou data-file-path)
+            const fileLink = e.target.closest('.chat-file-link, [data-file-path]');
+            if (fileLink) {
+                e.preventDefault();
+                e.stopPropagation();
+                const rawPath = fileLink.dataset.filePath || fileLink.getAttribute('data-file-path') || fileLink.getAttribute('href');
+                const rawLine = fileLink.dataset.line || fileLink.getAttribute('data-line');
+                if (rawPath) {
+                    const parseFn = window.parseFilePathAndLine || ((r) => ({ path: r, line: undefined }));
+                    let { path: filePath, line } = parseFn(rawPath);
+                    if (!line && rawLine) line = parseInt(rawLine, 10);
+                    if (typeof window.openFileViewer === 'function') {
+                        window.openFileViewer(filePath, line);
+                    }
+                }
+                return;
+            }
+
+            // 2. Verifica se clicou em link web externo (http/https)
+            const webLink = e.target.closest('a.chat-web-link, a[href^="http://"], a[href^="https://"]');
+            if (webLink) {
+                e.preventDefault();
+                e.stopPropagation();
+                const url = webLink.getAttribute('href');
+                if (url && window.electronAPI && window.electronAPI.workspaceOpenExternal) {
+                    window.electronAPI.workspaceOpenExternal(url);
+                }
+                return;
+            }
+
+            // 3. Verifica se clicou em um bloco de código (pre > code)
             const codeElement = e.target.closest('pre code');
             if (codeElement && e.target.tagName !== 'BUTTON') {
                 // Pega apenas o texto do código, sem o botão
@@ -100,14 +130,22 @@ var isEditingQuestion = false;
                 return;
             }
             
-            // Verifica se clicou em código inline (apenas <code>, sem <pre>)
-            // Primeiro verifica se é um elemento <code>
+            // 4. Verifica se clicou em código inline (apenas <code>, sem <pre>)
             const clickedCode = e.target.closest('code');
             if (clickedCode) {
                 // Verifica se NÃO está dentro de um <pre>
                 const isInsidePre = clickedCode.closest('pre') !== null;
                 if (!isInsidePre) {
                     const codeText = clickedCode.textContent.trim();
+                    const isFileFn = window.isLikelyFilePath;
+                    if (isFileFn && isFileFn(codeText) && typeof window.openFileViewer === 'function') {
+                        const parseFn = window.parseFilePathAndLine || ((r) => ({ path: r, line: undefined }));
+                        const { path: p, line } = parseFn(codeText);
+                        window.openFileViewer(p, line);
+                        e.stopPropagation();
+                        e.preventDefault();
+                        return;
+                    }
 
                     copyTextReliable(codeText);
                     showCopyToast();

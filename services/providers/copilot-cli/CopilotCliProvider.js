@@ -60,6 +60,8 @@ class CopilotCliProvider {
   async send(prompt, projectPath, sender, opts = {}) {
     const os = require('os');
     const fs = require('fs');
+    const path = require('path');
+    const { execSync } = require('child_process');
     let cwd = projectPath;
     if (!cwd || cwd === '/' || !fs.existsSync(cwd)) {
       cwd = (process.cwd() && process.cwd() !== '/') ? process.cwd() : os.homedir();
@@ -69,6 +71,38 @@ class CopilotCliProvider {
     this._aborted = false;
 
     this._emitStatus(sender, { state: 'busy', projectPath: cwd });
+
+    // Snapshot do estado git inicial para detectar arquivos modificados pela IA
+    const filesBefore = new Map();
+    const emittedFiles = new Set();
+    try {
+      const out = execSync('git status --porcelain', { cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], timeout: 2000 });
+      out.split(/\r?\n/).forEach(line => {
+        if (!line) return;
+        const st = line.slice(0, 2);
+        const file = line.slice(3).trim();
+        if (file) filesBefore.set(file, st);
+      });
+    } catch (_) {}
+
+    const emitNewFileChanges = () => {
+      try {
+        const out = execSync('git status --porcelain', { cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], timeout: 2000 });
+        out.split(/\r?\n/).forEach(line => {
+          if (!line) return;
+          const st = line.slice(0, 2);
+          const file = line.slice(3).trim();
+          if (!file) return;
+          if (!filesBefore.has(file) || filesBefore.get(file) !== st) {
+            if (!emittedFiles.has(file)) {
+              emittedFiles.add(file);
+              const absPath = path.resolve(cwd, file);
+              this._createBackupAndEmitDiff(absPath, cwd, sender);
+            }
+          }
+        });
+      } catch (_) {}
+    };
 
     const proc = new CopilotCliProcess();
     let buf = '';
@@ -105,6 +139,8 @@ class CopilotCliProvider {
         buf += chunk;
         streamedBytes += chunk.length;
         try { sender.send('gemini-stream-chunk', chunk); } catch (_) {}
+        // Verifica se houve arquivos modificados durante a execução
+        emitNewFileChanges();
       });
       proc.onStderr((line) => { if (!this._aborted) errBuf += line + '\n'; });
 
@@ -119,6 +155,9 @@ class CopilotCliProvider {
           resolve({ text: buf.trim() });
           return;
         }
+
+        // Emite diffs dos arquivos alterados no fechamento
+        emitNewFileChanges();
 
         // O aviso de modelo indisponível sai junto com a resposta normal (o
         // CLI cai noutro modelo e segue), então tem que ser lido tanto no
@@ -171,6 +210,41 @@ class CopilotCliProvider {
 
       this._currentProc = proc;
     });
+  }
+
+  _createBackupAndEmitDiff(absPath, cwd, sender) {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const os = require('os');
+      const { execSync } = require('child_process');
+
+      const backupDir = path.join(os.homedir(), '.config', 'helper-node', 'backups', new Date().toISOString().slice(0, 10));
+      fs.mkdirSync(backupDir, { recursive: true });
+      const backupPath = path.join(backupDir, `${Date.now()}_${path.basename(absPath)}`);
+      let content = '';
+      const existed = fs.existsSync(absPath);
+
+      try {
+        const fileDir = path.dirname(absPath);
+        const rawGitRoot = execSync('git rev-parse --show-toplevel', { cwd: fileDir, encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+        const gitRoot = path.normalize(rawGitRoot);
+        const relPath = path.relative(gitRoot, absPath).replace(/\\/g, '/');
+        content = execSync(`git show :"${relPath}"`, { cwd: gitRoot, stdio: ['pipe', 'pipe', 'ignore'], timeout: 1500 }).toString('utf8');
+      } catch (_) {
+        content = '';
+      }
+
+      fs.writeFileSync(backupPath, content, 'utf8');
+      sender.send('workspace-file-written', {
+        action: existed && content ? 'edit' : 'create',
+        path: absPath,
+        backupAt: backupPath,
+      });
+      try { sender.send('file-mutated', { path: absPath, origin: 'copilot-cli' }); } catch (_) {}
+    } catch (e) {
+      console.warn('[copilot-cli] Falha ao criar backup/diff para', absPath, e.message);
+    }
   }
 
   // Registra o "Model X is not available" que o CLI emite quando a conta/org

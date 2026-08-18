@@ -72,6 +72,51 @@
 
         // Delegação de evento para copiar código ao clicar
  // showCopyToast
+        const FILE_ICON_SVG = '<svg class="file-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+        const EDIT_FILE_ICON_SVG = '<svg class="file-link-icon edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+        const READ_FILE_ICON_SVG = '<svg class="file-link-icon read" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>';
+
+        function parseFilePathAndLine(raw) {
+            if (!raw) return { path: '', line: undefined };
+            let p = String(raw).trim();
+            p = p.replace(/^['"`]|['"`]$/g, '');
+            p = p.replace(/^file:\/\/\/?([a-zA-Z]:)/, '$1').replace(/^file:\/\//, '');
+            let line = undefined;
+            const hashMatch = p.match(/#L?(\d+)(?:-L?\d+)?$/i);
+            if (hashMatch) {
+                line = parseInt(hashMatch[1], 10);
+                p = p.replace(/#L?\d+(?:-L?\d+)?$/i, '');
+            } else {
+                const colonMatch = p.match(/:(\d+)(?::\d+)?$/);
+                if (colonMatch) {
+                    line = parseInt(colonMatch[1], 10);
+                    p = p.replace(/:\d+(?::\d+)?$/, '');
+                }
+            }
+            return { path: p, line };
+        }
+
+        function isLikelyFilePath(str) {
+            if (!str || typeof str !== 'string') return false;
+            const s = str.trim().replace(/^['"`]|['"`]$/g, '');
+            if (s.includes('\n') || s.includes(' ') || s.length > 260 || s.length < 2) return false;
+            if (s.startsWith('http://') || s.startsWith('https://') || s.startsWith('data:')) return false;
+            const clean = s.replace(/^file:\/\/\/?([a-zA-Z]:)/, '$1').replace(/^file:\/\//, '');
+            const fileExtRegex = /\.(?:js|mjs|cjs|ts|tsx|jsx|json|html|htm|css|scss|sass|less|py|java|cpp|c|h|hpp|cs|go|rs|php|rb|md|markdown|txt|xml|yaml|yml|sh|bash|bat|cmd|ps1|sql|env|gitignore|toml|properties|gradle|svg|png|jpg|jpeg)(?::\d+)?(?:#L?\d+)?$/i;
+            const hasPathSep = clean.includes('/') || clean.includes('\\');
+            return fileExtRegex.test(clean) || (hasPathSep && !/[<>{}\(\);=]/.test(clean));
+        }
+
+        function buildFileLinkHtml(targetPath, displayLabel, iconSvg, actionClass) {
+            const { path: p, line } = parseFilePathAndLine(targetPath);
+            const lineAttr = line ? ` data-line="${line}"` : '';
+            const title = line ? `Abrir ${p} na linha ${line}` : `Abrir ${p} no editor`;
+            const icon = iconSvg || FILE_ICON_SVG;
+            const cls = actionClass ? `chat-link chat-file-link ${actionClass}` : 'chat-link chat-file-link';
+            const label = displayLabel || p;
+            return `<a href="#" class="${cls}" data-file-path="${p}"${lineAttr} title="${title}">${icon}<span>${label}</span></a>`;
+        }
+
         function renderMarkdown(text, idPrefix) {
             if (!text) return '';
             const pfx = idPrefix || 'md';
@@ -88,24 +133,6 @@
             });
 
             // 1. Protege blocos ``` ... ```
-            //
-            // Varredura por LINHA, não regex sobre o texto todo. O regex antigo
-            // (/```([\w-]*)\n?([\s\S]*?)```/) fechava o bloco na primeira crase
-            // tripla que encontrasse EM QUALQUER LUGAR — inclusive no meio de
-            // uma linha de código, como console.log("```"). Dois estragos,
-            // ambos reproduzidos com bloco de 300 linhas:
-            //
-            //   crase tripla no meio  -> <pre> ficava com 5 linhas e as outras
-            //                            295 viravam texto solto (o usuário
-            //                            continuava VENDO tudo, mas copiar o
-            //                            bloco trazia só as 5);
-            //   bloco sem fechamento  -> nenhum <pre> era criado e o código
-            //                            inteiro virava parágrafo — "copiei a
-            //                            resposta e veio sem o bloco".
-            //
-            // Regra do CommonMark: a cerca de fechamento tem que estar sozinha
-            // na linha e ser pelo menos tão longa quanto a de abertura; bloco
-            // sem fechamento vai até o fim do texto.
             out = (() => {
                 const linhas = out.split('\n');
                 const saida = [];
@@ -135,12 +162,53 @@
                 return saida.join('\n');
             })();
 
-            // 2. Código inline `x` → <code> inline (NÃO bloco)
-            out = out.replace(/`([^`\n]+)`/g, (_, code) =>
-                `<code class="inline-code" title="Clique para copiar">${escapeHTML(code)}</code>`
-            );
+            // 2. Processa linhas de Ação do Copilot CLI / AI: Edit e Read
+            // Ex.: Edit: src/index.js, Read: src/index.js, ● Edit src/index.js, * Read src/index.js, etc.
+            out = out.replace(/(?:^|\n)\s*(?:[●✓*•-]\s*|\d+\.\s*)?(?:(Edit|Editing|Edited|Wrote|Created|Modified)|(Read|Reading|Viewed|Inspected))(?::|\s+file:|\s+)\s*(`?[a-zA-Z0-9_.\/\\#:-]+`?|\[[^\]]+\]\([^)]+\))(?=[^\w\/\\.:-]|$)/g, (match, editAct, readAct, rawTarget) => {
+                let target = rawTarget.trim().replace(/^`|`$/g, '');
+                let label = target;
+                const mdLink = target.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+                if (mdLink) {
+                    label = mdLink[1];
+                    target = mdLink[2];
+                }
+                if (isLikelyFilePath(target) || target.startsWith('file://')) {
+                    if (editAct) {
+                        return hold(`<span class="chat-file-action action-edit"><span class="chat-action-badge badge-edit">Edit</span> ${buildFileLinkHtml(target, label, EDIT_FILE_ICON_SVG, 'action-link-edit')}</span>`);
+                    } else if (readAct) {
+                        return hold(`<span class="chat-file-action action-read"><span class="chat-action-badge badge-read">Read</span> ${buildFileLinkHtml(target, label, READ_FILE_ICON_SVG, 'action-link-read')}</span>`);
+                    }
+                }
+                return match;
+            });
 
-            // 3. Negrito e itálico
+            // 3. Processa Markdown Links [label](target)
+            out = out.replace(/\[([\s\S]*?)\]\(([\s\S]*?)\)/g, (_, label, target) => {
+                const trg = target.trim();
+                if (/^https?:\/\//i.test(trg)) {
+                    return hold(`<a href="${escapeHTML(trg)}" class="chat-link chat-web-link" target="_blank" rel="noopener noreferrer">${label}</a>`);
+                }
+                if (trg.startsWith('file://') || isLikelyFilePath(trg)) {
+                    return hold(buildFileLinkHtml(trg, label, FILE_ICON_SVG));
+                }
+                return hold(`<a href="${escapeHTML(trg)}" class="chat-link chat-web-link" target="_blank" rel="noopener noreferrer">${label}</a>`);
+            });
+
+            // 4. Processa URLs file:/// soltas no texto
+            out = out.replace(/(?:file:\/\/\/[^\s\)<>"\x00]+|file:\/\/[^\s\)<>"\x00]+)/g, (url) => {
+                return hold(buildFileLinkHtml(url, url, FILE_ICON_SVG));
+            });
+
+            // 5. Código inline `x` → <code> inline ou link de arquivo clicável
+            out = out.replace(/`([^`\n]+)`/g, (_, code) => {
+                const trimmed = code.trim();
+                if (isLikelyFilePath(trimmed)) {
+                    return hold(buildFileLinkHtml(trimmed, escapeHTML(trimmed), FILE_ICON_SVG));
+                }
+                return `<code class="inline-code" title="Clique para copiar">${escapeHTML(code)}</code>`;
+            });
+
+            // 6. Negrito e itálico
             out = out.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
             out = out.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>');
 
@@ -316,4 +384,6 @@
     window.renderMarkdown = renderMarkdown;
     window.formatStreamedText = formatStreamedText;
     window.formatOpenAIResponse = formatOpenAIResponse;
+    window.parseFilePathAndLine = parseFilePathAndLine;
+    window.isLikelyFilePath = isLikelyFilePath;
 })();
