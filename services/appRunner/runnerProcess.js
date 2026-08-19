@@ -58,23 +58,39 @@ class RunnerProcess extends EventEmitter {
       startedAt: Date.now(),
     };
 
-    // Monta ambiente completo do processo
+    // Monta ambiente completo do processo preservando PATH e System32 no Windows
     const env = { ...process.env, ...customEnv };
+    const pathKey = Object.keys(env).find(k => k.toLowerCase() === 'path') || (isWin ? 'Path' : 'PATH');
+    let currentPath = env[pathKey] || process.env.PATH || process.env.Path || '';
+
+    if (isWin) {
+      const sysRoot = process.env.SystemRoot || process.env.SYSTEMROOT || 'C:\\Windows';
+      const system32 = path.join(sysRoot, 'System32');
+      if (!currentPath.toLowerCase().includes('system32')) {
+        currentPath = `${system32}${path.delimiter}${sysRoot}${path.delimiter}${currentPath}`;
+      }
+    }
+
     if (jdk && jdk.homePath) {
       env.JAVA_HOME = jdk.homePath;
       const binDir = path.join(jdk.homePath, 'bin');
-      env.PATH = `${binDir}${path.delimiter}${env.PATH || ''}`;
+      currentPath = `${binDir}${path.delimiter}${currentPath}`;
     }
+
+    env[pathKey] = currentPath;
+    env.PATH = currentPath;
+    if (isWin) env.Path = currentPath;
 
     // Configurações do spawn cross-platform
     let spawnExe = executable;
     let spawnArgs = args;
 
     if (isWin) {
-      // No Windows, arquivos .bat ou .cmd são executados via cmd.exe /c
+      // Localiza o executável absoluto do cmd.exe via ComSpec ou System32
+      const cmdExe = process.env.ComSpec || process.env.COMSPEC || path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'cmd.exe');
       const isBatch = executable.endsWith('.bat') || executable.endsWith('.cmd') || !executable.includes('.');
       if (isBatch) {
-        spawnExe = 'cmd.exe';
+        spawnExe = cmdExe;
         spawnArgs = ['/c', executable, ...args];
       }
     }
@@ -94,7 +110,7 @@ class RunnerProcess extends EventEmitter {
       this.emit('status', this.getStatus());
 
       // Emite chunk inicial de cabeçalho informativo
-      const displayCmd = isWin && spawnExe === 'cmd.exe'
+      const displayCmd = isWin && (spawnExe.toLowerCase().endsWith('cmd.exe'))
         ? `${path.basename(executable)} ${args.join(' ')}`
         : `${executable} ${args.join(' ')}`;
 

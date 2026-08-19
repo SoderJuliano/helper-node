@@ -184,4 +184,38 @@ const status = AppRunnerService.getStatus();
 assert.strictEqual(status.status, 'idle');
 console.log('  ok   AppRunnerService status inicial é "idle"');
 
-console.log('\nTodos os testes unitários do App Runner passaram com sucesso! 🎉\n');
+// 6. Testes do RunnerProcess (Spawn & Streaming)
+console.log('6. Testando RunnerProcess spawn & streaming...');
+const { RunnerProcess } = require('../services/appRunner');
+const runner = new RunnerProcess();
+let outputCollected = '';
+
+runner.on('data', (chunk) => {
+  outputCollected += chunk;
+});
+
+const isWin = process.platform === 'win32';
+const testScript = isWin ? 'test-dummy.bat' : 'test-dummy.sh';
+const testScriptPath = path.join(__dirname, testScript);
+const scriptContent = isWin ? '@echo off\r\necho RUNNER_TEST_OUTPUT_OK\r\n' : '#!/bin/sh\necho RUNNER_TEST_OUTPUT_OK\n';
+fs.writeFileSync(testScriptPath, scriptContent, 'utf8');
+if (!isWin) fs.chmodSync(testScriptPath, 0o755);
+
+runner.start({
+  executable: testScriptPath,
+  args: [],
+  cwd: __dirname,
+  runMeta: { displayName: 'DummyTest' },
+});
+
+assert.strictEqual(runner.getStatus().status, 'running');
+
+runner.on('exit', ({ code }) => {
+  try {
+    fs.unlinkSync(testScriptPath);
+  } catch (_) {}
+  assert.strictEqual(code, 0);
+  assert(outputCollected.includes('RUNNER_TEST_OUTPUT_OK'));
+  console.log('  ok   RunnerProcess spawn e streaming executaram com sucesso sem ENOENT');
+  console.log('\nTodos os testes unitários do App Runner passaram com sucesso! 🎉\n');
+});
