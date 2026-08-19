@@ -570,8 +570,8 @@
     if (!viewer || !rawFilePath) return;
 
     let clean = String(rawFilePath).trim();
-    clean = clean.replace(/^['"`]|['"`]$/g, '');
-    clean = clean.replace(/^file:\/\/\/?([a-zA-Z]:)/, '$1').replace(/^file:\/\//, '');
+    clean = clean.replace(/^[`'"\(\[\{<]+|[`'"\)\]\}>.,;:!]+$/g, '');
+    clean = clean.replace(/^file:\/\/\/?([a-zA-Z]:)/i, '$1').replace(/^file:\/\//i, '');
 
     if (typeof lineNum !== 'number') {
       const hashMatch = clean.match(/#L?(\d+)(?:-L?\d+)?$/i);
@@ -586,8 +586,9 @@
         }
       }
     }
+    clean = clean.replace(/^[`'"\(\[\{<]+|[`'"\)\]\}>.,;:!]+$/g, '');
 
-    const filePath = normPath(clean);
+    let filePath = normPath(clean);
     viewer.classList.add('open');
     setConflictBanner('');
     setSaveStatus('');
@@ -599,9 +600,12 @@
 
     let doc = openFiles.get(filePath);
     if (!doc) {
-      langEl.textContent = '';
+      if (langEl) langEl.textContent = '';
       const cmInstLoading = ensureCm();
-      if (cmInstLoading) cmInstLoading.setValue('Carregando…');
+      if (cmInstLoading) {
+        cmInstLoading.setValue('Carregando…');
+        setTimeout(() => cmInstLoading.refresh(), 0);
+      }
 
       let res = null;
       try {
@@ -616,12 +620,28 @@
         if (cmInstErr) {
           cmInstErr.setOption('mode', null);
           cmInstErr.setValue('// Não foi possível abrir: ' + errorMsg);
+          setTimeout(() => cmInstErr.refresh(), 20);
         }
         doc = { content: '// Não foi possível abrir: ' + errorMsg, originalContent: '', mtimeMs: 0, dirty: false };
         openFiles.set(filePath, doc);
         renderTabs();
         return;
       }
+
+      // Se a resposta retornou o caminho canônico do disco, atualiza referências
+      if (res.path) {
+        const canonicalPath = normPath(res.path);
+        if (canonicalPath !== filePath) {
+          openFiles.delete(filePath);
+          filePath = canonicalPath;
+          activePath = canonicalPath;
+          if (pathEl) {
+            pathEl.textContent = getFileName(canonicalPath);
+            pathEl.title = canonicalPath;
+          }
+        }
+      }
+
       doc = { content: res.content, originalContent: res.content, mtimeMs: res.mtimeMs, dirty: false };
       openFiles.set(filePath, doc);
     } else if (!doc.dirty && !filePath.includes('.jar!')) {
@@ -640,11 +660,10 @@
     const cmInst = ensureCm();
     if (!cmInst) return;
     const ext = extOf(filePath);
-    // Classe dentro de um jar de dependência (nó "Dependencies" da árvore) —
-    // caminho virtual (<jar>!Classe.java), somente leitura: não tem onde
-    // salvar de volta, e lint/go-to-definition não fazem sentido nele.
     const isDependencySource = filePath.includes('.jar!');
-    langEl.textContent = (LANG_LABEL_BY_EXT[ext] || (ext || 'texto').toUpperCase()) + (isDependencySource ? ' · lib' : '');
+    if (langEl) {
+      langEl.textContent = (LANG_LABEL_BY_EXT[ext] || (ext || 'texto').toUpperCase()) + (isDependencySource ? ' · lib' : '');
+    }
     cmInst.setOption('mode', CM_MODE_BY_EXT[ext] || null);
     cmInst.setOption('readOnly', isDependencySource);
 
@@ -662,6 +681,8 @@
         window.ImportChecker.attach(cmInst, filePath);
       }
     }
+    // Refresh CodeMirror imediatamente e em ticks para recalcular dimensões no layout flex
+    cmInst.refresh();
     setTimeout(() => {
       cmInst.refresh();
       if (typeof lineNum === 'number' && lineNum > 0) {
@@ -679,7 +700,7 @@
       } else {
         cmInst.focus();
       }
-    }, 20);
+    }, 30);
   }
 
   async function saveActive() {

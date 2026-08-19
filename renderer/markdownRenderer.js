@@ -79,8 +79,11 @@
         function parseFilePathAndLine(raw) {
             if (!raw) return { path: '', line: undefined };
             let p = String(raw).trim();
-            p = p.replace(/^['"`]|['"`]$/g, '');
-            p = p.replace(/^file:\/\/\/?([a-zA-Z]:)/, '$1').replace(/^file:\/\//, '');
+            // Remove aspas, crases, parênteses e colchetes externos
+            p = p.replace(/^[`'"\(\[\{<]+|[`'"\)\]\}>]+$/g, '');
+            p = p.replace(/[.,;:!]+$/, '');
+            // Remove protocolo file:/// ou file://
+            p = p.replace(/^file:\/\/\/?([a-zA-Z]:)/i, '$1').replace(/^file:\/\//i, '');
             let line = undefined;
             const hashMatch = p.match(/#L?(\d+)(?:-L?\d+)?$/i);
             if (hashMatch) {
@@ -93,15 +96,16 @@
                     p = p.replace(/:\d+(?::\d+)?$/, '');
                 }
             }
+            p = p.replace(/^[`'"\(\[\{<]+|[`'"\)\]\}>.,;:!]+$/g, '');
             return { path: p, line };
         }
 
         function isLikelyFilePath(str) {
             if (!str || typeof str !== 'string') return false;
-            const s = str.trim().replace(/^['"`]|['"`]$/g, '');
+            let s = str.trim().replace(/^[`'"\(\[\{<]+|[`'"\)\]\}>.,;:!]+$/g, '');
             if (s.includes('\n') || s.includes(' ') || s.length > 260 || s.length < 2) return false;
             if (s.startsWith('http://') || s.startsWith('https://') || s.startsWith('data:')) return false;
-            const clean = s.replace(/^file:\/\/\/?([a-zA-Z]:)/, '$1').replace(/^file:\/\//, '');
+            const clean = s.replace(/^file:\/\/\/?([a-zA-Z]:)/i, '$1').replace(/^file:\/\//i, '');
             const fileExtRegex = /\.(?:js|mjs|cjs|ts|tsx|jsx|json|html|htm|css|scss|sass|less|py|java|cpp|c|h|hpp|cs|go|rs|php|rb|md|markdown|txt|xml|yaml|yml|sh|bash|bat|cmd|ps1|sql|env|gitignore|toml|properties|gradle|svg|png|jpg|jpeg)(?::\d+)?(?:#L?\d+)?$/i;
             const hasPathSep = clean.includes('/') || clean.includes('\\');
             return fileExtRegex.test(clean) || (hasPathSep && !/[<>{}\(\);=]/.test(clean));
@@ -113,8 +117,12 @@
             const title = line ? `Abrir ${p} na linha ${line}` : `Abrir ${p} no editor`;
             const icon = iconSvg || FILE_ICON_SVG;
             const cls = actionClass ? `chat-link chat-file-link ${actionClass}` : 'chat-link chat-file-link';
-            const label = displayLabel || p;
-            return `<a href="#" class="${cls}" data-file-path="${p}"${lineAttr} title="${title}">${icon}<span>${label}</span></a>`;
+            let label = (displayLabel || p).trim();
+            if (label.startsWith('`') && label.endsWith('`') && label.length > 2) {
+                label = label.slice(1, -1);
+            }
+            const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            return `<a href="#" class="${cls}" data-file-path="${esc(p)}"${lineAttr} title="${esc(title)}">${icon}<span>${esc(label)}</span></a>`;
         }
 
         function renderMarkdown(text, idPrefix) {

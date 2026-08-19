@@ -91,13 +91,13 @@ var isEditingQuestion = false;
             if (fileLink) {
                 e.preventDefault();
                 e.stopPropagation();
-                const rawPath = fileLink.dataset.filePath || fileLink.getAttribute('data-file-path') || fileLink.getAttribute('href');
-                const rawLine = fileLink.dataset.line || fileLink.getAttribute('data-line');
-                if (rawPath) {
+                const rawPath = fileLink.getAttribute('data-file-path') || fileLink.dataset.filePath;
+                const rawLine = fileLink.getAttribute('data-line') || fileLink.dataset.line;
+                if (rawPath && rawPath !== '#') {
                     const parseFn = window.parseFilePathAndLine || ((r) => ({ path: r, line: undefined }));
                     let { path: filePath, line } = parseFn(rawPath);
                     if (!line && rawLine) line = parseInt(rawLine, 10);
-                    if (typeof window.openFileViewer === 'function') {
+                    if (filePath && typeof window.openFileViewer === 'function') {
                         window.openFileViewer(filePath, line);
                     }
                 }

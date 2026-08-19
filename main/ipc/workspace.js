@@ -354,9 +354,11 @@ ipcMain.handle("read-file-content", async (event, filePath) => {
   try {
     if (!filePath) return { ok: false, error: "path vazio" };
     if (typeof filePath === 'string') {
-      filePath = filePath.replace(/^['"`]|['"`]$/g, '');
-      filePath = filePath.replace(/^file:\/\/\/?([a-zA-Z]:)/, '$1').replace(/^file:\/\//, '');
+      filePath = filePath.trim();
+      filePath = filePath.replace(/^[`'"\(\[\{<]+|[`'"\)\]\}>.,;:!]+$/g, '');
+      filePath = filePath.replace(/^file:\/\/\/?([a-zA-Z]:)/i, '$1').replace(/^file:\/\//i, '');
       filePath = filePath.replace(/#L?\d+(?:-L?\d+)?$/i, '').replace(/:\d+(?::\d+)?$/, '');
+      filePath = filePath.replace(/^[`'"\(\[\{<]+|[`'"\)\]\}>.,;:!]+$/g, '');
       if (process.platform === 'win32' && !filePath.includes('.jar!')) {
         filePath = filePath.replace(/\//g, '\\');
       }
@@ -377,12 +379,18 @@ ipcMain.handle("read-file-content", async (event, filePath) => {
       filePath = workspace.resolvePortalPath(filePath);
     }
     if (!path.isAbsolute(filePath)) {
+      const projectPath = workspace.getProjectPath ? workspace.getProjectPath() : null;
       const attachments = (workspace.list ? workspace.list() : []);
       const dirAttach = attachments.find(a => a.type === 'dir');
-      const rootDir = dirAttach ? dirAttach.path : process.cwd();
+      const rootDir = (dirAttach && dirAttach.path) ? dirAttach.path : (projectPath || process.cwd());
       const candidate = path.resolve(rootDir, filePath);
       if (fs2.existsSync(candidate)) {
         filePath = candidate;
+      } else {
+        const candidateCwd = path.resolve(process.cwd(), filePath);
+        if (fs2.existsSync(candidateCwd)) {
+          filePath = candidateCwd;
+        }
       }
     }
     if (workspace.isPathAllowed && !workspace.isPathAllowed(filePath)) {

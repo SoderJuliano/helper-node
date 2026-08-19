@@ -159,6 +159,7 @@ function isPathAllowed(absPath) {
     if (process.platform === 'win32') {
       normResolved = normResolved.toLowerCase();
     }
+    // 1. Verifica anexos ativos
     for (const a of state.attachments) {
       const aResolved = resolvePortalPath(a.path);
       let normAttachment = path.resolve(aResolved);
@@ -171,6 +172,21 @@ function isPathAllowed(absPath) {
         const isInside = !relative.startsWith('..') && !path.isAbsolute(relative);
         if (isInside) return true;
       }
+    }
+    // 2. Verifica se está dentro de process.cwd()
+    const cwd = process.cwd();
+    if (cwd && cwd !== '/') {
+      const normCwd = process.platform === 'win32' ? path.resolve(cwd).toLowerCase() : path.resolve(cwd);
+      if (normResolved === normCwd) return true;
+      const relative = path.relative(normCwd, normResolved);
+      if (!relative.startsWith('..') && !path.isAbsolute(relative)) return true;
+    }
+    // 3. Permite caminhos dentro da pasta home do usuário
+    const home = os.homedir();
+    if (home) {
+      const normHome = process.platform === 'win32' ? path.resolve(home).toLowerCase() : path.resolve(home);
+      const relHome = path.relative(normHome, normResolved);
+      if (!relHome.startsWith('..') && !path.isAbsolute(relHome)) return true;
     }
   } catch (e) {
     console.warn("[workspace] isPathAllowed erro:", e.message);

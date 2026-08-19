@@ -40,6 +40,14 @@ assert.deepStrictEqual(
   parseFilePathAndLine('`package.json`'),
   { path: 'package.json', line: undefined }
 );
+assert.deepStrictEqual(
+  parseFilePathAndLine('(services/historyFormatter.js).'),
+  { path: 'services/historyFormatter.js', line: undefined }
+);
+assert.deepStrictEqual(
+  parseFilePathAndLine('`main/ipc/chat.js:40`'),
+  { path: 'main/ipc/chat.js', line: 40 }
+);
 console.log('  ok   parseFilePathAndLine extrai caminhos limpos e linhas (#L e :)');
 
 // 2. Testes de isLikelyFilePath
