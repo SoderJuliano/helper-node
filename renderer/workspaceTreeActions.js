@@ -244,6 +244,8 @@
                 const SVGI_LINK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
                 const SVGI_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
                 const SVGI_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; color:#ff5252;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
+                const SVGI_PLAY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; color:#4ade80;"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+                const SVGI_TEST = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; color:#38bdf8;"><path d="M10 2v7.31L4.62 17.5A2 2 0 0 0 6.35 20.5h11.3a2 2 0 0 0 1.73-3L14 9.31V2"/><line x1="8.5" y1="2" x2="15.5" y2="2"/></svg>';
 
                 const mkItem = (iconHtml, label, fn) => {
                     const b = document.createElement('button');
@@ -254,6 +256,42 @@
                     b.addEventListener('click', () => { menu.remove(); fn(); });
                     return b;
                 };
+
+                // Opções de execução App Runner (Spring Boot / Testes)
+                const projectRootPath = (wsProjectMain && wsProjectMain.dataset.path) || (item.isRoot ? item.path : '');
+
+                if (item.isRoot) {
+                    menu.appendChild(mkItem(SVGI_PLAY, 'Executar Aplicação (Spring Boot / Gradle)', () => {
+                        if (window.appRunner) window.appRunner.run(item.path, { kind: 'app' });
+                    }));
+                    menu.appendChild(mkItem(SVGI_TEST, 'Executar Todos os Testes', () => {
+                        if (window.appRunner) window.appRunner.run(item.path, { kind: 'test-all' });
+                    }));
+                    const hrApp = document.createElement('div');
+                    hrApp.style.cssText = 'height:1px; background:var(--border, #2d2d38); margin:4px 0;';
+                    menu.appendChild(hrApp);
+                } else if (item.isDir && (item.path.includes('test') || item.path.includes('tests'))) {
+                    menu.appendChild(mkItem(SVGI_TEST, 'Executar Testes nesta Pasta', () => {
+                        if (window.appRunner) window.appRunner.run(projectRootPath || item.path, { kind: 'test-all' });
+                    }));
+                    const hrApp = document.createElement('div');
+                    hrApp.style.cssText = 'height:1px; background:var(--border, #2d2d38); margin:4px 0;';
+                    menu.appendChild(hrApp);
+                } else if (!item.isDir && item.path && item.path.endsWith('.java')) {
+                    const simpleName = (item.name || item.path.split(/[/\\]/).pop()).replace(/\.java$/i, '');
+                    if (simpleName.endsWith('Test') || simpleName.endsWith('Tests')) {
+                        menu.appendChild(mkItem(SVGI_TEST, `Executar Testes em '${simpleName}'`, () => {
+                            if (window.appRunner) window.appRunner.run(projectRootPath, { kind: 'test-class', testClass: simpleName });
+                        }));
+                    } else {
+                        menu.appendChild(mkItem(SVGI_PLAY, `Executar '${simpleName}.main()'`, () => {
+                            if (window.appRunner) window.appRunner.run(projectRootPath, { kind: 'app', mainClass: simpleName });
+                        }));
+                    }
+                    const hrApp = document.createElement('div');
+                    hrApp.style.cssText = 'height:1px; background:var(--border, #2d2d38); margin:4px 0;';
+                    menu.appendChild(hrApp);
+                }
                 
                 if (item.isRoot || item.isDir) {
                     menu.appendChild(mkItem(SVGI_NEW_FILE, 'Novo Arquivo', () => {

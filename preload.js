@@ -312,4 +312,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
   sendWebcamReply: (requestId, base64) => ipcRenderer.send("nexa:webcam-reply-" + requestId, base64),
   nexaReadFile: (p) => ipcRenderer.invoke("nexa:read-file", p),
   resizeNexaWindow: (w, h) => ipcRenderer.invoke("nexa:resize-window", w, h),
+
+  // === App Runner (Java / Spring Boot / Gradle / Maven / JUnit) ===
+  appRunnerDetectJdks: (preferredPath) => ipcRenderer.invoke("app-runner-detect-jdks", preferredPath),
+  appRunnerDetectProject: (projectDir) => ipcRenderer.invoke("app-runner-detect-project", projectDir),
+  appRunnerParseJava: (payload) => ipcRenderer.invoke("app-runner-parse-java", payload),
+  appRunnerRun: (payload) => ipcRenderer.invoke("app-runner-run", payload),
+  appRunnerStop: () => ipcRenderer.invoke("app-runner-stop"),
+  appRunnerGetStatus: () => ipcRenderer.invoke("app-runner-get-status"),
+  onAppRunnerStreamChunk: (cb) => ipcRenderer.on("app-runner-stream-chunk", (event, chunk) => cb(chunk)),
+  onAppRunnerStatusChanged: (cb) => ipcRenderer.on("app-runner-status-changed", (event, status) => cb(status)),
+  onAppRunnerTestEvent: (cb) => ipcRenderer.on("app-runner-test-event", (event, data) => cb(data)),
+  onAppRunnerAppEvent: (cb) => ipcRenderer.on("app-runner-app-event", (event, data) => cb(data)),
 });

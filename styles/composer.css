@@ -56,7 +56,8 @@
             flex-direction: column;
             width: 100%;
         }
-        .flex-layout-chat #pane-terminal {
+        .flex-layout-chat #pane-terminal,
+        .flex-layout-chat #pane-app-runner {
             display: none !important;
         }
 
@@ -65,12 +66,28 @@
             flex-direction: column;
             width: 100%;
         }
-        .flex-layout-terminal #pane-chat {
+        .flex-layout-terminal #pane-chat,
+        .flex-layout-terminal #pane-app-runner {
+            display: none !important;
+        }
+
+        .flex-layout-app-runner #pane-app-runner {
+            display: flex !important;
+            flex-direction: column;
+            width: 100%;
+            height: 100%;
+            min-height: 180px;
+        }
+        .flex-layout-app-runner #pane-chat,
+        .flex-layout-app-runner #pane-terminal {
             display: none !important;
         }
 
         .composer-view-content.flex-layout-split {
             gap: 12px;
+        }
+        .flex-layout-split #pane-app-runner {
+            display: none !important;
         }
         .flex-layout-split #pane-terminal {
             display: flex !important;

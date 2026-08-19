@@ -283,15 +283,17 @@ var isTerminalInitialized = false;
             }
             window.addEventListener('resize', sincronizarTamanho);
 
+            const btnAppRunner = document.getElementById('tab-btn-app-runner');
+
             function setActiveTab(activeBtn, layoutClass) {
-                [btnChat, btnTerminal, btnSplit].forEach((btn) => {
+                [btnChat, btnTerminal, btnSplit, btnAppRunner].forEach((btn) => {
                     if (btn) btn.classList.remove('active');
                 });
                 if (activeBtn) activeBtn.classList.add('active');
 
                 if (content) content.className = 'composer-view-content ' + layoutClass;
 
-                document.body.classList.remove('terminal-active', 'split-active');
+                document.body.classList.remove('terminal-active', 'split-active', 'app-runner-active');
                 if (layoutClass === 'flex-layout-terminal' || layoutClass === 'flex-layout-split') {
                     document.body.classList.add(
                         layoutClass === 'flex-layout-terminal' ? 'terminal-active' : 'split-active'
@@ -299,12 +301,22 @@ var isTerminalInitialized = false;
                     initTerminalProcess();
                     // O painel acabou de ficar visível: só agora dá pra medir.
                     setTimeout(() => { sincronizarTamanho(); if (term) term.focus(); }, 50);
+                } else if (layoutClass === 'flex-layout-app-runner') {
+                    document.body.classList.add('app-runner-active');
                 }
             }
 
             if (btnChat) btnChat.addEventListener('click', () => setActiveTab(btnChat, 'flex-layout-chat'));
             if (btnTerminal) btnTerminal.addEventListener('click', () => setActiveTab(btnTerminal, 'flex-layout-terminal'));
             if (btnSplit) btnSplit.addEventListener('click', () => setActiveTab(btnSplit, 'flex-layout-split'));
+            if (btnAppRunner) btnAppRunner.addEventListener('click', () => setActiveTab(btnAppRunner, 'flex-layout-app-runner'));
+
+            window.activateComposerTab = function(tabName) {
+                if (tabName === 'chat' && btnChat) setActiveTab(btnChat, 'flex-layout-chat');
+                else if (tabName === 'terminal' && btnTerminal) setActiveTab(btnTerminal, 'flex-layout-terminal');
+                else if (tabName === 'split' && btnSplit) setActiveTab(btnSplit, 'flex-layout-split');
+                else if ((tabName === 'app-runner' || tabName === 'run') && btnAppRunner) setActiveTab(btnAppRunner, 'flex-layout-app-runner');
+            };
 
             if (window.electronAPI.onTerminalOutput) {
                 window.electronAPI.onTerminalOutput((payload) => {

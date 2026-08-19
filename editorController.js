@@ -193,7 +193,7 @@
     body.appendChild(ta);
     cm = window.CodeMirror.fromTextArea(ta, {
       lineNumbers: true,
-      gutters: ['CodeMirror-linenumbers', 'code-nav-gutter'],
+      gutters: ['CodeMirror-linenumbers', 'code-nav-gutter', 'app-runner-gutter'],
       theme: 'dracula',
       indentUnit: 2,
       tabSize: 2,
@@ -679,6 +679,9 @@
       }
       if (window.ImportChecker) {
         window.ImportChecker.attach(cmInst, filePath);
+      }
+      if (window.AppRunnerGutter) {
+        window.AppRunnerGutter.attach(cmInst, filePath);
       }
     }
     // Refresh CodeMirror imediatamente e em ticks para recalcular dimensões no layout flex
