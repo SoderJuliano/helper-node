@@ -350,19 +350,14 @@ ipcMain.handle("search-project-content", async (_event, query) => {
   }
 });
 
+const { resolveWorkspaceFilePath } = require('../helpers/pathResolver.js');
+
 ipcMain.handle("read-file-content", async (event, filePath) => {
   try {
     if (!filePath) return { ok: false, error: "path vazio" };
-    if (typeof filePath === 'string') {
-      filePath = filePath.trim();
-      filePath = filePath.replace(/^[`'"\(\[\{<]+|[`'"\)\]\}>.,;:!]+$/g, '');
-      filePath = filePath.replace(/^file:\/\/\/?([a-zA-Z]:)/i, '$1').replace(/^file:\/\//i, '');
-      filePath = filePath.replace(/#L?\d+(?:-L?\d+)?$/i, '').replace(/:\d+(?::\d+)?$/, '');
-      filePath = filePath.replace(/^[`'"\(\[\{<]+|[`'"\)\]\}>.,;:!]+$/g, '');
-      if (process.platform === 'win32' && !filePath.includes('.jar!')) {
-        filePath = filePath.replace(/\//g, '\\');
-      }
-    }
+    filePath = resolveWorkspaceFilePath(filePath, workspace);
+    if (!filePath) return { ok: false, error: "caminho inválido" };
+
     // Classe dentro de um jar de dependência (nó "Dependencies" da árvore) —
     // caminho virtual, nunca existe no disco, fica fora do sandbox do
     // workspace de propósito (é leitura, vem do próprio classpath resolvido
@@ -375,24 +370,7 @@ ipcMain.handle("read-file-content", async (event, filePath) => {
       if (!res.available) return { ok: false, error: res.reason || "sem código-fonte disponível" };
       return { ok: true, path: filePath, content: res.content, ext: "java", bytes: res.content.length, mtimeMs: 0 };
     }
-    if (workspace.resolvePortalPath) {
-      filePath = workspace.resolvePortalPath(filePath);
-    }
-    if (!path.isAbsolute(filePath)) {
-      const projectPath = workspace.getProjectPath ? workspace.getProjectPath() : null;
-      const attachments = (workspace.list ? workspace.list() : []);
-      const dirAttach = attachments.find(a => a.type === 'dir');
-      const rootDir = (dirAttach && dirAttach.path) ? dirAttach.path : (projectPath || process.cwd());
-      const candidate = path.resolve(rootDir, filePath);
-      if (fs2.existsSync(candidate)) {
-        filePath = candidate;
-      } else {
-        const candidateCwd = path.resolve(process.cwd(), filePath);
-        if (fs2.existsSync(candidateCwd)) {
-          filePath = candidateCwd;
-        }
-      }
-    }
+
     if (workspace.isPathAllowed && !workspace.isPathAllowed(filePath)) {
       return { ok: false, error: "arquivo fora do projeto/workspace" };
     }

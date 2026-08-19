@@ -79,30 +79,43 @@
         function parseFilePathAndLine(raw) {
             if (!raw) return { path: '', line: undefined };
             let p = String(raw).trim();
+            let line = undefined;
+
+            // Extrai (lines 1-50) ou (line 42)
+            const linesMatch = p.match(/\s*\(lines?\s+(\d+).*?\)$/i);
+            if (linesMatch) {
+                line = parseInt(linesMatch[1], 10);
+                p = p.replace(/\s*\(lines?\s+\d+.*?\)$/i, '');
+            }
+
             // Remove aspas, crases, parênteses e colchetes externos
             p = p.replace(/^[`'"\(\[\{<]+|[`'"\)\]\}>]+$/g, '');
             p = p.replace(/[.,;:!]+$/, '');
+
             // Remove protocolo file:/// ou file://
             p = p.replace(/^file:\/\/\/?([a-zA-Z]:)/i, '$1').replace(/^file:\/\//i, '');
-            let line = undefined;
+
             const hashMatch = p.match(/#L?(\d+)(?:-L?\d+)?$/i);
             if (hashMatch) {
-                line = parseInt(hashMatch[1], 10);
+                if (!line) line = parseInt(hashMatch[1], 10);
                 p = p.replace(/#L?\d+(?:-L?\d+)?$/i, '');
             } else {
-                const colonMatch = p.match(/:(\d+)(?::\d+)?$/);
+                const colonMatch = p.match(/:(\d+)(?::\d+)?(?:-\d+)?$/);
                 if (colonMatch) {
-                    line = parseInt(colonMatch[1], 10);
-                    p = p.replace(/:\d+(?::\d+)?$/, '');
+                    if (!line) line = parseInt(colonMatch[1], 10);
+                    p = p.replace(/:\d+(?::\d+)?(?:-\d+)?$/, '');
                 }
             }
+
+            // Remove prefixos de elipse .../ ou ...\
+            p = p.replace(/^\.{2,}[/\\]/, '');
             p = p.replace(/^[`'"\(\[\{<]+|[`'"\)\]\}>.,;:!]+$/g, '');
             return { path: p, line };
         }
 
         function isLikelyFilePath(str) {
             if (!str || typeof str !== 'string') return false;
-            let s = str.trim().replace(/^[`'"\(\[\{<]+|[`'"\)\]\}>.,;:!]+$/g, '');
+            let s = str.trim().replace(/\s*\(lines?\s+\d+.*?\)$/i, '').replace(/^[`'"\(\[\{<]+|[`'"\)\]\}>.,;:!]+$/g, '');
             if (s.includes('\n') || s.includes(' ') || s.length > 260 || s.length < 2) return false;
             if (s.startsWith('http://') || s.startsWith('https://') || s.startsWith('data:')) return false;
             const clean = s.replace(/^file:\/\/\/?([a-zA-Z]:)/i, '$1').replace(/^file:\/\//i, '');
@@ -172,7 +185,7 @@
 
             // 2. Processa linhas de Ação do Copilot CLI / AI: Edit e Read
             // Ex.: Edit: src/index.js, Read: src/index.js, ● Edit src/index.js, * Read src/index.js, etc.
-            out = out.replace(/(?:^|\n)\s*(?:[●✓*•-]\s*|\d+\.\s*)?(?:(Edit|Editing|Edited|Wrote|Created|Modified)|(Read|Reading|Viewed|Inspected))(?::|\s+file:|\s+)\s*(`?[a-zA-Z0-9_.\/\\#:-]+`?|\[[^\]]+\]\([^)]+\))(?=[^\w\/\\.:-]|$)/g, (match, editAct, readAct, rawTarget) => {
+            out = out.replace(/(?:^|\n)\s*(?:[●✓*•-]\s*|\d+\.\s*)?(?:(Edit|Editing|Edited|Wrote|Created|Modified)|(Read|Reading|Viewed|Inspected))(?::|\s+file:|\s+)\s*(`?[a-zA-Z0-9_.\/\\#:-]+(?:\s*\(lines?\s+\d+.*?\))?`?|\[[^\]]+\]\([^)]+\))(?=[^\w\/\\.:-]|$)/g, (match, editAct, readAct, rawTarget) => {
                 let target = rawTarget.trim().replace(/^`|`$/g, '');
                 let label = target;
                 const mdLink = target.match(/^\[([^\]]+)\]\(([^)]+)\)$/);

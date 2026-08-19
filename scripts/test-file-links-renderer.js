@@ -45,10 +45,14 @@ assert.deepStrictEqual(
   { path: 'services/historyFormatter.js', line: undefined }
 );
 assert.deepStrictEqual(
-  parseFilePathAndLine('`main/ipc/chat.js:40`'),
-  { path: 'main/ipc/chat.js', line: 40 }
+  parseFilePathAndLine('services/workspace/store.js (lines 1-50)'),
+  { path: 'services/workspace/store.js', line: 1 }
 );
-console.log('  ok   parseFilePathAndLine extrai caminhos limpos e linhas (#L e :)');
+assert.deepStrictEqual(
+  parseFilePathAndLine('.../main/ipc/chat.js:42'),
+  { path: 'main/ipc/chat.js', line: 42 }
+);
+console.log('  ok   parseFilePathAndLine extrai caminhos limpos e linhas (#L, : e (lines...))');
 
 // 2. Testes de isLikelyFilePath
 console.log('2. Testando isLikelyFilePath...');
@@ -76,6 +80,7 @@ console.log('4. Testando Ações Edit e Read do Copilot CLI...');
 const copilotStdout = `
 ● Edit services/providers/copilot-cli/CopilotCliProcess.js
 ● Read services/historyFormatter.js
+● Read services/workspace/store.js (lines 1-50)
 Edit: main/ipc/chat.js
 Read: package.json
 * Edit \`renderer/markdownRenderer.js\`
@@ -86,6 +91,8 @@ assert(copilotHtml.includes('badge-edit'), 'Deve conter badge-edit');
 assert(copilotHtml.includes('badge-read'), 'Deve conter badge-read');
 assert(copilotHtml.includes('data-file-path="services/providers/copilot-cli/CopilotCliProcess.js"'), 'Deve conter link para CopilotCliProcess.js');
 assert(copilotHtml.includes('data-file-path="services/historyFormatter.js"'), 'Deve conter link para historyFormatter.js');
+assert(copilotHtml.includes('data-file-path="services/workspace/store.js"'), 'Deve conter link para store.js');
+assert(copilotHtml.includes('data-line="1"'), 'Deve conter data-line="1"');
 assert(copilotHtml.includes('data-file-path="main/ipc/chat.js"'), 'Deve conter link para chat.js');
 assert(copilotHtml.includes('data-file-path="package.json"'), 'Deve conter link para package.json');
 assert(copilotHtml.includes('data-file-path="renderer/markdownRenderer.js"'), 'Deve conter link para markdownRenderer.js');
