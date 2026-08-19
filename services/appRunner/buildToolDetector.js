@@ -20,7 +20,12 @@ class BuildToolDetector {
                           fs.existsSync(path.join(projectDir, 'settings.gradle.kts'));
 
     const gradlewScript = isWin ? 'gradlew.bat' : 'gradlew';
-    const hasGradlew = fs.existsSync(path.join(projectDir, gradlewScript));
+    const wrapperPath = path.join(projectDir, gradlewScript);
+    const hasGradlew = fs.existsSync(wrapperPath);
+
+    if (!isWin && hasGradlew) {
+      try { fs.chmodSync(wrapperPath, 0o755); } catch (_) {}
+    }
 
     if (hasGradleBuild || hasGradlew) {
       let isSpringBoot = false;
@@ -37,8 +42,8 @@ class BuildToolDetector {
         type: 'gradle',
         tool: 'gradle',
         hasWrapper: hasGradlew,
-        wrapperCmd: isWin ? '.\\gradlew.bat' : './gradlew',
-        fallbackCmd: 'gradle',
+        wrapperCmd: hasGradlew ? wrapperPath : (isWin ? 'gradle.bat' : 'gradle'),
+        fallbackCmd: isWin ? 'gradle.bat' : 'gradle',
         isSpringBoot,
         projectDir,
       };
@@ -47,7 +52,12 @@ class BuildToolDetector {
     // 2. Verifica Maven
     const hasPom = fs.existsSync(path.join(projectDir, 'pom.xml'));
     const mvnwScript = isWin ? 'mvnw.cmd' : 'mvnw';
-    const hasMvnw = fs.existsSync(path.join(projectDir, mvnwScript));
+    const mvnwPath = path.join(projectDir, mvnwScript);
+    const hasMvnw = fs.existsSync(mvnwPath);
+
+    if (!isWin && hasMvnw) {
+      try { fs.chmodSync(mvnwPath, 0o755); } catch (_) {}
+    }
 
     if (hasPom || hasMvnw) {
       let isSpringBoot = false;
@@ -62,8 +72,8 @@ class BuildToolDetector {
         type: 'maven',
         tool: 'maven',
         hasWrapper: hasMvnw,
-        wrapperCmd: isWin ? '.\\mvnw.cmd' : './mvnw',
-        fallbackCmd: 'mvn',
+        wrapperCmd: hasMvnw ? mvnwPath : (isWin ? 'mvn.cmd' : 'mvn'),
+        fallbackCmd: isWin ? 'mvn.cmd' : 'mvn',
         isSpringBoot,
         projectDir,
       };
@@ -99,26 +109,26 @@ class BuildToolDetector {
       let args = [];
       if (kind === 'app') {
         if (buildInfo.isSpringBoot || target.isSpringBoot) {
-          args.push('bootRun');
+          args.push('bootRun', '--console=plain');
           if (target.mainClass) {
             args.push(`--args="--spring.main.class=${target.mainClass}"`);
           }
         } else {
-          args.push('run');
+          args.push('run', '--console=plain');
           if (target.mainClass) {
             args.push(`-PmainClass=${target.mainClass}`);
           }
         }
       } else if (kind === 'test-all') {
-        args.push('test', '--info');
+        args.push('test', '--info', '--console=plain');
       } else if (kind === 'test-class') {
         const pattern = target.testClass || '*';
-        args.push('test', '--tests', `"${pattern}"`, '--info');
+        args.push('test', '--tests', pattern, '--info', '--console=plain');
       } else if (kind === 'test-method') {
         const pattern = target.testClass && target.testMethod
           ? `${target.testClass}.${target.testMethod}`
           : (target.testMethod || '*');
-        args.push('test', '--tests', `"${pattern}"`, '--info');
+        args.push('test', '--tests', pattern, '--info', '--console=plain');
       }
 
       if (target.extraArgs && target.extraArgs.length) {
@@ -128,13 +138,13 @@ class BuildToolDetector {
       return {
         executable: cmd,
         args,
-        fullCommand: `${cmd} ${args.join(' ')}`,
+        fullCommand: `${path.basename(cmd)} ${args.join(' ')}`,
         displayName: this.getDisplayName(buildInfo, target),
       };
     }
 
     if (buildInfo.type === 'maven') {
-      let args = [];
+      let args = ['-B'];
       if (kind === 'app') {
         if (buildInfo.isSpringBoot || target.isSpringBoot) {
           args.push('spring-boot:run');
@@ -144,7 +154,7 @@ class BuildToolDetector {
         } else {
           args.push('compile', 'exec:java');
           if (target.mainClass) {
-            args.push(`-Dexec.mainClass="${target.mainClass}"`);
+            args.push(`-Dexec.mainClass=${target.mainClass}`);
           }
         }
       } else if (kind === 'test-all') {
@@ -166,7 +176,7 @@ class BuildToolDetector {
       return {
         executable: cmd,
         args,
-        fullCommand: `${cmd} ${args.join(' ')}`,
+        fullCommand: `${path.basename(cmd)} ${args.join(' ')}`,
         displayName: this.getDisplayName(buildInfo, target),
       };
     }

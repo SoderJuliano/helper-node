@@ -176,7 +176,8 @@
             border-radius: 3px;
         }
         body.terminal-active #composer > *:not(#composer-collapse-toggle),
-        body.split-active #composer > *:not(#composer-collapse-toggle) {
+        body.split-active #composer > *:not(#composer-collapse-toggle),
+        body.app-runner-active #composer > *:not(#composer-collapse-toggle) {
             max-width: 100%;
         }
 

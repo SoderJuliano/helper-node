@@ -1,5 +1,5 @@
 // scripts/test-app-runner.js
-// Testes unitários para o módulo App Runner (JavaParser, BuildToolDetector, JdkDetector, AppRunnerService)
+// Testes unitários para o módulo App Runner (JavaParser, BuildToolDetector, JdkDetector, IntelliJConfigExtractor, AppRunnerService)
 
 const assert = require('assert');
 const path = require('path');
@@ -10,6 +10,7 @@ const {
   JdkDetector,
   BuildToolDetector,
   JavaParser,
+  IntelliJConfigExtractor,
 } = require('../services/appRunner');
 
 console.log('=== Testando Módulo App Runner (IntelliJ-Style Java & Build Tools) ===\n');
@@ -89,51 +90,86 @@ const mockGradleInfo = {
   type: 'gradle',
   tool: 'gradle',
   hasWrapper: true,
-  wrapperCmd: './gradlew',
-  fallbackCmd: 'gradle',
+  wrapperCmd: 'C:/mock/project/gradlew.bat',
+  fallbackCmd: 'gradle.bat',
   isSpringBoot: true,
-  projectDir: '/mock/project',
+  projectDir: 'C:/mock/project',
 };
 
 const gradleAppCmd = BuildToolDetector.buildCommand(mockGradleInfo, { kind: 'app', isSpringBoot: true });
-assert.strictEqual(gradleAppCmd.executable, './gradlew');
-assert.deepStrictEqual(gradleAppCmd.args, ['bootRun']);
+assert.strictEqual(gradleAppCmd.executable, 'C:/mock/project/gradlew.bat');
+assert.deepStrictEqual(gradleAppCmd.args, ['bootRun', '--console=plain']);
 
 const gradleTestMethodCmd = BuildToolDetector.buildCommand(mockGradleInfo, {
   kind: 'test-method',
   testClass: 'com.example.PaymentServiceTest',
   testMethod: 'testProcessPayment',
 });
-assert.strictEqual(gradleTestMethodCmd.executable, './gradlew');
-assert.deepStrictEqual(gradleTestMethodCmd.args, ['test', '--tests', '"com.example.PaymentServiceTest.testProcessPayment"', '--info']);
-console.log('  ok   BuildToolDetector gerou comandos Gradle (bootRun e test --tests) corretamente');
+assert.strictEqual(gradleTestMethodCmd.executable, 'C:/mock/project/gradlew.bat');
+assert.deepStrictEqual(gradleTestMethodCmd.args, ['test', '--tests', 'com.example.PaymentServiceTest.testProcessPayment', '--info', '--console=plain']);
+console.log('  ok   BuildToolDetector gerou comandos Gradle com unbuffered --console=plain');
 
 // Simulação de projeto Maven
 const mockMavenInfo = {
   type: 'maven',
   tool: 'maven',
   hasWrapper: true,
-  wrapperCmd: './mvnw',
-  fallbackCmd: 'mvn',
+  wrapperCmd: 'C:/mock/maven-project/mvnw.cmd',
+  fallbackCmd: 'mvn.cmd',
   isSpringBoot: true,
-  projectDir: '/mock/maven-project',
+  projectDir: 'C:/mock/maven-project',
 };
 
 const mavenAppCmd = BuildToolDetector.buildCommand(mockMavenInfo, { kind: 'app', isSpringBoot: true });
-assert.strictEqual(mavenAppCmd.executable, './mvnw');
-assert.deepStrictEqual(mavenAppCmd.args, ['spring-boot:run']);
+assert.strictEqual(mavenAppCmd.executable, 'C:/mock/maven-project/mvnw.cmd');
+assert.deepStrictEqual(mavenAppCmd.args, ['-B', 'spring-boot:run']);
 
 const mavenTestMethodCmd = BuildToolDetector.buildCommand(mockMavenInfo, {
   kind: 'test-method',
   testClass: 'PaymentServiceTest',
   testMethod: 'testProcessPayment',
 });
-assert.strictEqual(mavenTestMethodCmd.executable, './mvnw');
-assert.deepStrictEqual(mavenTestMethodCmd.args, ['test', '-Dtest=PaymentServiceTest#testProcessPayment']);
-console.log('  ok   BuildToolDetector gerou comandos Maven (spring-boot:run e test -Dtest=...) corretamente');
+assert.strictEqual(mavenTestMethodCmd.executable, 'C:/mock/maven-project/mvnw.cmd');
+assert.deepStrictEqual(mavenTestMethodCmd.args, ['-B', 'test', '-Dtest=PaymentServiceTest#testProcessPayment']);
+console.log('  ok   BuildToolDetector gerou comandos Maven com batch mode -B');
 
-// 3. Testes do JdkDetector
-console.log('3. Testando JdkDetector...');
+// 3. Testes do IntelliJConfigExtractor
+console.log('3. Testando IntelliJConfigExtractor...');
+const mockIdeaDir = path.join(__dirname, 'mock_idea_test');
+const ideaSubDir = path.join(mockIdeaDir, '.idea');
+fs.mkdirSync(ideaSubDir, { recursive: true });
+
+const mockWorkspaceXml = `
+<project version="4">
+  <component name="RunManager">
+    <configuration name="DemoApp" type="SpringBootApplicationConfigurationType">
+      <option name="VM_PARAMETERS" value="-Dspring.profiles.active=dev -Xmx512m" />
+      <envs>
+        <env name="SPRING_PROFILES_ACTIVE" value="dev" />
+        <env name="SERVER_PORT" value="8085" />
+        <env name="DB_HOST" value="localhost" />
+      </envs>
+    </configuration>
+  </component>
+</project>
+`;
+fs.writeFileSync(path.join(ideaSubDir, 'workspace.xml'), mockWorkspaceXml, 'utf8');
+
+const extracted = IntelliJConfigExtractor.extractEnv(mockIdeaDir);
+assert.strictEqual(extracted.envs.SPRING_PROFILES_ACTIVE, 'dev');
+assert.strictEqual(extracted.envs.SERVER_PORT, '8085');
+assert.strictEqual(extracted.envs.DB_HOST, 'localhost');
+assert(extracted.vmOptions.includes('-Dspring.profiles.active=dev'));
+
+const effective = IntelliJConfigExtractor.getEffectiveEnv(mockIdeaDir);
+assert.strictEqual(effective.SERVER_PORT, '8085');
+console.log('  ok   IntelliJConfigExtractor extraiu variáveis e sincronizou env.json');
+
+// Limpeza da pasta mock
+fs.rmSync(mockIdeaDir, { recursive: true, force: true });
+
+// 4. Testes do JdkDetector
+console.log('4. Testando JdkDetector...');
 const jdks = JdkDetector.detectAll();
 console.log(`  info JDKs encontradas: ${jdks.length}`);
 if (jdks.length > 0) {
@@ -142,8 +178,8 @@ if (jdks.length > 0) {
 assert(Array.isArray(jdks), 'detectAll deve retornar um array de JDKs');
 console.log('  ok   JdkDetector executou busca sem erros');
 
-// 4. Testes da Fachada AppRunnerService
-console.log('4. Testando AppRunnerService...');
+// 5. Testes da Fachada AppRunnerService
+console.log('5. Testando AppRunnerService...');
 const status = AppRunnerService.getStatus();
 assert.strictEqual(status.status, 'idle');
 console.log('  ok   AppRunnerService status inicial é "idle"');

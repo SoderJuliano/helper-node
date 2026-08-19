@@ -97,10 +97,46 @@
 .pane-app-runner {
     display: flex;
     flex-direction: column;
-    height: 100%;
-    background: var(--bg-base, #0f1115);
+    height: 320px;
+    min-height: 140px;
+    max-height: 85vh;
+    width: 100%;
+    background: #090a0f;
+    border: 1px solid var(--border-strong, #2d2d38);
+    border-radius: var(--radius, 6px);
     overflow: hidden;
     position: relative;
+    box-sizing: border-box;
+}
+
+.app-runner-resizer {
+    width: 100%;
+    height: 8px;
+    cursor: ns-resize;
+    background: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, opacity 0.15s;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.app-runner-resizer::after {
+    content: "";
+    width: 36px;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+    transition: background 0.15s;
+}
+
+.app-runner-resizer:hover, .app-runner-resizer.resizing {
+    background: rgba(74, 222, 128, 0.2);
+}
+
+.app-runner-resizer:hover::after, .app-runner-resizer.resizing::after {
+    background: #4ade80;
 }
 
 .app-runner-toolbar {

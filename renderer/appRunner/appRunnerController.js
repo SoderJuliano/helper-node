@@ -1,5 +1,5 @@
 // renderer/appRunner/appRunnerController.js
-// Controlador do Console de Execução (Run Tab), streaming de logs, ANSI e ciclo de vida do processo.
+// Controlador do Console de Execução (Run Tab), streaming de logs, ANSI, resizer e ciclo de vida do processo.
 
 (function() {
   const ANSI_COLOR_MAP = {
@@ -59,11 +59,13 @@
       this._initElements();
       this._wireIpcEvents();
       this._wireUiEvents();
+      this._wireResizer();
     }
 
     _initElements() {
       this.paneEl = document.getElementById('pane-app-runner');
       this.tabBtn = document.getElementById('tab-btn-app-runner');
+      this.resizerEl = document.getElementById('app-runner-resizer');
       this.targetNameEl = document.getElementById('app-runner-target-name');
       this.statusBadgeEl = document.getElementById('app-runner-status-badge');
       this.portLinkEl = document.getElementById('app-runner-port-link');
@@ -78,9 +80,50 @@
       this.btnAutoScroll = document.getElementById('app-runner-btn-autoscroll');
       this.btnCopy = document.getElementById('app-runner-btn-copy');
 
+      const savedH = localStorage.getItem('helper_app_runner_height');
+      if (savedH && this.paneEl) {
+        this.paneEl.style.height = savedH;
+      }
+
       if (this.testsListEl && window.TestResultsViewer) {
         this.testViewer = new window.TestResultsViewer(this.testsListEl, this.testsCountEl);
       }
+    }
+
+    _wireResizer() {
+      if (!this.resizerEl || !this.paneEl) return;
+
+      let startY = 0;
+      let startH = 0;
+
+      const onMouseDown = (e) => {
+        e.preventDefault();
+        startY = e.clientY;
+        startH = this.paneEl.offsetHeight;
+        this.resizerEl.classList.add('resizing');
+        document.body.style.cursor = 'ns-resize';
+        document.body.style.userSelect = 'none';
+
+        const onMouseMove = (me) => {
+          const dy = startY - me.clientY;
+          const newH = Math.max(140, Math.min(window.innerHeight - 150, startH + dy));
+          this.paneEl.style.height = `${newH}px`;
+        };
+
+        const onMouseUp = () => {
+          this.resizerEl.classList.remove('resizing');
+          document.body.style.cursor = '';
+          document.body.style.userSelect = '';
+          window.removeEventListener('mousemove', onMouseMove);
+          window.removeEventListener('mouseup', onMouseUp);
+          localStorage.setItem('helper_app_runner_height', this.paneEl.style.height);
+        };
+
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+      };
+
+      this.resizerEl.addEventListener('mousedown', onMouseDown);
     }
 
     _wireIpcEvents() {
@@ -261,6 +304,11 @@
     }
 
     showPane() {
+      const composer = document.getElementById('composer');
+      if (composer && composer.classList.contains('collapsed')) {
+        composer.classList.remove('collapsed');
+      }
+
       if (typeof window.activateComposerTab === 'function') {
         window.activateComposerTab('app-runner');
       } else if (this.paneEl) {

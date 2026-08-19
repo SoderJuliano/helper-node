@@ -7,6 +7,7 @@ const JdkDetector = require('./jdkDetector');
 const BuildToolDetector = require('./buildToolDetector');
 const JavaParser = require('./javaParser');
 const RunnerProcess = require('./runnerProcess');
+const IntelliJConfigExtractor = require('./intellijConfigExtractor');
 
 const activeRunner = new RunnerProcess();
 
@@ -42,6 +43,13 @@ class AppRunnerService {
   }
 
   /**
+   * Extrai variáveis de ambiente do projeto do IntelliJ IDEA.
+   */
+  static extractIntelliJEnv(projectDir) {
+    return IntelliJConfigExtractor.extractEnv(projectDir);
+  }
+
+  /**
    * Inicia a execução do alvo informado no projeto.
    * @param {string} projectDir Diretório do projeto
    * @param {Object} target Alvo de execução { kind, mainClass, testClass, testMethod, isSpringBoot }
@@ -55,12 +63,14 @@ class AppRunnerService {
     const buildInfo = BuildToolDetector.detect(projectDir);
     const commandInfo = BuildToolDetector.buildCommand(buildInfo, target);
     const jdk = JdkDetector.getBestJdk(preferredJdkPath);
+    const customEnv = IntelliJConfigExtractor.getEffectiveEnv(projectDir);
 
     return activeRunner.start({
       executable: commandInfo.executable,
       args: commandInfo.args,
       cwd: projectDir,
       jdk,
+      customEnv,
       runMeta: {
         ...target,
         displayName: commandInfo.displayName,
@@ -91,4 +101,5 @@ module.exports = {
   BuildToolDetector,
   JavaParser,
   RunnerProcess,
+  IntelliJConfigExtractor,
 };

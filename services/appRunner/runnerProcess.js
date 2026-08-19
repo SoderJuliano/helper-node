@@ -4,6 +4,7 @@
 
 const { spawn, execSync } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 const EventEmitter = require('events');
 
 class RunnerProcess extends EventEmitter {
@@ -29,10 +30,11 @@ class RunnerProcess extends EventEmitter {
   /**
    * Inicia a execução do comando no diretório do projeto.
    * @param {Object} opts
-   * @param {string} opts.executable Ex: '.\\gradlew.bat' ou './gradlew' ou 'mvn'
-   * @param {string[]} opts.args Ex: ['bootRun']
+   * @param {string} opts.executable Ex: 'C:\\project\\gradlew.bat' ou './gradlew' ou 'mvn'
+   * @param {string[]} opts.args Ex: ['bootRun', '--console=plain']
    * @param {string} opts.cwd Diretório do projeto
    * @param {Object} [opts.jdk] JDK detectada { homePath, javaPath }
+   * @param {Record<string, string>} [opts.customEnv] Variáveis de ambiente adicionais (ex: IntelliJ .idea)
    * @param {Object} [opts.runMeta] Metadados da execução (target, displayName, etc.)
    */
   start(opts) {
@@ -40,7 +42,7 @@ class RunnerProcess extends EventEmitter {
       throw new Error('Já existe um processo em execução. Pare o processo atual antes de iniciar um novo.');
     }
 
-    const { executable, args = [], cwd, jdk, runMeta } = opts;
+    const { executable, args = [], cwd, jdk, customEnv = {}, runMeta } = opts;
     const isWin = process.platform === 'win32';
 
     this._status = 'starting';
@@ -56,8 +58,8 @@ class RunnerProcess extends EventEmitter {
       startedAt: Date.now(),
     };
 
-    // Monta ambiente com JAVA_HOME configurado se encontrado
-    const env = { ...process.env };
+    // Monta ambiente completo do processo
+    const env = { ...process.env, ...customEnv };
     if (jdk && jdk.homePath) {
       env.JAVA_HOME = jdk.homePath;
       const binDir = path.join(jdk.homePath, 'bin');
@@ -65,24 +67,46 @@ class RunnerProcess extends EventEmitter {
     }
 
     // Configurações do spawn cross-platform
+    let spawnExe = executable;
+    let spawnArgs = args;
+
+    if (isWin) {
+      // No Windows, arquivos .bat ou .cmd são executados via cmd.exe /c
+      const isBatch = executable.endsWith('.bat') || executable.endsWith('.cmd') || !executable.includes('.');
+      if (isBatch) {
+        spawnExe = 'cmd.exe';
+        spawnArgs = ['/c', executable, ...args];
+      }
+    }
+
     const spawnOpts = {
       cwd,
       env,
       stdio: ['pipe', 'pipe', 'pipe'],
-      shell: isWin, // No Windows shell: true é necessário para .bat e .cmd
+      windowsHide: true,
       detached: !isWin, // No Linux/Mac detached cria novo process group para kill fácil
     };
 
     try {
-      this._proc = spawn(executable, args, spawnOpts);
+      this._proc = spawn(spawnExe, spawnArgs, spawnOpts);
       this._pid = this._proc.pid;
       this._status = 'running';
       this.emit('status', this.getStatus());
 
       // Emite chunk inicial de cabeçalho informativo
-      const initHeader = `\x1b[90m▶ Executando:\x1b[0m \x1b[36m${executable} ${args.join(' ')}\x1b[0m\n` +
+      const displayCmd = isWin && spawnExe === 'cmd.exe'
+        ? `${path.basename(executable)} ${args.join(' ')}`
+        : `${executable} ${args.join(' ')}`;
+
+      const intellijEnvKeys = Object.keys(customEnv);
+      const intellijInfo = intellijEnvKeys.length > 0
+        ? `\x1b[90m⚙ Envs IntelliJ:\x1b[0m ${intellijEnvKeys.join(', ')}\n`
+        : '';
+
+      const initHeader = `\x1b[90m▶ Executando:\x1b[0m \x1b[36m${displayCmd}\x1b[0m\n` +
                          `\x1b[90m📁 Diretório:\x1b[0m ${cwd}\n` +
                          (env.JAVA_HOME ? `\x1b[90m☕ JAVA_HOME:\x1b[0m ${env.JAVA_HOME}\n` : '') +
+                         intellijInfo +
                          `\x1b[90m────────────────────────────────────────────────────────────\x1b[0m\n`;
       this._emitChunk(initHeader);
 
@@ -101,7 +125,6 @@ class RunnerProcess extends EventEmitter {
       });
 
       this._proc.on('close', (code) => {
-        const wasRunning = this._status === 'running' || this._status === 'starting';
         this._exitCode = code;
         this._proc = null;
         this._pid = null;
