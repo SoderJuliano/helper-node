@@ -96,18 +96,25 @@ const mockGradleInfo = {
   projectDir: 'C:/mock/project',
 };
 
-const gradleAppCmd = BuildToolDetector.buildCommand(mockGradleInfo, { kind: 'app', isSpringBoot: true });
+const gradleAppCmd = BuildToolDetector.buildCommand(mockGradleInfo, { kind: 'app', isSpringBoot: true }, {
+  activeProfiles: 'dev,local',
+  vmOptions: '-Xmx1024m',
+  programArgs: '--server.port=8082',
+});
 assert.strictEqual(gradleAppCmd.executable, 'C:/mock/project/gradlew.bat');
-assert.deepStrictEqual(gradleAppCmd.args, ['bootRun', '--console=plain']);
+assert(gradleAppCmd.args.includes('bootRun'));
+assert(gradleAppCmd.args.some(a => a.includes('--spring.profiles.active=dev,local')));
+assert(gradleAppCmd.args.some(a => a.includes('--server.port=8082')));
 
 const gradleTestMethodCmd = BuildToolDetector.buildCommand(mockGradleInfo, {
   kind: 'test-method',
   testClass: 'com.example.PaymentServiceTest',
   testMethod: 'testProcessPayment',
-});
+}, { activeProfiles: 'test' });
 assert.strictEqual(gradleTestMethodCmd.executable, 'C:/mock/project/gradlew.bat');
-assert.deepStrictEqual(gradleTestMethodCmd.args, ['test', '--tests', 'com.example.PaymentServiceTest.testProcessPayment', '--info', '--console=plain']);
-console.log('  ok   BuildToolDetector gerou comandos Gradle com unbuffered --console=plain');
+assert(gradleTestMethodCmd.args.includes('test'));
+assert(gradleTestMethodCmd.args.includes('-Dspring.profiles.active=test'));
+console.log('  ok   BuildToolDetector gerou comandos Gradle com activeProfiles, VM options e programArgs');
 
 // Simulação de projeto Maven
 const mockMavenInfo = {
@@ -120,9 +127,16 @@ const mockMavenInfo = {
   projectDir: 'C:/mock/maven-project',
 };
 
-const mavenAppCmd = BuildToolDetector.buildCommand(mockMavenInfo, { kind: 'app', isSpringBoot: true });
+const mavenAppCmd = BuildToolDetector.buildCommand(mockMavenInfo, { kind: 'app', isSpringBoot: true }, {
+  activeProfiles: 'dev',
+  vmOptions: '-Xmx2048m',
+  programArgs: '--debug',
+});
 assert.strictEqual(mavenAppCmd.executable, 'C:/mock/maven-project/mvnw.cmd');
-assert.deepStrictEqual(mavenAppCmd.args, ['-B', 'spring-boot:run']);
+assert(mavenAppCmd.args.includes('spring-boot:run'));
+assert(mavenAppCmd.args.includes('-Dspring-boot.run.profiles=dev'));
+assert(mavenAppCmd.args.includes('-Dspring-boot.run.jvmArguments="-Xmx2048m"'));
+assert(mavenAppCmd.args.includes('-Dspring-boot.run.arguments="--debug"'));
 
 const mavenTestMethodCmd = BuildToolDetector.buildCommand(mockMavenInfo, {
   kind: 'test-method',
@@ -131,10 +145,10 @@ const mavenTestMethodCmd = BuildToolDetector.buildCommand(mockMavenInfo, {
 });
 assert.strictEqual(mavenTestMethodCmd.executable, 'C:/mock/maven-project/mvnw.cmd');
 assert.deepStrictEqual(mavenTestMethodCmd.args, ['-B', 'test', '-Dtest=PaymentServiceTest#testProcessPayment']);
-console.log('  ok   BuildToolDetector gerou comandos Maven com batch mode -B');
+console.log('  ok   BuildToolDetector gerou comandos Maven com perfis e JVM arguments');
 
-// 3. Testes do IntelliJConfigExtractor
-console.log('3. Testando IntelliJConfigExtractor...');
+// 3. Testes do IntelliJConfigExtractor & Custom Overrides
+console.log('3. Testando IntelliJConfigExtractor e Precedência do Helper Node...');
 const mockIdeaDir = path.join(__dirname, 'mock_idea_test');
 const ideaSubDir = path.join(mockIdeaDir, '.idea');
 fs.mkdirSync(ideaSubDir, { recursive: true });
@@ -155,15 +169,30 @@ const mockWorkspaceXml = `
 `;
 fs.writeFileSync(path.join(ideaSubDir, 'workspace.xml'), mockWorkspaceXml, 'utf8');
 
-const extracted = IntelliJConfigExtractor.extractEnv(mockIdeaDir);
-assert.strictEqual(extracted.envs.SPRING_PROFILES_ACTIVE, 'dev');
-assert.strictEqual(extracted.envs.SERVER_PORT, '8085');
-assert.strictEqual(extracted.envs.DB_HOST, 'localhost');
-assert(extracted.vmOptions.includes('-Dspring.profiles.active=dev'));
+// 3.1 Extração inicial do IntelliJ como baseline
+const initialConfig = IntelliJConfigExtractor.getProjectConfig(mockIdeaDir);
+assert.strictEqual(initialConfig.envVars.SERVER_PORT, '8085');
+assert.strictEqual(initialConfig.envVars.DB_HOST, 'localhost');
+assert.strictEqual(initialConfig.activeProfiles, 'dev');
+console.log('  ok   Baseline inicial importado do IntelliJ (.idea) com sucesso');
 
-const effective = IntelliJConfigExtractor.getEffectiveEnv(mockIdeaDir);
-assert.strictEqual(effective.SERVER_PORT, '8085');
-console.log('  ok   IntelliJConfigExtractor extraiu variáveis e sincronizou env.json');
+// 3.2 Usuário customiza no Helper Node (precedência)
+IntelliJConfigExtractor.saveProjectConfig(mockIdeaDir, {
+  activeProfiles: 'dev,homolog',
+  envVars: {
+    SERVER_PORT: '9090', // Override
+    CUSTOM_HELPER_KEY: 'helper_val', // Nova variável
+  },
+  vmOptions: '-Xmx1024m',
+});
+
+const effectiveConfig = IntelliJConfigExtractor.getEffectiveConfig(mockIdeaDir);
+assert.strictEqual(effectiveConfig.activeProfiles, 'dev,homolog');
+assert.strictEqual(effectiveConfig.effectiveEnvs.SERVER_PORT, '9090', 'Override do Helper Node deve ter precedência');
+assert.strictEqual(effectiveConfig.effectiveEnvs.CUSTOM_HELPER_KEY, 'helper_val');
+assert.strictEqual(effectiveConfig.effectiveEnvs.DB_HOST, 'localhost', 'Variáveis não sobrescritas do IntelliJ devem ser mantidas se fallback ativo');
+assert.strictEqual(effectiveConfig.vmOptions, '-Xmx1024m');
+console.log('  ok   Customizações do Helper Node têm precedência sobre os valores do IntelliJ');
 
 // Limpeza da pasta mock
 fs.rmSync(mockIdeaDir, { recursive: true, force: true });

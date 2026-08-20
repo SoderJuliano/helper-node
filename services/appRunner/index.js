@@ -50,6 +50,27 @@ class AppRunnerService {
   }
 
   /**
+   * Obtém a configuração completa de execução do projeto (runner-config.json).
+   */
+  static getProjectConfig(projectDir) {
+    return IntelliJConfigExtractor.getProjectConfig(projectDir);
+  }
+
+  /**
+   * Salva configurações de execução do projeto customizadas pelo usuário no Helper Node.
+   */
+  static saveProjectConfig(projectDir, config) {
+    return IntelliJConfigExtractor.saveProjectConfig(projectDir, config);
+  }
+
+  /**
+   * Reimporta configurações do IntelliJ (.idea) para o projeto.
+   */
+  static reimportIntelliJConfig(projectDir) {
+    return IntelliJConfigExtractor.reimportFromIntelliJ(projectDir);
+  }
+
+  /**
    * Inicia a execução do alvo informado no projeto.
    * @param {string} projectDir Diretório do projeto
    * @param {Object} target Alvo de execução { kind, mainClass, testClass, testMethod, isSpringBoot }
@@ -61,9 +82,10 @@ class AppRunnerService {
     }
 
     const buildInfo = BuildToolDetector.detect(projectDir);
-    const commandInfo = BuildToolDetector.buildCommand(buildInfo, target);
+    const projectConfig = IntelliJConfigExtractor.getEffectiveConfig(projectDir);
+    const commandInfo = BuildToolDetector.buildCommand(buildInfo, target, projectConfig);
     const jdk = JdkDetector.getBestJdk(preferredJdkPath);
-    const customEnv = IntelliJConfigExtractor.getEffectiveEnv(projectDir);
+    const customEnv = projectConfig.effectiveEnvs || {};
 
     return activeRunner.start({
       executable: commandInfo.executable,
@@ -76,6 +98,7 @@ class AppRunnerService {
         displayName: commandInfo.displayName,
         fullCommand: commandInfo.fullCommand,
         buildType: buildInfo.type,
+        activeProfiles: projectConfig.activeProfiles || '',
       },
     });
   }

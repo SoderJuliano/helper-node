@@ -76,6 +76,7 @@
 
       this.btnRerun = document.getElementById('app-runner-btn-rerun');
       this.btnStop = document.getElementById('app-runner-btn-stop');
+      this.btnConfig = document.getElementById('app-runner-btn-config');
       this.btnClear = document.getElementById('app-runner-btn-clear');
       this.btnAutoScroll = document.getElementById('app-runner-btn-autoscroll');
       this.btnCopy = document.getElementById('app-runner-btn-copy');
@@ -163,6 +164,13 @@
       }
       if (this.btnStop) {
         this.btnStop.addEventListener('click', () => this.stop());
+      }
+      if (this.btnConfig) {
+        this.btnConfig.addEventListener('click', () => {
+          if (typeof window.openAppRunnerConfigModal === 'function') {
+            window.openAppRunnerConfigModal(this.lastProjectDir);
+          }
+        });
       }
       if (this.btnClear) {
         this.btnClear.addEventListener('click', () => this.clear());

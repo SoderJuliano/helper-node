@@ -114,15 +114,19 @@ class RunnerProcess extends EventEmitter {
         ? `${path.basename(executable)} ${args.join(' ')}`
         : `${executable} ${args.join(' ')}`;
 
-      const intellijEnvKeys = Object.keys(customEnv);
-      const intellijInfo = intellijEnvKeys.length > 0
-        ? `\x1b[90m⚙ Envs IntelliJ:\x1b[0m ${intellijEnvKeys.join(', ')}\n`
+      const envKeys = Object.keys(customEnv);
+      const envInfo = envKeys.length > 0
+        ? `\x1b[90m⚙ Variáveis (${envKeys.length}):\x1b[0m ${envKeys.join(', ')}\n`
+        : '';
+      const profilesInfo = (runMeta && runMeta.activeProfiles)
+        ? `\x1b[90m🌱 Perfis Ativos:\x1b[0m \x1b[32m${runMeta.activeProfiles}\x1b[0m\n`
         : '';
 
       const initHeader = `\x1b[90m▶ Executando:\x1b[0m \x1b[36m${displayCmd}\x1b[0m\n` +
                          `\x1b[90m📁 Diretório:\x1b[0m ${cwd}\n` +
                          (env.JAVA_HOME ? `\x1b[90m☕ JAVA_HOME:\x1b[0m ${env.JAVA_HOME}\n` : '') +
-                         intellijInfo +
+                         profilesInfo +
+                         envInfo +
                          `\x1b[90m────────────────────────────────────────────────────────────\x1b[0m\n`;
       this._emitChunk(initHeader);
 

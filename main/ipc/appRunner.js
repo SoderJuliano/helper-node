@@ -89,4 +89,41 @@ module.exports = function registerAppRunnerIpc() {
       return { ok: false, error: e.message };
     }
   });
+
+  ipcMain.handle('app-runner-get-config', async (event, projectDir) => {
+    try {
+      const config = AppRunnerService.getProjectConfig(projectDir);
+      return { ok: true, data: config };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('app-runner-save-config', async (event, { projectDir, config } = {}) => {
+    try {
+      const saved = AppRunnerService.saveProjectConfig(projectDir, config);
+      return { ok: true, data: saved };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('app-runner-reimport-intellij', async (event, projectDir) => {
+    try {
+      const reimported = AppRunnerService.reimportIntelliJConfig(projectDir);
+      return { ok: true, data: reimported };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
+
+  ipcMain.on('open-app-runner-config', (event, projectDir) => {
+    try {
+      if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+        state.mainWindow.show();
+        state.mainWindow.focus();
+        state.mainWindow.webContents.send('open-app-runner-config-modal', projectDir);
+      }
+    } catch (_) {}
+  });
 };

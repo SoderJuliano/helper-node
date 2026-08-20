@@ -397,3 +397,502 @@
     height: 12px;
     flex-shrink: 0;
 }
+
+/* === Modal de Configurações de Execução (App Runner Config Modal) === */
+.app-runner-config-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 12000;
+    background: rgba(0, 0, 0, 0.72);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    box-sizing: border-box;
+    -webkit-app-region: no-drag;
+}
+
+.app-runner-config-modal-dialog {
+    width: 100%;
+    max-width: 680px;
+    max-height: 90vh;
+    background: #14161d;
+    border: 1px solid var(--border-strong, #2f3442);
+    border-radius: 12px;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.75);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    color: var(--text, #e2e8f0);
+    font-family: var(--font-ui, system-ui, -apple-system, sans-serif);
+    animation: app-runner-modal-enter 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes app-runner-modal-enter {
+    from { opacity: 0; transform: scale(0.96) translateY(8px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.app-runner-config-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    background: #1a1d26;
+    border-bottom: 1px solid var(--border, #282c38);
+}
+
+.app-runner-config-title-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.app-runner-config-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    background: rgba(74, 222, 128, 0.14);
+    color: #4ade80;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.app-runner-config-icon svg {
+    width: 18px;
+    height: 18px;
+}
+
+.app-runner-config-title {
+    font-size: 15px;
+    font-weight: 700;
+    margin: 0;
+    color: #fff;
+}
+
+.app-runner-config-subtitle {
+    font-size: 11.5px;
+    color: #94a3b8;
+    margin-top: 2px;
+    font-family: var(--font-mono, monospace);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 480px;
+}
+
+.app-runner-config-close-btn {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: background 0.15s, color 0.15s;
+}
+.app-runner-config-close-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+}
+
+.app-runner-config-body {
+    padding: 18px 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    flex: 1;
+    min-height: 0;
+}
+
+/* Badge bar */
+.app-runner-config-badge-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.app-runner-cfg-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 5px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.app-runner-cfg-badge.tool-badge {
+    background: rgba(56, 189, 248, 0.15);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.app-runner-cfg-badge.jdk-badge {
+    background: rgba(251, 191, 36, 0.15);
+    color: #fbbf24;
+    border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.app-runner-cfg-badge.sync-badge {
+    background: rgba(74, 222, 128, 0.15);
+    color: #4ade80;
+    border: 1px solid rgba(74, 222, 128, 0.3);
+}
+
+/* Sections & Labels */
+.app-runner-config-section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.app-runner-config-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+
+.app-runner-config-label {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #f1f5f9;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.app-runner-config-hint {
+    font-size: 11px;
+    font-weight: 400;
+    color: #94a3b8;
+    font-family: var(--font-mono, monospace);
+}
+
+.app-runner-config-input {
+    width: 100%;
+    padding: 8px 12px;
+    background: #0d0f14;
+    border: 1px solid #2d3240;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 12.5px;
+    font-family: var(--font-mono, monospace);
+    box-sizing: border-box;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.app-runner-config-input:focus {
+    outline: none;
+    border-color: #38bdf8;
+    box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+}
+
+.app-runner-config-textarea {
+    width: 100%;
+    min-height: 110px;
+    padding: 10px 12px;
+    background: #0d0f14;
+    border: 1px solid #2d3240;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 12px;
+    font-family: var(--font-mono, monospace);
+    line-height: 1.5;
+    resize: vertical;
+    box-sizing: border-box;
+}
+.app-runner-config-textarea:focus {
+    outline: none;
+    border-color: #38bdf8;
+    box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+}
+
+/* Chips */
+.app-runner-config-chips {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+}
+
+.app-runner-chip {
+    font-size: 11px;
+    font-family: var(--font-mono, monospace);
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.06);
+    color: #cbd5e1;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+}
+.app-runner-chip:hover {
+    background: rgba(74, 222, 128, 0.15);
+    border-color: rgba(74, 222, 128, 0.35);
+    color: #4ade80;
+}
+.app-runner-chip.active {
+    background: rgba(74, 222, 128, 0.25);
+    border-color: #4ade80;
+    color: #fff;
+    font-weight: 600;
+}
+
+/* Toggle buttons (Table vs Raw) */
+.app-runner-config-view-toggle {
+    display: flex;
+    align-items: center;
+    background: #0d0f14;
+    border: 1px solid #2d3240;
+    border-radius: 6px;
+    padding: 2px;
+    gap: 2px;
+}
+
+.app-runner-toggle-btn {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 3px 9px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+.app-runner-toggle-btn.active {
+    background: #232836;
+    color: #fff;
+    font-weight: 600;
+}
+
+/* Env Table */
+.app-runner-env-table-wrapper {
+    background: #0a0c10;
+    border: 1px solid #242834;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.app-runner-env-table-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: #11141c;
+    border-bottom: 1px solid #242834;
+    font-size: 11px;
+    font-weight: 600;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.app-runner-env-table-body {
+    max-height: 180px;
+    overflow-y: auto;
+    padding: 4px 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.app-runner-env-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 0;
+}
+
+.app-runner-env-row .app-runner-config-input {
+    padding: 5px 8px;
+    font-size: 12px;
+}
+
+.env-origin-tag {
+    font-size: 9.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 3px;
+    letter-spacing: 0.3px;
+}
+.env-origin-tag.intellij {
+    background: rgba(56, 189, 248, 0.15);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.3);
+}
+.env-origin-tag.helper {
+    background: rgba(74, 222, 128, 0.15);
+    color: #4ade80;
+    border: 1px solid rgba(74, 222, 128, 0.3);
+}
+
+.env-delete-btn {
+    background: transparent;
+    border: none;
+    color: #ef4444;
+    opacity: 0.7;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.15s, background 0.15s;
+    width: 26px;
+    height: 26px;
+}
+.env-delete-btn:hover {
+    opacity: 1;
+    background: rgba(239, 68, 68, 0.15);
+}
+.env-delete-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+.app-runner-env-empty {
+    font-size: 11.5px;
+    color: #64748b;
+    text-align: center;
+    padding: 16px 8px;
+    font-style: italic;
+}
+
+.app-runner-add-env-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    padding: 7px;
+    background: #11141c;
+    border: none;
+    border-top: 1px solid #242834;
+    color: #38bdf8;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.app-runner-add-env-btn:hover {
+    background: rgba(56, 189, 248, 0.12);
+}
+.app-runner-add-env-btn svg {
+    width: 13px;
+    height: 13px;
+}
+
+/* Grid */
+.app-runner-config-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+}
+
+/* Footer & Checkbox */
+.app-runner-config-footer-info {
+    padding: 10px 12px;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 6px;
+    border: 1px solid #242834;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.app-runner-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #cbd5e1;
+    cursor: pointer;
+    user-select: none;
+}
+
+.app-runner-sync-details {
+    font-size: 11px;
+    color: #94a3b8;
+    font-family: var(--font-mono, monospace);
+}
+.app-runner-sync-details code {
+    background: rgba(255, 255, 255, 0.08);
+    padding: 1px 4px;
+    border-radius: 3px;
+    color: #e2e8f0;
+}
+
+.app-runner-config-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    background: #1a1d26;
+    border-top: 1px solid var(--border, #282c38);
+    gap: 12px;
+}
+
+.app-runner-footer-left,
+.app-runner-footer-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.app-runner-btn-primary {
+    background: #0284c7;
+    border: 1px solid #0369a1;
+    color: #fff;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 7px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.app-runner-btn-primary:hover {
+    background: #0369a1;
+}
+
+.app-runner-btn-secondary {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #cbd5e1;
+    font-size: 12px;
+    padding: 7px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: background 0.15s, color 0.15s;
+}
+.app-runner-btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.14);
+    color: #fff;
+}
+
+.app-runner-btn-text {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    font-size: 11.5px;
+    cursor: pointer;
+    padding: 6px 8px;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    transition: color 0.15s;
+}
+.app-runner-btn-text:hover {
+    color: #cbd5e1;
+}

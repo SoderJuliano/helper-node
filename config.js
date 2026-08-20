@@ -551,6 +551,49 @@ document.addEventListener("DOMContentLoaded", async () => {
     backendUrlValue.style.color = "#ff6b6b";
   }
 
+  // -------------------------
+  // Carrega configurações de execução Java / Maven / Gradle se projeto anexado
+  // -------------------------
+  try {
+    const javaSection = document.getElementById('java-runner-config-section');
+    const javaBadge = document.getElementById('java-runner-project-badge');
+    const javaDesc = document.getElementById('java-runner-project-desc');
+    const javaBtn = document.getElementById('java-runner-open-config-btn');
+    const javaStatus = document.getElementById('java-runner-config-status');
+
+    if (javaSection) {
+      const ctx = await ipcRenderer.invoke('get-project-context');
+      if (ctx && ctx.path) {
+        const detectRes = await ipcRenderer.invoke('app-runner-detect-project', ctx.path);
+        if (detectRes && detectRes.ok && (detectRes.data.type === 'gradle' || detectRes.data.type === 'maven' || detectRes.data.type === 'java')) {
+          javaSection.style.display = 'block';
+          const isSpring = detectRes.data.isSpringBoot ? ' (Spring Boot)' : '';
+          if (javaBadge) {
+            javaBadge.textContent = detectRes.data.type === 'gradle' ? `🐘 Gradle${isSpring}` : (detectRes.data.type === 'maven' ? `🪶 Maven${isSpring}` : '☕ Java');
+          }
+          if (javaDesc) {
+            javaDesc.innerHTML = `Gerencie variáveis de ambiente, perfis ativos do Spring Boot e argumentos para o projeto: <strong>${ctx.name}</strong>.`;
+          }
+          if (javaBtn) {
+            javaBtn.onclick = () => {
+              ipcRenderer.send('open-app-runner-config', ctx.path);
+            };
+          }
+          try {
+            const cfgRes = await ipcRenderer.invoke('app-runner-get-config', ctx.path);
+            if (cfgRes && cfgRes.ok && javaStatus && cfgRes.data) {
+              const envCount = Object.keys(cfgRes.data.envVars || {}).length;
+              const prof = cfgRes.data.activeProfiles || 'padrão';
+              javaStatus.textContent = `Perfis: ${prof} | Variáveis: ${envCount}`;
+            }
+          } catch (_) {}
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("Java runner config check in config.html failed:", e);
+  }
+
   // Edição Lite: ajusta a UI (100% online) depois que tudo carregou.
   try {
     const _edition = await ipcRenderer.invoke('get-edition');
