@@ -329,4 +329,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onAppRunnerStatusChanged: (cb) => ipcRenderer.on("app-runner-status-changed", (event, status) => cb(status)),
   onAppRunnerTestEvent: (cb) => ipcRenderer.on("app-runner-test-event", (event, data) => cb(data)),
   onAppRunnerAppEvent: (cb) => ipcRenderer.on("app-runner-app-event", (event, data) => cb(data)),
+  // === Git Conflict Resolver (3-Way Merge) ===
+  gitConflictGetStatus: (projectPath) => ipcRenderer.invoke("git-conflict-get-status", projectPath),
+  gitConflictGetFile3Way: (payload) => ipcRenderer.invoke("git-conflict-get-file-3way", payload),
+  gitConflictSaveResolved: (payload) => ipcRenderer.invoke("git-conflict-save-resolved", payload),
+  gitConflictAbortMerge: (projectPath) => ipcRenderer.invoke("git-conflict-abort-merge", projectPath),
 });

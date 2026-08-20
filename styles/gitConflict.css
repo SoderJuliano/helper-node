@@ -1,0 +1,453 @@
+/* styles/gitConflict.css */
+/* Visualizador e Resolvedor de Conflitos Git em 3 Vias (Estilo IntelliJ IDEA) */
+
+.git-conflict-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  background: var(--bg-main, #1e1f22);
+  display: flex;
+  flex-direction: column;
+  color: var(--text-1, #f0f6fc);
+  font-family: var(--font-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+  user-select: none;
+  overflow: hidden;
+}
+
+/* === Barra Superior (Header) === */
+.git-conflict-header {
+  height: 48px;
+  min-height: 48px;
+  background: var(--bg-elevated, #2b2d30);
+  border-bottom: 1px solid var(--border-subtle, #3c3f41);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  gap: 12px;
+}
+
+.git-conflict-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.git-conflict-icon {
+  width: 22px;
+  height: 22px;
+  color: #f85149;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.git-conflict-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.git-conflict-file-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.git-conflict-file-select {
+  background: var(--bg-input, #1e1f22);
+  color: var(--text-1, #f0f6fc);
+  border: 1px solid var(--border-subtle, #3c3f41);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 13px;
+  font-family: var(--font-mono, "JetBrains Mono", monospace);
+  max-width: 320px;
+  cursor: pointer;
+  outline: none;
+}
+
+.git-conflict-file-select:focus {
+  border-color: #58a6ff;
+}
+
+.git-conflict-nav-btn {
+  background: transparent;
+  border: 1px solid var(--border-subtle, #3c3f41);
+  color: var(--text-2, #8b949e);
+  border-radius: 4px;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.git-conflict-nav-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-1, #fff);
+}
+
+.git-conflict-nav-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.git-conflict-status-badge {
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.git-conflict-status-badge.has-conflicts {
+  background: rgba(248, 81, 73, 0.2);
+  color: #ff7b72;
+  border: 1px solid rgba(248, 81, 73, 0.4);
+}
+
+.git-conflict-status-badge.resolved {
+  background: rgba(63, 185, 80, 0.2);
+  color: #7ee787;
+  border: 1px solid rgba(63, 185, 80, 0.4);
+}
+
+/* Ações Centrais */
+.git-conflict-actions-center {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.git-conflict-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--border-subtle, #3c3f41);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-1, #f0f6fc);
+  transition: all 0.15s ease;
+}
+
+.git-conflict-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--border-strong, #555);
+}
+
+.git-conflict-btn-magic {
+  background: rgba(88, 166, 255, 0.12);
+  border-color: rgba(88, 166, 255, 0.35);
+  color: #79c0ff;
+}
+
+.git-conflict-btn-magic:hover {
+  background: rgba(88, 166, 255, 0.22);
+  border-color: #58a6ff;
+  color: #fff;
+}
+
+/* Ações da Direita */
+.git-conflict-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.git-conflict-btn-save {
+  background: #238636;
+  border-color: rgba(240, 246, 252, 0.1);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.git-conflict-btn-save:hover {
+  background: #2ea043;
+}
+
+.git-conflict-btn-abort {
+  color: #f85149;
+  border-color: rgba(248, 81, 73, 0.3);
+}
+
+.git-conflict-btn-abort:hover {
+  background: rgba(248, 81, 73, 0.15);
+  border-color: #f85149;
+}
+
+.git-conflict-btn-close {
+  background: transparent;
+  border: none;
+  color: var(--text-2, #8b949e);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.git-conflict-btn-close:hover {
+  color: #fff;
+}
+
+/* === Layout de 3 Colunas === */
+.git-conflict-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1.15fr 1fr;
+  min-height: 0;
+  background: var(--bg-main, #1e1f22);
+  position: relative;
+}
+
+.git-conflict-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  border-right: 1px solid var(--border-subtle, #3c3f41);
+  position: relative;
+}
+
+.git-conflict-col:last-child {
+  border-right: none;
+}
+
+/* Header das Colunas */
+.git-conflict-col-header {
+  height: 32px;
+  min-height: 32px;
+  background: rgba(0, 0, 0, 0.25);
+  border-bottom: 1px solid var(--border-subtle, #3c3f41);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.git-conflict-col-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.col-tag-left {
+  color: #58a6ff;
+}
+
+.col-tag-center {
+  color: #d29922;
+}
+
+.col-tag-right {
+  color: #3fb950;
+}
+
+/* Containers de Código */
+.git-conflict-editor-container {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: auto;
+  min-height: 0;
+  background: #141416;
+  font-family: var(--font-mono, "JetBrains Mono", monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  user-select: text;
+  position: relative;
+}
+
+/* Tabela de Linhas do Diff */
+.git-conflict-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.git-conflict-row {
+  height: 20px;
+  line-height: 20px;
+}
+
+.git-conflict-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.git-conflict-gutter-num {
+  width: 42px;
+  min-width: 42px;
+  text-align: right;
+  padding-right: 8px;
+  color: var(--text-4, #484f58);
+  user-select: none;
+  font-size: 11px;
+}
+
+.git-conflict-gutter-action {
+  width: 32px;
+  min-width: 32px;
+  text-align: center;
+  user-select: none;
+}
+
+.git-conflict-code-cell {
+  padding-left: 8px;
+  white-space: pre;
+  overflow: visible;
+  color: var(--text-1, #f0f6fc);
+}
+
+/* Botões de Ação na Calha */
+.chunk-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  line-height: 1;
+  transition: transform 0.1s, background 0.15s;
+  padding: 0;
+}
+
+.chunk-action-btn:hover {
+  transform: scale(1.15);
+}
+
+.chunk-btn-accept-left {
+  background: rgba(88, 166, 255, 0.25);
+  color: #58a6ff;
+}
+
+.chunk-btn-accept-left:hover {
+  background: #58a6ff;
+  color: #fff;
+}
+
+.chunk-btn-accept-right {
+  background: rgba(63, 185, 80, 0.25);
+  color: #3fb950;
+}
+
+.chunk-btn-accept-right:hover {
+  background: #3fb950;
+  color: #fff;
+}
+
+.chunk-btn-ignore {
+  background: rgba(248, 81, 73, 0.15);
+  color: #f85149;
+  margin-left: 2px;
+  font-size: 10px;
+}
+
+.chunk-btn-ignore:hover {
+  background: #f85149;
+  color: #fff;
+}
+
+/* Destaque dos Chunks (Cores do IntelliJ) */
+.chunk-row-equal {
+  background: transparent;
+}
+
+.chunk-row-left-only {
+  background: rgba(56, 139, 253, 0.12);
+}
+
+.chunk-row-left-only .git-conflict-gutter-action {
+  border-left: 3px solid #388bfd;
+}
+
+.chunk-row-right-only {
+  background: rgba(63, 185, 80, 0.12);
+}
+
+.chunk-row-right-only .git-conflict-gutter-action {
+  border-left: 3px solid #3fb950;
+}
+
+.chunk-row-conflict {
+  background: rgba(248, 81, 73, 0.18);
+}
+
+.chunk-row-conflict .git-conflict-gutter-action {
+  border-left: 3px solid #f85149;
+}
+
+.chunk-row-resolved {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
+/* Editor Central (CodeMirror no Centro) */
+.git-conflict-col.center-col .CodeMirror {
+  height: 100%;
+  background: #18191c;
+  font-family: var(--font-mono, "JetBrains Mono", monospace);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.git-conflict-col.center-col .CodeMirror-gutters {
+  background: #1e1f22;
+  border-right: 1px solid var(--border-subtle, #3c3f41);
+}
+
+/* Linhas de Conflito no Editor Central */
+.cm-conflict-line {
+  background: rgba(248, 81, 73, 0.22) !important;
+}
+
+.cm-conflict-marker-line {
+  background: rgba(248, 81, 73, 0.4) !important;
+  color: #ff7b72 !important;
+  font-weight: bold;
+}
+
+/* Badge no Tree/Sidebar */
+.ws-git-conflict-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  margin-left: 6px;
+  background: rgba(248, 81, 73, 0.25);
+  border: 1px solid #f85149;
+  color: #ff7b72;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 8px;
+  cursor: pointer;
+  animation: pulse-conflict 2s infinite ease-in-out;
+}
+
+.ws-git-conflict-badge:hover {
+  background: #f85149;
+  color: #fff;
+}
+
+@keyframes pulse-conflict {
+  0% { box-shadow: 0 0 0 0 rgba(248, 81, 73, 0.6); }
+  70% { box-shadow: 0 0 0 6px rgba(248, 81, 73, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(248, 81, 73, 0); }
+}

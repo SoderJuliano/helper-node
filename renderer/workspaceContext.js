@@ -85,6 +85,7 @@ function fileIconHtml(name) {
                 const SVGI_NEW_PROJECT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; margin-right:8px; opacity:0.8; display:inline-block; vertical-align:middle;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>';
                 const SVGI_ADD_FILE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; margin-right:8px; opacity:0.8; display:inline-block; vertical-align:middle;"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>';
                 const SVGI_RUN_CONFIG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; margin-right:8px; opacity:0.8; color:#4ade80; display:inline-block; vertical-align:middle;"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+                const SVGI_GIT_CONFLICT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; margin-right:8px; opacity:0.9; color:#f85149; display:inline-block; vertical-align:middle;"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 9v12"/><path d="M18 9a9 9 0 0 0-9 9"/></svg>';
                 const SVGI_OPEN_EXTERNAL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; margin-right:8px; opacity:0.8; display:inline-block; vertical-align:middle;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
                 const SVGI_CLOSE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; margin-right:8px; opacity:0.8; color:#ff5252; display:inline-block; vertical-align:middle;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
 
@@ -98,6 +99,12 @@ function fileIconHtml(name) {
                     return b;
                 };
                 
+                if (currentGitConflictStatus && currentGitConflictStatus.hasConflicts && currentGitConflictStatus.count > 0) {
+                    menu.appendChild(mkItem(SVGI_GIT_CONFLICT, `Resolver Conflitos Git (${currentGitConflictStatus.count})…`, () => {
+                        if (typeof window.openGitConflictModal === 'function') window.openGitConflictModal(projectPath);
+                    }));
+                }
+
                 menu.appendChild(mkItem(SVGI_SWITCH_PROJECT, 'Trocar projeto…', () => pickProjectFolder()));
                 menu.appendChild(mkItem(SVGI_NEW_PROJECT, 'Criar Novo Projeto…', () => createNewProject()));
                 menu.appendChild(mkItem(SVGI_ADD_FILE, 'Anexar arquivo ao contexto…', async () => {
@@ -329,6 +336,7 @@ function fileIconHtml(name) {
  // renderWorkspacePanel & projectMenu event click
 
             let currentGitStatus = { isGit: false, changesCount: 0, modifiedFiles: {}, modifiedDirs: {} };
+            let currentGitConflictStatus = { hasConflicts: false, count: 0, conflictFiles: [] };
 
             async function fetchAndUpdateGitStatus() {
                 if (window.electronAPI && window.electronAPI.getProjectGitStatus) {
@@ -336,12 +344,24 @@ function fileIconHtml(name) {
                         const res = await window.electronAPI.getProjectGitStatus();
                         if (res) {
                             currentGitStatus = res;
-                            updateGitStatusUi();
                         }
                     } catch (e) {
                         console.warn('Erro ao buscar git status:', e);
                     }
                 }
+                if (window.electronAPI && window.electronAPI.gitConflictGetStatus) {
+                    try {
+                        const cRes = await window.electronAPI.gitConflictGetStatus();
+                        if (cRes && cRes.ok && cRes.data) {
+                            currentGitConflictStatus = cRes.data;
+                        } else {
+                            currentGitConflictStatus = { hasConflicts: false, count: 0, conflictFiles: [] };
+                        }
+                    } catch (_) {
+                        currentGitConflictStatus = { hasConflicts: false, count: 0, conflictFiles: [] };
+                    }
+                }
+                updateGitStatusUi();
             }
 
             function updateGitStatusUi() {
@@ -353,6 +373,23 @@ function fileIconHtml(name) {
                     } else {
                         badge.style.display = 'none';
                     }
+                }
+
+                const conflictBadgeWs = document.getElementById('ws-git-conflict-badge');
+                const conflictBadgeCtx = document.getElementById('ctx-git-conflict-badge');
+                if (currentGitConflictStatus && currentGitConflictStatus.hasConflicts && currentGitConflictStatus.count > 0) {
+                    const text = `⚠️ ${currentGitConflictStatus.count} conflito${currentGitConflictStatus.count > 1 ? 's' : ''}`;
+                    if (conflictBadgeWs) {
+                        conflictBadgeWs.textContent = text;
+                        conflictBadgeWs.style.display = 'inline-flex';
+                    }
+                    if (conflictBadgeCtx) {
+                        conflictBadgeCtx.textContent = text;
+                        conflictBadgeCtx.style.display = 'inline-flex';
+                    }
+                } else {
+                    if (conflictBadgeWs) conflictBadgeWs.style.display = 'none';
+                    if (conflictBadgeCtx) conflictBadgeCtx.style.display = 'none';
                 }
             }
 
@@ -370,6 +407,21 @@ function fileIconHtml(name) {
     window.fileIconHtml = fileIconHtml;
 
     // Listeners
+    const conflictBadgeWs = document.getElementById('ws-git-conflict-badge');
+    if (conflictBadgeWs) {
+        conflictBadgeWs.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (typeof window.openGitConflictModal === 'function') window.openGitConflictModal();
+        });
+    }
+    const conflictBadgeCtx = document.getElementById('ctx-git-conflict-badge');
+    if (conflictBadgeCtx) {
+        conflictBadgeCtx.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (typeof window.openGitConflictModal === 'function') window.openGitConflictModal();
+        });
+    }
+
     if (ctxOpenProjectBtn) {
         ctxOpenProjectBtn.addEventListener('click', (e) => { e.stopPropagation(); pickProjectFolder(); });
     }

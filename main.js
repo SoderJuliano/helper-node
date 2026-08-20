@@ -53,6 +53,7 @@ require("./main/ipc/codeNav.js")();
 require("./main/ipc/importCheck.js")();
 require("./main/ipc/javaDeps.js")();
 require("./main/ipc/appRunner.js")();
+require("./main/ipc/gitConflict.js")();
 
 // Unhandled exception silencers
 for (const stream of [process.stdout, process.stderr]) {
