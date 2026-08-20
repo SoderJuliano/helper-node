@@ -38,17 +38,16 @@
           <!-- Project Info Badge Bar -->
           <div class="app-runner-config-badge-bar">
             <span class="app-runner-cfg-badge tool-badge" id="app-runner-cfg-tool-badge">Gradle</span>
-            <span class="app-runner-cfg-badge jdk-badge" id="app-runner-cfg-jdk-badge">☕ Java</span>
+            <span class="app-runner-cfg-badge jdk-badge" id="app-runner-cfg-jdk-badge">Java</span>
             <span class="app-runner-cfg-badge sync-badge" id="app-runner-cfg-sync-badge">IntelliJ Sync</span>
           </div>
 
           <!-- Section: Active Profiles (Spring Boot) -->
           <div class="app-runner-config-section">
-            <label class="app-runner-config-label" for="app-runner-cfg-profiles">
+            <label class="app-runner-config-label" for="app-runner-cfg-profiles" title="Define a propriedade --spring.profiles.active na inicialização">
               <span>Perfis Ativos (Spring Profiles)</span>
-              <span class="app-runner-config-hint">--spring.profiles.active</span>
             </label>
-            <input type="text" id="app-runner-cfg-profiles" class="app-runner-config-input" placeholder="Ex: dev,local ou homolog" />
+            <input type="text" id="app-runner-cfg-profiles" class="app-runner-config-input" placeholder="Ex: dev,local ou homolog (--spring.profiles.active)" />
             <div class="app-runner-config-chips" id="app-runner-cfg-chips">
               <span class="app-runner-chip" data-profile="dev">+ dev</span>
               <span class="app-runner-chip" data-profile="local">+ local</span>
@@ -62,9 +61,8 @@
           <!-- Section: Environment Variables -->
           <div class="app-runner-config-section">
             <div class="app-runner-config-section-header">
-              <label class="app-runner-config-label" style="margin-bottom:0;">
+              <label class="app-runner-config-label" style="margin-bottom:0;" title="Variáveis injetadas no ambiente de execução do processo local">
                 <span>Variáveis de Ambiente</span>
-                <span class="app-runner-config-hint">Injetadas na execução local</span>
               </label>
               <div class="app-runner-config-view-toggle">
                 <button type="button" class="app-runner-toggle-btn active" id="app-runner-cfg-btn-mode-table">Tabela</button>
@@ -91,25 +89,22 @@
 
             <!-- Raw Text View -->
             <div id="app-runner-cfg-env-raw-wrapper" class="app-runner-env-raw-wrapper" style="display:none;">
-              <textarea id="app-runner-cfg-env-raw" class="app-runner-config-textarea" placeholder="CHAVE=VALOR&#10;DATABASE_URL=jdbc:postgresql://localhost:5432/db&#10;SPRING_PROFILES_ACTIVE=dev"></textarea>
-              <div class="app-runner-config-hint" style="margin-top:4px;">Uma variável por linha no formato CHAVE=VALOR. Linhas com # serão ignoradas.</div>
+              <textarea id="app-runner-cfg-env-raw" class="app-runner-config-textarea" placeholder="CHAVE=VALOR&#10;DATABASE_URL=jdbc:postgresql://localhost:5432/db&#10;SPRING_PROFILES_ACTIVE=dev" title="Uma variável por linha no formato CHAVE=VALOR. Linhas com # são ignoradas."></textarea>
             </div>
           </div>
 
           <!-- Section: VM Options & Program Arguments -->
           <div class="app-runner-config-grid-2">
             <div class="app-runner-config-section">
-              <label class="app-runner-config-label" for="app-runner-cfg-vm-options">
+              <label class="app-runner-config-label" for="app-runner-cfg-vm-options" title="Opções de inicialização da JVM (ex: -Xmx2048m, -Dfile.encoding=UTF-8)">
                 <span>Opções de VM (JVM Arguments)</span>
-                <span class="app-runner-config-hint">-D, -Xmx, etc.</span>
               </label>
               <input type="text" id="app-runner-cfg-vm-options" class="app-runner-config-input" placeholder="-Xmx2048m -Dfile.encoding=UTF-8" />
             </div>
 
             <div class="app-runner-config-section">
-              <label class="app-runner-config-label" for="app-runner-cfg-prog-args">
+              <label class="app-runner-config-label" for="app-runner-cfg-prog-args" title="Argumentos passados diretamente ao método main da aplicação">
                 <span>Argumentos do Programa</span>
-                <span class="app-runner-config-hint">--server.port=8082</span>
               </label>
               <input type="text" id="app-runner-cfg-prog-args" class="app-runner-config-input" placeholder="--server.port=8082 --debug" />
             </div>
@@ -390,17 +385,17 @@
     const toolType = (buildInfo && buildInfo.type) || (config.buildTool) || 'gradle';
     const isSpring = (buildInfo && buildInfo.isSpringBoot) || false;
     toolBadge.textContent = toolType === 'gradle'
-      ? (isSpring ? '🐘 Gradle (Spring Boot)' : '🐘 Gradle')
-      : (toolType === 'maven' ? (isSpring ? '🪶 Maven (Spring Boot)' : '🪶 Maven') : '☕ Java');
+      ? (isSpring ? 'Gradle (Spring Boot)' : 'Gradle')
+      : (toolType === 'maven' ? (isSpring ? 'Maven (Spring Boot)' : 'Maven') : 'Java');
     toolBadge.className = `app-runner-cfg-badge tool-badge tool-${toolType}`;
 
     // Sync status badge
     const hasIntelliJ = config.extractedFromIntelliJ && config.extractedFromIntelliJ.sourceFile;
     if (hasIntelliJ) {
-      syncBadge.textContent = '✓ IntelliJ Integrado';
+      syncBadge.textContent = 'IntelliJ Integrado';
       syncBadge.style.display = 'inline-flex';
     } else {
-      syncBadge.textContent = '⚙ Helper Node Nativo';
+      syncBadge.textContent = 'Helper Node Nativo';
       syncBadge.style.display = 'inline-flex';
     }
 
@@ -483,15 +478,22 @@
       return;
     }
 
-    currentProjectDir = targetDir;
-
-    // Detecta ferramenta de build
+    // Detecta ferramenta de build e valida se é Maven ou Gradle
     if (window.electronAPI.appRunnerDetectProject) {
       const detectRes = await window.electronAPI.appRunnerDetectProject(targetDir);
       if (detectRes && detectRes.ok) {
         currentBuildInfo = detectRes.data;
       }
     }
+
+    if (!currentBuildInfo || (currentBuildInfo.type !== 'gradle' && currentBuildInfo.type !== 'maven')) {
+      if (typeof window.showToast === 'function') {
+        window.showToast('O projeto anexado não é um projeto Maven ou Gradle.');
+      }
+      return;
+    }
+
+    currentProjectDir = targetDir;
 
     // Carrega configurações
     if (window.electronAPI.appRunnerGetConfig) {
@@ -516,6 +518,12 @@
   }
 
   window.openAppRunnerConfigModal = openAppRunnerConfigModal;
+
+  if (window.electronAPI && window.electronAPI.onOpenAppRunnerConfigModal) {
+    window.electronAPI.onOpenAppRunnerConfigModal((projectDir) => {
+      openAppRunnerConfigModal(projectDir);
+    });
+  }
 
   document.addEventListener('DOMContentLoaded', () => {
     modalContainer = createModalDom();

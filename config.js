@@ -562,14 +562,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     const javaStatus = document.getElementById('java-runner-config-status');
 
     if (javaSection) {
+      javaSection.style.display = 'none';
       const ctx = await ipcRenderer.invoke('get-project-context');
       if (ctx && ctx.path) {
         const detectRes = await ipcRenderer.invoke('app-runner-detect-project', ctx.path);
-        if (detectRes && detectRes.ok && (detectRes.data.type === 'gradle' || detectRes.data.type === 'maven' || detectRes.data.type === 'java')) {
+        if (detectRes && detectRes.ok && (detectRes.data.type === 'gradle' || detectRes.data.type === 'maven')) {
           javaSection.style.display = 'block';
           const isSpring = detectRes.data.isSpringBoot ? ' (Spring Boot)' : '';
           if (javaBadge) {
-            javaBadge.textContent = detectRes.data.type === 'gradle' ? `🐘 Gradle${isSpring}` : (detectRes.data.type === 'maven' ? `🪶 Maven${isSpring}` : '☕ Java');
+            javaBadge.textContent = detectRes.data.type === 'gradle' ? `Gradle${isSpring}` : `Maven${isSpring}`;
           }
           if (javaDesc) {
             javaDesc.innerHTML = `Gerencie variáveis de ambiente, perfis ativos do Spring Boot e argumentos para o projeto: <strong>${ctx.name}</strong>.`;

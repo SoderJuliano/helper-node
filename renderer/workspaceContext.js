@@ -116,11 +116,13 @@ function fileIconHtml(name) {
                         if (typeof refreshProjectContext === 'function') refreshProjectContext();
                     }
                 }));
-                menu.appendChild(mkItem(SVGI_RUN_CONFIG, 'Configurações de Execução (Perfis/Envs)…', () => {
-                    if (typeof window.openAppRunnerConfigModal === 'function') {
-                        window.openAppRunnerConfigModal(projectPath);
-                    }
-                }));
+                if (ctxProject && ctxProject.isBuildTool) {
+                    menu.appendChild(mkItem(SVGI_RUN_CONFIG, 'Configurações de Execução (Perfis/Envs)…', () => {
+                        if (typeof window.openAppRunnerConfigModal === 'function') {
+                            window.openAppRunnerConfigModal(projectPath);
+                        }
+                    }));
+                }
                 
                 const hr = document.createElement('div');
                 hr.style.cssText = 'height:1px; background:var(--border, #2d2d38); margin:4px 0;';
@@ -227,6 +229,14 @@ function fileIconHtml(name) {
                 if (ctxOpenProjectBtn) ctxOpenProjectBtn.style.display = 'none';
                 if (ctxProjectBtn) ctxProjectBtn.style.display = 'inline-flex';
                 if (ctxProjectName) ctxProjectName.textContent = ctxProject.name;
+                if (ctxProject && ctxProject.path && window.electronAPI && window.electronAPI.appRunnerDetectProject) {
+                    try {
+                        const buildInfo = await window.electronAPI.appRunnerDetectProject(ctxProject.path);
+                        ctxProject.isBuildTool = buildInfo && buildInfo.ok && (buildInfo.data.type === 'gradle' || buildInfo.data.type === 'maven');
+                    } catch (_) {
+                        ctxProject.isBuildTool = false;
+                    }
+                }
                 if (ctxBranch) {
                     if (ctxProject.branch) {
                         ctxBranch.style.display = 'inline-flex';

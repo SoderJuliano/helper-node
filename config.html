@@ -371,7 +371,7 @@
                 </div>
             </label>
         </div>
-        <p id="realtime-fast-model-note" style="display:none; font-size:11px; color:#7ec9ff; margin:-9px 0 15px 4px; -webkit-app-region:no-drag;">⚡ Modelo de raciocínio detectado — assistente em tempo real e tradutor usam automaticamente gpt-4.1 (sem raciocínio) pra manter a resposta rápida.</p>
+        <p id="realtime-fast-model-note" style="display:none; font-size:11px; color:#7ec9ff; margin:-9px 0 15px 4px; -webkit-app-region:no-drag;">Modelo de raciocínio detectado — assistente em tempo real e tradutor usam automaticamente gpt-4.1 (sem raciocínio) pra manter a resposta rápida.</p>
 
         <div class="setting-item" title="Permite à IA ler e editar arquivos do seu computador, executar comandos e gerar scripts. Quando ativo, o modo integrado (overlay) é desativado. Usa modelo mais pesado (gpt-4o-mini ou qwen2.5:7b) para edições de código.">
             <label for="helper-tools-toggle">Ferramentas avançadas (ler/editar arquivos, comandos)</label>
@@ -395,24 +395,21 @@
             </label>
         </div>
 
-        <!-- Configurações de Execução (Maven / Gradle / Spring Boot) -->
-        <div id="java-runner-config-section" style="display: none; margin-bottom: 15px; padding: 14px; background-color: rgba(0,0,0,0.35); border-radius: 5px; border: 1px solid rgba(74, 222, 128, 0.25); -webkit-app-region: no-drag;">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+        <!-- Configurações de Execução (Maven / Gradle) -->
+        <div id="java-runner-config-section" style="display: none; margin-bottom: 15px; padding: 10px 14px; background-color: rgba(0,0,0,0.35); border-radius: 5px; border: 1px solid rgba(74, 222, 128, 0.25); -webkit-app-region: no-drag;" title="Gerencie variáveis de ambiente, perfis ativos do Spring Boot (--spring.profiles.active), opções de VM e argumentos de subida para o projeto anexado.">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
                 <div style="font-weight: bold; color: #4ade80; display: flex; align-items: center; gap: 8px;">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px;"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                    <span>Configurações de Execução (Maven / Gradle)</span>
+                    <span>Configurações de Execução</span>
+                    <span id="java-runner-project-badge" style="font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: rgba(74, 222, 128, 0.15); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.3);"></span>
                 </div>
-                <span id="java-runner-project-badge" style="font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: rgba(74, 222, 128, 0.15); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.3);"></span>
-            </div>
-            <p id="java-runner-project-desc" style="font-size: 12px; color: #cbd5e1; margin: 0 0 10px 0; line-height: 1.4;">
-                Gerencie variáveis de ambiente, perfis ativos do Spring Boot (<code style="background:#1a1a1a; padding:1px 4px; border-radius:3px;">--spring.profiles.active</code>), opções de VM e argumentos de subida para o projeto anexado.
-            </p>
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px;">
-                <button type="button" id="java-runner-open-config-btn" style="margin-top:0; padding: 7px 14px; font-size: 12.5px; background-color: #0284c7; color: #fff; border: none; border-radius: 5px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; align-self: auto;">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                    <span>Configurar Execução do Projeto</span>
-                </button>
-                <span id="java-runner-config-status" style="font-size: 11.5px; color: #94a3b8; font-family: var(--font-mono, monospace);"></span>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span id="java-runner-config-status" style="font-size: 11.5px; color: #94a3b8; font-family: var(--font-mono, monospace);"></span>
+                    <button type="button" id="java-runner-open-config-btn" style="margin-top:0; padding: 6px 12px; font-size: 12px; background-color: #0284c7; color: #fff; border: none; border-radius: 5px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; align-self: auto;" title="Abrir configurações de execução, perfis e variáveis de ambiente">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                        <span>Configurar Execução</span>
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -645,7 +642,7 @@
                 <strong>Ferramentas avançadas</strong> e <strong>Acesso a diretórios</strong> são desativados neste modo — o CLI gerencia tudo.
             </div>
             <div style="margin-top: 8px; font-size: 11px; color: #999;">
-                🎙️ Ctrl+D (transcrição de áudio) não tem suporte neste modo — troque para ChatGPT ou Ollama.
+                Ctrl+D (transcrição de áudio) não tem suporte neste modo — troque para ChatGPT ou Ollama.
             </div>
         </div>
 
@@ -681,7 +678,7 @@
                 <strong>Ferramentas avançadas</strong> desativadas neste modo — o CLI gerencia tudo internamente.
             </div>
             <div style="margin-top: 8px; font-size: 11px; color: #999;">
-                🎙️ Ctrl+D (transcrição de áudio) não tem suporte neste modo — troque para ChatGPT ou Ollama.
+                Ctrl+D (transcrição de áudio) não tem suporte neste modo — troque para ChatGPT ou Ollama.
             </div>
         </div>
 
@@ -720,16 +717,15 @@
                 <strong>Conta corporativa (Business/Enterprise)</strong>: peça pro admin habilitar "Copilot in the CLI" nas políticas da organização — sem isso o CLI recusa mesmo com Copilot funcionando no VS Code/IntelliJ.
             </div>
             <div style="margin-top: 8px; font-size: 11px; color: #999;">
-                🎙️ Ctrl+D (transcrição de áudio) não tem suporte neste modo — troque para ChatGPT ou Ollama.
+                Ctrl+D (transcrição de áudio) não tem suporte neste modo — troque para ChatGPT ou Ollama.
             </div>
         </div>
 
         <!-- Assistente de Tradução (entrevistas) -->
-        <div id="translation-assistant-section" style="margin-top: 14px; padding: 14px; background-color: rgba(0,0,0,0.35); border-radius: 5px; -webkit-app-region: no-drag;">
-            <div style="font-weight: bold; color: #00aaff; margin-bottom: 8px;">Assistente de Tradução (Entrevistas)</div>
-            <p style="font-size: 12px; color: #ffb74d; margin: 0 0 10px 0;">Esta opção consome créditos da API OpenAI. A chave de API deve estar configurada acima.</p>
+        <div id="translation-assistant-section" style="margin-top: 14px; padding: 14px; background-color: rgba(0,0,0,0.35); border-radius: 5px; -webkit-app-region: no-drag;" title="Assistente de Tradução para Entrevistas e Áudio (consome créditos OpenAI).">
+            <div style="font-weight: bold; color: #00aaff; margin-bottom: 10px;">Assistente de Tradução (Entrevistas)</div>
 
-            <div class="setting-item" style="margin-bottom: 10px;">
+            <div class="setting-item" style="margin-bottom: 10px;" title="Ativa a transcrição e tradução em tempo real de áudios">
                 <label for="translation-enabled">Habilitar Assistente de Tradução</label>
                 <span id="translation-enabled-status" style="font-weight: bold; margin-left: 10px; min-width: 30px; text-align: center; -webkit-app-region: no-drag;">OFF</span>
                 <label class="switch">
@@ -740,7 +736,7 @@
                 </label>
             </div>
 
-            <div class="setting-item" style="margin-bottom: 0;">
+            <div class="setting-item" style="margin-bottom: 0;" title="Idioma de destino para o qual o áudio/texto será traduzido">
                 <label for="translation-target-lang">Idioma alvo (para onde traduzir)</label>
                 <select id="translation-target-lang" class="custom-select">
                     <option value="pt-br">Português (BR)</option>
@@ -749,47 +745,28 @@
                 </select>
             </div>
 
-            <div class="setting-item" style="margin-bottom: 0; margin-top: 10px;">
+            <div class="setting-item" style="margin-bottom: 0; margin-top: 10px;" title="Microfone usado para a SUA voz. O áudio do sistema (entrevistador — Meet/Teams/YouTube) é capturado automaticamente.">
                 <label for="translation-mic-device">Seu microfone</label>
                 <select id="translation-mic-device" class="custom-select">
                     <option value="">Automático (padrão do sistema)</option>
                 </select>
                 <span id="translation-mic-refresh" style="cursor: pointer; color: #00aaff; margin-left: 10px; font-size: 12px;">Atualizar</span>
             </div>
-            <p style="font-size: 11.5px; color: #888; margin: 6px 0 0 0;">
-                Microfone usado para a SUA voz. O áudio do sistema (entrevistador — Meet/Teams/YouTube) é capturado automaticamente.
-            </p>
 
             <hr style="margin: 16px 0; opacity: 0.3; border-color: #555;">
             <div style="-webkit-app-region: no-drag;">
-                <label for="translation-test-mode" style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer; font-size: 13px;">
+                <label for="translation-test-mode" style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer; font-size: 13px;" title="Ao salvar com esta opção marcada, o app processa os 5 áudios de teste automaticamente e desmarca ao final.">
                     <input type="checkbox" id="translation-test-mode" style="margin-top: 2px; flex-shrink: 0;">
-                    <span><strong>Modo de Teste</strong> — reproduz os 5 áudios de <code style="background:#1a1a1a; padding:1px 4px; border-radius:3px;">test-audios/</code> e exibe tradução + resposta sugerida para cada um</span>
+                    <span><strong>Modo de Teste</strong> — reproduz os 5 áudios de teste e exibe tradução com resposta sugerida</span>
                 </label>
-                <p style="font-size: 11.5px; color: #888; margin: 6px 0 0 20px;">
-                    Ao salvar com esta opção marcada, o app processa os áudios automaticamente e desmarca ao final.
-                </p>
             </div>
         </div>
 
         <!-- Tutor (RAG + Vision) -->
-        <div id="vision-guide-section" style="margin-top: 14px; padding: 14px; background-color: rgba(0,0,0,0.35); border-radius: 5px; -webkit-app-region: no-drag;">
-            <div style="font-weight: bold; color: #a78bfa; margin-bottom: 8px;">👁 Tutor (Assistente Guiado por Visão)</div>
-            <p style="font-size: 12px; color: #ccc; margin: 0 0 8px 0; line-height: 1.5;">
-                Um <strong>tutor em tempo real</strong> que observa sua tela por <strong>prints periódicos</strong>
-                (não é vídeo — economiza tokens) e, opcionalmente, ouve seu microfone e o áudio da máquina.
-                Ele <strong>acumula o contexto</strong> e só te dá uma dica em <strong>pontos estratégicos</strong>
-                (erro na tela, você travado, ou uma pergunta pra responder) — não responde a cada print, pra não
-                te encher de coisa pra ler. A ideia é <strong>você escrever o código</strong>; ele guia, corrige e
-                nunca entrega a tarefa inteira pronta. Numa janelinha translúcida (como a do Tradutor), com botão de
-                copiar nos blocos de código.
-            </p>
-            <p style="font-size: 11.5px; color: #ffb74d; margin: 0 0 10px 0;">
-                Consome créditos da API OpenAI (visão + transcrição). A chave deve estar configurada acima.
-                Nesta versão nasce nativo no <strong>Windows</strong> (áudio no Linux vem no port).
-            </p>
+        <div id="vision-guide-section" style="margin-top: 14px; padding: 14px; background-color: rgba(0,0,0,0.35); border-radius: 5px; -webkit-app-region: no-drag;" title="Tutor em tempo real que observa sua tela por prints periódicos, guia seu raciocínio de código e dá dicas estratégicas (consome créditos OpenAI).">
+            <div style="font-weight: bold; color: #a78bfa; margin-bottom: 10px;">Tutor (Assistente Guiado por Visão)</div>
 
-            <div class="setting-item" style="margin-bottom: 10px;">
+            <div class="setting-item" style="margin-bottom: 10px;" title="Habilita o acompanhamento por visão em tempo real">
                 <label for="vision-guide-enabled">Habilitar Tutor (Visão)</label>
                 <span id="vision-guide-enabled-status" style="font-weight: bold; margin-left: 10px; min-width: 30px; text-align: center; -webkit-app-region: no-drag;">OFF</span>
                 <label class="switch">
@@ -800,7 +777,7 @@
                 </label>
             </div>
 
-            <div class="setting-item" style="margin-bottom: 10px;">
+            <div class="setting-item" style="margin-bottom: 10px;" title="Frequência de captura periódica da tela">
                 <label for="vision-guide-interval">Intervalo entre prints (segundos)</label>
                 <select id="vision-guide-interval" class="custom-select">
                     <option value="3">3s (mais responsivo, mais tokens)</option>
@@ -810,7 +787,7 @@
                 </select>
             </div>
 
-            <div class="setting-item" style="margin-bottom: 10px;">
+            <div class="setting-item" style="margin-bottom: 10px;" title="Tempo mínimo de espera antes de fornecer uma nova dica">
                 <label for="vision-guide-cooldown">Silêncio mínimo entre dicas</label>
                 <select id="vision-guide-cooldown" class="custom-select">
                     <option value="0">A IA decide (recomendado)</option>
@@ -822,16 +799,16 @@
             </div>
 
             <div style="-webkit-app-region: no-drag; margin-bottom: 8px;">
-                <label for="vision-guide-audio" style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer; font-size: 13px;">
+                <label for="vision-guide-audio" style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer; font-size: 13px;" title="Capta o que você ou alguém pergunta por perto para sugerir como responder">
                     <input type="checkbox" id="vision-guide-audio" style="margin-top: 2px; flex-shrink: 0;">
-                    <span><strong>Ouvir microfone + áudio do sistema</strong> — capta o que você ou alguém pergunta por perto, pra sugerir como responder (Windows/macOS)</span>
+                    <span><strong>Ouvir microfone + áudio do sistema</strong> — capta perguntas de áudio para sugerir respostas</span>
                 </label>
             </div>
 
             <div style="-webkit-app-region: no-drag;">
-                <label for="vision-guide-rag" style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer; font-size: 13px;">
+                <label for="vision-guide-rag" style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer; font-size: 13px;" title="Injeta documentos cadastrados na base de conhecimento (RAG) para reconhecer recursos e sintaxes específicas">
                     <input type="checkbox" id="vision-guide-rag" style="margin-top: 2px; flex-shrink: 0;">
-                    <span><strong>Usar Base de Conhecimento (RAG)</strong> — injeta docs recentes que você cadastrou (ex: Java 26) pra reconhecer sintaxe/recursos novos</span>
+                    <span><strong>Usar Base de Conhecimento (RAG)</strong> — injeta documentações cadastradas no contexto</span>
                 </label>
             </div>
         </div>
