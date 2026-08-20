@@ -50,49 +50,37 @@ const openIaTokenContainer = document.getElementById("openai-token-container");
 const openIaTokenInput = document.getElementById("openai-token");
 const openAiModelContainer = document.getElementById("openai-model-container");
 const openAiModelSelect = document.getElementById("openai-model-select");
-const realtimeFastModelNote = document.getElementById("realtime-fast-model-note");
 const visionGuideSection = document.getElementById("vision-guide-section");
 
 const backendModelContainer = document.getElementById("backend-model-container");
 const backendModelSelect = document.getElementById("backend-model-select");
 const backendApiKey = document.getElementById("backend-api-key");
 
-function updateRealtimeFastModelNote() {
-  if (!realtimeFastModelNote) return;
-  realtimeFastModelNote.style.display = supportsReasoningEffort(openAiModelSelect.value) ? 'block' : 'none';
-}
-if (openAiModelSelect) {
-  openAiModelSelect.addEventListener('change', updateRealtimeFastModelNote);
-}
 const openAiReasoningEffortContainer = document.getElementById("openai-reasoning-effort-container");
 const openAiReasoningEffortSelect = document.getElementById("openai-reasoning-effort-select");
 const openAiVisionModelContainer = document.getElementById("openai-vision-model-container");
 const openAiVisionModelSelect = document.getElementById("openai-vision-model-select");
 const ollamaLocalModelContainer = document.getElementById("ollama-local-model-container");
 const ollamaLocalModelSelect = document.getElementById("ollama-local-model-select");
-const ollamaLocalInfo = document.getElementById("ollama-local-info");
-const ollamaPullCmd = document.getElementById("ollama-local-pull-cmd");
 const checkOllamaBtn = document.getElementById("check-ollama-btn");
 const ollamaStatusResult = document.getElementById("ollama-status-result");
 // Gemini CLI elements
 const geminiCliModelContainer = document.getElementById("gemini-cli-model-container");
 const geminiCliModelSelect = document.getElementById("gemini-cli-model-select");
-const geminiCliInfo = document.getElementById("gemini-cli-info");
 const checkGeminiCliBtn = document.getElementById("check-gemini-cli-btn");
 const geminiCliStatusResult = document.getElementById("gemini-cli-status-result");
 // Claude Code CLI elements
 const claudeCliModelContainer = document.getElementById("claude-cli-model-container");
 const claudeCliModelSelect = document.getElementById("claude-cli-model-select");
-const claudeCliInfo = document.getElementById("claude-cli-info");
 const checkClaudeCliBtn = document.getElementById("check-claude-cli-btn");
 const claudeCliStatusResult = document.getElementById("claude-cli-status-result");
 // Copilot CLI elements
 const copilotCliModelContainer = document.getElementById("copilot-cli-model-container");
-const copilotCliModelNote = document.getElementById("copilot-cli-model-note");
 const copilotCliModelSelect = document.getElementById("copilot-cli-model-select");
-const copilotCliInfo = document.getElementById("copilot-cli-info");
 const checkCopilotCliBtn = document.getElementById("check-copilot-cli-btn");
 const copilotCliStatusResult = document.getElementById("copilot-cli-status-result");
+const copilotResetBlockedBtn = document.getElementById("copilot-reset-blocked-btn");
+const copilotResetBlockedResult = document.getElementById("copilot-reset-blocked-result");
 
 // Nexa elements
 // O "Apenas Nexa (Modo Imersivo)" foi removido junto com a janela fullscreen
@@ -200,10 +188,10 @@ function applyLiteUi() {
     const si = aiModelSelect.closest('.setting-item');
     if (si) si.style.display = 'none';
   } catch (_) {}
-  ['backend-api-key-container', 'ollama-local-model-container', 'ollama-local-info',
-   'gemini-cli-model-container', 'gemini-cli-info',
-   'claude-cli-model-container', 'claude-cli-info',
-   'copilot-cli-model-container', 'copilot-cli-info'].forEach((id) => {
+  ['backend-api-key-container', 'ollama-local-model-container',
+   'gemini-cli-model-container',
+   'claude-cli-model-container',
+   'copilot-cli-model-container'].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
   });
@@ -505,19 +493,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (openAiVisionModelContainer) openAiVisionModelContainer.style.display = 'flex';
   } else if (aiModelSelect.value === 'ollamaLocal') {
     if (ollamaLocalModelContainer) ollamaLocalModelContainer.style.display = 'flex';
-    if (ollamaLocalInfo) ollamaLocalInfo.style.display = 'block';
     populateOllamaLocalModels();
     applyOllamaLocalExclusivity();
   } else if (aiModelSelect.value === 'geminiCli') {
     if (geminiCliModelContainer) geminiCliModelContainer.style.display = 'flex';
-    if (geminiCliInfo) geminiCliInfo.style.display = 'block';
   } else if (aiModelSelect.value === 'claudeCli') {
     if (claudeCliModelContainer) claudeCliModelContainer.style.display = 'flex';
-    if (claudeCliInfo) claudeCliInfo.style.display = 'block';
   } else if (aiModelSelect.value === 'copilotCli') {
     if (copilotCliModelContainer) copilotCliModelContainer.style.display = 'flex';
-    if (copilotCliModelNote) copilotCliModelNote.style.display = 'block';
-    if (copilotCliInfo) copilotCliInfo.style.display = 'block';
   } else if (aiModelSelect.value === 'llama' || aiModelSelect.value === 'llama-stream') {
     const backendModelContainerEl = document.getElementById('backend-model-container');
     if (backendModelContainerEl) backendModelContainerEl.style.display = 'flex';
@@ -933,13 +916,6 @@ if (workspaceAccessToggle) {
   });
 }
 
-// Mostra/esconde campos do provider selecionado.
-function updateOllamaPullCmd() {
-  if (!ollamaLocalModelSelect || !ollamaPullCmd) return;
-  const val = ollamaLocalModelSelect.value;
-  ollamaPullCmd.textContent = val ? `ollama pull ${val}` : `ollama pull <modelo>`;
-}
-
 async function populateOllamaLocalModels(savedModel = null) {
   if (!ollamaLocalModelSelect) return;
 
@@ -1005,8 +981,6 @@ async function populateOllamaLocalModels(savedModel = null) {
       ollamaLocalModelSelect.innerHTML = '<option value="" disabled>Erro ao carregar modelos</option>';
     }
   }
-
-  updateOllamaPullCmd();
 }
 
 async function populateGeminiCliModels(savedModel = null, force = false) {
@@ -1205,14 +1179,9 @@ aiModelSelect.addEventListener('change', () => {
     if (openAiReasoningEffortContainer) openAiReasoningEffortContainer.style.display = showOpenAi ? 'flex' : 'none';
     if (openAiVisionModelContainer) openAiVisionModelContainer.style.display = showOpenAi ? 'flex' : 'none';
     if (ollamaLocalModelContainer) ollamaLocalModelContainer.style.display = (v === 'ollamaLocal') ? 'flex' : 'none';
-    if (ollamaLocalInfo) ollamaLocalInfo.style.display = (v === 'ollamaLocal') ? 'block' : 'none';
     if (geminiCliModelContainer) geminiCliModelContainer.style.display = (v === 'geminiCli') ? 'flex' : 'none';
-    if (geminiCliInfo) geminiCliInfo.style.display = (v === 'geminiCli') ? 'block' : 'none';
     if (claudeCliModelContainer) claudeCliModelContainer.style.display = (v === 'claudeCli') ? 'flex' : 'none';
-    if (claudeCliInfo) claudeCliInfo.style.display = (v === 'claudeCli') ? 'block' : 'none';
     if (copilotCliModelContainer) copilotCliModelContainer.style.display = (v === 'copilotCli') ? 'flex' : 'none';
-    if (copilotCliModelNote) copilotCliModelNote.style.display = (v === 'copilotCli') ? 'block' : 'none';
-    if (copilotCliInfo) copilotCliInfo.style.display = (v === 'copilotCli') ? 'block' : 'none';
     const backendApiKeyContainer = document.getElementById('backend-api-key-container');
     if (backendApiKeyContainer) backendApiKeyContainer.style.display = isOllama ? 'flex' : 'none';
     const backendModelContainerEl = document.getElementById('backend-model-container');
@@ -1284,10 +1253,6 @@ if (backendModelSelect) {
   });
 }
 
-if (ollamaLocalModelSelect) {
-    ollamaLocalModelSelect.addEventListener('change', updateOllamaPullCmd);
-}
-
 if (checkOllamaBtn) {
     checkOllamaBtn.addEventListener('click', async () => {
         ollamaStatusResult.textContent = 'Verificando...';
@@ -1296,22 +1261,21 @@ if (checkOllamaBtn) {
             await populateOllamaLocalModels();
             const res = await ipcRenderer.invoke('check-ollama-local-status');
             if (!res || !res.running) {
-                ollamaStatusResult.innerHTML = '<span style="color:#ff6b6b">Ollama não está rodando.</span> Rode <code style="background:#0d0d0d;padding:2px 5px;border-radius:3px;color:#9ef0a8;">ollama serve</code> no terminal.';
+                ollamaStatusResult.innerHTML = '<span style="color:#ff6b6b" title="Ollama offline. Inicie o serviço ou execute ollama serve">✗ Offline</span>';
                 return;
             }
             const selected = ollamaLocalModelSelect.value;
             const installed = res.models || [];
             const hasIt = installed.some(m => m === selected || m.startsWith(selected.split(':')[0] + ':'));
             if (hasIt && selected) {
-                ollamaStatusResult.innerHTML = `<span style="color:#9ef0a8">Ollama rodando.</span> Modelo <code style="color:#9ef0a8">${selected}</code> está baixado. Pronto pra uso!`;
+                ollamaStatusResult.innerHTML = `<span style="color:#9ef0a8" title="Ollama rodando e modelo ${selected} baixado.">✓ Pronto</span>`;
             } else if (selected) {
-                ollamaStatusResult.innerHTML = `<span style="color:#ffb74d">Ollama rodando, mas modelo <code>${selected}</code> não está baixado.</span><br>Modelos disponíveis: ${installed.length ? installed.join(', ') : '(nenhum)'}<br>Rode: <code style="background:#0d0d0d;padding:2px 5px;border-radius:3px;color:#9ef0a8;">ollama pull ${selected}</code>`;
+                ollamaStatusResult.innerHTML = `<span style="color:#ffb74d" title="Execute: ollama pull ${selected}">⚠ Baixar modelo</span>`;
             } else {
-                ollamaStatusResult.innerHTML = `<span style="color:#ffb74d">Ollama rodando, mas nenhum modelo foi encontrado.</span> Instale um com <code style="background:#0d0d0d;padding:2px 5px;border-radius:3px;color:#9ef0a8;">ollama pull qwen2.5-coder:7b</code> no terminal.`;
+                ollamaStatusResult.innerHTML = `<span style="color:#9ef0a8" title="Ollama online.">✓ Online</span>`;
             }
         } catch (e) {
-            ollamaStatusResult.innerHTML = `Erro ao verificar: ${e.message}`;
-            ollamaStatusResult.style.color = '#ff6b6b';
+            ollamaStatusResult.innerHTML = `<span style="color:#ff6b6b" title="${e.message}">Erro</span>`;
         }
     });
 }
@@ -1324,12 +1288,12 @@ if (checkClaudeCliBtn) {
     try {
       const res = await ipcRenderer.invoke('check-claude-cli-installed');
       if (res && res.installed) {
-        claudeCliStatusResult.innerHTML = '<span style="color:#9ef0a8">✓ Claude Code CLI instalado.</span>';
+        claudeCliStatusResult.innerHTML = '<span style="color:#9ef0a8" title="Claude Code CLI instalado e pronto">✓ Instalado</span>';
       } else {
-        claudeCliStatusResult.innerHTML = '<span style="color:#ff6b6b">✗ Não encontrado.</span> Instale com <code style="background:#0d0d0d;padding:2px 5px;border-radius:3px;color:#9ef0a8;">npm install -g @anthropic-ai/claude-code</code>';
+        claudeCliStatusResult.innerHTML = '<span style="color:#ff6b6b" title="Instale com: npm install -g @anthropic-ai/claude-code">✗ Não instalado</span>';
       }
     } catch (e) {
-      claudeCliStatusResult.innerHTML = `<span style="color:#ff6b6b">Erro: ${e.message}</span>`;
+      claudeCliStatusResult.innerHTML = `<span style="color:#ff6b6b" title="${e.message}">Erro</span>`;
     }
   });
 }
@@ -1342,12 +1306,12 @@ if (checkCopilotCliBtn) {
     try {
       const res = await ipcRenderer.invoke('check-copilot-cli-installed');
       if (res && res.installed) {
-        copilotCliStatusResult.innerHTML = '<span style="color:#9ef0a8">✓ Copilot CLI instalado.</span> (isso confirma o binário — não confirma login/autenticação)';
+        copilotCliStatusResult.innerHTML = '<span style="color:#9ef0a8" title="Copilot CLI instalado (confirma binário, requer copilot /login)">✓ Instalado</span>';
       } else {
-        copilotCliStatusResult.innerHTML = '<span style="color:#ff6b6b">✗ Não encontrado.</span> Instale com <code style="background:#0d0d0d;padding:2px 5px;border-radius:3px;color:#9ef0a8;">npm install -g @github/copilot</code>';
+        copilotCliStatusResult.innerHTML = '<span style="color:#ff6b6b" title="Instale com: npm install -g @github/copilot">✗ Não instalado</span>';
       }
     } catch (e) {
-      copilotCliStatusResult.innerHTML = `<span style="color:#ff6b6b">Erro: ${e.message}</span>`;
+      copilotCliStatusResult.innerHTML = `<span style="color:#ff6b6b" title="${e.message}">Erro</span>`;
     }
   });
 }
@@ -1360,12 +1324,12 @@ if (checkGeminiCliBtn) {
     try {
       const res = await ipcRenderer.invoke('check-gemini-cli-installed');
       if (res && res.installed) {
-        geminiCliStatusResult.innerHTML = '<span style="color:#9ef0a8">✓ Gemini CLI instalado e pronto.</span>';
+        geminiCliStatusResult.innerHTML = '<span style="color:#9ef0a8" title="Antigravity CLI (agy) instalado e pronto">✓ Instalado</span>';
       } else {
-        geminiCliStatusResult.innerHTML = '<span style="color:#ff6b6b">✗ Não encontrado.</span> Instale com <code style="background:#0d0d0d;padding:2px 5px;border-radius:3px;color:#9ef0a8;">npm install -g @google/gemini-cli</code>';
+        geminiCliStatusResult.innerHTML = '<span style="color:#ff6b6b" title="Instale com: npm install -g @google/antigravity-cli">✗ Não instalado</span>';
       }
     } catch (e) {
-      geminiCliStatusResult.innerHTML = `<span style="color:#ff6b6b">Erro: ${e.message}</span>`;
+      geminiCliStatusResult.innerHTML = `<span style="color:#ff6b6b" title="${e.message}">Erro</span>`;
     }
   });
 }
@@ -1528,8 +1492,15 @@ if (translationTargetLangSelect) {
 }
 
 const translationTestModeInput = document.getElementById('translation-test-mode');
+const translationTestModeStatus = document.getElementById('translation-test-mode-status');
+
+function updateTranslationTestModeStatus(v) {
+  if (translationTestModeStatus) translationTestModeStatus.textContent = v ? 'ON' : 'OFF';
+}
+
 if (translationTestModeInput) {
   translationTestModeInput.addEventListener('change', () => {
+    updateTranslationTestModeStatus(translationTestModeInput.checked);
     // Usa canal dedicado para que o main process possa disparar o teste
     ipcRenderer.send('set-translation-test-mode', translationTestModeInput.checked);
   });
@@ -1585,7 +1556,10 @@ if (translationMicRefresh) {
     }
     if (translationTargetLangSelect) translationTargetLangSelect.value = ta.targetLanguage || 'pt-br';
     // Modo de Teste é só por sessão — sempre começa desmarcado ao abrir o config.
-    if (translationTestModeInput) translationTestModeInput.checked = false;
+    if (translationTestModeInput) {
+      translationTestModeInput.checked = false;
+      updateTranslationTestModeStatus(false);
+    }
     await populateMicDevices(ta.micDevice || '');
   } catch (e) {
     console.warn('[TranslationAssistant] load config failed:', e.message);
@@ -1598,10 +1572,18 @@ const visionGuideEnabledStatus  = document.getElementById('vision-guide-enabled-
 const visionGuideIntervalSelect = document.getElementById('vision-guide-interval');
 const visionGuideCooldownSelect = document.getElementById('vision-guide-cooldown');
 const visionGuideAudioInput     = document.getElementById('vision-guide-audio');
+const visionGuideAudioStatus    = document.getElementById('vision-guide-audio-status');
 const visionGuideRagInput       = document.getElementById('vision-guide-rag');
+const visionGuideRagStatus      = document.getElementById('vision-guide-rag-status');
 
 function updateVisionGuideEnabledStatus(v) {
   if (visionGuideEnabledStatus) visionGuideEnabledStatus.textContent = v ? 'ON' : 'OFF';
+}
+function updateVisionGuideAudioStatus(v) {
+  if (visionGuideAudioStatus) visionGuideAudioStatus.textContent = v ? 'ON' : 'OFF';
+}
+function updateVisionGuideRagStatus(v) {
+  if (visionGuideRagStatus) visionGuideRagStatus.textContent = v ? 'ON' : 'OFF';
 }
 
 if (visionGuideEnabledToggle) {
@@ -1634,11 +1616,13 @@ if (visionGuideCooldownSelect) {
 }
 if (visionGuideAudioInput) {
   visionGuideAudioInput.addEventListener('change', () => {
+    updateVisionGuideAudioStatus(visionGuideAudioInput.checked);
     ipcRenderer.send('set-vision-guide-config', { listenAudio: visionGuideAudioInput.checked });
   });
 }
 if (visionGuideRagInput) {
   visionGuideRagInput.addEventListener('change', () => {
+    updateVisionGuideRagStatus(visionGuideRagInput.checked);
     ipcRenderer.send('set-vision-guide-config', { useKnowledgeBase: visionGuideRagInput.checked });
   });
 }
@@ -1654,8 +1638,14 @@ if (visionGuideRagInput) {
     }
     if (visionGuideIntervalSelect) visionGuideIntervalSelect.value = String(vg.intervalSeconds || 5);
     if (visionGuideCooldownSelect) visionGuideCooldownSelect.value = String(vg.minInterventionSeconds ?? 0);
-    if (visionGuideAudioInput) visionGuideAudioInput.checked = vg.listenAudio !== false;
-    if (visionGuideRagInput) visionGuideRagInput.checked = vg.useKnowledgeBase !== false;
+    if (visionGuideAudioInput) {
+      visionGuideAudioInput.checked = vg.listenAudio !== false;
+      updateVisionGuideAudioStatus(visionGuideAudioInput.checked);
+    }
+    if (visionGuideRagInput) {
+      visionGuideRagInput.checked = vg.useKnowledgeBase !== false;
+      updateVisionGuideRagStatus(visionGuideRagInput.checked);
+    }
   } catch (e) {
     console.warn('[VisionGuide] load config failed:', e.message);
   }

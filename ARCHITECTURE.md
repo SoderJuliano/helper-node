@@ -174,7 +174,7 @@ Quando `state:'started'` → oculta composer (`setComposerVisibility(false)`).
 
 - **Modo janela** (nenhum anexo no workspace): comportamento antigo — grava, transcreve (Whisper local na Full / `gpt-4o-mini-transcribe` na Lite) e **envia direto pra IA** (`getIaResponse` / `processOsQuestion` em OS Integration).
 - **Modo IDE** (pasta/arquivo anexado): grava e transcreve igual, mas **NÃO envia sozinho** — o texto vai pro composer (`ide-audio-transcribed` → `openManualInput(text)`) pra o usuário revisar/editar e mandar com Shift+Enter ou o botão Enviar. Enquanto grava, mostra `#composer-listening` (bolinha em pulso + "Ouvindo áudio… Ctrl+D para transcrever") em vez do robot/loading padrão.
-- **Providers CLI (`geminiCli` / `claudeCli`) + modo IDE**: bloqueados — esses CLIs não expõem erro tratável quando recebem áudio fora do fluxo esperado (ficavam travando com "Failed to process IA response"). Ao apertar Ctrl+D nesse combo, `toggleRecording()` recusa a gravação e manda `transcription-error` avisando pra trocar de modelo. Aviso também aparece discreto em Configurações (`#gemini-cli-info` / `#claude-cli-info`).
+- **Providers CLI (`geminiCli` / `claudeCli`) + modo IDE**: bloqueados — esses CLIs não expõem erro tratável quando recebem áudio fora do fluxo esperado (ficavam travando com "Failed to process IA response"). Ao apertar Ctrl+D nesse combo, `toggleRecording()` recusa a gravação e manda `transcription-error` avisando pra trocar de modelo. Aviso também aparece no tooltip de ajuda em Configurações.
 
 Motivo: CLI providers gerenciam o próprio contexto/sessão de forma nativa e não têm um canal de erro amigável pra áudio mal formatado — silenciosamente travavam. Full com OpenAI/Ollama usa Whisper local normalmente nesse fluxo.
 
