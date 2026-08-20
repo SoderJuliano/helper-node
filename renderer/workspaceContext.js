@@ -140,8 +140,42 @@ function fileIconHtml(name) {
                 
                 document.body.appendChild(menu);
                 const r = anchor.getBoundingClientRect();
-                menu.style.left = r.left + 'px';
-                menu.style.top = (r.top - menu.offsetHeight - 6) + 'px';
+                const menuWidth = menu.offsetWidth || 188;
+                const menuHeight = menu.offsetHeight || 220;
+
+                const spaceBelow = window.innerHeight - r.bottom - 8;
+                const spaceAbove = r.top - 8;
+
+                // Se houver espaço suficiente para baixo ou se tiver mais espaço abaixo do que acima, abre para baixo; caso contrário, abre para cima
+                let top;
+                if (spaceBelow >= menuHeight || spaceBelow >= spaceAbove) {
+                    top = r.bottom + 6;
+                } else {
+                    top = r.top - menuHeight - 6;
+                }
+
+                // Proteção para não vazar os limites da tela (viewport clipping)
+                if (top + menuHeight > window.innerHeight - 8) {
+                    top = window.innerHeight - menuHeight - 8;
+                }
+                if (top < 8) {
+                    top = 8;
+                    if (menuHeight > window.innerHeight - 16) {
+                        menu.style.maxHeight = (window.innerHeight - 16) + 'px';
+                        menu.style.overflowY = 'auto';
+                    }
+                }
+
+                let left = r.left;
+                if (left + menuWidth > window.innerWidth - 8) {
+                    left = window.innerWidth - menuWidth - 8;
+                }
+                if (left < 8) {
+                    left = 8;
+                }
+
+                menu.style.left = Math.round(left) + 'px';
+                menu.style.top = Math.round(top) + 'px';
                 const closer = (ev) => {
                     if (!menu.contains(ev.target) && ev.target !== anchor && !anchor.contains(ev.target)) {
                         menu.remove();

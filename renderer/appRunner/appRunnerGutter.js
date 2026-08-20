@@ -31,10 +31,21 @@
       popover.appendChild(btn);
     });
 
-    const rect = event.target.getBoundingClientRect();
-    popover.style.left = `${rect.right + 6}px`;
-    popover.style.top = `${rect.top - 4}px`;
     document.body.appendChild(popover);
+    const rect = event.target.getBoundingClientRect();
+    const popoverHeight = popover.offsetHeight || 60;
+    const popoverWidth = popover.offsetWidth || 150;
+    let top = rect.top - 4;
+    let left = rect.right + 6;
+    if (top + popoverHeight > window.innerHeight - 8) {
+      top = window.innerHeight - popoverHeight - 8;
+    }
+    if (top < 8) top = 8;
+    if (left + popoverWidth > window.innerWidth - 8) {
+      left = Math.max(8, rect.left - popoverWidth - 6);
+    }
+    popover.style.left = `${Math.round(left)}px`;
+    popover.style.top = `${Math.round(top)}px`;
   }
 
   function getProjectDir() {

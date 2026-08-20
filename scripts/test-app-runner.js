@@ -150,6 +150,11 @@ console.log('  ok   BuildToolDetector gerou comandos Maven com perfis e JVM argu
 // 3. Testes do IntelliJConfigExtractor & Custom Overrides
 console.log('3. Testando IntelliJConfigExtractor e Precedência do Helper Node...');
 const mockIdeaDir = path.join(__dirname, 'mock_idea_test');
+const helperConfigPath = IntelliJConfigExtractor.getConfigPath(mockIdeaDir);
+if (fs.existsSync(helperConfigPath)) fs.unlinkSync(helperConfigPath);
+const helperLegacyPath = IntelliJConfigExtractor.getLegacyEnvPath(mockIdeaDir);
+if (fs.existsSync(helperLegacyPath)) fs.unlinkSync(helperLegacyPath);
+
 const ideaSubDir = path.join(mockIdeaDir, '.idea');
 fs.mkdirSync(ideaSubDir, { recursive: true });
 
@@ -196,6 +201,9 @@ console.log('  ok   Customizações do Helper Node têm precedência sobre os va
 
 // Limpeza da pasta mock
 fs.rmSync(mockIdeaDir, { recursive: true, force: true });
+try {
+  fs.rmSync(IntelliJConfigExtractor.getHelperProjectDir(mockIdeaDir), { recursive: true, force: true });
+} catch (_) {}
 
 // 4. Testes do JdkDetector
 console.log('4. Testando JdkDetector...');

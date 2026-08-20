@@ -179,8 +179,40 @@
                 });
                 document.body.appendChild(menu);
                 const r = anchor.getBoundingClientRect();
-                menu.style.left = r.left + 'px';
-                menu.style.top = (r.top - menu.offsetHeight - 6) + 'px';
+                const menuWidth = menu.offsetWidth || 200;
+                const menuHeight = menu.offsetHeight || 180;
+
+                const spaceBelow = window.innerHeight - r.bottom - 8;
+                const spaceAbove = r.top - 8;
+
+                let top;
+                if (spaceAbove >= menuHeight || spaceAbove >= spaceBelow) {
+                    top = r.top - menuHeight - 6;
+                } else {
+                    top = r.bottom + 6;
+                }
+
+                if (top + menuHeight > window.innerHeight - 8) {
+                    top = window.innerHeight - menuHeight - 8;
+                }
+                if (top < 8) {
+                    top = 8;
+                    if (menuHeight > window.innerHeight - 16) {
+                        menu.style.maxHeight = (window.innerHeight - 16) + 'px';
+                        menu.style.overflowY = 'auto';
+                    }
+                }
+
+                let left = r.left;
+                if (left + menuWidth > window.innerWidth - 8) {
+                    left = window.innerWidth - menuWidth - 8;
+                }
+                if (left < 8) {
+                    left = 8;
+                }
+
+                menu.style.left = Math.round(left) + 'px';
+                menu.style.top = Math.round(top) + 'px';
                 const closer = (ev) => {
                     if (!menu.contains(ev.target) && ev.target !== anchor && !anchor.contains(ev.target)) {
                         menu.remove();
