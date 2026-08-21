@@ -1,7 +1,9 @@
 /* ===== Visualizador de arquivo (IDE) — cobre a área principal ===== */
         #file-viewer {
-            flex: 1 1 55%;
-            min-width: 0;
+            flex: 0 0 var(--editor-w, 55%);
+            width: var(--editor-w, 55%);
+            min-width: 160px;
+            max-width: calc(100% - 160px);
             min-height: 0;
             display: none;
             flex-direction: column;

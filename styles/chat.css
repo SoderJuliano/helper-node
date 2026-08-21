@@ -18,13 +18,15 @@
         }
         #main.chat-hidden #file-viewer {
             flex: 1 1 100% !important;
+            width: 100% !important;
+            max-width: 100% !important;
             border-right: none !important;
         }
         #chat-container {
             display: flex;
             flex-direction: column;
-            flex: 1 1 45%;
-            min-width: 0;
+            flex: 1 1 0;
+            min-width: 160px;
             min-height: 0;
             position: relative;
         }

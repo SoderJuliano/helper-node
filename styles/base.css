@@ -160,6 +160,25 @@
         body.sidebar-collapsed .sidebar-resizer { display: none; }
         body.resizing-sidebar { cursor: col-resize; user-select: none; }
 
+        /* Alça de redimensionar o painel de arquivos abertos (editor vs chat/terminal) */
+        .editor-resizer {
+            position: absolute; top: 0; right: -4px; bottom: 0; width: 8px;
+            cursor: col-resize; z-index: 45; -webkit-app-region: no-drag;
+        }
+        .editor-resizer::before {
+            content: ''; position: absolute; top: 0; bottom: 0; left: 50%;
+            width: 1px; background: transparent; transform: translateX(-50%);
+            transition: background .12s var(--ease), width .12s var(--ease);
+        }
+        .editor-resizer:hover::before, .editor-resizer.dragging::before {
+            width: 3px; background: var(--accent-2);
+        }
+        #main.chat-hidden .editor-resizer { display: none !important; }
+        body.resizing-editor { cursor: col-resize !important; user-select: none !important; }
+        #main.resizing-editor { transition: none !important; }
+        #main.resizing-editor #file-viewer,
+        #main.resizing-editor #chat-container { pointer-events: none !important; }
+
         /* Zona de hover na borda esquerda, só existe (via display) quando a
            sidebar está recolhida — passar o mouse revela o botão ">". */
         #sidebar-reveal-zone {

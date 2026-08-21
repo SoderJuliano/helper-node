@@ -138,6 +138,82 @@
             });
         })();
 
+        // === Redimensionamento do painel de arquivos abertos (editor vs chat/terminal) ===
+        (function initEditorResize() {
+            const main = document.getElementById('main');
+            const fv = document.getElementById('file-viewer');
+            const resizer = document.getElementById('editor-resizer');
+            if (!main || !fv || !resizer) return;
+
+            let saved = null;
+            try { saved = localStorage.getItem('hn-editor-w'); } catch (_) {}
+            if (saved && /^\d+(\.\d+)?%$/.test(saved)) {
+                const num = parseFloat(saved);
+                if (num >= 15 && num <= 85) {
+                    main.style.setProperty('--editor-w', saved);
+                }
+            }
+
+            let dragging = false, startX = 0, startW = 0, mainW = 0;
+
+            function onMove(e) {
+                if (!dragging) return;
+                const newW = startW + (e.clientX - startX);
+                const minW = Math.max(160, mainW * 0.15);
+                const maxW = Math.min(mainW - 160, mainW * 0.85);
+                const clampedW = Math.min(maxW, Math.max(minW, newW));
+                const pct = (clampedW / mainW) * 100;
+                main.style.setProperty('--editor-w', pct.toFixed(2) + '%');
+
+                const cm = window.EditorController && window.EditorController.getCm ? window.EditorController.getCm() : null;
+                if (cm) cm.refresh();
+                if (window._termFit) window._termFit();
+            }
+
+            function onUp() {
+                if (!dragging) return;
+                dragging = false;
+                main.classList.remove('resizing-editor');
+                resizer.classList.remove('dragging');
+                document.body.classList.remove('resizing-editor');
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+
+                const currentPct = main.style.getPropertyValue('--editor-w');
+                if (currentPct) {
+                    try { localStorage.setItem('hn-editor-w', currentPct); } catch (_) {}
+                }
+                const cm = window.EditorController && window.EditorController.getCm ? window.EditorController.getCm() : null;
+                if (cm) cm.refresh();
+                if (window._termFit) window._termFit();
+            }
+
+            resizer.addEventListener('mousedown', (e) => {
+                if (!fv.classList.contains('open') || main.classList.contains('chat-hidden')) return;
+                e.preventDefault();
+                e.stopPropagation();
+                dragging = true;
+                startX = e.clientX;
+                startW = fv.getBoundingClientRect().width;
+                mainW = main.getBoundingClientRect().width || (window.innerWidth - 268);
+                main.classList.add('resizing-editor');
+                resizer.classList.add('dragging');
+                document.body.classList.add('resizing-editor');
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+            });
+
+            resizer.addEventListener('dblclick', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                main.style.setProperty('--editor-w', '55%');
+                try { localStorage.setItem('hn-editor-w', '55%'); } catch (_) {}
+                const cm = window.EditorController && window.EditorController.getCm ? window.EditorController.getCm() : null;
+                if (cm) cm.refresh();
+                if (window._termFit) window._termFit();
+            });
+        })();
+
         // Ctrl+F / Ctrl+Shift+F / Ctrl+B global — capture-phase no document
         document.addEventListener('keydown', (e) => {
             // Ctrl+B: alterna a sidebar — funciona igual no chat e no editor.
