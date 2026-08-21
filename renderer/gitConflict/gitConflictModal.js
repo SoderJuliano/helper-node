@@ -1,5 +1,5 @@
 // renderer/gitConflict/gitConflictModal.js
-// Visualizador e Resolvedor de Conflitos Git em 3 Vias (Estilo IntelliJ IDEA)
+// Visualizador e Resolvedor de Conflitos Git em 3 Vias (Estilo IntelliJ IDEA / VS Code)
 
 (function() {
   let modalContainer = null;
@@ -8,8 +8,22 @@
   let currentFileIndex = 0;
   let current3WayData = null;
   let chunkStates = new Map(); // chunkId -> 'unresolved' | 'left' | 'right' | 'both' | 'ignored'
+  let activeConflictIndex = 0;
   let cmCenter = null;
   let isSyncingScroll = false;
+
+  const SVGI_PREV_ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
+  const SVGI_NEXT_ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
+  const SVGI_UP_ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>';
+  const SVGI_DOWN_ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+  const SVGI_MAGIC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 4-2 2 4 4 2-2z"/><path d="m8 11-5 5 2 2 5-5"/><path d="m19 11 2 2-2 2-2-2z"/><path d="m5 5 2 2-2 2-2-2z"/></svg>';
+  const SVGI_ALL_LEFT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>';
+  const SVGI_ALL_RIGHT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>';
+  const SVGI_SAVE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>';
+  const SVGI_CLOSE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+  const SVGI_ACCEPT_LEFT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
+  const SVGI_ACCEPT_RIGHT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
+  const SVGI_IGNORE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
 
   function createModalDom() {
     if (document.getElementById('git-conflict-modal')) {
@@ -24,42 +38,51 @@
     modal.innerHTML = `
       <div class="git-conflict-header">
         <div class="git-conflict-title-group">
-          <div class="git-conflict-icon" title="Conflitos de Merge Git">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="18" cy="18" r="3"></circle>
-              <circle cx="6" cy="6" r="3"></circle>
-              <path d="M6 9v12"></path>
-              <path d="M18 9a9 9 0 0 0-9 9"></path>
-            </svg>
-          </div>
           <div class="git-conflict-file-nav">
-            <button type="button" class="git-conflict-nav-btn" id="git-conflict-btn-prev" title="Arquivo anterior">◀</button>
+            <button type="button" class="git-conflict-nav-btn" id="git-conflict-btn-prev" title="Arquivo anterior">${SVGI_PREV_ARROW}</button>
             <select class="git-conflict-file-select" id="git-conflict-file-select"></select>
-            <button type="button" class="git-conflict-nav-btn" id="git-conflict-btn-next" title="Próximo arquivo">▶</button>
+            <button type="button" class="git-conflict-nav-btn" id="git-conflict-btn-next" title="Próximo arquivo">${SVGI_NEXT_ARROW}</button>
           </div>
+
+          <div class="git-conflict-jump-group" id="git-conflict-jump-group">
+            <button type="button" class="git-conflict-jump-btn" id="git-conflict-btn-prev-conflict" title="Conflito anterior">
+              ${SVGI_UP_ARROW}
+              <span>Anterior</span>
+            </button>
+            <span class="git-conflict-jump-counter" id="git-conflict-jump-counter">0 / 0</span>
+            <button type="button" class="git-conflict-jump-btn" id="git-conflict-btn-next-conflict" title="Próximo conflito">
+              <span>Próximo</span>
+              ${SVGI_DOWN_ARROW}
+            </button>
+          </div>
+
           <span class="git-conflict-status-badge has-conflicts" id="git-conflict-badge-status">0 conflitos</span>
         </div>
 
         <div class="git-conflict-actions-center">
-          <button type="button" class="git-conflict-btn git-conflict-btn-magic" id="git-conflict-btn-magic" title="Aceita automaticamente todas as alterações unilaterais que não conflitam">
-            <span>🪄 Aplicar Sem Conflito</span>
+          <button type="button" class="git-conflict-btn" id="git-conflict-btn-magic" title="Aceita automaticamente todas as alterações unilaterais que não conflitam">
+            ${SVGI_MAGIC}
+            <span>Aplicar Sem Conflito</span>
           </button>
           <button type="button" class="git-conflict-btn" id="git-conflict-btn-accept-all-left" title="Aceitar todas as alterações da sua branch">
-            <span>⏪ Tudo da Esquerda</span>
+            ${SVGI_ALL_LEFT}
+            <span>Tudo da Esquerda</span>
           </button>
           <button type="button" class="git-conflict-btn" id="git-conflict-btn-accept-all-right" title="Aceitar todas as alterações da branch de entrada">
-            <span>Tudo da Direita ⏩</span>
+            <span>Tudo da Direita</span>
+            ${SVGI_ALL_RIGHT}
           </button>
         </div>
 
         <div class="git-conflict-actions-right">
           <button type="button" class="git-conflict-btn git-conflict-btn-save" id="git-conflict-btn-save" title="Salvar arquivo resolvido e marcar como resolvido no Git (git add)">
-            <span>💾 Salvar e Concluir</span>
+            ${SVGI_SAVE}
+            <span>Salvar</span>
           </button>
           <button type="button" class="git-conflict-btn git-conflict-btn-abort" id="git-conflict-btn-abort" title="Abortar processo de merge">
-            <span>Abortar Merge</span>
+            <span>Abortar</span>
           </button>
-          <button type="button" class="git-conflict-btn-close" id="git-conflict-btn-close" title="Fechar">&times;</button>
+          <button type="button" class="git-conflict-btn-close" id="git-conflict-btn-close" title="Fechar">${SVGI_CLOSE}</button>
         </div>
       </div>
 
@@ -68,8 +91,8 @@
         <div class="git-conflict-col left-col">
           <div class="git-conflict-col-header">
             <div class="git-conflict-col-title">
-              <span class="col-tag-left">● Sua Versão (Local)</span>
-              <span id="git-conflict-label-left" style="color:var(--text-3); font-weight:normal;"></span>
+              <span class="col-tag-left">Sua Versão (Local)</span>
+              <span id="git-conflict-label-left" style="color:#858585; font-weight:normal;"></span>
             </div>
           </div>
           <div class="git-conflict-editor-container" id="git-conflict-left-container">
@@ -81,9 +104,9 @@
         <div class="git-conflict-col center-col">
           <div class="git-conflict-col-header">
             <div class="git-conflict-col-title">
-              <span class="col-tag-center">★ Resultado do Merge (Editável)</span>
+              <span class="col-tag-center">Resultado do Merge (Editável)</span>
             </div>
-            <span id="git-conflict-center-stats" style="font-size:11px; color:var(--text-3);"></span>
+            <span id="git-conflict-center-stats" style="font-size:11px; color:#858585;"></span>
           </div>
           <div class="git-conflict-editor-container" id="git-conflict-center-container">
             <textarea id="git-conflict-cm-textarea"></textarea>
@@ -94,8 +117,8 @@
         <div class="git-conflict-col right-col">
           <div class="git-conflict-col-header">
             <div class="git-conflict-col-title">
-              <span class="col-tag-right">● Versão de Entrada (Incoming)</span>
-              <span id="git-conflict-label-right" style="color:var(--text-3); font-weight:normal;"></span>
+              <span class="col-tag-right">Versão de Entrada (Incoming)</span>
+              <span id="git-conflict-label-right" style="color:#858585; font-weight:normal;"></span>
             </div>
           </div>
           <div class="git-conflict-editor-container" id="git-conflict-right-container">
@@ -132,6 +155,8 @@
     const fileSelect = modal.querySelector('#git-conflict-file-select');
     const btnPrev = modal.querySelector('#git-conflict-btn-prev');
     const btnNext = modal.querySelector('#git-conflict-btn-next');
+    const btnPrevConflict = modal.querySelector('#git-conflict-btn-prev-conflict');
+    const btnNextConflict = modal.querySelector('#git-conflict-btn-next-conflict');
 
     btnClose.addEventListener('click', () => closeGitConflictModal());
     
@@ -157,12 +182,14 @@
       if (!current3WayData) return;
       current3WayData.chunks.forEach(c => chunkStates.set(c.id, 'left'));
       rebuildCenterResult();
+      renderSideTables();
     });
 
     btnAcceptAllRight.addEventListener('click', () => {
       if (!current3WayData) return;
       current3WayData.chunks.forEach(c => chunkStates.set(c.id, 'right'));
       rebuildCenterResult();
+      renderSideTables();
     });
 
     fileSelect.addEventListener('change', (e) => {
@@ -186,7 +213,15 @@
       }
     });
 
-    // Sincronização de Scroll
+    btnPrevConflict.addEventListener('click', () => {
+      navigateConflicts(-1);
+    });
+
+    btnNextConflict.addEventListener('click', () => {
+      navigateConflicts(1);
+    });
+
+    // Sincronização de Scroll Suave
     const leftBox = modal.querySelector('#git-conflict-left-container');
     const rightBox = modal.querySelector('#git-conflict-right-container');
 
@@ -196,16 +231,30 @@
       const top = source.scrollTop;
       const left = source.scrollLeft;
 
-      if (source !== leftBox) { leftBox.scrollTop = top; leftBox.scrollLeft = left; }
-      if (source !== rightBox) { rightBox.scrollTop = top; rightBox.scrollLeft = left; }
-      if (cmCenter && source !== cmCenter.getScrollerElement()) {
-        cmCenter.scrollTo(left, top);
-      }
-      setTimeout(() => { isSyncingScroll = false; }, 20);
+      requestAnimationFrame(() => {
+        if (source !== leftBox && Math.abs(leftBox.scrollTop - top) > 1) {
+          leftBox.scrollTop = top;
+          leftBox.scrollLeft = left;
+        }
+        if (source !== rightBox && Math.abs(rightBox.scrollTop - top) > 1) {
+          rightBox.scrollTop = top;
+          rightBox.scrollLeft = left;
+        }
+        if (cmCenter && source !== cmCenter.getScrollerElement()) {
+          cmCenter.scrollTo(left, top);
+        }
+        isSyncingScroll = false;
+      });
     };
 
-    leftBox.addEventListener('scroll', () => handleScroll(leftBox));
-    rightBox.addEventListener('scroll', () => handleScroll(rightBox));
+    leftBox.addEventListener('scroll', () => handleScroll(leftBox), { passive: true });
+    rightBox.addEventListener('scroll', () => handleScroll(rightBox), { passive: true });
+
+    window.addEventListener('resize', () => {
+      if (modalContainer && modalContainer.style.display !== 'none' && cmCenter) {
+        cmCenter.refresh();
+      }
+    });
   }
 
   function initCodeMirror() {
@@ -227,9 +276,18 @@
       const scrollInfo = cmCenter.getScrollInfo();
       const leftBox = document.getElementById('git-conflict-left-container');
       const rightBox = document.getElementById('git-conflict-right-container');
-      if (leftBox) { leftBox.scrollTop = scrollInfo.top; leftBox.scrollLeft = scrollInfo.left; }
-      if (rightBox) { rightBox.scrollTop = scrollInfo.top; rightBox.scrollLeft = scrollInfo.left; }
-      setTimeout(() => { isSyncingScroll = false; }, 20);
+
+      requestAnimationFrame(() => {
+        if (leftBox && Math.abs(leftBox.scrollTop - scrollInfo.top) > 1) {
+          leftBox.scrollTop = scrollInfo.top;
+          leftBox.scrollLeft = scrollInfo.left;
+        }
+        if (rightBox && Math.abs(rightBox.scrollTop - scrollInfo.top) > 1) {
+          rightBox.scrollTop = scrollInfo.top;
+          rightBox.scrollLeft = scrollInfo.left;
+        }
+        isSyncingScroll = false;
+      });
     });
 
     cmCenter.on('change', () => {
@@ -237,16 +295,32 @@
     });
   }
 
+  function triggerCmRefresh() {
+    if (!cmCenter) return;
+    cmCenter.refresh();
+    requestAnimationFrame(() => {
+      if (cmCenter) cmCenter.refresh();
+    });
+    setTimeout(() => {
+      if (cmCenter) cmCenter.refresh();
+    }, 50);
+    setTimeout(() => {
+      if (cmCenter) cmCenter.refresh();
+    }, 150);
+  }
+
   async function openGitConflictModal(projectDir) {
-    currentProjectDir = projectDir || (window.ctxProject ? window.ctxProject.path : null);
+    currentProjectDir = projectDir || (window.ctxProject ? window.ctxProject.path : null) || null;
     modalContainer = createModalDom();
     modalContainer.style.display = 'flex';
 
     initCodeMirror();
+    triggerCmRefresh();
 
     if (window.electronAPI && window.electronAPI.gitConflictGetStatus) {
       const res = await window.electronAPI.gitConflictGetStatus(currentProjectDir);
       if (res && res.ok && res.data) {
+        if (res.data.projectPath) currentProjectDir = res.data.projectPath;
         conflictFiles = res.data.conflictFiles || [];
         currentFileIndex = 0;
         updateFileListUi();
@@ -256,6 +330,9 @@
           alert('Nenhum arquivo em conflito detectado neste repositório.');
           closeGitConflictModal();
         }
+      } else {
+        alert('Erro ao verificar status do repositório: ' + (res ? res.error : 'erro desconhecido'));
+        closeGitConflictModal();
       }
     }
   }
@@ -300,6 +377,7 @@
 
     current3WayData = res;
     chunkStates.clear();
+    activeConflictIndex = 0;
 
     // Inicializa os estados dos chunks
     current3WayData.chunks.forEach(c => {
@@ -327,10 +405,75 @@
     if (cmCenter) {
       cmCenter.setOption('mode', getSyntaxMode(relPath));
       rebuildCenterResult();
-      cmCenter.refresh();
+      triggerCmRefresh();
+    } else {
+      const ta = document.getElementById('git-conflict-cm-textarea');
+      if (ta) ta.value = res.initialResult || '';
     }
 
     updateConflictStatusBadge();
+
+    // Pula automaticamente para o 1º conflito
+    setTimeout(() => {
+      scrollToConflict(0);
+    }, 80);
+  }
+
+  function getConflictChunks() {
+    if (!current3WayData || !current3WayData.chunks) return [];
+    return current3WayData.chunks.filter(c => c.type === 'CONFLICT');
+  }
+
+  function navigateConflicts(delta) {
+    const conflicts = getConflictChunks();
+    if (conflicts.length === 0) return;
+    let nextIdx = activeConflictIndex + delta;
+    if (nextIdx < 0) nextIdx = conflicts.length - 1;
+    if (nextIdx >= conflicts.length) nextIdx = 0;
+    scrollToConflict(nextIdx);
+  }
+
+  function scrollToConflict(idx) {
+    const conflicts = getConflictChunks();
+    const jumpCounter = document.getElementById('git-conflict-jump-counter');
+    const btnPrevConflict = document.getElementById('git-conflict-btn-prev-conflict');
+    const btnNextConflict = document.getElementById('git-conflict-btn-next-conflict');
+
+    if (conflicts.length === 0) {
+      if (jumpCounter) jumpCounter.textContent = '0 / 0';
+      if (btnPrevConflict) btnPrevConflict.disabled = true;
+      if (btnNextConflict) btnNextConflict.disabled = true;
+      return;
+    }
+
+    if (btnPrevConflict) btnPrevConflict.disabled = false;
+    if (btnNextConflict) btnNextConflict.disabled = false;
+
+    activeConflictIndex = Math.max(0, Math.min(idx, conflicts.length - 1));
+    if (jumpCounter) {
+      jumpCounter.textContent = `${activeConflictIndex + 1} / ${conflicts.length}`;
+    }
+
+    const targetChunk = conflicts[activeConflictIndex];
+    if (!targetChunk) return;
+
+    // Destaca linha nas tabelas
+    document.querySelectorAll('.chunk-row-active-conflict').forEach(el => el.classList.remove('chunk-row-active-conflict'));
+    document.querySelectorAll(`[data-chunk-id="${targetChunk.id}"]`).forEach(el => el.classList.add('chunk-row-active-conflict'));
+
+    // Rola tabela lateral
+    const firstRow = document.querySelector(`#git-conflict-table-left [data-chunk-id="${targetChunk.id}"]`);
+    const leftContainer = document.getElementById('git-conflict-left-container');
+    if (firstRow && leftContainer) {
+      const topPos = Math.max(0, firstRow.offsetTop - 80);
+      leftContainer.scrollTo({ top: topPos, behavior: 'smooth' });
+    }
+
+    // Rola CodeMirror central
+    if (cmCenter) {
+      const lineNum = Math.max(0, (targetChunk.leftStartLine || 1) - 1);
+      cmCenter.scrollIntoView({ line: lineNum, ch: 0 }, 100);
+    }
   }
 
   function renderSideTables() {
@@ -338,8 +481,8 @@
     const tableRight = document.getElementById('git-conflict-table-right');
     if (!tableLeft || !tableRight || !current3WayData) return;
 
-    tableLeft.innerHTML = '';
-    tableRight.innerHTML = '';
+    const fragLeft = document.createDocumentFragment();
+    const fragRight = document.createDocumentFragment();
 
     current3WayData.chunks.forEach((chunk) => {
       const state = chunkStates.get(chunk.id);
@@ -356,25 +499,31 @@
         rowClass += ' chunk-row-resolved';
       }
 
+      const leftCount = chunk.leftLines.length;
+      const rightCount = chunk.rightLines.length;
+      const maxLines = Math.max(leftCount, rightCount, 1);
+
       // Linhas da Esquerda (Ours)
-      const leftLines = chunk.leftLines.length > 0 ? chunk.leftLines : [''];
-      leftLines.forEach((lineText, lIdx) => {
+      for (let i = 0; i < maxLines; i++) {
+        const isActualLine = i < leftCount;
+        const lineText = isActualLine ? chunk.leftLines[i] : '';
+
         const tr = document.createElement('tr');
-        tr.className = `git-conflict-row ${rowClass}`;
+        tr.className = `git-conflict-row ${rowClass}${!isActualLine ? ' chunk-row-spacer' : ''}`;
         tr.dataset.chunkId = chunk.id;
 
         const tdNum = document.createElement('td');
         tdNum.className = 'git-conflict-gutter-num';
-        tdNum.textContent = chunk.leftLines.length > 0 ? (chunk.leftStartLine + lIdx) : '';
+        tdNum.textContent = isActualLine ? String(chunk.leftStartLine + i) : '';
 
         const tdAction = document.createElement('td');
         tdAction.className = 'git-conflict-gutter-action';
 
-        if (lIdx === 0 && (isConflict || isLeftOnly)) {
+        if (i === 0 && (isConflict || isLeftOnly)) {
           const btnAccept = document.createElement('button');
           btnAccept.className = 'chunk-action-btn chunk-btn-accept-left';
-          btnAccept.title = 'Aceitar este bloco no resultado (»)';
-          btnAccept.textContent = '»';
+          btnAccept.title = 'Aceitar alteração da esquerda no resultado';
+          btnAccept.innerHTML = SVGI_ACCEPT_LEFT;
           btnAccept.addEventListener('click', (e) => {
             e.stopPropagation();
             chunkStates.set(chunk.id, 'left');
@@ -384,8 +533,8 @@
 
           const btnIgnore = document.createElement('button');
           btnIgnore.className = 'chunk-action-btn chunk-btn-ignore';
-          btnIgnore.title = 'Ignorar este bloco (✕)';
-          btnIgnore.textContent = '✕';
+          btnIgnore.title = 'Ignorar este bloco';
+          btnIgnore.innerHTML = SVGI_IGNORE;
           btnIgnore.addEventListener('click', (e) => {
             e.stopPropagation();
             chunkStates.set(chunk.id, 'ignored');
@@ -399,29 +548,31 @@
 
         const tdCode = document.createElement('td');
         tdCode.className = 'git-conflict-code-cell';
-        tdCode.textContent = lineText;
+        tdCode.textContent = isActualLine ? (lineText || '\u00A0') : '\u00A0';
 
         tr.appendChild(tdNum);
         tr.appendChild(tdAction);
         tr.appendChild(tdCode);
-        tableLeft.appendChild(tr);
-      });
+        fragLeft.appendChild(tr);
+      }
 
       // Linhas da Direita (Theirs)
-      const rightLines = chunk.rightLines.length > 0 ? chunk.rightLines : [''];
-      rightLines.forEach((lineText, rIdx) => {
+      for (let i = 0; i < maxLines; i++) {
+        const isActualLine = i < rightCount;
+        const lineText = isActualLine ? chunk.rightLines[i] : '';
+
         const tr = document.createElement('tr');
-        tr.className = `git-conflict-row ${rowClass}`;
+        tr.className = `git-conflict-row ${rowClass}${!isActualLine ? ' chunk-row-spacer' : ''}`;
         tr.dataset.chunkId = chunk.id;
 
         const tdAction = document.createElement('td');
         tdAction.className = 'git-conflict-gutter-action';
 
-        if (rIdx === 0 && (isConflict || isRightOnly)) {
+        if (i === 0 && (isConflict || isRightOnly)) {
           const btnAccept = document.createElement('button');
           btnAccept.className = 'chunk-action-btn chunk-btn-accept-right';
-          btnAccept.title = 'Aceitar este bloco no resultado («)';
-          btnAccept.textContent = '«';
+          btnAccept.title = 'Aceitar alteração da direita no resultado';
+          btnAccept.innerHTML = SVGI_ACCEPT_RIGHT;
           btnAccept.addEventListener('click', (e) => {
             e.stopPropagation();
             chunkStates.set(chunk.id, 'right');
@@ -431,8 +582,8 @@
 
           const btnIgnore = document.createElement('button');
           btnIgnore.className = 'chunk-action-btn chunk-btn-ignore';
-          btnIgnore.title = 'Ignorar este bloco (✕)';
-          btnIgnore.textContent = '✕';
+          btnIgnore.title = 'Ignorar este bloco';
+          btnIgnore.innerHTML = SVGI_IGNORE;
           btnIgnore.addEventListener('click', (e) => {
             e.stopPropagation();
             chunkStates.set(chunk.id, 'ignored');
@@ -446,22 +597,27 @@
 
         const tdNum = document.createElement('td');
         tdNum.className = 'git-conflict-gutter-num';
-        tdNum.textContent = chunk.rightLines.length > 0 ? (chunk.rightStartLine + rIdx) : '';
+        tdNum.textContent = isActualLine ? String(chunk.rightStartLine + i) : '';
 
         const tdCode = document.createElement('td');
         tdCode.className = 'git-conflict-code-cell';
-        tdCode.textContent = lineText;
+        tdCode.textContent = isActualLine ? (lineText || '\u00A0') : '\u00A0';
 
         tr.appendChild(tdAction);
         tr.appendChild(tdNum);
         tr.appendChild(tdCode);
-        tableRight.appendChild(tr);
-      });
+        fragRight.appendChild(tr);
+      }
     });
+
+    tableLeft.innerHTML = '';
+    tableRight.innerHTML = '';
+    tableLeft.appendChild(fragLeft);
+    tableRight.appendChild(fragRight);
   }
 
   function rebuildCenterResult() {
-    if (!current3WayData || !cmCenter) return;
+    if (!current3WayData) return;
 
     const resultLines = [];
     current3WayData.chunks.forEach(chunk => {
@@ -474,7 +630,7 @@
       } else if (state === 'both') {
         resultLines.push(...(chunk.leftLines.length > 0 ? chunk.leftLines : chunk.rightLines));
       } else if (state === 'ignored') {
-        // Nada inserido
+        // Bloco ignorado
       } else if (state === 'unresolved' && chunk.type === 'CONFLICT') {
         resultLines.push(`<<<<<<< ${current3WayData.currentBranch || 'Ours'}`);
         resultLines.push(...chunk.leftLines);
@@ -486,9 +642,16 @@
       }
     });
 
-    const scrollInfo = cmCenter.getScrollInfo();
-    cmCenter.setValue(resultLines.join('\n'));
-    cmCenter.scrollTo(scrollInfo.left, scrollInfo.top);
+    const finalContent = resultLines.join('\n');
+    if (cmCenter) {
+      const scrollInfo = cmCenter.getScrollInfo();
+      cmCenter.setValue(finalContent);
+      cmCenter.scrollTo(scrollInfo.left, scrollInfo.top);
+      triggerCmRefresh();
+    } else {
+      const ta = document.getElementById('git-conflict-cm-textarea');
+      if (ta) ta.value = finalContent;
+    }
     updateConflictStatusBadge();
   }
 
@@ -506,29 +669,30 @@
   function updateConflictStatusBadge() {
     const badge = document.getElementById('git-conflict-badge-status');
     const statsEl = document.getElementById('git-conflict-center-stats');
-    if (!badge || !cmCenter) return;
+    if (!badge) return;
 
-    const text = cmCenter.getValue();
+    const text = cmCenter ? cmCenter.getValue() : (document.getElementById('git-conflict-cm-textarea')?.value || '');
     const markerMatches = text.match(/<<<<<<< /g);
     const unresolvedCount = markerMatches ? markerMatches.length : 0;
 
     if (unresolvedCount > 0) {
       badge.className = 'git-conflict-status-badge has-conflicts';
-      badge.textContent = `🔴 ${unresolvedCount} conflito${unresolvedCount > 1 ? 's' : ''} pendente${unresolvedCount > 1 ? 's' : ''}`;
+      badge.textContent = `${unresolvedCount} conflito${unresolvedCount > 1 ? 's' : ''} pendente${unresolvedCount > 1 ? 's' : ''}`;
     } else {
       badge.className = 'git-conflict-status-badge resolved';
-      badge.textContent = `✓ Todos os conflitos resolvidos`;
+      badge.textContent = 'Todos os conflitos resolvidos';
     }
 
     if (statsEl) {
-      statsEl.textContent = `${cmCenter.lineCount()} linhas`;
+      const lineCount = cmCenter ? cmCenter.lineCount() : (text.split('\n').length);
+      statsEl.textContent = `${lineCount} linhas`;
     }
   }
 
   async function saveCurrentResolution() {
-    if (!cmCenter || !current3WayData) return;
+    if (!current3WayData) return;
 
-    const text = cmCenter.getValue();
+    const text = cmCenter ? cmCenter.getValue() : (document.getElementById('git-conflict-cm-textarea')?.value || '');
     if (text.includes('<<<<<<<') || text.includes('>>>>>>>') || text.includes('=======')) {
       if (!confirm('Atenção: O arquivo ainda contém marcadores de conflito (<<<<<<<, =======, >>>>>>>). Deseja salvar mesmo assim?')) {
         return;
@@ -545,7 +709,7 @@
 
     if (res && res.ok) {
       if (typeof showToast === 'function') {
-        showToast(`✓ Arquivo ${current3WayData.relPath} salvo e adicionado ao Git!`);
+        showToast(`Arquivo ${current3WayData.relPath} salvo e adicionado ao Git.`);
       }
 
       if (res.remainingConflicts > 0 && res.conflictFiles && res.conflictFiles.length > 0) {
@@ -555,7 +719,7 @@
         loadFile3Way(conflictFiles[0].path);
       } else {
         if (typeof showToast === 'function') {
-          showToast('🎉 Todos os conflitos do repositório foram resolvidos com sucesso!');
+          showToast('Todos os conflitos do repositório foram resolvidos com sucesso.');
         }
         closeGitConflictModal();
         if (window.fetchAndUpdateGitStatus) window.fetchAndUpdateGitStatus();

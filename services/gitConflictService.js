@@ -13,43 +13,82 @@ function execGit(args, cwd, timeoutMs = 5000) {
   });
 }
 
-// Algoritmo LCS para Diff de Linhas
+// Algoritmo LCS Otimizado para Diff de Linhas com Trim de Prefixo e Sufixo
 function computeLcs(a, b) {
   const n = a.length;
   const m = b.length;
-  const dp = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
 
-  for (let i = n - 1; i >= 0; i--) {
-    for (let j = m - 1; j >= 0; j--) {
-      if (a[i] === b[j]) {
-        dp[i][j] = dp[i + 1][j + 1] + 1;
-      } else {
-        dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
-      }
-    }
+  // 1. Trim de prefixo idêntico
+  let start = 0;
+  while (start < n && start < m && a[start] === b[start]) {
+    start++;
+  }
+
+  // 2. Trim de sufixo idêntico
+  let endA = n - 1;
+  let endB = m - 1;
+  while (endA >= start && endB >= start && a[endA] === b[endB]) {
+    endA--;
+    endB--;
   }
 
   const aToB = new Map();
   const bToA = new Map();
-  let i = 0, j = 0;
-  while (i < n && j < m) {
-    if (a[i] === b[j]) {
-      aToB.set(i, j);
-      bToA.set(j, i);
-      i++;
-      j++;
-    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-      i++;
-    } else {
-      j++;
+
+  // Mapeia prefixo idêntico
+  for (let i = 0; i < start; i++) {
+    aToB.set(i, i);
+    bToA.set(i, i);
+  }
+
+  const subN = endA - start + 1;
+  const subM = endB - start + 1;
+
+  // LCS apenas no miolo modificado
+  if (subN > 0 && subM > 0) {
+    const dp = Array.from({ length: subN + 1 }, () => new Int32Array(subM + 1));
+    for (let i = subN - 1; i >= 0; i--) {
+      for (let j = subM - 1; j >= 0; j--) {
+        if (a[start + i] === b[start + j]) {
+          dp[i][j] = dp[i + 1][j + 1] + 1;
+        } else {
+          dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+        }
+      }
+    }
+
+    let i = 0, j = 0;
+    while (i < subN && j < subM) {
+      if (a[start + i] === b[start + j]) {
+        const actualA = start + i;
+        const actualB = start + j;
+        aToB.set(actualA, actualB);
+        bToA.set(actualB, actualA);
+        i++;
+        j++;
+      } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+        i++;
+      } else {
+        j++;
+      }
     }
   }
+
+  // Mapeia sufixo idêntico
+  const suffixLen = n - (endA + 1);
+  for (let k = 0; k < suffixLen; k++) {
+    const actualA = endA + 1 + k;
+    const actualB = endB + 1 + k;
+    aToB.set(actualA, actualB);
+    bToA.set(actualB, actualA);
+  }
+
   return { aToB, bToA };
 }
 
 // Extrai os hunks de modificação entre Base e uma versão modificada
 function computeDiffHunks(baseLines, modLines) {
-  const { aToB } = computeLcs(baseLines, modLines);
+  const { aToB, bToA } = computeLcs(baseLines, modLines);
   const hunks = [];
   let b = 0, m = 0;
 
@@ -68,7 +107,7 @@ function computeDiffHunks(baseLines, modLines) {
         }
         if (b < baseLines.length && (!aToB.has(b) || aToB.get(b) < m)) {
           b++;
-        } else if (m < modLines.length && (!Array.from(aToB.values()).includes(m))) {
+        } else if (m < modLines.length && !bToA.has(m)) {
           m++;
         } else {
           if (b < baseLines.length) b++;
@@ -395,7 +434,7 @@ const GitConflictService = {
       }
 
       // Executa git status para achar arquivos com conflito (unmerged)
-      const statusRes = await execGit(['status', '--porcelain', '-uall'], projectPath);
+      const statusRes = await execGit(['-c', 'core.quotepath=false', 'status', '--porcelain', '-uall'], projectPath);
       const conflictFiles = [];
       const lines = statusRes.stdout.split('\n');
 
@@ -426,7 +465,8 @@ const GitConflictService = {
         conflictFiles,
         currentBranch,
         incomingBranch,
-        mergeState
+        mergeState,
+        projectPath
       };
     } catch (e) {
       console.warn('[GitConflictService] Erro ao detectar conflitos:', e.message);
@@ -441,20 +481,22 @@ const GitConflictService = {
     }
 
     try {
-      const fullPath = path.join(projectPath, relPath);
+      const gitRelPath = String(relPath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+      const fullPath = path.join(projectPath, gitRelPath);
       const statusInfo = await this.detectGitConflicts(projectPath);
 
       // Tenta obter as 3 versões dos stages do git index (:1 = BASE, :2 = OURS, :3 = THEIRS)
-      const baseRes = await execGit(['show', `:1:${relPath}`], projectPath);
-      const oursRes = await execGit(['show', `:2:${relPath}`], projectPath);
-      const theirsRes = await execGit(['show', `:3:${relPath}`], projectPath);
+      const baseRes = await execGit(['show', `:1:${gitRelPath}`], projectPath);
+      const oursRes = await execGit(['show', `:2:${gitRelPath}`], projectPath);
+      const theirsRes = await execGit(['show', `:3:${gitRelPath}`], projectPath);
 
       let baseText = baseRes.err ? '' : baseRes.stdout;
       let oursText = oursRes.err ? '' : oursRes.stdout;
       let theirsText = theirsRes.err ? '' : theirsRes.stdout;
       let chunks = [];
 
-      if (!oursRes.err && !theirsRes.err) {
+      // Se temos pelo menos uma versão válida nos stages (ou ambos)
+      if (!oursRes.err || !theirsRes.err || !baseRes.err) {
         const baseLines = baseText ? baseText.split(/\r?\n/) : [];
         const oursLines = oursText ? oursText.split(/\r?\n/) : [];
         const theirsLines = theirsText ? theirsText.split(/\r?\n/) : [];
@@ -465,10 +507,31 @@ const GitConflictService = {
         if (fs.existsSync(fullPath)) {
           diskContent = fs.readFileSync(fullPath, 'utf8');
         }
-        chunks = parseConflictMarkers(diskContent);
-        oursText = chunks.map(c => c.leftLines.join('\n')).filter(Boolean).join('\n');
-        theirsText = chunks.map(c => c.rightLines.join('\n')).filter(Boolean).join('\n');
-        baseText = chunks.map(c => c.baseLines.join('\n')).filter(Boolean).join('\n');
+        if (diskContent.includes('<<<<<<<') && diskContent.includes('>>>>>>>')) {
+          chunks = parseConflictMarkers(diskContent);
+          oursText = chunks.map(c => c.leftLines.join('\n')).filter(Boolean).join('\n');
+          theirsText = chunks.map(c => c.rightLines.join('\n')).filter(Boolean).join('\n');
+          baseText = chunks.map(c => c.baseLines.join('\n')).filter(Boolean).join('\n');
+        } else {
+          // Arquivo sem marcadores no disco (fallback com linhas completas)
+          const lines = diskContent ? diskContent.split(/\r?\n/) : [];
+          chunks = [{
+            id: 'chunk_0',
+            type: 'CONFLICT',
+            leftLines: [...lines],
+            baseLines: [],
+            rightLines: [...lines],
+            leftStartLine: 1,
+            leftEndLine: Math.max(1, lines.length),
+            rightStartLine: 1,
+            rightEndLine: Math.max(1, lines.length),
+            baseStartLine: 1,
+            baseEndLine: 1
+          }];
+          oursText = diskContent;
+          theirsText = diskContent;
+          baseText = '';
+        }
       }
 
       // Constrói o resultado inicial (com blocos não conflitantes auto-aplicados)
@@ -495,7 +558,7 @@ const GitConflictService = {
 
       return {
         ok: true,
-        relPath,
+        relPath: gitRelPath,
         fullPath,
         currentBranch: statusInfo.currentBranch,
         incomingBranch: statusInfo.incomingBranch,
@@ -520,7 +583,8 @@ const GitConflictService = {
     }
 
     try {
-      const fullPath = path.join(projectPath, relPath);
+      const gitRelPath = String(relPath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+      const fullPath = path.join(projectPath, gitRelPath);
       const parentDir = path.dirname(fullPath);
       if (!fs.existsSync(parentDir)) {
         fs.mkdirSync(parentDir, { recursive: true });
@@ -529,7 +593,7 @@ const GitConflictService = {
       fs.writeFileSync(fullPath, content, 'utf8');
 
       // Executa git add
-      const addRes = await execGit(['add', relPath], projectPath);
+      const addRes = await execGit(['add', gitRelPath], projectPath);
       if (addRes.err) {
         return { ok: false, error: addRes.stderr || addRes.err.message };
       }

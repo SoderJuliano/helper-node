@@ -213,11 +213,12 @@ function fileIconHtml(name) {
                     enabled = window.electronAPI && window.electronAPI.getWorkspaceAccessEnabled
                         ? await window.electronAPI.getWorkspaceAccessEnabled() : false;
                 } catch (_) {}
-                if (!enabled) { composerCtx.style.display = 'none'; ctxProject = null; return; }
+                if (!enabled) { composerCtx.style.display = 'none'; ctxProject = null; window.ctxProject = null; return; }
 
                 let ctx = null;
                 try { ctx = window.electronAPI.getProjectContext ? await window.electronAPI.getProjectContext() : null; } catch (_) {}
                 ctxProject = (ctx && ctx.name) ? ctx : null;
+                window.ctxProject = ctxProject;
                 composerCtx.style.display = 'flex';
 
                 if (!ctxProject) {
@@ -237,6 +238,7 @@ function fileIconHtml(name) {
                         ctxProject.isBuildTool = false;
                     }
                 }
+                window.ctxProject = ctxProject;
                 if (ctxBranch) {
                     if (ctxProject.branch) {
                         ctxBranch.style.display = 'inline-flex';
@@ -388,7 +390,7 @@ function fileIconHtml(name) {
                 const conflictBadgeWs = document.getElementById('ws-git-conflict-badge');
                 const conflictBadgeCtx = document.getElementById('ctx-git-conflict-badge');
                 if (currentGitConflictStatus && currentGitConflictStatus.hasConflicts && currentGitConflictStatus.count > 0) {
-                    const text = `⚠️ ${currentGitConflictStatus.count} conflito${currentGitConflictStatus.count > 1 ? 's' : ''}`;
+                    const text = `${currentGitConflictStatus.count} conflito${currentGitConflictStatus.count > 1 ? 's' : ''}`;
                     if (conflictBadgeWs) {
                         conflictBadgeWs.textContent = text;
                         conflictBadgeWs.style.display = 'inline-flex';
@@ -421,14 +423,16 @@ function fileIconHtml(name) {
     if (conflictBadgeWs) {
         conflictBadgeWs.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (typeof window.openGitConflictModal === 'function') window.openGitConflictModal();
+            const pPath = ctxProject ? ctxProject.path : null;
+            if (typeof window.openGitConflictModal === 'function') window.openGitConflictModal(pPath);
         });
     }
     const conflictBadgeCtx = document.getElementById('ctx-git-conflict-badge');
     if (conflictBadgeCtx) {
         conflictBadgeCtx.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (typeof window.openGitConflictModal === 'function') window.openGitConflictModal();
+            const pPath = ctxProject ? ctxProject.path : null;
+            if (typeof window.openGitConflictModal === 'function') window.openGitConflictModal(pPath);
         });
     }
 
@@ -451,10 +455,10 @@ function fileIconHtml(name) {
             if (data.status === 'indexing') {
                 statusBadge.style.display = 'inline-flex';
                 const pct = data.total > 0 ? Math.round((data.processed / data.total) * 100) : 0;
-                statusBadge.textContent = `⚡ Indexando... ${pct}%`;
+                statusBadge.textContent = `Indexando... ${pct}%`;
             } else if (data.status === 'completed') {
                 statusBadge.style.display = 'inline-flex';
-                statusBadge.textContent = `✓ Indexado`;
+                statusBadge.textContent = `Indexado`;
                 setTimeout(() => { if (statusBadge) statusBadge.style.display = 'none'; }, 3500);
             } else {
                 statusBadge.style.display = 'none';

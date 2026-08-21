@@ -1,13 +1,23 @@
 // main/ipc/gitConflict.js
 // Handlers IPC para resolução de conflitos Git em 3 vias (3-way merge)
 
+const fs = require('fs');
+const path = require('path');
 const { ipcMain } = require('../globals.js');
 const { GitConflictService } = require('../../services/gitConflictService.js');
 const { workspace } = require('../globals.js');
 
 function getCurrentProjectPath() {
-  const dir = (workspace.list() || []).find((a) => a.type === 'dir');
-  return dir ? dir.path : null;
+  const list = workspace.list ? workspace.list() : [];
+  const dir = (list || []).find((a) => a.type === 'dir');
+  if (dir && dir.path) return dir.path;
+  const anyItem = (list || [])[0];
+  if (anyItem && anyItem.path) {
+    try {
+      return fs.statSync(anyItem.path).isDirectory() ? anyItem.path : path.dirname(anyItem.path);
+    } catch (_) {}
+  }
+  return null;
 }
 
 module.exports = function registerGitConflictIpc() {

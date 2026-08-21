@@ -158,7 +158,7 @@
     menu.className = 'code-editor-context-menu import-check-quickfix-menu';
     for (const item of items) {
       const btn = document.createElement('button');
-      btn.innerHTML = `<span class="menu-icon">📥</span> <span>${item.label}</span>`;
+      btn.innerHTML = `<span>${item.label}</span>`;
       btn.addEventListener('click', (ev) => {
         ev.stopPropagation();
         menu.remove();

@@ -461,11 +461,11 @@
                     b.addEventListener('click', () => { menu.remove(); fn(); });
                     return b;
                 };
-                menu.appendChild(mkItem('📄  Arquivo', async () => {
+                menu.appendChild(mkItem('Arquivo', async () => {
                     const r = await window.electronAPI.workspacePickFile();
                     if (r && r.attachments) renderWorkspacePanel(r.attachments);
                 }));
-                menu.appendChild(mkItem('📁  Pasta', async () => {
+                menu.appendChild(mkItem('Pasta', async () => {
                     const r = await window.electronAPI.workspacePickDir();
                     if (r && r.attachments) renderWorkspacePanel(r.attachments);
                 }));
@@ -657,7 +657,7 @@
                 localStorage.setItem('ws_tree_font_size', newSize);
 
                 if (typeof window.showZoomToast === 'function') {
-                    window.showZoomToast(`🔍 Fonte da Árvore: ${newSize}px`);
+                    window.showZoomToast(`Fonte da Árvore: ${newSize}px`);
                 }
             }
         }, { passive: false });

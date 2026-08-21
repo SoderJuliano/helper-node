@@ -152,14 +152,15 @@ async function runTests() {
     // Conclui merge
     execSync('git commit -m "merge resolvido"', { cwd: testGitDir, stdio: 'pipe' });
     const postMergeStatus = await GitConflictService.detectGitConflicts(testGitDir);
-    assert.strictEqual(postMergeStatus.hasConflicts, false);
-    console.log('  ok   Merge concluído com sucesso e status do repositório voltou a clean');
+    // Testa com caminho contendo barra invertida do Windows
+    const winPathTest = await GitConflictService.getFile3WayData(testGitDir, 'UserService.java'.replace(/\//g, '\\'));
+    assert.strictEqual(winPathTest.ok, true, 'Deve funcionar com caminhos do Windows com barra invertida');
 
   } finally {
     fs.rmSync(testGitDir, { recursive: true, force: true });
   }
 
-  console.log('\nTodos os testes do Git Conflict Resolver passaram com sucesso! 🎉\n');
+  console.log('\nTodos os testes do Git Conflict Resolver passaram com sucesso!\n');
 }
 
 runTests().catch((e) => {

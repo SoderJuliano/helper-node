@@ -72,10 +72,6 @@
     badge.className = 'code-nav-usages-badge';
     badge.title = 'Clique para ver onde este método é chamado';
     
-    const iconSpan = document.createElement('span');
-    iconSpan.className = 'badge-icon';
-    iconSpan.textContent = '⚡';
-
     const textSpan = document.createElement('span');
     textSpan.textContent = label;
 
@@ -202,7 +198,7 @@
 
     const title = document.createElement('span');
     title.className = 'code-nav-popup-title';
-    title.textContent = `🔗 Usos de "${symbol}" (${sortedUsages.length})`;
+    title.textContent = `Usos de "${symbol}" (${sortedUsages.length})`;
 
     const sub = document.createElement('span');
     sub.className = 'code-nav-popup-sub';
@@ -385,7 +381,7 @@
 
     const title = document.createElement('span');
     title.className = 'code-nav-popup-title';
-    title.textContent = `📌 ${symbol} (${matches.length})`;
+    title.textContent = `${symbol} (${matches.length})`;
 
     const sub = document.createElement('span');
     sub.className = 'code-nav-popup-sub';
@@ -843,7 +839,7 @@
 
     const warningSpan = document.createElement('span');
     warningSpan.className = 'code-rename-warning-span';
-    warningSpan.innerHTML = `<span>⚠️</span> <span>Renomeando método <strong>'${originalSymbol}'</strong> (${localOccurrences.length} uso${localOccurrences.length !== 1 ? 's' : ''})</span>`;
+    warningSpan.innerHTML = `<span>Renomeando método <strong>'${originalSymbol}'</strong> (${localOccurrences.length} uso${localOccurrences.length !== 1 ? 's' : ''})</span>`;
 
     const timerSpan = document.createElement('span');
     timerSpan.className = 'code-rename-timer';
@@ -1039,7 +1035,7 @@
       // 1. Opção "Achar Usos" / "Find Usages" (para qualquer símbolo: método, classe, variável, etc.)
       const btnFindUsages = document.createElement('button');
       btnFindUsages.className = 'menu-item-find-usages';
-      btnFindUsages.innerHTML = `<span class="menu-icon">🔍</span> <span>Achar Usos de '${targetSymbol}'</span>`;
+      btnFindUsages.innerHTML = `<span>Achar Usos de '${targetSymbol}'</span>`;
       btnFindUsages.addEventListener('click', async (ev) => {
         ev.stopPropagation();
         removeActiveEditorContextMenu();
@@ -1053,7 +1049,7 @@
       // 2. Opção "Renomear"
       const btnRename = document.createElement('button');
       btnRename.className = 'menu-item-rename menu-danger';
-      btnRename.innerHTML = `<span class="menu-icon">✏️</span> <span>Renomear '${targetSymbol}'</span>`;
+      btnRename.innerHTML = `<span>Renomear '${targetSymbol}'</span>`;
       btnRename.addEventListener('click', (ev) => {
         ev.stopPropagation();
         removeActiveEditorContextMenu();
@@ -1067,7 +1063,7 @@
       btnCopy.className = 'menu-item-copy';
       const linesCount = selection.split('\n').length;
       const label = linesCount > 1 ? `Copiar (${linesCount} linhas)` : 'Copiar';
-      btnCopy.innerHTML = `<span class="menu-icon">📋</span> <span>${label}</span>`;
+      btnCopy.innerHTML = `<span>${label}</span>`;
       btnCopy.addEventListener('click', async (ev) => {
         ev.stopPropagation();
         removeActiveEditorContextMenu();
