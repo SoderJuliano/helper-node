@@ -673,16 +673,19 @@
     }
     updateDirtyIndicator();
     renderTabs();
+    if (window.CodeNavigation) {
+      window.CodeNavigation.attach(cmInst, filePath);
+    }
     if (!isDependencySource) {
-      if (window.CodeNavigation) {
-        window.CodeNavigation.attach(cmInst, filePath);
-      }
       if (window.ImportChecker) {
         window.ImportChecker.attach(cmInst, filePath);
       }
       if (window.AppRunnerGutter) {
         window.AppRunnerGutter.attach(cmInst, filePath);
       }
+    }
+    if (typeof window.revealPathInTree === 'function') {
+      try { window.revealPathInTree(filePath); } catch (_) {}
     }
     // Refresh CodeMirror imediatamente e em ticks para recalcular dimensões no layout flex
     cmInst.refresh();

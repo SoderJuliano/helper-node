@@ -505,6 +505,76 @@ var creatingFolderParent = null;
                 });
             }
 
+            async function revealPathInTree(targetPath) {
+                if (!targetPath || !wsTree) return;
+                const normTarget = String(targetPath).replace(/\\/g, '/');
+
+                // 1. Dependência Java (.jar!com/example/MyClass.java)
+                if (normTarget.includes('.jar!')) {
+                    const m = /^(.*\.jar)!(.+)\.java$/i.exec(normTarget);
+                    const jarPath = m ? m[1] : '';
+
+                    let depsNode = treeEntries.find(e => e.synthetic === 'java-deps');
+                    if (depsNode) {
+                        if (depsNode.collapsed) {
+                            await toggleDir(depsNode);
+                        }
+                        const normJar = jarPath.replace(/\\/g, '/').toLowerCase();
+                        let jarNode = treeEntries.find(e => e.synthetic === 'java-jar' && e.path.replace(/\\/g, '/').toLowerCase() === normJar);
+                        if (jarNode) {
+                            if (jarNode.collapsed) {
+                                await toggleDir(jarNode);
+                            }
+                            highlightAndScrollToNode(normTarget);
+                            return;
+                        }
+                    }
+                }
+
+                // 2. Arquivo normal do projeto
+                let foundEl = highlightAndScrollToNode(normTarget);
+                if (foundEl) return;
+
+                const projectPath = (wsProjectMain ? wsProjectMain.dataset.path : '') || '';
+                const normProj = projectPath.replace(/\\/g, '/');
+                if (normProj && normTarget.toLowerCase().startsWith(normProj.toLowerCase())) {
+                    let rel = normTarget.substring(normProj.length).replace(/^[/\\]+/, '');
+                    const parts = rel.split('/');
+                    parts.pop(); // Remove nome do arquivo
+                    let cur = normProj;
+                    for (const p of parts) {
+                        cur += '/' + p;
+                        const dirEntry = treeEntries.find(e => e.isDir && e.path.replace(/\\/g, '/').toLowerCase() === cur.toLowerCase());
+                        if (dirEntry && dirEntry.collapsed) {
+                            await toggleDir(dirEntry);
+                        }
+                    }
+                    highlightAndScrollToNode(normTarget);
+                }
+            }
+
+            function highlightAndScrollToNode(normTarget) {
+                if (!wsTree) return null;
+                const normLower = normTarget.toLowerCase();
+                const nodes = wsTree.querySelectorAll('.ws-tree-node');
+                let targetEl = null;
+
+                nodes.forEach(n => {
+                    n.classList.remove('ws-tree-active-file');
+                    const p = (n.dataset.path || '').replace(/\\/g, '/').toLowerCase();
+                    if (p === normLower || p.endsWith('/' + normLower) || normLower.endsWith('/' + p)) {
+                        targetEl = n;
+                    }
+                });
+
+                if (targetEl) {
+                    targetEl.classList.add('ws-tree-active-file');
+                    targetEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                    return targetEl;
+                }
+                return null;
+            }
+
     // Expose functions globally
     window.collapseProjectTree = collapseProjectTree;
     window.toggleDir = toggleDir;
@@ -512,4 +582,5 @@ var creatingFolderParent = null;
     window.renderCreationInput = renderCreationInput;
     window.renderCreationFolderInput = renderCreationFolderInput;
     window.updateSelectionUi = updateSelectionUi;
+    window.revealPathInTree = revealPathInTree;
 })();

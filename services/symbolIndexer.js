@@ -10,12 +10,31 @@ const SUPPORTED_EXTS = new Set([
   '.java', '.ts', '.tsx', '.js', '.jsx', '.cs', '.cpp', '.h', '.hpp', '.php'
 ]);
 
-// Pastas ignoradas
+// Pastas ignoradas por padrão
 const IGNORED_DIRS = new Set([
-  'node_modules', '.git', 'dist', 'build', 'target', '.idea', '.vscode', '.claude', '.gemini',
+  'node_modules', '.git', 'dist', '.idea', '.vscode', '.claude', '.gemini',
   'vendor', 'bin', 'obj', '.next', '.nuxt', '.cache', '__pycache__', 'venv', '.venv', 'env',
   'coverage', '.output', 'out', 'temp', 'tmp', 'logs', '.bundle', 'whisper', 'assets', 'images', 'audio'
 ]);
+
+function shouldIgnoreDir(dirName, parentDir) {
+  if (IGNORED_DIRS.has(dirName)) return true;
+  if (dirName === 'target' || dirName === 'build') {
+    const generatedPath = path.join(parentDir || '', dirName, dirName === 'target' ? 'generated-sources' : 'generated');
+    const generatedSourcesPath = path.join(parentDir || '', dirName, 'generated-sources');
+    if (fs.existsSync(generatedPath) || fs.existsSync(generatedSourcesPath)) {
+      return false;
+    }
+    return true;
+  }
+  const normParent = parentDir ? parentDir.replace(/\\/g, '/').toLowerCase() : '';
+  if (normParent.endsWith('/target')) {
+    if (dirName !== 'generated-sources' && dirName !== 'generated-test-sources') return true;
+  } else if (normParent.endsWith('/build')) {
+    if (dirName !== 'generated' && dirName !== 'generated-sources') return true;
+  }
+  return false;
+}
 
 // Palavras que nunca valem como "uso" — encher o índice com elas é só custo.
 const USAGE_STOPWORDS = new Set([
@@ -223,9 +242,9 @@ class SymbolIndexer {
       try {
         const entries = await fs.promises.readdir(currentDir, { withFileTypes: true });
         for (const entry of entries) {
-          if (IGNORED_DIRS.has(entry.name)) continue;
           const fullPath = path.join(currentDir, entry.name);
           if (entry.isDirectory()) {
+            if (shouldIgnoreDir(entry.name, currentDir)) continue;
             queue.push(fullPath);
           } else if (entry.isFile()) {
             const ext = path.extname(entry.name).toLowerCase();
@@ -343,6 +362,9 @@ class SymbolIndexer {
       }
 
       // 4. Métodos / Funções
+      // Limpa anotações inline (ex: @Mapping(...), @Override) para não quebrar casamento de regex
+      const lineClean = lineText.replace(/@\w+(?:\([^)]*\))?\s*/g, '').trim();
+
       const methodPatterns = [
         // async function foo(...) / function foo(...) / function* foo(...) / static function foo(...)
         { re: /(?:public\s+|protected\s+|private\s+)?(?:static\s+)?(?:async\s+)?function\*?\s+([A-Za-z0-9_$]+)\s*\(/, g: 1 },
@@ -353,20 +375,20 @@ class SymbolIndexer {
         // foo: function(...) / foo: async function(...)
         { re: /([A-Za-z0-9_$]+)\s*:\s*(?:async\s+)?function/, g: 1 },
         // Java/C#/PHP/C++/Kotlin: public void foo(...) / static async Task<Bar> foo(...) / public static <K, V> Map<K, V> foo(...)
-        { re: /(?:public|protected|private|static|final|async|override|synchronized|default|native)\s+(?:[A-Za-z0-9_$<>[\].,\s]+\s+)+([A-Za-z0-9_$]+)\s*\([^)]*\)/, g: 1 },
+        { re: /(?:public|protected|private|static|final|async|override|synchronized|default|native)\s+(?:[A-Za-z0-9_$<>[\].,\s]+\s+)+([A-Za-z0-9_$]+)\s*\(/, g: 1 },
         // Python: def foo(...) / async def foo(...)
         { re: /(?:async\s+)?def\s+([A-Za-z0-9_$]+)\s*\(/, g: 1 },
         // Go / Rust: func foo / fn foo
         { re: /(?:pub\s+)?(?:async\s+)?(?:func|fn)\s+(?:\([^)]+\)\s+)?([A-Za-z0-9_$]+)\s*\(/, g: 1 },
-        // Declaração SEM corpo, terminada em ';' — método de interface Java / TS
-        { re: /^\s*(?:public\s+|protected\s+|default\s+|static\s+|abstract\s+)*[A-Za-z0-9_$<>[\],\s]+?\s+([A-Za-z0-9_$]+)\s*\([^)]*\)\s*(?:throws\s+[A-Za-z0-9_$.,\s]+)?;\s*$/, g: 1 },
+        // Declaração de método de interface Java / TS (ex: UserDto map(User user); ou assinatura multilinha UserDto toDto(...)
+        { re: /^(?:public\s+|protected\s+|default\s+|static\s+|abstract\s+)*[A-Za-z0-9_$<>[\],\s]+?\s+([A-Za-z0-9_$]+)\s*\(/, g: 1 },
       ];
 
       for (const pattern of methodPatterns) {
-        const m = lineText.match(pattern.re);
+        const m = lineClean.match(pattern.re) || lineText.match(pattern.re);
         if (m && m[pattern.g]) {
           const methodName = m[pattern.g];
-          if (['if', 'for', 'while', 'switch', 'catch', 'constructor', 'function', 'class', 'return', 'import', 'export', 'require', 'static', 'async', 'get', 'set', 'public', 'private', 'protected', 'def', 'fn', 'func'].includes(methodName)) {
+          if (['if', 'for', 'while', 'switch', 'catch', 'constructor', 'function', 'class', 'return', 'import', 'export', 'require', 'static', 'async', 'get', 'set', 'public', 'private', 'protected', 'def', 'fn', 'func', 'interface', 'package', 'new'].includes(methodName)) {
             continue;
           }
           const col = lineText.indexOf(methodName) + 1;
@@ -374,7 +396,7 @@ class SymbolIndexer {
           const item = {
             name: methodName,
             line: lineNum,
-            col,
+            col: col > 0 ? col : 1,
             filePath: normPath,
             kind: currentInterface ? 'interface-method' : 'method',
             owner
@@ -485,8 +507,8 @@ class SymbolIndexer {
       new RegExp(`${escaped}\\s*:\\s*(?:async\\s+)?(?:function|\\()`),
       // class Foo / interface Foo / enum Foo / record Foo
       new RegExp(`(?:class|interface|enum|record)\\s+${escaped}\\b`),
-      // Java/C#/C++/PHP: tipoRetorno foo(...)
-      new RegExp(`(?:public|protected|private|static|final|async|override|synchronized|default|native)\\s+(?:[A-Za-z0-9_$<>\\[\\],\\s]+\\s+)+${escaped}\\s*\\(`),
+      // Java/C#/C++/PHP: tipoRetorno foo(...) ou interface método
+      new RegExp(`(?:public|protected|private|static|final|async|override|synchronized|default|native|abstract)?\\s*(?:[A-Za-z0-9_$<>\\[\\],\\s]+\\s+)+${escaped}\\s*\\(`),
       // Python: def foo(...)
       new RegExp(`(?:async\\s+)?def\\s+${escaped}\\s*\\(`),
       // Go / Rust: func foo / fn foo
@@ -495,8 +517,9 @@ class SymbolIndexer {
 
     for (let i = 0; i < lines.length; i++) {
       const lineText = lines[i];
+      const lineClean = lineText.replace(/@\w+(?:\([^)]*\))?\s*/g, '').trim();
       for (const rx of defRegexes) {
-        if (rx.test(lineText)) {
+        if (rx.test(lineClean) || rx.test(lineText)) {
           const col = lineText.indexOf(symbolName) + 1;
           results.push({
             name: symbolName,
@@ -518,9 +541,9 @@ class SymbolIndexer {
     try {
       const entries = fs.readdirSync(startDir, { withFileTypes: true });
       for (const entry of entries) {
-        if (IGNORED_DIRS.has(entry.name)) continue;
         const fullPath = path.join(startDir, entry.name);
         if (entry.isDirectory()) {
+          if (shouldIgnoreDir(entry.name, startDir)) continue;
           results.push(...this.scanDir(fullPath));
         } else if (entry.isFile()) {
           const ext = path.extname(entry.name).toLowerCase();
@@ -539,62 +562,41 @@ class SymbolIndexer {
     const cleanSymbol = symbolName.trim();
     if (!cleanSymbol || !/^[A-Za-z_$][\w$]*$/.test(cleanSymbol)) return [];
 
-    // Ignora palavras reservadas da linguagem que não são métodos customizados
-    const KEYWORDS = new Set([
-      'if', 'for', 'while', 'switch', 'catch', 'function', 'class', 'return',
-      'import', 'export', 'require', 'const', 'let', 'var', 'new', 'typeof',
-      'instanceof', 'void', 'delete', 'true', 'false', 'null', 'undefined', 'this',
-      'super', 'async', 'await', 'yield', 'try', 'finally', 'else', 'case', 'break'
-    ]);
-    if (KEYWORDS.has(cleanSymbol)) return [];
-
     const normCurrent = normalizePath(currentFilePath);
-    if (normCurrent && !this.fileMap.has(normCurrent) && fs.existsSync(normCurrent)) {
-      this.indexSingleFile(normCurrent);
-    }
 
-    // Caminho rápido: índice invertido montado na abertura do projeto.
-    //
-    // Antes daqui existia (e ainda existe abaixo, como fallback) uma varredura
-    // que RELIA todos os arquivos do projeto do disco a cada chamada. Como isto
-    // é chamado a cada hover sobre um identificador, e roda no processo main,
-    // o app inteiro congelava enquanto durava — medido em 722ms num projeto de
-    // 2.000 arquivos, a cada passada do mouse.
-    if (this.usageMap.size > 0) {
-      const achados = this.usageMap.get(cleanSymbol);
-      if (achados) {
-        const defLines = new Set(
-          (this.symbolMap.get(cleanSymbol) || []).map(d => `${d.filePath}:${d.line}`)
-        );
-        return achados
-          .filter(u => !u.isDef && !defLines.has(`${u.filePath}:${u.line}`))
-          .map(({ isDef, ...u }) => ({
-            ...u,
-            relativePath: this.projectPath
-              ? path.relative(this.projectPath, u.filePath).replace(/\\/g, '/')
-              : u.filePath,
-            fileName: path.basename(u.filePath),
-          }));
+    // Fast-path: índice invertido montado na abertura do projeto
+    const indexados = this.usageMap.get(cleanSymbol);
+    if (indexados && indexados.length > 0) {
+      const resp = [];
+      for (const u of indexados) {
+        if (u.isDef) continue;
+        if (u.filePath === normCurrent && u.lineText && isDeclarationAt(u.lineText, Math.max(0, u.col - 1))) {
+          continue;
+        }
+        const relPath = this.projectPath ? path.relative(this.projectPath, u.filePath).replace(/\\/g, '/') : u.filePath;
+        const fileName = path.basename(u.filePath);
+        resp.push({
+          filePath: u.filePath,
+          relativePath: relPath,
+          fileName,
+          line: u.line,
+          col: u.col,
+          lineText: u.lineText,
+          callerName: u.callerName,
+        });
       }
-      // Símbolo indexado e sem ocorrência = resposta legítima "nenhum uso".
-      if (this.fileMap.has(normCurrent)) return [];
+      return resp;
     }
 
-    // 1. Obter lista de todos os arquivos a verificar
-    const filesToScan = new Set();
-    if (this.fileMap.size > 0) {
-      for (const f of this.fileMap.keys()) {
-        filesToScan.add(f);
-      }
+    // Fallback: varredura no disco se o índice não tiver o símbolo (ex: arquivo novo fora do workspace)
+    const filesToScan = [];
+    if (this.projectPath) {
+      filesToScan.push(...this.scanDir(this.projectPath));
     }
-    if (normCurrent) filesToScan.add(normCurrent);
-
-    if (this.projectPath && filesToScan.size < 5 && fs.existsSync(this.projectPath)) {
-      const projFiles = this.scanDir(this.projectPath);
-      for (const f of projFiles) filesToScan.add(f);
+    if (normCurrent && !filesToScan.includes(normCurrent) && fs.existsSync(normCurrent)) {
+      filesToScan.push(normCurrent);
     }
 
-    // Identificar as linhas de definição/declaração do método no projeto para desconsiderá-las como uso
     const defLinesByFile = new Map();
     for (const f of filesToScan) {
       const defs = this.searchDefinitionInFile(f, cleanSymbol);
@@ -630,6 +632,8 @@ class SymbolIndexer {
         const funcMatch = lineText.match(funcHeaderRegex);
         if (funcMatch) {
           const fnName = funcMatch[1] || funcMatch[2] || funcMatch[3];
+          // Ignorar palavras reservadas que não são métodos customizados
+          const KEYWORDS = new Set(['if', 'for', 'while', 'switch', 'catch', 'function', 'class', 'return', 'import', 'export', 'require', 'const', 'let', 'var', 'new', 'typeof', 'instanceof', 'void', 'delete', 'true', 'false', 'null', 'undefined', 'this', 'super', 'async', 'await', 'yield', 'try', 'finally', 'else', 'case', 'break']);
           if (fnName && !KEYWORDS.has(fnName) && fnName !== cleanSymbol) {
             currentEnclosingFunc = fnName;
           }
@@ -643,7 +647,9 @@ class SymbolIndexer {
 
         // Ignorar linhas de comentários (//, /*, *, #, <!--)
         const trimmed = lineText.trim();
-        if (trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*') || trimmed.startsWith('#') || trimmed.startsWith('<!--')) continue;
+        if (trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*') || trimmed.startsWith('#') || trimmed.startsWith('<!--')) {
+          continue;
+        }
 
         const col = lineText.indexOf(cleanSymbol) + 1;
 
@@ -687,6 +693,31 @@ class SymbolIndexer {
 
     let candidates = [...(this.symbolMap.get(symbolName) || [])];
 
+    // Se temos métodos de interface ou classe abstrata, inclui também as implementações concretas (ex: UserMapperImpl)
+    const implCandidates = [];
+    for (const c of candidates) {
+      if (c.kind === 'interface-method' || c.kind === 'interface') {
+        const ownerName = c.owner ? c.owner.name : c.name;
+        if (ownerName) {
+          const impls = this.implementationsMap.get(ownerName);
+          if (impls) {
+            for (const impl of impls) {
+              const implFileData = this.fileMap.get(impl.filePath);
+              const implMethod = implFileData ? implFileData.methods.find(m => m.name === symbolName) : null;
+              if (implMethod) {
+                implCandidates.push(implMethod);
+              }
+            }
+          }
+        }
+      }
+    }
+    for (const ic of implCandidates) {
+      if (!candidates.some(c => c.filePath === ic.filePath && c.line === ic.line)) {
+        candidates.push(ic);
+      }
+    }
+
     // 2. Fallback: se o mapa global não tem a definição, busca diretamente no arquivo atual e no workspace
     if (candidates.length === 0 && normCurrent && fs.existsSync(normCurrent)) {
       const localMatches = this.searchDefinitionInFile(normCurrent, symbolName);
@@ -726,9 +757,7 @@ class SymbolIndexer {
 
     // Tipo do RECEPTOR da chamada: em `pagamentoService.processar(id)`, descobre
     // que `pagamentoService` é do tipo `PagamentoService` e põe a definição
-    // dentro desse tipo em primeiro lugar. Sem isto, um método com o mesmo nome
-    // na interface e na implementação empatava e o app abria uma lista em vez
-    // de ir direto ao destino óbvio.
+    // dentro desse tipo em primeiro lugar.
     const tipoReceptor = this.resolveReceiverType(normCurrent, symbolName, lineText);
 
     const pontos = (c) => {
@@ -737,14 +766,20 @@ class SymbolIndexer {
         const base = path.basename(c.filePath, path.extname(c.filePath));
         if (c.className === tipoReceptor) p += 100;
         if (base === tipoReceptor) p += 80;
+        if (c.className === tipoReceptor + 'Impl') p += 95;
+        if (base === tipoReceptor + 'Impl') p += 75;
       }
       if (currentData && currentData.imports.length > 0) {
         const base = path.basename(c.filePath, path.extname(c.filePath));
         if (currentData.imports.some(imp => imp.text.includes(base))) p += 20;
       }
-      // Sem receptor identificado, a definição no próprio arquivo é a aposta
-      // melhor (chamada de método local). Com receptor, ela não tem prioridade.
-      if (!tipoReceptor && c.filePath === normCurrent) p += 50;
+      // Se estamos dentro do arquivo da própria interface/mapper e clicamos no método,
+      // a implementação correspondente (ex: UserMapperImpl.java) deve ter prioridade máxima para ir até o código
+      if (c.filePath === normCurrent && (c.kind === 'interface-method' || c.kind === 'interface')) {
+        p -= 50;
+      } else if (!tipoReceptor && c.filePath === normCurrent) {
+        p += 50;
+      }
       return p;
     };
 

@@ -222,6 +222,17 @@
         .ws-tree-node.ws-tree-node-primary:hover {
             background: rgba(129, 212, 250, 0.12);
         }
+        /* Destaque do arquivo atualmente aberto no editor */
+        .ws-tree-node.ws-tree-active-file {
+            background: rgba(100, 200, 255, 0.16) !important;
+            border-left: 2px solid var(--accent-2, #7aa2f7) !important;
+            border-radius: 0 4px 4px 0;
+            color: var(--text, #fff) !important;
+        }
+        .ws-tree-node.ws-tree-active-file .ws-tree-label {
+            color: var(--text, #fff) !important;
+            font-weight: 600 !important;
+        }
         /* Auto-complete (CodeMirror hints) Dracula Theme styling */
         .CodeMirror-hints {
             position: absolute;

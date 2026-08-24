@@ -90,6 +90,25 @@ loadDiskCache();
 // ---------------------------------------------------------------------------
 
 function findJavaProjectRoot(filePath) {
+  if (!filePath) return null;
+  let cleanPath = filePath;
+  if (cleanPath.includes('.jar!')) {
+    cleanPath = cleanPath.split('.jar!')[0];
+  }
+  let res = _searchJavaProjectRoot(cleanPath);
+  if (!res) {
+    try {
+      const { workspace } = require('../main/globals.js');
+      const dir = (workspace && workspace.list ? workspace.list() : []).find((a) => a.type === 'dir');
+      if (dir && dir.path) {
+        res = _searchJavaProjectRoot(dir.path);
+      }
+    } catch (_) {}
+  }
+  return res;
+}
+
+function _searchJavaProjectRoot(filePath) {
   let dir = path.dirname(filePath);
   const fsRoot = path.parse(dir).root;
   let type = null;
@@ -1025,6 +1044,7 @@ function resolveSymbolToJar(filePath, symbol, lineText, content) {
   if (classRes) {
     return {
       fqn: classRes.fqn,
+      fqcn: classRes.fqn,
       jarPath: classRes.jarPath,
       targetLine: 1,
       className: symbol,
@@ -1057,6 +1077,7 @@ function resolveSymbolToJar(filePath, symbol, lineText, content) {
           const targetLine = src && src.available ? findSymbolLineInClassSource(src.content, symbol) : 1;
           return {
             fqn: recRes.fqn,
+            fqcn: recRes.fqn,
             jarPath: recRes.jarPath,
             targetLine,
             className: targetClassName,
@@ -1088,7 +1109,7 @@ function resolveSymbolToJar(filePath, symbol, lineText, content) {
         if (jarPath && jarPath.toLowerCase().endsWith('.jar')) {
           const src = getClassSource(jarPath, classFqn);
           const targetLine = src && src.available ? findSymbolLineInClassSource(src.content, symbol) : 1;
-          return { fqn: classFqn, jarPath, targetLine, className, isMethod: true };
+          return { fqn: classFqn, fqcn: classFqn, jarPath, targetLine, className, isMethod: true };
         }
       }
     }
@@ -1103,7 +1124,7 @@ function resolveSymbolToJar(filePath, symbol, lineText, content) {
           const src = getClassSource(jarPath, classFqn);
           if (src && src.available && new RegExp(`\\b${escapedSym}\\b`).test(src.content)) {
             const targetLine = findSymbolLineInClassSource(src.content, symbol);
-            return { fqn: classFqn, jarPath, targetLine, className: classFqn.split('.').pop(), isMethod: true };
+            return { fqn: classFqn, fqcn: classFqn, jarPath, targetLine, className: classFqn.split('.').pop(), isMethod: true };
           }
         }
       }

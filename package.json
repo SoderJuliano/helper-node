@@ -26,6 +26,7 @@
     "test:paste": "node ./scripts/test-paste-image.js",
     "test:tree": "node ./scripts/test-tree-editor.js",
     "test:javadeps": "node ./scripts/test-java-deps.js",
+    "test:javamapper": "node ./scripts/test-java-mapper-and-deps.js",
     "test:killtree": "node ./scripts/test-kill-tree.js",
     "test:copilotstop": "node ./scripts/test-copilot-stop.js",
     "test:stopnoerror": "node ./scripts/test-stop-no-error.js",

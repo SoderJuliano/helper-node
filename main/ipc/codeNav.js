@@ -15,7 +15,7 @@ function ensureIndexed(filePath) {
         return;
       }
     } catch (_) {}
-    if (filePath) {
+    if (filePath && !filePath.includes('.jar!')) {
       const path = require('path');
       symbolIndexer.indexWorkspace(path.dirname(filePath));
     }
@@ -35,12 +35,13 @@ module.exports = function registerCodeNavIPC() {
       if (filePath && filePath.toLowerCase().endsWith('.java')) {
         const dep = javaImportChecker.resolveSymbolToJar(filePath, symbol, lineText, content || '');
         if (dep) {
+          const fqcn = dep.fqcn || dep.fqn;
           return [{
-            filePath: javaImportChecker.encodeVirtualPath(dep.jarPath, dep.fqcn),
+            filePath: javaImportChecker.encodeVirtualPath(dep.jarPath, fqcn),
             line: dep.targetLine || 1,
             symbol,
             kind: dep.isMethod ? 'method' : 'class',
-            className: dep.className || dep.fqcn.split('.').pop(),
+            className: dep.className || (fqcn ? fqcn.split('.').pop() : symbol),
             isDependency: true,
           }];
         }
