@@ -10,9 +10,140 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const zlib = require('zlib');
-const { execFile, execFileSync } = require('child_process');
+const { execFile } = require('child_process');
 
 const JDK_ALWAYS_OK_PREFIXES = ['java.', 'javax.', 'jakarta.', 'sun.', 'jdk.', 'org.w3c.', 'org.xml.'];
+
+let cachedJdkSrcZip = undefined;
+function getJdkSrcZip() {
+  if (cachedJdkSrcZip !== undefined) return cachedJdkSrcZip;
+  try {
+    const JdkDetector = require('./appRunner/jdkDetector.js');
+    const jdks = JdkDetector.detectAll();
+    for (const jdk of jdks) {
+      if (jdk.homePath) {
+        const p1 = path.join(jdk.homePath, 'lib', 'src.zip');
+        const p2 = path.join(jdk.homePath, 'src.zip');
+        if (fs.existsSync(p1)) { cachedJdkSrcZip = p1; return p1; }
+        if (fs.existsSync(p2)) { cachedJdkSrcZip = p2; return p2; }
+      }
+    }
+  } catch (_) {}
+  cachedJdkSrcZip = null;
+  return null;
+}
+
+const JDK_FQN_MAP = new Map([
+  ['UUID', 'java.util.UUID'],
+  ['List', 'java.util.List'],
+  ['ArrayList', 'java.util.ArrayList'],
+  ['LinkedList', 'java.util.LinkedList'],
+  ['Map', 'java.util.Map'],
+  ['HashMap', 'java.util.HashMap'],
+  ['LinkedHashMap', 'java.util.LinkedHashMap'],
+  ['TreeMap', 'java.util.TreeMap'],
+  ['Set', 'java.util.Set'],
+  ['HashSet', 'java.util.HashSet'],
+  ['LinkedHashSet', 'java.util.LinkedHashSet'],
+  ['TreeSet', 'java.util.TreeSet'],
+  ['Collection', 'java.util.Collection'],
+  ['Collections', 'java.util.Collections'],
+  ['Arrays', 'java.util.Arrays'],
+  ['Objects', 'java.util.Objects'],
+  ['Optional', 'java.util.Optional'],
+  ['OptionalInt', 'java.util.OptionalInt'],
+  ['OptionalLong', 'java.util.OptionalLong'],
+  ['Date', 'java.util.Date'],
+  ['Calendar', 'java.util.Calendar'],
+  ['Locale', 'java.util.Locale'],
+  ['Properties', 'java.util.Properties'],
+  ['Iterator', 'java.util.Iterator'],
+  ['Enumeration', 'java.util.Enumeration'],
+  ['Queue', 'java.util.Queue'],
+  ['Deque', 'java.util.Deque'],
+  ['ArrayDeque', 'java.util.ArrayDeque'],
+  ['PriorityQueue', 'java.util.PriorityQueue'],
+  ['CompletableFuture', 'java.util.concurrent.CompletableFuture'],
+  ['ConcurrentHashMap', 'java.util.concurrent.ConcurrentHashMap'],
+  ['Future', 'java.util.concurrent.Future'],
+  ['Executor', 'java.util.concurrent.Executor'],
+  ['ExecutorService', 'java.util.concurrent.ExecutorService'],
+  ['Executors', 'java.util.concurrent.Executors'],
+  ['Stream', 'java.util.stream.Stream'],
+  ['Collectors', 'java.util.stream.Collectors'],
+  ['Function', 'java.util.function.Function'],
+  ['Consumer', 'java.util.function.Consumer'],
+  ['Predicate', 'java.util.function.Predicate'],
+  ['Supplier', 'java.util.function.Supplier'],
+  ['BiFunction', 'java.util.function.BiFunction'],
+  ['LocalDate', 'java.time.LocalDate'],
+  ['LocalDateTime', 'java.time.LocalDateTime'],
+  ['LocalTime', 'java.time.LocalTime'],
+  ['Instant', 'java.time.Instant'],
+  ['Duration', 'java.time.Duration'],
+  ['Period', 'java.time.Period'],
+  ['ZonedDateTime', 'java.time.ZonedDateTime'],
+  ['ZoneId', 'java.time.ZoneId'],
+  ['BigDecimal', 'java.math.BigDecimal'],
+  ['BigInteger', 'java.math.BigInteger'],
+  ['File', 'java.io.File'],
+  ['InputStream', 'java.io.InputStream'],
+  ['OutputStream', 'java.io.OutputStream'],
+  ['FileInputStream', 'java.io.FileInputStream'],
+  ['FileOutputStream', 'java.io.FileOutputStream'],
+  ['Reader', 'java.io.Reader'],
+  ['Writer', 'java.io.Writer'],
+  ['BufferedReader', 'java.io.BufferedReader'],
+  ['BufferedWriter', 'java.io.BufferedWriter'],
+  ['InputStreamReader', 'java.io.InputStreamReader'],
+  ['OutputStreamWriter', 'java.io.OutputStreamWriter'],
+  ['ByteArrayInputStream', 'java.io.ByteArrayInputStream'],
+  ['ByteArrayOutputStream', 'java.io.ByteArrayOutputStream'],
+  ['PrintStream', 'java.io.PrintStream'],
+  ['Serializable', 'java.io.Serializable'],
+  ['IOException', 'java.io.IOException'],
+  ['Path', 'java.nio.file.Path'],
+  ['Paths', 'java.nio.file.Paths'],
+  ['Files', 'java.nio.file.Files'],
+  ['URI', 'java.net.URI'],
+  ['URL', 'java.net.URL'],
+  ['HttpClient', 'java.net.http.HttpClient'],
+  ['HttpRequest', 'java.net.http.HttpRequest'],
+  ['HttpResponse', 'java.net.http.HttpResponse'],
+  ['String', 'java.lang.String'],
+  ['Object', 'java.lang.Object'],
+  ['Integer', 'java.lang.Integer'],
+  ['Long', 'java.lang.Long'],
+  ['Double', 'java.lang.Double'],
+  ['Float', 'java.lang.Float'],
+  ['Boolean', 'java.lang.Boolean'],
+  ['Byte', 'java.lang.Byte'],
+  ['Short', 'java.lang.Short'],
+  ['Character', 'java.lang.Character'],
+  ['CharSequence', 'java.lang.CharSequence'],
+  ['Number', 'java.lang.Number'],
+  ['Comparable', 'java.lang.Comparable'],
+  ['Iterable', 'java.lang.Iterable'],
+  ['Exception', 'java.lang.Exception'],
+  ['RuntimeException', 'java.lang.RuntimeException'],
+  ['IllegalArgumentException', 'java.lang.IllegalArgumentException'],
+  ['IllegalStateException', 'java.lang.IllegalStateException'],
+  ['NullPointerException', 'java.lang.NullPointerException'],
+  ['StringBuilder', 'java.lang.StringBuilder'],
+  ['StringBuffer', 'java.lang.StringBuffer'],
+  ['System', 'java.lang.System'],
+  ['Thread', 'java.lang.Thread'],
+  ['Class', 'java.lang.Class'],
+  ['Enum', 'java.lang.Enum'],
+  ['Record', 'java.lang.Record'],
+  ['Void', 'java.lang.Void'],
+  ['AutoCloseable', 'java.lang.AutoCloseable'],
+  ['Cloneable', 'java.lang.Cloneable'],
+  ['Runnable', 'java.lang.Runnable'],
+  ['Override', 'java.lang.Override'],
+  ['Deprecated', 'java.lang.Deprecated'],
+  ['SuppressWarnings', 'java.lang.SuppressWarnings']
+]);
 
 const SOURCE_DIR_NAMES = new Set(['src']);
 const IGNORED_DIRS = new Set([
@@ -828,6 +959,119 @@ function buildClasspathIndexAsync(found, entry, key) {
   });
 }
 
+function scanLocalJarsImmediately(found, entry) {
+  try {
+    const jarCandidates = [];
+    const rootDir = found.rootDir;
+    const home = os.homedir();
+
+    // 1. Pastas do projeto: target/dependency, target, build/libs, lib, libs
+    const localDirs = [
+      path.join(rootDir, 'target', 'dependency'),
+      path.join(rootDir, 'target'),
+      path.join(rootDir, 'build', 'libs'),
+      path.join(rootDir, 'lib'),
+      path.join(rootDir, 'libs'),
+    ];
+
+    for (const ld of localDirs) {
+      if (fs.existsSync(ld)) {
+        try {
+          const files = fs.readdirSync(ld);
+          for (const f of files) {
+            if (f.endsWith('.jar') && !f.endsWith('-sources.jar') && !f.endsWith('-javadoc.jar')) {
+              jarCandidates.push(path.join(ld, f));
+            }
+          }
+        } catch (_) {}
+      }
+    }
+
+    // 2. Parser de dependências de pom.xml (busca no ~/.m2/repository)
+    const pomFile = path.join(rootDir, 'pom.xml');
+    if (fs.existsSync(pomFile)) {
+      try {
+        const pomContent = fs.readFileSync(pomFile, 'utf8');
+        const m2Repo = path.join(home, '.m2', 'repository');
+        if (fs.existsSync(m2Repo)) {
+          const DEP_RE = /<dependency>[\s\S]*?<groupId>([\w.-]+)<\/groupId>[\s\S]*?<artifactId>([\w.-]+)<\/artifactId>(?:[\s\S]*?<version>([\w.-]+)<\/version>)?[\s\S]*?<\/dependency>/g;
+          let m;
+          while ((m = DEP_RE.exec(pomContent)) !== null) {
+            const groupId = m[1];
+            const artifactId = m[2];
+            const version = m[3];
+            const groupPath = path.join(m2Repo, ...groupId.split('.'), artifactId);
+            if (fs.existsSync(groupPath)) {
+              if (version) {
+                const jarPath = path.join(groupPath, version, `${artifactId}-${version}.jar`);
+                if (fs.existsSync(jarPath)) jarCandidates.push(jarPath);
+              } else {
+                try {
+                  const versions = fs.readdirSync(groupPath);
+                  for (const v of versions) {
+                    const jarPath = path.join(groupPath, v, `${artifactId}-${v}.jar`);
+                    if (fs.existsSync(jarPath)) { jarCandidates.push(jarPath); break; }
+                  }
+                } catch (_) {}
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 3. Parser de dependências de build.gradle (busca no ~/.gradle/caches)
+    const gradleFiles = [path.join(rootDir, 'build.gradle'), path.join(rootDir, 'build.gradle.kts')];
+    for (const gf of gradleFiles) {
+      if (fs.existsSync(gf)) {
+        try {
+          const content = fs.readFileSync(gf, 'utf8');
+          const gradleCache = path.join(home, '.gradle', 'caches', 'modules-2', 'files-2.1');
+          if (fs.existsSync(gradleCache)) {
+            const GDEP_RE = /(?:implementation|api|compileOnly|runtimeOnly|testImplementation)\s*[\('"]+([\w.-]+):([\w.-]+)(?::([\w.-]+))?[\)'"]/g;
+            let m;
+            while ((m = GDEP_RE.exec(content)) !== null) {
+              const groupId = m[1];
+              const artifactId = m[2];
+              const version = m[3];
+              const groupPath = path.join(gradleCache, groupId, artifactId);
+              if (fs.existsSync(groupPath)) {
+                try {
+                  const versions = version ? [version] : fs.readdirSync(groupPath);
+                  for (const v of versions) {
+                    const vDir = path.join(groupPath, v);
+                    if (fs.existsSync(vDir)) {
+                      const hashDirs = fs.readdirSync(vDir);
+                      for (const hd of hashDirs) {
+                        const candidate = path.join(vDir, hd, `${artifactId}-${v}.jar`);
+                        if (fs.existsSync(candidate)) { jarCandidates.push(candidate); break; }
+                      }
+                    }
+                  }
+                } catch (_) {}
+              }
+            }
+          }
+        } catch (_) {}
+      }
+    }
+
+    const uniqueJars = Array.from(new Set(jarCandidates));
+    if (uniqueJars.length > 0) {
+      entry.classpathEntries = uniqueJars;
+      for (const j of uniqueJars) {
+        try {
+          for (const name of readZipClassEntries(j)) {
+            addClassEntry(name, entry.allClasses, entry.knownPackages, entry.simpleNameIndex, entry.classSource, j);
+          }
+        } catch (_) {}
+      }
+      indexProjectSources(found.moduleDir, entry.allClasses, entry.knownPackages, entry.simpleNameIndex);
+      entry.status = 'ready';
+    }
+  } catch (_) {}
+}
+
 function getOrBuildProjectIndex(filePath) {
   const found = findJavaProjectRoot(filePath);
   if (!found) return null;
@@ -879,6 +1123,7 @@ function getOrBuildProjectIndex(filePath) {
     lastAttemptAt: Date.now(),
   };
   projectCache.set(key, entry);
+  scanLocalJarsImmediately(found, entry);
   buildClasspathIndexAsync(found, entry, key);
   return entry;
 }
@@ -937,13 +1182,13 @@ function encodeVirtualPath(jarPath, fqcn) {
 
 function parseVirtualPath(vpath) {
   const norm = String(vpath).replace(/\\/g, '/');
-  const m = /^(.*\.jar)!(.+)\.java$/.exec(norm);
+  const m = /^(.*\.(?:jar|zip))!(.+)\.java$/.exec(norm);
   if (!m) return null;
   return { jarPath: m[1], fqcn: m[2].replace(/\//g, '.') };
 }
 
 function isVirtualPath(vpath) {
-  return typeof vpath === 'string' && /\.jar!.+\.java$/.test(vpath.replace(/\\/g, '/'));
+  return typeof vpath === 'string' && /\.(?:jar|zip)!.+\.java$/.test(vpath.replace(/\\/g, '/'));
 }
 
 function findSymbolLineInClassSource(content, symbol) {
@@ -973,7 +1218,7 @@ function findSymbolLineInClassSource(content, symbol) {
 }
 
 function resolveClassFqn(proj, className, lineText, content) {
-  if (!proj || !className) return null;
+  if (!className) return null;
   let fqn = null;
 
   // 1. Import explícito na própria linha
@@ -992,7 +1237,7 @@ function resolveClassFqn(proj, className, lineText, content) {
       const wildcards = imports.filter((i) => i.isWildcard);
       for (const w of wildcards) {
         const candidate = `${w.fqn}.${className}`;
-        if (proj.allClasses.has(candidate) && proj.classSource.has(candidate)) {
+        if (proj && proj.allClasses && proj.allClasses.has(candidate) && proj.classSource.has(candidate)) {
           fqn = candidate;
           break;
         }
@@ -1001,18 +1246,18 @@ function resolveClassFqn(proj, className, lineText, content) {
   }
 
   // 3. Mesmo pacote
-  if (!fqn && content) {
+  if (!fqn && content && proj) {
     const pkgMatch = /^\s*package\s+([\w.]+)\s*;/m.exec(content);
     if (pkgMatch) {
       const samePkgCandidate = `${pkgMatch[1]}.${className}`;
-      if (proj.allClasses.has(samePkgCandidate) && proj.classSource.has(samePkgCandidate)) {
+      if (proj.allClasses && proj.allClasses.has(samePkgCandidate) && proj.classSource.has(samePkgCandidate)) {
         fqn = samePkgCandidate;
       }
     }
   }
 
   // 4. Busca por nome simples no índice de dependências (simpleNameIndex)
-  if (!fqn && proj.simpleNameIndex && proj.simpleNameIndex.has(className)) {
+  if (!fqn && proj && proj.simpleNameIndex && proj.simpleNameIndex.has(className)) {
     const candidates = Array.from(proj.simpleNameIndex.get(className));
     for (const cand of candidates) {
       if (proj.classSource.has(cand)) {
@@ -1022,8 +1267,21 @@ function resolveClassFqn(proj, className, lineText, content) {
     }
   }
 
+  // 5. Verificação de classes padrão do JDK (ex: UUID, List, Map, String, Optional, BigDecimal, etc.)
+  if (!fqn && JDK_FQN_MAP.has(className)) {
+    fqn = JDK_FQN_MAP.get(className);
+    const jdkSrc = getJdkSrcZip();
+    return { fqn, jarPath: jdkSrc || 'JDK' };
+  }
+
   if (!fqn) return null;
 
+  if (JDK_ALWAYS_OK_PREFIXES.some(p => fqn.startsWith(p))) {
+    const jdkSrc = getJdkSrcZip();
+    return { fqn, jarPath: jdkSrc || 'JDK' };
+  }
+
+  if (!proj || !proj.classSource) return null;
   const jarPath = proj.classSource.get(fqn);
   if (!jarPath || !jarPath.toLowerCase().endsWith('.jar')) return null;
   return { fqn, jarPath };
@@ -1034,12 +1292,9 @@ function resolveSymbolToJar(filePath, symbol, lineText, content) {
   let proj;
   try {
     proj = getOrBuildProjectIndex(filePath);
-  } catch (_) {
-    return null;
-  }
-  if (!proj || proj.status !== 'ready') return null;
+  } catch (_) {}
 
-  // A. Primeiro tenta resolver `symbol` diretamente como uma Classe
+  // A. Primeiro tenta resolver `symbol` diretamente como uma Classe (de JAR ou JDK)
   const classRes = resolveClassFqn(proj, symbol, lineText, content);
   if (classRes) {
     return {
@@ -1054,7 +1309,7 @@ function resolveSymbolToJar(filePath, symbol, lineText, content) {
 
   const escapedSym = symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-  // B. Método/Campo estático chamado com receptor de Classe ou Variável: `Receptor.symbol(...)`
+  // B. Método/Campo estático ou de instância chamado com receptor: `Receptor.symbol(...)`
   if (lineText) {
     const mRec = lineText.match(new RegExp(`([A-Za-z_$][A-Za-z0-9_$]*)\\s*\\.\\s*${escapedSym}\\b`));
     if (mRec && mRec[1] && mRec[1] !== 'this' && mRec[1] !== 'super') {
@@ -1062,7 +1317,7 @@ function resolveSymbolToJar(filePath, symbol, lineText, content) {
       let targetClassName = null;
 
       if (/^[A-Z]/.test(receptor)) {
-        // Receptor com inicial maiúscula (chamada estática tipo StringUtils.isBlank)
+        // Receptor com inicial maiúscula (chamada estática tipo StringUtils.isBlank ou UUID.randomUUID)
         targetClassName = receptor;
       } else if (content) {
         // Receptor com inicial minúscula (variável local, ex: `userDto.getId()`)
@@ -1104,13 +1359,11 @@ function resolveSymbolToJar(filePath, symbol, lineText, content) {
       parts.pop(); // Remove o nome do método/campo
       const classFqn = parts.join('.');
       const className = classFqn.split('.').pop();
-      if (proj.classSource.has(classFqn)) {
-        const jarPath = proj.classSource.get(classFqn);
-        if (jarPath && jarPath.toLowerCase().endsWith('.jar')) {
-          const src = getClassSource(jarPath, classFqn);
-          const targetLine = src && src.available ? findSymbolLineInClassSource(src.content, symbol) : 1;
-          return { fqn: classFqn, fqcn: classFqn, jarPath, targetLine, className, isMethod: true };
-        }
+      const recRes = resolveClassFqn(proj, className, lineText, content) || { fqn: classFqn, jarPath: proj && proj.classSource ? proj.classSource.get(classFqn) : null };
+      if (recRes && recRes.jarPath) {
+        const src = getClassSource(recRes.jarPath, classFqn);
+        const targetLine = src && src.available ? findSymbolLineInClassSource(src.content, symbol) : 1;
+        return { fqn: classFqn, fqcn: classFqn, jarPath: recRes.jarPath, targetLine, className, isMethod: true };
       }
     }
 
@@ -1118,14 +1371,13 @@ function resolveSymbolToJar(filePath, symbol, lineText, content) {
     const wildcardStatics = staticImports.filter((i) => i.isWildcard);
     for (const ws of wildcardStatics) {
       const classFqn = ws.fqn;
-      if (proj.classSource.has(classFqn)) {
-        const jarPath = proj.classSource.get(classFqn);
-        if (jarPath && jarPath.toLowerCase().endsWith('.jar')) {
-          const src = getClassSource(jarPath, classFqn);
-          if (src && src.available && new RegExp(`\\b${escapedSym}\\b`).test(src.content)) {
-            const targetLine = findSymbolLineInClassSource(src.content, symbol);
-            return { fqn: classFqn, fqcn: classFqn, jarPath, targetLine, className: classFqn.split('.').pop(), isMethod: true };
-          }
+      const className = classFqn.split('.').pop();
+      const recRes = resolveClassFqn(proj, className, lineText, content) || { fqn: classFqn, jarPath: proj && proj.classSource ? proj.classSource.get(classFqn) : null };
+      if (recRes && recRes.jarPath) {
+        const src = getClassSource(recRes.jarPath, classFqn);
+        if (src && src.available && new RegExp(`\\b${escapedSym}\\b`).test(src.content)) {
+          const targetLine = findSymbolLineInClassSource(src.content, symbol);
+          return { fqn: classFqn, fqcn: classFqn, jarPath: recRes.jarPath, targetLine, className, isMethod: true };
         }
       }
     }
@@ -1150,19 +1402,7 @@ function mavenCoordsFromJarPath(jarPath) {
 }
 
 function downloadMavenSourcesJar(coords) {
-  const cmd = process.platform === 'win32' ? 'mvn.cmd' : 'mvn';
-  const artifact = `${coords.groupId}:${coords.artifactId}:${coords.version}:jar:sources`;
-  try {
-    execFileSync(cmd, ['-q', '-B', 'dependency:get', `-Dartifact=${artifact}`], {
-      cwd: os.tmpdir(),
-      timeout: 10000,
-      shell: true,
-      stdio: 'ignore',
-    });
-    return true;
-  } catch (_) {
-    return false;
-  }
+  return false;
 }
 
 function findGradleSourcesJar(jarPath) {
@@ -1185,31 +1425,38 @@ function findGradleSourcesJar(jarPath) {
 }
 
 function getClassSource(jarPath, fqcn) {
+  if (!fqcn) return { available: false, reason: 'Classe não especificada.' };
   const relJava = fqcn.replace(/\./g, '/') + '.java';
 
-  const mavenSourcesJar = jarPath.replace(/\.jar$/i, '-sources.jar');
-  if (fs.existsSync(mavenSourcesJar)) {
-    const content = readZipEntryContent(mavenSourcesJar, relJava);
+  // 1. JDK Source (src.zip) se for classe do JDK ou jarPath for JDK/src.zip
+  const jdkSrc = (jarPath && (jarPath.includes('src.zip') || jarPath === 'JDK')) ? (jarPath.includes('src.zip') ? jarPath : getJdkSrcZip()) : (JDK_ALWAYS_OK_PREFIXES.some(p => fqcn.startsWith(p)) ? getJdkSrcZip() : null);
+  if (jdkSrc && fs.existsSync(jdkSrc)) {
+    const content = readZipEntryContent(jdkSrc, relJava);
     if (content != null) return { available: true, content };
   }
 
-  const gradleSourcesJar = findGradleSourcesJar(jarPath);
-  if (gradleSourcesJar && fs.existsSync(gradleSourcesJar)) {
-    const content = readZipEntryContent(gradleSourcesJar, relJava);
-    if (content != null) return { available: true, content };
-  }
+  if (jarPath && jarPath.toLowerCase().endsWith('.jar') && fs.existsSync(jarPath)) {
+    // 2. Maven Sources Jar no disco
+    const mavenSourcesJar = jarPath.replace(/\.jar$/i, '-sources.jar');
+    if (fs.existsSync(mavenSourcesJar)) {
+      const content = readZipEntryContent(mavenSourcesJar, relJava);
+      if (content != null) return { available: true, content };
+    }
 
-  const coords = mavenCoordsFromJarPath(jarPath);
-  if (coords && downloadMavenSourcesJar(coords) && fs.existsSync(mavenSourcesJar)) {
-    const content = readZipEntryContent(mavenSourcesJar, relJava);
-    if (content != null) return { available: true, content };
-  }
+    // 3. Gradle Sources Jar no cache do Gradle
+    const gradleSourcesJar = findGradleSourcesJar(jarPath);
+    if (gradleSourcesJar && fs.existsSync(gradleSourcesJar)) {
+      const content = readZipEntryContent(gradleSourcesJar, relJava);
+      if (content != null) return { available: true, content };
+    }
 
-  const relClass = fqcn.replace(/\./g, '/') + '.class';
-  const classBuf = readZipEntryRawBuffer(jarPath, relClass);
-  if (classBuf) {
-    const decompiled = decompileClassFile(classBuf, jarPath, fqcn);
-    if (decompiled) return { available: true, content: decompiled };
+    // 4. Descompilação instantânea do Bytecode (.class) em memória (sem bloquear o event loop)
+    const relClass = fqcn.replace(/\./g, '/') + '.class';
+    const classBuf = readZipEntryRawBuffer(jarPath, relClass);
+    if (classBuf) {
+      const decompiled = decompileClassFile(classBuf, jarPath, fqcn);
+      if (decompiled) return { available: true, content: decompiled };
+    }
   }
 
   return { available: false, reason: 'Sem código-fonte disponível para esta dependência.' };

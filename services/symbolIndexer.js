@@ -19,6 +19,8 @@ const IGNORED_DIRS = new Set([
 
 function shouldIgnoreDir(dirName, parentDir) {
   if (IGNORED_DIRS.has(dirName)) return true;
+  const normParent = parentDir ? parentDir.replace(/\\/g, '/').toLowerCase() : '';
+
   if (dirName === 'target' || dirName === 'build') {
     const generatedPath = path.join(parentDir || '', dirName, dirName === 'target' ? 'generated-sources' : 'generated');
     const generatedSourcesPath = path.join(parentDir || '', dirName, 'generated-sources');
@@ -27,12 +29,17 @@ function shouldIgnoreDir(dirName, parentDir) {
     }
     return true;
   }
-  const normParent = parentDir ? parentDir.replace(/\\/g, '/').toLowerCase() : '';
-  if (normParent.endsWith('/target')) {
-    if (dirName !== 'generated-sources' && dirName !== 'generated-test-sources') return true;
-  } else if (normParent.endsWith('/build')) {
-    if (dirName !== 'generated' && dirName !== 'generated-sources') return true;
+
+  if (normParent.endsWith('/target') || normParent.includes('/target/')) {
+    if (!normParent.includes('/target/generated-sources') && !normParent.includes('/target/generated-test-sources')) {
+      if (dirName !== 'generated-sources' && dirName !== 'generated-test-sources') return true;
+    }
+  } else if (normParent.endsWith('/build') || normParent.includes('/build/')) {
+    if (!normParent.includes('/build/generated') && !normParent.includes('/build/generated-sources')) {
+      if (dirName !== 'generated' && dirName !== 'generated-sources') return true;
+    }
   }
+
   return false;
 }
 
@@ -292,12 +299,35 @@ class SymbolIndexer {
     // Remove símbolo antigo deste arquivo antes de re-indexar
     this.removeFileFromMaps(normPath);
 
+    const pkgMatch = content.match(/^\s*package\s+([\w.]+)\s*;/m);
+    const packageName = pkgMatch ? pkgMatch[1] : '';
+
+    const staticImports = [];
+    const RE_STATIC_ALL = /^\s*import\s+static\s+([\w.]+)(?:\.([\w$]+|\*))\s*;/gm;
+    let sm;
+    while ((sm = RE_STATIC_ALL.exec(content)) !== null) {
+      const full = sm[1];
+      const member = sm[2] || '*';
+      const isWildcard = member === '*';
+      const className = full.split('.').pop();
+      staticImports.push({
+        full: `${full}.${member}`,
+        className,
+        member,
+        isWildcard,
+        line: 1
+      });
+    }
+
     const lines = content.split(/\r?\n/);
     const fileData = {
+      package: packageName,
       classes: [],
       interfaces: [],
       methods: [],
-      imports: []
+      fields: [],
+      imports: [],
+      staticImports
     };
 
     let currentInterface = null;
@@ -331,7 +361,14 @@ class SymbolIndexer {
         currentInterface = interfaceName;
         currentClass = null;
         const col = lineText.indexOf(interfaceName) + 1;
-        const item = { name: interfaceName, line: lineNum, col, filePath: normPath, kind: 'interface' };
+        const item = {
+          name: interfaceName,
+          fqcn: packageName ? `${packageName}.${interfaceName}` : interfaceName,
+          line: lineNum,
+          col,
+          filePath: normPath,
+          kind: 'interface'
+        };
         fileData.interfaces.push(item);
         this.addSymbol(interfaceName, item);
       }
@@ -344,26 +381,70 @@ class SymbolIndexer {
         currentInterface = null;
         const col = lineText.indexOf(className) + 1;
         const implementsClause = classMatch[2];
-        const item = { name: className, line: lineNum, col, filePath: normPath, kind: 'class', implements: [] };
+        const item = {
+          name: className,
+          fqcn: packageName ? `${packageName}.${className}` : className,
+          line: lineNum,
+          col,
+          filePath: normPath,
+          kind: 'class',
+          implements: []
+        };
 
+        const implList = [];
         if (implementsClause) {
-          const implList = implementsClause.split(',').map(s => s.trim().replace(/<.*>/, ''));
-          item.implements = implList;
-          for (const implName of implList) {
-            if (!this.implementationsMap.has(implName)) {
-              this.implementationsMap.set(implName, new Set());
-            }
-            this.implementationsMap.get(implName).add({ className, filePath: normPath, line: lineNum });
+          implList.push(...implementsClause.split(',').map(s => s.trim().replace(/<.*>/, '')));
+        }
+        // Convenção MapStruct / Spring: FooMapperImpl implementa FooMapper
+        if (className.endsWith('Impl')) {
+          const inferredIface = className.slice(0, -4);
+          if (!implList.includes(inferredIface)) {
+            implList.push(inferredIface);
           }
+        }
+
+        item.implements = implList;
+        for (const implName of implList) {
+          if (!this.implementationsMap.has(implName)) {
+            this.implementationsMap.set(implName, new Set());
+          }
+          this.implementationsMap.get(implName).add({ className, filePath: normPath, line: lineNum });
         }
 
         fileData.classes.push(item);
         this.addSymbol(className, item);
       }
 
-      // 4. Métodos / Funções
-      // Limpa anotações inline (ex: @Mapping(...), @Override) para não quebrar casamento de regex
+      // 3.5 Constantes / Campos (Mappers, Beans, Constantes, Injeções)
       const lineClean = lineText.replace(/@\w+(?:\([^)]*\))?\s*/g, '').trim();
+      const fieldMatch = lineClean.match(/^(?:public\s+|protected\s+|private\s+|static\s+|final\s+|volatile\s+|transient\s+|@\w+(?:\([^)]*\))?\s+)*([A-Za-z0-9_$<>[\],]+)\s+([A-Za-z0-9_$]+)\s*(?:=|;)/);
+      if (fieldMatch && (currentClass || currentInterface)) {
+        const rawType = fieldMatch[1].replace(/<.*>/, '').trim();
+        const fieldName = fieldMatch[2];
+        const KEYWORDS = new Set([
+          'if', 'for', 'while', 'switch', 'catch', 'return', 'class', 'interface',
+          'enum', 'package', 'import', 'new', 'public', 'private', 'protected',
+          'static', 'final', 'default', 'void', 'throw', 'throws', 'const', 'let', 'var'
+        ]);
+        if (!KEYWORDS.has(fieldName) && !KEYWORDS.has(rawType)) {
+          const col = lineText.indexOf(fieldName) + 1;
+          const owner = currentInterface ? { type: 'interface', name: currentInterface } : { type: 'class', name: currentClass };
+          const item = {
+            name: fieldName,
+            line: lineNum,
+            col: col > 0 ? col : 1,
+            filePath: normPath,
+            kind: currentInterface ? 'interface-constant' : 'field',
+            fieldType: rawType,
+            owner
+          };
+          fileData.fields.push(item);
+          this.addSymbol(fieldName, item);
+        }
+      }
+
+      // 4. Métodos / Funções
+      // (lineClean já contém a linha limpa de anotações inline)
 
       const methodPatterns = [
         // async function foo(...) / function foo(...) / function* foo(...) / static function foo(...)
@@ -762,53 +843,156 @@ class SymbolIndexer {
 
     const pontos = (c) => {
       let p = 0;
+      const isImplClass = c.kind === 'method' && (
+        (c.className && c.className.endsWith('Impl')) ||
+        (c.filePath && (c.filePath.includes('/generated-sources/') || c.filePath.includes('\\generated-sources\\') || c.filePath.includes('/generated/') || c.filePath.includes('\\generated\\')))
+      );
+
       if (tipoReceptor) {
         const base = path.basename(c.filePath, path.extname(c.filePath));
-        if (c.className === tipoReceptor) p += 100;
-        if (base === tipoReceptor) p += 80;
-        if (c.className === tipoReceptor + 'Impl') p += 95;
-        if (base === tipoReceptor + 'Impl') p += 75;
+        const isDirectImpl = c.className === tipoReceptor + 'Impl' || base === tipoReceptor + 'Impl';
+        const isDirectInterface = c.className === tipoReceptor || base === tipoReceptor;
+
+        // REGRA DE OURO PARA MAPPERS E IMPLEMENTAÇÕES:
+        // Se há uma implementação concreta (ex: UserMapperImpl.java), ela DEVE ter prioridade MÁXIMA (200 pontos),
+        // superando a declaração na interface (100 pontos), para que o Ctrl+Clique navegue diretamente para a implementação do código!
+        if (isDirectImpl) {
+          p += 200;
+        } else if (isDirectInterface) {
+          p += 100;
+        } else if (c.className && c.className.includes(tipoReceptor)) {
+          p += 80;
+        } else if (base.includes(tipoReceptor)) {
+          p += 70;
+        }
       }
-      if (currentData && currentData.imports.length > 0) {
+
+      if (isImplClass) {
+        p += 30;
+      }
+
+      if (currentData && currentData.imports && currentData.imports.length > 0) {
         const base = path.basename(c.filePath, path.extname(c.filePath));
-        if (currentData.imports.some(imp => imp.text.includes(base))) p += 20;
+        if (currentData.imports.some(imp => imp.text.includes(base) || (tipoReceptor && imp.text.includes(tipoReceptor)))) {
+          p += 25;
+        }
       }
-      // Se estamos dentro do arquivo da própria interface/mapper e clicamos no método,
-      // a implementação correspondente (ex: UserMapperImpl.java) deve ter prioridade máxima para ir até o código
+
+      // Se estamos dentro do arquivo da própria interface/mapper e clicamos no método:
+      // A implementação correspondente (UserMapperImpl.java) tem prioridade máxima
       if (c.filePath === normCurrent && (c.kind === 'interface-method' || c.kind === 'interface')) {
         p -= 50;
       } else if (!tipoReceptor && c.filePath === normCurrent) {
         p += 50;
       }
+
       return p;
     };
 
     return [...formatted].sort((a, b) => pontos(b) - pontos(a));
   }
 
-  // Descobre o tipo declarado da variável que recebe a chamada.
-  // Só olha o arquivo atual — é uma leitura só, e é onde a declaração está em
-  // praticamente todo caso real (campo injetado ou variável local).
+  // Descobre o tipo declarado da variável ou classe que recebe a chamada.
   resolveReceiverType(normCurrent, symbolName, lineText) {
-    if (!lineText || !symbolName) return null;
-    const mRec = lineText.match(
-      new RegExp(`([A-Za-z_$][A-Za-z0-9_$]*)\\s*\\.\\s*${symbolName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`)
-    );
-    if (!mRec) return null;
-    const receptor = mRec[1];
-    // `this.foo()` / `super.foo()` não dizem nada sobre tipo externo.
-    if (receptor === 'this' || receptor === 'super') return null;
-    // O próprio receptor pode ser um tipo (chamada estática: Service.metodo()).
-    if (/^[A-Z]/.test(receptor)) return receptor;
+    if (!symbolName) return null;
+    const currentData = normCurrent ? this.fileMap.get(normCurrent) : null;
+    const escapedSym = symbolName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-    let conteudo = '';
-    try { conteudo = fs.readFileSync(normCurrent, 'utf8'); } catch (_) { return null; }
-    // `private PagamentoService pagamentoService;`, `PagamentoService x = ...`,
-    // parâmetro `(PagamentoService pagamentoService)`.
-    const mTipo = conteudo.match(
-      new RegExp(`([A-Z][A-Za-z0-9_$]*)(?:<[^>]*>)?\\s+${receptor}\\b\\s*[;=,)]`)
-    );
-    return mTipo ? mTipo[1] : null;
+    // 1. Receptor explícito na linha: Chained.Receptor.symbol(...) ou Receptor.symbol(...)
+    if (lineText) {
+      const mRec = lineText.match(
+        new RegExp(`([A-Za-z_$][A-Za-z0-9_$]*)\\s*\\.\\s*${escapedSym}\\b`)
+      );
+      if (mRec) {
+        const receptor = mRec[1];
+        if (receptor !== 'this' && receptor !== 'super') {
+          // A. Chamada encadeada: ClassName.INSTANCE.symbol(...) ou ClassName.MEMBER.symbol(...)
+          const mChain = lineText.match(new RegExp(`([A-Z][A-Za-z0-9_$]*)\\s*\\.\\s*${receptor}\\s*\\.\\s*${escapedSym}\\b`));
+          if (mChain && mChain[1]) {
+            return mChain[1];
+          }
+
+          // B. Mappers.getMapper(ClassName.class).symbol(...)
+          const mMapper = lineText.match(new RegExp(`(?:getMapper|Mappers\\.getMapper)\\s*\\(\\s*([A-Z][A-Za-z0-9_$]*)\\.class\\s*\\)\\s*\\.\\s*${escapedSym}\\b`));
+          if (mMapper && mMapper[1]) {
+            return mMapper[1];
+          }
+
+          // C. Se receptor está em static imports (ex: import static com.example.UserMapper.USER_MAPPER)
+          if (currentData && currentData.staticImports) {
+            const staticImp = currentData.staticImports.find(si => si.member === receptor || si.isWildcard);
+            if (staticImp) {
+              return staticImp.className;
+            }
+          }
+
+          // D. Se receptor é constante ou campo no símbolo global (ex: USER_MAPPER -> UserMapper)
+          const constSyms = this.symbolMap.get(receptor);
+          if (constSyms && constSyms.length > 0) {
+            const foundField = constSyms.find(s => s.fieldType || (s.owner && s.owner.name));
+            if (foundField) {
+              return foundField.fieldType || foundField.owner.name;
+            }
+          }
+
+          // E. Se receptor termina com MAPPER ou _MAPPER (ex: USER_MAPPER -> UserMapper)
+          if (/_?MAPPER$/i.test(receptor)) {
+            const pascal = receptor.toLowerCase()
+              .split('_')
+              .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+              .join('');
+            if (this.implementationsMap.has(pascal) || this.symbolMap.has(pascal) || this.symbolMap.has(pascal + 'Impl')) {
+              return pascal;
+            }
+          }
+
+          // F. Se receptor começa com maiúscula (ClassName.method() ou Enum.VALUE)
+          if (/^[A-Z]/.test(receptor) && receptor !== 'INSTANCE') {
+            return receptor;
+          }
+
+          // G. Se receptor é camelCase (userMapper)
+          let conteudo = '';
+          try { conteudo = fs.readFileSync(normCurrent, 'utf8'); } catch (_) {}
+          if (conteudo) {
+            const mTipo = conteudo.match(
+              new RegExp(`([A-Z][A-Za-z0-9_$]*)(?:<[^>]*>)?\\s+${receptor}\\b\\s*[;=,)]`)
+            );
+            if (mTipo) return mTipo[1];
+          }
+
+          const inferredPascal = receptor.charAt(0).toUpperCase() + receptor.slice(1);
+          if (this.implementationsMap.has(inferredPascal) || this.symbolMap.has(inferredPascal) || this.symbolMap.has(inferredPascal + 'Impl')) {
+            return inferredPascal;
+          }
+        }
+      }
+    }
+
+    // 2. Método chamado sem receptor (ex: map(user)) — Checa se veio de static import
+    if (currentData && currentData.staticImports) {
+      const staticImp = currentData.staticImports.find(si => si.member === symbolName || si.isWildcard);
+      if (staticImp) {
+        return staticImp.className;
+      }
+    }
+
+    // 3. Fallback: Checa static imports direto no conteúdo do arquivo
+    if (normCurrent) {
+      try {
+        const fileContent = fs.readFileSync(normCurrent, 'utf8');
+        const mStaticDirect = fileContent.match(new RegExp(`import\\s+static\\s+[\\w.]+\\.([A-Z][A-Za-z0-9_$]*)\\.${escapedSym}\\s*;`));
+        if (mStaticDirect && mStaticDirect[1]) return mStaticDirect[1];
+
+        const mStaticConst = fileContent.match(/import\s+static\s+[\w.]+\.([A-Z][A-Za-z0-9_$]*)\.([A-Z0-9_$]+)\s*;/);
+        if (mStaticConst && mStaticConst[1]) return mStaticConst[1];
+
+        const mStaticWildcard = fileContent.match(/import\s+static\s+[\w.]+\.([A-Z][A-Za-z0-9_$]*)\.\*\s*;/);
+        if (mStaticWildcard && mStaticWildcard[1]) return mStaticWildcard[1];
+      } catch (_) {}
+    }
+
+    return null;
   }
 
   // Encontra implementações para uma interface ou método de interface

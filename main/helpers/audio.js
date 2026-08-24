@@ -75,7 +75,10 @@ helpers.stopDictationAndTranscribe = async function() {
   const pcm = helpers.releaseDictationMic();
 
   if (!isOsIntegration) {
-    try { state.mainWindow.webContents.send('toggle-recording', { isRecording: false, audioFilePath: null, isIdeMode: true }); } catch (_) {}
+    try {
+      state.mainWindow.webContents.send('toggle-recording', { isRecording: false, isTranscribing: true, audioFilePath: null, isIdeMode: true });
+      state.mainWindow.webContents.send('ide-audio-transcribing', { isTranscribing: true });
+    } catch (_) {}
   }
 
   if (!pcm || pcm.length < 3200) { // < ~0.1s de audio util
@@ -83,7 +86,10 @@ helpers.stopDictationAndTranscribe = async function() {
       helpers.destroyNotificationWindow();
       helpers.createOsNotificationWindow('response', 'Nenhum audio detectado. Tente novamente.');
     } else {
-      try { state.mainWindow.webContents.send('transcription-error', 'Nenhum audio detectado. Tente de novo.'); } catch (_) {}
+      try {
+        state.mainWindow.webContents.send('ide-audio-transcribing', { isTranscribing: false });
+        state.mainWindow.webContents.send('transcription-error', 'Nenhum audio detectado. Tente de novo.');
+      } catch (_) {}
     }
     return;
   }
@@ -127,6 +133,9 @@ helpers.stopDictationAndTranscribe = async function() {
   } finally {
     if (wavPath) { try { await fs.unlink(wavPath); } catch (_) {} }
     state.recordingBusy = false;
+    if (!isOsIntegration) {
+      try { state.mainWindow.webContents.send('ide-audio-transcribing', { isTranscribing: false }); } catch (_) {}
+    }
   }
 }
 

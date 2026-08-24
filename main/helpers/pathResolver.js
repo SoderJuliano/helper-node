@@ -61,8 +61,8 @@ function resolveWorkspaceFilePath(rawPath, workspace) {
     p = workspace.resolvePortalPath(p);
   }
 
-  // Se é caminho de jar virtual
-  if (p.includes('.jar!')) return p;
+  // Se é caminho de jar/zip virtual
+  if (p.includes('.jar!') || p.includes('.zip!')) return p;
 
   // Se já é caminho absoluto existente no disco
   if (path.isAbsolute(p) && fs.existsSync(p)) {

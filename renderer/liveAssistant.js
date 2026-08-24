@@ -218,6 +218,30 @@ var activeAgenticSession = null;
                 .catch(error => console.error('Erro ao carregar animação:', error));
         }
 
+        function updateListeningIndicator(isRecording, isTranscribing) {
+            const listeningEl = document.getElementById('composer-listening');
+            const textEl = document.getElementById('composer-listening-text');
+            const robot = document.getElementById('robot');
+
+            if (listeningEl) {
+                if (isRecording) {
+                    listeningEl.style.display = 'flex';
+                    listeningEl.classList.remove('transcribing');
+                    if (textEl) textEl.textContent = 'Ouvindo áudio… Ctrl+D para transcrever';
+                    if (robot) robot.style.display = 'none';
+                } else if (isTranscribing) {
+                    listeningEl.style.display = 'flex';
+                    listeningEl.classList.add('transcribing');
+                    if (textEl) textEl.textContent = 'Transcrevendo áudio… aguarde um instante';
+                    if (robot) robot.style.display = 'block';
+                } else {
+                    listeningEl.style.display = 'none';
+                    listeningEl.classList.remove('transcribing');
+                    if (robot && !window._iaStreamingActive) robot.style.display = 'none';
+                }
+            }
+        }
+
         window.electronAPI.onToggleRecording((event, data) => {
             if (!data) return;
             if (!data.isRealtimeAssistant) {
@@ -228,33 +252,32 @@ var activeAgenticSession = null;
 
             // CHOKE-POINT ÚNICO do hero: sempre que QUALQUER áudio é ligado
             // (Assistente em Tempo Real, Tradutor ou gravação) em modo janela,
-            // o hero de boas-vindas TEM que sumir. Ele bloqueava a tela e, pior,
-            // enquanto visível mantém #main.is-empty → #transcription {display:none},
-            // então nada era transcrito. Não acople isso a eventos downstream
-            // (realtime 'started', onTranslationStatus): eles falham/atrasam e o
-            // bug volta. Este é o ponto que dispara pra TODOS os modos de áudio.
-            // Ver memória: hero-window-mode-audio-blocker.
+            // o hero de boas-vindas TEM que sumir.
             if (data.isRecording) {
                 const hero = document.getElementById('welcome-hero');
                 if (hero) hero.classList.add('hidden');
             }
 
-            // Modo IDE: em vez do robot/loading padrão, mostra a bolinha em
-            // pulso acima do composer avisando que o áudio está sendo
-            // capturado — a transcrição vai pro composer, não direto pra IA.
-            const listeningEl = document.getElementById('composer-listening');
-            if (listeningEl) {
-                listeningEl.style.display = (data.isIdeMode && data.isRecording) ? 'flex' : 'none';
+            // Modo IDE: mostra feedback de gravação ou transcrição
+            if (data.isIdeMode) {
+                updateListeningIndicator(!!data.isRecording, !!data.isTranscribing);
             }
         });
+
+        // Modo IDE: evento emitido enquanto o backend transcreve o áudio via Whisper/OpenAI
+        if (window.electronAPI.onIdeAudioTranscribing) {
+            window.electronAPI.onIdeAudioTranscribing((data) => {
+                const isTranscribing = !!(data && data.isTranscribing);
+                updateListeningIndicator(false, isTranscribing);
+            });
+        }
 
         // Modo IDE: chega o texto transcrito por Whisper (Ctrl+D) — preenche
         // o composer pro usuário revisar/editar e enviar com Shift+Enter ou
         // o botão Enviar. NÃO envia sozinho pra IA.
         if (window.electronAPI.onIdeAudioTranscribed) {
             window.electronAPI.onIdeAudioTranscribed((text) => {
-                const listeningEl = document.getElementById('composer-listening');
-                if (listeningEl) listeningEl.style.display = 'none';
+                updateListeningIndicator(false, false);
                 if (!text || !text.trim() || text === '[BLANK_AUDIO]') {
                     if (typeof showToast === 'function') showToast('Nenhum áudio detectado.');
                     return;
@@ -262,6 +285,13 @@ var activeAgenticSession = null;
                 if (typeof openManualInput === 'function') {
                     openManualInput(text);
                 }
+            });
+        }
+
+        if (window.electronAPI.onTranscriptionError) {
+            window.electronAPI.onTranscriptionError((err) => {
+                updateListeningIndicator(false, false);
+                if (err && typeof showToast === 'function') showToast(err);
             });
         }
 

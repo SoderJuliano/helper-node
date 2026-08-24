@@ -136,21 +136,28 @@ function setupNexaIntegration() {
 }
 
 function handleCoreEventForNexa(channel, args) {
-  // 1. Início/Fim da Gravação do Microfone
+  // 1. Início/Fim da Gravação do Microfone e Transcrição
   if (channel === "toggle-recording" || channel === "renderer-toggle-recording") {
     const payload = args[1];
     if (payload && payload.isRecording === true) {
       nexaState.setState("LISTENING");
-    } else if (payload && payload.isRecording === false) {
+    } else if (payload && (payload.isRecording === false || payload.isTranscribing === true)) {
       if (nexaState.getState() === "LISTENING") {
         nexaState.setState("THINKING");
       }
     }
   }
 
+  if (channel === "ide-audio-transcribing") {
+    const payload = args[1];
+    if (payload && payload.isTranscribing) {
+      nexaState.setState("THINKING");
+    }
+  }
+
   // 2. Transcrição / Erro de Áudio
-  if (channel === "transcription-error") {
-    if (nexaState.getState() !== "IDLE") {
+  if (channel === "ide-audio-transcribed" || channel === "transcription-error") {
+    if (nexaState.getState() === "THINKING" || nexaState.getState() === "LISTENING") {
       nexaState.setState("IDLE");
     }
   }

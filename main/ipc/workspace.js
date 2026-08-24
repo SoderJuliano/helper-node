@@ -362,7 +362,7 @@ ipcMain.handle("read-file-content", async (event, filePath) => {
     // caminho virtual, nunca existe no disco, fica fora do sandbox do
     // workspace de propósito (é leitura, vem do próprio classpath resolvido
     // do projeto, igual "External Libraries" do IntelliJ).
-    if (filePath.includes(".jar!")) {
+    if (filePath.includes(".jar!") || filePath.includes(".zip!")) {
       const javaImportChecker = require("../../services/javaImportChecker.js");
       const parsed = javaImportChecker.parseVirtualPath(filePath);
       if (!parsed) return { ok: false, error: "caminho de dependência inválido" };
@@ -391,7 +391,7 @@ ipcMain.handle("editor-save-file", async (event, payload) => {
   try {
     let { path: filePath, content, expectedMtimeMs } = payload || {};
     if (!filePath) return { ok: false, error: "path vazio" };
-    if (filePath.includes(".jar!")) return { ok: false, error: "arquivo de dependência é somente leitura" };
+    if (filePath.includes(".jar!") || filePath.includes(".zip!")) return { ok: false, error: "arquivo de dependência é somente leitura" };
     if (workspace.resolvePortalPath) {
       filePath = workspace.resolvePortalPath(filePath);
     }

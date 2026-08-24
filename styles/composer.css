@@ -288,16 +288,33 @@
             display: flex; align-items: center; gap: 8px;
             font-size: 12px; font-family: var(--font-ui); color: var(--accent-2);
             padding: 4px 4px 8px 4px;
+            transition: color .2s ease;
+        }
+        .composer-listening.transcribing {
+            color: #7aa2f7;
         }
         .composer-listening-dot {
             width: 9px; height: 9px; border-radius: 50%;
             background: var(--accent-2); flex-shrink: 0;
             animation: composer-listening-pulse 1.2s ease-in-out infinite;
         }
+        .composer-listening.transcribing .composer-listening-dot {
+            background: transparent;
+            width: 10px; height: 10px;
+            border: 2px solid rgba(122, 162, 247, 0.25);
+            border-top-color: #7aa2f7;
+            border-radius: 50%;
+            animation: composer-transcribing-spin .75s linear infinite;
+            box-shadow: none;
+        }
         @keyframes composer-listening-pulse {
             0%   { transform: scale(0.75); opacity: 0.55; box-shadow: 0 0 0 0 rgba(76,175,80,0.45); }
             50%  { transform: scale(1.15); opacity: 1; box-shadow: 0 0 0 6px rgba(76,175,80,0); }
             100% { transform: scale(0.75); opacity: 0.55; box-shadow: 0 0 0 0 rgba(76,175,80,0); }
+        }
+        @keyframes composer-transcribing-spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
         .composer-ghost {
             flex: 1; min-height: 26px; max-height: 220px; padding: 3px 2px;

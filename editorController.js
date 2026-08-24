@@ -644,7 +644,7 @@
 
       doc = { content: res.content, originalContent: res.content, mtimeMs: res.mtimeMs, dirty: false };
       openFiles.set(filePath, doc);
-    } else if (!doc.dirty && !filePath.includes('.jar!')) {
+    } else if (!doc.dirty && !filePath.includes('.jar!') && !filePath.includes('.zip!')) {
       try {
         if (window.electronAPI && window.electronAPI.readFileContent) {
           const res = await window.electronAPI.readFileContent(filePath);
@@ -660,7 +660,7 @@
     const cmInst = ensureCm();
     if (!cmInst) return;
     const ext = extOf(filePath);
-    const isDependencySource = filePath.includes('.jar!');
+    const isDependencySource = filePath.includes('.jar!') || filePath.includes('.zip!');
     if (langEl) {
       langEl.textContent = (LANG_LABEL_BY_EXT[ext] || (ext || 'texto').toUpperCase()) + (isDependencySource ? ' · lib' : '');
     }
@@ -713,7 +713,7 @@
     if (!activePath) return;
     const doc = openFiles.get(activePath);
     if (!doc) return;
-    if (activePath.includes('.jar!')) {
+    if (activePath.includes('.jar!') || activePath.includes('.zip!')) {
       setSaveStatus('Arquivo de dependência é somente leitura');
       return;
     }
