@@ -97,6 +97,12 @@ const NEXA_ANIMATIONS = {
     description: "Nexa segura uma xícara de café e relaxa/aproveita a bebida.",
     category: "idle",
     lottiePath: path.join(__dirname, "../../renderer/nexa/assets/lottie/coffee_lottie/animations/main.json")
+  },
+  dance: {
+    name: "dance",
+    description: "Nexa faz uma dança/dancinha comemorativa de 8 segundos (usada exclusivamente quando o usuário pedir para ela dançar ou comemorar algo).",
+    category: "action",
+    lottiePath: path.join(__dirname, "../../renderer/nexa/assets/lottie/dance_lottie/animations/main.json")
   }
 };
 
