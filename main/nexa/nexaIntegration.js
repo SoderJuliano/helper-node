@@ -10,26 +10,41 @@ const { ipcMain, app, BrowserWindow } = require("electron");
 const { NexaJsonStreamParser, parseNexaResponse, handleNexaActions } = require("./nexaResponseHelper.js");
 const { configService, helpers } = require("../globals.js");
 
-// Tools que contam como "mexendo em arquivo". Só estas acendem o WORKING —
-// runCommand/runShellAdvanced (terminal), captura de tela e consultas de
-// pacotes/apps ficam de fora de propósito: o pedido era ler e escrever ARQUIVO,
-// não "app ocupado".
+// Tools e ações que contam como "mexendo em arquivo / código".
+// Acionam o estado WORKING (animação de digitação em teclado digital).
 const FILE_TOOLS = new Set([
   "readFile", "readFileChunk", "writeFile", "appendToFile", "patchFile",
-  "deleteFile", "listDir", "fileInfo", "findFiles", "searchInFiles"
+  "deleteFile", "listDir", "fileInfo", "findFiles", "searchInFiles",
+  "read_file", "read_file_chunk", "write_file", "write_to_file", "append_to_file",
+  "patch_file", "replace_file_content", "delete_file", "list_dir", "file_info",
+  "find_files", "find_by_name", "search_in_files", "grep_search", "view_file",
+  "edit_file", "read_url_content", "save_file", "execute_code", "run_command"
 ]);
 
-// Segura o WORKING por um instante depois da última tool. Sem isso, uma sequência
-// típica (searchInFiles -> readFile -> writeFile) faria a animação piscar entre
-// cada chamada, porque há milissegundos de folga entre uma e outra.
+function isFileOrDevTool(toolName, toolLabel) {
+  if (!toolName && !toolLabel) return true;
+  const n = String(toolName || "").toLowerCase().trim();
+  const l = String(toolLabel || "").toLowerCase().trim();
+
+  if (FILE_TOOLS.has(toolName) || FILE_TOOLS.has(n)) return true;
+
+  const keywords = [
+    "file", "read", "write", "edit", "patch", "grep", "search", "save",
+    "arquivo", "lendo", "escrevendo", "editando", "salvando", "substituindo",
+    "modificando", "código", "code", "view", "find", "list", "replace"
+  ];
+  return keywords.some((kw) => n.includes(kw) || l.includes(kw));
+}
+
+// Segura o WORKING por um instante depois da última tool para transição suave
 const WORKING_EXIT_DELAY_MS = 1200;
 
 let activeFileTools = 0;
 let stateBeforeWorking = null;
 let workingExitTimer = null;
 
-function onFileToolStart({ name } = {}) {
-  if (!FILE_TOOLS.has(name)) return;
+function onFileToolStart({ name, label } = {}) {
+  if (!isFileOrDevTool(name, label)) return;
 
   activeFileTools++;
   if (workingExitTimer) {
@@ -38,17 +53,13 @@ function onFileToolStart({ name } = {}) {
   }
 
   const current = nexaState.getState();
-  // SPEAKING não é interrompido: a animação de fala acompanha um áudio que já
-  // está tocando, e cortá-la no meio deixa a Nexa muda com a boca parada.
   if (current !== "WORKING" && current !== "SPEAKING") {
     stateBeforeWorking = current;
     nexaState.setState("WORKING");
   }
 }
 
-function onFileToolEnd({ name } = {}) {
-  if (!FILE_TOOLS.has(name)) return;
-
+function onFileToolEnd({ name, label } = {}) {
   activeFileTools = Math.max(0, activeFileTools - 1);
   if (activeFileTools > 0) return;
 
@@ -69,17 +80,34 @@ function hookWebContents(webContents) {
   webContents._nexaHooked = true;
 
   const originalSend = webContents.send;
-  
-  let streamParser = null;
-  let rawStreamResponse = "";
 
   webContents.send = function(channel, ...args) {
     const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : null;
     const isNexaOn = !!(nexaCfg && nexaCfg.enabled);
 
+    // 1. Intercepta ai-tool-activity (Gemini CLI, Claude CLI, Copilot, Agentic)
+    if (channel === "ai-tool-activity") {
+      const act = args[0];
+      if (act) {
+        if (act.phase === "start") {
+          onFileToolStart({ name: act.name || act.id, label: act.label });
+        } else if (act.phase === "done" || act.phase === "error") {
+          onFileToolEnd({ name: act.name || act.id, label: act.label });
+        }
+      }
+    }
 
+    // 2. Intercepta eventos específicos do Claude CLI e Gemini CLI
+    if (channel === "claude-cli:tool-start" || channel === "gemini-cli:tool-start") {
+      const toolInfo = args[0] || {};
+      onFileToolStart({ name: toolInfo.name || toolInfo.id, label: toolInfo.label });
+    } else if (channel === "claude-cli:tool-done" || channel === "gemini-cli:tool-done") {
+      const toolInfo = args[0] || {};
+      onFileToolEnd({ name: toolInfo.name || toolInfo.id, label: toolInfo.label });
+    }
 
-    if (channel === "gemini-response" || channel === "openai-final-response") {
+    // 3. Respostas textuais e ações da Nexa
+    if (channel === "gemini-response" || channel === "openai-final-response" || channel === "claude-response") {
       const payload = args[0];
       if (payload && typeof payload.resposta === "string" && (payload.resposta.includes('"response"') || payload.resposta.trim().startsWith("{"))) {
         const result = parseNexaResponse(payload.resposta);
@@ -90,7 +118,16 @@ function hookWebContents(webContents) {
           payload.resposta = helpers.formatToHTML(result.response);
         }
       }
+      if (activeFileTools === 0 && nexaState.getState() === "WORKING") {
+        nexaState.setState("IDLE");
+      }
       return originalSend.call(webContents, channel, ...args);
+    }
+
+    if (channel === "gemini-stream-end" || channel === "claude-stream-end") {
+      if (activeFileTools === 0 && nexaState.getState() === "WORKING") {
+        nexaState.setState("IDLE");
+      }
     }
 
     return originalSend.apply(webContents, arguments);
@@ -118,12 +155,11 @@ function setupNexaIntegration() {
   });
 
   // Hook nas janelas já ativas
-  BrowserWindow.getAllWindows().forEach(win => {
+  BrowserWindow.getAllWindows().forEach((win) => {
     hookWebContents(win.webContents);
   });
 
-  // Estado WORKING: escuta a execução de tools de arquivo. O helperTools expõe um
-  // EventEmitter próprio (não IPC), então isto não acopla o service ao Electron.
+  // Estado WORKING: escuta a execução de tools de arquivo no helperTools
   try {
     const helperTools = require("../../services/helperTools");
     if (helperTools && helperTools.events) {
@@ -169,7 +205,7 @@ function handleCoreEventForNexa(channel, args) {
     channel === "send-to-gemini-stream-auto" ||
     channel === "send-to-gemini-vision"
   ) {
-    if (nexaState.getState() !== "SPEAKING") {
+    if (nexaState.getState() !== "SPEAKING" && nexaState.getState() !== "WORKING") {
       nexaState.setState("THINKING");
     }
   }
@@ -177,22 +213,29 @@ function handleCoreEventForNexa(channel, args) {
   // 4. Recebimento de Áudio do Google TTS
   if (channel === "play-tts-audio") {
     nexaState.setState("SPEAKING");
-    console.log("[DEBUG-TMP] play-tts-audio recebido. isNexaWindowOpen():", isNexaWindowOpen(), "args.length:", args.length, "args[1] keys:", args[1] && Object.keys(args[1]));
-    // Repassa também a payload do áudio TTS para a janela da Nexa se ela estiver aberta
     if (isNexaWindowOpen()) {
       const { state } = require("../globals.js");
       if (state.nexaWindow && !state.nexaWindow.isDestroyed()) {
         const audioData = args[1];
         try {
           state.nexaWindow.webContents.send("play-tts-audio", audioData);
-          console.log("[DEBUG-TMP] forward para nexaWindow enviado com sucesso.");
-        } catch (e) {
-          console.log("[DEBUG-TMP] ERRO ao enviar para nexaWindow:", e.message);
-        }
-      } else {
-        console.log("[DEBUG-TMP] nexaWindow ausente ou destruída no momento do forward.");
+        } catch (_) {}
       }
     }
+  }
+
+  // 5. Operações de leitura/escrita direta de arquivos no workspace / editor
+  if (
+    channel === "write-file-content" ||
+    channel === "save-file-content" ||
+    channel === "patch-file" ||
+    channel === "create-file" ||
+    channel === "delete-file"
+  ) {
+    onFileToolStart({ name: channel, label: "Arquivo modificado no workspace" });
+    setTimeout(() => {
+      onFileToolEnd({ name: channel, label: "Arquivo modificado no workspace" });
+    }, 1500);
   }
 }
 

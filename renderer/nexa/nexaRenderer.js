@@ -62,67 +62,23 @@ document.addEventListener("DOMContentLoaded", async () => {
   //   console.error("[NexaRenderer] Erro crítico ao carregar camadas PNG.");
   // }
 
-  // Inicializa o reprodutor de animação de entrada 2D via Lottie (wave_lottie)
-  const introLottiePath = "renderer/nexa/assets/lottie/wave_lottie/animations/main.json";
-  const introAnimation = typeof NexaLottieAnimation !== "undefined" ? new NexaLottieAnimation({ animationPath: introLottiePath, loop: false }) : null;
-  if (introAnimation) {
-    introAnimation.play();
-  }
+  // Helper para instanciar animações Lottie
+  const createLottieAnim = (dir, loop = false) =>
+    typeof NexaLottieAnimation !== "undefined"
+      ? new NexaLottieAnimation({ animationPath: `renderer/nexa/assets/lottie/${dir}/animations/main.json`, loop })
+      : null;
 
-  // Inicializa a animação de tédio/idle via Lottie (idle_lottie)
-  const idleBoringLottiePath = "renderer/nexa/assets/lottie/idle_lottie/animations/main.json";
-  const idleBoringAnimation = typeof NexaLottieAnimation !== "undefined"
-    ? new NexaLottieAnimation({ animationPath: idleBoringLottiePath, loop: false })
-    : null;
+  const introAnimation = createLottieAnim("wave_lottie");
+  if (introAnimation) introAnimation.play();
 
-  // Inicializa a animação de ajustar óculos/idle via Lottie (adjust_glasses_lottie)
-  const idleGlassesLottiePath = "renderer/nexa/assets/lottie/adjust_glasses_lottie/animations/main.json";
-  const idleGlassesAnimation = typeof NexaLottieAnimation !== "undefined"
-    ? new NexaLottieAnimation({ animationPath: idleGlassesLottiePath, loop: false })
-    : null;
-
-  // Inicializa a animação de se espreguiçar/idle via Lottie (stretching_lottie)
-  const idleStretchingLottiePath = "renderer/nexa/assets/lottie/stretching_lottie/animations/main.json";
-  const idleStretchingAnimation = typeof NexaLottieAnimation !== "undefined"
-    ? new NexaLottieAnimation({ animationPath: idleStretchingLottiePath, loop: false })
-    : null;
-
-  // Inicializa a animação de agachar/idle via Lottie (squatting_lottie)
-  const idleSquattingLottiePath = "renderer/nexa/assets/lottie/squatting_lottie/animations/main.json";
-  const idleSquattingAnimation = typeof NexaLottieAnimation !== "undefined"
-    ? new NexaLottieAnimation({ animationPath: idleSquattingLottiePath, loop: false })
-    : null;
-
-  // Inicializa a animação de dormir via Lottie (sleeping_lottie)
-  const idleSleepingLottiePath = "renderer/nexa/assets/lottie/sleeping_lottie/animations/main.json";
-  const idleSleepingAnimation = typeof NexaLottieAnimation !== "undefined"
-    ? new NexaLottieAnimation({ animationPath: idleSleepingLottiePath, loop: true })
-    : null;
-
-  // TEMPORÁRIO: idle base em Lottie (8s, loop) no lugar do personagem PSD.
-  // As 23 camadas PNG do PSD nunca entraram no repositório — o assetsPath acima
-  // aponta para uma pasta da máquina Linux onde o layerdiff rodou. Enquanto elas
-  // não chegam, este Lottie ocupa o estado de repouso, que era o único momento em
-  // que o personagem procedural aparecia. A animação de fala segue intocada.
-  const baseIdleLottiePath = "renderer/nexa/assets/lottie/base_idle_lottie/animations/main.json";
-  const baseIdleAnimation = typeof NexaLottieAnimation !== "undefined"
-    ? new NexaLottieAnimation({ animationPath: baseIdleLottiePath, loop: true })
-    : null;
-
-  // Animação de fala via Lottie (loop). Não é sincronizada com o áudio (lip-sync),
-  // só dá a impressão de fala enquanto o TTS toca: inicia com o áudio e para no fim.
-  const speakingLottiePath = "renderer/nexa/assets/lottie/speaking_lottie/animations/main.json";
-  const speakingAnimation = typeof NexaLottieAnimation !== "undefined"
-    ? new NexaLottieAnimation({ animationPath: speakingLottiePath, loop: true })
-    : null;
-
-  // Animação de "escrevendo código no terminal" (loop). Entra SÓ quando o app está
-  // mexendo em arquivos — ler/escrever/editar —, nunca por estar raciocinando
-  // (THINKING) ou respondendo (SPEAKING). Quem decide é o main, em nexaIntegration.js.
-  const writingLottiePath = "renderer/nexa/assets/lottie/typing_lottie/animations/main.json";
-  const writingAnimation = typeof NexaLottieAnimation !== "undefined"
-    ? new NexaLottieAnimation({ animationPath: writingLottiePath, loop: true })
-    : null;
+  const idleBoringAnimation = createLottieAnim("idle_lottie");
+  const idleGlassesAnimation = createLottieAnim("adjust_glasses_lottie");
+  const idleStretchingAnimation = createLottieAnim("stretching_lottie");
+  const idleSquattingAnimation = createLottieAnim("squatting_lottie");
+  const idleSleepingAnimation = createLottieAnim("sleeping_lottie", true);
+  const baseIdleAnimation = createLottieAnim("base_idle_lottie", true);
+  const speakingAnimation = createLottieAnim("speaking_lottie", true);
+  const writingAnimation = createLottieAnim("typing_lottie", true);
 
   let currentVideoAnimation = introAnimation;
   let idleTime = 0;
@@ -222,8 +178,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         // Se mudou para qualquer outro estado (como IDLE), para animações de escuta, pensamento, fala ou escrita
         if (currentVideoAnimation && currentVideoAnimation.isPlaying) {
           const pathStr = currentVideoAnimation.videoPath || currentVideoAnimation.animationPath || "";
-          if (pathStr.includes("thinking") || pathStr.includes("listening") || pathStr.includes("speaking") || pathStr.includes("writing")) {
-            console.log("[NexaRenderer] Parando animação de escuta/pensamento/fala por transição de estado.");
+          if (pathStr.includes("thinking") || pathStr.includes("listening") || pathStr.includes("speaking") || pathStr.includes("writing") || pathStr.includes("typing")) {
+            console.log("[NexaRenderer] Parando animação ativa por transição de estado.");
             currentVideoAnimation.stop();
           }
         }
@@ -511,51 +467,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  // 4. Lógica de captura de webcam (Olhos da Nexa)
-  let webcamStream = null;
-
-  async function captureWebcamFrame() {
-    try {
-      if (!webcamStream) {
-        webcamStream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
-      }
-      const tempVideo = document.createElement("video");
-      tempVideo.srcObject = webcamStream;
-      tempVideo.play();
-
-      // Aguarda até o vídeo ter os metadados prontos
-      await new Promise((resolve) => {
-        tempVideo.onloadedmetadata = () => resolve();
-      });
-
-      // Aguarda 300ms para a câmera ajustar exposição/foco
-      await new Promise(resolve => setTimeout(resolve, 300));
-
-      const tempCanvas = document.createElement("canvas");
-      tempCanvas.width = 640;
-      tempCanvas.height = 480;
-      const tempCtx = tempCanvas.getContext("2d");
-      tempCtx.drawImage(tempVideo, 0, 0, 640, 480);
-
-      tempVideo.pause();
-      tempVideo.srcObject = null;
-
-      // Retorna em formato base64
-      return tempCanvas.toDataURL("image/jpeg");
-    } catch (err) {
-      console.error("[NexaRenderer] Falha ao capturar webcam:", err.message);
-      return null;
-    }
-  }
-
-  if (window.electronAPI && window.electronAPI.onRequestWebcam) {
-    window.electronAPI.onRequestWebcam(async ({ requestId }) => {
-      console.log("[NexaRenderer] Solicitação de webcam recebida. Capturando frame...");
-      const base64 = await captureWebcamFrame();
-      if (window.electronAPI.sendWebcamReply) {
-        window.electronAPI.sendWebcamReply(requestId, base64);
-      }
-    });
+  // 4. Inicializa suporte a captura de webcam (Olhos da Nexa)
+  if (typeof initNexaWebcam === "function") {
+    initNexaWebcam();
   }
 
   // Obtém o estado inicial do Main

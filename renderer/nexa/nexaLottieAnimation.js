@@ -44,22 +44,26 @@ class NexaLottieAnimation {
 
             // Extrai a pasta de assets (diretório pai do arquivo JSON de animação)
             // Ex: /path/to/lottie/idle_lottie/animations/main.json -> file:///path/to/lottie/idle_lottie/images/
-            let assetsPath = "";
             let animPath = (this.animationPath || "").replace(/\\/g, "/");
-            if (!animPath.startsWith("/") && !animPath.startsWith("file://")) {
-              const pageDir = window.location.pathname.substring(0, window.location.pathname.lastIndexOf("/"));
+            const isAbsolute = /^[A-Za-z]:\//.test(animPath) || animPath.startsWith("/") || animPath.startsWith("file://");
+
+            if (!isAbsolute) {
+              const pageDir = window.location.pathname.substring(0, window.location.pathname.lastIndexOf("/")).replace(/^\/+([A-Za-z]:)/, '$1');
               if (animPath.startsWith("renderer/nexa/")) {
                 animPath = pageDir + "/" + animPath.substring("renderer/nexa/".length);
               } else {
                 animPath = pageDir + "/" + animPath;
               }
             }
+
+            animPath = animPath.replace(/^file:\/\/\/?/, '');
             const parts = animPath.split("/");
+            let assetsPath = "";
             if (parts.length > 2) {
               assetsPath = parts.slice(0, -2).join("/") + "/images/";
             }
             if (!assetsPath.startsWith("file://")) {
-              assetsPath = "file://" + assetsPath;
+              assetsPath = "file:///" + assetsPath.replace(/^\/+/, '');
             }
 
             console.log("[NexaLottieAnimation] Inicializando lottie-web com assetsPath:", assetsPath);

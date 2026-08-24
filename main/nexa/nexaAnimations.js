@@ -76,7 +76,7 @@ const NEXA_ANIMATIONS = {
   },
   thinking: {
     name: "thinking",
-    description: "Nexa fica pensativa em pose de reflexão (estilo pensando/loading).",
+    description: "Nexa fica pensativa com o dedinho no queixo em pose de reflexão (estilo pensando/loading).",
     category: "action",
     lottiePath: path.join(__dirname, "../../renderer/nexa/assets/lottie/thinking_lottie/animations/main.json")
   },
@@ -88,9 +88,15 @@ const NEXA_ANIMATIONS = {
   },
   typing: {
     name: "typing",
-    description: "Nexa digita em um terminal holográfico (usada durante escrita de arquivos ou modo IDE).",
+    description: "Nexa digita em um teclado digital / terminal holográfico (usada durante leitura, escrita ou edição de arquivos/código).",
     category: "action",
     lottiePath: path.join(__dirname, "../../renderer/nexa/assets/lottie/typing_lottie/animations/main.json")
+  },
+  writing_code: {
+    name: "writing_code",
+    description: "Nexa escreve código concentrada em seu terminal.",
+    category: "action",
+    lottiePath: path.join(__dirname, "../../renderer/nexa/assets/lottie/writing_code_lottie/animations/main.json")
   },
   coffee: {
     name: "coffee",

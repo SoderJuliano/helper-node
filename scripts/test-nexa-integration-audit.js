@@ -28,6 +28,7 @@ const nexaFiles = [
   "main/nexa/nexaIntegration.js",
   "main/nexa/nexaPersona.js",
   "renderer/nexa/nexaRenderer.js",
+  "renderer/nexa/nexaWebcam.js",
   "renderer/nexa/nexaCharacter.js",
   "renderer/nexa/nexaBreathing.js",
   "renderer/nexa/nexaBlink.js",
