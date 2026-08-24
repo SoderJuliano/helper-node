@@ -772,7 +772,21 @@ class SymbolIndexer {
       return fileMatches;
     }
 
-    let candidates = [...(this.symbolMap.get(symbolName) || [])];
+    let targetSym = symbolName;
+    if (lineText && /^\s*import\s+/.test(lineText)) {
+      const impM = lineText.match(/^\s*import\s+(?:static\s+)?([\w.]+)(?:\.([\w$]+|\*))?\s*;/);
+      if (impM) {
+        const full = impM[1];
+        const member = impM[2];
+        if (member && member !== '*') {
+          targetSym = member;
+        } else {
+          targetSym = full.split('.').pop();
+        }
+      }
+    }
+
+    let candidates = [...(this.symbolMap.get(targetSym) || (targetSym !== symbolName ? (this.symbolMap.get(symbolName) || []) : []))];
 
     // Se temos métodos de interface ou classe abstrata, inclui também as implementações concretas (ex: UserMapperImpl)
     const implCandidates = [];

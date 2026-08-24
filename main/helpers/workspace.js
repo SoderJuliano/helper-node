@@ -162,21 +162,49 @@ helpers.walkTreeInto = function(entries, dirPath, depth, localBudget, globalLimi
   return used;
 }
 
-helpers.collectProjectEntries = function(root, limit = 4000, perTopLevelBudget = 800) {
+helpers.collectProjectEntriesAsync = async function(root, limit = 2000) {
   const entries = [];
-
-  // A própria pasta raiz aberta pode já SER um projeto Java (caso comum de
-  // abrir um projeto Maven/Gradle isolado, em vez de uma pasta com vários
-  // projetos dentro) — nesse caso ela nunca passa por pushTreeNode (só os
-  // filhos dela viram nós), então o marcador precisa ser injetado aqui.
   const rootJavaType = detectJavaProjectType(root);
   if (rootJavaType) {
     entries.push({ path: root, name: 'Dependencies', depth: 0, isDir: true, lazy: true, synthetic: 'java-deps', javaType: rootJavaType });
   }
 
-  // Passo 1: todas as entradas de topo (raiz do projeto) SEMPRE aparecem,
-  // sem limite — é o que garante que nenhuma pasta/arquivo do nível
-  // principal "suma" depois de um build.
+  let topLevel = [];
+  try {
+    topLevel = await fs.promises.readdir(root, { withFileTypes: true });
+  } catch (_) {
+    return entries;
+  }
+  topLevel.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+
+  for (const dirent of topLevel) {
+    const absPath = path.join(root, dirent.name);
+    const isDir = dirent.isDirectory();
+    // No nível raiz, todas as pastas nascem marcadas como lazy para expansão instantânea sob demanda
+    entries.push({
+      path: absPath,
+      name: dirent.name,
+      depth: 0,
+      isDir,
+      ...(isDir ? { lazy: true } : {})
+    });
+    if (isDir) {
+      const javaType = detectJavaProjectType(absPath);
+      if (javaType) {
+        entries.push({ path: absPath, name: 'Dependencies', depth: 1, isDir: true, lazy: true, synthetic: 'java-deps', javaType });
+      }
+    }
+  }
+  return entries;
+};
+
+helpers.collectProjectEntries = function(root, limit = 4000, perTopLevelBudget = 800) {
+  const entries = [];
+  const rootJavaType = detectJavaProjectType(root);
+  if (rootJavaType) {
+    entries.push({ path: root, name: 'Dependencies', depth: 0, isDir: true, lazy: true, synthetic: 'java-deps', javaType: rootJavaType });
+  }
+
   let topLevel = [];
   try {
     topLevel = fs2.readdirSync(root, { withFileTypes: true });
@@ -185,29 +213,52 @@ helpers.collectProjectEntries = function(root, limit = 4000, perTopLevelBudget =
   }
   topLevel.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
 
-  // TODA entrada de topo é empurrada, sempre — o `break` que existia aqui
-  // fazia METADE dos projetos sumir da árvore quando a pasta tinha vários
-  // repositórios grandes (medido: 5 de 10 projetos Java não apareciam).
-  // Estourar o limite agora só interrompe a DESCIDA, nunca esconde a pasta.
   for (const dirent of topLevel) {
     const absPath = path.join(root, dirent.name);
     const isDir = dirent.isDirectory();
-    const heavy = helpers.pushTreeNode(entries, absPath, dirent.name, 0, isDir);
-    if (!isDir || heavy) continue;
-    if (entries.length >= limit) {
-      markIncomplete(entries, absPath); // vira busca sob demanda
-      continue;
+    entries.push({
+      path: absPath,
+      name: dirent.name,
+      depth: 0,
+      isDir,
+      ...(isDir ? { lazy: true } : {})
+    });
+    if (isDir) {
+      const javaType = detectJavaProjectType(absPath);
+      if (javaType) {
+        entries.push({ path: absPath, name: 'Dependencies', depth: 1, isDir: true, lazy: true, synthetic: 'java-deps', javaType });
+      }
     }
-    helpers.walkTreeInto(entries, absPath, 1, perTopLevelBudget, limit);
   }
   return entries;
-}
+};
 
-// Filhos IMEDIATOS da pasta, e só. Antes descia recursivamente com budget 800:
-// um clique custava a subárvore inteira, e era o que fazia a expansão demorar
-// tanto que o usuário clicava de novo achando que não tinha pego.
-// Cada subpasta volta marcada como `lazy`, então busca os próprios filhos quando
-// for expandida — custo por clique proporcional ao que aparece na tela.
+helpers.collectDirChildrenAsync = async function(dirPath, limit = 3000) {
+  const entries = [];
+  let top = [];
+  try {
+    top = await fs.promises.readdir(dirPath, { withFileTypes: true });
+  } catch (_) {
+    return entries;
+  }
+  top.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+
+  for (const dirent of top) {
+    if (entries.length >= limit) break;
+    const absPath = path.join(dirPath, dirent.name);
+    const isDir = dirent.isDirectory();
+    entries.push({ path: absPath, name: dirent.name, depth: 0, isDir, ...(isDir ? { lazy: true } : {}) });
+    if (isDir) {
+      const javaType = detectJavaProjectType(absPath);
+      if (javaType) {
+        entries.push({ path: absPath, name: 'Dependencies', depth: 1, isDir: true, lazy: true, synthetic: 'java-deps', javaType });
+      }
+    }
+  }
+  return entries;
+};
+
+// Filhos IMEDIATOS da pasta (síncrono fallback)
 helpers.collectDirChildren = function(dirPath, limit = 3000) {
   const entries = [];
   let top = [];
@@ -231,4 +282,4 @@ helpers.collectDirChildren = function(dirPath, limit = 3000) {
     }
   }
   return entries;
-}
+};

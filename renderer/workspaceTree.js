@@ -99,45 +99,55 @@ var creatingFolderParent = null;
             }
 
             async function toggleDir(e) {
-                if (!e.collapsed) { e.collapsed = true; renderTree(); return; }
+                if (!e || !e.isDir) return;
 
-                // Já está buscando: o clique CONTOU, só não terminou. Antes isso
-                // retornava calado e parecia que o clique não pegou.
+                // Colapsar pasta já aberta
+                if (!e.collapsed) {
+                    e.collapsed = true;
+                    renderTree();
+                    return;
+                }
+
+                // Já está buscando: o clique foi registrado, evita cliques repetidos
                 if (e.loading) return;
 
                 // Busca sob demanda quando os filhos não vieram na carga inicial
-                // — seja por ser pasta pesada (node_modules, target) ou por ter
-                // sido cortada pelo limite. Ver markIncomplete no main.
                 if (e.lazy && !e.loaded) {
                     e.loading = true;
-                    e.collapsed = false;   // já abre: o spinner aparece no lugar
+                    e.collapsed = false; // já abre: o spinner aparece no lugar do chevron imediatamente
                     renderTree();
 
                     let children = null;
                     let retry = false;
-                    if (e.synthetic === 'java-deps') {
-                        const r = await fetchJavaDepsChildren(e);
-                        children = r.entries.map((entry) => ({ ...entry, depth: e.depth + 1 + entry.depth, collapsed: entry.isDir }));
-                        retry = r.retry;
-                    } else if (e.synthetic === 'java-jar') {
-                        const r = await fetchJavaJarChildren(e);
-                        children = r.entries.map((entry) => ({ ...entry, depth: e.depth + 1 + entry.depth, collapsed: entry.isDir }));
-                        retry = r.retry;
-                    } else {
-                        let res = null;
-                        try {
-                            res = window.electronAPI.getDirChildren
-                                ? await window.electronAPI.getDirChildren(e.path)
-                                : null;
-                        } catch (_) {}
-                        if (res && res.ok && res.entries && res.entries.length) {
-                            children = res.entries.map((entry) => ({
-                                ...entry,
-                                depth: e.depth + 1 + entry.depth, // depth do backend é relativo (filho imediato = 0)
-                                collapsed: entry.isDir,
-                            }));
+                    try {
+                        if (e.synthetic === 'java-deps') {
+                            const r = await fetchJavaDepsChildren(e);
+                            children = r.entries.map((entry) => ({ ...entry, depth: e.depth + 1 + entry.depth, collapsed: entry.isDir }));
+                            retry = r.retry;
+                        } else if (e.synthetic === 'java-jar') {
+                            const r = await fetchJavaJarChildren(e);
+                            children = r.entries.map((entry) => ({ ...entry, depth: e.depth + 1 + entry.depth, collapsed: entry.isDir }));
+                            retry = r.retry;
+                        } else {
+                            let res = null;
+                            try {
+                                res = window.electronAPI && window.electronAPI.getDirChildren
+                                    ? await window.electronAPI.getDirChildren(e.path)
+                                    : null;
+                            } catch (_) {}
+                            if (res && res.ok && Array.isArray(res.entries) && res.entries.length) {
+                                children = res.entries.map((entry) => ({
+                                    ...entry,
+                                    depth: e.depth + 1 + (entry.depth || 0),
+                                    collapsed: entry.isDir,
+                                    lazy: entry.isDir,
+                                }));
+                            }
+                            e.empty = !(res && res.entries && res.entries.length);
                         }
-                        e.empty = !(res && res.entries && res.entries.length);
+                    } catch (err) {
+                        console.warn('[workspaceTree] Falha ao carregar filhos da pasta:', err);
+                        retry = true;
                     }
 
                     e.loading = false;
@@ -156,15 +166,17 @@ var creatingFolderParent = null;
                     }
                     e.loaded = !retry;
                 }
+
                 e.collapsed = false;
                 renderTree();
             }
- // toggleDir & helpers
 
-    // renderTree function (broken up to call wireTreeNodeEvents from actions module)
+    // renderTree function (ultra-rápido com DocumentFragment e feedback visual de loading)
     function renderTree() {
         if (!wsTree) return;
         wsTree.innerHTML = '';
+        const fragment = document.createDocumentFragment();
+
         const nameFilter = typeof window.currentTreeNameFilter === 'function' ? window.currentTreeNameFilter() : '';
         const contentFilter = typeof window.currentTreeContentFilter === 'function' ? window.currentTreeContentFilter() : '';
         const hasNameFilter = activeTreeFilterMode === 'name' && !!nameFilter;
@@ -172,10 +184,10 @@ var creatingFolderParent = null;
         const projectPath = wsProjectMain ? wsProjectMain.dataset.path : '';
         
         if (creatingFileParent === projectPath) {
-            renderCreationInput(wsTree, projectPath, 0);
+            renderCreationInput(fragment, projectPath, 0);
         }
         if (creatingFolderParent === projectPath) {
-            renderCreationFolderInput(wsTree, projectPath, 0);
+            renderCreationFolderInput(fragment, projectPath, 0);
         }
 
         let skipDepth = null;
@@ -202,8 +214,7 @@ var creatingFolderParent = null;
             let dirIconHtml = TREE_DIR_IC;
 
             if (e.synthetic) {
-                // Nó sintético (Dependencies/jar/classe/status) — nunca tem cor de
-                // git, nunca é "featured": não existe no disco do projeto.
+                // Nó sintético (Dependencies/jar/classe/status) — nunca tem cor de git
             } else if (!e.isDir) {
                 gitStatus = currentGitStatus.modifiedFiles ? currentGitStatus.modifiedFiles[relPath] : null;
                 if (gitStatus) {
@@ -229,10 +240,9 @@ var creatingFolderParent = null;
                 (e.collapsed ? ' collapsed' : '') +
                 (shouldDim ? (isMatch ? ' match' : ' dim') : '') +
                 (e.synthetic ? ' ws-tree-node-synthetic' : '') +
+                (e.loading ? ' ws-tree-node-loading' : '') +
                 gitClass + featuredClass;
             node.style.paddingLeft = (4 + e.depth * 12) + 'px';
-            // dataset.path deixa a atualização de git status achar o nó sem
-            // reconstruir a árvore inteira (ver applyGitStatusClasses).
             node.dataset.path = e.path;
             const chevron = e.loading ? TREE_SPINNER_IC : TREE_CHEVRON_IC;
             if (e.synthetic === 'java-deps') {
@@ -327,11 +337,12 @@ var creatingFolderParent = null;
                 }
             }
 
-            wsTree.appendChild(node);
+            fragment.appendChild(node);
             if (e.isDir && e.collapsed) {
                 skipDepth = e.depth;
             }
         }
+        wsTree.appendChild(fragment);
     }
 
 
@@ -510,25 +521,12 @@ var creatingFolderParent = null;
                 const normTarget = String(targetPath).replace(/\\/g, '/');
 
                 // 1. Dependência Java (.jar!com/example/MyClass.java)
-                if (normTarget.includes('.jar!')) {
-                    const m = /^(.*\.jar)!(.+)\.java$/i.exec(normTarget);
-                    const jarPath = m ? m[1] : '';
-
-                    let depsNode = treeEntries.find(e => e.synthetic === 'java-deps');
+                if (normTarget.includes('.jar!') || normTarget.includes('.zip!')) {
+                    const depsNode = treeEntries.find(e => e.synthetic === 'java-deps');
                     if (depsNode) {
-                        if (depsNode.collapsed) {
-                            await toggleDir(depsNode);
-                        }
-                        const normJar = jarPath.replace(/\\/g, '/').toLowerCase();
-                        let jarNode = treeEntries.find(e => e.synthetic === 'java-jar' && e.path.replace(/\\/g, '/').toLowerCase() === normJar);
-                        if (jarNode) {
-                            if (jarNode.collapsed) {
-                                await toggleDir(jarNode);
-                            }
-                            highlightAndScrollToNode(normTarget);
-                            return;
-                        }
+                        highlightAndScrollToNode(depsNode.path);
                     }
+                    return;
                 }
 
                 // 2. Arquivo normal do projeto
