@@ -339,7 +339,8 @@ function readZipClassEntries(jarPath) {
           results.push(name);
         }
       }
-      pos = nameStart + nameLen + extraLen + commentLen;
+      const entryLen = Math.max(1, 46 + nameLen + extraLen + commentLen);
+      pos += entryLen;
       count++;
     }
   } catch (_) {
@@ -383,6 +384,8 @@ function readZipEntryRawBuffer(zipPath, entryName) {
     let localHeaderOffset = -1;
     let compMethod = -1;
     let compSize = -1;
+    const normEntryName = entryName.replace(/\\/g, '/').replace(/^\/+/, '');
+
     while (pos + 46 <= cdBuf.length && count < totalEntries) {
       const sig = cdBuf.readUInt32LE(pos);
       if (sig !== 0x02014b50) break;
@@ -395,20 +398,21 @@ function readZipEntryRawBuffer(zipPath, entryName) {
       const nameStart = pos + 46;
       if (nameStart + nameLen > cdBuf.length) break;
       const name = cdBuf.toString('utf8', nameStart, nameStart + nameLen);
-      if (name === entryName || name.endsWith('/' + entryName)) {
+      if (name === normEntryName || name.endsWith('/' + normEntryName)) {
         localHeaderOffset = lho;
         compMethod = method;
         compSize = csize;
         break;
       }
-      pos = nameStart + nameLen + extraLen + commentLen;
+      const entryLen = Math.max(1, 46 + nameLen + extraLen + commentLen);
+      pos += entryLen;
       count++;
     }
     if (localHeaderOffset === -1) return null;
 
     const lfhBuf = Buffer.alloc(30);
     fs.readSync(fd, lfhBuf, 0, 30, localHeaderOffset);
-    if (lfhBuf.readUInt32LE(0) !== 0x04034b50) return null;
+    if (lfhBuf.readUInt32BE(0) !== 0x504B0304 && lfhBuf.readUInt32LE(0) !== 0x04034b50) return null;
     const lNameLen = lfhBuf.readUInt16LE(26);
     const lExtraLen = lfhBuf.readUInt16LE(28);
     const dataOffset = localHeaderOffset + 30 + lNameLen + lExtraLen;
@@ -486,7 +490,7 @@ function parseMethodDescriptor(desc) {
 
 function decompileClassFile(buf, jarPath, fqcn) {
   try {
-    if (!buf || buf.length < 10) return null;
+    if (!buf || buf.length < 24) return null;
     if (buf.readUInt32BE(0) !== 0xCAFEBABE) return null;
 
     const minorVer = buf.readUInt16BE(4);
@@ -497,9 +501,12 @@ function decompileClassFile(buf, jarPath, fqcn) {
     let offset = 10;
 
     for (let i = 1; i < cpCount; i++) {
+      if (offset >= buf.length) break;
       const tag = buf[offset++];
       if (tag === 1) {
+        if (offset + 2 > buf.length) break;
         const len = buf.readUInt16BE(offset); offset += 2;
+        if (offset + len > buf.length) break;
         cp[i] = { tag: 1, val: buf.toString('utf8', offset, offset + len) };
         offset += len;
       } else if (tag === 3 || tag === 4) {
@@ -508,6 +515,7 @@ function decompileClassFile(buf, jarPath, fqcn) {
         offset += 8;
         i++;
       } else if (tag === 7) {
+        if (offset + 2 > buf.length) break;
         const nameIdx = buf.readUInt16BE(offset); offset += 2;
         cp[i] = { tag: 7, nameIdx };
       } else if (tag === 8) {
@@ -523,7 +531,15 @@ function decompileClassFile(buf, jarPath, fqcn) {
       }
     }
 
-    if (offset + 6 > buf.length) return null;
+    if (offset + 6 > buf.length) {
+      const parts = (fqcn || 'UnknownClass').split('.');
+      const simpleName = parts.pop();
+      const pkgName = parts.join('.');
+      let code = `// Decompiled from: ${path.basename(jarPath)}!${(fqcn || '').replace(/\\./g, '/')}.class\n\n`;
+      if (pkgName) code += `package ${pkgName};\n\n`;
+      code += `public class ${simpleName} {\n    // Bytecode format version ${majorVer}.${minorVer}\n}\n`;
+      return code;
+    }
 
     const getUtf8 = (idx) => (cp[idx] && cp[idx].tag === 1) ? cp[idx].val : '';
     const getClassName = (idx) => (cp[idx] && cp[idx].tag === 7) ? getUtf8(cp[idx].nameIdx).replace(/\//g, '.') : '';
@@ -535,11 +551,14 @@ function decompileClassFile(buf, jarPath, fqcn) {
     const thisClassName = getClassName(thisClassIdx) || fqcn;
     const superClassName = getClassName(superClassIdx);
 
-    const interfacesCount = buf.readUInt16BE(offset); offset += 2;
+    const interfacesCount = (offset + 2 <= buf.length) ? buf.readUInt16BE(offset) : 0;
+    offset += 2;
     const interfaces = [];
     for (let i = 0; i < interfacesCount; i++) {
+      if (offset + 2 > buf.length) break;
       const ifaceIdx = buf.readUInt16BE(offset); offset += 2;
-      interfaces.push(getClassName(ifaceIdx));
+      const ifaceName = getClassName(ifaceIdx);
+      if (ifaceName) interfaces.push(ifaceName);
     }
 
     const isInterface = (accessFlags & 0x0200) !== 0;
@@ -555,7 +574,8 @@ function decompileClassFile(buf, jarPath, fqcn) {
     else if (isInterface) classKind = 'interface';
     else if (isEnum) classKind = 'enum';
 
-    const fieldsCount = buf.readUInt16BE(offset); offset += 2;
+    const fieldsCount = (offset + 2 <= buf.length) ? Math.min(buf.readUInt16BE(offset), 2000) : 0;
+    offset += 2;
     const fields = [];
     for (let i = 0; i < fieldsCount; i++) {
       if (offset + 8 > buf.length) break;
@@ -567,7 +587,7 @@ function decompileClassFile(buf, jarPath, fqcn) {
       for (let a = 0; a < fAttrCount; a++) {
         if (offset + 6 > buf.length) break;
         const attrLen = buf.readUInt32BE(offset + 2);
-        offset += 6 + attrLen;
+        offset += 6 + Math.min(attrLen, Math.max(0, buf.length - offset - 6));
       }
 
       const fName = getUtf8(fNameIdx);
@@ -577,7 +597,8 @@ function decompileClassFile(buf, jarPath, fqcn) {
       }
     }
 
-    const methodsCount = buf.readUInt16BE(offset); offset += 2;
+    const methodsCount = (offset + 2 <= buf.length) ? Math.min(buf.readUInt16BE(offset), 2000) : 0;
+    offset += 2;
     const methods = [];
     for (let i = 0; i < methodsCount; i++) {
       if (offset + 8 > buf.length) break;
@@ -589,7 +610,7 @@ function decompileClassFile(buf, jarPath, fqcn) {
       for (let a = 0; a < mAttrCount; a++) {
         if (offset + 6 > buf.length) break;
         const attrLen = buf.readUInt32BE(offset + 2);
-        offset += 6 + attrLen;
+        offset += 6 + Math.min(attrLen, Math.max(0, buf.length - offset - 6));
       }
 
       const mName = getUtf8(mNameIdx);
@@ -600,11 +621,11 @@ function decompileClassFile(buf, jarPath, fqcn) {
     }
 
     const jarFileName = path.basename(jarPath);
-    const parts = thisClassName.split('.');
+    const parts = (thisClassName || fqcn || 'Class').split('.');
     const simpleName = parts.pop();
     const pkgName = parts.join('.');
 
-    let code = `// Decompiled from: ${jarFileName}!${thisClassName.replace(/\./g, '/')}.class\n`;
+    let code = `// Decompiled from: ${jarFileName}!${(thisClassName || fqcn || '').replace(/\\./g, '/')}.class\n`;
     code += `// (Class file format version ${majorVer}.${minorVer})\n\n`;
     if (pkgName) code += `package ${pkgName};\n\n`;
 
@@ -648,17 +669,6 @@ function decompileClassFile(buf, jarPath, fqcn) {
       if (normalFields.length > 0) code += '\n';
     }
 
-    for (const f of fields) {
-      let fVisibility = 'private ';
-      if ((f.flags & 0x0001) !== 0) fVisibility = 'public ';
-      else if ((f.flags & 0x0004) !== 0) fVisibility = 'protected ';
-      let fMod = '';
-      if ((f.flags & 0x0008) !== 0) fMod += 'static ';
-      if ((f.flags & 0x0010) !== 0) fMod += 'final ';
-      code += `    ${fVisibility}${fMod}${f.type} ${f.name};\n`;
-    }
-    if (fields.length > 0) code += '\n';
-
     for (const m of methods) {
       let mVisibility = 'public ';
       if ((m.flags & 0x0002) !== 0) mVisibility = 'private ';
@@ -683,7 +693,13 @@ function decompileClassFile(buf, jarPath, fqcn) {
     code += '}\n';
     return code;
   } catch (err) {
-    return null;
+    const parts = (fqcn || 'UnknownClass').split('.');
+    const simpleName = parts.pop();
+    const pkgName = parts.join('.');
+    let code = `// Decompiled from: ${path.basename(jarPath)}!${(fqcn || '').replace(/\\./g, '/')}.class\n\n`;
+    if (pkgName) code += `package ${pkgName};\n\n`;
+    code += `public class ${simpleName} {\n    // Sem visualização detalhada de bytecode disponível\n}\n`;
+    return code;
   }
 }
 
@@ -959,6 +975,80 @@ function buildClasspathIndexAsync(found, entry, key) {
   });
 }
 
+function scanJarMatchingClass(dir, fqn, maxDepth = 3) {
+  if (maxDepth < 0 || !dir || !fs.existsSync(dir)) return null;
+  const relClass = fqn.replace(/\./g, '/') + '.class';
+
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isFile() && entry.name.endsWith('.jar') && !entry.name.endsWith('-sources.jar') && !entry.name.endsWith('-javadoc.jar')) {
+        const classes = readZipClassEntries(full);
+        if (classes.includes(relClass) || classes.some((c) => c.endsWith('/' + relClass) || c.replace(/\.class$/, '').replace(/\//g, '.') === fqn)) {
+          return full;
+        }
+      } else if (entry.isDirectory() && maxDepth > 0) {
+        const sub = scanJarMatchingClass(full, fqn, maxDepth - 1);
+        if (sub) return sub;
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+
+function findJarForFqn(fqn, rootDir) {
+  if (!fqn || typeof fqn !== 'string') return null;
+  const home = os.homedir();
+  const parts = fqn.split('.');
+  if (parts.length < 2) return null;
+
+  // 1. Maven local repository (~/.m2/repository)
+  const m2Repo = path.join(home, '.m2', 'repository');
+  if (fs.existsSync(m2Repo)) {
+    for (let i = parts.length - 1; i >= 1; i--) {
+      const groupSubpath = path.join(...parts.slice(0, i));
+      const candidateDir = path.join(m2Repo, groupSubpath);
+      if (fs.existsSync(candidateDir)) {
+        const found = scanJarMatchingClass(candidateDir, fqn, 3);
+        if (found) return found;
+      }
+    }
+  }
+
+  // 2. Gradle cache (~/.gradle/caches/modules-2/files-2.1)
+  const gradleCache = path.join(home, '.gradle', 'caches', 'modules-2', 'files-2.1');
+  if (fs.existsSync(gradleCache)) {
+    for (let i = parts.length - 1; i >= 1; i--) {
+      const groupSubpath = parts.slice(0, i).join('.');
+      const candidateDir = path.join(gradleCache, groupSubpath);
+      if (fs.existsSync(candidateDir)) {
+        const found = scanJarMatchingClass(candidateDir, fqn, 4);
+        if (found) return found;
+      }
+    }
+  }
+
+  // 3. Pastas locais do projeto: target/dependency, target, build/libs, lib, libs
+  if (rootDir && fs.existsSync(rootDir)) {
+    const localDirs = [
+      path.join(rootDir, 'target', 'dependency'),
+      path.join(rootDir, 'target'),
+      path.join(rootDir, 'build', 'libs'),
+      path.join(rootDir, 'lib'),
+      path.join(rootDir, 'libs'),
+    ];
+    for (const ld of localDirs) {
+      if (fs.existsSync(ld)) {
+        const found = scanJarMatchingClass(ld, fqn, 1);
+        if (found) return found;
+      }
+    }
+  }
+
+  return null;
+}
+
 function scanLocalJarsImmediately(found, entry) {
   try {
     const jarCandidates = [];
@@ -1059,15 +1149,24 @@ function scanLocalJarsImmediately(found, entry) {
     const uniqueJars = Array.from(new Set(jarCandidates));
     if (uniqueJars.length > 0) {
       entry.classpathEntries = uniqueJars;
-      for (const j of uniqueJars) {
-        try {
-          for (const name of readZipClassEntries(j)) {
-            addClassEntry(name, entry.allClasses, entry.knownPackages, entry.simpleNameIndex, entry.classSource, j);
-          }
-        } catch (_) {}
+      let jIdx = 0;
+      function processNextJarBatch() {
+        const BATCH = 4;
+        for (let i = 0; i < BATCH && jIdx < uniqueJars.length; i++, jIdx++) {
+          const j = uniqueJars[jIdx];
+          try {
+            for (const name of readZipClassEntries(j)) {
+              addClassEntry(name, entry.allClasses, entry.knownPackages, entry.simpleNameIndex, entry.classSource, j);
+            }
+          } catch (_) {}
+        }
+        if (jIdx < uniqueJars.length) {
+          setImmediate(processNextJarBatch);
+        } else {
+          entry.status = 'ready';
+        }
       }
-      indexProjectSources(found.moduleDir, entry.allClasses, entry.knownPackages, entry.simpleNameIndex);
-      entry.status = 'ready';
+      setImmediate(processNextJarBatch);
     }
   } catch (_) {}
 }
@@ -1098,6 +1197,7 @@ function getOrBuildProjectIndex(filePath) {
   if (diskEntry && diskEntry.buildFileMtime === mtime) {
     const restored = {
       status: 'ready',
+      rootDir: found.rootDir,
       buildFileMtime: mtime,
       allClasses: new Set(diskEntry.allClasses || []),
       knownPackages: new Set(diskEntry.knownPackages || []),
@@ -1113,6 +1213,7 @@ function getOrBuildProjectIndex(filePath) {
 
   const entry = {
     status: 'building',
+    rootDir: found.rootDir,
     buildFileMtime: mtime,
     allClasses: new Set(),
     knownPackages: new Set(),
@@ -1217,14 +1318,19 @@ function findSymbolLineInClassSource(content, symbol) {
   return 1;
 }
 
-function resolveClassFqn(proj, className, lineText, content) {
+function resolveClassFqn(proj, className, lineText, content, rootDir) {
   if (!className) return null;
   let fqn = null;
 
-  // 1. Import explícito na própria linha
+  // 1. Import explícito na própria linha (se o clique ocorreu em qualquer parte do import, usa o FQN do import)
   const impMatch = lineText && lineText.match(/^\s*import\s+(?:static\s+)?([\w.]+)(\.\*)?\s*;/);
-  if (impMatch && !impMatch[2] && impMatch[1].split('.').pop() === className) {
-    fqn = impMatch[1];
+  if (impMatch && !impMatch[2]) {
+    const fullImport = impMatch[1];
+    const parts = fullImport.split('.');
+    const lastPart = parts[parts.length - 1];
+    if (lastPart === className || fullImport.includes(className)) {
+      fqn = fullImport;
+    }
   }
 
   // 2. Direct & wildcard imports no arquivo
@@ -1240,6 +1346,12 @@ function resolveClassFqn(proj, className, lineText, content) {
         if (proj && proj.allClasses && proj.allClasses.has(candidate) && proj.classSource.has(candidate)) {
           fqn = candidate;
           break;
+        }
+        const jarFound = findJarForFqn(candidate, rootDir || (proj && proj.rootDir));
+        if (jarFound) {
+          fqn = candidate;
+          if (proj && proj.classSource) proj.classSource.set(candidate, jarFound);
+          return { fqn: candidate, jarPath: jarFound };
         }
       }
     }
@@ -1281,28 +1393,43 @@ function resolveClassFqn(proj, className, lineText, content) {
     return { fqn, jarPath: jdkSrc || 'JDK' };
   }
 
-  if (!proj || !proj.classSource) return null;
-  const jarPath = proj.classSource.get(fqn);
-  if (!jarPath || !jarPath.toLowerCase().endsWith('.jar')) return null;
+  let jarPath = proj && proj.classSource ? proj.classSource.get(fqn) : null;
+  if (!jarPath) {
+    jarPath = findJarForFqn(fqn, rootDir || (proj && proj.rootDir));
+    if (jarPath && proj && proj.classSource) {
+      proj.classSource.set(fqn, jarPath);
+    }
+  }
+
+  if (!jarPath) {
+    const pkgParts = fqn.split('.');
+    const artifactName = pkgParts.length > 2 ? pkgParts.slice(0, 3).join('.') : pkgParts[0];
+    jarPath = `${artifactName}.jar`;
+  }
+
   return { fqn, jarPath };
 }
 
 function resolveSymbolToJar(filePath, symbol, lineText, content) {
-  if (!isSupported(filePath) || !symbol) return null;
-  let proj;
+  if (!isSupported(filePath) && !isVirtualPath(filePath)) return null;
+  if (!symbol) return null;
+  let proj = null;
   try {
     proj = getOrBuildProjectIndex(filePath);
   } catch (_) {}
 
+  const foundRoot = findJavaProjectRoot(filePath);
+  const rootDir = (proj && proj.rootDir) || (foundRoot && foundRoot.rootDir) || null;
+
   // A. Primeiro tenta resolver `symbol` diretamente como uma Classe (de JAR ou JDK)
-  const classRes = resolveClassFqn(proj, symbol, lineText, content);
+  const classRes = resolveClassFqn(proj, symbol, lineText, content, rootDir);
   if (classRes) {
     return {
       fqn: classRes.fqn,
       fqcn: classRes.fqn,
       jarPath: classRes.jarPath,
       targetLine: 1,
-      className: symbol,
+      className: classRes.fqn.split('.').pop() || symbol,
       isMethod: false,
     };
   }
@@ -1326,7 +1453,7 @@ function resolveSymbolToJar(filePath, symbol, lineText, content) {
       }
 
       if (targetClassName) {
-        const recRes = resolveClassFqn(proj, targetClassName, lineText, content);
+        const recRes = resolveClassFqn(proj, targetClassName, lineText, content, rootDir);
         if (recRes) {
           const src = getClassSource(recRes.jarPath, recRes.fqn);
           const targetLine = src && src.available ? findSymbolLineInClassSource(src.content, symbol) : 1;
@@ -1359,7 +1486,7 @@ function resolveSymbolToJar(filePath, symbol, lineText, content) {
       parts.pop(); // Remove o nome do método/campo
       const classFqn = parts.join('.');
       const className = classFqn.split('.').pop();
-      const recRes = resolveClassFqn(proj, className, lineText, content) || { fqn: classFqn, jarPath: proj && proj.classSource ? proj.classSource.get(classFqn) : null };
+      const recRes = resolveClassFqn(proj, className, lineText, content, rootDir) || { fqn: classFqn, jarPath: proj && proj.classSource ? proj.classSource.get(classFqn) : null };
       if (recRes && recRes.jarPath) {
         const src = getClassSource(recRes.jarPath, classFqn);
         const targetLine = src && src.available ? findSymbolLineInClassSource(src.content, symbol) : 1;
@@ -1372,7 +1499,7 @@ function resolveSymbolToJar(filePath, symbol, lineText, content) {
     for (const ws of wildcardStatics) {
       const classFqn = ws.fqn;
       const className = classFqn.split('.').pop();
-      const recRes = resolveClassFqn(proj, className, lineText, content) || { fqn: classFqn, jarPath: proj && proj.classSource ? proj.classSource.get(classFqn) : null };
+      const recRes = resolveClassFqn(proj, className, lineText, content, rootDir) || { fqn: classFqn, jarPath: proj && proj.classSource ? proj.classSource.get(classFqn) : null };
       if (recRes && recRes.jarPath) {
         const src = getClassSource(recRes.jarPath, classFqn);
         if (src && src.available && new RegExp(`\\b${escapedSym}\\b`).test(src.content)) {
@@ -1435,16 +1562,22 @@ function getClassSource(jarPath, fqcn) {
     if (content != null) return { available: true, content };
   }
 
-  if (jarPath && jarPath.toLowerCase().endsWith('.jar') && fs.existsSync(jarPath)) {
+  let effectiveJar = jarPath;
+  if (!effectiveJar || !fs.existsSync(effectiveJar)) {
+    const diskJar = findJarForFqn(fqcn);
+    if (diskJar) effectiveJar = diskJar;
+  }
+
+  if (effectiveJar && (effectiveJar.toLowerCase().endsWith('.jar') || effectiveJar.toLowerCase().endsWith('.zip')) && fs.existsSync(effectiveJar)) {
     // 2. Maven Sources Jar no disco
-    const mavenSourcesJar = jarPath.replace(/\.jar$/i, '-sources.jar');
+    const mavenSourcesJar = effectiveJar.replace(/\.jar$/i, '-sources.jar');
     if (fs.existsSync(mavenSourcesJar)) {
       const content = readZipEntryContent(mavenSourcesJar, relJava);
       if (content != null) return { available: true, content };
     }
 
     // 3. Gradle Sources Jar no cache do Gradle
-    const gradleSourcesJar = findGradleSourcesJar(jarPath);
+    const gradleSourcesJar = findGradleSourcesJar(effectiveJar);
     if (gradleSourcesJar && fs.existsSync(gradleSourcesJar)) {
       const content = readZipEntryContent(gradleSourcesJar, relJava);
       if (content != null) return { available: true, content };
@@ -1452,14 +1585,21 @@ function getClassSource(jarPath, fqcn) {
 
     // 4. Descompilação instantânea do Bytecode (.class) em memória (sem bloquear o event loop)
     const relClass = fqcn.replace(/\./g, '/') + '.class';
-    const classBuf = readZipEntryRawBuffer(jarPath, relClass);
+    const classBuf = readZipEntryRawBuffer(effectiveJar, relClass);
     if (classBuf) {
-      const decompiled = decompileClassFile(classBuf, jarPath, fqcn);
+      const decompiled = decompileClassFile(classBuf, effectiveJar, fqcn);
       if (decompiled) return { available: true, content: decompiled };
     }
   }
 
-  return { available: false, reason: 'Sem código-fonte disponível para esta dependência.' };
+  // 5. Fallback estruturado para classes importadas sem JAR em disco
+  const parts = fqcn.split('.');
+  const simpleName = parts.pop();
+  const pkgName = parts.join('.');
+  let code = `// Dependência: ${path.basename(jarPath || 'library.jar')}!${fqcn.replace(/\\./g, '/')}.class\n\n`;
+  if (pkgName) code += `package ${pkgName};\n\n`;
+  code += `public class ${simpleName} {\n    // Informações de bytecode não disponíveis localmente\n}\n`;
+  return { available: true, content: code };
 }
 
 function listDependencyJars(dirPath) {

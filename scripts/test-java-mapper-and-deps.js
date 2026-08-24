@@ -103,6 +103,65 @@ public class UserService {
   assert.strictEqual(parsed.fqcn, mockFqcn, "parseVirtualPath deve recuperar o fqcn corretamente");
   console.log("  ok   Caminho virtual de dependencia JAR gerado e decodificado perfeitamente");
 
+  // Teste de Resolucao de Import de Lib Java (ex: SolicitacaoTrocaDevolucao)
+  const casasBahiaModel = path.join(tmpDir, "src/main/java/com/example/ReturnModel.java");
+  const casasBahiaContent = `
+package com.example;
+
+import br.com.casasbahia.commons.model.SolicitacaoTrocaDevolucao;
+import java.util.UUID;
+import java.util.List;
+
+public class ReturnModel {
+    private UUID id;
+    private SolicitacaoTrocaDevolucao solicitacao;
+}
+  `;
+  fs.writeFileSync(casasBahiaModel, casasBahiaContent);
+
+  // 1. Clique na linha do import (em SolicitacaoTrocaDevolucao ou no subpacote model/commons)
+  const resOnImport = javaImportChecker.resolveSymbolToJar(
+    casasBahiaModel,
+    "SolicitacaoTrocaDevolucao",
+    "import br.com.casasbahia.commons.model.SolicitacaoTrocaDevolucao;",
+    casasBahiaContent
+  );
+  assert(resOnImport, "Deve resolver SolicitacaoTrocaDevolucao na linha de import");
+  assert.strictEqual(resOnImport.fqn, "br.com.casasbahia.commons.model.SolicitacaoTrocaDevolucao");
+  console.log("  ok   Clique na linha de import 'SolicitacaoTrocaDevolucao' resolvido instantaneamente");
+
+  const resOnSubpkg = javaImportChecker.resolveSymbolToJar(
+    casasBahiaModel,
+    "model",
+    "import br.com.casasbahia.commons.model.SolicitacaoTrocaDevolucao;",
+    casasBahiaContent
+  );
+  assert(resOnSubpkg, "Deve resolver subpacote 'model' na linha de import");
+  assert.strictEqual(resOnSubpkg.fqn, "br.com.casasbahia.commons.model.SolicitacaoTrocaDevolucao");
+  console.log("  ok   Clique em segmento de pacote na linha de import resolvido para classe completa");
+
+  // 2. Clique no tipo dentro do corpo do arquivo
+  const resOnField = javaImportChecker.resolveSymbolToJar(
+    casasBahiaModel,
+    "SolicitacaoTrocaDevolucao",
+    "    private SolicitacaoTrocaDevolucao solicitacao;",
+    casasBahiaContent
+  );
+  assert(resOnField, "Deve resolver SolicitacaoTrocaDevolucao no campo");
+  assert.strictEqual(resOnField.fqn, "br.com.casasbahia.commons.model.SolicitacaoTrocaDevolucao");
+  console.log("  ok   Clique no uso do tipo em campo da classe resolvido");
+
+  // 3. Resolucao de tipos do JDK
+  const resJdk = javaImportChecker.resolveSymbolToJar(
+    casasBahiaModel,
+    "UUID",
+    "    private UUID id;",
+    casasBahiaContent
+  );
+  assert(resJdk, "Deve resolver UUID do JDK");
+  assert.strictEqual(resJdk.fqn, "java.util.UUID");
+  console.log("  ok   Tipo padrao do JDK (UUID) resolvido com sucesso");
+
   console.log("\n  ok   Todos os testes de Mapper e Dependencias passaram com sucesso!");
 } finally {
   try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}

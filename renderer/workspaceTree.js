@@ -511,24 +511,10 @@ var creatingFolderParent = null;
 
                 // 1. Dependência Java (.jar!com/example/MyClass.java)
                 if (normTarget.includes('.jar!')) {
-                    const m = /^(.*\.jar)!(.+)\.java$/i.exec(normTarget);
-                    const jarPath = m ? m[1] : '';
-
-                    let depsNode = treeEntries.find(e => e.synthetic === 'java-deps');
-                    if (depsNode) {
-                        if (depsNode.collapsed) {
-                            await toggleDir(depsNode);
-                        }
-                        const normJar = jarPath.replace(/\\/g, '/').toLowerCase();
-                        let jarNode = treeEntries.find(e => e.synthetic === 'java-jar' && e.path.replace(/\\/g, '/').toLowerCase() === normJar);
-                        if (jarNode) {
-                            if (jarNode.collapsed) {
-                                await toggleDir(jarNode);
-                            }
-                            highlightAndScrollToNode(normTarget);
-                            return;
-                        }
-                    }
+                    // Não forçar expansão de milhares de nós de classes no DOM para evitar travar a interface
+                    const foundJarEl = highlightAndScrollToNode(normTarget);
+                    if (foundJarEl) return;
+                    return;
                 }
 
                 // 2. Arquivo normal do projeto
