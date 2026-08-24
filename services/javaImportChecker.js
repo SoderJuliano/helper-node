@@ -634,8 +634,21 @@ function decompileClassFile(buf, jarPath, fqcn) {
       }
     }
 
-    const normalFields = isEnum ? fields.filter(f => (f.flags & 0x4000) === 0 && f.type !== simpleName) : fields;
-    for (const f of normalFields) {
+    if (!isRecord) {
+      const normalFields = isEnum ? fields.filter(f => (f.flags & 0x4000) === 0 && f.type !== simpleName) : fields;
+      for (const f of normalFields) {
+        let fVisibility = 'private ';
+        if ((f.flags & 0x0001) !== 0) fVisibility = 'public ';
+        else if ((f.flags & 0x0004) !== 0) fVisibility = 'protected ';
+        let fMod = '';
+        if ((f.flags & 0x0008) !== 0) fMod += 'static ';
+        if ((f.flags & 0x0010) !== 0) fMod += 'final ';
+        code += `    ${fVisibility}${fMod}${f.type} ${f.name};\n`;
+      }
+      if (normalFields.length > 0) code += '\n';
+    }
+
+    for (const f of fields) {
       let fVisibility = 'private ';
       if ((f.flags & 0x0001) !== 0) fVisibility = 'public ';
       else if ((f.flags & 0x0004) !== 0) fVisibility = 'protected ';
@@ -644,7 +657,7 @@ function decompileClassFile(buf, jarPath, fqcn) {
       if ((f.flags & 0x0010) !== 0) fMod += 'final ';
       code += `    ${fVisibility}${fMod}${f.type} ${f.name};\n`;
     }
-    if (normalFields.length > 0) code += '\n';
+    if (fields.length > 0) code += '\n';
 
     for (const m of methods) {
       let mVisibility = 'public ';
@@ -715,67 +728,6 @@ function addClassEntry(entryName, allClasses, knownPackages, simpleNameIndex, cl
       classSource.set(fqn, sourcePath);
     }
   }
-}
-
-async function indexProjectSourcesAsync(rootDir, allClasses, knownPackages, simpleNameIndex, onDone) {
-  const stack = [rootDir];
-  const TYPE_RE = /(?:public\s+|final\s+|abstract\s+)*(?:class|interface|enum|record)\s+([A-Za-z_$][\w$]*)/g;
-  const PKG_RE = /^\s*package\s+([\w.]+)\s*;/m;
-
-  let filesScanned = 0;
-  const MAX_FILES = 8000;
-
-  async function step() {
-    let countInStep = 0;
-    while (stack.length > 0 && filesScanned < MAX_FILES && countInStep < 25) {
-      const dir = stack.pop();
-      let entries = [];
-      try {
-        entries = await fs.promises.readdir(dir, { withFileTypes: true });
-      } catch (_) {
-        continue;
-      }
-      for (const entry of entries) {
-        if (IGNORED_DIRS.has(entry.name)) continue;
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          stack.push(full);
-        } else if (entry.isFile() && entry.name.endsWith('.java')) {
-          filesScanned++;
-          countInStep++;
-          let content = '';
-          try {
-            content = await fs.promises.readFile(full, 'utf8');
-          } catch (_) {
-            continue;
-          }
-          const pkgMatch = PKG_RE.exec(content);
-          const pkg = pkgMatch ? pkgMatch[1] : '';
-          let m;
-          TYPE_RE.lastIndex = 0;
-          while ((m = TYPE_RE.exec(content)) !== null) {
-            const typeName = m[1];
-            const fqn = pkg ? `${pkg}.${typeName}` : typeName;
-            allClasses.add(fqn);
-            const parts = fqn.split('.');
-            for (let i = 1; i < parts.length; i++) {
-              knownPackages.add(parts.slice(0, i).join('.'));
-            }
-            if (!simpleNameIndex.has(typeName)) simpleNameIndex.set(typeName, new Set());
-            simpleNameIndex.get(typeName).add(fqn);
-          }
-        }
-      }
-    }
-
-    if (stack.length > 0 && filesScanned < MAX_FILES) {
-      setImmediate(step);
-    } else {
-      if (typeof onDone === 'function') onDone();
-    }
-  }
-
-  setImmediate(step);
 }
 
 function indexProjectSources(rootDir, allClasses, knownPackages, simpleNameIndex) {
@@ -1107,30 +1059,15 @@ function scanLocalJarsImmediately(found, entry) {
     const uniqueJars = Array.from(new Set(jarCandidates));
     if (uniqueJars.length > 0) {
       entry.classpathEntries = uniqueJars;
-      let jarIdx = 0;
-
-      function processJarBatch() {
-        const BATCH = 3;
-        for (let i = 0; i < BATCH && jarIdx < uniqueJars.length; i++, jarIdx++) {
-          const j = uniqueJars[jarIdx];
-          try {
-            for (const name of readZipClassEntries(j)) {
-              addClassEntry(name, entry.allClasses, entry.knownPackages, entry.simpleNameIndex, entry.classSource, j);
-            }
-          } catch (_) {}
-        }
-
-        if (jarIdx < uniqueJars.length) {
-          setImmediate(processJarBatch);
-        } else {
-          indexProjectSourcesAsync(found.moduleDir, entry.allClasses, entry.knownPackages, entry.simpleNameIndex, () => {
-            entry.status = 'ready';
-            notifyJavaDepsChanged(found.rootDir, 'ready');
-          });
-        }
+      for (const j of uniqueJars) {
+        try {
+          for (const name of readZipClassEntries(j)) {
+            addClassEntry(name, entry.allClasses, entry.knownPackages, entry.simpleNameIndex, entry.classSource, j);
+          }
+        } catch (_) {}
       }
-
-      setImmediate(processJarBatch);
+      indexProjectSources(found.moduleDir, entry.allClasses, entry.knownPackages, entry.simpleNameIndex);
+      entry.status = 'ready';
     }
   } catch (_) {}
 }
@@ -1281,21 +1218,17 @@ function findSymbolLineInClassSource(content, symbol) {
 }
 
 function resolveClassFqn(proj, className, lineText, content) {
-  if (!className && !lineText) return null;
+  if (!className) return null;
   let fqn = null;
 
-  // 1. Import explícito na própria linha (se o clique foi na linha de import)
+  // 1. Import explícito na própria linha
   const impMatch = lineText && lineText.match(/^\s*import\s+(?:static\s+)?([\w.]+)(\.\*)?\s*;/);
-  if (impMatch && !impMatch[2]) {
-    const fullImport = impMatch[1];
-    const simple = fullImport.split('.').pop();
-    if (!className || className === simple || fullImport.includes('.' + className) || fullImport.startsWith(className + '.') || fullImport === className) {
-      fqn = fullImport;
-    }
+  if (impMatch && !impMatch[2] && impMatch[1].split('.').pop() === className) {
+    fqn = impMatch[1];
   }
 
   // 2. Direct & wildcard imports no arquivo
-  if (!fqn && content && className) {
+  if (!fqn && content) {
     const imports = collectImports(content);
     const foundDirect = imports.find((i) => !i.isWildcard && i.fqn.split('.').pop() === className);
     if (foundDirect) {
@@ -1304,7 +1237,7 @@ function resolveClassFqn(proj, className, lineText, content) {
       const wildcards = imports.filter((i) => i.isWildcard);
       for (const w of wildcards) {
         const candidate = `${w.fqn}.${className}`;
-        if (proj && proj.allClasses && proj.allClasses.has(candidate) && proj.classSource && proj.classSource.has(candidate)) {
+        if (proj && proj.allClasses && proj.allClasses.has(candidate) && proj.classSource.has(candidate)) {
           fqn = candidate;
           break;
         }
@@ -1313,21 +1246,21 @@ function resolveClassFqn(proj, className, lineText, content) {
   }
 
   // 3. Mesmo pacote
-  if (!fqn && content && proj && className) {
+  if (!fqn && content && proj) {
     const pkgMatch = /^\s*package\s+([\w.]+)\s*;/m.exec(content);
     if (pkgMatch) {
       const samePkgCandidate = `${pkgMatch[1]}.${className}`;
-      if (proj.allClasses && proj.allClasses.has(samePkgCandidate) && proj.classSource && proj.classSource.has(samePkgCandidate)) {
+      if (proj.allClasses && proj.allClasses.has(samePkgCandidate) && proj.classSource.has(samePkgCandidate)) {
         fqn = samePkgCandidate;
       }
     }
   }
 
   // 4. Busca por nome simples no índice de dependências (simpleNameIndex)
-  if (!fqn && proj && proj.simpleNameIndex && className && proj.simpleNameIndex.has(className)) {
+  if (!fqn && proj && proj.simpleNameIndex && proj.simpleNameIndex.has(className)) {
     const candidates = Array.from(proj.simpleNameIndex.get(className));
     for (const cand of candidates) {
-      if (proj.classSource && proj.classSource.has(cand)) {
+      if (proj.classSource.has(cand)) {
         fqn = cand;
         break;
       }

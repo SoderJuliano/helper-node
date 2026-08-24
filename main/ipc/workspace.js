@@ -245,9 +245,7 @@ ipcMain.handle("get-project-tree", async () => {
     const dir = (workspace.list() || []).find((a) => a.type === "dir");
     if (!dir) return null;
     const root = dir.path;
-    const entries = helpers.collectProjectEntriesAsync
-      ? await helpers.collectProjectEntriesAsync(root)
-      : helpers.collectProjectEntries(root);
+    const entries = helpers.collectProjectEntries(root);
     return { root, path: root, entries, tree: workspace.tree(root) || "" };
   } catch (e) {
     console.warn("[project-tree] falhou:", e.message);
@@ -261,9 +259,7 @@ ipcMain.handle("get-dir-children", async (_event, dirPath) => {
     if (workspace.isPathAllowed && !workspace.isPathAllowed(dirPath)) {
       return { ok: false, error: "pasta fora do projeto/workspace", entries: [] };
     }
-    const entries = helpers.collectDirChildrenAsync
-      ? await helpers.collectDirChildrenAsync(dirPath)
-      : helpers.collectDirChildren(dirPath);
+    const entries = helpers.collectDirChildren(dirPath);
     return { ok: true, path: dirPath, entries };
   } catch (e) {
     console.warn("[get-dir-children] falhou:", e.message);
