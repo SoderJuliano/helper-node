@@ -852,14 +852,16 @@ class SymbolIndexer {
         const base = path.basename(c.filePath, path.extname(c.filePath));
         const isDirectImpl = c.className === tipoReceptor + 'Impl' || base === tipoReceptor + 'Impl';
         const isDirectInterface = c.className === tipoReceptor || base === tipoReceptor;
+        const isMapper = tipoReceptor.toLowerCase().includes('mapper') || (c.className && c.className.toLowerCase().includes('mapper'));
 
-        // REGRA DE OURO PARA MAPPERS E IMPLEMENTAÇÕES:
-        // Se há uma implementação concreta (ex: UserMapperImpl.java), ela DEVE ter prioridade MÁXIMA (200 pontos),
-        // superando a declaração na interface (100 pontos), para que o Ctrl+Clique navegue diretamente para a implementação do código!
-        if (isDirectImpl) {
+        // Se for Mapper (ex: UserMapper), a implementação concreta (UserMapperImpl) tem prioridade máxima (200 pts).
+        // Para services normais (ex: PagamentoService), a declaração na interface tem prioridade direta (150 pts), e a impl vem a seguir (120 pts).
+        if (isMapper && isDirectImpl) {
           p += 200;
         } else if (isDirectInterface) {
-          p += 100;
+          p += 150;
+        } else if (isDirectImpl) {
+          p += 120;
         } else if (c.className && c.className.includes(tipoReceptor)) {
           p += 80;
         } else if (base.includes(tipoReceptor)) {
