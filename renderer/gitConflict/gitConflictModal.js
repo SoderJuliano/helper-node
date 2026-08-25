@@ -75,14 +75,21 @@
         </div>
 
         <div class="git-conflict-actions-right">
-          <button type="button" class="git-conflict-btn git-conflict-btn-save" id="git-conflict-btn-save" title="Salvar arquivo resolvido e marcar como resolvido no Git (git add)">
+          <button type="button" class="git-conflict-btn git-conflict-btn-save" id="git-conflict-btn-save" title="Salvar arquivo resolvido e marcar como resolvido no Git (Ctrl+S)">
             ${SVGI_SAVE}
             <span>Salvar</span>
           </button>
           <button type="button" class="git-conflict-btn git-conflict-btn-abort" id="git-conflict-btn-abort" title="Abortar processo de merge">
-            <span>Abortar</span>
+            <span>Abortar Merge</span>
           </button>
-          <button type="button" class="git-conflict-btn-close" id="git-conflict-btn-close" title="Fechar">${SVGI_CLOSE}</button>
+          <button type="button" class="git-conflict-btn-close" id="git-conflict-btn-close" title="Fechar visualizador de conflitos e voltar ao Helper Node (Esc)">
+            ${SVGI_CLOSE}
+            <span>Fechar</span>
+          </button>
+          <div class="git-conflict-win-controls">
+            <button type="button" class="git-conflict-win-btn" id="git-conflict-win-min" title="Minimizar janela">—</button>
+            <button type="button" class="git-conflict-win-btn" id="git-conflict-win-max" title="Maximizar / Restaurar janela">⛶</button>
+          </div>
         </div>
       </div>
 
@@ -157,6 +164,32 @@
     const btnNext = modal.querySelector('#git-conflict-btn-next');
     const btnPrevConflict = modal.querySelector('#git-conflict-btn-prev-conflict');
     const btnNextConflict = modal.querySelector('#git-conflict-btn-next-conflict');
+    const btnWinMin = modal.querySelector('#git-conflict-win-min');
+    const btnWinMax = modal.querySelector('#git-conflict-win-max');
+
+    if (btnWinMin) {
+      btnWinMin.addEventListener('click', () => {
+        if (window.electronAPI && window.electronAPI.minimizeWindow) window.electronAPI.minimizeWindow();
+      });
+    }
+
+    if (btnWinMax) {
+      btnWinMax.addEventListener('click', () => {
+        if (window.electronAPI && window.electronAPI.maximizeWindow) window.electronAPI.maximizeWindow();
+      });
+    }
+
+    window.addEventListener('keydown', (e) => {
+      const m = document.getElementById('git-conflict-modal');
+      if (!m || m.style.display === 'none') return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeGitConflictModal();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        saveCurrentResolution();
+      }
+    });
 
     btnClose.addEventListener('click', () => closeGitConflictModal());
     
@@ -313,6 +346,10 @@
     currentProjectDir = projectDir || (window.ctxProject ? window.ctxProject.path : null) || null;
     modalContainer = createModalDom();
     modalContainer.style.display = 'flex';
+    document.body.classList.add('git-conflict-open');
+    window.scrollTo(0, 0);
+    document.body.scrollTop = 0;
+    if (modalContainer) modalContainer.scrollTop = 0;
 
     initCodeMirror();
     triggerCmRefresh();
@@ -338,8 +375,12 @@
   }
 
   function closeGitConflictModal() {
+    document.body.classList.remove('git-conflict-open');
+    window.scrollTo(0, 0);
+    document.body.scrollTop = 0;
     if (modalContainer) {
       modalContainer.style.display = 'none';
+      modalContainer.scrollTop = 0;
     }
   }
 
@@ -461,12 +502,12 @@
     document.querySelectorAll('.chunk-row-active-conflict').forEach(el => el.classList.remove('chunk-row-active-conflict'));
     document.querySelectorAll(`[data-chunk-id="${targetChunk.id}"]`).forEach(el => el.classList.add('chunk-row-active-conflict'));
 
-    // Rola tabela lateral
+    // Rola tabela lateral de forma contida
     const firstRow = document.querySelector(`#git-conflict-table-left [data-chunk-id="${targetChunk.id}"]`);
     const leftContainer = document.getElementById('git-conflict-left-container');
     if (firstRow && leftContainer) {
       const topPos = Math.max(0, firstRow.offsetTop - 80);
-      leftContainer.scrollTo({ top: topPos, behavior: 'smooth' });
+      leftContainer.scrollTop = topPos;
     }
 
     // Rola CodeMirror central
@@ -474,6 +515,11 @@
       const lineNum = Math.max(0, (targetChunk.leftStartLine || 1) - 1);
       cmCenter.scrollIntoView({ line: lineNum, ch: 0 }, 100);
     }
+
+    // Garante que o header e o modal nunca saiam do topo da tela
+    if (modalContainer) modalContainer.scrollTop = 0;
+    window.scrollTo(0, 0);
+    document.body.scrollTop = 0;
   }
 
   function renderSideTables() {
