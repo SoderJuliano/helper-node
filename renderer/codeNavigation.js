@@ -647,7 +647,7 @@
 
     // 9. Java/C#/TS: declaração de método com visibilidade ou modificadores
     // Ex: public void foo(...), private String getBar(...), static async Task<T> process(...)
-    if (/(?:public|private|protected|static|final|abstract|synchronized|native|default|override|async)\s+(?:[A-Za-z0-9_$<>[\].,\s]+\s+)*$/i.test(before) && trimmedAfter.startsWith('(')) {
+    if (/(?:(?:public|private|protected|static|final|abstract|synchronized|native|default|override|async)\s+)+[A-Za-z0-9_$<>[\].,?]+\s*$/i.test(before) && trimmedAfter.startsWith('(')) {
       return true;
     }
 

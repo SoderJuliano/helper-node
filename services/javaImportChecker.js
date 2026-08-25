@@ -1333,14 +1333,14 @@ function resolveClassFqn(proj, className, lineText, content, rootDir) {
     }
   }
 
-  // 2. Direct & wildcard imports no arquivo
+  // 2. Direct & wildcard imports no arquivo (apenas imports normais de classes, não imports estáticos)
   if (!fqn && content) {
     const imports = collectImports(content);
-    const foundDirect = imports.find((i) => !i.isWildcard && i.fqn.split('.').pop() === className);
+    const foundDirect = imports.find((i) => !i.isStatic && !i.isWildcard && i.fqn.split('.').pop() === className);
     if (foundDirect) {
       fqn = foundDirect.fqn;
     } else {
-      const wildcards = imports.filter((i) => i.isWildcard);
+      const wildcards = imports.filter((i) => !i.isStatic && i.isWildcard);
       for (const w of wildcards) {
         const candidate = `${w.fqn}.${className}`;
         if (proj && proj.allClasses && proj.allClasses.has(candidate) && proj.classSource.has(candidate)) {
@@ -1421,6 +1421,34 @@ function resolveSymbolToJar(filePath, symbol, lineText, content) {
   const foundRoot = findJavaProjectRoot(filePath);
   const rootDir = (proj && proj.rootDir) || (foundRoot && foundRoot.rootDir) || null;
 
+  // 0. Clique na própria linha de um import estático (ex: `import static org.springframework.http.HttpStatus.OK;`)
+  const staticImpMatch = lineText && lineText.match(/^\s*import\s+static\s+([\w.]+)(?:\.\*)?\s*;/);
+  if (staticImpMatch) {
+    const fullStatic = staticImpMatch[1];
+    const parts = fullStatic.split('.');
+    let classParts = [...parts];
+    let memberName = null;
+    if (parts.length >= 2 && /^[A-Z]/.test(parts[parts.length - 2])) {
+      memberName = classParts.pop();
+    }
+    const classFqn = classParts.join('.');
+    const classNameFromFqn = classParts[classParts.length - 1];
+    let jarFound = (proj && proj.classSource && proj.classSource.get(classFqn)) || findJarForFqn(classFqn, rootDir || (proj && proj.rootDir));
+    if (jarFound) {
+      const src = getClassSource(jarFound, classFqn);
+      const targetSymbol = memberName || symbol;
+      const targetLine = src && src.available ? findSymbolLineInClassSource(src.content, targetSymbol) : 1;
+      return {
+        fqn: classFqn,
+        fqcn: classFqn,
+        jarPath: jarFound,
+        targetLine,
+        className: classNameFromFqn,
+        isMethod: Boolean(memberName),
+      };
+    }
+  }
+
   // A. Primeiro tenta resolver `symbol` diretamente como uma Classe (de JAR ou JDK)
   const classRes = resolveClassFqn(proj, symbol, lineText, content, rootDir);
   if (classRes) {
@@ -1436,7 +1464,7 @@ function resolveSymbolToJar(filePath, symbol, lineText, content) {
 
   const escapedSym = symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-  // B. Método/Campo estático ou de instância chamado com receptor: `Receptor.symbol(...)`
+  // B. Método/Campo estático ou de instância chamado com receptor: `Receptor.symbol(...)` ou `Receptor.SYMBOL`
   if (lineText) {
     const mRec = lineText.match(new RegExp(`([A-Za-z_$][A-Za-z0-9_$]*)\\s*\\.\\s*${escapedSym}\\b`));
     if (mRec && mRec[1] && mRec[1] !== 'this' && mRec[1] !== 'super') {
@@ -1444,7 +1472,7 @@ function resolveSymbolToJar(filePath, symbol, lineText, content) {
       let targetClassName = null;
 
       if (/^[A-Z]/.test(receptor)) {
-        // Receptor com inicial maiúscula (chamada estática tipo StringUtils.isBlank ou UUID.randomUUID)
+        // Receptor com inicial maiúscula (chamada estática tipo StringUtils.isBlank, HttpStatus.OK ou UUID.randomUUID)
         targetClassName = receptor;
       } else if (content) {
         // Receptor com inicial minúscula (variável local, ex: `userDto.getId()`)
@@ -1486,11 +1514,11 @@ function resolveSymbolToJar(filePath, symbol, lineText, content) {
       parts.pop(); // Remove o nome do método/campo
       const classFqn = parts.join('.');
       const className = classFqn.split('.').pop();
-      const recRes = resolveClassFqn(proj, className, lineText, content, rootDir) || { fqn: classFqn, jarPath: proj && proj.classSource ? proj.classSource.get(classFqn) : null };
-      if (recRes && recRes.jarPath) {
-        const src = getClassSource(recRes.jarPath, classFqn);
+      let jarFound = (proj && proj.classSource && proj.classSource.get(classFqn)) || findJarForFqn(classFqn, rootDir || (proj && proj.rootDir));
+      if (jarFound) {
+        const src = getClassSource(jarFound, classFqn);
         const targetLine = src && src.available ? findSymbolLineInClassSource(src.content, symbol) : 1;
-        return { fqn: classFqn, fqcn: classFqn, jarPath: recRes.jarPath, targetLine, className, isMethod: true };
+        return { fqn: classFqn, fqcn: classFqn, jarPath: jarFound, targetLine, className, isMethod: true };
       }
     }
 
@@ -1499,12 +1527,12 @@ function resolveSymbolToJar(filePath, symbol, lineText, content) {
     for (const ws of wildcardStatics) {
       const classFqn = ws.fqn;
       const className = classFqn.split('.').pop();
-      const recRes = resolveClassFqn(proj, className, lineText, content, rootDir) || { fqn: classFqn, jarPath: proj && proj.classSource ? proj.classSource.get(classFqn) : null };
-      if (recRes && recRes.jarPath) {
-        const src = getClassSource(recRes.jarPath, classFqn);
+      let jarFound = (proj && proj.classSource && proj.classSource.get(classFqn)) || findJarForFqn(classFqn, rootDir || (proj && proj.rootDir));
+      if (jarFound) {
+        const src = getClassSource(jarFound, classFqn);
         if (src && src.available && new RegExp(`\\b${escapedSym}\\b`).test(src.content)) {
           const targetLine = findSymbolLineInClassSource(src.content, symbol);
-          return { fqn: classFqn, fqcn: classFqn, jarPath: recRes.jarPath, targetLine, className, isMethod: true };
+          return { fqn: classFqn, fqcn: classFqn, jarPath: jarFound, targetLine, className, isMethod: true };
         }
       }
     }
@@ -1651,13 +1679,14 @@ function isSupported(filePath) {
 function collectImports(content) {
   const lines = content.split(/\r?\n/);
   const imports = [];
-  const RE = /^\s*import\s+(?:static\s+)?([\w.]+)(\.\*)?\s*;/;
+  const RE = /^\s*import\s+(static\s+)?([\w.]+)(\.\*)?\s*;/;
   for (let i = 0; i < lines.length; i++) {
     const m = RE.exec(lines[i]);
     if (m) {
-      const fqn = m[1];
-      const isWildcard = Boolean(m[2]);
-      imports.push({ line: i + 1, fqn, isWildcard, raw: m[0] });
+      const isStatic = Boolean(m[1]);
+      const fqn = m[2];
+      const isWildcard = Boolean(m[3]);
+      imports.push({ line: i + 1, fqn, isStatic, isWildcard, raw: m[0] });
     }
   }
   return imports;

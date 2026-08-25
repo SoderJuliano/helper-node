@@ -64,7 +64,7 @@ const IDENTIFIER_RE = /[A-Za-z_$][A-Za-z0-9_$]*/g;
 const DECL_PREFIX_RES = [
   /(?:const|let|var|class|interface|enum|function|def)\s+$/,             // const foo / class Foo
   /(?:async\s+)?function\*?\s+$/,                                        // function foo
-  /(?:public|private|protected|static|final|abstract|readonly)\s+(?:[A-Za-z0-9_$<>[\],]+\s+)*$/, // private String campo / public void foo
+  /(?:(?:public|private|protected|static|final|abstract|readonly)\s+)+[A-Za-z0-9_$<>[\],.?]*\s*$/, // private String campo / public void foo
   /(?:import|from|package)\s+$/,
 ];
 
@@ -589,7 +589,7 @@ class SymbolIndexer {
         // Go / Rust: func foo / fn foo
         { re: /(?:pub\s+)?(?:async\s+)?(?:func|fn)\s+(?:\([^)]+\)\s+)?([A-Za-z0-9_$]+)\s*\(/, g: 1 },
         // Declaração de método de interface Java / TS (ex: UserDto map(User user); ou assinatura multilinha UserDto toDto(...)
-        { re: /^(?:public\s+|protected\s+|default\s+|static\s+|abstract\s+)*[A-Za-z0-9_$<>[\],.?\s]+?\s+([A-Za-z0-9_$]+)\s*\(/, g: 1 },
+        { re: /^(?:(?:public|protected|default|static|abstract)\s+)*[A-Za-z0-9_$<>[\].,?]+\s+([A-Za-z0-9_$]+)\s*\(/, g: 1 },
       ];
 
       for (const pattern of methodPatterns) {
@@ -931,21 +931,11 @@ class SymbolIndexer {
       }
     }
 
-    // 2. Fallback: se o mapa global não tem a definição, busca diretamente no arquivo atual e no workspace
+    // 2. Fallback: se o mapa global não tem a definição, busca diretamente no arquivo atual
     if (candidates.length === 0 && normCurrent && fs.existsSync(normCurrent)) {
       const localMatches = this.searchDefinitionInFile(normCurrent, symbolName);
       if (localMatches.length > 0) {
         candidates = localMatches;
-      } else if (this.projectPath) {
-        const projFiles = this.scanDir(this.projectPath);
-        for (const f of projFiles) {
-          if (f === normCurrent) continue;
-          const found = this.searchDefinitionInFile(f, symbolName);
-          if (found.length > 0) {
-            candidates.push(...found);
-            break;
-          }
-        }
       }
     }
 
