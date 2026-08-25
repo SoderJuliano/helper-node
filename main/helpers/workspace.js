@@ -123,7 +123,7 @@ helpers.pushTreeNode = function(entries, absPath, name, depth, isDir, entryNames
   if (isDir) {
     const javaType = detectJavaProjectType(absPath, entryNames);
     if (javaType) {
-      entries.push({ path: absPath, name: 'Dependencies', depth: depth + 1, isDir: true, lazy: true, synthetic: 'java-deps', javaType });
+      entries.push({ path: absPath + '::dependencies', projectRoot: absPath, name: 'Dependencies', depth: depth + 1, isDir: true, lazy: true, synthetic: 'java-deps', javaType });
     }
   }
   return heavy;
@@ -178,7 +178,7 @@ helpers.collectProjectEntries = function(root, limit = 1500, perTopLevelBudget =
 
   const rootJavaType = detectJavaProjectType(root, topNamesSet);
   if (rootJavaType) {
-    entries.push({ path: root, name: 'Dependencies', depth: 0, isDir: true, lazy: true, synthetic: 'java-deps', javaType: rootJavaType });
+    entries.push({ path: root + '::dependencies', projectRoot: root, name: 'Dependencies', depth: 0, isDir: true, lazy: true, synthetic: 'java-deps', javaType: rootJavaType });
   }
 
   for (const dirent of topLevel) {
@@ -215,7 +215,7 @@ helpers.collectDirChildren = function(dirPath, limit = 2000) {
       // Checa se este subdiretório tem arquivos Maven/Gradle lendo apenas os itens do diretório se necessário
       const javaType = detectJavaProjectType(absPath);
       if (javaType) {
-        entries.push({ path: absPath, name: 'Dependencies', depth: 1, isDir: true, lazy: true, synthetic: 'java-deps', javaType });
+        entries.push({ path: absPath + '::dependencies', projectRoot: absPath, name: 'Dependencies', depth: 1, isDir: true, lazy: true, synthetic: 'java-deps', javaType });
       }
     }
   }
