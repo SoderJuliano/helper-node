@@ -298,16 +298,46 @@
             white-space: nowrap;
             line-height: 1.3;
         }
+        /* Cores de Git na árvore de arquivos:
+           - Vermelho (#ff6b6b): arquivos modificados / unstaged / untracked com mudanças pendentes de stage
+           - Verde (#50fa7b): arquivos já adicionados ao stage (git add)
+           - Normal (#b8bec8 / #e3e3e6): arquivos sem alterações
+        */
+        .ws-tree-node.file:not(.git-modified):not(.git-staged) {
+            color: var(--text-2, #b8bec8);
+        }
+        .ws-tree-node.file:not(.git-modified):not(.git-staged) .ws-tree-label {
+            color: inherit;
+        }
+
         .ws-tree-node.git-modified,
         .ws-tree-node.git-modified .ws-tree-label,
         .ws-tree-node.git-modified .ws-tree-ic {
             color: #ff6b6b !important; /* Vermelho: modificado ainda não add / unstaged / untracked */
         }
+        .ws-tree-node.git-modified:hover,
+        .ws-tree-node.git-modified:hover .ws-tree-label {
+            color: #ff8585 !important;
+        }
+        .ws-tree-node.ws-tree-active-file.git-modified,
+        .ws-tree-node.ws-tree-active-file.git-modified .ws-tree-label {
+            color: #ff6b6b !important;
+        }
+
         .ws-tree-node.git-staged,
         .ws-tree-node.git-staged .ws-tree-label,
         .ws-tree-node.git-staged .ws-tree-ic {
-            color: #73c991 !important; /* Verde: já adicionado ao git (staged) */
+            color: #50fa7b !important; /* Verde: já adicionado ao git (staged) */
         }
+        .ws-tree-node.git-staged:hover,
+        .ws-tree-node.git-staged:hover .ws-tree-label {
+            color: #69ff94 !important;
+        }
+        .ws-tree-node.ws-tree-active-file.git-staged,
+        .ws-tree-node.ws-tree-active-file.git-staged .ws-tree-label {
+            color: #50fa7b !important;
+        }
+
         .ws-tree-node.git-dir-modified > .ws-tree-ic {
             color: #e5c07b !important;
         }

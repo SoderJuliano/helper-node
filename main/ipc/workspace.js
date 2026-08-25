@@ -193,13 +193,14 @@ ipcMain.handle("get-project-git-status", async () => {
             let status = 'M';
             const x = code[0];
             const y = code[1];
-            if ((x === 'A' || x === 'M' || x === 'R' || x === 'C') && (y === ' ' || y === '' || y === undefined)) {
+            if ((x === 'A' || x === 'M' || x === 'R' || x === 'C' || x === 'D') && (y === ' ' || y === '' || y === undefined)) {
               status = 'A'; // Staged (git add já feito) -> Verde
             } else {
-              status = 'M'; // Modificado ainda não adicionado / untracked -> Vermelho
+              status = 'M'; // Modificado / untracked / unstaged ainda não adicionado -> Vermelho
             }
 
             modifiedFiles[relPath] = status;
+            modifiedFiles[relPath.toLowerCase()] = status;
             count++;
 
             const parts = relPath.split('/');
@@ -207,6 +208,7 @@ ipcMain.handle("get-project-git-status", async () => {
             for (let i = 0; i < parts.length - 1; i++) {
               currentParent = currentParent ? `${currentParent}/${parts[i]}` : parts[i];
               modifiedDirs[currentParent] = true;
+              modifiedDirs[currentParent.toLowerCase()] = true;
             }
           }
           resolve({ isGit: true, changesCount: count, modifiedFiles, modifiedDirs });

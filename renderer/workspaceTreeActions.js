@@ -242,25 +242,33 @@
             function applyGitStatusClasses() {
                 if (!wsTree) return;
                 const projectPath = wsProjectMain ? wsProjectMain.dataset.path : '';
-                const mods = currentGitStatus.modifiedFiles || {};
-                const dirs = currentGitStatus.modifiedDirs || {};
+                const gitStatusObj = window.currentGitStatus || currentGitStatus || {};
+                const mods = gitStatusObj.modifiedFiles || {};
+                const dirs = gitStatusObj.modifiedDirs || {};
+                const normProject = (projectPath || '').replace(/\\/g, '/').replace(/\/+$/, '');
+
                 for (const node of wsTree.querySelectorAll('.ws-tree-node[data-path]')) {
-                    const abs = node.dataset.path;
-                    let rel = abs;
-                    if (projectPath && rel.startsWith(projectPath)) {
-                        rel = rel.substring(projectPath.length).replace(/^[/\\]+/, '').replace(/\\/g, '/');
-                    } else {
-                        rel = rel.replace(/\\/g, '/');
+                    const abs = node.dataset.path || '';
+                    const normAbs = abs.replace(/\\/g, '/');
+                    let rel = normAbs;
+                    if (normProject && normAbs.toLowerCase().startsWith(normProject.toLowerCase())) {
+                        rel = normAbs.substring(normProject.length).replace(/^\/+/, '');
                     }
                     const isDir = node.classList.contains('dir');
                     node.classList.remove('git-modified', 'git-staged', 'git-untracked', 'git-dir-modified');
                     if (isDir) {
-                        if (dirs[rel]) node.classList.add('git-dir-modified');
-                    } else if (mods[rel]) {
-                        node.classList.add(mods[rel] === 'A' ? 'git-staged' : 'git-modified');
+                        if (dirs[rel] || dirs[rel.toLowerCase()]) {
+                            node.classList.add('git-dir-modified');
+                        }
+                    } else {
+                        const status = mods[rel] || mods[rel.toLowerCase()];
+                        if (status) {
+                            node.classList.add(status === 'A' ? 'git-staged' : 'git-modified');
+                        }
                     }
                 }
             }
+            window.applyGitStatusClasses = applyGitStatusClasses;
 
             let refreshTreeTimeout = null;
             function triggerTreeRefresh() {
@@ -726,6 +734,7 @@
 
     // Expose functions
     window.refreshProjectTree = refreshProjectTree;
+    window.applyGitStatusClasses = applyGitStatusClasses;
     window.triggerTreeRefresh = triggerTreeRefresh;
     window.showTreeContextMenu = showTreeContextMenu;
     window.showAttachMenu = showAttachMenu;

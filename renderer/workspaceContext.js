@@ -347,7 +347,9 @@ function fileIconHtml(name) {
             }
  // renderWorkspacePanel & projectMenu event click
 
-            let currentGitStatus = { isGit: false, changesCount: 0, modifiedFiles: {}, modifiedDirs: {} };
+            // Sincroniza estado de status e conflitos git
+            currentGitStatus = { isGit: false, changesCount: 0, modifiedFiles: {}, modifiedDirs: {} };
+            window.currentGitStatus = currentGitStatus;
             let currentGitConflictStatus = { hasConflicts: false, count: 0, conflictFiles: [] };
 
             async function fetchAndUpdateGitStatus() {
@@ -356,6 +358,7 @@ function fileIconHtml(name) {
                         const res = await window.electronAPI.getProjectGitStatus();
                         if (res) {
                             currentGitStatus = res;
+                            window.currentGitStatus = res;
                         }
                     } catch (e) {
                         console.warn('Erro ao buscar git status:', e);
@@ -374,6 +377,9 @@ function fileIconHtml(name) {
                     }
                 }
                 updateGitStatusUi();
+                if (typeof window.applyGitStatusClasses === 'function') {
+                    window.applyGitStatusClasses();
+                }
             }
 
             function updateGitStatusUi() {

@@ -250,10 +250,12 @@ var creatingFolderParent = null;
             const isMatch = isNameMatch || isContentMatch;
             
             let relPath = e.path;
-            if (projectPath && relPath.startsWith(projectPath)) {
-                relPath = relPath.substring(projectPath.length).replace(/^[/\\]+/, '').replace(/\\/g, '/');
+            const normPath = (e.path || '').replace(/\\/g, '/');
+            const normProject = (projectPath || '').replace(/\\/g, '/').replace(/\/+$/, '');
+            if (normProject && normPath.toLowerCase().startsWith(normProject.toLowerCase())) {
+                relPath = normPath.substring(normProject.length).replace(/^\/+/, '');
             } else {
-                relPath = relPath.replace(/\\/g, '/');
+                relPath = normPath;
             }
 
             let gitClass = '';
@@ -261,16 +263,20 @@ var creatingFolderParent = null;
             let featuredClass = '';
             let dirIconHtml = TREE_DIR_IC;
 
+            const gitStatusObj = window.currentGitStatus || currentGitStatus || {};
+
             if (e.synthetic) {
                 // Nó sintético (Dependencies/jar/classe/status) — nunca tem cor de
                 // git, nunca é "featured": não existe no disco do projeto.
             } else if (!e.isDir) {
-                gitStatus = currentGitStatus.modifiedFiles ? currentGitStatus.modifiedFiles[relPath] : null;
+                const mods = gitStatusObj.modifiedFiles || {};
+                gitStatus = mods[relPath] || mods[relPath.toLowerCase()] || null;
                 if (gitStatus) {
                     gitClass = (gitStatus === 'A') ? ' git-staged' : ' git-modified';
                 }
             } else {
-                if (currentGitStatus.modifiedDirs && currentGitStatus.modifiedDirs[relPath]) {
+                const dirs = gitStatusObj.modifiedDirs || {};
+                if (dirs[relPath] || dirs[relPath.toLowerCase()]) {
                     gitClass = ' git-dir-modified';
                 }
 

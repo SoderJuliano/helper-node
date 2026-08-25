@@ -227,9 +227,9 @@
             background: rgba(100, 200, 255, 0.16) !important;
             border-left: 2px solid var(--accent-2, #7aa2f7) !important;
             border-radius: 0 4px 4px 0;
-            color: var(--text, #fff) !important;
+            color: var(--text, #fff);
         }
-        .ws-tree-node.ws-tree-active-file .ws-tree-label {
+        .ws-tree-node.ws-tree-active-file:not(.git-modified):not(.git-staged) .ws-tree-label {
             color: var(--text, #fff) !important;
             font-weight: 600 !important;
         }
