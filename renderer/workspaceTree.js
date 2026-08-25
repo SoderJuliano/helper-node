@@ -431,13 +431,36 @@ var creatingFolderParent = null;
                     saved = true;
                     const name = input.value.trim();
                     if (name) {
-                        const separator = parentDirPath.includes('\\') ? '\\' : '/';
-                        const filePath = parentDirPath + (parentDirPath.endsWith(separator) ? '' : separator) + name;
-                        const res = await window.electronAPI.createFile(filePath);
+                        const wsProjectMain = document.getElementById('ws-project-main');
+                        const projectRoot = (wsProjectMain && wsProjectMain.dataset.path) || '';
+                        let targetFilePath = '';
+                        let initialContent = '';
+
+                        if (name.endsWith('.java') || (name.includes('.') && !name.endsWith('/'))) {
+                            if (typeof window.resolveJavaClassTarget === 'function') {
+                                const resolved = window.resolveJavaClassTarget(parentDirPath, name, projectRoot);
+                                if (resolved && resolved.typeName) {
+                                    targetFilePath = resolved.filePath;
+                                    initialContent = typeof window.generateJavaTemplate === 'function'
+                                        ? window.generateJavaTemplate(resolved.packageName, resolved.typeName, 'class')
+                                        : '';
+                                }
+                            }
+                        }
+
+                        if (!targetFilePath) {
+                            const separator = parentDirPath.includes('\\') ? '\\' : '/';
+                            targetFilePath = parentDirPath + (parentDirPath.endsWith(separator) ? '' : separator) + name;
+                        }
+
+                        const res = await window.electronAPI.createFile(targetFilePath, initialContent);
                         if (res.ok) {
                             creatingFileParent = null;
+                            if (window.expandedDirPaths) {
+                                window.expandedDirPaths.add(parentDirPath);
+                            }
                             await refreshProjectTree();
-                            openFileViewer(filePath);
+                            openFileViewer(targetFilePath);
                         } else {
                             if (typeof showToast === 'function') showToast('Erro ao criar: ' + res.error);
                             creatingFileParent = null;

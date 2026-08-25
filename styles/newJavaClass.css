@@ -1,0 +1,235 @@
+/* === Modal New Java Class (IntelliJ IDEA Style) === */
+.java-class-modal-backdrop {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background: rgba(0, 0, 0, 0.65) !important;
+  backdrop-filter: blur(2px) !important;
+  z-index: 100000 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  -webkit-app-region: no-drag !important;
+  pointer-events: auto !important;
+  animation: javaModalFadeIn 0.15s ease-out;
+}
+
+@keyframes javaModalFadeIn {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.java-class-modal {
+  background: #1e1f22 !important;
+  border: 1px solid #3c3f41 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05) !important;
+  width: 440px !important;
+  max-width: 90vw !important;
+  display: flex !important;
+  flex-direction: column !important;
+  color: #dfe1e5 !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  overflow: hidden !important;
+  -webkit-app-region: no-drag !important;
+}
+
+.java-class-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 12px 16px !important;
+  background: #2b2d30 !important;
+  border-bottom: 1px solid #3c3f41 !important;
+}
+
+.java-class-title {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: #dfe1e5 !important;
+}
+
+.java-class-icon {
+  width: 16px !important;
+  height: 16px !important;
+  color: #f87171 !important;
+}
+
+.java-class-btn-close {
+  background: transparent !important;
+  border: none !important;
+  color: #8c9096 !important;
+  cursor: pointer !important;
+  font-size: 16px !important;
+  line-height: 1 !important;
+  padding: 4px !important;
+  border-radius: 4px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: all 0.15s ease !important;
+}
+
+.java-class-btn-close:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #ffffff !important;
+}
+
+.java-class-body {
+  padding: 16px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+}
+
+.java-class-input-wrap {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+}
+
+.java-class-label {
+  font-size: 11.5px !important;
+  font-weight: 500 !important;
+  color: #9da0a8 !important;
+}
+
+.java-class-input {
+  background: #141517 !important;
+  border: 1px solid #3c3f41 !important;
+  border-radius: 5px !important;
+  color: #ffffff !important;
+  font-family: "JetBrains Mono", Consolas, monospace !important;
+  font-size: 13px !important;
+  padding: 7px 10px !important;
+  outline: none !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+.java-class-input:focus {
+  border-color: #3574f0 !important;
+  box-shadow: 0 0 0 2px rgba(53, 116, 240, 0.25) !important;
+}
+
+.java-class-preview {
+  font-size: 11.5px !important;
+  font-family: "JetBrains Mono", Consolas, monospace !important;
+  color: #6b7280 !important;
+  word-break: break-all !important;
+  line-height: 1.4 !important;
+  min-height: 16px !important;
+}
+
+.java-class-preview span.pkg-name {
+  color: #4ade80 !important;
+}
+
+.java-class-preview span.type-name {
+  color: #60a5fa !important;
+  font-weight: 600 !important;
+}
+
+/* Tipos: Class, Interface, Enum, Record, Annotation */
+.java-class-types-group {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  flex-wrap: wrap !important;
+}
+
+.java-class-type-chip {
+  background: #2b2d30 !important;
+  border: 1px solid #3c3c3c !important;
+  border-radius: 4px !important;
+  padding: 4px 8px !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  color: #9da0a8 !important;
+  cursor: pointer !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  transition: all 0.15s ease !important;
+}
+
+.java-class-type-chip:hover {
+  background: #35373b !important;
+  color: #dfe1e5 !important;
+}
+
+.java-class-type-chip.selected {
+  background: #2e436e !important;
+  border-color: #3574f0 !important;
+  color: #ffffff !important;
+}
+
+.java-class-type-badge {
+  font-size: 9.5px !important;
+  padding: 1px 3px !important;
+  border-radius: 2px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+}
+
+.badge-class { background: rgba(53, 116, 240, 0.25); color: #60a5fa; }
+.badge-interface { background: rgba(74, 222, 128, 0.2); color: #4ade80; }
+.badge-enum { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+.badge-record { background: rgba(168, 85, 247, 0.2); color: #c084fc; }
+.badge-annotation { background: rgba(236, 72, 153, 0.2); color: #f472b6; }
+
+.java-class-footer {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 10px 16px !important;
+  background: #2b2d30 !important;
+  border-top: 1px solid #3c3f41 !important;
+}
+
+.java-class-hints {
+  font-size: 11px !important;
+  color: #6b7280 !important;
+}
+
+.java-class-actions {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.java-class-btn {
+  padding: 5px 12px !important;
+  border-radius: 4px !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  border: 1px solid transparent !important;
+  transition: all 0.15s ease !important;
+}
+
+.java-class-btn-cancel {
+  background: #35373b !important;
+  border-color: #3c3f41 !important;
+  color: #dfe1e5 !important;
+}
+
+.java-class-btn-cancel:hover {
+  background: #3e4146 !important;
+}
+
+.java-class-btn-create {
+  background: #3574f0 !important;
+  color: #ffffff !important;
+}
+
+.java-class-btn-create:hover {
+  background: #3068d8 !important;
+  box-shadow: 0 0 8px rgba(53, 116, 240, 0.4) !important;
+}

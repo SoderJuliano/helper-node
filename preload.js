@@ -198,7 +198,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getFileDiff: (payload) => ipcRenderer.invoke("get-file-diff", payload),
   renameItem: (oldPath, newPath) => ipcRenderer.invoke("workspace:rename-item", { oldPath, newPath }),
   moveItem: (srcPath, destPath) => ipcRenderer.invoke("workspace:move-item", { srcPath, destPath }),
-  createFile: (filePath) => ipcRenderer.invoke("workspace:create-file", { filePath }),
+  createFile: (filePath, content = "") => ipcRenderer.invoke("workspace:create-file", { filePath, content }),
   createDir: (dirPath) => ipcRenderer.invoke("workspace:create-dir", { dirPath }),
   deleteItems: (paths) => ipcRenderer.invoke("workspace:delete-items", { paths }),
   pickParentDir: () => ipcRenderer.invoke("workspace:pick-parent-dir"),

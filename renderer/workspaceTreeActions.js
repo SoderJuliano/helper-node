@@ -333,7 +333,15 @@
                     menu.appendChild(hrApp);
                 }
                 
+                const SVGI_JAVA = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; color:#f87171;"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>';
+
                 if (item.isRoot || item.isDir) {
+                    menu.appendChild(mkItem(SVGI_JAVA, 'Nova Classe Java...', () => {
+                        if (typeof window.openNewJavaClassDialog === 'function') {
+                            window.openNewJavaClassDialog(item.path);
+                        }
+                    }));
+
                     menu.appendChild(mkItem(SVGI_NEW_FILE, 'Novo Arquivo', () => {
                         creatingFileParent = item.path;
                         if (item.isDir) {
@@ -353,6 +361,13 @@
                     const hr0 = document.createElement('div');
                     hr0.style.cssText = 'height:1px; background:var(--border, #2d2d38); margin:4px 0;';
                     menu.appendChild(hr0);
+                } else if (!item.isDir && item.path) {
+                    const parentDir = item.path.replace(/[/\\][^/\\]+$/, '');
+                    menu.appendChild(mkItem(SVGI_JAVA, 'Nova Classe Java neste Pacote...', () => {
+                        if (typeof window.openNewJavaClassDialog === 'function') {
+                            window.openNewJavaClassDialog(parentDir);
+                        }
+                    }));
                 }
 
                 if (!item.isRoot) {

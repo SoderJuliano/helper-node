@@ -129,7 +129,7 @@ ipcMain.handle("workspace:move-item", async (event, { srcPath, destPath }) => {
   }
 });
 
-ipcMain.handle("workspace:create-file", async (event, { filePath }) => {
+ipcMain.handle("workspace:create-file", async (event, { filePath, content = "" }) => {
   try {
     if (fs2.existsSync(filePath)) {
       return { ok: false, error: "Arquivo já existe." };
@@ -138,7 +138,7 @@ ipcMain.handle("workspace:create-file", async (event, { filePath }) => {
     if (!fs2.existsSync(dir)) {
       fs2.mkdirSync(dir, { recursive: true });
     }
-    fs2.writeFileSync(filePath, "", "utf8");
+    fs2.writeFileSync(filePath, content || "", "utf8");
     return { ok: true };
   } catch (e) {
     console.error("[workspace:create-file] erro:", e.message);
