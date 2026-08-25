@@ -234,15 +234,38 @@ runner.on('data', (chunk) => {
 const isWin = process.platform === 'win32';
 const testScript = isWin ? 'test-dummy.bat' : 'test-dummy.sh';
 const testScriptPath = path.join(__dirname, testScript);
-const scriptContent = isWin ? '@echo off\r\necho RUNNER_TEST_OUTPUT_OK\r\n' : '#!/bin/sh\necho RUNNER_TEST_OUTPUT_OK\n';
+const scriptContent = isWin
+  ? '@echo off\r\necho PaymentServiceTest > testProcessPayment() PASSED\r\necho RUNNER_TEST_OUTPUT_OK\r\n'
+  : '#!/bin/sh\necho "PaymentServiceTest > testProcessPayment() PASSED"\necho RUNNER_TEST_OUTPUT_OK\n';
 fs.writeFileSync(testScriptPath, scriptContent, 'utf8');
 if (!isWin) fs.chmodSync(testScriptPath, 0o755);
+
+// Cria relatório XML de teste simulado
+const mockReportsDir = path.join(__dirname, 'build', 'test-results', 'test');
+fs.mkdirSync(mockReportsDir, { recursive: true });
+const mockXmlReport = `<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.example.demo.service.PaymentServiceTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-08-25T19:00:00" hostname="DESKTOP" time="0.125">
+  <testcase name="testProcessPayment()" classname="com.example.demo.service.PaymentServiceTest" time="0.085"/>
+  <testcase name="testWithParams(String)" classname="com.example.demo.service.PaymentServiceTest" time="0.040"/>
+</testsuite>`;
+fs.writeFileSync(path.join(mockReportsDir, 'TEST-com.example.demo.service.PaymentServiceTest.xml'), mockXmlReport, 'utf8');
+
+const receivedTestEvents = [];
+let receivedTestSummary = null;
+
+runner.on('test-event', (evt) => {
+  receivedTestEvents.push(evt);
+});
+
+runner.on('test-summary', (sum) => {
+  receivedTestSummary = sum;
+});
 
 runner.start({
   executable: testScriptPath,
   args: [],
   cwd: __dirname,
-  runMeta: { displayName: 'DummyTest' },
+  runMeta: { kind: 'test-class', displayName: 'DummyTest' },
 });
 
 assert.strictEqual(runner.getStatus().status, 'running');
@@ -250,9 +273,15 @@ assert.strictEqual(runner.getStatus().status, 'running');
 runner.on('exit', ({ code }) => {
   try {
     fs.unlinkSync(testScriptPath);
+    fs.rmSync(path.join(__dirname, 'build'), { recursive: true, force: true });
   } catch (_) {}
   assert.strictEqual(code, 0);
   assert(outputCollected.includes('RUNNER_TEST_OUTPUT_OK'));
+  assert(receivedTestEvents.length > 0, 'Deve ter recebido eventos de teste');
+  assert(receivedTestEvents.some(e => e.methodName === 'testProcessPayment' && e.status === 'passed'));
+  assert(receivedTestSummary !== null, 'Deve ter recebido resumo de testes');
+  assert.strictEqual(receivedTestSummary.passed, 2, '2 testes passaram no resumo XML');
+  console.log(`  ok   RunnerProcess capturou ${receivedTestEvents.length} eventos de teste e gerou resumo: ${receivedTestSummary.passed}✓ passados`);
   console.log('  ok   RunnerProcess spawn e streaming executaram com sucesso sem ENOENT');
   console.log('\nTodos os testes unitários do App Runner passaram com sucesso! 🎉\n');
 });

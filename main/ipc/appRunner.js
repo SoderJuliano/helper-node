@@ -32,6 +32,14 @@ module.exports = function registerAppRunnerIpc() {
     } catch (_) {}
   });
 
+  runner.on('test-summary', (summaryData) => {
+    try {
+      if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+        state.mainWindow.webContents.send('app-runner-test-summary', summaryData);
+      }
+    } catch (_) {}
+  });
+
   runner.on('app-event', (appData) => {
     try {
       if (state.mainWindow && !state.mainWindow.isDestroyed()) {

@@ -162,7 +162,7 @@ class BuildToolDetector {
           }
         }
       } else if (kind === 'test-all') {
-        args.push('test', '--info', '--console=plain');
+        args.push('test', '--rerun-tasks', '--info', '--console=plain');
         if (activeProfiles) {
           args.push(`-Dspring.profiles.active=${activeProfiles}`);
         }
@@ -172,7 +172,7 @@ class BuildToolDetector {
         }
       } else if (kind === 'test-class') {
         const pattern = target.testClass || '*';
-        args.push('test', '--tests', pattern, '--info', '--console=plain');
+        args.push('test', '--rerun-tasks', '--tests', pattern, '--info', '--console=plain');
         if (activeProfiles) {
           args.push(`-Dspring.profiles.active=${activeProfiles}`);
         }
@@ -184,7 +184,7 @@ class BuildToolDetector {
         const pattern = target.testClass && target.testMethod
           ? `${target.testClass}.${target.testMethod}`
           : (target.testMethod || '*');
-        args.push('test', '--tests', pattern, '--info', '--console=plain');
+        args.push('test', '--rerun-tasks', '--tests', pattern, '--info', '--console=plain');
         if (activeProfiles) {
           args.push(`-Dspring.profiles.active=${activeProfiles}`);
         }

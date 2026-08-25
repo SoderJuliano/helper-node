@@ -23,7 +23,7 @@
 
     addTestEvent(event) {
       if (!event || !event.methodName) return;
-      const key = `${event.className}.${event.methodName}`;
+      const key = `${event.className || 'Test'}.${event.methodName}`;
       const status = (event.status || 'passed').toLowerCase();
 
       const prev = this.tests.get(key);
@@ -50,7 +50,7 @@
       if (!summary) return;
       this.counts.failed = summary.failures || 0;
       this.counts.skipped = summary.skipped || 0;
-      this.counts.passed = Math.max(0, (summary.total || 0) - this.counts.failed - this.counts.skipped);
+      this.counts.passed = summary.passed != null ? summary.passed : Math.max(0, (summary.total || 0) - this.counts.failed - this.counts.skipped);
       this._updateSummary();
     }
 
@@ -61,8 +61,8 @@
         this.countEl.textContent = '0 testes';
         return;
       }
-      this.countEl.innerHTML = `<span style="color:#4ade80;">${this.counts.passed}✓</span> ` +
-                               (this.counts.failed > 0 ? `<span style="color:#f87171;">${this.counts.failed}✗</span> ` : '') +
+      this.countEl.innerHTML = `<span style="color:#4ade80;font-weight:600;">${this.counts.passed}✓</span> ` +
+                               (this.counts.failed > 0 ? `<span style="color:#f87171;font-weight:600;">${this.counts.failed}✗</span> ` : '') +
                                (this.counts.skipped > 0 ? `<span style="color:#94a3b8;">${this.counts.skipped}↷</span> ` : '');
     }
 
@@ -74,8 +74,9 @@
         const item = document.createElement('div');
         item.className = `app-runner-test-item ${test.status}`;
         const ic = test.status === 'passed' ? ICON_PASS : (test.status === 'failed' ? ICON_FAIL : ICON_SKIP);
-        item.innerHTML = `${ic}<span>${test.methodName}</span>`;
-        item.title = `${test.className}.${test.methodName} (${test.status})`;
+        const timeHtml = test.duration ? `<span style="margin-left:auto;font-size:10px;opacity:0.6;">${typeof test.duration === 'number' ? (test.duration >= 1 ? test.duration.toFixed(2) + 's' : Math.round(test.duration * 1000) + 'ms') : test.duration}</span>` : '';
+        item.innerHTML = `${ic}<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${test.methodName}</span>${timeHtml}`;
+        item.title = `${test.className ? test.className + '.' : ''}${test.methodName} (${test.status})${test.failureMessage ? '\n' + test.failureMessage : ''}`;
         this.containerEl.appendChild(item);
       }
     }

@@ -7,6 +7,90 @@ const path = require('path');
 const fs = require('fs');
 const EventEmitter = require('events');
 
+function findXmlTestReports(dir) {
+  const reports = [];
+  const searchDirs = [
+    path.join(dir, 'build', 'test-results', 'test'),
+    path.join(dir, 'build', 'test-results'),
+    path.join(dir, 'target', 'surefire-reports'),
+    path.join(dir, 'target', 'failsafe-reports'),
+  ];
+
+  try {
+    const subEntries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const sub of subEntries) {
+      if (sub.isDirectory() && !sub.name.startsWith('.') && sub.name !== 'node_modules') {
+        searchDirs.push(
+          path.join(dir, sub.name, 'build', 'test-results', 'test'),
+          path.join(dir, sub.name, 'target', 'surefire-reports')
+        );
+      }
+    }
+  } catch (_) {}
+
+  for (const sDir of searchDirs) {
+    if (fs.existsSync(sDir)) {
+      try {
+        const files = fs.readdirSync(sDir);
+        for (const file of files) {
+          if (file.startsWith('TEST-') && file.endsWith('.xml')) {
+            reports.push(path.join(sDir, file));
+          }
+        }
+      } catch (_) {}
+    }
+  }
+  return reports;
+}
+
+function parseJUnitXmlReport(filePath) {
+  try {
+    const content = fs.readFileSync(filePath, 'utf8');
+    const testcases = [];
+    const caseRe = /<testcase\s+([^>]+?)(\/>|>([\s\S]*?)<\/testcase>)/g;
+    let match;
+    while ((match = caseRe.exec(content)) !== null) {
+      const attrsStr = match[1];
+      const body = match[3] || '';
+
+      const nameMatch = attrsStr.match(/name="([^"]+)"/);
+      const classMatch = attrsStr.match(/classname="([^"]+)"/);
+      const timeMatch = attrsStr.match(/time="([^"]+)"/);
+
+      if (nameMatch) {
+        let rawName = nameMatch[1];
+        const cleanMethodName = rawName.replace(/\(\)$/, '');
+        const className = classMatch ? classMatch[1].split('.').pop() : '';
+        const fullClassName = classMatch ? classMatch[1] : '';
+        const duration = timeMatch ? parseFloat(timeMatch[1]) : 0;
+
+        let status = 'passed';
+        let failureMessage = '';
+
+        if (/<failure\b|<error\b/i.test(body)) {
+          status = 'failed';
+          const msgMatch = body.match(/message="([^"]*)"/);
+          failureMessage = msgMatch ? msgMatch[1] : 'Test failed';
+        } else if (/<skipped\b/i.test(body)) {
+          status = 'skipped';
+        }
+
+        testcases.push({
+          methodName: cleanMethodName,
+          className,
+          fullClassName,
+          status,
+          duration,
+          failureMessage
+        });
+      }
+    }
+    return testcases;
+  } catch (_) {
+    return [];
+  }
+}
+
 class RunnerProcess extends EventEmitter {
   constructor() {
     super();
@@ -149,6 +233,11 @@ class RunnerProcess extends EventEmitter {
         this._proc = null;
         this._pid = null;
 
+        // Se foi execução de teste, lê os relatórios XML gerados pelo Gradle/Maven
+        if (this._currentRun && this._currentRun.kind && this._currentRun.kind.startsWith('test')) {
+          this._loadAndEmitXmlTestResults();
+        }
+
         if (this._status !== 'stopped') {
           this._status = code === 0 ? 'completed' : 'error';
         }
@@ -184,33 +273,89 @@ class RunnerProcess extends EventEmitter {
     this.emit('data', text);
   }
 
+  _loadAndEmitXmlTestResults() {
+    if (!this._currentRun || !this._currentRun.cwd) return;
+    const projectDir = this._currentRun.cwd;
+    const startTime = this._currentRun.startedAt || 0;
+
+    const xmlFiles = findXmlTestReports(projectDir);
+    let totalTests = 0;
+    let passedCount = 0;
+    let failedCount = 0;
+    let skippedCount = 0;
+
+    for (const file of xmlFiles) {
+      try {
+        const stat = fs.statSync(file);
+        // Apenas relatórios gerados ou modificados nesta execução (com margem de 10s)
+        if (stat.mtimeMs >= startTime - 10000) {
+          const testcases = parseJUnitXmlReport(file);
+          for (const tc of testcases) {
+            totalTests++;
+            if (tc.status === 'passed') passedCount++;
+            else if (tc.status === 'failed') failedCount++;
+            else if (tc.status === 'skipped') skippedCount++;
+
+            this.emit('test-event', tc);
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (totalTests > 0) {
+      this.emit('test-summary', {
+        total: totalTests,
+        passed: passedCount,
+        failures: failedCount,
+        errors: 0,
+        skipped: skippedCount,
+      });
+    }
+  }
+
   _parseOutputForEvents(text) {
+    if (!text) return;
+
     // 1. Detecta Spring Boot porta (ex: Tomcat started on port 8080 (http))
     const portMatch = text.match(/(?:Tomcat|Jetty|Undertow|Netty)\s+started\s+on\s+port\(?s?\)?\s*[:\s]*(\d+)/i);
     if (portMatch) {
       this.emit('app-event', { type: 'server-started', port: parseInt(portMatch[1], 10) });
     }
 
-    // 2. Detecta resultados de testes JUnit (Gradle / Maven)
-    // Ex Gradle: MyTest > testMethod() PASSED / FAILED
-    const gradleTestMatch = text.match(/([a-zA-Z0-9_]+)\s*>\s*([a-zA-Z0-9_]+)\s*\(\)\s*(PASSED|FAILED|SKIPPED)/);
-    if (gradleTestMatch) {
-      this.emit('test-event', {
-        className: gradleTestMatch[1],
-        methodName: gradleTestMatch[2],
-        status: gradleTestMatch[3].toLowerCase(),
-      });
-    }
+    // 2. Divide em linhas completas e analisa cada uma em tempo real
+    const lines = text.split(/\r?\n/);
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
 
-    // Ex Maven: Tests run: 3, Failures: 0, Errors: 0, Skipped: 0
-    const mavenSummaryMatch = text.match(/Tests\s+run:\s*(\d+),\s*Failures:\s*(\d+),\s*Errors:\s*(\d+),\s*Skipped:\s*(\d+)/i);
-    if (mavenSummaryMatch) {
-      this.emit('test-summary', {
-        total: parseInt(mavenSummaryMatch[1], 10),
-        failures: parseInt(mavenSummaryMatch[2], 10),
-        errors: parseInt(mavenSummaryMatch[3], 10),
-        skipped: parseInt(mavenSummaryMatch[4], 10),
-      });
+      // Ex Gradle: DemoApplicationTests > contextLoads() PASSED
+      // Ex Gradle: com.example.demo.DemoTests > testMethod PASSED
+      // Ex Gradle: MyTest > testCase(String) FAILED
+      const gradleMatch = trimmed.match(/(?:.*>\s*)?([A-Za-z0-9_$]+)\s*>\s*([A-Za-z0-9_$<>[\]., -]+?)(?:\(\))?\s+(PASSED|FAILED|SKIPPED|SUCCESS|FAILURE)\b/i);
+      if (gradleMatch) {
+        const className = gradleMatch[1];
+        const methodName = gradleMatch[2].trim();
+        const rawStatus = gradleMatch[3].toUpperCase();
+        const status = (rawStatus === 'PASSED' || rawStatus === 'SUCCESS') ? 'passed' :
+                       (rawStatus === 'FAILED' || rawStatus === 'FAILURE') ? 'failed' : 'skipped';
+        this.emit('test-event', {
+          className,
+          methodName,
+          status,
+        });
+        continue;
+      }
+
+      // Ex Maven: Tests run: 3, Failures: 0, Errors: 0, Skipped: 0
+      const mavenSummaryMatch = trimmed.match(/Tests\s+run:\s*(\d+),\s*Failures:\s*(\d+),\s*Errors:\s*(\d+),\s*Skipped:\s*(\d+)/i);
+      if (mavenSummaryMatch) {
+        this.emit('test-summary', {
+          total: parseInt(mavenSummaryMatch[1], 10),
+          failures: parseInt(mavenSummaryMatch[2], 10),
+          errors: parseInt(mavenSummaryMatch[3], 10),
+          skipped: parseInt(mavenSummaryMatch[4], 10),
+        });
+      }
     }
   }
 

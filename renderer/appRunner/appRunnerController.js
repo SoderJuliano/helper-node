@@ -149,6 +149,13 @@
         });
       }
 
+      if (window.electronAPI.onAppRunnerTestSummary) {
+        window.electronAPI.onAppRunnerTestSummary((summaryData) => {
+          if (this.testViewer) this.testViewer.setSummary(summaryData);
+          if (this.testsSidebarEl) this.testsSidebarEl.style.display = 'flex';
+        });
+      }
+
       if (window.electronAPI.onAppRunnerAppEvent) {
         window.electronAPI.onAppRunnerAppEvent((appData) => {
           if (appData.type === 'server-started' && appData.port) {

@@ -334,6 +334,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onAppRunnerStreamChunk: (cb) => ipcRenderer.on("app-runner-stream-chunk", (event, chunk) => cb(chunk)),
   onAppRunnerStatusChanged: (cb) => ipcRenderer.on("app-runner-status-changed", (event, status) => cb(status)),
   onAppRunnerTestEvent: (cb) => ipcRenderer.on("app-runner-test-event", (event, data) => cb(data)),
+  onAppRunnerTestSummary: (cb) => ipcRenderer.on("app-runner-test-summary", (event, data) => cb(data)),
   onAppRunnerAppEvent: (cb) => ipcRenderer.on("app-runner-app-event", (event, data) => cb(data)),
   // === Git Conflict Resolver (3-Way Merge) ===
   gitConflictGetStatus: (projectPath) => ipcRenderer.invoke("git-conflict-get-status", projectPath),
