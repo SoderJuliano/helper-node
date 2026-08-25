@@ -15,8 +15,11 @@ const {
 } = require('../globals.js');
 
 helpers.computeLineDiff = function(oldText, newText) {
-  const a = String(oldText || "").split("\n");
-  const b = String(newText || "").split("\n");
+  const normOld = String(oldText || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const normNew = String(newText || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+  const a = normOld.split("\n");
+  const b = normNew.split("\n");
   const n = a.length, m = b.length;
   
   if (n > 2000 || m > 2000) {
@@ -26,16 +29,16 @@ helpers.computeLineDiff = function(oldText, newText) {
           const path = require('path');
           const tmpO = path.join(require('os').tmpdir(), 'old_diff_' + Date.now());
           const tmpN = path.join(require('os').tmpdir(), 'new_diff_' + Date.now());
-          fs.writeFileSync(tmpO, oldText || "");
-          fs.writeFileSync(tmpN, newText || "");
+          fs.writeFileSync(tmpO, normOld);
+          fs.writeFileSync(tmpN, normNew);
           let diffOut = "";
           try {
               require('child_process').execSync(`git diff --no-index -U99999 "${tmpO}" "${tmpN}"`, { encoding: 'utf8', maxBuffer: 1024*1024*50 });
           } catch(err) {
               diffOut = err.stdout || "";
           }
-          fs.unlinkSync(tmpO);
-          fs.unlinkSync(tmpN);
+          try { fs.unlinkSync(tmpO); } catch (_) {}
+          try { fs.unlinkSync(tmpN); } catch (_) {}
           
           if (diffOut) {
               const diffLines = diffOut.split('\n');

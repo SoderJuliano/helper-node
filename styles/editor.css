@@ -220,3 +220,95 @@
         .CodeMirror-scrollbar-filler {
             background: transparent !important;
         }
+
+        /* =====================================================================
+           AI DIFF INLINE HIGHLIGHTS & REVIEW BAR (Estilo VS Code / IntelliJ)
+           ===================================================================== */
+        .cm-ai-line-diff {
+            background: rgba(74, 222, 128, 0.08) !important;
+        }
+        .cm-ai-line-underline {
+            text-decoration: underline wavy rgba(74, 222, 128, 0.7) !important;
+            text-underline-offset: 3px;
+        }
+        .cm-ai-gutter-spark {
+            position: relative;
+        }
+        .cm-ai-gutter-spark::before {
+            content: '✨';
+            font-size: 10px;
+            position: absolute;
+            left: 2px;
+            top: 0;
+            opacity: 0.9;
+        }
+        .ai-inline-review-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #17221b;
+            border-left: 3px solid #4ade80;
+            border-top: 1px solid rgba(74, 222, 128, 0.25);
+            border-bottom: 1px solid rgba(74, 222, 128, 0.25);
+            padding: 3px 10px;
+            font-family: var(--font-ui, system-ui, sans-serif);
+            font-size: 11.5px;
+            color: #c8ffd0;
+            user-select: none;
+            margin: 2px 0 4px 0;
+            border-radius: 0 4px 4px 0;
+        }
+        .ai-inline-review-bar .ai-review-label {
+            font-weight: 500;
+            color: #4ade80;
+        }
+        .ai-inline-review-bar .ai-review-actions {
+            display: flex;
+            gap: 6px;
+            margin-left: auto;
+        }
+        .ai-inline-review-bar .ai-review-btn {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 4px;
+            color: #fff;
+            cursor: pointer;
+            font-size: 11px;
+            padding: 2px 8px;
+            transition: all 0.15s ease;
+        }
+        .ai-inline-review-bar .ai-review-btn.ai-review-accept:hover {
+            background: #22c55e;
+            border-color: #22c55e;
+            color: #fff;
+        }
+        .ai-inline-review-bar .ai-review-btn.ai-review-revert:hover {
+            background: #ef4444;
+            border-color: #ef4444;
+            color: #fff;
+        }
+
+        /* =====================================================================
+           INTELLIJ STYLE CODELENS (Fixed subtle usages hints)
+           ===================================================================== */
+        .intellij-codelens-line {
+            display: flex;
+            align-items: center;
+            height: 16px;
+            line-height: 16px;
+            font-family: var(--font-code, monospace);
+            font-size: 11px;
+            color: #7d8590;
+            user-select: none;
+            padding-left: 2px;
+            margin-bottom: 1px;
+        }
+        .intellij-codelens-hint {
+            cursor: pointer;
+            color: #7d8590;
+            transition: color 0.15s ease;
+        }
+        .intellij-codelens-hint:hover {
+            color: #58a6ff;
+            text-decoration: underline;
+        }

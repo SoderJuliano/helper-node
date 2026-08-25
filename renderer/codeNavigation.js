@@ -56,84 +56,55 @@
     }
   }
 
-  // Exibe o badge sutil [usado em N lugares] sobre o método quando o mouse fica parado
-  function showUsagesBadge(symbol, usages, pos, clientX, clientY) {
-    if (activeUsagesPopup) return; // Se a janela detalhada já está aberta, não mostra badge
-    clearTimeout(badgeHideTimer);
-    if (activeUsagesBadge) {
-      activeUsagesBadge.remove();
-      activeUsagesBadge = null;
+  let activeCodeLensWidgets = [];
+
+  function clearCodeLensWidgets() {
+    if (activeCodeLensWidgets.length) {
+      activeCodeLensWidgets.forEach(w => {
+        try { w.clear(); } catch (_) {}
+      });
+      activeCodeLensWidgets = [];
     }
+  }
 
-    const count = Array.isArray(usages) ? usages.length : 0;
-    const label = count === 1 ? '[1 uso]' : count === 0 ? '[0 usos]' : `[usado em ${count} lugares]`;
+  // CodeLens fixo e discreto sobre a declaração de métodos (estilo IntelliJ / VS Code)
+  async function updateCodeLensUsages(cm, filePath) {
+    clearCodeLensWidgets();
+    if (!cm || !filePath || !window.electronAPI || !window.electronAPI.codeNavFindUsages) return;
 
-    const badge = document.createElement('div');
-    badge.className = 'code-nav-usages-badge';
-    badge.title = 'Clique para ver onde este método é chamado';
-    
-    const textSpan = document.createElement('span');
-    textSpan.textContent = label;
+    try {
+      const items = await window.electronAPI.codeNavGetGutterInfo({ filePath });
+      if (!Array.isArray(items)) return;
 
-    const hintSpan = document.createElement('span');
-    hintSpan.className = 'badge-hint';
-    hintSpan.textContent = '(clique para ver)';
+      for (const item of items) {
+        if (!item.line || !item.symbol) continue;
+        const lineIdx = item.line - 1;
+        const usages = await window.electronAPI.codeNavFindUsages({ filePath, symbol: item.symbol });
+        const count = Array.isArray(usages) ? usages.length : 0;
+        if (count === 0) continue;
 
-    badge.appendChild(iconSpan);
-    badge.appendChild(textSpan);
-    badge.appendChild(hintSpan);
+        const lensEl = document.createElement('div');
+        lensEl.className = 'intellij-codelens-line';
 
-    badge.addEventListener('mouseenter', () => {
-      isMouseOverBadge = true;
-      clearTimeout(badgeHideTimer);
-    });
+        const hint = document.createElement('span');
+        hint.className = 'intellij-codelens-hint';
+        hint.textContent = `${count} ${count === 1 ? 'usage' : 'usages'}`;
+        hint.title = `Clique para ver ${count} ${count === 1 ? 'uso' : 'usos'} de ${item.symbol}()`;
 
-    badge.addEventListener('mouseleave', () => {
-      isMouseOverBadge = false;
-      scheduleBadgeRemoval(1500);
-    });
+        hint.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          showUsagesPopup(usages, item.symbol, ev.clientX, ev.clientY);
+        });
 
-    badge.addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      isMouseOverBadge = false;
-      clearTimeout(badgeHideTimer);
-      removeActiveUsagesBadge();
-      showUsagesPopup(usages, symbol, clientX, clientY);
-    });
-
-    document.body.appendChild(badge);
-    activeUsagesBadge = badge;
-
-    // Posicionar mais perto da palavra no CodeMirror (21px acima)
-    let x = clientX;
-    let y = clientY - 24;
-
-    if (activeCm && pos) {
-      try {
-        const coords = activeCm.charCoords(pos, 'window');
-        if (coords && coords.top > 0) {
-          x = coords.left;
-          y = coords.top - 21;
-        }
-      } catch (_) {}
-    }
-
-    const badgeWidth = badge.offsetWidth || 160;
-    if (x + badgeWidth > window.innerWidth) x = window.innerWidth - badgeWidth - 10;
-    if (y < 10) {
-      if (activeCm && pos) {
+        lensEl.appendChild(hint);
         try {
-          const coords = activeCm.charCoords(pos, 'window');
-          y = (coords.bottom || clientY) + 4;
-        } catch (_) { y = clientY + 18; }
-      } else { y = clientY + 18; }
+          const widget = cm.addLineWidget(lineIdx, lensEl, { above: true, coverGutter: false, noHScroll: true });
+          activeCodeLensWidgets.push(widget);
+        } catch (_) {}
+      }
+    } catch (err) {
+      console.warn('[codeNavigation] erro ao atualizar CodeLens usages:', err);
     }
-
-    badge.style.left = Math.max(10, x) + 'px';
-    badge.style.top = Math.max(10, y) + 'px';
-
-    // Tempo de carência de 2.5s para permitir mover o cursor até o badge sem ele sumir
-    scheduleBadgeRemoval(2500);
   }
 
   // Identifica se uma ocorrência de uso pertence a um arquivo, classe ou método de teste
@@ -490,12 +461,15 @@
     }, 0);
   }
 
-  // Atualiza as marcas do gutter para a aba aberta atual
+  // Atualiza as marcas do gutter e CodeLens para a aba aberta atual
   async function updateGutterMarkers(cm, filePath) {
     if (!cm || !filePath || !window.electronAPI || !window.electronAPI.codeNavGetGutterInfo) return;
 
     // Limpa calha anterior
     cm.clearGutter('code-nav-gutter');
+
+    // Atualiza os CodeLens fixos de usages estilo IntelliJ
+    updateCodeLensUsages(cm, filePath).catch(() => {});
 
     try {
       const items = await window.electronAPI.codeNavGetGutterInfo({ filePath });
@@ -1170,12 +1144,7 @@
 
     const handleMouseMove = (e, posPreCalculada) => {
       if (e.ctrlKey || e.metaKey) {
-        removeActiveUsagesBadge();
-        clearTimeout(usagesTimer);
-        lastHoveredSymbol = null;
-
         const item = getSymbolOrPathAtPos(cm, posPreCalculada);
-
         if (item && item.symbol && item.range) {
           clearHoverMarker();
           currentHoverMarker = cm.markText(item.range.anchor, item.range.head, {
@@ -1188,41 +1157,10 @@
       }
 
       clearHoverMarker();
-
-      // Busca de Usages sob Hover sem Ctrl — APENAS para métodos e assinaturas de métodos
-      const pos = posPreCalculada;
-      const item = getSymbolOrPathAtPos(cm, pos);
-
-      if (item && item.symbol && !item.isPath && isMethodAtPos(cm, pos, item.symbol)) {
-        if (item.symbol !== lastHoveredSymbol) {
-          lastHoveredSymbol = item.symbol;
-          clearTimeout(usagesTimer);
-          usagesTimer = setTimeout(async () => {
-            if (activeCm !== cm || !currentFilePath) return;
-            if (window.electronAPI && window.electronAPI.codeNavFindUsages) {
-              const usages = await window.electronAPI.codeNavFindUsages({ filePath: currentFilePath, symbol: item.symbol });
-              showUsagesBadge(item.symbol, usages, pos, e.clientX, e.clientY);
-            }
-          }, 300);
-        }
-      } else {
-        if (lastHoveredSymbol !== null) {
-          lastHoveredSymbol = null;
-          clearTimeout(usagesTimer);
-          if (!isMouseOverBadge) {
-            scheduleBadgeRemoval(1800);
-          }
-        }
-      }
     };
 
     wrapper.addEventListener('mouseleave', () => {
       clearHoverMarker();
-      lastHoveredSymbol = null;
-      clearTimeout(usagesTimer);
-      if (!isMouseOverBadge) {
-        scheduleBadgeRemoval(1500);
-      }
     });
 
     // Ctrl + MouseDown para disparar Go to Definition
