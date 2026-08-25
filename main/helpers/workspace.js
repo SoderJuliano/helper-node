@@ -154,8 +154,11 @@ helpers.walkTreeInto = function(entries, dirPath, depth, localBudget, globalLimi
     const isDir = dirent.isDirectory();
     const heavy = helpers.pushTreeNode(entries, absPath, dirent.name, depth, isDir, isDir ? null : namesSet);
     used += 1;
-    if (isDir && !heavy && depth < 2) {
-      used += helpers.walkTreeInto(entries, absPath, depth + 1, Math.min(localBudget - used, 150), globalLimit);
+    if (isDir && !heavy) {
+      const isSingleChild = dirEntries.length === 1 && dirent.isDirectory();
+      if (depth < 3 || (isSingleChild && depth < 8)) {
+        used += helpers.walkTreeInto(entries, absPath, depth + 1, Math.min(localBudget - used, 150), globalLimit);
+      }
     }
   }
   return used;

@@ -167,16 +167,56 @@
                     treeEntries = [];
                     return;
                 }
-                const collapsedMap = new Map();
-                treeEntries.forEach(e => {
-                    if (e.isDir) collapsedMap.set(e.path, e.collapsed);
-                });
-                treeEntries = res.entries.map((entry) => ({
+
+                const expPaths = window.expandedDirPaths || new Set();
+
+                // 1. Mapeia a estrutura base respeitando expandedDirPaths
+                let newEntries = res.entries.map((entry) => ({
                     ...entry,
-                    collapsed: entry.isDir
-                        ? (entry.lazy ? true : (collapsedMap.has(entry.path) ? collapsedMap.get(entry.path) : true))
-                        : false
+                    collapsed: entry.isDir ? !expPaths.has(entry.path) : false,
+                    loaded: false
                 }));
+
+                // 2. Para todos os diretórios que o usuário abriu (em expandedDirPaths):
+                // Carrega e insere os filhos recursivamente, garantindo que NENHUMA pasta feche!
+                for (let i = 0; i < newEntries.length; i++) {
+                    const e = newEntries[i];
+                    if (e.isDir && expPaths.has(e.path)) {
+                        e.collapsed = false;
+                        if (e.lazy && !e.loaded) {
+                            try {
+                                let directEntries = [];
+                                if (e.synthetic === 'java-deps') {
+                                    if (typeof window.fetchJavaDepsChildren === 'function') {
+                                        const r = await window.fetchJavaDepsChildren(e);
+                                        if (r && r.entries) directEntries = r.entries;
+                                    }
+                                } else if (e.synthetic === 'java-jar') {
+                                    if (typeof window.fetchJavaJarChildren === 'function') {
+                                        const r = await window.fetchJavaJarChildren(e);
+                                        if (r && r.entries) directEntries = r.entries;
+                                    }
+                                } else if (window.electronAPI.getDirChildren) {
+                                    const cRes = await window.electronAPI.getDirChildren(e.path);
+                                    if (cRes && cRes.ok && cRes.entries) directEntries = cRes.entries;
+                                }
+
+                                if (directEntries && directEntries.length) {
+                                    const children = directEntries.map(c => ({
+                                        ...c,
+                                        depth: e.depth + 1 + c.depth,
+                                        collapsed: c.isDir ? !expPaths.has(c.path) : false,
+                                        loaded: false
+                                    }));
+                                    newEntries.splice(i + 1, 0, ...children);
+                                    e.loaded = true;
+                                }
+                            } catch (_) {}
+                        }
+                    }
+                }
+
+                treeEntries = newEntries;
                 await fetchAndUpdateGitStatus();
                 renderTree();
             }

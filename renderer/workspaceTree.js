@@ -1,6 +1,8 @@
 // Workspace Code Tree Module
 var treeEntries = [];
 var selectedPaths = new Set();
+var expandedDirPaths = new Set();
+window.expandedDirPaths = expandedDirPaths;
 var renamingPath = null;
 var creatingFileParent = null;
 var creatingFolderParent = null;
@@ -54,22 +56,12 @@ var creatingFolderParent = null;
                 activeTreeFilterMode = null;
                 clearContentSearchState();
                 treeEntries = [];
+                expandedDirPaths.clear();
             }
  // collapseProjectTree
 
-            // currentTreeNameFilter / currentTreeContentFilter / clearContentSearchState
-            // vivem em workspaceSearch.js (expostos em window) — usados via window.*
-            // no renderTree. Havia uma cópia idêntica de clearContentSearchState aqui;
-            // removida para não existirem duas versões da mesma função.
-
             // Expande/colapsa uma pasta. Pastas "lazy" (node_modules, build,
-            // dist, .git, etc. — ver TREE_HEAVY_DIRS no main.js) só aparecem
-            // como nó; os filhos são buscados sob demanda na primeira expansão
-            // e inseridos em treeEntries logo depois do nó pai.
-            // Busca os filhos de um nó sintético do "Dependencies" (Maven/Gradle) —
-            // não é uma pasta de verdade, então não passa por getDirChildren.
-            // Retorna { entries, retry } — `retry` mantém o nó não-`loaded` (ex.:
-            // classpath ainda resolvendo) pra tentar de novo na próxima expansão.
+            // dist, .git, etc.) buscam filhos sob demanda.
             async function fetchJavaDepsChildren(e) {
                 if (!window.electronAPI || !window.electronAPI.javaDepsListJars) return { entries: [], retry: false };
                 let res = null;
@@ -86,6 +78,7 @@ var creatingFolderParent = null;
                 }
                 return { entries: jars.map((j) => ({ path: j.path, name: j.name, depth: 0, isDir: true, lazy: true, synthetic: 'java-jar' })), retry: false };
             }
+            window.fetchJavaDepsChildren = fetchJavaDepsChildren;
 
             async function fetchJavaJarChildren(e) {
                 if (!window.electronAPI || !window.electronAPI.javaDepsListClasses) return { entries: [], retry: false };
@@ -97,50 +90,92 @@ var creatingFolderParent = null;
                 }
                 return { entries: classes.map((c) => ({ path: c.virtualPath, name: c.fqcn, depth: 0, isDir: false, synthetic: 'java-class' })), retry: false };
             }
+            window.fetchJavaJarChildren = fetchJavaJarChildren;
 
             async function toggleDir(e) {
-                if (!e.collapsed) { e.collapsed = true; renderTree(); return; }
+                if (!e.collapsed) {
+                    e.collapsed = true;
+                    expandedDirPaths.delete(e.path);
+                    const pPrefix = e.path.replace(/\\/g, '/').replace(/\/+$/, '') + '/';
+                    for (const p of expandedDirPaths) {
+                        if (p.replace(/\\/g, '/').startsWith(pPrefix)) {
+                            expandedDirPaths.delete(p);
+                        }
+                    }
+                    renderTree();
+                    return;
+                }
 
-                // Já está buscando: o clique CONTOU, só não terminou. Antes isso
-                // retornava calado e parecia que o clique não pegou.
                 if (e.loading) return;
 
-                // Busca sob demanda quando os filhos não vieram na carga inicial
-                // — seja por ser pasta pesada (node_modules, target) ou por ter
-                // sido cortada pelo limite. Ver markIncomplete no main.
+                e.collapsed = false;
+                expandedDirPaths.add(e.path);
+
+                // Busca sob demanda com auto-expansão de cadeia única (estilo IntelliJ)
                 if (e.lazy && !e.loaded) {
                     e.loading = true;
-                    e.collapsed = false;   // já abre: o spinner aparece no lugar
                     renderTree();
 
-                    let children = null;
-                    let retry = false;
-                    if (e.synthetic === 'java-deps') {
-                        const r = await fetchJavaDepsChildren(e);
-                        children = r.entries.map((entry) => ({ ...entry, depth: e.depth + 1 + entry.depth, collapsed: entry.isDir }));
-                        retry = r.retry;
-                    } else if (e.synthetic === 'java-jar') {
-                        const r = await fetchJavaJarChildren(e);
-                        children = r.entries.map((entry) => ({ ...entry, depth: e.depth + 1 + entry.depth, collapsed: entry.isDir }));
-                        retry = r.retry;
-                    } else {
-                        let res = null;
-                        try {
-                            res = window.electronAPI.getDirChildren
-                                ? await window.electronAPI.getDirChildren(e.path)
-                                : null;
-                        } catch (_) {}
-                        if (res && res.ok && res.entries && res.entries.length) {
-                            children = res.entries.map((entry) => ({
-                                ...entry,
-                                depth: e.depth + 1 + entry.depth, // depth do backend é relativo (filho imediato = 0)
-                                collapsed: entry.isDir,
-                            }));
+                    let allChildren = [];
+                    let currentDir = e;
+                    let chainRetry = false;
+
+                    while (currentDir) {
+                        let rawEntries = [];
+                        let retry = false;
+
+                        if (currentDir.synthetic === 'java-deps') {
+                            const r = await fetchJavaDepsChildren(currentDir);
+                            rawEntries = r.entries;
+                            retry = r.retry;
+                        } else if (currentDir.synthetic === 'java-jar') {
+                            const r = await fetchJavaJarChildren(currentDir);
+                            rawEntries = r.entries;
+                        } else {
+                            let res = null;
+                            try {
+                                res = window.electronAPI.getDirChildren
+                                    ? await window.electronAPI.getDirChildren(currentDir.path)
+                                    : null;
+                            } catch (_) {}
+                            if (res && res.ok && res.entries) {
+                                rawEntries = res.entries;
+                            }
+                            currentDir.empty = !(rawEntries && rawEntries.length);
                         }
-                        e.empty = !(res && res.entries && res.entries.length);
+
+                        currentDir.loaded = !retry;
+                        currentDir.collapsed = false;
+                        expandedDirPaths.add(currentDir.path);
+                        if (retry) chainRetry = true;
+
+                        if (!rawEntries || !rawEntries.length) break;
+
+                        const mapped = rawEntries.map((entry) => ({
+                            ...entry,
+                            depth: currentDir.depth + 1 + entry.depth,
+                            collapsed: entry.isDir,
+                        }));
+
+                        allChildren.push(...mapped);
+
+                        // Auto-expansão de pastas encadeadas únicas (ex: src -> main -> java -> com -> app)
+                        const realDirs = mapped.filter(c => c.isDir && !c.synthetic);
+                        const realFiles = mapped.filter(c => !c.isDir);
+
+                        if (realDirs.length === 1 && realFiles.length === 0) {
+                            const nextDir = realDirs[0];
+                            nextDir.collapsed = false;
+                            expandedDirPaths.add(nextDir.path);
+                            currentDir = nextDir;
+                        } else {
+                            break;
+                        }
                     }
 
                     e.loading = false;
+                    e.loaded = !chainRetry;
+
                     const idx = treeEntries.indexOf(e);
                     if (idx !== -1) {
                         let removeCount = 0;
@@ -150,12 +185,37 @@ var creatingFolderParent = null;
                         if (removeCount > 0) {
                             treeEntries.splice(idx + 1, removeCount);
                         }
-                        if (children && children.length) {
-                            treeEntries.splice(idx + 1, 0, ...children);
+                        if (allChildren && allChildren.length) {
+                            treeEntries.splice(idx + 1, 0, ...allChildren);
                         }
                     }
-                    e.loaded = !retry;
+                } else {
+                    // Se já estava carregado no array, expande recursivamente os filhos únicos
+                    const idx = treeEntries.indexOf(e);
+                    if (idx !== -1) {
+                        let curIdx = idx;
+                        while (curIdx < treeEntries.length) {
+                            const item = treeEntries[curIdx];
+                            if (item.isDir) {
+                                item.collapsed = false;
+                                expandedDirPaths.add(item.path);
+                            }
+                            const directSubs = [];
+                            for (let k = curIdx + 1; k < treeEntries.length; k++) {
+                                if (treeEntries[k].depth === item.depth + 1) directSubs.push(treeEntries[k]);
+                                else if (treeEntries[k].depth <= item.depth) break;
+                            }
+                            const subDirs = directSubs.filter(c => c.isDir && !c.synthetic);
+                            const subFiles = directSubs.filter(c => !c.isDir);
+                            if (subDirs.length === 1 && subFiles.length === 0) {
+                                curIdx = treeEntries.indexOf(subDirs[0]);
+                            } else {
+                                break;
+                            }
+                        }
+                    }
                 }
+
                 e.collapsed = false;
                 renderTree();
             }
