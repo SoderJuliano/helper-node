@@ -355,7 +355,9 @@ function fileIconHtml(name) {
             async function fetchAndUpdateGitStatus() {
                 if (window.electronAPI && window.electronAPI.getProjectGitStatus) {
                     try {
-                        const res = await window.electronAPI.getProjectGitStatus();
+                        const wsProjectMain = document.getElementById('ws-project-main');
+                        const pPath = (wsProjectMain && wsProjectMain.dataset && wsProjectMain.dataset.path) || (ctxProject && ctxProject.path) || null;
+                        const res = await window.electronAPI.getProjectGitStatus({ path: pPath });
                         if (res) {
                             currentGitStatus = res;
                             window.currentGitStatus = res;

@@ -155,24 +155,30 @@ ipcMain.handle("get-project-context", async () => {
   }
 });
 
-ipcMain.handle("get-project-git-status", async () => {
+ipcMain.handle("get-project-git-status", async (_event, payload) => {
   try {
-    const dir = (workspace.list() || []).find((a) => a.type === "dir");
-    if (!dir || !dir.path) {
+    let projectPath = payload && payload.path;
+    if (!projectPath) {
+      const dir = (workspace.list() || []).find((a) => a.type === "dir");
+      projectPath = dir && dir.path;
+    }
+    if (!projectPath) {
       return { isGit: false, changesCount: 0, modifiedFiles: {}, modifiedDirs: {} };
     }
-    const projectPath = dir.path;
     const { execFile } = require("child_process");
     return await new Promise((resolve) => {
       execFile(
         "git",
-        ["-C", projectPath, "status", "--porcelain", "-uall"],
+        ["-C", projectPath, "-c", "core.quotepath=false", "status", "--porcelain", "-uall"],
         { timeout: 3500 },
         (err, stdout) => {
-          if (err || !stdout) {
+          if (err) {
             return resolve({ isGit: false, changesCount: 0, modifiedFiles: {}, modifiedDirs: {} });
           }
-          const lines = stdout.split("\n");
+          if (!stdout) {
+            return resolve({ isGit: true, changesCount: 0, modifiedFiles: {}, modifiedDirs: {} });
+          }
+          const lines = stdout.split(/\r?\n/);
           const modifiedFiles = {};
           const modifiedDirs = {};
           let count = 0;
@@ -187,7 +193,7 @@ ipcMain.handle("get-project-git-status", async () => {
             if (relPath.startsWith('"') && relPath.endsWith('"')) {
               relPath = relPath.substring(1, relPath.length - 1);
             }
-            relPath = relPath.replace(/\\/g, "/");
+            relPath = relPath.replace(/\\/g, "/").replace(/^\.\//, "");
             if (!relPath) continue;
 
             let status = 'M';

@@ -174,45 +174,38 @@
                 let newEntries = res.entries.map((entry) => ({
                     ...entry,
                     collapsed: entry.isDir ? !expPaths.has(entry.path) : false,
-                    loaded: false
+                    loaded: true
                 }));
 
-                // 2. Para todos os diretórios que o usuário abriu (em expandedDirPaths):
-                // Carrega e insere os filhos recursivamente, garantindo que NENHUMA pasta feche!
+                // 2. Para nós sintéticos que foram expandidos (Dependencies / Jar):
                 for (let i = 0; i < newEntries.length; i++) {
                     const e = newEntries[i];
-                    if (e.isDir && expPaths.has(e.path)) {
+                    if (e.isDir && expPaths.has(e.path) && e.synthetic) {
                         e.collapsed = false;
-                        if (e.lazy && !e.loaded) {
-                            try {
-                                let directEntries = [];
-                                if (e.synthetic === 'java-deps') {
-                                    if (typeof window.fetchJavaDepsChildren === 'function') {
-                                        const r = await window.fetchJavaDepsChildren(e);
-                                        if (r && r.entries) directEntries = r.entries;
-                                    }
-                                } else if (e.synthetic === 'java-jar') {
-                                    if (typeof window.fetchJavaJarChildren === 'function') {
-                                        const r = await window.fetchJavaJarChildren(e);
-                                        if (r && r.entries) directEntries = r.entries;
-                                    }
-                                } else if (window.electronAPI.getDirChildren) {
-                                    const cRes = await window.electronAPI.getDirChildren(e.path);
-                                    if (cRes && cRes.ok && cRes.entries) directEntries = cRes.entries;
+                        try {
+                            let directEntries = [];
+                            if (e.synthetic === 'java-deps') {
+                                if (typeof window.fetchJavaDepsChildren === 'function') {
+                                    const r = await window.fetchJavaDepsChildren(e);
+                                    if (r && r.entries) directEntries = r.entries;
                                 }
-
-                                if (directEntries && directEntries.length) {
-                                    const children = directEntries.map(c => ({
-                                        ...c,
-                                        depth: e.depth + 1 + c.depth,
-                                        collapsed: c.isDir ? !expPaths.has(c.path) : false,
-                                        loaded: false
-                                    }));
-                                    newEntries.splice(i + 1, 0, ...children);
-                                    e.loaded = true;
+                            } else if (e.synthetic === 'java-jar') {
+                                if (typeof window.fetchJavaJarChildren === 'function') {
+                                    const r = await window.fetchJavaJarChildren(e);
+                                    if (r && r.entries) directEntries = r.entries;
                                 }
-                            } catch (_) {}
-                        }
+                            }
+                            if (directEntries && directEntries.length) {
+                                const children = directEntries.map(c => ({
+                                    ...c,
+                                    depth: e.depth + 1 + (c.depth || 0),
+                                    collapsed: c.isDir ? !expPaths.has(c.path) : false,
+                                    loaded: true
+                                }));
+                                newEntries.splice(i + 1, 0, ...children);
+                                i += children.length;
+                            }
+                        } catch (_) {}
                     }
                 }
 
@@ -236,7 +229,7 @@
                 if (wsProjectMain && wsProjectMain.dataset && wsProjectMain.dataset.path) {
                     fetchAndUpdateGitStatus().then(() => applyGitStatusClasses());
                 }
-            }, 8000);
+            }, 5000);
 
             // Atualiza só as classes de cor do git, in-place.
             function applyGitStatusClasses() {
@@ -256,6 +249,9 @@
                     }
                     const isDir = node.classList.contains('dir');
                     node.classList.remove('git-modified', 'git-staged', 'git-untracked', 'git-dir-modified');
+                    const existingTag = node.querySelector('.ws-tree-git-tag');
+                    if (existingTag) existingTag.remove();
+
                     if (isDir) {
                         if (dirs[rel] || dirs[rel.toLowerCase()]) {
                             node.classList.add('git-dir-modified');
@@ -264,6 +260,10 @@
                         const status = mods[rel] || mods[rel.toLowerCase()];
                         if (status) {
                             node.classList.add(status === 'A' ? 'git-staged' : 'git-modified');
+                            const tag = document.createElement('span');
+                            tag.className = 'ws-tree-git-tag ' + (status === 'A' ? 'tag-a' : 'tag-m');
+                            tag.textContent = (status === 'A' ? 'A' : 'M');
+                            node.appendChild(tag);
                         }
                     }
                 }
