@@ -28,6 +28,7 @@ var creatingFolderParent = null;
     // próprios pra não parecerem editáveis.
     const TREE_DEPS_IC = '<svg class="ws-tree-ic ws-tree-ic-deps" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>';
     const TREE_JAR_IC = '<svg class="ws-tree-ic ws-tree-ic-jar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="1"/><path d="M8 3v18M16 3v18M4 8h4M16 8h4M4 13h4M16 13h4"/></svg>';
+    const TREE_PKG_IC = '<svg class="ws-tree-ic ws-tree-ic-pkg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 9.4 7.55 4.24a1.78 1.78 0 0 0-2.5 1.55v12.42a1.78 1.78 0 0 0 2.5 1.55L16.5 14.6a1.78 1.78 0 0 0 0-3.2z"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>';
     const TREE_CLASS_IC = '<svg class="ws-tree-ic ws-tree-ic-class" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9 8.5c-1.5 0-3 1-3 3.5s1.5 3.5 3 3.5c1 0 1.8-.4 2.3-1"/></svg>';
 
     // Attach Empty Note logic
@@ -88,7 +89,52 @@ var creatingFolderParent = null;
                 if (!classes.length) {
                     return { entries: [{ path: e.path + '#empty', name: '(sem classes)', depth: 0, isDir: false, synthetic: 'java-deps-status' }], retry: false };
                 }
-                return { entries: classes.map((c) => ({ path: c.virtualPath, name: c.fqcn, depth: 0, isDir: false, synthetic: 'java-class' })), retry: false };
+
+                // Agrupa classes por pacote Java (estilo IntelliJ IDEA)
+                const packageMap = new Map();
+                for (const c of classes) {
+                    const fqcn = c.fqcn;
+                    const lastDot = fqcn.lastIndexOf('.');
+                    const pkg = lastDot > 0 ? fqcn.substring(0, lastDot) : '(default package)';
+                    const simpleName = lastDot > 0 ? fqcn.substring(lastDot + 1) : fqcn;
+
+                    if (!packageMap.has(pkg)) {
+                        packageMap.set(pkg, []);
+                    }
+                    packageMap.get(pkg).push({
+                        path: c.virtualPath,
+                        name: simpleName,
+                        depth: 1,
+                        isDir: false,
+                        synthetic: 'java-class'
+                    });
+                }
+
+                const sortedPkgs = Array.from(packageMap.keys()).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+                const entries = [];
+                const expPaths = window.expandedDirPaths || new Set();
+
+                for (const pkg of sortedPkgs) {
+                    const pkgPath = e.path + '#' + pkg;
+                    const isPkgExpanded = expPaths.has(pkgPath);
+                    entries.push({
+                        path: pkgPath,
+                        name: pkg,
+                        depth: 0,
+                        isDir: true,
+                        lazy: false,
+                        collapsed: !isPkgExpanded,
+                        synthetic: 'java-pkg'
+                    });
+
+                    const pkgClasses = packageMap.get(pkg);
+                    pkgClasses.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+                    for (const cls of pkgClasses) {
+                        entries.push(cls);
+                    }
+                }
+
+                return { entries, retry: false };
             }
             window.fetchJavaJarChildren = fetchJavaJarChildren;
 
@@ -293,6 +339,8 @@ var creatingFolderParent = null;
                 node.innerHTML = chevron + TREE_DEPS_IC;
             } else if (e.synthetic === 'java-jar') {
                 node.innerHTML = chevron + TREE_JAR_IC;
+            } else if (e.synthetic === 'java-pkg') {
+                node.innerHTML = chevron + TREE_PKG_IC;
             } else if (e.synthetic === 'java-class') {
                 node.innerHTML = TREE_CHEVRON_SPACER + TREE_CLASS_IC;
             } else if (e.synthetic === 'java-deps-status') {

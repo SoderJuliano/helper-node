@@ -350,6 +350,9 @@
         .ws-tree-ic-deps, .ws-tree-ic-jar {
             color: #c084fc;
         }
+        .ws-tree-ic-pkg {
+            color: #e5c07b;
+        }
         .ws-tree-ic-class {
             color: #82aaff;
         }

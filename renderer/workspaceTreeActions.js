@@ -87,9 +87,9 @@
             showTreeContextMenu(ev, e);
         });
 
-        // Double click/Click listener to open file
+        // Double click/Click listener to open file / toggle directory
         node.addEventListener('click', (ev) => {
-            if (ev.target.closest('.ws-tree-chevron') || ev.target.closest('.ws-tree-checkbox') || renamingPath) return;
+            if (ev.target.closest('.ws-tree-checkbox') || renamingPath) return;
             if (e.synthetic === 'java-deps-status') return; // linha informativa, não navegável
             if (e.isDir) {
                 toggleDir(e);
