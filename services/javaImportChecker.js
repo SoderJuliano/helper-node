@@ -1298,15 +1298,15 @@ function findSymbolLineInClassSource(content, symbol) {
   const escaped = symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
   // 1. Definição de método em Java / classe descompilada
-  const methodRegex = new RegExp(`(?:public|protected|private|static|final|async|synchronized|default|native|abstract|\\s)+\\b${escaped}\\s*\\(`);
+  const methodRegex = new RegExp(`^(?:(?:public|protected|private|static|final|async|synchronized|default|native|abstract)\\s+)*[A-Za-z0-9_$<>\\[\\],.?]+\\s+${escaped}\\s*\\(`);
   for (let i = 0; i < lines.length; i++) {
-    if (methodRegex.test(lines[i])) return i + 1;
+    if (methodRegex.test(lines[i].trim())) return i + 1;
   }
 
   // 2. Campo ou constante enum
   const fieldRegex = new RegExp(`\\b${escaped}\\b\\s*(?:[;=,)]|$)`);
   for (let i = 0; i < lines.length; i++) {
-    if (fieldRegex.test(lines[i])) return i + 1;
+    if (fieldRegex.test(lines[i].trim())) return i + 1;
   }
 
   // 3. Primeira Ocorrência do identificador

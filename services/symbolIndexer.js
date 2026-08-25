@@ -483,8 +483,8 @@ class SymbolIndexer {
         this.addSymbol(interfaceName, item);
       }
 
-      // 3. Classes e Implementações
-      const classMatch = lineText.match(/(?:public\s+|export\s+|default\s+|abstract\s+)*class\s+([A-Za-z0-9_$]+)(?:\s+extends\s+[A-Za-z0-9_$.<>]*)?(?:\s+implements\s+([A-Za-z0-9_$,\s<>]+))?/);
+      // 3. Classes, Enums, Records e Implementações
+      const classMatch = lineText.match(/(?:(?:public|export|default|abstract|final)\s+)*(?:class|enum|record)\s+([A-Za-z0-9_$]+)(?:\s+extends\s+[A-Za-z0-9_$.<>]*)?(?:\s+implements\s+([A-Za-z0-9_$,\s<>]+))?/);
       if (classMatch) {
         const className = classMatch[1];
         currentClass = className;
@@ -525,18 +525,19 @@ class SymbolIndexer {
         this.addSymbol(className, item);
       }
 
-      // 3.5 Constantes / Campos (Mappers, Beans, Constantes, Injeções)
+      // 3.5 Constantes / Campos / Enums (Mappers, Beans, Constantes, Injeções, Valores de Enum)
       const lineClean = lineText.replace(/@\w+(?:\([^)]*\))?\s*/g, '').trim();
-      const fieldMatch = lineClean.match(/^(?:public\s+|protected\s+|private\s+|static\s+|final\s+|volatile\s+|transient\s+|@\w+(?:\([^)]*\))?\s+)*([A-Za-z0-9_$<>[\],]+)\s+([A-Za-z0-9_$]+)\s*(?:=|;)/);
+      const KEYWORDS = new Set([
+        'if', 'for', 'while', 'switch', 'catch', 'return', 'class', 'interface',
+        'enum', 'package', 'import', 'new', 'public', 'private', 'protected',
+        'static', 'final', 'default', 'void', 'throw', 'throws', 'const', 'let', 'var'
+      ]);
+
+      // Campo normal / constante estática (ex: public static final String FOO = "val"; ou int BAR = 1;)
+      const fieldMatch = lineClean.match(/^(?:(?:public|protected|private|static|final|volatile|transient|const|readonly)\s+)+[A-Za-z0-9_$<>[\].,?]+\s+([A-Za-z0-9_$]+)\s*(?:=|;)/);
       if (fieldMatch && (currentClass || currentInterface)) {
-        const rawType = fieldMatch[1].replace(/<.*>/, '').trim();
-        const fieldName = fieldMatch[2];
-        const KEYWORDS = new Set([
-          'if', 'for', 'while', 'switch', 'catch', 'return', 'class', 'interface',
-          'enum', 'package', 'import', 'new', 'public', 'private', 'protected',
-          'static', 'final', 'default', 'void', 'throw', 'throws', 'const', 'let', 'var'
-        ]);
-        if (!KEYWORDS.has(fieldName) && !KEYWORDS.has(rawType)) {
+        const fieldName = fieldMatch[1];
+        if (!KEYWORDS.has(fieldName)) {
           const col = lineText.indexOf(fieldName) + 1;
           const owner = currentInterface ? { type: 'interface', name: currentInterface } : { type: 'class', name: currentClass };
           const item = {
@@ -545,11 +546,27 @@ class SymbolIndexer {
             col: col > 0 ? col : 1,
             filePath: normPath,
             kind: currentInterface ? 'interface-constant' : 'field',
-            fieldType: rawType,
             owner
           };
           fileData.fields.push(item);
           this.addSymbol(fieldName, item);
+        }
+      } else if (currentClass && /^[A-Z][A-Z0-9_$]*(?:\s*\([^)]*\))?\s*(?:,|;|$)/.test(lineClean)) {
+        // Possível constante de enum (ex: PENDING, ou APPROVED("A"), ou REJECTED;)
+        const enumConstMatch = lineClean.match(/^([A-Z][A-Z0-9_$]*)/);
+        if (enumConstMatch && !KEYWORDS.has(enumConstMatch[1])) {
+          const constName = enumConstMatch[1];
+          const col = lineText.indexOf(constName) + 1;
+          const item = {
+            name: constName,
+            line: lineNum,
+            col: col > 0 ? col : 1,
+            filePath: normPath,
+            kind: 'field',
+            owner: { type: 'enum', name: currentClass }
+          };
+          fileData.fields.push(item);
+          this.addSymbol(constName, item);
         }
       }
 
@@ -566,13 +583,13 @@ class SymbolIndexer {
         // foo: function(...) / foo: async function(...)
         { re: /([A-Za-z0-9_$]+)\s*:\s*(?:async\s+)?function/, g: 1 },
         // Java/C#/PHP/C++/Kotlin: public void foo(...) / static async Task<Bar> foo(...) / public static <K, V> Map<K, V> foo(...)
-        { re: /(?:public|protected|private|static|final|async|override|synchronized|default|native)\s+(?:[A-Za-z0-9_$<>[\].,\s]+\s+)+([A-Za-z0-9_$]+)\s*\(/, g: 1 },
+        { re: /^(?:(?:public|protected|private|static|final|async|override|synchronized|default|native)\s+)+[A-Za-z0-9_$<>[\].,?]+\s+([A-Za-z0-9_$]+)\s*\(/, g: 1 },
         // Python: def foo(...) / async def foo(...)
         { re: /(?:async\s+)?def\s+([A-Za-z0-9_$]+)\s*\(/, g: 1 },
         // Go / Rust: func foo / fn foo
         { re: /(?:pub\s+)?(?:async\s+)?(?:func|fn)\s+(?:\([^)]+\)\s+)?([A-Za-z0-9_$]+)\s*\(/, g: 1 },
         // Declaração de método de interface Java / TS (ex: UserDto map(User user); ou assinatura multilinha UserDto toDto(...)
-        { re: /^(?:public\s+|protected\s+|default\s+|static\s+|abstract\s+)*[A-Za-z0-9_$<>[\],\s]+?\s+([A-Za-z0-9_$]+)\s*\(/, g: 1 },
+        { re: /^(?:public\s+|protected\s+|default\s+|static\s+|abstract\s+)*[A-Za-z0-9_$<>[\],.?\s]+?\s+([A-Za-z0-9_$]+)\s*\(/, g: 1 },
       ];
 
       for (const pattern of methodPatterns) {
@@ -685,33 +702,37 @@ class SymbolIndexer {
     const results = [];
     const escaped = symbolName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-    // Expressões regulares para capturar declaração/definição de símbolo
+    // Expressões regulares seguras (sem ReDoS/backtracking catastrófico)
     const defRegexes = [
-      // async function foo / function foo / function* foo
-      new RegExp(`(?:public\\s+|protected\\s+|private\\s+)?(?:static\\s+)?(?:async\\s+)?function\\*?\\s+${escaped}\\s*\\(`),
-      // const foo / let foo / var foo (com ou sem = e qualquer valor)
-      new RegExp(`(?:const|let|var)\\s+${escaped}\\b`),
-      // this.foo = ... / foo = ...
-      new RegExp(`(?:this\\.)?${escaped}\\s*=\\s*(?:async\\s*)?(?:\\([^)]*\\)|[A-Za-z0-9_$]+|function)`),
-      // foo(...) { / async foo(...) { / get foo() / set foo() / static foo()
-      new RegExp(`(?:public\\s+|protected\\s+|private\\s+|static\\s+|async\\s+|get\\s+|set\\s+)*${escaped}\\s*\\([^)]*\\)\\s*\\{`),
-      // foo: function / foo: async function / foo: (
-      new RegExp(`${escaped}\\s*:\\s*(?:async\\s+)?(?:function|\\()`),
-      // class Foo / interface Foo / enum Foo / record Foo
-      new RegExp(`(?:class|interface|enum|record)\\s+${escaped}\\b`),
-      // Java/C#/C++/PHP: tipoRetorno foo(...) ou interface método
-      new RegExp(`(?:public|protected|private|static|final|async|override|synchronized|default|native|abstract)?\\s*(?:[A-Za-z0-9_$<>\\[\\],\\s]+\\s+)+${escaped}\\s*\\(`),
-      // Python: def foo(...)
-      new RegExp(`(?:async\\s+)?def\\s+${escaped}\\s*\\(`),
-      // Go / Rust: func foo / fn foo
-      new RegExp(`(?:func|fn)\\s+(?:\\([^)]+\\)\\s+)?${escaped}\\s*\\(`)
+      // 1. Funções JS/TS: function foo( / async function foo(
+      new RegExp(`^(?:(?:public|protected|private|static|async|export|default)\\s+)*function\\*?\\s+${escaped}\\s*\\(`),
+      // 2. Constantes e variáveis: const foo / let foo / var foo
+      new RegExp(`^(?:(?:export|default)\\s+)*(?:const|let|var)\\s+${escaped}\\b`),
+      // 3. Atribuição: this.foo = ... / foo = ...
+      new RegExp(`^(?:this\\.)?${escaped}\\s*=\\s*`),
+      // 4. Métodos de classe JS/TS: foo(...) { / static async foo(...) {
+      new RegExp(`^(?:(?:public|protected|private|static|async|get|set)\\s+)*${escaped}\\s*\\([^)]*\\)\\s*\\{`),
+      // 5. Propriedade de objeto: foo: function / foo: (
+      new RegExp(`^${escaped}\\s*:\\s*(?:async\\s+)?(?:function|\\()`),
+      // 6. Declaração de Classe / Interface / Enum / Record: class Foo / enum Foo
+      new RegExp(`^(?:(?:public|protected|private|abstract|final|export|default)\\s+)*(?:class|interface|enum|record)\\s+${escaped}\\b`),
+      // 7. Métodos Java/C#/C++/PHP: public void foo(...) / String foo(...) / Map<K,V> foo(...)
+      new RegExp(`^(?:(?:public|protected|private|static|final|async|override|synchronized|default|native|abstract)\\s+)*[A-Za-z0-9_$<>\\[\\],.?]+\\s+${escaped}\\s*\\(`),
+      // 8. Constantes e Campos Java/C#: public static final String FOO = ... / int FOO;
+      new RegExp(`^(?:(?:public|protected|private|static|final|volatile|transient|const|readonly)\\s+)+[A-Za-z0-9_$<>\\[\\],.?]+\\s+${escaped}\\s*(?:=|;|,|\\)|$)`),
+      // 9. Constantes de Enum Java: FOO, / FOO("..."), / FOO;
+      new RegExp(`^${escaped}(?:\\s*\\([^)]*\\))?\\s*(?:,|;|$)`),
+      // 10. Python: def foo(...)
+      new RegExp(`^(?:async\\s+)?def\\s+${escaped}\\s*\\(`),
+      // 11. Go / Rust: func foo / fn foo
+      new RegExp(`^(?:pub\\s+)?(?:async\\s+)?(?:func|fn)\\s+(?:\\([^)]+\\)\\s+)?${escaped}\\s*\\(`)
     ];
 
     for (let i = 0; i < lines.length; i++) {
       const lineText = lines[i];
       const lineClean = lineText.replace(/@\w+(?:\([^)]*\))?\s*/g, '').trim();
       for (const rx of defRegexes) {
-        if (rx.test(lineClean) || rx.test(lineText)) {
+        if (rx.test(lineClean) || rx.test(lineText.trim())) {
           const col = lineText.indexOf(symbolName) + 1;
           results.push({
             name: symbolName,
