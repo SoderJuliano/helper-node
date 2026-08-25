@@ -113,29 +113,7 @@ function detectJavaProjectType(absPath, entryNames = null) {
 }
 helpers.detectJavaProjectType = detectJavaProjectType;
 
-helpers.pushTreeNode = function(entries, absPath, name, depth, isDir, entryNames = null) {
-  const heavy = isDir && TREE_HEAVY_DIRS.has(name);
-  entries.push(
-    heavy || isDir
-      ? { path: absPath, name, depth, isDir, lazy: true }
-      : { path: absPath, name, depth, isDir }
-  );
-  if (isDir) {
-    const javaType = detectJavaProjectType(absPath, entryNames);
-    if (javaType) {
-      entries.push({ path: absPath + '::dependencies', projectRoot: absPath, name: 'Dependencies', depth: depth + 1, isDir: true, lazy: true, synthetic: 'java-deps', javaType });
-    }
-  }
-  return heavy;
-}
-
-function markIncomplete(entries, absPath) {
-  for (let i = entries.length - 1; i >= 0; i--) {
-    if (entries[i].path === absPath) { entries[i].lazy = true; return; }
-  }
-}
-
-helpers.walkTreeInto = function(entries, dirPath, depth, localBudget, globalLimit) {
+helpers.walkTreeInto = function(entries, dirPath, depth, maxDepth = 25, globalLimit = 4000) {
   let dirEntries = [];
   try {
     dirEntries = fs2.readdirSync(dirPath, { withFileTypes: true });
@@ -143,28 +121,28 @@ helpers.walkTreeInto = function(entries, dirPath, depth, localBudget, globalLimi
     return 0;
   }
   dirEntries.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
-  const namesSet = new Set(dirEntries.map(d => d.name));
   let used = 0;
   for (const dirent of dirEntries) {
-    if (entries.length >= globalLimit || used >= localBudget) {
-      markIncomplete(entries, dirPath);
+    if (entries.length >= globalLimit) {
       return used;
     }
     const absPath = path.join(dirPath, dirent.name);
     const isDir = dirent.isDirectory();
-    const heavy = helpers.pushTreeNode(entries, absPath, dirent.name, depth, isDir, isDir ? null : namesSet);
+    const heavy = isDir && TREE_HEAVY_DIRS.has(dirent.name);
+    entries.push(
+      heavy
+        ? { path: absPath, name: dirent.name, depth, isDir: true, lazy: true }
+        : { path: absPath, name: dirent.name, depth, isDir }
+    );
     used += 1;
-    if (isDir && !heavy) {
-      const isSingleChild = dirEntries.length === 1 && dirent.isDirectory();
-      if (depth < 3 || (isSingleChild && depth < 8)) {
-        used += helpers.walkTreeInto(entries, absPath, depth + 1, Math.min(localBudget - used, 150), globalLimit);
-      }
+    if (isDir && !heavy && depth < maxDepth) {
+      used += helpers.walkTreeInto(entries, absPath, depth + 1, maxDepth, globalLimit);
     }
   }
   return used;
 }
 
-helpers.collectProjectEntries = function(root, limit = 1500, perTopLevelBudget = 300) {
+helpers.collectProjectEntries = function(root, limit = 4000) {
   const entries = [];
 
   let topLevel = [];
@@ -182,15 +160,17 @@ helpers.collectProjectEntries = function(root, limit = 1500, perTopLevelBudget =
   }
 
   for (const dirent of topLevel) {
+    if (entries.length >= limit) break;
     const absPath = path.join(root, dirent.name);
     const isDir = dirent.isDirectory();
-    const heavy = helpers.pushTreeNode(entries, absPath, dirent.name, 0, isDir, isDir ? null : topNamesSet);
+    const heavy = isDir && TREE_HEAVY_DIRS.has(dirent.name);
+    entries.push(
+      heavy
+        ? { path: absPath, name: dirent.name, depth: 0, isDir: true, lazy: true }
+        : { path: absPath, name: dirent.name, depth: 0, isDir }
+    );
     if (!isDir || heavy) continue;
-    if (entries.length >= limit) {
-      markIncomplete(entries, absPath);
-      continue;
-    }
-    helpers.walkTreeInto(entries, absPath, 1, perTopLevelBudget, limit);
+    helpers.walkTreeInto(entries, absPath, 1, 25, limit);
   }
   return entries;
 }

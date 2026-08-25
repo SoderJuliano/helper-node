@@ -89,14 +89,14 @@ const SCREENSHOT_DIRS = [
 ];
 // Sets (nao arrays): o codigo chama .has() nesses dois.
 const PROJECT_SEARCH_SKIP_DIRS = new Set([
-  'node_modules', '.git', 'dist', 'build', 'target', '.idea', '.vscode', '.claude', '.gemini',
+  'node_modules', '.git', 'dist', 'build', 'target', '.gradle', '.idea', '.vscode', '.claude', '.gemini',
   'vendor', 'bin', 'obj', '.next', '.nuxt', '.cache', '__pycache__', 'venv', '.venv', 'env',
-  'coverage', '.output', 'out', 'temp', 'tmp', 'logs', '.bundle'
+  'coverage', '.output', 'out', 'temp', 'tmp', 'logs', '.bundle', '.settings', '.mvn', '.metadata'
 ]);
 const TREE_HEAVY_DIRS = new Set([
-  'node_modules', '.git', 'dist', 'build', 'target', '.idea', '.vscode', '.claude', '.gemini',
+  'node_modules', '.git', 'dist', 'build', 'target', '.gradle', '.idea', '.vscode', '.claude', '.gemini',
   'vendor', 'bin', 'obj', '.next', '.nuxt', '.cache', '__pycache__', 'venv', '.venv', 'env',
-  'coverage', '.output', 'out', 'temp', 'tmp', 'logs', '.bundle'
+  'coverage', '.output', 'out', 'temp', 'tmp', 'logs', '.bundle', '.settings', '.mvn', '.metadata'
 ]);
 const state = {
   terminalProcess: null,

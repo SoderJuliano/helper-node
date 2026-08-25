@@ -484,9 +484,11 @@
                     treeEntries = [];
                     return;
                 }
+                const expPaths = window.expandedDirPaths || new Set();
                 treeEntries = res.entries.map((entry) => ({
                     ...entry,
-                    collapsed: entry.isDir
+                    collapsed: entry.isDir ? !expPaths.has(entry.path) : false,
+                    loaded: true
                 }));
                 renderTree();
             }
