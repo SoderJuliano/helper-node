@@ -26,8 +26,13 @@
   const SVGI_IGNORE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
 
   function createModalDom() {
-    if (document.getElementById('git-conflict-modal')) {
-      return document.getElementById('git-conflict-modal');
+    const existing = document.getElementById('git-conflict-modal');
+    if (existing) {
+      existing.remove();
+    }
+    if (cmCenter) {
+      try { cmCenter.toTextArea(); } catch (_) {}
+      cmCenter = null;
     }
 
     const modal = document.createElement('div');
@@ -168,15 +173,19 @@
     const btnWinMax = modal.querySelector('#git-conflict-win-max');
 
     if (btnWinMin) {
-      btnWinMin.addEventListener('click', () => {
+      btnWinMin.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
         if (window.electronAPI && window.electronAPI.minimizeWindow) window.electronAPI.minimizeWindow();
-      });
+      };
     }
 
     if (btnWinMax) {
-      btnWinMax.addEventListener('click', () => {
+      btnWinMax.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
         if (window.electronAPI && window.electronAPI.maximizeWindow) window.electronAPI.maximizeWindow();
-      });
+      };
     }
 
     window.addEventListener('keydown', (e) => {
@@ -184,75 +193,128 @@
       if (!m || m.style.display === 'none') return;
       if (e.key === 'Escape') {
         e.preventDefault();
+        e.stopPropagation();
         closeGitConflictModal();
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
+        e.stopPropagation();
         saveCurrentResolution();
       }
     });
 
-    btnClose.addEventListener('click', () => closeGitConflictModal());
+    if (btnClose) {
+      btnClose.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        closeGitConflictModal();
+      };
+    }
     
-    btnAbort.addEventListener('click', async () => {
-      if (!confirm('Deseja realmente abortar o processo de merge atual? Todas as alterações não comitadas do merge serão revertidas.')) return;
-      if (window.electronAPI && window.electronAPI.gitConflictAbortMerge) {
-        const res = await window.electronAPI.gitConflictAbortMerge(currentProjectDir);
-        if (res && res.ok) {
-          if (typeof showToast === 'function') showToast('Merge abortado com sucesso.');
+    if (btnAbort) {
+      btnAbort.onclick = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!confirm('Deseja realmente abortar o processo de merge atual? Todas as alterações não comitadas do merge serão revertidas.')) return;
+        if (window.electronAPI && window.electronAPI.gitConflictAbortMerge) {
+          const res = await window.electronAPI.gitConflictAbortMerge(currentProjectDir);
+          if (res && res.ok) {
+            if (typeof window.showToast === 'function') window.showToast('Merge abortado com sucesso.');
+          } else {
+            alert('Aviso ao abortar merge: ' + (res ? res.error : 'erro desconhecido'));
+          }
           closeGitConflictModal();
           if (window.fetchAndUpdateGitStatus) window.fetchAndUpdateGitStatus();
+          if (typeof window.triggerTreeRefresh === 'function') window.triggerTreeRefresh();
         } else {
-          alert('Erro ao abortar merge: ' + (res ? res.error : 'erro desconhecido'));
+          closeGitConflictModal();
         }
-      }
-    });
+      };
+    }
 
-    btnSave.addEventListener('click', () => saveCurrentResolution());
+    if (btnSave) {
+      btnSave.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        saveCurrentResolution();
+      };
+    }
 
-    btnMagic.addEventListener('click', () => applyNonConflictingChanges());
+    if (btnMagic) {
+      btnMagic.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        applyNonConflictingChanges();
+      };
+    }
 
-    btnAcceptAllLeft.addEventListener('click', () => {
-      if (!current3WayData) return;
-      current3WayData.chunks.forEach(c => chunkStates.set(c.id, 'left'));
-      rebuildCenterResult();
-      renderSideTables();
-    });
+    if (btnAcceptAllLeft) {
+      btnAcceptAllLeft.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!current3WayData) return;
+        current3WayData.chunks.forEach(c => chunkStates.set(c.id, 'left'));
+        rebuildCenterResult();
+        renderSideTables();
+      };
+    }
 
-    btnAcceptAllRight.addEventListener('click', () => {
-      if (!current3WayData) return;
-      current3WayData.chunks.forEach(c => chunkStates.set(c.id, 'right'));
-      rebuildCenterResult();
-      renderSideTables();
-    });
+    if (btnAcceptAllRight) {
+      btnAcceptAllRight.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!current3WayData) return;
+        current3WayData.chunks.forEach(c => chunkStates.set(c.id, 'right'));
+        rebuildCenterResult();
+        renderSideTables();
+      };
+    }
 
-    fileSelect.addEventListener('change', (e) => {
-      currentFileIndex = parseInt(e.target.value, 10) || 0;
-      loadFile3Way(conflictFiles[currentFileIndex].path);
-    });
-
-    btnPrev.addEventListener('click', () => {
-      if (currentFileIndex > 0) {
-        currentFileIndex--;
-        fileSelect.value = currentFileIndex;
+    if (fileSelect) {
+      fileSelect.onchange = (e) => {
+        currentFileIndex = parseInt(e.target.value, 10) || 0;
         loadFile3Way(conflictFiles[currentFileIndex].path);
-      }
-    });
+      };
+    }
 
-    btnNext.addEventListener('click', () => {
-      if (currentFileIndex < conflictFiles.length - 1) {
-        currentFileIndex++;
-        fileSelect.value = currentFileIndex;
-        loadFile3Way(conflictFiles[currentFileIndex].path);
-      }
-    });
+    if (btnPrev) {
+      btnPrev.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (currentFileIndex > 0) {
+          currentFileIndex--;
+          fileSelect.value = currentFileIndex;
+          loadFile3Way(conflictFiles[currentFileIndex].path);
+        }
+      };
+    }
 
-    btnPrevConflict.addEventListener('click', () => {
-      navigateConflicts(-1);
-    });
+    if (btnNext) {
+      btnNext.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (currentFileIndex < conflictFiles.length - 1) {
+          currentFileIndex++;
+          fileSelect.value = currentFileIndex;
+          loadFile3Way(conflictFiles[currentFileIndex].path);
+        }
+      };
+    }
 
-    btnNextConflict.addEventListener('click', () => {
-      navigateConflicts(1);
-    });
+    if (btnPrevConflict) {
+      btnPrevConflict.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        navigateConflicts(-1);
+      };
+    }
+
+    if (btnNextConflict) {
+      btnNextConflict.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        navigateConflicts(1);
+      };
+    }
 
     // Sincronização de Scroll Suave
     const leftBox = modal.querySelector('#git-conflict-left-container');
@@ -291,9 +353,12 @@
   }
 
   function initCodeMirror() {
-    if (cmCenter) return;
     const ta = document.getElementById('git-conflict-cm-textarea');
     if (!ta || !window.CodeMirror) return;
+    if (cmCenter) {
+      try { cmCenter.toTextArea(); } catch (_) {}
+      cmCenter = null;
+    }
 
     cmCenter = window.CodeMirror.fromTextArea(ta, {
       lineNumbers: true,

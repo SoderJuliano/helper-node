@@ -21,6 +21,8 @@ body.git-conflict-open {
   margin: 0 !important;
   padding: 0 !important;
   box-sizing: border-box !important;
+  -webkit-app-region: no-drag !important;
+  pointer-events: auto !important;
 }
 
 /* === Barra Superior (Header Fixo que NUNCA some) === */
@@ -42,6 +44,18 @@ body.git-conflict-open {
   padding: 0 10px !important;
   gap: 8px !important;
   box-sizing: border-box !important;
+  -webkit-app-region: no-drag !important;
+  pointer-events: auto !important;
+}
+
+.git-conflict-title-group,
+.git-conflict-file-nav,
+.git-conflict-jump-group,
+.git-conflict-actions-center,
+.git-conflict-actions-right,
+.git-conflict-win-controls {
+  -webkit-app-region: no-drag !important;
+  pointer-events: auto !important;
 }
 
 .git-conflict-title-group {
@@ -68,6 +82,8 @@ body.git-conflict-open {
   max-width: 260px;
   cursor: pointer;
   outline: none;
+  -webkit-app-region: no-drag !important;
+  pointer-events: auto !important;
 }
 
 .git-conflict-file-select:focus {
@@ -75,7 +91,7 @@ body.git-conflict-open {
 }
 
 .git-conflict-nav-btn {
-  background: transparent;
+  background: rgba(255, 255, 255, 0.04);
   border: 1px solid #3c3c3c;
   color: #858585;
   border-radius: 3px;
@@ -84,8 +100,11 @@ body.git-conflict-open {
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
+  cursor: pointer !important;
   padding: 0;
+  -webkit-app-region: no-drag !important;
+  pointer-events: auto !important;
+  transition: all 0.15s ease;
 }
 
 .git-conflict-nav-btn svg {
@@ -94,13 +113,14 @@ body.git-conflict-open {
 }
 
 .git-conflict-nav-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.08);
-  color: #ffffff;
+  background: rgba(255, 255, 255, 0.18) !important;
+  color: #ffffff !important;
+  border-color: #555555 !important;
 }
 
 .git-conflict-nav-btn:disabled {
   opacity: 0.3;
-  cursor: not-allowed;
+  cursor: not-allowed !important;
 }
 
 .git-conflict-status-badge {
@@ -143,19 +163,23 @@ body.git-conflict-open {
   font-size: 11px;
   padding: 3px 6px;
   border-radius: 2px;
-  cursor: pointer;
+  cursor: pointer !important;
   display: flex;
   align-items: center;
   gap: 4px;
+  -webkit-app-region: no-drag !important;
+  pointer-events: auto !important;
+  transition: all 0.15s ease;
 }
 
 .git-conflict-jump-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.18) !important;
+  color: #ffffff !important;
 }
 
 .git-conflict-jump-btn:disabled {
   opacity: 0.3;
-  cursor: not-allowed;
+  cursor: not-allowed !important;
 }
 
 .git-conflict-jump-counter {
@@ -176,15 +200,17 @@ body.git-conflict-open {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 4px 9px;
+  padding: 4px 10px;
   border-radius: 4px;
-  font-size: 11px;
-  font-weight: 400;
-  cursor: pointer;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer !important;
   border: 1px solid #3c3c3c;
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.06);
   color: #cccccc;
-  transition: background 0.1s;
+  transition: all 0.15s ease;
+  -webkit-app-region: no-drag !important;
+  pointer-events: auto !important;
 }
 
 .git-conflict-btn svg {
@@ -193,8 +219,14 @@ body.git-conflict-open {
 }
 
 .git-conflict-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #ffffff;
+  background: rgba(255, 255, 255, 0.18) !important;
+  border-color: #555555 !important;
+  color: #ffffff !important;
+  transform: translateY(-1px);
+}
+
+.git-conflict-btn:active {
+  transform: translateY(0);
 }
 
 /* Ações da Direita */
@@ -205,31 +237,35 @@ body.git-conflict-open {
 }
 
 .git-conflict-btn-save {
-  background: #1f6feb;
-  border-color: #388bfd;
-  color: #ffffff;
-  font-weight: 500;
+  background: #1f6feb !important;
+  border-color: #388bfd !important;
+  color: #ffffff !important;
+  font-weight: 600;
 }
 
 .git-conflict-btn-save:hover {
-  background: #388bfd;
+  background: #388bfd !important;
+  border-color: #58a6ff !important;
+  box-shadow: 0 0 8px rgba(56, 139, 253, 0.4);
 }
 
 .git-conflict-btn-abort {
-  color: #f85149;
-  border-color: rgba(248, 81, 73, 0.3);
-  background: transparent;
+  color: #f85149 !important;
+  border-color: rgba(248, 81, 73, 0.3) !important;
+  background: rgba(248, 81, 73, 0.08) !important;
 }
 
 .git-conflict-btn-abort:hover {
-  background: rgba(248, 81, 73, 0.1);
+  background: rgba(248, 81, 73, 0.25) !important;
+  border-color: #f85149 !important;
+  color: #ffffff !important;
 }
 
 .git-conflict-btn-close {
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid #3c3c3c;
   color: #cccccc;
-  cursor: pointer;
+  cursor: pointer !important;
   padding: 4px 10px;
   border-radius: 4px;
   display: flex;
@@ -238,12 +274,14 @@ body.git-conflict-open {
   font-size: 11.5px;
   font-weight: 500;
   transition: all 0.15s ease;
+  -webkit-app-region: no-drag !important;
+  pointer-events: auto !important;
 }
 
 .git-conflict-btn-close:hover {
-  background: rgba(232, 17, 35, 0.2);
-  border-color: #e81123;
-  color: #ffffff;
+  background: rgba(232, 17, 35, 0.25) !important;
+  border-color: #e81123 !important;
+  color: #ffffff !important;
 }
 
 .git-conflict-btn-close svg {
@@ -270,16 +308,18 @@ body.git-conflict-open {
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
+  cursor: pointer !important;
   font-size: 12px;
   line-height: 1;
   padding: 0;
   transition: all 0.15s ease;
+  -webkit-app-region: no-drag !important;
+  pointer-events: auto !important;
 }
 
 .git-conflict-win-btn:hover {
-  background: rgba(255, 255, 255, 0.18);
-  color: #ffffff;
+  background: rgba(255, 255, 255, 0.2) !important;
+  color: #ffffff !important;
 }
 
 .git-conflict-win-btn.git-conflict-win-close:hover {
