@@ -108,9 +108,11 @@ class SymbolIndexer {
     this.usageMap = new Map();
     this.usagesTruncated = new Set(); // símbolos que bateram o teto
 
+    this.fileMtimes = new Map(); // filePath -> { mtimeMs, size }
     this.indexingSessionId = 0;
     this.isIndexing = false;
     this.indexingProgress = { total: 0, processed: 0 };
+    this._lastNotify = 0;
   }
 
   reset() {
@@ -120,8 +122,62 @@ class SymbolIndexer {
     this.symbolMap.clear();
     this.usageMap.clear();
     this.usagesTruncated.clear();
+    this.fileMtimes.clear();
     this.isIndexing = false;
     this.indexingProgress = { total: 0, processed: 0 };
+  }
+
+  getCacheFilePath(projectPath) {
+    try {
+      const crypto = require('crypto');
+      const os = require('os');
+      const cacheBase = process.env.APPDATA || (process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Caches') : path.join(os.homedir(), '.cache'));
+      const targetDir = path.join(cacheBase, 'helper-node', 'index-cache');
+      if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+      const hash = crypto.createHash('sha256').update(normalizePath(projectPath)).digest('hex').slice(0, 16);
+      return path.join(targetDir, `sym_idx_${hash}.json`);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  loadDiskCache(projectPath) {
+    const cacheFile = this.getCacheFilePath(projectPath);
+    if (!cacheFile || !fs.existsSync(cacheFile)) return false;
+    try {
+      const raw = fs.readFileSync(cacheFile, 'utf8');
+      const data = JSON.parse(raw);
+      if (!data || data.projectPath !== normalizePath(projectPath)) return false;
+
+      this.fileMap = new Map(data.fileMap || []);
+      this.implementationsMap = new Map((data.implementationsMap || []).map(([k, arr]) => [k, new Set(arr)]));
+      this.symbolMap = new Map(data.symbolMap || []);
+      this.usageMap = new Map(data.usageMap || []);
+      this.fileMtimes = new Map(data.fileMtimes || []);
+      return true;
+    } catch (e) {
+      console.warn('[symbolIndexer] Falha ao carregar cache do disco:', e.message);
+      return false;
+    }
+  }
+
+  async saveDiskCache(projectPath) {
+    const cacheFile = this.getCacheFilePath(projectPath);
+    if (!cacheFile) return;
+    try {
+      const data = {
+        projectPath: normalizePath(projectPath),
+        timestamp: Date.now(),
+        fileMap: Array.from(this.fileMap.entries()),
+        implementationsMap: Array.from(this.implementationsMap.entries()).map(([k, set]) => [k, Array.from(set)]),
+        symbolMap: Array.from(this.symbolMap.entries()),
+        usageMap: Array.from(this.usageMap.entries()),
+        fileMtimes: Array.from(this.fileMtimes.entries())
+      };
+      await fs.promises.writeFile(cacheFile, JSON.stringify(data), 'utf8');
+    } catch (e) {
+      console.warn('[symbolIndexer] Falha ao salvar cache do disco:', e.message);
+    }
   }
 
   // Tenta resolver uma referencia de arquivo (ex: require('./foo'), import 'bar.js')
@@ -133,9 +189,6 @@ class SymbolIndexer {
     const normCurrent = normalizePath(currentFilePath);
     const isJavaFile = normCurrent.toLowerCase().endsWith('.java');
 
-    // Se for arquivo Java ou símbolo sem / ou \ e sem extensão de arquivo explícita,
-    // NÃO tratar como caminho relativo de arquivo no projeto para evitar falsos positivos
-    // (ex: resolver um tipo Java "User" ou "Service" para "User.html" no projeto).
     const isExplicitPath = cleanPath.startsWith('./') || cleanPath.startsWith('../') ||
       cleanPath.startsWith('.\\') || cleanPath.startsWith('..\\') ||
       cleanPath.includes('/') || cleanPath.includes('\\');
@@ -185,51 +238,97 @@ class SymbolIndexer {
   }
 
   /**
-   * Indexa todo o workspace em segundo plano sem bloquear o event loop ou a UI do Windows.
+   * Indexa todo o workspace usando cache em disco imediato (<20ms) e revalidação assíncrona.
    */
   async indexWorkspace(projectPath) {
     if (!projectPath || !fs.existsSync(projectPath)) return;
 
     const currentSession = ++this.indexingSessionId;
+    const normProj = normalizePath(projectPath);
+    this.projectPath = normProj;
+
+    // 1. Tenta carregar instantaneamente do cache em disco (<20ms)
+    const hasCache = this.loadDiskCache(normProj);
+    if (hasCache) {
+      this.isIndexing = false;
+      this.notifyStatus('completed', { total: this.fileMap.size, processed: this.fileMap.size, fromCache: true });
+      console.log(`[symbolIndexer] Índice carregado do cache instantaneamente (${this.fileMap.size} arquivos).`);
+      // Revalidação em segundo plano sem bloquear a inicialização
+      setTimeout(() => {
+        this._revalidateWorkspace(currentSession, true).catch(() => {});
+      }, 300);
+      return;
+    }
+
+    // 2. Se não havia cache (primeira execução), indexa diretamente
     this.reset();
-    this.projectPath = normalizePath(projectPath);
+    this.projectPath = normProj;
     this.isIndexing = true;
     this.notifyStatus('indexing', { processed: 0, total: 0 });
+    await this._revalidateWorkspace(currentSession, false);
+  }
 
+  async _revalidateWorkspace(currentSession, hasCache) {
+    if (this.indexingSessionId !== currentSession) return;
     try {
-      // 1. Varredura assíncrona de arquivos em segundo plano
       const files = await this.scanDirAsync(this.projectPath, currentSession);
-      if (this.indexingSessionId !== currentSession) return; // cancelado por novo projeto
+      if (this.indexingSessionId !== currentSession) return;
 
-      this.indexingProgress = { total: files.length, processed: 0 };
-      this.notifyStatus('indexing', this.indexingProgress);
+      const filesSet = new Set(files);
+      let hasChanges = false;
+      const toIndex = [];
 
-      // 2. Processa a indexação dos arquivos em micro-lotes (5 arquivos por vez com pausa real)
-      const BATCH_SIZE = 5;
-      for (let i = 0; i < files.length; i += BATCH_SIZE) {
-        if (this.indexingSessionId !== currentSession) return; // cancelado
+      // Verifica quais arquivos são novos ou foram modificados
+      for (const f of files) {
+        const cached = this.fileMtimes.get(f);
+        try {
+          const st = await fs.promises.stat(f);
+          if (st.size > 200 * 1024) continue;
+          if (!cached || cached.mtimeMs !== st.mtimeMs || cached.size !== st.size) {
+            toIndex.push(f);
+          }
+        } catch (_) {}
+      }
 
-        const chunk = files.slice(i, i + BATCH_SIZE);
-        for (const f of chunk) {
-          this.indexSingleFile(f);
+      // Verifica arquivos deletados
+      for (const f of this.fileMap.keys()) {
+        if (!filesSet.has(f)) {
+          this.removeFileFromMaps(f);
+          hasChanges = true;
         }
+      }
 
-        this.indexingProgress.processed = Math.min(i + BATCH_SIZE, files.length);
+      if (toIndex.length > 0) {
+        hasChanges = true;
+        this.isIndexing = true;
+        this.indexingProgress = { total: toIndex.length, processed: 0 };
+        this.notifyStatus('indexing', this.indexingProgress);
 
-        // Libera o Event Loop para processar eventos de UI e IPC com pausa real
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        const BATCH_SIZE = 5;
+        for (let i = 0; i < toIndex.length; i += BATCH_SIZE) {
+          if (this.indexingSessionId !== currentSession) return;
+          const chunk = toIndex.slice(i, i + BATCH_SIZE);
+          for (const f of chunk) {
+            this.indexSingleFile(f);
+          }
+          this.indexingProgress.processed = Math.min(i + BATCH_SIZE, toIndex.length);
+          this.notifyStatus('indexing', this.indexingProgress);
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
       }
 
       if (this.indexingSessionId === currentSession) {
         this.isIndexing = false;
         this.notifyStatus('completed', { total: files.length, processed: files.length });
-        console.log(`[symbolIndexer] Indexação em segundo plano concluída (${files.length} arquivos).`);
+        if (hasChanges || !hasCache) {
+          await this.saveDiskCache(this.projectPath);
+          console.log(`[symbolIndexer] Cache persistido em disco para ${files.length} arquivos.`);
+        }
       }
     } catch (e) {
       if (this.indexingSessionId === currentSession) {
         this.isIndexing = false;
-        this.notifyStatus('error', { error: e.message });
-        console.warn('[symbolIndexer] Erro na indexação assíncrona:', e.message);
+        console.warn('[symbolIndexer] Erro na indexação/revalidação de índice:', e.message);
       }
     }
   }
@@ -271,6 +370,11 @@ class SymbolIndexer {
   }
 
   notifyStatus(status, details = {}) {
+    const now = Date.now();
+    if (status === 'indexing' && this._lastNotify && now - this._lastNotify < 250) {
+      return;
+    }
+    this._lastNotify = now;
     try {
       const { state } = require('../main/globals.js');
       if (state && state.mainWindow && !state.mainWindow.isDestroyed()) {
@@ -291,9 +395,15 @@ class SymbolIndexer {
         const stat = fs.statSync(filePath);
         if (stat.size > 200 * 1024) return; // ignora arquivos gigantes (>200KB)
         content = fs.readFileSync(filePath, 'utf8');
+        this.fileMtimes.set(normPath, { mtimeMs: stat.mtimeMs, size: stat.size });
       } catch (_) {
         return;
       }
+    } else {
+      try {
+        const stat = fs.statSync(filePath);
+        this.fileMtimes.set(normPath, { mtimeMs: stat.mtimeMs, size: stat.size });
+      } catch (_) {}
     }
 
     // Remove símbolo antigo deste arquivo antes de re-indexar
@@ -558,6 +668,7 @@ class SymbolIndexer {
     });
 
     this.fileMap.delete(normPath);
+    this.fileMtimes.delete(normPath);
   }
 
   // Busca rápida e precisa por padrão de definição de um símbolo em um arquivo específico

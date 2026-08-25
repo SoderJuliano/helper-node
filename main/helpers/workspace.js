@@ -93,10 +93,15 @@ helpers.isLikelyBinaryBuffer = function(buffer) {
   return suspicious / limit > 0.2;
 }
 
-// Detecta se uma pasta é a raiz de um projeto Java (Maven ou Gradle) — usado
-// pra pendurar o nó sintético "Dependencies" dentro do PRÓPRIO projeto na
-// árvore (uma pasta aberta pode conter vários projetos, cada um com as suas).
-function detectJavaProjectType(absPath) {
+// Detecta se uma pasta é a raiz de um projeto Java (Maven ou Gradle)
+// Se entryNames (Set ou Array) for fornecido, checa em memória O(1) sem tocar no disco.
+function detectJavaProjectType(absPath, entryNames = null) {
+  if (entryNames) {
+    const set = entryNames instanceof Set ? entryNames : new Set(entryNames);
+    if (set.has('pom.xml')) return 'maven';
+    if (set.has('build.gradle') || set.has('build.gradle.kts')) return 'gradle';
+    return null;
+  }
   try {
     if (fs2.existsSync(path.join(absPath, 'pom.xml'))) return 'maven';
     if (fs2.existsSync(path.join(absPath, 'build.gradle')) || fs2.existsSync(path.join(absPath, 'build.gradle.kts'))) return 'gradle';
@@ -105,15 +110,15 @@ function detectJavaProjectType(absPath) {
 }
 helpers.detectJavaProjectType = detectJavaProjectType;
 
-helpers.pushTreeNode = function(entries, absPath, name, depth, isDir) {
+helpers.pushTreeNode = function(entries, absPath, name, depth, isDir, entryNames = null) {
   const heavy = isDir && TREE_HEAVY_DIRS.has(name);
   entries.push(
-    heavy
+    heavy || isDir
       ? { path: absPath, name, depth, isDir, lazy: true }
       : { path: absPath, name, depth, isDir }
   );
   if (isDir) {
-    const javaType = detectJavaProjectType(absPath);
+    const javaType = detectJavaProjectType(absPath, entryNames);
     if (javaType) {
       entries.push({ path: absPath, name: 'Dependencies', depth: depth + 1, isDir: true, lazy: true, synthetic: 'java-deps', javaType });
     }
@@ -121,13 +126,6 @@ helpers.pushTreeNode = function(entries, absPath, name, depth, isDir) {
   return heavy;
 }
 
-// Marca a pasta como "filhos não vieram completos" para a árvore saber que
-// precisa buscar sob demanda ao expandir.
-//
-// Sem isto, uma pasta cortada pelo limite global ficava MUDA: aparecia na
-// árvore, não era `lazy` (então o renderer não buscava nada) e não tinha filho
-// nenhum — clicar nela não fazia absolutamente nada, pra sempre. Era metade do
-// sintoma de "clico 7-10 vezes até abrir".
 function markIncomplete(entries, absPath) {
   for (let i = entries.length - 1; i >= 0; i--) {
     if (entries[i].path === absPath) { entries[i].lazy = true; return; }
@@ -142,41 +140,27 @@ helpers.walkTreeInto = function(entries, dirPath, depth, localBudget, globalLimi
     return 0;
   }
   dirEntries.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  const namesSet = new Set(dirEntries.map(d => d.name));
   let used = 0;
   for (const dirent of dirEntries) {
-    // Parou no meio: o que sobrou desta pasta será buscado sob demanda.
     if (entries.length >= globalLimit || used >= localBudget) {
       markIncomplete(entries, dirPath);
       return used;
     }
     const absPath = path.join(dirPath, dirent.name);
     const isDir = dirent.isDirectory();
-    const heavy = helpers.pushTreeNode(entries, absPath, dirent.name, depth, isDir);
+    const heavy = helpers.pushTreeNode(entries, absPath, dirent.name, depth, isDir, isDir ? null : namesSet);
     used += 1;
-    if (isDir && !heavy) {
-      // Filhos herdam o que sobrou do budget local (não o global) — garante
-      // que essa subárvore nunca ultrapasse sua cota, seja lá quão profunda for.
-      used += helpers.walkTreeInto(entries, absPath, depth + 1, localBudget - used, globalLimit);
+    if (isDir && !heavy && depth < 2) {
+      used += helpers.walkTreeInto(entries, absPath, depth + 1, Math.min(localBudget - used, 150), globalLimit);
     }
   }
   return used;
 }
 
-helpers.collectProjectEntries = function(root, limit = 4000, perTopLevelBudget = 800) {
+helpers.collectProjectEntries = function(root, limit = 1500, perTopLevelBudget = 300) {
   const entries = [];
 
-  // A própria pasta raiz aberta pode já SER um projeto Java (caso comum de
-  // abrir um projeto Maven/Gradle isolado, em vez de uma pasta com vários
-  // projetos dentro) — nesse caso ela nunca passa por pushTreeNode (só os
-  // filhos dela viram nós), então o marcador precisa ser injetado aqui.
-  const rootJavaType = detectJavaProjectType(root);
-  if (rootJavaType) {
-    entries.push({ path: root, name: 'Dependencies', depth: 0, isDir: true, lazy: true, synthetic: 'java-deps', javaType: rootJavaType });
-  }
-
-  // Passo 1: todas as entradas de topo (raiz do projeto) SEMPRE aparecem,
-  // sem limite — é o que garante que nenhuma pasta/arquivo do nível
-  // principal "suma" depois de um build.
   let topLevel = [];
   try {
     topLevel = fs2.readdirSync(root, { withFileTypes: true });
@@ -184,18 +168,20 @@ helpers.collectProjectEntries = function(root, limit = 4000, perTopLevelBudget =
     return entries;
   }
   topLevel.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  const topNamesSet = new Set(topLevel.map(d => d.name));
 
-  // TODA entrada de topo é empurrada, sempre — o `break` que existia aqui
-  // fazia METADE dos projetos sumir da árvore quando a pasta tinha vários
-  // repositórios grandes (medido: 5 de 10 projetos Java não apareciam).
-  // Estourar o limite agora só interrompe a DESCIDA, nunca esconde a pasta.
+  const rootJavaType = detectJavaProjectType(root, topNamesSet);
+  if (rootJavaType) {
+    entries.push({ path: root, name: 'Dependencies', depth: 0, isDir: true, lazy: true, synthetic: 'java-deps', javaType: rootJavaType });
+  }
+
   for (const dirent of topLevel) {
     const absPath = path.join(root, dirent.name);
     const isDir = dirent.isDirectory();
-    const heavy = helpers.pushTreeNode(entries, absPath, dirent.name, 0, isDir);
+    const heavy = helpers.pushTreeNode(entries, absPath, dirent.name, 0, isDir, isDir ? null : topNamesSet);
     if (!isDir || heavy) continue;
     if (entries.length >= limit) {
-      markIncomplete(entries, absPath); // vira busca sob demanda
+      markIncomplete(entries, absPath);
       continue;
     }
     helpers.walkTreeInto(entries, absPath, 1, perTopLevelBudget, limit);
@@ -203,12 +189,7 @@ helpers.collectProjectEntries = function(root, limit = 4000, perTopLevelBudget =
   return entries;
 }
 
-// Filhos IMEDIATOS da pasta, e só. Antes descia recursivamente com budget 800:
-// um clique custava a subárvore inteira, e era o que fazia a expansão demorar
-// tanto que o usuário clicava de novo achando que não tinha pego.
-// Cada subpasta volta marcada como `lazy`, então busca os próprios filhos quando
-// for expandida — custo por clique proporcional ao que aparece na tela.
-helpers.collectDirChildren = function(dirPath, limit = 3000) {
+helpers.collectDirChildren = function(dirPath, limit = 2000) {
   const entries = [];
   let top = [];
   try {
@@ -217,6 +198,7 @@ helpers.collectDirChildren = function(dirPath, limit = 3000) {
     return entries;
   }
   top.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  const childNamesSet = new Set(top.map(d => d.name));
 
   for (const dirent of top) {
     if (entries.length >= limit) break;
@@ -224,6 +206,7 @@ helpers.collectDirChildren = function(dirPath, limit = 3000) {
     const isDir = dirent.isDirectory();
     entries.push({ path: absPath, name: dirent.name, depth: 0, isDir, ...(isDir ? { lazy: true } : {}) });
     if (isDir) {
+      // Checa se este subdiretório tem arquivos Maven/Gradle lendo apenas os itens do diretório se necessário
       const javaType = detectJavaProjectType(absPath);
       if (javaType) {
         entries.push({ path: absPath, name: 'Dependencies', depth: 1, isDir: true, lazy: true, synthetic: 'java-deps', javaType });

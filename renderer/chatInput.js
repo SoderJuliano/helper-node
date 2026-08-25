@@ -24,7 +24,7 @@ var promptHistoryDraft = '';
                 });
             });
 
-            // Composer ghost: clicar no placeholder abre o input real
+            // Composer ghost: clicar no placeholder abre o input real imediatamente
             if (composerGhost && composerShell) {
                 composerShell.addEventListener('click', (e) => {
                     if (e.target.closest('.composer-send')) return;
@@ -49,16 +49,23 @@ var promptHistoryDraft = '';
                 });
             }
 
-            // Foco inicial suave na área de escrita visível
+            // Foco inicial imediato na área de escrita visível e captura de tecla ao vivo
             if (composerGhost) {
                 composerGhost.setAttribute('tabindex', '0');
+                composerGhost.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' || e.key === ' ' || (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey)) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openManualInput(e.key.length === 1 && e.key !== ' ' ? e.key : '');
+                    }
+                });
                 setTimeout(() => {
                     try {
                         composerGhost.focus({ preventScroll: true });
                     } catch (_) {
                         composerGhost.focus();
                     }
-                }, 120);
+                }, 20);
             }
 
     // Handler global do Ctrl+I: traz o chat de volta se estiver escondido (no modo IDE/janela com arquivo traz dividindo a tela) e foca o campo de texto.
@@ -340,11 +347,12 @@ var promptHistoryDraft = '';
             // de apresentação — nenhum fluxo de dados é alterado.
             dockComposer(container);
 
-            // Foca no input com um pequeno delay para garantir que o DOM foi atualizado
+            inputField.focus();
+            syncCursorWithCaretPosition();
             setTimeout(() => {
                 inputField.focus();
                 syncCursorWithCaretPosition();
-            }, 100);
+            }, 20);
             
             // Detecta se o caret está na primeira/última linha visual do contenteditable,
             // pra so' navegar o historico quando a seta nao serve pra mover entre linhas.

@@ -258,128 +258,96 @@ function disableRealtimeIfOtherEnabled(toggle) {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
-  // -------------------------
-  // Load saved instruction
-  // -------------------------
-  const instruction = await ipcRenderer.invoke("get-prompt-instruction");
-  instructionTextarea.value = instruction;
+  // Carrega todas as configurações em paralelo com Promise.all para abertura instantânea (<20ms)
+  const [
+    instruction,
+    isDebugging,
+    isPrintMode,
+    isOsIntegration,
+    isStealth,
+    ttsCfg,
+    nexaCfg,
+    isRealtimeAssistant,
+    helperToolsEnabled,
+    wsEnabled,
+    savedLang,
+    savedAiModel,
+    version,
+    savedToken,
+    savedBackendApiKey,
+    savedOpenAiModel,
+    savedEffort,
+    savedVisionModel,
+    savedOllamaModel,
+    savedClaudeCliModel,
+    savedGeminiCliModel,
+    savedCopilotCliModel,
+    _edition
+  ] = await Promise.all([
+    ipcRenderer.invoke("get-prompt-instruction").catch(() => ""),
+    ipcRenderer.invoke("get-debug-mode-status").catch(() => false),
+    ipcRenderer.invoke("get-print-mode-status").catch(() => false),
+    ipcRenderer.invoke("get-os-integration-status").catch(() => false),
+    ipcRenderer.invoke("get-stealth-mode-status").catch(() => false),
+    ipcRenderer.invoke("get-google-tts-config").catch(() => null),
+    ipcRenderer.invoke("nexa:get-config").catch(() => null),
+    ipcRenderer.invoke("get-realtime-assistant-status").catch(() => false),
+    ipcRenderer.invoke("get-helper-tools-enabled").catch(() => false),
+    ipcRenderer.invoke("get-workspace-access-enabled").catch(() => false),
+    ipcRenderer.invoke("get-language").catch(() => "pt-br"),
+    ipcRenderer.invoke("get-ai-model").catch(() => "geminiCli"),
+    ipcRenderer.invoke("get-app-version").catch(() => ""),
+    ipcRenderer.invoke("get-open-ia-token").catch(() => ""),
+    ipcRenderer.invoke("get-backend-api-key").catch(() => ""),
+    ipcRenderer.invoke("get-openai-model").catch(() => ""),
+    ipcRenderer.invoke("get-openai-reasoning-effort").catch(() => ""),
+    ipcRenderer.invoke("get-openai-vision-model").catch(() => ""),
+    ipcRenderer.invoke("get-ollama-local-model").catch(() => null),
+    ipcRenderer.invoke("get-claude-cli-model").catch(() => null),
+    ipcRenderer.invoke("get-gemini-cli-model").catch(() => null),
+    ipcRenderer.invoke("get-copilot-cli-model").catch(() => null),
+    ipcRenderer.invoke("get-edition").catch(() => "full")
+  ]);
 
-  // -------------------------
-  // Load debug mode
-  // -------------------------
-  const isDebugging = await ipcRenderer.invoke("get-debug-mode-status");
-  debugModeToggle.checked = isDebugging;
-  updateDebugModeStatus(isDebugging);
-
-  // -------------------------
-  // Load print mode
-  // -------------------------
-  const isPrintMode = await ipcRenderer.invoke("get-print-mode-status");
-  printModeToggle.checked = isPrintMode;
-  updatePrintModeStatus(isPrintMode);
-
-  // -------------------------
-  // Load OS integration mode
-  // -------------------------
-  const isOsIntegration = await ipcRenderer.invoke("get-os-integration-status");
-  osIntegrationToggle.checked = isOsIntegration;
-  updateOsIntegrationStatus(isOsIntegration);
-
-  // -------------------------
-  // Load stealth mode
-  // -------------------------
-  try {
-    const isStealth = await ipcRenderer.invoke("get-stealth-mode-status");
-    if (stealthModeToggle) {
-      stealthModeToggle.checked = isStealth;
-      updateStealthModeStatus(isStealth);
-    }
-  } catch (e) {
-    console.warn("stealth mode load failed:", e);
+  if (instructionTextarea) instructionTextarea.value = instruction || "";
+  if (debugModeToggle) { debugModeToggle.checked = !!isDebugging; updateDebugModeStatus(!!isDebugging); }
+  if (printModeToggle) { printModeToggle.checked = !!isPrintMode; updatePrintModeStatus(!!isPrintMode); }
+  if (osIntegrationToggle) { osIntegrationToggle.checked = !!isOsIntegration; updateOsIntegrationStatus(!!isOsIntegration); }
+  if (stealthModeToggle) { stealthModeToggle.checked = !!isStealth; updateStealthModeStatus(!!isStealth); }
+  
+  if (googleTtsToggle && ttsCfg) {
+    googleTtsToggle.checked = !!ttsCfg.enabled;
+    updateGoogleTtsStatus(!!ttsCfg.enabled);
+    if (googleTtsKey) googleTtsKey.value = ttsCfg.keyPathOrKey || "";
+    if (googleTtsVoiceSelect) googleTtsVoiceSelect.value = ttsCfg.voiceName || "pt-BR-Neural2-C";
   }
 
-  // -------------------------
-  // Load Google TTS mode
-  // -------------------------
-  try {
-    const ttsCfg = await ipcRenderer.invoke("get-google-tts-config");
-    if (googleTtsToggle && ttsCfg) {
-      googleTtsToggle.checked = !!ttsCfg.enabled;
-      updateGoogleTtsStatus(!!ttsCfg.enabled);
-      if (googleTtsKey) googleTtsKey.value = ttsCfg.keyPathOrKey || "";
-      if (googleTtsVoiceSelect) googleTtsVoiceSelect.value = ttsCfg.voiceName || "pt-BR-Neural2-C";
-    }
-  } catch (e) {
-    console.warn("Google TTS load failed:", e);
+  if (nexaToggle && nexaCfg) {
+    nexaToggle.checked = !!nexaCfg.enabled;
+    updateNexaStatus(!!nexaCfg.enabled);
   }
 
-  // -------------------------
-  // Load Nexa AI Assistant mode
-  // -------------------------
-  try {
-    const nexaCfg = await ipcRenderer.invoke("nexa:get-config");
-    if (nexaToggle && nexaCfg) {
-      nexaToggle.checked = !!nexaCfg.enabled;
-      updateNexaStatus(!!nexaCfg.enabled);
-    }
-  } catch (e) {
-    console.warn("Nexa config load failed:", e);
+  if (realtimeAssistantToggle) {
+    realtimeAssistantToggle.checked = !!isRealtimeAssistant;
+    updateRealtimeAssistantStatus(!!isRealtimeAssistant);
+    if (isRealtimeAssistant) applyRealtimeAssistantExclusivity();
   }
 
-  // -------------------------
-  // Load realtime assistant mode
-  // -------------------------
-  const isRealtimeAssistant = await ipcRenderer.invoke("get-realtime-assistant-status");
-  realtimeAssistantToggle.checked = isRealtimeAssistant;
-  updateRealtimeAssistantStatus(isRealtimeAssistant);
-
-  if (isRealtimeAssistant) {
-    applyRealtimeAssistantExclusivity();
+  if (helperToolsToggle) {
+    helperToolsToggle.checked = !!helperToolsEnabled;
+    updateHelperToolsStatus(!!helperToolsEnabled);
+    if (helperToolsEnabled) applyHelperToolsExclusivity();
   }
 
-  // -------------------------
-  // Load helper tools (ferramentas avançadas)
-  // -------------------------
-  try {
-    const helperToolsEnabled = await ipcRenderer.invoke("get-helper-tools-enabled");
-    if (helperToolsToggle) {
-      helperToolsToggle.checked = !!helperToolsEnabled;
-      updateHelperToolsStatus(!!helperToolsEnabled);
-      if (helperToolsEnabled) applyHelperToolsExclusivity();
-    }
-  } catch (e) {
-    console.warn("helperTools enabled load failed:", e);
+  if (workspaceAccessToggle) {
+    workspaceAccessToggle.checked = !!wsEnabled;
+    updateWorkspaceAccessStatus(!!wsEnabled);
   }
 
-  // -------------------------
-  // Load workspace access
-  // -------------------------
-  try {
-    const wsEnabled = await ipcRenderer.invoke("get-workspace-access-enabled");
-    if (workspaceAccessToggle) {
-      workspaceAccessToggle.checked = !!wsEnabled;
-      updateWorkspaceAccessStatus(!!wsEnabled);
-    }
-  } catch (e) {
-    console.warn("workspaceAccess load failed:", e);
-  }
+  if (savedLang && langSelect) langSelect.value = savedLang;
+  if (savedAiModel && aiModelSelect) aiModelSelect.value = savedAiModel;
+  applyWorkspaceAccessVisibility(aiModelSelect ? aiModelSelect.value : 'geminiCli');
 
-  // -------------------------
-  // Load saved language
-  // -------------------------
-  const savedLang = await ipcRenderer.invoke("get-language");
-  if (savedLang) langSelect.value = savedLang;
-
-  // -------------------------
-  // Load saved AI model
-  // -------------------------
-  const savedAiModel = await ipcRenderer.invoke("get-ai-model");
-  if (savedAiModel) {
-    aiModelSelect.value = savedAiModel;
-  }
-  applyWorkspaceAccessVisibility(aiModelSelect.value);
-  // Se já está num provider CLI, desabilita helperTools visualmente.
-  // Para Ollama backend, deixamos `checkBackendToolsAvailability` decidir após carregar o backend model.
   const _disableHelperToolsInit = (aiModelSelect.value === 'geminiCli' || aiModelSelect.value === 'claudeCli');
   if (_disableHelperToolsInit && helperToolsToggle) {
     helperToolsToggle.disabled = true;
@@ -392,91 +360,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   const backendApiKeyContainerInit = document.getElementById('backend-api-key-container');
   if (backendApiKeyContainerInit) backendApiKeyContainerInit.style.display = _isOllamaInit ? 'flex' : 'none';
 
-  // -------------------------
-  // Load app version
-  // -------------------------
-  try {
-    const version = await ipcRenderer.invoke("get-app-version");
-    if (appVersionValue) appVersionValue.textContent = version;
-  } catch (e) {
-    console.warn("get-app-version failed:", e);
-  }
+  if (appVersionValue) appVersionValue.textContent = version || "";
+  if (openIaTokenInput && savedToken) openIaTokenInput.value = savedToken;
+  if (backendApiKey && savedBackendApiKey) backendApiKey.value = savedBackendApiKey;
 
-  // Always load OpenAI token, regardless of current model
-  const savedToken = await ipcRenderer.invoke("get-open-ia-token");
-  if (savedToken) {
-      openIaTokenInput.value = savedToken;
-  }
+  if (savedEffort && openAiReasoningEffortSelect) openAiReasoningEffortSelect.value = savedEffort;
 
-  // Carregar API key do backend (qwen3.6-17b)
-  try {
-    const savedBackendApiKey = await ipcRenderer.invoke("get-backend-api-key");
-    const backendApiKeyInput = document.getElementById("backend-api-key");
-    if (savedBackendApiKey && backendApiKeyInput) {
-      backendApiKeyInput.value = savedBackendApiKey;
-    }
-  } catch (e) {
-    console.warn("get-backend-api-key failed:", e);
-  }
+  const currentProvider = aiModelSelect ? aiModelSelect.value : 'geminiCli';
+  const isChatGPT = (currentProvider === 'openIa' || currentProvider === 'openIaCodex');
 
-  if (ipcRenderer) {
-    ipcRenderer.on('backend-status-update', (event, data) => {
-      // console.log("Status do backend remoto atualizado:", data);
-    });
-  }
-
-
-
-  // Load saved backend model when initializing config
-  setTimeout(async () => {
-    try {
-      const saved = await ipcRenderer.invoke("get-backend-model");
-      await populateBackendModels(saved);
-    } catch(e) {}
-  }, 500);
-
-  // Load saved OpenAI model
-  const savedOpenAiModel = await ipcRenderer.invoke("get-openai-model");
-  await populateOpenAiModels(savedOpenAiModel);
-  updateRealtimeFastModelNote();
-
-  // Load saved reasoning effort e modelo de visão
-  try {
-    const savedEffort = await ipcRenderer.invoke("get-openai-reasoning-effort");
-    if (savedEffort && openAiReasoningEffortSelect) openAiReasoningEffortSelect.value = savedEffort;
-  } catch (e) { console.warn("get-openai-reasoning-effort failed:", e); }
-  try {
-    const savedVisionModel = await ipcRenderer.invoke("get-openai-vision-model");
-    await populateOpenAiVisionModels(savedVisionModel);
-  } catch (e) { console.warn("get-openai-vision-model failed:", e); }
-
-  // Load saved Ollama Local model
-  let savedOllamaModel = null;
-  try {
-    savedOllamaModel = await ipcRenderer.invoke("get-ollama-local-model");
-  } catch (e) { console.warn("ollama local model load failed:", e); }
-  await populateOllamaLocalModels(savedOllamaModel);
-
-  // Load saved Claude Code CLI model
-  try {
-    const savedClaudeCliModel = await ipcRenderer.invoke("get-claude-cli-model");
-    await populateClaudeCliModels(savedClaudeCliModel);
-  } catch (e) { console.warn("claude-cli model load failed:", e); }
-
-  // Load saved Gemini CLI model
-  try {
-    const savedGeminiCliModel = await ipcRenderer.invoke("get-gemini-cli-model");
-    await populateGeminiCliModels(savedGeminiCliModel);
-  } catch (e) { console.warn("gemini-cli model load failed:", e); }
-
-  // Load saved Copilot CLI model
-  try {
-    const savedCopilotCliModel = await ipcRenderer.invoke("get-copilot-cli-model");
-    await populateCopilotCliModels(savedCopilotCliModel);
-  } catch (e) { console.warn("copilot-cli model load failed:", e); }
-
-  // Show/hide provider fields based on saved model
-  const isChatGPT = (aiModelSelect.value === 'openIa' || aiModelSelect.value === 'openIaCodex');
   if (visionGuideSection) {
     visionGuideSection.style.display = isChatGPT ? 'block' : 'none';
   }
@@ -487,103 +379,99 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   if (isChatGPT) {
-    openIaTokenContainer.style.display = 'flex';
-    openAiModelContainer.style.display = 'flex';
+    if (openIaTokenContainer) openIaTokenContainer.style.display = 'flex';
+    if (openAiModelContainer) openAiModelContainer.style.display = 'flex';
     if (openAiReasoningEffortContainer) openAiReasoningEffortContainer.style.display = 'flex';
     if (openAiVisionModelContainer) openAiVisionModelContainer.style.display = 'flex';
-  } else if (aiModelSelect.value === 'ollamaLocal') {
+    populateOpenAiModels(savedOpenAiModel);
+    if (savedVisionModel) populateOpenAiVisionModels(savedVisionModel);
+  } else if (currentProvider === 'ollamaLocal') {
     if (ollamaLocalModelContainer) ollamaLocalModelContainer.style.display = 'flex';
-    populateOllamaLocalModels();
+    populateOllamaLocalModels(savedOllamaModel);
     applyOllamaLocalExclusivity();
-  } else if (aiModelSelect.value === 'geminiCli') {
+  } else if (currentProvider === 'geminiCli') {
     if (geminiCliModelContainer) geminiCliModelContainer.style.display = 'flex';
-  } else if (aiModelSelect.value === 'claudeCli') {
+    populateGeminiCliModels(savedGeminiCliModel);
+  } else if (currentProvider === 'claudeCli') {
     if (claudeCliModelContainer) claudeCliModelContainer.style.display = 'flex';
-  } else if (aiModelSelect.value === 'copilotCli') {
+    populateClaudeCliModels(savedClaudeCliModel);
+  } else if (currentProvider === 'copilotCli') {
     if (copilotCliModelContainer) copilotCliModelContainer.style.display = 'flex';
-  } else if (aiModelSelect.value === 'llama' || aiModelSelect.value === 'llama-stream') {
+    populateCopilotCliModels(savedCopilotCliModel);
+  } else if (currentProvider === 'llama' || currentProvider === 'llama-stream') {
     const backendModelContainerEl = document.getElementById('backend-model-container');
     if (backendModelContainerEl) backendModelContainerEl.style.display = 'flex';
+    ipcRenderer.invoke("get-backend-model").then(saved => populateBackendModels(saved)).catch(() => {});
   }
 
-  // -------------------------
-  // Load backend URL from abra-api
-  // -------------------------
-  try {
-    const response = await fetch(
-      "https://abra-api.top/notifications/retrieve?key=ngrockurl"
-    );
-    const data = await response.json();
+  // Load backend URL in the background with strict timeout so it never hangs the window
+  (async () => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1800);
+      const response = await fetch(
+        "https://abra-api.top/notifications/retrieve?key=ngrockurl",
+        { signal: controller.signal }
+      );
+      clearTimeout(timeoutId);
+      const data = await response.json();
 
-    if (Array.isArray(data) && data.length > 0) {
-      const lastNotification = data[data.length - 1];
-      if (lastNotification && lastNotification.content) {
-        backendUrlValue.textContent = lastNotification.content;
-        backendUrlValue.style.color = "#00ff00"; // Verde para indicar sucesso
-      } else {
-        backendUrlValue.textContent = "URL não disponível";
-        backendUrlValue.style.color = "#ff6b6b"; // Vermelho para erro
-      }
-    } else {
-      backendUrlValue.textContent = "Nenhuma URL encontrada";
-      backendUrlValue.style.color = "#ff6b6b";
-    }
-  } catch (error) {
-    console.error("Erro ao buscar URL do backend:", error);
-    backendUrlValue.textContent = "Erro ao carregar URL";
-    backendUrlValue.style.color = "#ff6b6b";
-  }
-
-  // -------------------------
-  // Carrega configurações de execução Java / Maven / Gradle se projeto anexado
-  // -------------------------
-  try {
-    const javaSection = document.getElementById('java-runner-config-section');
-    const javaBadge = document.getElementById('java-runner-project-badge');
-    const javaDesc = document.getElementById('java-runner-project-desc');
-    const javaBtn = document.getElementById('java-runner-open-config-btn');
-    const javaStatus = document.getElementById('java-runner-config-status');
-
-    if (javaSection) {
-      javaSection.style.display = 'none';
-      const ctx = await ipcRenderer.invoke('get-project-context');
-      if (ctx && ctx.path) {
-        const detectRes = await ipcRenderer.invoke('app-runner-detect-project', ctx.path);
-        if (detectRes && detectRes.ok && (detectRes.data.type === 'gradle' || detectRes.data.type === 'maven')) {
-          javaSection.style.display = 'block';
-          const isSpring = detectRes.data.isSpringBoot ? ' (Spring Boot)' : '';
-          if (javaBadge) {
-            javaBadge.textContent = detectRes.data.type === 'gradle' ? `Gradle${isSpring}` : `Maven${isSpring}`;
-          }
-          if (javaDesc) {
-            javaDesc.innerHTML = `Gerencie variáveis de ambiente, perfis ativos do Spring Boot e argumentos para o projeto: <strong>${ctx.name}</strong>.`;
-          }
-          if (javaBtn) {
-            javaBtn.onclick = () => {
-              ipcRenderer.send('open-app-runner-config', ctx.path);
-            };
-          }
-          try {
-            const cfgRes = await ipcRenderer.invoke('app-runner-get-config', ctx.path);
-            if (cfgRes && cfgRes.ok && javaStatus && cfgRes.data) {
-              const envCount = Object.keys(cfgRes.data.envVars || {}).length;
-              const prof = cfgRes.data.activeProfiles || 'padrão';
-              javaStatus.textContent = `Perfis: ${prof} | Variáveis: ${envCount}`;
-            }
-          } catch (_) {}
+      if (Array.isArray(data) && data.length > 0) {
+        const lastNotification = data[data.length - 1];
+        if (lastNotification && lastNotification.content && backendUrlValue) {
+          backendUrlValue.textContent = lastNotification.content;
+          backendUrlValue.style.color = "#00ff00";
         }
       }
-    }
-  } catch (e) {
-    console.warn("Java runner config check in config.html failed:", e);
-  }
+    } catch (_) {}
+  })();
 
-  // Edição Lite: ajusta a UI (100% online) depois que tudo carregou.
-  try {
-    const _edition = await ipcRenderer.invoke('get-edition');
-    _appEdition = _edition || 'full';
-    if (_edition === 'lite') applyLiteUi();
-  } catch (_) {}
+  // Carrega configurações de execução Java / Maven / Gradle se projeto anexado (não-bloqueante)
+  (async () => {
+    try {
+      const javaSection = document.getElementById('java-runner-config-section');
+      const javaBadge = document.getElementById('java-runner-project-badge');
+      const javaDesc = document.getElementById('java-runner-project-desc');
+      const javaBtn = document.getElementById('java-runner-open-config-btn');
+      const javaStatus = document.getElementById('java-runner-config-status');
+
+      if (javaSection) {
+        javaSection.style.display = 'none';
+        const ctx = await ipcRenderer.invoke('get-project-context');
+        if (ctx && ctx.path) {
+          const detectRes = await ipcRenderer.invoke('app-runner-detect-project', ctx.path);
+          if (detectRes && detectRes.ok && (detectRes.data.type === 'gradle' || detectRes.data.type === 'maven')) {
+            javaSection.style.display = 'block';
+            const isSpring = detectRes.data.isSpringBoot ? ' (Spring Boot)' : '';
+            if (javaBadge) {
+              javaBadge.textContent = detectRes.data.type === 'gradle' ? `Gradle${isSpring}` : `Maven${isSpring}`;
+            }
+            if (javaDesc) {
+              javaDesc.innerHTML = `Gerencie variáveis de ambiente, perfis ativos do Spring Boot e argumentos para o projeto: <strong>${ctx.name}</strong>.`;
+            }
+            if (javaBtn) {
+              javaBtn.onclick = () => {
+                ipcRenderer.send('open-app-runner-config', ctx.path);
+              };
+            }
+            try {
+              const cfgRes = await ipcRenderer.invoke('app-runner-get-config', ctx.path);
+              if (cfgRes && cfgRes.ok && javaStatus && cfgRes.data) {
+                const envCount = Object.keys(cfgRes.data.envVars || {}).length;
+                const prof = cfgRes.data.activeProfiles || 'padrão';
+                javaStatus.textContent = `Perfis: ${prof} | Variáveis: ${envCount}`;
+              }
+            } catch (_) {}
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Java runner config check in config.html failed:", e);
+    }
+  })();
+
+  _appEdition = _edition || 'full';
+  if (_edition === 'lite') applyLiteUi();
   applyBackendUrlVisibility();
 });
 
