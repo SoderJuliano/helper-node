@@ -106,7 +106,9 @@ var isTerminalInitialized = false;
                 lastPasteText = texto;
                 lastPasteTime = now;
 
-                if (window.electronAPI && typeof window.electronAPI.terminalInput === 'function') {
+                if (term && typeof term.paste === 'function') {
+                    term.paste(texto);
+                } else if (window.electronAPI && typeof window.electronAPI.terminalInput === 'function') {
                     window.electronAPI.terminalInput(texto);
                 }
             }
@@ -150,10 +152,19 @@ var isTerminalInitialized = false;
                 if (data.includes('\r')) agendarRefreshGit();
             });
 
-            // Ctrl+C: com seleção, copia; sem seleção, deixa o PTY receber o \x03.
+            // Interceptador de teclas customizado:
+            // - Ctrl+V: cola do clipboard (evita envio de ^V cru no Windows)
+            // - Ctrl+C: com seleção copia pro clipboard; sem seleção manda SIGINT (\x03) pro PTY
             term.attachCustomKeyEventHandler((e) => {
                 if (e.type !== 'keydown') return true;
                 const k = e.key ? e.key.toLowerCase() : '';
+
+                // Ctrl+V / Cmd+V
+                if ((e.ctrlKey || e.metaKey) && !e.altKey && k === 'v') {
+                    e.preventDefault();
+                    colarTextoNoTerminal();
+                    return false;
+                }
 
                 // Ctrl+C / Cmd+C com texto selecionado
                 if ((e.ctrlKey || e.metaKey) && !e.altKey && k === 'c') {
@@ -164,6 +175,7 @@ var isTerminalInitialized = false;
                         } else if (window.electronAPI && window.electronAPI.copyToClipboard) {
                             window.electronAPI.copyToClipboard(sel);
                         }
+                        if (typeof window.showToast === 'function') window.showToast('Texto copiado do terminal!');
                         term.clearSelection();
                         return false;
                     }
@@ -172,20 +184,145 @@ var isTerminalInitialized = false;
                 return true;
             });
 
-            // Clique com botão direito: se houver seleção copia, se não houver cola
-            host.addEventListener('contextmenu', (e) => {
+            // Menu de Contexto (botão direito no terminal)
+            function showTerminalContextMenu(e) {
                 e.preventDefault();
-                const sel = term && term.getSelection();
-                if (sel && sel.trim()) {
-                    if (navigator.clipboard && navigator.clipboard.writeText) {
-                        navigator.clipboard.writeText(sel).catch(() => {});
-                    } else if (window.electronAPI && window.electronAPI.copyToClipboard) {
-                        window.electronAPI.copyToClipboard(sel);
+                e.stopPropagation();
+
+                document.querySelectorAll('.term-context-menu').forEach(m => m.remove());
+
+                const sel = (term && term.getSelection()) ? term.getSelection() : '';
+                const hasSelection = Boolean(sel && sel.trim());
+
+                const menu = document.createElement('div');
+                menu.className = 'term-context-menu';
+                menu.style.cssText = `
+                    position: fixed;
+                    left: ${Math.min(e.clientX, window.innerWidth - 200)}px;
+                    top: ${Math.min(e.clientY, window.innerHeight - 170)}px;
+                    z-index: 100000;
+                    background: var(--bg-elevated, #1b1e24);
+                    border: 1px solid var(--border, #2d2d38);
+                    border-radius: var(--radius-sm, 6px);
+                    padding: 4px;
+                    box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+                    min-width: 180px;
+                    font-family: var(--font-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+                    font-size: 12px;
+                    color: var(--text, #e3e3e6);
+                    -webkit-app-region: no-drag;
+                    user-select: none;
+                `;
+
+                const SVGI_COPY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+                const SVGI_PASTE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px;"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>';
+                const SVGI_PATH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+                const SVGI_CLEAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+
+                const mkItem = (iconHtml, label, shortcut, enabled, fn) => {
+                    const b = document.createElement('button');
+                    b.innerHTML = `
+                        <span style="display:flex; align-items:center; gap:8px;">
+                            <span style="opacity:0.8; display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px;">${iconHtml}</span>
+                            <span>${label}</span>
+                        </span>
+                        ${shortcut ? `<span style="font-size:10.5px; opacity:0.5; margin-left:14px;">${shortcut}</span>` : ''}
+                    `;
+                    b.style.cssText = `
+                        display: flex;
+                        align-items: center;
+                        justify-content: space-between;
+                        width: 100%;
+                        text-align: left;
+                        background: transparent;
+                        border: none;
+                        color: ${enabled ? 'inherit' : 'rgba(255,255,255,0.3)'};
+                        font-size: inherit;
+                        font-family: inherit;
+                        padding: 6px 10px;
+                        cursor: ${enabled ? 'pointer' : 'default'};
+                        border-radius: 4px;
+                        transition: background .12s;
+                    `;
+                    if (enabled) {
+                        b.addEventListener('mouseenter', () => b.style.background = 'rgba(255,255,255,0.08)');
+                        b.addEventListener('mouseleave', () => b.style.background = 'transparent');
+                        b.addEventListener('click', (ev) => {
+                            ev.stopPropagation();
+                            menu.remove();
+                            fn();
+                        });
                     }
-                    term.clearSelection();
-                } else {
+                    return b;
+                };
+
+                const mkSep = () => {
+                    const sep = document.createElement('div');
+                    sep.style.cssText = 'height:1px; background:var(--border, #2d2d38); margin:4px 0;';
+                    return sep;
+                };
+
+                // 1. Copiar Seleção
+                menu.appendChild(mkItem(SVGI_COPY, 'Copiar', 'Ctrl+C', hasSelection, () => {
+                    if (hasSelection) {
+                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                            navigator.clipboard.writeText(sel).catch(() => {});
+                        } else if (window.electronAPI && window.electronAPI.copyToClipboard) {
+                            window.electronAPI.copyToClipboard(sel);
+                        }
+                        if (typeof window.showToast === 'function') window.showToast('Copiado para a área de transferência!');
+                        if (term) term.clearSelection();
+                    }
+                }));
+
+                // 2. Colar no Terminal
+                menu.appendChild(mkItem(SVGI_PASTE, 'Colar', 'Ctrl+V', true, () => {
                     colarTextoNoTerminal();
+                    if (term) term.focus();
+                }));
+
+                menu.appendChild(mkSep());
+
+                // 3. Copiar Caminho do Projeto
+                const wsProjectMain = document.getElementById('ws-project-main');
+                const projectPath = (wsProjectMain && wsProjectMain.dataset.path) || '';
+                if (projectPath) {
+                    menu.appendChild(mkItem(SVGI_PATH, 'Copiar Caminho do Projeto', '', true, () => {
+                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                            navigator.clipboard.writeText(projectPath).catch(() => {});
+                        } else if (window.electronAPI && window.electronAPI.copyToClipboard) {
+                            window.electronAPI.copyToClipboard(projectPath);
+                        }
+                        if (typeof window.showToast === 'function') window.showToast('Caminho do projeto copiado!');
+                    }));
                 }
+
+                // 4. Limpar Terminal
+                menu.appendChild(mkItem(SVGI_CLEAR, 'Limpar Terminal', '', true, () => {
+                    if (term) {
+                        term.clear();
+                        term.focus();
+                    }
+                }));
+
+                document.body.appendChild(menu);
+
+                const removeMenu = (ev) => {
+                    if (!menu.contains(ev.target)) {
+                        menu.remove();
+                        document.removeEventListener('click', removeMenu);
+                        document.removeEventListener('contextmenu', removeMenu);
+                    }
+                };
+                setTimeout(() => {
+                    document.addEventListener('click', removeMenu);
+                    document.addEventListener('contextmenu', removeMenu);
+                }, 10);
+            }
+
+            // Clique com botão direito no terminal abre o menu de contexto
+            host.addEventListener('contextmenu', (e) => {
+                showTerminalContextMenu(e);
             });
 
             return term;
