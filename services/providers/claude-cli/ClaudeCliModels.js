@@ -181,7 +181,13 @@ async function getModels() {
     return disk;
   }
 
-  return (await refresh()) || cachedModels || disk || FALLBACK_ALIASES.map(id => ({ id, label: id }));
+  if (cachedModels) return cachedModels;
+
+  const fallbacks = FALLBACK_ALIASES.map(id => ({ id, label: id }));
+  cachedModels = fallbacks;
+  lastFetchTime = Date.now();
+  refresh();
+  return fallbacks;
 }
 
 function refresh() {

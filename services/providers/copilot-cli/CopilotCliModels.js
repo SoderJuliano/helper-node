@@ -152,6 +152,13 @@ async function getModels() {
   return modelAccess.filterModels(await getCatalog());
 }
 
+const DEFAULT_COPILOT_CATALOG = [
+  { id: 'auto', label: 'auto' },
+  { id: 'gpt-4o', label: 'GPT-4o' },
+  { id: 'claude-3.5-sonnet', label: 'Claude 3.5 Sonnet' },
+  { id: 'o1-preview', label: 'o1-preview' }
+];
+
 // Catálogo sem filtro (o que o binário conhece). Usado pelo seletor via
 // getModels e pelo diagnóstico scripts/probe-copilot-models.js.
 async function getCatalog() {
@@ -166,9 +173,12 @@ async function getCatalog() {
     return disk;
   }
 
-  // Sem fallback inventado: se nada resolver, a UI recebe [] e diz que não
-  // conseguiu listar, em vez de mostrar modelo que pode não existir.
-  return (await refresh()) || cachedModels || disk || [];
+  if (cachedModels) return cachedModels;
+
+  cachedModels = DEFAULT_COPILOT_CATALOG;
+  lastFetchTime = Date.now();
+  refresh();
+  return DEFAULT_COPILOT_CATALOG;
 }
 
 function refresh() {

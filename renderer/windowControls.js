@@ -21,16 +21,23 @@
                     if (dragArea && window.electronAPI.startWindowDrag) {
                         dragArea.style.setProperty('-webkit-app-region', 'no-drag');
                         dragArea.style.cursor = 'move';
+                        let isDragging = false;
                         dragArea.addEventListener('mousedown', (e) => {
-                            if (e.button === 0) { // Left click only
+                            if (e.button === 0) {
                                 e.preventDefault();
+                                isDragging = true;
                                 window.electronAPI.startWindowDrag();
                             }
                         });
                         const endDrag = () => {
-                            if (window.electronAPI.endWindowDrag) window.electronAPI.endWindowDrag();
+                            if (isDragging) {
+                                isDragging = false;
+                                if (window.electronAPI.endWindowDrag) window.electronAPI.endWindowDrag();
+                            }
                         };
-                        window.addEventListener('mouseup', endDrag);
+                        window.addEventListener('mouseup', endDrag, true);
+                        window.addEventListener('pointerup', endDrag, true);
+                        window.addEventListener('pointercancel', endDrag, true);
                         window.addEventListener('blur', endDrag);
                     }
                 }

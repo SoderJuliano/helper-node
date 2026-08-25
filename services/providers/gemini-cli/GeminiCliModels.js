@@ -21,7 +21,14 @@ const { resolveBinary } = require('./GeminiCliProcess');
 const DEFAULT_MODEL = '';
 
 const MEMORY_TTL = 5 * 60 * 1000;
-const PROBE_TIMEOUT = 20000;
+const PROBE_TIMEOUT = 2500;
+
+const DEFAULT_AGY_MODELS = [
+  { id: 'gemini-2.5-flash', value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+  { id: 'gemini-2.5-pro', value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+  { id: 'claude-3-7-sonnet', value: 'claude-3-7-sonnet', label: 'Claude 3.7 Sonnet' },
+  { id: 'gemini-2.5-ultra', value: 'gemini-2.5-ultra', label: 'Gemini 2.5 Ultra' }
+];
 
 let cachedModels = null;
 let lastFetchTime = 0;
@@ -136,7 +143,7 @@ function refresh() {
   if (inFlight) return inFlight;
   inFlight = fetchModels()
     .then((models) => {
-      if (models) {
+      if (models && models.length) {
         cachedModels = models;
         lastFetchTime = Date.now();
         writeDiskCache(models);
@@ -154,23 +161,21 @@ function refresh() {
 async function getModels(force = false) {
   if (!force && cachedModels && Date.now() - lastFetchTime < MEMORY_TTL) return cachedModels;
 
-  if (force) {
-    const fresh = await refresh();
-    if (fresh && fresh.length) return fresh;
-  }
-
   const disk = readDiskCache();
   if (disk && !cachedModels) {
-    // Serve o último resultado bom na hora e revalida em segundo plano.
     cachedModels = disk;
     lastFetchTime = Date.now();
-    refresh();
+    if (force) refresh();
     return disk;
   }
 
-  // Sem fallback inventado: se nada resolver, a UI recebe [] e diz que não
-  // conseguiu listar, em vez de mostrar modelo que pode não existir.
-  return (await refresh()) || cachedModels || disk || [];
+  if (cachedModels) return cachedModels;
+
+  // Serve catálogo padrão instantaneamente (0ms) e revalida em segundo plano
+  cachedModels = DEFAULT_AGY_MODELS;
+  lastFetchTime = Date.now();
+  refresh();
+  return DEFAULT_AGY_MODELS;
 }
 
 function getDefaultModel() {

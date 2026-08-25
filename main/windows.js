@@ -45,7 +45,7 @@ helpers.createConfigWindow = function() {
   });
 
   state.configWindow.loadFile("config.html");
-  state.configWindow.setAlwaysOnTop(true, isLinux ? "floating" : "screen-saver");
+  state.configWindow.setAlwaysOnTop(true, "floating");
 
   state.configWindow.on("closed", () => {
     state.configWindow = null;
@@ -82,7 +82,7 @@ helpers.createPreferencesWindow = function() {
   });
 
   state.preferencesWindow.loadFile("preferences.html");
-  state.preferencesWindow.setAlwaysOnTop(true, isLinux ? "floating" : "screen-saver");
+  state.preferencesWindow.setAlwaysOnTop(true, "floating");
 
   state.preferencesWindow.on("closed", () => {
     state.preferencesWindow = null;

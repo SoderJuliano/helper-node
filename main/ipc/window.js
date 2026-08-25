@@ -46,11 +46,12 @@ ipcMain.on('frameless-drag-start', (event) => {
   helpers.stopFramelessDrag();
   const cursor = screen.getCursorScreenPoint();
   const [wx, wy] = win.getPosition();
-  const [ww, wh] = win.getSize(); // trava o tamanho no início do arraste
   const offsetX = cursor.x - wx;
   const offsetY = cursor.y - wy;
+  let lastX = wx;
+  let lastY = wy;
   let dragTicks = 0;
-  const maxTicks = 60 * 10; // 10 segundos timeout de segurança
+  const maxTicks = 60 * 5; // 5 segundos timeout de segurança
   const timer = setInterval(() => {
     dragTicks++;
     if (!win || win.isDestroyed() || dragTicks > maxTicks) {
@@ -58,9 +59,15 @@ ipcMain.on('frameless-drag-start', (event) => {
       return;
     }
     const c = screen.getCursorScreenPoint();
-    try {
-      win.setBounds({ x: Math.round(c.x - offsetX), y: Math.round(c.y - offsetY), width: ww, height: wh });
-    } catch (_) {}
+    const newX = Math.round(c.x - offsetX);
+    const newY = Math.round(c.y - offsetY);
+    if (newX !== lastX || newY !== lastY) {
+      lastX = newX;
+      lastY = newY;
+      try {
+        win.setPosition(newX, newY);
+      } catch (_) {}
+    }
   }, 16);
   state._framelessDrag = { win, timer };
 });

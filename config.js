@@ -18,9 +18,23 @@ if (process.platform !== 'linux') {
   if (dragHandle) {
     dragHandle.style.setProperty('-webkit-app-region', 'no-drag');
     dragHandle.style.cursor = 'move';
-    dragHandle.addEventListener('mousedown', (e) => { e.preventDefault(); ipcRenderer.send('frameless-drag-start'); });
-    const end = () => ipcRenderer.send('frameless-drag-end');
-    window.addEventListener('mouseup', end);
+    let isDragging = false;
+    dragHandle.addEventListener('mousedown', (e) => {
+      if (e.button === 0) {
+        e.preventDefault();
+        isDragging = true;
+        ipcRenderer.send('frameless-drag-start');
+      }
+    });
+    const end = () => {
+      if (isDragging) {
+        isDragging = false;
+        ipcRenderer.send('frameless-drag-end');
+      }
+    };
+    window.addEventListener('mouseup', end, true);
+    window.addEventListener('pointerup', end, true);
+    window.addEventListener('pointercancel', end, true);
     window.addEventListener('blur', end);
   }
 }
