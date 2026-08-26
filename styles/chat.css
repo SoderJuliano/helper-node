@@ -141,12 +141,28 @@
     color: var(--text); font-weight: 600; font-size: 14px; line-height: 1.5;
     margin-bottom: 10px; cursor: default; word-break: break-word;
 }
+.question-actions {
+    position: absolute; right: 8px; top: 8px;
+    display: inline-flex; align-items: center; gap: 4px;
+    opacity: 0; transition: opacity .15s var(--ease);
+    z-index: 2;
+}
+.question-text:hover .question-actions { opacity: 1; }
+.question-action-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px; border-radius: 4px;
+    color: var(--text-3); cursor: pointer;
+    background: transparent; border: none; padding: 0;
+    transition: color .15s var(--ease), background .15s var(--ease), transform .15s var(--ease);
+}
+.question-action-btn:hover { color: var(--accent-2); background: rgba(255,255,255,0.08); }
+.question-action-btn:active { transform: scale(0.9); }
+.question-action-btn.copied { color: var(--accent-2); }
+.question-action-btn svg { width: 14px; height: 14px; pointer-events: none; }
 .question-text .edit-icon {
-    position: absolute; right: 10px; top: 10px;
-    color: var(--text-3); cursor: pointer; opacity: 0;
+    color: var(--text-3); cursor: pointer;
     transition: opacity .15s var(--ease), color .15s var(--ease);
 }
-.question-text:hover .edit-icon { opacity: 1; }
 .question-text .edit-icon:hover { color: var(--accent-2); }
 
 .ia-response, .streaming-response {

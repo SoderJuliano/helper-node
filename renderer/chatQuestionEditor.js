@@ -3,7 +3,9 @@
 (function() {
   'use strict';
 
-  const EDIT_ICON_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 21H21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path fill-rule="evenodd" clip-rule="evenodd" d="M18.0235 10.4646L7.58554 20.9026H2.76801L2.76489 16.0819L13.2029 5.64392L18.0235 10.4646Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.2029 5.64388L15.0004 3.84641C15.7814 3.06536 17.0477 3.06536 17.8288 3.84641L19.821 5.83863C20.6021 6.61968 20.6021 7.88601 19.821 8.66706L18.0235 10.4645V10.4645" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const EDIT_ICON_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 21H21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path fill-rule="evenodd" clip-rule="evenodd" d="M18.0235 10.4646L7.58554 20.9026H2.76801L2.76489 16.0819L13.2029 5.64392L18.0235 10.4646Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.2029 5.64388L15.0004 3.84641C15.7814 3.06536 17.0477 3.06536 17.8288 3.84641L19.821 5.83863C20.6021 6.61968 20.6021 7.88601 19.821 8.66706L18.0235 10.4645V10.4645" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const COPY_ICON_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  const CHECK_ICON_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
 
   let _editEscHandler = null;
 
@@ -17,22 +19,69 @@
   function setQuestionText(el, text) {
     el.dataset.raw = text;
     el.innerHTML = typeof window.renderMarkdown === 'function' ? window.renderMarkdown(text, 'q') : text;
-    const ic = document.createElement('span');
-    ic.className = 'edit-icon';
-    ic.title = 'Editar e reenviar';
-    ic.innerHTML = EDIT_ICON_SVG;
-    el.appendChild(ic);
+
+    const actions = document.createElement('span');
+    actions.className = 'question-actions';
+
+    const copyBtn = document.createElement('span');
+    copyBtn.className = 'question-action-btn copy-question-btn';
+    copyBtn.title = 'Copiar pergunta';
+    copyBtn.setAttribute('aria-label', 'Copiar pergunta');
+    copyBtn.innerHTML = COPY_ICON_SVG;
+
+    const editBtn = document.createElement('span');
+    editBtn.className = 'question-action-btn edit-icon';
+    editBtn.title = 'Editar e reenviar';
+    editBtn.setAttribute('aria-label', 'Editar e reenviar');
+    editBtn.innerHTML = EDIT_ICON_SVG;
+
+    actions.appendChild(copyBtn);
+    actions.appendChild(editBtn);
+    el.appendChild(actions);
   }
 
   function getQuestionText(questionSpan) {
-    return (questionSpan.dataset.raw || questionSpan.textContent).trim();
+    if (!questionSpan) return '';
+    if (questionSpan.dataset && questionSpan.dataset.raw) {
+      return questionSpan.dataset.raw.trim();
+    }
+    const clone = questionSpan.cloneNode(true);
+    clone.querySelectorAll('.question-actions, .edit-icon, .copy-question-btn').forEach(el => el.remove());
+    return (clone.textContent || '').trim();
   }
 
   function wireQuestionEdit(span) {
     span.addEventListener('click', (e) => {
-      if (!e.target.closest('.edit-icon')) return;
-      e.stopPropagation();
-      handleQuestionEdit(span);
+      const copyBtn = e.target.closest('.copy-question-btn');
+      if (copyBtn) {
+        e.stopPropagation();
+        const text = getQuestionText(span);
+        if (!text) return;
+        if (typeof window.copyTextReliable === 'function') {
+          window.copyTextReliable(text);
+        } else {
+          try {
+            if (window.electronAPI && window.electronAPI.copyToClipboard) {
+              window.electronAPI.copyToClipboard(text);
+            } else {
+              navigator.clipboard.writeText(text).catch(() => {});
+            }
+          } catch (_) {}
+        }
+        copyBtn.innerHTML = CHECK_ICON_SVG;
+        copyBtn.classList.add('copied');
+        setTimeout(() => {
+          copyBtn.innerHTML = COPY_ICON_SVG;
+          copyBtn.classList.remove('copied');
+        }, 1500);
+        return;
+      }
+
+      const editBtn = e.target.closest('.edit-icon');
+      if (editBtn) {
+        e.stopPropagation();
+        handleQuestionEdit(span);
+      }
     });
   }
 
