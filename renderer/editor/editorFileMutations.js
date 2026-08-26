@@ -138,6 +138,14 @@
             langEl.textContent = LANG_LABEL_BY_EXT[ext] || (ext || 'texto').toUpperCase();
           }
           cm.setOption('mode', CM_MODE_BY_EXT[ext] || null);
+          const indentConfig = (window.EditorConstants && typeof window.EditorConstants.detectIndentation === 'function')
+            ? window.EditorConstants.detectIndentation(doc ? doc.content : '', ext)
+            : (ext === 'java' || ext === 'kt' || ext === 'cs' || ext === 'cpp' || ext === 'c' || ext === 'py'
+                ? { indentUnit: 4, tabSize: 4, indentWithTabs: false }
+                : { indentUnit: 2, tabSize: 2, indentWithTabs: false });
+          cm.setOption('indentUnit', indentConfig.indentUnit);
+          cm.setOption('tabSize', indentConfig.tabSize);
+          cm.setOption('indentWithTabs', indentConfig.indentWithTabs);
         }
       }
     }

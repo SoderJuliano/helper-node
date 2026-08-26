@@ -337,6 +337,16 @@
     cmInst.setOption('mode', CM_MODE_BY_EXT[ext] || null);
     cmInst.setOption('readOnly', isDependencySource);
 
+    const indentConfig = (window.EditorConstants && typeof window.EditorConstants.detectIndentation === 'function')
+      ? window.EditorConstants.detectIndentation(doc.content, ext)
+      : (ext === 'java' || ext === 'kt' || ext === 'cs' || ext === 'cpp' || ext === 'c' || ext === 'py'
+          ? { indentUnit: 4, tabSize: 4, indentWithTabs: false }
+          : { indentUnit: 2, tabSize: 2, indentWithTabs: false });
+
+    cmInst.setOption('indentUnit', indentConfig.indentUnit);
+    cmInst.setOption('tabSize', indentConfig.tabSize);
+    cmInst.setOption('indentWithTabs', indentConfig.indentWithTabs);
+
     if (cmInst.getValue() !== doc.content) {
       cmInst.setValue(doc.content);
       cmInst.clearHistory();
