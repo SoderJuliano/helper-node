@@ -233,34 +233,45 @@ ipcMain.on("save-os-integration-status", (event, status) => {
   helpers.notifyShortcutsChanged();
   
   if (status) {
-    // NÃO forçamos mais o print mode aqui: "Integrar com SO" e "enviar print
-    // direto" são independentes. O monitoramento abaixo roda, mas os watchers
-    // já checam getPrintModeStatus() e não enviam nada se estiver desligado.
-
-    // Notificação de ativação
     if (appConfig.notificationsEnabled && Notification.isSupported()) {
-      new Notification({
-        title: 'Helper-Node',
-        body: 'Integração com SO ativada! Interface minimalista habilitada.',
-        silent: true,
-      }).show();
+      new Notification({ title: 'Helper-Node', body: 'Integração com SO ativada! Interface minimalista habilitada.', silent: true }).show();
     }
-    
     helpers.startClipboardMonitoring();
-    helpers.startCaptureToolMonitoring(); // Monitoramento de ferramentas de captura apenas no OS integration
-    // Switch to OS integration mode
+    helpers.startCaptureToolMonitoring();
     helpers.switchToOsIntegrationMode();
-  } else {
-    // Notificação de desativação
-    if (appConfig.notificationsEnabled && Notification.isSupported()) {
-      new Notification({
-        title: 'Helper-Node',
-        body: 'Integração com SO desativada',
-        silent: true,
-      }).show();
+    const taCfg = configService.getTranslationAssistantConfig ? configService.getTranslationAssistantConfig() : {};
+    const isTaActive = !!(taCfg && taCfg.enabled) || translationAssistant.isActive();
+    if (isTaActive) {
+      if (!translationAssistant.isActive()) {
+        const cfg = configService.getConfig();
+        if (cfg.openIaToken) {
+          translationAssistant.start({
+            apiKey: cfg.openIaToken,
+            userName: taCfg.userName || '',
+            userBackground: taCfg.userBackground || '',
+            targetLanguage: taCfg.targetLanguage || 'pt-br',
+            micDevice: taCfg.micDevice || '',
+          }).catch((e) => console.error('[TranslationAssistant] start falhou:', e.message));
+        }
+      }
+      try { helpers.stopClipboardMonitoring(); } catch (_) {}
+      try { helpers.stopCaptureToolMonitoring(); } catch (_) {}
+      try { helpers.stopScreenshotFolderMonitoring(); } catch (_) {}
+      helpers.createTranslationOverlay();
+      helpers.sendToTranslationOverlay('translation-status', 'mic_open');
+    } else if (helpers.anyRealtimeActive() || configService.getRealtimeAssistantStatus()) {
+      helpers.createRealtimeAssistantOverlay();
+    } else if (visionGuide.isActive() || configService.getVisionGuideConfig().enabled) {
+      helpers.createVisionGuideOverlay();
     }
-    
-    // Switch back to normal mode
+  } else {
+    if (appConfig.notificationsEnabled && Notification.isSupported()) {
+      new Notification({ title: 'Helper-Node', body: 'Integração com SO desativada', silent: true }).show();
+    }
+    helpers.destroyTranslationOverlay();
+    helpers.destroyRealtimeAssistantOverlay();
+    helpers.destroyVisionGuideOverlay();
+    helpers.destroyNotificationWindow();
     helpers.switchToNormalMode();
   }
 });
@@ -294,26 +305,14 @@ ipcMain.on("save-realtime-assistant-status", async (event, status) => {
   }
 });
 
-ipcMain.handle("get-language", () => {
-  return configService.getLanguage();
-});
-
-ipcMain.on("set-language", (event, language) => {
-  configService.setLanguage(language);
-});
-
-ipcMain.handle("get-google-tts-config", () => {
-  return configService.getGoogleTtsConfig();
-});
-
+ipcMain.handle("get-language", () => configService.getLanguage());
+ipcMain.on("set-language", (event, language) => configService.setLanguage(language));
+ipcMain.handle("get-google-tts-config", () => configService.getGoogleTtsConfig());
 ipcMain.on("save-google-tts-config", (event, cfg) => {
   configService.setGoogleTtsConfig(cfg);
   console.log("Google TTS config updated:", cfg);
 });
-
-ipcMain.on("trigger-tts-stream-playback", (event, text) => {
-  helpers.triggerTtsPlaybackIfEnabled(text);
-});
+ipcMain.on("trigger-tts-stream-playback", (event, text) => helpers.triggerTtsPlaybackIfEnabled(text));
 
 ipcMain.handle("kb-get", () => {
   const cfg = configService.getKnowledgeBaseConfig();
@@ -399,36 +398,42 @@ ipcMain.on("set-translation-assistant-config", (event, partial) => {
           targetLanguage: ta.targetLanguage || 'pt-br',
           micDevice: ta.micDevice || '',
         }).then(() => {
-          // Em OS Integration, parar tudo o que não é o TA (clipboard, screenshot watch,
-          // capture tool) — só o overlay de tradução fica ativo.
-          if (cfg.osIntegration) {
-            try { helpers.stopClipboardMonitoring(); } catch (_) {}
-            try { helpers.stopCaptureToolMonitoring(); } catch (_) {}
-            try { helpers.stopScreenshotFolderMonitoring(); } catch (_) {}
-            console.log('[mutex] TA ativo + OS Integration: monitorings de print/captura/screenshot parados');
-            // Sobe o overlay dedicado do tradutor
+          if (configService.getOsIntegrationStatus()) {
+            try { helpers.stopClipboardMonitoring(); helpers.stopCaptureToolMonitoring(); helpers.stopScreenshotFolderMonitoring(); } catch (_) {}
+            if (state.mainWindow && !state.mainWindow.isDestroyed()) state.mainWindow.hide();
             helpers.createTranslationOverlay();
             helpers.sendToTranslationOverlay('translation-status', 'mic_open');
+          } else {
+            helpers.destroyTranslationOverlay();
+            if (state.mainWindow && !state.mainWindow.isDestroyed()) state.mainWindow.show();
           }
           if (state.mainWindow && !state.mainWindow.isDestroyed()) state.mainWindow.webContents.send('translation-status', 'mic_open');
         }).catch((e) => console.error('[TranslationAssistant] falha ao iniciar:', e.message));
+      } else {
+        if (configService.getOsIntegrationStatus()) {
+          try { helpers.stopClipboardMonitoring(); helpers.stopCaptureToolMonitoring(); helpers.stopScreenshotFolderMonitoring(); } catch (_) {}
+          if (state.mainWindow && !state.mainWindow.isDestroyed()) state.mainWindow.hide();
+          helpers.createTranslationOverlay();
+          helpers.sendToTranslationOverlay('translation-status', 'mic_open');
+        } else {
+          helpers.destroyTranslationOverlay();
+          if (state.mainWindow && !state.mainWindow.isDestroyed()) state.mainWindow.show();
+        }
       }
     } else {
       if (translationAssistant.isActive()) {
         translationAssistant.stop().then(() => {
-          // Ao desligar o TA, se OS Integration ainda estiver ativo, restaura
-          // os monitorings normais (print mode + ferramentas de captura).
-          if (cfg.osIntegration) {
+          if (configService.getOsIntegrationStatus()) {
             if (configService.getPrintModeStatus()) {
-              try { helpers.startClipboardMonitoring(); } catch (_) {}
-              try { helpers.startScreenshotFolderMonitoring(); } catch (_) {}
+              try { helpers.startClipboardMonitoring(); helpers.startScreenshotFolderMonitoring(); } catch (_) {}
             }
             try { helpers.startCaptureToolMonitoring(); } catch (_) {}
-            console.log('[mutex] TA desligado: monitorings restaurados');
           }
           helpers.destroyTranslationOverlay();
           if (state.mainWindow && !state.mainWindow.isDestroyed()) state.mainWindow.webContents.send('translation-status', 'idle');
         }).catch(() => {});
+      } else {
+        helpers.destroyTranslationOverlay();
       }
     }
   }
@@ -453,16 +458,14 @@ ipcMain.on("set-translation-test-mode", (event, enabled) => {
     }
     return;
   }
-
   const ta = cfg.translationAssistant || {};
-
-  // Entrega eventos para o renderer com o objeto de status completo
   const deliver = (data) => {
     try {
-      if (cfg.osIntegration) {
-        const text = data.response || data.evaluation || data.error || data.message || '';
-        if (text) helpers.createOsNotificationWindow('response', text);
-      } else if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+      if (configService.getOsIntegrationStatus()) {
+        helpers.createTranslationOverlay();
+        helpers.sendToTranslationOverlay('translation-result', data);
+      }
+      if (state.mainWindow && !state.mainWindow.isDestroyed()) {
         state.mainWindow.webContents.send('translation-result', data);
       }
     } catch (e) {
@@ -470,15 +473,12 @@ ipcMain.on("set-translation-test-mode", (event, enabled) => {
     }
   };
 
-  // Executa em background para não bloquear o IPC
   runTestMode({
     apiKey: cfg.openIaToken,
     userName: ta.userName || '',
     userBackground: ta.userBackground || '',
     targetLanguage: ta.targetLanguage || 'pt-br',
-
     onResult: (data) => deliver(data),
-
     onDone: () => {
       deliver({ status: 'complete', message: '✅ Teste concluído — 5 perguntas processadas.' });
       configService.setTranslationAssistantConfig({ testMode: false });

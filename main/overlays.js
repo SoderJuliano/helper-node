@@ -17,9 +17,18 @@ const {
 } = require('./globals.js');
 
 helpers.createTranslationOverlay = function() {
+  if (!configService.getOsIntegrationStatus()) return null;
   if (state.translationOverlayWindow && !state.translationOverlayWindow.isDestroyed()) {
-    // Já existe — só reposiciona, caso o compositor tenha movido.
     helpers.forceTranslationOverlayPosition('recreate-reposition');
+    try {
+      if (typeof state.translationOverlayWindow.showInactive === 'function') {
+        state.translationOverlayWindow.showInactive();
+      } else {
+        state.translationOverlayWindow.show();
+      }
+      state.translationOverlayWindow.setAlwaysOnTop(true, 'screen-saver');
+      state.translationOverlayWindow.moveTop();
+    } catch (_) {}
     return state.translationOverlayWindow;
   }
 
@@ -78,9 +87,21 @@ helpers.createTranslationOverlay = function() {
       } else {
         state.translationOverlayWindow.show();
       }
+      state.translationOverlayWindow.setAlwaysOnTop(true, 'screen-saver');
+      state.translationOverlayWindow.moveTop();
     } catch (_) {}
     helpers.forceTranslationOverlayPosition('post-show');
   });
+
+  setTimeout(() => {
+    if (state.translationOverlayWindow && !state.translationOverlayWindow.isDestroyed()) {
+      try {
+        if (!state.translationOverlayWindow.isVisible()) state.translationOverlayWindow.show();
+        state.translationOverlayWindow.setAlwaysOnTop(true, 'screen-saver');
+        state.translationOverlayWindow.moveTop();
+      } catch (_) {}
+    }
+  }, 400);
 
   state.translationOverlayWindow.webContents.on('did-finish-load', () => {
     helpers.forceTranslationOverlayPosition('did-finish-load');
@@ -125,117 +146,75 @@ helpers.destroyTranslationOverlay = function() {
     try { state.translationOverlayWindow.close(); } catch (_) {}
   }
   state.translationOverlayWindow = null;
-}
-
+};
 helpers.sendToTranslationOverlay = function(channel, payload) {
   if (state.translationOverlayWindow && !state.translationOverlayWindow.isDestroyed()) {
     try { state.translationOverlayWindow.webContents.send(channel, payload); } catch (_) {}
   }
-}
-
+};
 helpers.createVisionGuideOverlay = function() {
-  if (state.visionGuideOverlayWindow && !state.visionGuideOverlayWindow.isDestroyed()) {
-    return state.visionGuideOverlayWindow;
-  }
+  if (!configService.getOsIntegrationStatus()) return null;
+  if (state.visionGuideOverlayWindow && !state.visionGuideOverlayWindow.isDestroyed()) return state.visionGuideOverlayWindow;
   const b = helpers.computeVisionGuideOverlayBounds();
-  console.log(`[vision-guide-overlay] criando: x=${b.x} y=${b.y} w=${b.width} h=${b.height}`);
-
   state.visionGuideOverlayWindow = new BrowserWindow({
     width: b.width, height: b.height, x: b.x, y: b.y,
-    backgroundColor: '#00000000',
-    useContentSize: false,
-    frame: false,
-    transparent: true,
-    thickFrame: false,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    resizable: false,
-    movable: true,
-    minimizable: false,
-    maximizable: false,
-    fullscreenable: false,
-    focusable: true,
-    hasShadow: false,
-    show: false,
-    title: 'helper-node-vision-guide-overlay',
-    webPreferences: {
-      preload: path.join(ROOT_DIR, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
+    backgroundColor: '#00000000', useContentSize: false, frame: false, transparent: true,
+    thickFrame: false, alwaysOnTop: true, skipTaskbar: true, resizable: false, movable: true,
+    minimizable: false, maximizable: false, fullscreenable: false, focusable: true, hasShadow: false,
+    show: false, title: 'helper-node-vision-guide-overlay',
+    webPreferences: { preload: path.join(ROOT_DIR, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
-
   state.visionGuideOverlayWindow.setAlwaysOnTop(true, 'screen-saver');
   state.visionGuideOverlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   helpers.applyStealthProtection(state.visionGuideOverlayWindow);
-
-  state.visionGuideOverlayWindow.loadFile(
-    path.join(ROOT_DIR, 'os-integration', 'notifications', 'vision-guide-overlay.html')
-  );
-
+  state.visionGuideOverlayWindow.loadFile(path.join(ROOT_DIR, 'os-integration', 'notifications', 'vision-guide-overlay.html'));
   state.visionGuideOverlayWindow.once('ready-to-show', () => {
     try { state.visionGuideOverlayWindow.setBounds(helpers.computeVisionGuideOverlayBounds()); } catch (_) {}
     try {
-      if (typeof state.visionGuideOverlayWindow.showInactive === 'function') {
-        state.visionGuideOverlayWindow.showInactive();
-      } else {
-        state.visionGuideOverlayWindow.show();
-      }
+      if (typeof state.visionGuideOverlayWindow.showInactive === 'function') state.visionGuideOverlayWindow.showInactive();
+      else state.visionGuideOverlayWindow.show();
     } catch (_) {}
   });
-
   state.visionGuideOverlayWindow.webContents.on('did-finish-load', () => {
     if (process.platform !== 'linux') {
       try { state.visionGuideOverlayWindow.setIgnoreMouseEvents(true, { forward: true }); } catch (_) {}
     }
   });
-
   const keepOnTop = setInterval(() => {
     if (!state.visionGuideOverlayWindow || state.visionGuideOverlayWindow.isDestroyed()) {
       clearInterval(keepOnTop);
       return;
     }
-    // Enquanto minimizado (botão "-"), não força topo/reexibição.
     if (state.visionGuideMinimized) return;
     try {
-      if (!state.visionGuideOverlayWindow.isAlwaysOnTop()) {
-        state.visionGuideOverlayWindow.setAlwaysOnTop(true, 'screen-saver');
-      }
+      if (!state.visionGuideOverlayWindow.isAlwaysOnTop()) state.visionGuideOverlayWindow.setAlwaysOnTop(true, 'screen-saver');
       state.visionGuideOverlayWindow.moveTop();
     } catch (_) {}
   }, 2000);
-
   state.visionGuideOverlayWindow.on('closed', () => {
     clearInterval(keepOnTop);
     state.visionGuideOverlayWindow = null;
   });
-
   return state.visionGuideOverlayWindow;
-}
-
+};
 helpers.destroyVisionGuideOverlay = function() {
   if (state.visionGuideOverlayWindow && !state.visionGuideOverlayWindow.isDestroyed()) {
     try { state.visionGuideOverlayWindow.close(); } catch (_) {}
   }
   state.visionGuideOverlayWindow = null;
-}
-
+};
 helpers.sendToVisionGuideOverlay = function(channel, payload) {
   if (state.visionGuideOverlayWindow && !state.visionGuideOverlayWindow.isDestroyed()) {
     try { state.visionGuideOverlayWindow.webContents.send(channel, payload); } catch (_) {}
   }
-}
+};
 
 helpers.createRealtimeAssistantOverlay = function() {
-  if (state.realtimeOverlayWindow && !state.realtimeOverlayWindow.isDestroyed()) {
-    return state.realtimeOverlayWindow;
-  }
-  // Trava estrita: se a opção estiver desligada e nenhum serviço de tempo real ativo, NUNCA cria a janela
+  if (!configService.getOsIntegrationStatus()) return null;
+  if (state.realtimeOverlayWindow && !state.realtimeOverlayWindow.isDestroyed()) return state.realtimeOverlayWindow;
   const isEnabled = typeof configService.getRealtimeAssistantStatus === 'function' ? configService.getRealtimeAssistantStatus() : false;
   const isAnyActive = typeof helpers.anyRealtimeActive === 'function' ? helpers.anyRealtimeActive() : false;
-  if (!isEnabled && !isAnyActive) {
-    return null;
-  }
+  if (!isEnabled && !isAnyActive) return null;
   const b = helpers.computeVisionGuideOverlayBounds();
   console.log(`[realtime-assistant-overlay] criando: x=${b.x} y=${b.y} w=${b.width} h=${b.height}`);
 

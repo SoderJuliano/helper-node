@@ -95,3 +95,12 @@ está errado, PERGUNTE — não "corrija" por conta própria:
 - Digitar com o foco fora do input abre o composer e injeta a primeira tecla
   (`isDirectTypingKey` → `openManualInput`).
 
+## Regra de Ouro — Proibição Estrita de Criação de Novas UIs, Janelas ou Arquivos Não Solicitados
+
+12. **NUNCA crie novas janelas, UIs, telas, overlays, notificações ou arquivos por conta própria.**
+    - Você só deve criar arquivos, novas janelas ou novas UIs quando o usuário solicitar **EXPLICITAMENTE**.
+    - Nunca presuma, deduza ou invente soluções que criem janelas alternativas, balões de notificação ou interfaces não pedidas.
+    - Se uma funcionalidade precisar de interface e você não tiver certeza de qual janela existente utilizar, **PERGUNTE** ou use estritamente as janelas já existentes e documentadas no projeto.
+    - O assistente de tradução (`translationAssistant`) usa **apenas e unicamente** a janela `translation-overlay` (`os-integration/notifications/translation-overlay.html`) no modo integrado ao SO, ou a janela principal no modo normal. Nunca crie janelas extras de notificação para tradução.
+
+

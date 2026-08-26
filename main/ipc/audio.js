@@ -106,9 +106,11 @@ ipcMain.handle("translation-start", async () => {
     targetLanguage: ta.targetLanguage || 'pt-br',
     micDevice: ta.micDevice || '',
   });
-  if (cfg.osIntegration) {
+  if (configService.getOsIntegrationStatus()) {
     helpers.createTranslationOverlay();
     helpers.sendToTranslationOverlay('translation-status', 'mic_open');
+  } else {
+    helpers.destroyTranslationOverlay();
   }
   if (state.mainWindow && !state.mainWindow.isDestroyed()) state.mainWindow.webContents.send('translation-status', 'mic_open');
   return { ok: true };

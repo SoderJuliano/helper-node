@@ -10,6 +10,7 @@ class GeminiCliTranscriptPoller {
     this._pollInterval = null;
     this._processedSteps = new Set();
     this._activeTools = new Map();
+    this._currentTurnMinStep = 0;
   }
 
   get agyConvId() {
@@ -29,6 +30,7 @@ class GeminiCliTranscriptPoller {
     this._agyConvId = null;
     this._processedSteps.clear();
     this._activeTools.clear();
+    this._currentTurnMinStep = 0;
   }
 
   start() {
@@ -38,6 +40,29 @@ class GeminiCliTranscriptPoller {
     const transcriptPath = path.join(appDataDir, 'brain', this._agyConvId, '.system_generated', 'logs', 'transcript.jsonl');
 
     let lastSize = 0;
+    if (fs.existsSync(transcriptPath)) {
+      try {
+        const initialContent = fs.readFileSync(transcriptPath, 'utf8');
+        const lines = initialContent.split('\n');
+        let maxExisting = -1;
+        for (const rawLine of lines) {
+          const trimmed = rawLine.trim();
+          if (!trimmed) continue;
+          try {
+            const data = JSON.parse(trimmed);
+            if (data.step_index !== undefined) {
+              this._processedSteps.add(data.step_index);
+              if (data.step_index > maxExisting) maxExisting = data.step_index;
+            }
+          } catch (_) {}
+        }
+        this._currentTurnMinStep = Math.max(0, maxExisting + 1);
+        lastSize = fs.statSync(transcriptPath).size;
+      } catch (e) {
+        console.warn('[GeminiCliParser] Initial transcript check warning:', e.message);
+      }
+    }
+
     const poll = () => {
       try {
         if (!fs.existsSync(transcriptPath)) return;
@@ -96,6 +121,11 @@ class GeminiCliTranscriptPoller {
         const data = JSON.parse(trimmed);
         const stepIndex = data.step_index;
 
+        if (data.type === 'USER_INPUT' && stepIndex >= this._currentTurnMinStep) {
+          this._currentTurnMinStep = stepIndex;
+        }
+
+        if (stepIndex < this._currentTurnMinStep) continue;
         if (this._processedSteps.has(stepIndex)) continue;
         this._processedSteps.add(stepIndex);
 

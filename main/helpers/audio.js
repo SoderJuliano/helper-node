@@ -236,8 +236,18 @@ helpers.transcribeAudio = async function(filePath, options = {}) {
       console.log(`Usando modelo ${modelPath ? path.basename(modelPath) : 'default'}`);
     }
 
-    if (!modelPath || !fs2.existsSync(modelPath)) {
-      throw new Error("Nenhum modelo Whisper encontrado em whisper/models/");
+    const token = configService.getOpenIaToken();
+    if (!fs2.existsSync(whisperPath) || !modelPath || !fs2.existsSync(modelPath)) {
+      if (token && typeof cloudTranscribeAudio === 'function') {
+        console.log('[transcribeAudio] Whisper local indisponível — usando transcrição na nuvem (OpenAI)');
+        const cloudText = await cloudTranscribeAudio(filePath, token);
+        const cleanText = await helpers.limparTranscricao(cloudText || '');
+        if (emitRenderer && state.mainWindow && !state.mainWindow.isDestroyed()) {
+          state.mainWindow.webContents.send("transcription-result", { cleanText });
+        }
+        return cleanText;
+      }
+      throw new Error("Nenhum modelo Whisper encontrado em whisper/models/ e token OpenAI não configurado");
     }
 
     const command = `"${whisperPath}" -m "${modelPath}" -f "${filePath}" -l ${whisperLang} --threads 8 --no-timestamps --best-of 5 --beam-size 5`;
@@ -247,6 +257,19 @@ helpers.transcribeAudio = async function(filePath, options = {}) {
       exec(command, async (error, stdout, stderr) => {
         if (error) {
           console.error("Whisper error:", stderr);
+          if (token && typeof cloudTranscribeAudio === 'function') {
+            try {
+              console.log('[transcribeAudio] Whisper local falhou — fallback para transcrição na nuvem (OpenAI)');
+              const cloudText = await cloudTranscribeAudio(filePath, token);
+              const cleanText = await helpers.limparTranscricao(cloudText || '');
+              if (emitRenderer && state.mainWindow && !state.mainWindow.isDestroyed()) {
+                state.mainWindow.webContents.send("transcription-result", { cleanText });
+              }
+              return resolve(cleanText);
+            } catch (cloudErr) {
+              console.error('[transcribeAudio] Fallback na nuvem também falhou:', cloudErr.message);
+            }
+          }
           state.mainWindow.webContents.send(
             "transcription-error",
             "Failed to transcribe audio"

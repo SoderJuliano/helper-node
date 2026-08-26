@@ -56,7 +56,6 @@ helpers.switchToOsIntegrationMode = function() {
   if (state.mainWindow && !state.mainWindow.isDestroyed()) {
     state.mainWindow.hide();
   }
-  helpers.createOsNotificationWindow();
 }
 
 helpers.switchToNormalMode = function() {

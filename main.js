@@ -185,11 +185,10 @@ app.whenReady().then(async () => {
       try {
         const isOsIntegration = configService.getOsIntegrationStatus();
         if (isOsIntegration) {
-          helpers.sendToTranslationOverlay('translation-result', data);
-          const responseText = data.response || data.text || '';
-          if (responseText && (!state.translationOverlayWindow || state.translationOverlayWindow.isDestroyed())) {
-            helpers.createOsNotificationWindow('response', responseText);
+          if (!state.translationOverlayWindow || state.translationOverlayWindow.isDestroyed()) {
+            helpers.createTranslationOverlay();
           }
+          helpers.sendToTranslationOverlay('translation-result', data);
         }
         if (state.mainWindow && !state.mainWindow.isDestroyed()) {
           state.mainWindow.webContents.send('translation-result', data);
@@ -290,9 +289,12 @@ app.whenReady().then(async () => {
   console.log('🔗 Checking OS integration status:', initialOsIntegration);
   if (initialOsIntegration) {
     console.log('🔗 OS integration estava ativo, iniciando modo de integração...');
-    // Delay to ensure everything is loaded
     setTimeout(() => {
       helpers.switchToOsIntegrationMode();
+      if (initialTaCfg && initialTaCfg.enabled) {
+        helpers.createTranslationOverlay();
+        helpers.sendToTranslationOverlay('translation-status', 'mic_open');
+      }
     }, 1000);
     
     // Ensure clipboard monitoring is started for OS integration mode.

@@ -35,11 +35,67 @@ const MAX_PARALLEL_WHISPER = 2;          // evita N whisper-cli concorrendo no C
 // juntamos os textos e reprocessamos a pergunta inteira.
 const CONTINUATION_WINDOW_MS = 3000;
 
+function getWhisperBinCandidates() {
+  const exeName = process.platform === "win32" ? "whisper-cli.exe" : "whisper-cli";
+  const list = [
+    path.join(__dirname, "..", "whisper", "build", "bin", exeName),
+    path.join(__dirname, "..", "whisper", "bin", exeName),
+  ];
+  if (process.env.LOCALAPPDATA) {
+    list.push(
+      path.join(process.env.LOCALAPPDATA, "helper-node-whisper-cache", "bin", exeName),
+      path.join(process.env.LOCALAPPDATA, "helper-node", "whisper", "build", "bin", exeName),
+      path.join(process.env.LOCALAPPDATA, "helper-node", "bin", exeName)
+    );
+  }
+  return list;
+}
+
 function whisperBinPath() {
-  return path.join(
-    __dirname, "..", "whisper", "build", "bin",
-    process.platform === "win32" ? "whisper-cli.exe" : "whisper-cli"
-  );
+  for (const p of getWhisperBinCandidates()) {
+    try {
+      if (fs.existsSync(p)) return p;
+    } catch (_) {}
+  }
+  return path.join(__dirname, "..", "whisper", "build", "bin", process.platform === "win32" ? "whisper-cli.exe" : "whisper-cli");
+}
+
+function getWhisperModelPath() {
+  const names = ["ggml-base.bin", "ggml-small.bin", "ggml-tiny.bin", "ggml-medium.bin"];
+  const searchDirs = [
+    path.join(__dirname, "..", "whisper", "models"),
+  ];
+  if (process.env.LOCALAPPDATA) {
+    searchDirs.push(
+      path.join(process.env.LOCALAPPDATA, "helper-node-whisper-cache", "models"),
+      path.join(process.env.LOCALAPPDATA, "helper-node", "whisper", "models")
+    );
+  }
+  for (const dir of searchDirs) {
+    for (const name of names) {
+      const full = path.join(dir, name);
+      try {
+        if (fs.existsSync(full)) return full;
+      } catch (_) {}
+    }
+  }
+  return null;
+}
+
+async function cloudTranscribeWav(audioPath, apiKey) {
+  const fileBuffer = await fsp.readFile(audioPath);
+  const blob = new Blob([fileBuffer]);
+  const form = new FormData();
+  form.append('file', blob, path.basename(audioPath));
+  form.append('model', 'gpt-4o-transcribe');
+  const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + apiKey },
+    body: form,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error?.message || 'Cloud transcription failed');
+  return data.text || '';
 }
 
 function isAcousticEcho(text, otherClosed) {
@@ -100,9 +156,16 @@ class RealtimeAssistantService {
       } catch (e) { console.warn('history session failed:', e.message); }
     }
 
-    if (!fs.existsSync(whisperBinPath())) {
+    const hasLocalWhisper = fs.existsSync(whisperBinPath()) && !!getWhisperModelPath();
+    const token = this.configService.getOpenIaToken ? this.configService.getOpenIaToken() : '';
+
+    if (!hasLocalWhisper && !token) {
       this.active = false;
-      this.emitUpdate({ type: "fatal_error", message: "⚠️ Whisper local não encontrado — o modo em tempo real offline precisa da edição Full. Troque o provedor pra ChatGPT ou instale o Whisper.", timestamp: new Date().toISOString() });
+      this.emitUpdate({
+        type: "fatal_error",
+        message: "⚠️ Transcrição de áudio não disponível. Instale o Whisper localmente ou configure uma API key da OpenAI nas configurações para transcrever a voz.",
+        timestamp: new Date().toISOString()
+      });
       if (this.onFatalStop) try { this.onFatalStop(); } catch (_) {}
       return false;
     }
@@ -264,13 +327,15 @@ class RealtimeAssistantService {
   // Para audios > 90s, acelera 1.3x com ffmpeg antes (cabe melhor no budget).
   async _runWhisperAdaptive(id, wavPath) {
     const whisperBin = whisperBinPath();
-    const modelBase = path.join(__dirname, "..", "whisper", "models", "ggml-base.bin");
-    const modelTiny = path.join(__dirname, "..", "whisper", "models", "ggml-tiny.bin");
-    const modelSm   = path.join(__dirname, "..", "whisper", "models", "ggml-small.bin");
-    const modelMed  = path.join(__dirname, "..", "whisper", "models", "ggml-medium.bin");
-    const model = fs.existsSync(modelBase) ? modelBase : (fs.existsSync(modelTiny) ? modelTiny : (fs.existsSync(modelSm) ? modelSm : (fs.existsSync(modelMed) ? modelMed : null)));
+    const model = getWhisperModelPath();
+    const token = this.configService.getOpenIaToken ? this.configService.getOpenIaToken() : '';
+
     if (!fs.existsSync(whisperBin) || !model) {
-      throw new Error("whisper-cli ou modelo indisponivel");
+      if (token) {
+        console.log(`[realtime] ${id}: Whisper local ausente/incompleto, usando transcrição via OpenAI cloud...`);
+        return await cloudTranscribeWav(wavPath, token);
+      }
+      throw new Error("whisper-cli ou modelo indisponível");
     }
 
     // Duracao a partir do proprio WAV (s16le mono 16k, header de 44 bytes).
@@ -315,6 +380,13 @@ class RealtimeAssistantService {
     let text = "";
     try {
       text = await this._spawnWhisper(whisperBin, args, WHISPER_TIMEOUT_MS);
+    } catch (whisperErr) {
+      if (token) {
+        console.warn(`[realtime] ${id}: Whisper local falhou (${whisperErr.message}) — fallback para OpenAI cloud`);
+        text = await cloudTranscribeWav(inputPath, token);
+      } else {
+        throw whisperErr;
+      }
     } finally {
       if (speedPath) { try { await fsp.unlink(speedPath); } catch (_) {} }
     }
