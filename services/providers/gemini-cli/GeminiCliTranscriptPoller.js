@@ -37,39 +37,12 @@ class GeminiCliTranscriptPoller {
     const appDataDir = path.join(os.homedir(), '.gemini', 'antigravity-cli');
     const transcriptPath = path.join(appDataDir, 'brain', this._agyConvId, '.system_generated', 'logs', 'transcript.jsonl');
 
-    try {
-      if (fs.existsSync(transcriptPath)) {
-        const content = fs.readFileSync(transcriptPath, 'utf8');
-        const lines = content.split('\n');
-        for (const rawLine of lines) {
-          const trimmed = rawLine.trim();
-          if (!trimmed) continue;
-          try {
-            const data = JSON.parse(trimmed);
-            const stepIndex = data.step_index;
-            if (stepIndex !== undefined) {
-              this._processedSteps.add(stepIndex);
-            }
-          } catch (e) {}
-        }
-      }
-    } catch (err) {
-      console.error('[GeminiCliParser] Error pre-populating processed steps:', err.message);
-    }
-
     let lastSize = 0;
-    try {
-      if (fs.existsSync(transcriptPath)) {
-        const stats = fs.statSync(transcriptPath);
-        lastSize = stats.size;
-      }
-    } catch (e) {}
-
     const poll = () => {
       try {
         if (!fs.existsSync(transcriptPath)) return;
         const stats = fs.statSync(transcriptPath);
-        if (stats.size === lastSize) return;
+        if (stats.size === lastSize && lastSize > 0) return;
 
         lastSize = stats.size;
         const content = fs.readFileSync(transcriptPath, 'utf8');
@@ -80,7 +53,7 @@ class GeminiCliTranscriptPoller {
     };
 
     poll();
-    this._pollInterval = setInterval(poll, 400);
+    this._pollInterval = setInterval(poll, 300);
   }
 
   stop() {
@@ -104,7 +77,7 @@ class GeminiCliTranscriptPoller {
 
     for (const [, tools] of this._activeTools.entries()) {
       for (const tool of tools) {
-        this._emit('toolDone', { id: tool.id, label: tool.label });
+        this._emit('toolDone', { id: tool.id, label: tool.label, detail: tool.detail });
         if (tool.filePath) {
           this._emit('fileTool', { id: tool.id, name: 'Edit', filePath: tool.filePath, phase: 'after' });
         }
@@ -155,6 +128,7 @@ class GeminiCliTranscriptPoller {
 
           const cleanArg = (val) => {
             if (typeof val === 'string') {
+              val = val.trim();
               if (val.startsWith('"') && val.endsWith('"')) {
                 try {
                   return JSON.parse(val);
@@ -175,29 +149,49 @@ class GeminiCliTranscriptPoller {
           let detail = '';
           let filePath = '';
 
+          const shortPath = (p) => {
+            if (!p) return '';
+            const normalized = String(p).replace(/\\/g, '/');
+            const parts = normalized.split('/').filter(Boolean);
+            if (parts.length === 0) return '';
+            if (parts.length <= 2) return parts.join('/');
+            return parts.slice(-2).join('/');
+          };
+
           if (name === 'run_command') {
             label = 'Executando comando';
-            detail = cleanArgs.CommandLine || '';
+            const cmd = cleanArgs.CommandLine || cleanArgs.command || '';
+            detail = cmd.length > 60 ? cmd.slice(0, 57) + '…' : cmd;
           } else if (name === 'write_to_file') {
+            const f = cleanArgs.TargetFile || cleanArgs.targetFile || cleanArgs.path || '';
             label = 'Criando arquivo';
-            detail = cleanArgs.TargetFile || '';
-            filePath = cleanArgs.TargetFile || '';
+            detail = shortPath(f);
+            filePath = f;
           } else if (name === 'replace_file_content' || name === 'multi_replace_file_content') {
+            const f = cleanArgs.TargetFile || cleanArgs.targetFile || cleanArgs.path || '';
             label = 'Editando arquivo';
-            detail = cleanArgs.TargetFile || '';
-            filePath = cleanArgs.TargetFile || '';
+            detail = shortPath(f);
+            filePath = f;
           } else if (name === 'list_dir') {
+            const d = cleanArgs.DirectoryPath || cleanArgs.dir || '';
             label = 'Listando diretório';
-            detail = cleanArgs.DirectoryPath || '';
+            detail = shortPath(d);
           } else if (name === 'view_file') {
+            const f = cleanArgs.AbsolutePath || cleanArgs.targetFile || cleanArgs.filePath || cleanArgs.path || '';
             label = 'Lendo arquivo';
-            detail = cleanArgs.AbsolutePath || '';
+            detail = shortPath(f);
+            filePath = f;
           } else if (name === 'grep_search') {
             label = 'Buscando no projeto';
-            detail = cleanArgs.Query || '';
-          } else if (name === 'list_permissions') {
-            label = 'Listando permissões';
-            detail = '';
+            const q = cleanArgs.Query || cleanArgs.query || cleanArgs.pattern || '';
+            detail = q.length > 45 ? q.slice(0, 42) + '…' : q;
+          } else if (name === 'find_by_name') {
+            label = 'Localizando arquivos';
+            detail = cleanArgs.Pattern || cleanArgs.pattern || '';
+          } else if (name === 'read_url_content' || name === 'search_web') {
+            label = name === 'search_web' ? 'Pesquisando na web' : 'Lendo página web';
+            const q = cleanArgs.query || cleanArgs.Url || cleanArgs.url || '';
+            detail = q.length > 45 ? q.slice(0, 42) + '…' : q;
           } else {
             label = cleanArgs.toolSummary || cleanArgs.toolAction || name;
             detail = cleanArgs.toolAction || '';
@@ -222,7 +216,7 @@ class GeminiCliTranscriptPoller {
           this._activeTools.set(stepIndex, activeToolsForStep);
         }
       }
-    } else if (type === 'RUN_COMMAND' || type === 'CODE_ACTION' || type === 'GENERIC') {
+    } else if (type === 'RUN_COMMAND' || type === 'CODE_ACTION' || type === 'GENERIC' || type === 'VIEW_FILE' || type === 'USER_INPUT') {
       let targetStepIndex = -1;
       for (const stepIdx of this._activeTools.keys()) {
         if (stepIdx < stepIndex && stepIdx > targetStepIndex) {
@@ -234,7 +228,7 @@ class GeminiCliTranscriptPoller {
         const tools = this._activeTools.get(targetStepIndex);
         if (tools) {
           for (const tool of tools) {
-            this._emit('toolDone', { id: tool.id, label: tool.label });
+            this._emit('toolDone', { id: tool.id, label: tool.label, detail: tool.detail });
             if (tool.filePath) {
               this._emit('fileTool', { id: tool.id, name: 'Edit', filePath: tool.filePath, phase: 'after' });
             }

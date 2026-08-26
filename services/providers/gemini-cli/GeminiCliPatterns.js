@@ -27,12 +27,16 @@ const THINKING_END_PATTERNS = [
 ];
 
 const TOOL_PATTERNS = [
-  { re: /^(?:edit|writing|updating|modifying)\s+(.+)/i, label: 'Editando arquivo' },
-  { re: /^(?:reading|opening)\s+(.+)/i, label: 'Lendo arquivo' },
-  { re: /^(?:running|executing|running command):\s*(.+)/i, label: 'Executando' },
-  { re: /^(?:searching|looking for)\s+(.+)/i, label: 'Buscando' },
+  { re: /^(?:edit|editing|writing|modifying|updating)\s+(?:file\s+)?(.+)/i, label: 'Editando arquivo' },
+  { re: /^(?:reading|viewing|opening|read|view)\s+(?:file\s+)?(.+)/i, label: 'Lendo arquivo' },
+  { re: /^(?:running|executing|running command)[:\s]+(.+)/i, label: 'Executando comando' },
+  { re: /^(?:searching|looking for|grep|finding)\s+(.+)/i, label: 'Buscando no projeto' },
   { re: /^(?:creating|new file)\s+(.+)/i, label: 'Criando arquivo' },
   { re: /^(?:deleting|removing)\s+(.+)/i, label: 'Removendo arquivo' },
+  { re: /^(?:listing|listing directory)\s+(.+)/i, label: 'Listando diretório' },
+  { re: /^(?:lendo|abrindo)\s+(?:o\s+)?(?:arquivo\s+)?(.+)/i, label: 'Lendo arquivo' },
+  { re: /^(?:editando|modificando|alterando)\s+(?:o\s+)?(?:arquivo\s+)?(.+)/i, label: 'Editando arquivo' },
+  { re: /^(?:buscando|procurando|pesquisando)\s+(.+)/i, label: 'Buscando no projeto' },
   { re: /^[╭┌]\s*(?:Tool|Action|Command):\s*(.+)/i, label: 'Ferramenta' },
 ];
 

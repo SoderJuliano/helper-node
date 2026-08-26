@@ -116,7 +116,9 @@ class GeminiCliParser {
     for (const { re, label } of TOOL_PATTERNS) {
       const m = line.match(re);
       if (m) {
-        this._emit('toolStart', { label, detail: m[1] || '' });
+        const rawTarget = (m[1] || '').trim();
+        const short = rawTarget.replace(/\\/g, '/').split('/').filter(Boolean).slice(-2).join('/') || rawTarget;
+        this._emit('toolStart', { label, detail: short });
 
         const isEdit = /edit|writing|updating|modifying|creating|new file/i.test(label) ||
                        /edit|writing|updating|modifying|creating|new file/i.test(line);

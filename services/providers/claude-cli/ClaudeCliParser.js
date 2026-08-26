@@ -42,7 +42,14 @@ function labelForTool(name, input) {
     input.file_path || input.path || input.command ||
     input.pattern || input.query || input.url || '';
   if (!target) return base;
-  const short = String(target).length > 60 ? String(target).slice(0, 57) + '…' : String(target);
+  let targetStr = String(target);
+  if (input.file_path || input.path) {
+    const parts = targetStr.replace(/\\/g, '/').split('/').filter(Boolean);
+    if (parts.length > 0) {
+      targetStr = parts.length <= 2 ? parts.join('/') : parts.slice(-2).join('/');
+    }
+  }
+  const short = targetStr.length > 60 ? targetStr.slice(0, 57) + '…' : targetStr;
   return `${base}: ${short}`;
 }
 

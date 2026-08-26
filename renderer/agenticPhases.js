@@ -133,12 +133,14 @@
           const item = document.createElement('div');
           item.className = 'ai-activity-item running';
           item.dataset.id = data.id;
+          const fullLabel = data.label || data.name || 'trabalhando…';
+          item.title = fullLabel;
           const ic = document.createElement('span');
           ic.className = 'ai-activity-ic';
           ic.innerHTML = '<span class="ai-activity-spinner"></span>';
           const lbl = document.createElement('span');
           lbl.className = 'ai-activity-label';
-          lbl.textContent = data.label || data.name || 'trabalhando…';
+          lbl.textContent = fullLabel;
           item.appendChild(ic);
           item.appendChild(lbl);
           feed.appendChild(item);
@@ -152,6 +154,7 @@
             const ic = item.querySelector('.ai-activity-ic');
             if (ic) ic.innerHTML = isError ? ACT_FAIL : ACT_CHECK;
             if (data.label) {
+              item.title = data.label;
               const lbl = item.querySelector('.ai-activity-label');
               if (lbl) lbl.textContent = data.label;
             }

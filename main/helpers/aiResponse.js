@@ -147,16 +147,24 @@ helpers.buildHelperToolsOpenAIOpts = function(userText, baseInstruction, baseMod
             return null;
           };
           // Resumo legível da ação pra mostrar o "thinking"/ações na UI.
-          const baseName = (p) => String(p || "").split("/").filter(Boolean).slice(-1)[0] || String(p || "");
+          const shortenPath = (p) => {
+            if (!p) return "";
+            const normalized = String(p).replace(/\\/g, "/");
+            const parts = normalized.split("/").filter(Boolean);
+            if (parts.length === 0) return "";
+            if (parts.length <= 2) return parts.join("/");
+            return parts.slice(-2).join("/");
+          };
           const summarizeTool = (name, a = {}) => {
             switch (name) {
-              case "readFile": return `Lendo ${baseName(a.path)}`;
+              case "readFile": case "readFileChunk": return `Lendo ${shortenPath(a.path)}`;
+              case "fileInfo": return `Inspecionando ${shortenPath(a.path)}`;
               case "findFiles": return `Procurando ${a.glob || a.pattern || "arquivos"}`;
-              case "listDir": case "readDir": return `Listando ${baseName(a.path) || "diretório"}`;
-              case "writeFile": return `Escrevendo ${baseName(a.path)}`;
-              case "appendToFile": return `Anexando em ${baseName(a.path)}`;
-              case "patchFile": return `Editando ${baseName(a.path)}`;
-              case "deleteFile": return `Removendo ${baseName(a.path)}`;
+              case "listDir": case "readDir": return `Listando ${shortenPath(a.path) || "diretório"}`;
+              case "writeFile": return `Escrevendo ${shortenPath(a.path)}`;
+              case "appendToFile": return `Anexando em ${shortenPath(a.path)}`;
+              case "patchFile": return `Editando ${shortenPath(a.path)}`;
+              case "deleteFile": return `Removendo ${shortenPath(a.path)}`;
               case "runCommand": case "runTerminal": return `Rodando: ${String(a.command || a.cmd || "").slice(0, 70)}`;
               case "grep": case "searchInFiles": return `Buscando "${String(a.query || a.pattern || "").slice(0, 50)}"`;
               default: return name;

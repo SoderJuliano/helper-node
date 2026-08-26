@@ -31,8 +31,10 @@ function makeBackupPath(filePath) {
 }
 
 // Translates tool-start activity to a human readable label for the UI.
-function summarizeTool({ label, detail }) {
-  return detail ? `${label}: ${detail}` : label;
+function summarizeTool({ label, detail } = {}) {
+  if (!detail) return label || 'Executando ferramenta';
+  if (label && (label.includes(detail) || detail.includes(label))) return detail;
+  return `${label}: ${detail}`;
 }
 
 // Friendly error messages for common failure patterns.
