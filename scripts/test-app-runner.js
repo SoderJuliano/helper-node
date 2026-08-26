@@ -261,6 +261,28 @@ runner.on('test-summary', (sum) => {
   receivedTestSummary = sum;
 });
 
+// Teste de reexecução / substituição de processo ativo sem erro
+const runner2 = new RunnerProcess();
+runner2.start({
+  executable: testScriptPath,
+  args: [],
+  cwd: __dirname,
+  runMeta: { kind: 'app', displayName: 'FirstRun' },
+});
+assert.strictEqual(runner2.getStatus().status, 'running');
+// Inicia segundo processo imediatamente em cima do primeiro
+runner2.start({
+  executable: testScriptPath,
+  args: [],
+  cwd: __dirname,
+  runMeta: { kind: 'app', displayName: 'SecondRun' },
+});
+assert.strictEqual(runner2.getStatus().status, 'running');
+assert.strictEqual(runner2.getStatus().currentRun.displayName, 'SecondRun');
+runner2.stop();
+assert.strictEqual(runner2.getStatus().status, 'stopped');
+console.log('  ok   RunnerProcess substitui processo em execucao automaticamente ao iniciar novo');
+
 runner.start({
   executable: testScriptPath,
   args: [],

@@ -247,12 +247,7 @@
 
     async rerun() {
       if (this.lastProjectDir && this.lastTarget) {
-        if (this.currentStatus === 'running' || this.currentStatus === 'starting') {
-          await this.stop();
-          setTimeout(() => this.run(this.lastProjectDir, this.lastTarget), 600);
-        } else {
-          this.run(this.lastProjectDir, this.lastTarget);
-        }
+        await this.run(this.lastProjectDir, this.lastTarget);
       }
     }
 
@@ -314,7 +309,7 @@
         this.btnStop.style.display = (this.currentStatus === 'running' || this.currentStatus === 'starting') ? 'inline-flex' : 'none';
       }
       if (this.btnRerun) {
-        this.btnRerun.style.display = (this.currentStatus === 'running' || this.currentStatus === 'starting') ? 'none' : 'inline-flex';
+        this.btnRerun.style.display = this.lastTarget ? 'inline-flex' : 'none';
       }
     }
 

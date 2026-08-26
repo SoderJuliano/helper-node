@@ -122,8 +122,12 @@ class RunnerProcess extends EventEmitter {
    * @param {Object} [opts.runMeta] Metadados da execução (target, displayName, etc.)
    */
   start(opts) {
-    if (this._proc) {
-      throw new Error('Já existe um processo em execução. Pare o processo atual antes de iniciar um novo.');
+    if (this._proc || this._pid || this._status === 'running' || this._status === 'starting') {
+      try {
+        this.stop();
+      } catch (err) {
+        console.warn('[appRunner] Erro ao encerrar processo anterior antes de reiniciar:', err.message);
+      }
     }
 
     const { executable, args = [], cwd, jdk, customEnv = {}, runMeta } = opts;
@@ -188,8 +192,9 @@ class RunnerProcess extends EventEmitter {
     };
 
     try {
-      this._proc = spawn(spawnExe, spawnArgs, spawnOpts);
-      this._pid = this._proc.pid;
+      const procInstance = spawn(spawnExe, spawnArgs, spawnOpts);
+      this._proc = procInstance;
+      this._pid = procInstance.pid;
       this._status = 'running';
       this.emit('status', this.getStatus());
 
@@ -214,21 +219,26 @@ class RunnerProcess extends EventEmitter {
                          `\x1b[90m────────────────────────────────────────────────────────────\x1b[0m\n`;
       this._emitChunk(initHeader);
 
-      this._proc.stdout.on('data', (chunk) => {
+      procInstance.stdout.on('data', (chunk) => {
+        if (this._proc !== procInstance) return;
         const text = chunk.toString();
         this._outputBuffer += text;
         this._emitChunk(text);
         this._parseOutputForEvents(text);
       });
 
-      this._proc.stderr.on('data', (chunk) => {
+      procInstance.stderr.on('data', (chunk) => {
+        if (this._proc !== procInstance) return;
         const text = chunk.toString();
         this._outputBuffer += text;
         this._emitChunk(text);
         this._parseOutputForEvents(text);
       });
 
-      this._proc.on('close', (code) => {
+      procInstance.on('close', (code) => {
+        if (this._proc !== procInstance && this._pid !== procInstance.pid) {
+          return;
+        }
         this._exitCode = code;
         this._proc = null;
         this._pid = null;
@@ -251,7 +261,10 @@ class RunnerProcess extends EventEmitter {
         this.emit('exit', { code, status: this._status });
       });
 
-      this._proc.on('error', (err) => {
+      procInstance.on('error', (err) => {
+        if (this._proc !== procInstance && this._pid !== procInstance.pid) {
+          return;
+        }
         this._status = 'error';
         const errMsg = `\n\x1b[31mErro ao iniciar processo: ${err.message}\x1b[0m\n`;
         this._emitChunk(errMsg);
@@ -370,7 +383,20 @@ class RunnerProcess extends EventEmitter {
     }
 
     const pid = this._pid;
+    const oldProc = this._proc;
     this._status = 'stopped';
+    this._proc = null;
+    this._pid = null;
+
+    if (oldProc) {
+      try {
+        oldProc.removeAllListeners('close');
+        oldProc.removeAllListeners('error');
+        oldProc.removeAllListeners('data');
+        if (oldProc.stdout) oldProc.stdout.removeAllListeners('data');
+        if (oldProc.stderr) oldProc.stderr.removeAllListeners('data');
+      } catch (_) {}
+    }
 
     try {
       this._killProcessTree(pid);
@@ -378,8 +404,6 @@ class RunnerProcess extends EventEmitter {
       console.warn(`[appRunner] Falha ao matar árvore de processos PID ${pid}:`, e.message);
     }
 
-    this._proc = null;
-    this._pid = null;
     this.emit('status', this.getStatus());
     return true;
   }
