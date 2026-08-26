@@ -170,7 +170,7 @@ ipcMain.handle("get-project-git-status", async (_event, payload) => {
     }
 
     const now = Date.now();
-    if (_lastGitStatusCache.path === projectPath && (now - _lastGitStatusCache.time) < 400 && _lastGitStatusCache.data) {
+    if (!payload?.force && _lastGitStatusCache.path === projectPath && (now - _lastGitStatusCache.time) < 400 && _lastGitStatusCache.data) {
       return _lastGitStatusCache.data;
     }
 

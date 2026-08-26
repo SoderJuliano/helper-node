@@ -48,13 +48,20 @@
     popover.style.top = `${Math.round(top)}px`;
   }
 
-  function getProjectDir() {
+  function getProjectDir(filePath) {
+    const wsProjectMain = document.getElementById('ws-project-main');
+    if (wsProjectMain && wsProjectMain.dataset && wsProjectMain.dataset.path) {
+      return wsProjectMain.dataset.path;
+    }
     if (window.workspaceContext && window.workspaceContext.projectPath) {
       return window.workspaceContext.projectPath;
     }
-    const wsProjectMain = document.getElementById('ws-project-main');
-    if (wsProjectMain && wsProjectMain.dataset.path) {
-      return wsProjectMain.dataset.path;
+    if (filePath) {
+      const norm = String(filePath).replace(/\\/g, '/');
+      const idx = norm.indexOf('/src/');
+      if (idx !== -1) {
+        return norm.substring(0, idx);
+      }
     }
     return '';
   }
@@ -91,8 +98,6 @@
 
       if (!parseRes) return;
 
-      const projectDir = getProjectDir();
-
       // 1. Marca métodos main() / Spring Boot
       if (parseRes.mainMethods && parseRes.mainMethods.length) {
         parseRes.mainMethods.forEach(main => {
@@ -106,6 +111,7 @@
 
           marker.onclick = (e) => {
             e.stopPropagation();
+            const projectDir = getProjectDir(filePath);
             const target = {
               kind: 'app',
               mainClass: main.fullClassName || main.className,
@@ -134,6 +140,7 @@
 
           marker.onclick = (e) => {
             e.stopPropagation();
+            const projectDir = getProjectDir(filePath);
             const target = {
               kind: 'test-method',
               testClass: test.fullClassName || test.className,
@@ -159,6 +166,7 @@
 
             classMarker.onclick = (e) => {
               e.stopPropagation();
+              const projectDir = getProjectDir(filePath);
               const target = {
                 kind: 'test-class',
                 testClass: parseRes.fullClassName || parseRes.className,

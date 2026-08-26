@@ -209,6 +209,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Code CLI, Gemini CLI) — usado só pro indicativo de concorrência em tempo
   // real, nunca pra bloquear nada.
   onFileMutated: (cb) => ipcRenderer.on("file-mutated", (event, data) => cb(data)),
+  onGitStatusChanged: (cb) => ipcRenderer.on("git-status-changed", (event, data) => cb(data)),
   workspaceRemove: (id) => ipcRenderer.invoke("workspace:remove", id),
   workspaceClear: () => ipcRenderer.invoke("workspace:clear"),
   workspaceOpenExternal: (p) => ipcRenderer.invoke("workspace:open-external", p),

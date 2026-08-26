@@ -139,6 +139,7 @@
     background: #4ade80;
 }
 
+/* === Toolbar do App Runner === */
 .app-runner-toolbar {
     display: flex;
     align-items: center;
@@ -150,75 +151,65 @@
     gap: 8px;
 }
 
-.app-runner-title-group {
+.app-runner-info-group {
     display: flex;
     align-items: center;
     gap: 8px;
     min-width: 0;
 }
 
-.app-runner-badge {
-    font-size: 10.5px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    padding: 2px 6px;
-    border-radius: 4px;
-    background: rgba(74, 222, 128, 0.15);
-    color: #4ade80;
-    border: 1px solid rgba(74, 222, 128, 0.3);
+.app-runner-target-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text, #e3e3e6);
     font-family: var(--font-mono, monospace);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 380px;
+}
+
+.app-runner-target-name svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    color: #4ade80;
+}
+
+.app-runner-status-badge {
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-family: var(--font-ui, system-ui, sans-serif);
+    text-transform: capitalize;
+}
+
+.app-runner-status-badge.status-idle { background: rgba(156, 163, 175, 0.15); color: #9ca3af; }
+.app-runner-status-badge.status-starting { background: rgba(250, 204, 21, 0.15); color: #facc15; }
+.app-runner-status-badge.status-running { background: rgba(56, 189, 248, 0.15); color: #38bdf8; animation: app-runner-pulse 1.4s infinite ease-in-out; }
+.app-runner-status-badge.status-completed { background: rgba(74, 222, 128, 0.15); color: #4ade80; }
+.app-runner-status-badge.status-stopped { background: rgba(248, 113, 113, 0.15); color: #f87171; }
+.app-runner-status-badge.status-error { background: rgba(248, 113, 113, 0.25); color: #ef4444; }
+
+.app-runner-port-link {
+    font-size: 11px;
+    color: #38bdf8;
+    background: rgba(56, 189, 248, 0.1);
+    border: 1px solid rgba(56, 189, 248, 0.3);
+    padding: 1px 6px;
+    border-radius: 4px;
+    text-decoration: none;
     display: inline-flex;
     align-items: center;
     gap: 4px;
 }
+.app-runner-port-link:hover { text-decoration: underline; background: rgba(56, 189, 248, 0.2); }
 
-.app-runner-badge.spring-boot {
-    background: rgba(106, 179, 74, 0.2);
-    color: #8be167;
-    border-color: rgba(106, 179, 74, 0.4);
-}
-
-.app-runner-title {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text, #e3e3e6);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font-family: var(--font-mono, monospace);
-}
-
-.app-runner-status {
-    font-size: 11px;
-    color: var(--text-3, #9ca3af);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.app-runner-status-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: #6b7280;
-}
-
-.app-runner-status-dot.running {
-    background: #38bdf8;
-    box-shadow: 0 0 6px #38bdf8;
-    animation: app-runner-pulse 1.4s infinite ease-in-out;
-}
-
-.app-runner-status-dot.success {
-    background: #4ade80;
-}
-
-.app-runner-status-dot.error {
-    background: #f87171;
-}
-
-.app-runner-actions {
+.app-runner-actions-group {
     display: flex;
     align-items: center;
     gap: 4px;
@@ -228,16 +219,17 @@
 .app-runner-btn {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    width: 26px;
+    gap: 4px;
+    padding: 4px 8px;
     height: 26px;
     border-radius: 4px;
     background: transparent;
     border: 1px solid transparent;
     color: var(--text-2, #a1a1aa);
     cursor: pointer;
+    font-size: 11.5px;
+    font-family: var(--font-ui, system-ui, sans-serif);
     transition: all 0.15s ease;
-    padding: 0;
 }
 
 .app-runner-btn:hover:not(:disabled) {
@@ -246,17 +238,26 @@
     border-color: var(--border, #2d2d38);
 }
 
+.app-runner-btn.active {
+    background: rgba(74, 222, 128, 0.15);
+    color: #4ade80;
+    border-color: rgba(74, 222, 128, 0.3);
+}
+
 .app-runner-btn:disabled {
     opacity: 0.35;
     cursor: not-allowed;
 }
 
 .app-runner-btn svg {
-    width: 14px;
-    height: 14px;
-    fill: currentColor;
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
 }
 
+.app-runner-btn.btn-rerun {
+    color: #38bdf8;
+}
 .app-runner-btn.btn-stop {
     color: #f87171;
 }
@@ -266,48 +267,93 @@
     color: #fff;
 }
 
-.app-runner-btn.btn-restart {
-    color: #38bdf8;
-}
-.app-runner-btn.btn-restart:hover:not(:disabled) {
-    background: rgba(56, 189, 248, 0.18);
-    border-color: rgba(56, 189, 248, 0.4);
-    color: #fff;
-}
-
-.app-runner-btn.btn-config {
-    color: #fbbf24;
-}
-.app-runner-btn.btn-config:hover:not(:disabled) {
-    background: rgba(251, 191, 36, 0.18);
-    border-color: rgba(251, 191, 36, 0.4);
-    color: #fff;
-}
-
-.app-runner-body {
+/* === Layout de Execução e Testes === */
+.app-runner-body-split {
+    display: flex;
     flex: 1 1 0;
     min-height: 0;
-    position: relative;
-    background: #090a0f;
     overflow: hidden;
+    background: #090a0f;
 }
 
-.app-runner-xterm {
-    position: absolute;
-    inset: 0;
-    padding: 4px 6px;
-    box-sizing: border-box;
-}
-
-.app-runner-xterm .xterm {
+.app-runner-output-container {
+    flex: 1 1 0;
+    min-width: 0;
     height: 100%;
+    overflow-y: auto;
+    overflow-x: auto;
+    padding: 8px 12px;
+    box-sizing: border-box;
+    font-family: var(--font-mono, monospace);
+    font-size: 12px;
+    line-height: 1.5;
+    color: #d1d5db;
+    white-space: pre-wrap;
+    word-break: break-all;
+    user-select: text;
 }
 
-.app-runner-xterm .xterm-viewport {
-    overflow-y: auto !important;
+.app-runner-output-container a.app-runner-stack-link {
+    color: #38bdf8;
+    text-decoration: underline;
+    cursor: pointer;
+}
+.app-runner-output-container a.app-runner-stack-link:hover {
+    color: #7dd3fc;
 }
 
-/* === Spring Boot Banner & Detection Effects === */
-.spring-boot-active-glow {
-    box-shadow: 0 0 16px rgba(106, 179, 74, 0.18) inset;
+.app-runner-tests-sidebar {
+    width: 280px;
+    border-left: 1px solid var(--border, #2d2d38);
+    background: var(--bg-sidebar, #16181d);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
 }
+
+.app-runner-tests-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border, #2d2d38);
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--text, #e3e3e6);
+}
+
+.app-runner-tests-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.app-runner-test-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11.5px;
+    font-family: var(--font-mono, monospace);
+    color: var(--text-2, #a1a1aa);
+    transition: background 0.1s;
+}
+
+.app-runner-test-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.app-runner-test-item svg {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+}
+
+.app-runner-test-item.passed svg { color: #4ade80; }
+.app-runner-test-item.failed { color: #fca5a5; }
+.app-runner-test-item.failed svg { color: #f87171; }
+.app-runner-test-item.skipped svg { color: #94a3b8; }

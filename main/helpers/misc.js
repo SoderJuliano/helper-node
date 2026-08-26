@@ -257,6 +257,14 @@ helpers.emitFileMutated = function(payload) {
   } catch (_) {}
 }
 
+helpers.emitGitStatusChanged = function(payload) {
+  try {
+    if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+      state.mainWindow.webContents.send("git-status-changed", payload || {});
+    }
+  } catch (_) {}
+}
+
 helpers.stopFramelessDrag = function() {
   if (state._framelessDrag) {
     try { clearInterval(state._framelessDrag.timer); } catch (_) {}

@@ -55,6 +55,26 @@
             });
         }
 
+        if (window.electronAPI.onGitStatusChanged) {
+            window.electronAPI.onGitStatusChanged(() => {
+                if (typeof window.fetchAndUpdateGitStatus === 'function') {
+                    window.fetchAndUpdateGitStatus(true);
+                }
+            });
+        }
+
+        window.addEventListener('focus', () => {
+            if (typeof window.fetchAndUpdateGitStatus === 'function') {
+                window.fetchAndUpdateGitStatus(true);
+            }
+        });
+
+        setInterval(() => {
+            if (document.visibilityState === 'visible' && typeof window.fetchAndUpdateGitStatus === 'function') {
+                window.fetchAndUpdateGitStatus();
+            }
+        }, 5000);
+
         // Trigger loading file in viewer from config or other windows
         window.electronAPI.onOpenFileInViewer((filePath) => {
             if (typeof window.openFileViewer === 'function') {

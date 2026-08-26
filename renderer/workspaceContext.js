@@ -360,22 +360,26 @@ function fileIconHtml(name) {
                     return new Promise((resolve) => {
                         _gitFetchDebounce = setTimeout(async () => {
                             _gitFetchDebounce = null;
-                            const res = await _executeGitStatusFetch();
+                            const res = await _executeGitStatusFetch(false);
                             resolve(res);
-                        }, 200);
+                        }, 150);
                     });
                 }
-                return _executeGitStatusFetch();
+                if (_gitFetchDebounce) {
+                    clearTimeout(_gitFetchDebounce);
+                    _gitFetchDebounce = null;
+                }
+                return _executeGitStatusFetch(true);
             }
 
-            async function _executeGitStatusFetch() {
+            async function _executeGitStatusFetch(force = false) {
                 if (_gitFetchInFlight) return _gitFetchInFlight;
                 _gitFetchInFlight = (async () => {
                     try {
                         if (window.electronAPI && window.electronAPI.getProjectGitStatus) {
                             const wsProjectMain = document.getElementById('ws-project-main');
                             const pPath = (wsProjectMain && wsProjectMain.dataset && wsProjectMain.dataset.path) || (ctxProject && ctxProject.path) || null;
-                            const res = await window.electronAPI.getProjectGitStatus({ path: pPath });
+                            const res = await window.electronAPI.getProjectGitStatus({ path: pPath, force: !!force });
                             if (res && (res.isGit !== undefined || res.changesCount !== undefined)) {
                                 currentGitStatus = res;
                                 window.currentGitStatus = res;
@@ -433,7 +437,7 @@ function fileIconHtml(name) {
 
  // currentGitStatus, fetchAndUpdateGitStatus, updateGitStatusUi
 
-    // Expose
+    // Expose & Listeners
     window.pickProjectFolder = pickProjectFolder;
     window.refreshProjectContext = refreshProjectContext;
     window.createNewProject = createNewProject;
@@ -444,30 +448,18 @@ function fileIconHtml(name) {
     window.updateGitStatusUi = updateGitStatusUi;
     window.fileIconHtml = fileIconHtml;
 
-    // Listeners
+    const onConflictClick = (e) => {
+        e.stopPropagation();
+        const pPath = ctxProject ? ctxProject.path : null;
+        if (typeof window.openGitConflictModal === 'function') window.openGitConflictModal(pPath);
+    };
     const conflictBadgeWs = document.getElementById('ws-git-conflict-badge');
-    if (conflictBadgeWs) {
-        conflictBadgeWs.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const pPath = ctxProject ? ctxProject.path : null;
-            if (typeof window.openGitConflictModal === 'function') window.openGitConflictModal(pPath);
-        });
-    }
+    if (conflictBadgeWs) conflictBadgeWs.addEventListener('click', onConflictClick);
     const conflictBadgeCtx = document.getElementById('ctx-git-conflict-badge');
-    if (conflictBadgeCtx) {
-        conflictBadgeCtx.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const pPath = ctxProject ? ctxProject.path : null;
-            if (typeof window.openGitConflictModal === 'function') window.openGitConflictModal(pPath);
-        });
-    }
+    if (conflictBadgeCtx) conflictBadgeCtx.addEventListener('click', onConflictClick);
 
-    if (ctxOpenProjectBtn) {
-        ctxOpenProjectBtn.addEventListener('click', (e) => { e.stopPropagation(); pickProjectFolder(); });
-    }
-    if (ctxProjectBtn) {
-        ctxProjectBtn.addEventListener('click', (e) => { e.stopPropagation(); showProjectMenu(ctxProjectBtn); });
-    }
+    if (ctxOpenProjectBtn) ctxOpenProjectBtn.addEventListener('click', (e) => { e.stopPropagation(); pickProjectFolder(); });
+    if (ctxProjectBtn) ctxProjectBtn.addEventListener('click', (e) => { e.stopPropagation(); showProjectMenu(ctxProjectBtn); });
     if (window.electronAPI && window.electronAPI.onSymbolIndexerStatus) {
         window.electronAPI.onSymbolIndexerStatus((data) => {
             if (!ctxProjectBtn) return;
