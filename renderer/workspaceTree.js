@@ -132,6 +132,33 @@ var creatingFolderParent = null;
             }
         }
 
+        let curIdx = treeEntries.indexOf(e);
+        if (curIdx !== -1 && !e.synthetic) {
+            while (curIdx < treeEntries.length) {
+                const item = treeEntries[curIdx];
+                if (item.isDir) {
+                    item.collapsed = false;
+                    expandedDirPaths.add(item.path);
+                }
+                const directSubs = [];
+                for (let k = curIdx + 1; k < treeEntries.length; k++) {
+                    if (treeEntries[k].depth === item.depth + 1) {
+                        directSubs.push(treeEntries[k]);
+                    } else if (treeEntries[k].depth <= item.depth) {
+                        break;
+                    }
+                }
+                const subDirs = directSubs.filter(c => c.isDir && !c.synthetic);
+                const subFiles = directSubs.filter(c => !c.isDir);
+                if (subDirs.length === 1 && subFiles.length === 0) {
+                    curIdx = treeEntries.indexOf(subDirs[0]);
+                    if (curIdx === -1) break;
+                } else {
+                    break;
+                }
+            }
+        }
+
         renderTree();
     }
 
