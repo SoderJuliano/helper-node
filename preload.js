@@ -328,7 +328,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
   appRunnerStop: () => ipcRenderer.invoke("app-runner-stop"),
   appRunnerGetStatus: () => ipcRenderer.invoke("app-runner-get-status"),
   appRunnerGetConfig: (projectDir) => ipcRenderer.invoke("app-runner-get-config", projectDir),
-  appRunnerSaveConfig: (payload) => ipcRenderer.invoke("app-runner-save-config", payload),
+  appRunnerSaveConfig: (projectDirOrPayload, maybeConfig) => {
+    let payload;
+    if (typeof projectDirOrPayload === "string") {
+      payload = { projectDir: projectDirOrPayload, config: maybeConfig || {} };
+    } else if (projectDirOrPayload && typeof projectDirOrPayload === "object") {
+      payload = projectDirOrPayload;
+    } else {
+      payload = {};
+    }
+    return ipcRenderer.invoke("app-runner-save-config", payload);
+  },
   appRunnerReimportIntelliJ: (projectDir) => ipcRenderer.invoke("app-runner-reimport-intellij", projectDir),
   openAppRunnerConfig: (projectDir) => ipcRenderer.send("open-app-runner-config", projectDir),
   onOpenAppRunnerConfigModal: (cb) => ipcRenderer.on("open-app-runner-config-modal", (event, projectDir) => cb(projectDir)),

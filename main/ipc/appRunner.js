@@ -101,16 +101,26 @@ module.exports = function registerAppRunnerIpc() {
   ipcMain.handle('app-runner-get-config', async (event, projectDir) => {
     try {
       const config = AppRunnerService.getProjectConfig(projectDir);
-      return { ok: true, data: config };
+      const buildInfo = AppRunnerService.detectProject(projectDir);
+      return { ok: true, config, buildInfo, data: config };
     } catch (e) {
       return { ok: false, error: e.message };
     }
   });
 
-  ipcMain.handle('app-runner-save-config', async (event, { projectDir, config } = {}) => {
+  ipcMain.handle('app-runner-save-config', async (event, arg1, arg2) => {
     try {
+      let projectDir = '';
+      let config = {};
+      if (typeof arg1 === 'string') {
+        projectDir = arg1;
+        config = arg2 || {};
+      } else if (arg1 && typeof arg1 === 'object') {
+        projectDir = arg1.projectDir || '';
+        config = arg1.config !== undefined ? arg1.config : arg1;
+      }
       const saved = AppRunnerService.saveProjectConfig(projectDir, config);
-      return { ok: true, data: saved };
+      return { ok: true, config: saved, data: saved };
     } catch (e) {
       return { ok: false, error: e.message };
     }
@@ -119,7 +129,7 @@ module.exports = function registerAppRunnerIpc() {
   ipcMain.handle('app-runner-reimport-intellij', async (event, projectDir) => {
     try {
       const reimported = AppRunnerService.reimportIntelliJConfig(projectDir);
-      return { ok: true, data: reimported };
+      return { ok: true, config: reimported, data: reimported };
     } catch (e) {
       return { ok: false, error: e.message };
     }

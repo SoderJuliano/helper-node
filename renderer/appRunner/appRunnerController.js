@@ -175,7 +175,10 @@
       if (this.btnConfig) {
         this.btnConfig.addEventListener('click', () => {
           if (typeof window.openAppRunnerConfigModal === 'function') {
-            window.openAppRunnerConfigModal(this.lastProjectDir);
+            const wsProjectMain = document.getElementById('ws-project-main');
+            const wsPath = wsProjectMain && wsProjectMain.dataset ? wsProjectMain.dataset.path : null;
+            const projDir = this.lastProjectDir || (window.ctxProject ? window.ctxProject.path : null) || (window.workspaceContext ? window.workspaceContext.projectPath : null) || wsPath;
+            window.openAppRunnerConfigModal(projDir);
           }
         });
       }

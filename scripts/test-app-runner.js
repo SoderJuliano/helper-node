@@ -163,11 +163,20 @@ const mockWorkspaceXml = `
   <component name="RunManager">
     <configuration name="DemoApp" type="SpringBootApplicationConfigurationType">
       <option name="VM_PARAMETERS" value="-Dspring.profiles.active=dev -Xmx512m" />
+      <option name="PROGRAM_PARAMETERS" value="--server.port=8085" />
       <envs>
         <env name="SPRING_PROFILES_ACTIVE" value="dev" />
         <env name="SERVER_PORT" value="8085" />
         <env name="DB_HOST" value="localhost" />
+        <env name="DB_URL" value="jdbc:postgresql://localhost:5432/db?ssl=true&amp;sslmode=require" />
       </envs>
+    </configuration>
+    <configuration name="GradleRun" type="GradleRunConfiguration">
+      <option name="env">
+        <map>
+          <entry key="GRADLE_ENV_VAR" value="gradle_val" />
+        </map>
+      </option>
     </configuration>
   </component>
 </project>
@@ -178,17 +187,20 @@ fs.writeFileSync(path.join(ideaSubDir, 'workspace.xml'), mockWorkspaceXml, 'utf8
 const initialConfig = IntelliJConfigExtractor.getProjectConfig(mockIdeaDir);
 assert.strictEqual(initialConfig.envVars.SERVER_PORT, '8085');
 assert.strictEqual(initialConfig.envVars.DB_HOST, 'localhost');
+assert.strictEqual(initialConfig.envVars.DB_URL, 'jdbc:postgresql://localhost:5432/db?ssl=true&sslmode=require', 'XML entities devem ser desescapadas');
+assert.strictEqual(initialConfig.envVars.GRADLE_ENV_VAR, 'gradle_val', 'Tags <entry key="..." value="..." /> devem ser extraídas');
 assert.strictEqual(initialConfig.activeProfiles, 'dev');
-console.log('  ok   Baseline inicial importado do IntelliJ (.idea) com sucesso');
+console.log('  ok   Baseline inicial importado do IntelliJ (.idea) com sucesso (incluindo XML entities e <entry>)');
 
 // 3.2 Usuário customiza no Helper Node (precedência)
 IntelliJConfigExtractor.saveProjectConfig(mockIdeaDir, {
   activeProfiles: 'dev,homolog',
-  envVars: {
-    SERVER_PORT: '9090', // Override
+  env: {
+    SERVER_PORT: '9090', // Override via env alias
     CUSTOM_HELPER_KEY: 'helper_val', // Nova variável
   },
   vmOptions: '-Xmx1024m',
+  programArguments: '--server.port=9090',
 });
 
 const effectiveConfig = IntelliJConfigExtractor.getEffectiveConfig(mockIdeaDir);
@@ -197,7 +209,14 @@ assert.strictEqual(effectiveConfig.effectiveEnvs.SERVER_PORT, '9090', 'Override 
 assert.strictEqual(effectiveConfig.effectiveEnvs.CUSTOM_HELPER_KEY, 'helper_val');
 assert.strictEqual(effectiveConfig.effectiveEnvs.DB_HOST, 'localhost', 'Variáveis não sobrescritas do IntelliJ devem ser mantidas se fallback ativo');
 assert.strictEqual(effectiveConfig.vmOptions, '-Xmx1024m');
-console.log('  ok   Customizações do Helper Node têm precedência sobre os valores do IntelliJ');
+assert.strictEqual(effectiveConfig.programArgs, '--server.port=9090');
+console.log('  ok   Customizações do Helper Node têm precedência e aliases (env, programArguments) funcionam');
+
+// 3.3 Teste de Reimportação do IntelliJ
+const reimported = IntelliJConfigExtractor.reimportFromIntelliJ(mockIdeaDir);
+assert.strictEqual(reimported.envVars.DB_URL, 'jdbc:postgresql://localhost:5432/db?ssl=true&sslmode=require');
+assert.strictEqual(reimported.envVars.CUSTOM_HELPER_KEY, 'helper_val', 'Variáveis customizadas do Helper Node devem ser mantidas no reimport');
+console.log('  ok   Reimportação do IntelliJ executada e mesclada com sucesso');
 
 // Limpeza da pasta mock
 fs.rmSync(mockIdeaDir, { recursive: true, force: true });

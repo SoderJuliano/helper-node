@@ -39,8 +39,9 @@
       try {
         const res = await window.electronAPI.appRunnerReimportIntelliJ(currentProjectDir);
         if (res && res.ok) {
-          currentConfig = res.config;
+          currentConfig = res.config || res.data;
           populateFormWithConfig(currentConfig);
+          populateFormWithBuildInfo(currentBuildInfo);
           if (typeof showToast === 'function') showToast('Configurações reimportadas do IntelliJ.');
         } else {
           alert('Erro ao reimportar: ' + (res ? res.error : 'desconhecido'));
@@ -158,14 +159,16 @@
 
     modal.querySelector('#app-runner-cfg-profiles').value = config.activeProfiles || '';
     modal.querySelector('#app-runner-cfg-vm-options').value = config.vmOptions || '';
-    modal.querySelector('#app-runner-cfg-prog-args').value = config.programArguments || '';
+    modal.querySelector('#app-runner-cfg-prog-args').value = config.programArguments || config.programArgs || '';
     modal.querySelector('#app-runner-cfg-intellij-fallback').checked = config.useIntelliJFallback !== false;
 
-    populateEnvTable(config.env || {});
+    const envMap = config.env || config.envVars || {};
+    populateEnvTable(envMap);
 
     const detailsEl = modal.querySelector('#app-runner-cfg-sync-details');
-    if (config.lastSync) {
-      const dateStr = new Date(config.lastSync).toLocaleString('pt-BR');
+    const syncTime = config.lastSync || config.lastModified || (config.extractedFromIntelliJ && config.extractedFromIntelliJ.extractedAt);
+    if (syncTime) {
+      const dateStr = new Date(syncTime).toLocaleString('pt-BR');
       detailsEl.textContent = `Última sincronização com IntelliJ: ${dateStr}`;
     } else {
       detailsEl.textContent = 'Sem sincronização com o IntelliJ detectada para este projeto.';
@@ -174,16 +177,22 @@
 
   function populateFormWithBuildInfo(buildInfo) {
     const modal = document.getElementById('app-runner-config-modal');
-    if (!modal || !buildInfo) return;
+    if (!modal) return;
 
     const toolBadge = modal.querySelector('#app-runner-cfg-tool-badge');
     const jdkBadge = modal.querySelector('#app-runner-cfg-jdk-badge');
     const syncBadge = modal.querySelector('#app-runner-cfg-sync-badge');
 
-    toolBadge.textContent = buildInfo.buildTool ? buildInfo.buildTool.toUpperCase() : 'JAVA';
-    jdkBadge.textContent = buildInfo.javaVersion ? `Java ${buildInfo.javaVersion}` : 'Java';
+    if (buildInfo) {
+      toolBadge.textContent = buildInfo.buildTool ? buildInfo.buildTool.toUpperCase() : (buildInfo.type ? buildInfo.type.toUpperCase() : 'JAVA');
+      jdkBadge.textContent = buildInfo.javaVersion ? `Java ${buildInfo.javaVersion}` : 'Java';
+    }
 
-    if (buildInfo.intellijConfig && buildInfo.intellijConfig.hasRunConfig) {
+    const hasIntelliJ = (buildInfo && buildInfo.intellijConfig && buildInfo.intellijConfig.hasRunConfig) ||
+                        (currentConfig && currentConfig.extractedFromIntelliJ && Object.keys(currentConfig.extractedFromIntelliJ.envs || {}).length > 0) ||
+                        (currentConfig && currentConfig.extractedFromIntelliJ && !!currentConfig.extractedFromIntelliJ.sourceFile);
+
+    if (hasIntelliJ) {
       syncBadge.textContent = 'IntelliJ detectado';
       syncBadge.className = 'app-runner-cfg-badge sync-badge sync-ok';
     } else {
@@ -207,14 +216,16 @@
     const payload = {
       activeProfiles: (modal.querySelector('#app-runner-cfg-profiles')?.value || '').trim(),
       vmOptions: (modal.querySelector('#app-runner-cfg-vm-options')?.value || '').trim(),
+      programArgs: (modal.querySelector('#app-runner-cfg-prog-args')?.value || '').trim(),
       programArguments: (modal.querySelector('#app-runner-cfg-prog-args')?.value || '').trim(),
       useIntelliJFallback: modal.querySelector('#app-runner-cfg-intellij-fallback')?.checked !== false,
-      env
+      envVars: env,
+      env: env
     };
 
     const res = await window.electronAPI.appRunnerSaveConfig(currentProjectDir, payload);
     if (res && res.ok) {
-      currentConfig = res.config;
+      currentConfig = res.config || res.data;
       if (typeof showToast === 'function') showToast('Configurações de execução salvas com sucesso.');
     } else {
       alert('Erro ao salvar configurações: ' + (res ? res.error : 'desconhecido'));
@@ -222,7 +233,9 @@
   }
 
   async function openAppRunnerConfigModal(projectDir) {
-    currentProjectDir = projectDir || (window.ctxProject ? window.ctxProject.path : null) || null;
+    const wsProjectMain = document.getElementById('ws-project-main');
+    const wsPath = wsProjectMain && wsProjectMain.dataset ? wsProjectMain.dataset.path : null;
+    currentProjectDir = projectDir || (window.ctxProject ? window.ctxProject.path : null) || (window.workspaceContext ? window.workspaceContext.projectPath : null) || wsPath || null;
     if (!currentProjectDir) {
       alert('Nenhum projeto aberto para configurar.');
       return;
@@ -241,7 +254,7 @@
     if (window.electronAPI && window.electronAPI.appRunnerGetConfig) {
       const res = await window.electronAPI.appRunnerGetConfig(currentProjectDir);
       if (res && res.ok) {
-        currentConfig = res.config;
+        currentConfig = res.config || res.data;
         currentBuildInfo = res.buildInfo;
         populateFormWithBuildInfo(currentBuildInfo);
         populateFormWithConfig(currentConfig);

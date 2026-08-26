@@ -53,6 +53,9 @@
     if (wsProjectMain && wsProjectMain.dataset && wsProjectMain.dataset.path) {
       return wsProjectMain.dataset.path;
     }
+    if (window.ctxProject && window.ctxProject.path) {
+      return window.ctxProject.path;
+    }
     if (window.workspaceContext && window.workspaceContext.projectPath) {
       return window.workspaceContext.projectPath;
     }
