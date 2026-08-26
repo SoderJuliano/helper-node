@@ -16,398 +16,66 @@ const {
   globalShortcut, screen, execPromise, appConfig, Notification
 } = require('../globals.js');
 
+const { realtimeProviderResponder } = require('./realtimeProviderResponder');
+const { registerGlobalShortcuts } = require('./globalShortcuts');
+
 helpers.checkBackendStatus = async function() {
   state.backendIsOnline = await BackendService.ping();
   if (state.backendIsOnline) {
     console.log("Backend is online.");
-  } else {
   }
 }
 
-helpers.realtimeProviderResponder = async function(transcript, image, onDelta, contextMessages = []) {
-  const aiModel = helpers.getEffectiveAiModel ? helpers.getEffectiveAiModel() : configService.getAiModel();
-  console.log(`[realtimeProviderResponder] Processando fala via modelo selecionado: "${aiModel}" (fala: "${transcript}")`);
-  const kb = await helpers.knowledgeBlockForOllama(transcript);
-
-  // Formata o histórico recente de perguntas para resolver pronomes sem repetir respostas passadas
-  let contextBlock = "";
-  if (Array.isArray(contextMessages) && contextMessages.length > 0) {
-    const recentQuestions = contextMessages
-      .filter(m => m.role === 'user' && m.content && m.content.trim())
-      .slice(-3)
-      .map(m => `• "${m.content.trim()}"`);
-    if (recentQuestions.length > 0) {
-      contextBlock = `[Tópicos/Perguntas recentes da conversa]:\n${recentQuestions.join('\n')}\n\n`;
-    }
-  }
-
-  const promptText = `${contextBlock}${kb ? `${kb}\n\n---\n\n` : ''}Fala capturada: "${transcript}"`;
-  
-  const opts = {
-    sessionId: "realtime-assistant",
-    onDelta,
-  };
-  if (image) {
-    opts.imageBase64 = image;
-  }
-  
-  if (aiModel === "geminiCli") {
-    try {
-      const GeminiCliProvider = require('../../services/providers/gemini-cli/GeminiCliProvider');
-      const workspace = require('./workspace');
-      const projectPath = workspace.getProjectPath();
-      let acc = '';
-      let lastEmit = 0;
-      const streamSender = {
-        send: (ch, data) => {
-          if (ch === 'gemini-stream-chunk' && typeof onDelta === 'function' && data) {
-            const chunkText = typeof data === 'string' ? data : (data.text || data.chunk || '');
-            acc += chunkText;
-            const now = Date.now();
-            if (now - lastEmit > 40) {
-              lastEmit = now;
-              onDelta(acc);
-            }
-          }
-        }
-      };
-      const prompt = `${REALTIME_COPILOT_INSTRUCTION}\n\n${promptText}`;
-      const res = await GeminiCliProvider.send(prompt, projectPath, streamSender);
-      const outputText = typeof res === 'object' ? (res.text || res.response || '') : String(res);
-      if (typeof onDelta === 'function') onDelta(outputText);
-      console.log(`[realtimeProviderResponder] Resposta obtida do GeminiCliProvider (${configService.getGeminiCliModel()}): "${outputText}"`);
-      return outputText;
-    } catch (gErr) {
-      console.error(`[realtimeProviderResponder] Erro no GeminiCliProvider:`, gErr.message);
-      throw gErr;
-    }
-  }
-
-  if (aiModel === "claudeCli") {
-    try {
-      const ClaudeCliProvider = require('../../services/providers/claude-cli/ClaudeCliProvider');
-      const workspace = require('./workspace');
-      const projectPath = workspace.getProjectPath();
-      let acc = '';
-      let lastEmit = 0;
-      const streamSender = {
-        send: (ch, data) => {
-          if (ch === 'claude-stream-chunk' && typeof onDelta === 'function' && data) {
-            const chunkText = typeof data === 'string' ? data : (data.text || data.chunk || '');
-            acc += chunkText;
-            const now = Date.now();
-            if (now - lastEmit > 40) {
-              lastEmit = now;
-              onDelta(acc);
-            }
-          }
-        }
-      };
-      const prompt = `${REALTIME_COPILOT_INSTRUCTION}\n\n${promptText}`;
-      const res = await ClaudeCliProvider.send(prompt, projectPath, streamSender);
-      const outputText = typeof res === 'object' ? (res.text || res.response || '') : String(res);
-      if (typeof onDelta === 'function') onDelta(outputText);
-      console.log(`[realtimeProviderResponder] Resposta obtida do ClaudeCliProvider: "${outputText}"`);
-      return outputText;
-    } catch (cErr) {
-      console.error(`[realtimeProviderResponder] Erro no ClaudeCliProvider:`, cErr.message);
-      throw cErr;
-    }
-  }
-
-  if (aiModel === "copilotCli") {
-    try {
-      const CopilotCliProvider = require('../../services/providers/copilot-cli/CopilotCliProvider');
-      const workspace = require('./workspace');
-      const projectPath = workspace.getProjectPath();
-      let acc = '';
-      let lastEmit = 0;
-      const streamSender = {
-        send: (ch, data) => {
-          if (ch === 'copilot-stream-chunk' && typeof onDelta === 'function' && data) {
-            const chunkText = typeof data === 'string' ? data : (data.text || data.chunk || '');
-            acc += chunkText;
-            const now = Date.now();
-            if (now - lastEmit > 40) {
-              lastEmit = now;
-              onDelta(acc);
-            }
-          }
-        }
-      };
-      const prompt = `${REALTIME_COPILOT_INSTRUCTION}\n\n${promptText}`;
-      const res = await CopilotCliProvider.send(prompt, projectPath, streamSender);
-      const outputText = typeof res === 'object' ? (res.text || res.response || '') : String(res);
-      if (typeof onDelta === 'function') onDelta(outputText);
-      console.log(`[realtimeProviderResponder] Resposta obtida do CopilotCliProvider: "${outputText}"`);
-      return outputText;
-    } catch (cpErr) {
-      console.error(`[realtimeProviderResponder] Erro no CopilotCliProvider:`, cpErr.message);
-      throw cpErr;
-    }
-  }
-
-  if (aiModel === "ollamaLocal") {
-    const OllamaLocalService = require('../../services/ollamaLocalService');
-    return await OllamaLocalService.responder(promptText, {
-      ...opts,
-      instruction: REALTIME_COPILOT_INSTRUCTION,
-    });
-  }
-
-  if (aiModel === "openIa" || aiModel === "openIaCodex") {
-    const OpenAIService = require('../../services/openAIService');
-    return await OpenAIService.responder(promptText, {
-      ...opts,
-      instruction: REALTIME_COPILOT_INSTRUCTION,
-    });
-  }
-  
-  // Modelo remoto backend (llama / qwen)
-  try {
-    const result = await BackendService.responder(promptText, {
-      ...opts,
-      instruction: REALTIME_COPILOT_INSTRUCTION,
-    });
-    console.log(`[realtimeProviderResponder] Resposta obtida do BackendService: "${result}"`);
-    return result;
-  } catch (err) {
-    console.error(`[realtimeProviderResponder] Erro ao obter resposta do BackendService:`, err);
-    throw err;
-  }
+helpers.realtimeProviderResponder = function(transcript, image, onDelta, contextMessages = []) {
+  return realtimeProviderResponder(transcript, image, onDelta, contextMessages, helpers);
 }
 
 helpers.clearOsNotifAutoClose = function() {
-  if (state.osNotifAutoCloseTimer) { clearInterval(state.osNotifAutoCloseTimer); state.osNotifAutoCloseTimer = null; }
+  if (state.osNotifCloseTimer) {
+    clearTimeout(state.osNotifCloseTimer);
+    state.osNotifCloseTimer = null;
+  }
 }
 
 helpers.startResponseAutoClose = function() {
   helpers.clearOsNotifAutoClose();
-  const AUTO_CLOSE_MS = 10000;
-  const POLL_MS = 200;
-  let remaining = AUTO_CLOSE_MS;
-  let last = Date.now();
-  let started = false; // já enviamos o 1º estado 'running'?
-  state.osNotifAutoCloseTimer = setInterval(() => {
-    const win = state.osNotificationWindow;
-    if (!win || win.isDestroyed()) { helpers.clearOsNotifAutoClose(); return; }
+  if (state.osNotifKeepOpen) return;
 
-    let inside = false;
-    try {
-      const p = screen.getCursorScreenPoint();
-      const b = win.getBounds();
-      inside = p.x >= b.x && p.x < b.x + b.width && p.y >= b.y && p.y < b.y + b.height;
-    } catch (_) {}
+  const seconds = configService.getOsNotificationDuration();
+  if (seconds === 0) return;
 
-    // Passar o mouse por cima UMA vez desabilita o auto-close DE VEZ:
-    // a resposta fica aberta até o usuário fechar no X. (Antes só resetava
-    // o contador e ele voltava a correr quando o mouse saía.)
-    if (inside) {
-      try { win.webContents.send('autoclose-state', { state: 'paused' }); } catch (_) {}
-      helpers.clearOsNotifAutoClose(); // para o poll de vez — não fecha mais sozinho
-      return;
+  state.osNotifCloseTimer = setTimeout(() => {
+    if (state.osNotifKeepOpen) return;
+    if (state.osNotificationWindow && !state.osNotificationWindow.isDestroyed()) {
+      state.osNotificationWindow.hide();
     }
-
-    // Mouse fora: conta o tempo regressivo. Se nunca passar por cima, some.
-    const now = Date.now();
-    if (!started) {
-      started = true;
-      last = now;
-      try { win.webContents.send('autoclose-state', { state: 'running', ms: AUTO_CLOSE_MS }); } catch (_) {}
-      return;
-    }
-    remaining -= (now - last);
-    last = now;
-    if (remaining <= 0) {
-      helpers.destroyNotificationWindow();
-    }
-  }, POLL_MS);
+  }, seconds * 1000);
 }
 
 helpers.switchToOsIntegrationMode = function() {
-  state.isOsIntegrationMode = true;
-  state.currentEditorState = null; // Evita que estado antigo do editor bloqueie os prints de tela
-  // Start capture tool monitoring when entering OS integration mode
-  helpers.startCaptureToolMonitoring();
-  // Monitora pasta de screenshots do COSMIC (captura via PrintScreen nativo)
-  helpers.startScreenshotFolderMonitoring();
-  // Hide main window
   if (state.mainWindow && !state.mainWindow.isDestroyed()) {
     state.mainWindow.hide();
   }
-  // Se o tutor estiver ativo, abre o overlay no modo integrado
-  if (visionGuide.isActive()) {
-    helpers.createVisionGuideOverlay();
-    helpers.sendToVisionGuideOverlay('vision-guide-status', 'watching');
-    try { visionGuide.triggerIntroduction(); } catch (e) { console.warn('[vision-guide] falha ao triggar intro:', e.message); }
-  }
-  // Se o assistente em tempo real estiver ativo ou configurado como ON, abre o overlay do assistente
-  if (configService.getRealtimeAssistantStatus()) {
-    helpers.createRealtimeAssistantOverlay();
-    if (!helpers.anyRealtimeActive() && configService.getOpenIaToken()) {
-      helpers.toggleRealtimeAssistantRecording().catch((e) => console.error('[realtime] falha ao iniciar:', e.message));
-    }
-  }
+  helpers.createOsNotificationWindow();
 }
 
 helpers.switchToNormalMode = function() {
-  state.isOsIntegrationMode = false;
-  // Stop capture tool monitoring when leaving OS integration mode
-  helpers.stopCaptureToolMonitoring();
-  // Para monitoramento da pasta de screenshots
-  helpers.stopScreenshotFolderMonitoring();
-  // Close OS integration windows
-  if (state.osInputWindow && !state.osInputWindow.isDestroyed()) {
-    state.osInputWindow.close();
+  if (state.osNotificationWindow && !state.osNotificationWindow.isDestroyed()) {
+    state.osNotificationWindow.hide();
   }
-  helpers.destroyNotificationWindow(); // Use helper function instead
-  helpers.destroyCaptureWindow(); // Close capture window
-  helpers.destroyTranslationOverlay(); // Fecha overlay dedicado do tradutor se aberto
-  helpers.destroyVisionGuideOverlay(); // Fecha overlay do tutor se aberto
-  helpers.destroyRealtimeAssistantOverlay(); // Fecha overlay do assistente se aberto
-
-  // Show main window
   if (state.mainWindow && !state.mainWindow.isDestroyed()) {
     state.mainWindow.show();
   }
 }
 
 helpers.createIntermediateNotification = function() {
-  console.log('📸 Mostrando notificação de captura detectada...');
-  
-  const isOsIntegration = configService.getOsIntegrationStatus();
-  if (isOsIntegration) {
-    helpers.createOsNotificationWindow('loading', 'Ferramenta de captura detectada - aguardando imagem...');
-  } else if (appConfig.notificationsEnabled && Notification.isSupported()) {
-    new Notification({
-      title: 'Helper-Node',
-      body: 'Ferramenta de captura detectada - aguardando imagem...',
-      silent: true,
-    }).show();
+  if (configService.getOsIntegrationStatus()) {
+    helpers.createOsNotificationWindow();
   }
 }
 
-helpers.registerGlobalShortcuts = async function() {
-  if (!state.mainWindow) return;
-
-  globalShortcut.unregisterAll();
-
-  const isLinux = process.platform === "linux";
-  const baseShortcuts = isLinux
-    ? [
-        { combo: "Ctrl+D", action: "toggle-recording" },
-        { combo: "Ctrl+I", action: "manual-input" },
-        // Ctrl+A NAO e' registrado: precisa ser livre pra selectAll nativo em textarea/input.
-        { combo: "Ctrl+Shift+C", action: "open-config" },
-        { combo: "Ctrl+Shift+X", action: "capture-screen" },
-        { combo: "Ctrl+Shift+S", action: "capture-region-native" },
-        { combo: "Ctrl+Shift+1", action: "move-to-display-0" },
-        { combo: "Ctrl+Shift+2", action: "move-to-display-1" },
-      ]
-    : [
-        { combo: "CommandOrControl+D", action: "toggle-recording" },
-        { combo: "CommandOrControl+I", action: "manual-input" },
-        // Cmd/Ctrl+A NAO e' registrado: livre pra selectAll nativo.
-        { combo: "CommandOrControl+Shift+C", action: "open-config" },
-        { combo: "CommandOrControl+Shift+X", action: "capture-screen" },
-        { combo: "CommandOrControl+Shift+S", action: "capture-region-native" },
-        { combo: "CommandOrControl+Shift+1", action: "move-to-display-0" },
-        { combo: "CommandOrControl+Shift+2", action: "move-to-display-1" },
-      ];
-
-  // Fallback variants for Linux to improve reliability across environments
-  const fallbackShortcuts = isLinux
-    ? [
-        { combo: "CommandOrControl+I", action: "manual-input" },
-        { combo: "CommandOrControl+Shift+X", action: "capture-screen" },
-        { combo: "CommandOrControl+Shift+1", action: "move-to-display-0" },
-        { combo: "CommandOrControl+Shift+2", action: "move-to-display-1" },
-      ]
-    : [];
-
-  const allShortcuts = [...baseShortcuts, ...fallbackShortcuts];
-
-  allShortcuts.forEach(({ combo, action }) => {
-    const registered = globalShortcut.register(combo, async () => {
-      // Mutex amplo: TA + OS Integration ativos suprime todos os atalhos
-      // exceto open-config (necessário pro usuário desligar o modo).
-      if (helpers.isTranslationOnlyMode() && action !== "open-config" && action !== "capture-region-native") {
-        console.log(`[mutex] atalho ${combo} (${action}) ignorado — TA + OS Integration ativos`);
-        return;
-      }
-
-      if (action === "open-config") {
-        helpers.createConfigWindow();
-        return;
-      }
-
-      // Handle manual-input action for OS integration mode
-      if (action === "manual-input") {
-        await helpers.bringWindowToFocus(); // This function already handles OS integration mode
-        return;
-      }
-      
-      // Handle recording action (works in both modes)
-      if (action === "toggle-recording") {
-        await helpers.toggleRecording();
-        return;
-      }
-      
-      // Handle capture screen action (works in both modes)
-      if (action === "capture-screen") {
-        await helpers.captureScreen();
-        return;
-      }
-
-      // Captura full-screen automática (sem seleção, sem prompt) → OCR → IA
-      if (action === "capture-region-native") {
-        // Com o Tutor ligado no modo integrado, o print silencioso vira um pedido
-        // de ajuda AO TUTOR (ele já enxerga a tela) — responde na telinha dele,
-        // em vez de abrir a janela separada de OCR sem contexto.
-        if (configService.getOsIntegrationStatus() && visionGuide.isActive()) {
-          try { visionGuide.analyzeNow(); } catch (e) { console.warn('[vision-guide] analyzeNow falhou:', e.message); }
-          return;
-        }
-        try { await helpers.captureFullScreenAuto(); } catch (e) { console.error('captureFullScreenAuto failed:', e); }
-        return;
-      }
-      
-      // Handle display movement (only works in normal mode)
-      if (action === "move-to-display-0") {
-        helpers.moveToDisplay(0);
-        return;
-      }
-      if (action === "move-to-display-1") {
-        helpers.moveToDisplay(1);
-        return;
-      }
-      
-      // Other actions that require main window
-      if (state.mainWindow && !state.mainWindow.isDestroyed()) {
-        state.mainWindow.webContents.send(action);
-        if (action === "focus-window" && state.mainWindow.isMinimized()) {
-          state.mainWindow.restore();
-        }
-      }
-    });
-    console.log(
-      registered
-        ? `Shortcut registered: ${combo}`
-        : `Failed to register shortcut: ${combo}`
-    );
-  });
-
-  // Log final registration state for key shortcuts
-  ["Ctrl+I", "CommandOrControl+I", "Ctrl+Shift+X", "CommandOrControl+Shift+X", "Ctrl+Shift+1", "CommandOrControl+Shift+1", "Ctrl+Shift+2", "CommandOrControl+Shift+2"].forEach(
-    (accel) => {
-      try {
-        const ok = globalShortcut.isRegistered(accel);
-        console.log(`isRegistered(${accel}): ${ok}`);
-      } catch (e) {
-        // noop
-      }
-    }
-  );
+helpers.registerGlobalShortcuts = function() {
+  return registerGlobalShortcuts();
 }
 
 helpers.getAudioSources = async function() {
@@ -457,7 +125,6 @@ helpers.toggleRealtimeAssistantRecording = async function() {
   const service = helpers.pickRealtimeService();
   const isOnline = service === realtimeOpenAiService;
 
-  // Só o caminho ONLINE (OpenAI) precisa do token. backend/Ollama não usa OpenAI.
   if (isOnline && !configService.getOpenIaToken()) {
     if (state.mainWindow && !state.mainWindow.isDestroyed()) {
       state.mainWindow.webContents.send("transcription-error", "Token da OpenAI não configurado.");
@@ -472,8 +139,6 @@ helpers.toggleRealtimeAssistantRecording = async function() {
     return;
   }
 
-  // Realtime e Assistente de Tradução são modos exclusivos — para a tradução
-  // antes de iniciar o realtime (cada um tem seu próprio motor de áudio agora).
   if (isOnline && translationAssistant.isActive()) {
     await translationAssistant.stop().catch(() => {});
   }
@@ -511,12 +176,6 @@ helpers.getEffectiveAiModel = function() {
   return edition.isLite() ? 'openIa' : configService.getAiModel();
 }
 
-// Arquivo binário lido como utf8 vira lixo cheio de bytes NUL. Isso nunca fez
-// sentido no prompt (queima contexto sem informar nada), e no Copilot CLI era
-// FATAL: o prompt vai como argv (`-p <texto>`) e o Node recusa argumento com
-// NUL — `ERR_INVALID_ARG_VALUE`, o que derrubava o envio ao anexar QUALQUER
-// imagem, até um PNG de 1x1. Detecta pelo conteúdo (não pela extensão) pra
-// pegar também .zip/.class/.bin sem manter lista.
 helpers.isBinaryFile = function(filePath) {
   const fsMod = require('fs');
   let fd = null;
@@ -532,13 +191,8 @@ helpers.isBinaryFile = function(filePath) {
   }
 }
 
-// Extensões que o Copilot CLI aceita em `--attachment` ("image or native
-// document", conforme `copilot --help`). Só imagem/PDF entram: mandar um .zip
-// nessa flag faz o CLI recusar a invocação inteira.
 const ATTACHABLE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.pdf']);
 
-// Anexos que devem ir como arquivo de verdade pro CLI em vez de inline no
-// prompt. Usado pelo provider do Copilot (`--attachment`).
 helpers.getAttachableFilePaths = function() {
   try {
     const fsMod = require('fs');
@@ -565,7 +219,6 @@ helpers.appendAttachmentsContext = function(prompt) {
           const fs = require('fs');
           if (!fs.existsSync(att.path)) { contextHeader += `- Caminho: ${att.path}\n`; continue; }
           const stat = fs.statSync(att.path);
-          // Imagem colada tem bloco próprio: caminho + OCR + instrução de abrir.
           const pasted = helpers.pastedImageContextFor && helpers.pastedImageContextFor(att);
           if (pasted) { contextHeader += pasted; hasPastedImage = true; continue; }
           const binary = stat.isFile() && helpers.isBinaryFile(att.path);

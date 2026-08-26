@@ -1,4 +1,5 @@
-// Chat Messages & Question Editing Module
+// renderer/chatMessages.js
+// Chat Messages & Display Handling Module
 var currentQuestionElement = null;
 var isEditingQuestion = false;
 
@@ -16,562 +17,328 @@ var isEditingQuestion = false;
         new MutationObserver(syncEmptyState).observe(welcomeHero, { attributes: true, attributeFilter: ['class'] });
     }
 
-            // === Botão Copy All fixo no topo ===
-            const copyAllFixedBtn = document.getElementById('copy-all-btn');
-            if (copyAllFixedBtn) {
-                copyAllFixedBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    const blocks = transcriptionElement.querySelectorAll('.interaction-block');
-                    let allText = '';
-                    blocks.forEach(block => {
-                        const q = block.querySelector('.question-text');
-                        // .streaming-response = respostas dos providers CLI
-                        const a = block.querySelector('.ia-response, .streaming-response');
-                        if (q) allText += `Pergunta: ${getQuestionText(q)}\n\n`;
-                        if (a) allText += `Resposta: ${a.innerText || a.textContent}\n\n---\n\n`;
-                    });
-                    if (!allText.trim()) return;
-                    copyTextReliable(allText.trim());
-                    copyAllFixedBtn.textContent = 'Copiado ✓';
-                    copyAllFixedBtn.classList.add('copied');
-                    setTimeout(() => { copyAllFixedBtn.textContent = 'Copiar tudo'; copyAllFixedBtn.classList.remove('copied'); }, 1500);
-                });
-            }
-
-            // Interromper a geração é o × dentro do .ai-phase (ao lado da tag),
-            // não um botão na topbar: ali ele cobria os controles de
-            // minimizar/maximizar da janela (.win-controls-overlay).
-
-        function scrollTranscriptionToBottom(behavior = 'smooth') {
-            const el = document.getElementById('transcription');
-            if (!el) return;
-            // Se o usuário rolou pra cima manualmente para ler ou clicar em algo (como cancelar), não forçar scroll pra baixo
-            const isNearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 150;
-            if (isNearBottom || behavior === 'force') {
-                el.scrollTo({ top: el.scrollHeight, behavior: behavior === 'force' ? 'smooth' : behavior });
-            }
-        }
-
- // scrollTranscriptionToBottom
-
-        function appendQuestionEntry(text) {
-            const transcriptionElement = document.getElementById('transcription');
-
-            // Oculta o hero de boas-vindas na primeira mensagem real
-            const hero = document.getElementById('welcome-hero');
-            if (hero) hero.classList.add('hidden');
-
-            // Cria o bloco que agrupa pergunta + resposta
-            const interactionBlock = document.createElement('div');
-            interactionBlock.className = 'interaction-block';
-
-            const questionSpan = document.createElement('span');
-            questionSpan.className = 'question-text';
-            setQuestionText(questionSpan, text);
-
-            wireQuestionEdit(questionSpan);
-
-            // === Bloco de ações ⌬ ===
-            const blockActions = createBlockActions(transcriptionElement);
-
-            interactionBlock.appendChild(questionSpan);
-            interactionBlock.appendChild(blockActions);
-            transcriptionElement.appendChild(interactionBlock);
-            currentQuestionElement = questionSpan;
-            // Mostrar Copy All assim que houver pelo menos 1 bloco
-            const cab = document.getElementById('copy-all-btn');
-            if (cab) cab.style.display = 'block';
-            scrollTranscriptionToBottom();
-            return questionSpan;
-        }
-
-        document.addEventListener('click', async (e) => {
-            // 1. Verifica se clicou em link de arquivo (.chat-file-link ou data-file-path)
-            const fileLink = e.target.closest('.chat-file-link, [data-file-path]');
-            if (fileLink) {
-                e.preventDefault();
-                e.stopPropagation();
-                const rawPath = fileLink.getAttribute('data-file-path') || fileLink.dataset.filePath;
-                const rawLine = fileLink.getAttribute('data-line') || fileLink.dataset.line;
-                if (rawPath && rawPath !== '#') {
-                    const parseFn = window.parseFilePathAndLine || ((r) => ({ path: r, line: undefined }));
-                    let { path: filePath, line } = parseFn(rawPath);
-                    if (!line && rawLine) line = parseInt(rawLine, 10);
-                    if (filePath && typeof window.openFileViewer === 'function') {
-                        window.openFileViewer(filePath, line);
-                    }
-                }
-                return;
-            }
-
-            // 2. Verifica se clicou em link web externo (http/https)
-            const webLink = e.target.closest('a.chat-web-link, a[href^="http://"], a[href^="https://"]');
-            if (webLink) {
-                e.preventDefault();
-                e.stopPropagation();
-                const url = webLink.getAttribute('href');
-                if (url && window.electronAPI && window.electronAPI.workspaceOpenExternal) {
-                    window.electronAPI.workspaceOpenExternal(url);
-                }
-                return;
-            }
-
-            // 3. Verifica se clicou em um bloco de código (pre > code)
-            const codeElement = e.target.closest('pre code');
-            if (codeElement && e.target.tagName !== 'BUTTON') {
-                // Pega apenas o texto do código, sem o botão
-                const codeText = codeElement.textContent.replace(/^(Copy|Copied!|✓|✗)/, '').trim();
-
-                copyTextReliable(codeText);
-                showCopyToast();
-                
-                e.stopPropagation();
-                e.preventDefault();
-                return;
-            }
-            
-            // 4. Verifica se clicou em código inline (apenas <code>, sem <pre>)
-            const clickedCode = e.target.closest('code');
-            if (clickedCode) {
-                // Verifica se NÃO está dentro de um <pre>
-                const isInsidePre = clickedCode.closest('pre') !== null;
-                if (!isInsidePre) {
-                    const codeText = clickedCode.textContent.trim();
-                    const isFileFn = window.isLikelyFilePath;
-                    if (isFileFn && isFileFn(codeText) && typeof window.openFileViewer === 'function') {
-                        const parseFn = window.parseFilePathAndLine || ((r) => ({ path: r, line: undefined }));
-                        const { path: p, line } = parseFn(codeText);
-                        window.openFileViewer(p, line);
-                        e.stopPropagation();
-                        e.preventDefault();
-                        return;
-                    }
-
-                    copyTextReliable(codeText);
-                    showCopyToast();
-                    
-                    e.stopPropagation();
-                    e.preventDefault();
-                }
-            }
+    const copyAllFixedBtn = document.getElementById('copy-all-btn');
+    if (copyAllFixedBtn) {
+        copyAllFixedBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const blocks = transcriptionElement.querySelectorAll('.interaction-block');
+            let allText = '';
+            blocks.forEach(block => {
+                const q = block.querySelector('.question-text');
+                const a = block.querySelector('.ia-response, .streaming-response');
+                if (q) allText += `Pergunta: ${window.getQuestionText(q)}\n\n`;
+                if (a) allText += `Resposta: ${a.innerText || a.textContent}\n\n---\n\n`;
+            });
+            if (!allText.trim()) return;
+            if (typeof copyTextReliable === 'function') copyTextReliable(allText.trim());
+            copyAllFixedBtn.textContent = 'Copiado ✓';
+            copyAllFixedBtn.classList.add('copied');
+            setTimeout(() => { copyAllFixedBtn.textContent = 'Copiar tudo'; copyAllFixedBtn.classList.remove('copied'); }, 1500);
         });
+    }
 
-        // Carregar a animação
- // Click listener for code copy/edit
+    function scrollTranscriptionToBottom(behavior = 'smooth') {
+        const el = document.getElementById('transcription');
+        if (!el) return;
+        const isNearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 150;
+        if (isNearBottom || behavior === 'force') {
+            el.scrollTo({ top: el.scrollHeight, behavior: behavior === 'force' ? 'smooth' : behavior });
+        }
+    }
 
-            window.addEventListener('keydown', (e) => {
-                // Ctrl+F é tratado em capture-phase no document (ver logo após
-                // wireFileViewer) — não duplica aqui.
-                // Ctrl+D: fallback pra Wayland onde global shortcuts falham.
-                if (e.key === 'd' && e.ctrlKey && !e.shiftKey && !e.altKey) {
-                    const active = document.activeElement;
-                    const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
-                    if (!isInput) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (window.electronAPI && window.electronAPI.triggerToggleRecording) {
-                            window.electronAPI.triggerToggleRecording();
-                        }
-                        return;
-                    }
+    function appendQuestionEntry(text) {
+        const transcriptionElement = document.getElementById('transcription');
+
+        const hero = document.getElementById('welcome-hero');
+        if (hero) hero.classList.add('hidden');
+
+        const interactionBlock = document.createElement('div');
+        interactionBlock.className = 'interaction-block';
+
+        const questionSpan = document.createElement('span');
+        questionSpan.className = 'question-text';
+        if (typeof window.setQuestionText === 'function') {
+            window.setQuestionText(questionSpan, text);
+        } else {
+            questionSpan.textContent = text;
+        }
+
+        if (typeof window.wireQuestionEdit === 'function') {
+            window.wireQuestionEdit(questionSpan);
+        }
+
+        const blockActions = typeof window.createBlockActions === 'function' ? window.createBlockActions(transcriptionElement) : document.createElement('div');
+
+        interactionBlock.appendChild(questionSpan);
+        interactionBlock.appendChild(blockActions);
+        transcriptionElement.appendChild(interactionBlock);
+        currentQuestionElement = questionSpan;
+
+        const cab = document.getElementById('copy-all-btn');
+        if (cab) cab.style.display = 'block';
+        scrollTranscriptionToBottom();
+        return questionSpan;
+    }
+
+    document.addEventListener('click', async (e) => {
+        const fileLink = e.target.closest('.chat-file-link, [data-file-path]');
+        if (fileLink) {
+            e.preventDefault();
+            e.stopPropagation();
+            const rawPath = fileLink.getAttribute('data-file-path') || fileLink.dataset.filePath;
+            const rawLine = fileLink.getAttribute('data-line') || fileLink.dataset.line;
+            if (rawPath && rawPath !== '#') {
+                const parseFn = window.parseFilePathAndLine || ((r) => ({ path: r, line: undefined }));
+                let { path: filePath, line } = parseFn(rawPath);
+                if (!line && rawLine) line = parseInt(rawLine, 10);
+                if (filePath && typeof window.openFileViewer === 'function') {
+                    window.openFileViewer(filePath, line);
                 }
-                // Ctrl+I: mostra/esconde o composer no modo assistente em tempo real.
-                if (e.key === 'i' && e.ctrlKey && !e.shiftKey && !e.altKey) {
-                    const active = document.activeElement;
-                    const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
-                    if (!isInput && typeof window.setComposerVisibility === 'function') {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        const el = window.composerEl;
-                        window.setComposerVisibility(el && el.classList.contains('collapsed'));
-                        return;
-                    }
-                }
-                if (e.key === 'Escape' && manualInputActive) {
-                    manualInputActive = false;
-                    removeManualInputContainer();
-                    undockComposer();
-                    pastedImageForManualInput = null;
-                    document.getElementById('screenshot-preview').style.display = 'none';
+            }
+            return;
+        }
+
+        const webLink = e.target.closest('a.chat-web-link, a[href^="http://"], a[href^="https://"]');
+        if (webLink) {
+            e.preventDefault();
+            e.stopPropagation();
+            const url = webLink.getAttribute('href');
+            if (url && window.electronAPI && window.electronAPI.workspaceOpenExternal) {
+                window.electronAPI.workspaceOpenExternal(url);
+            }
+            return;
+        }
+
+        const codeElement = e.target.closest('pre code');
+        if (codeElement && e.target.tagName !== 'BUTTON') {
+            const codeText = codeElement.textContent.replace(/^(Copy|Copied!|✓|✗)/, '').trim();
+            if (typeof copyTextReliable === 'function') copyTextReliable(codeText);
+            if (typeof showCopyToast === 'function') showCopyToast();
+            e.stopPropagation();
+            e.preventDefault();
+            return;
+        }
+
+        const clickedCode = e.target.closest('code');
+        if (clickedCode) {
+            const isInsidePre = clickedCode.closest('pre') !== null;
+            if (!isInsidePre) {
+                const codeText = clickedCode.textContent.trim();
+                const isFileFn = window.isLikelyFilePath;
+                if (isFileFn && isFileFn(codeText) && typeof window.openFileViewer === 'function') {
+                    const parseFn = window.parseFilePathAndLine || ((r) => ({ path: r, line: undefined }));
+                    const { path: p, line } = parseFn(codeText);
+                    window.openFileViewer(p, line);
                     e.stopPropagation();
                     e.preventDefault();
-                } else if (isDirectTypingKey(e) && !manualInputActive && !isEditingQuestion) {
-                    openManualInput(e.key === 'Backspace' ? '' : e.key);
-                    e.preventDefault();
-                } else if (e.key === 'Escape' && document.getElementById('conversation-viewer').style.display !== 'none') {
-                    // Close conversation viewer with Escape key
-                    document.getElementById('conversation-viewer').style.display = 'none';
-                    e.stopPropagation();
-                    e.preventDefault();
+                    return;
                 }
-            });
-        // Window keydowns for audio trigger controls
 
-        async function sentToAI(text) {
-            // Destrava o stream aqui também, não só no startProcessing(): o OCR
-            // (ipcOcr.js) e o auto-stream de voz chamam este caminho SEM passar
-            // pelo startProcessing, e um flag preso em true deixaria o chat mudo
-            // — falha pior do que a que a guarda conserta.
-            window.iaCancelled = false;
-            let activeSessionId = null;
-            if (window.historySession) {
-                activeSessionId = await window.historySession.ensureSessionForFirstQuestion(text);
-                await window.historySession.addMessageToCurrentSession('user', text);
-            }
-
-            const aiModel = await window.electronAPI.getAiModel();
-            
-            if (aiModel === 'llama-stream' || aiModel === 'qwen-stream' || aiModel === 'ollamaLocal') {
-                // Usa streaming
-                window.electronAPI.sendTextToGeminiStream(text, activeSessionId);
-            } else {
-                // Usa o método normal
-                window.electronAPI.sendTextToGemini(text, activeSessionId);
-            }
-        }
-
-        // Manda a IMAGEM (data URL) pro modelo de visão, com o enunciado digitado
-        // (se houver). Usado no chat quando o backend é OpenAI — antes a imagem
-        // era jogada fora e só o OCR ia pro modelo.
-        async function sentImageToAI(text, image) {
-            window.iaCancelled = false; // turno novo: destrava o stream
-            const q = (text && text.trim()) ? text.trim() : 'Image in context';
-            if (window.historySession) {
-                await window.historySession.ensureSessionForFirstQuestion(q);
-                await window.historySession.addMessageToCurrentSession('user', q);
-            }
-            window.electronAPI.sendVisionToGemini(text || '', image);
-        }
-
-        // True quando o backend ativo suporta visão (OpenAI). Na Lite é sempre true.
-        async function backendSupportsVision() {
-            try { return (await window.electronAPI.getAiModel()) === 'openIa'; }
-            catch (_) { return false; }
-        }
-
-        // Renderizador de markdown único usado em toda a UI.
-        // Suporta: blocos de código (```), código inline (`x`), headings (#/##/###),
-        // listas (- / * / 1.), negrito (**), itálico (*), parágrafos e quebras de linha.
- // sendToAI / sendImageToAI / supportsVision
-
-        const EDIT_ICON_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 21H21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path fill-rule="evenodd" clip-rule="evenodd" d="M18.0235 10.4646L7.58554 20.9026H2.76801L2.76489 16.0819L13.2029 5.64392L18.0235 10.4646Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.2029 5.64388L15.0004 3.84641C15.7814 3.06536 17.0477 3.06536 17.8288 3.84641L19.821 5.83863C20.6021 6.61968 20.6021 7.88601 19.821 8.66706L18.0235 10.4645V10.4645" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-
-        // Renderiza o texto da pergunta com markdown e guarda o original em data-raw
-        // para que edição e reenvio sempre usem o texto puro.
-        function setQuestionText(el, text) {
-            el.dataset.raw = text;
-            el.innerHTML = renderMarkdown(text, 'q');
-            // Re-injeta o edit-icon (renderMarkdown sobrescreve innerHTML)
-            const ic = document.createElement('span');
-            ic.className = 'edit-icon';
-            ic.title = 'Editar e reenviar';
-            ic.innerHTML = EDIT_ICON_SVG;
-            el.appendChild(ic);
-        }
-
-        function getQuestionText(questionSpan) {
-            // Usa o texto original guardado em data-raw; fallback para textContent
-            return (questionSpan.dataset.raw || questionSpan.textContent).trim();
-        }
-
-        // Liga a edição SOMENTE ao clique no lápis — clicar no texto da
-        // pergunta não abre mais o editor (abria sem querer o tempo todo).
-        function wireQuestionEdit(span) {
-            span.addEventListener('click', (e) => {
-                if (!e.target.closest('.edit-icon')) return;
+                if (typeof copyTextReliable === 'function') copyTextReliable(codeText);
+                if (typeof showCopyToast === 'function') showCopyToast();
                 e.stopPropagation();
-                handleQuestionEdit(span);
+                e.preventDefault();
+            }
+        }
+    });
+
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'd' && e.ctrlKey && !e.shiftKey && !e.altKey) {
+            const active = document.activeElement;
+            const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
+            if (!isInput) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (window.electronAPI && window.electronAPI.triggerToggleRecording) {
+                    window.electronAPI.triggerToggleRecording();
+                }
+                return;
+            }
+        }
+        if (e.key === 'i' && e.ctrlKey && !e.shiftKey && !e.altKey) {
+            const active = document.activeElement;
+            const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
+            if (!isInput && typeof window.setComposerVisibility === 'function') {
+                e.preventDefault();
+                e.stopPropagation();
+                const el = window.composerEl;
+                window.setComposerVisibility(el && el.classList.contains('collapsed'));
+                return;
+            }
+        }
+        if (e.key === 'Escape' && typeof manualInputActive !== 'undefined' && manualInputActive) {
+            manualInputActive = false;
+            if (typeof removeManualInputContainer === 'function') removeManualInputContainer();
+            if (typeof undockComposer === 'function') undockComposer();
+            if (typeof pastedImageForManualInput !== 'undefined') pastedImageForManualInput = null;
+            const sp = document.getElementById('screenshot-preview');
+            if (sp) sp.style.display = 'none';
+            e.stopPropagation();
+            e.preventDefault();
+        } else if (typeof isDirectTypingKey === 'function' && isDirectTypingKey(e) && (typeof manualInputActive === 'undefined' || !manualInputActive) && !isEditingQuestion) {
+            if (typeof openManualInput === 'function') openManualInput(e.key === 'Backspace' ? '' : e.key);
+            e.preventDefault();
+        } else if (e.key === 'Escape') {
+            const cv = document.getElementById('conversation-viewer');
+            if (cv && cv.style.display !== 'none') {
+                cv.style.display = 'none';
+                e.stopPropagation();
+                e.preventDefault();
+            }
+        }
+    });
+
+    async function sentToAI(text) {
+        window.iaCancelled = false;
+        let activeSessionId = null;
+        if (window.historySession) {
+            activeSessionId = await window.historySession.ensureSessionForFirstQuestion(text);
+            await window.historySession.addMessageToCurrentSession('user', text);
+        }
+
+        const aiModel = await window.electronAPI.getAiModel();
+
+        if (aiModel === 'llama-stream' || aiModel === 'qwen-stream' || aiModel === 'ollamaLocal') {
+            window.electronAPI.sendTextToGeminiStream(text, activeSessionId);
+        } else {
+            window.electronAPI.sendTextToGemini(text, activeSessionId);
+        }
+    }
+
+    async function sentImageToAI(text, image) {
+        window.iaCancelled = false;
+        const q = (text && text.trim()) ? text.trim() : 'Image in context';
+        if (window.historySession) {
+            await window.historySession.ensureSessionForFirstQuestion(q);
+            await window.historySession.addMessageToCurrentSession('user', q);
+        }
+        window.electronAPI.sendVisionToGemini(text || '', image);
+    }
+
+    async function backendSupportsVision() {
+        try { return (await window.electronAPI.getAiModel()) === 'openIa'; }
+        catch (_) { return false; }
+    }
+
+    function stopProcessing() {
+        showFloatingStop(false);
+        const animation = window.animation;
+        const animationContainer = document.getElementById('animation-container');
+        if (animation) {
+            if (animationContainer) animationContainer.style.display = 'none';
+            animation.stop();
+        }
+        const robot = document.getElementById('robot');
+        if (robot) robot.style.display = 'none';
+
+        const transcriptionElement = document.getElementById('transcription');
+        if (transcriptionElement) {
+            const blocks = transcriptionElement.querySelectorAll('.interaction-block');
+            blocks.forEach(block => {
+                block.classList.remove('is-processing');
+                const ph = block.querySelector('.ai-phase');
+                if (ph && !ph.classList.contains('expanded')) {
+                    ph.classList.add('done');
+                    const spin = ph.querySelector('.ai-phase-spin'); if (spin) spin.remove();
+                    const stop = ph.querySelector('.ai-phase-stop'); if (stop) stop.remove();
+                }
+                const runningItems = block.querySelectorAll('.ai-activity-item.running');
+                runningItems.forEach(it => {
+                    it.classList.remove('running');
+                    it.classList.add('done');
+                    const ic = it.querySelector('.ai-activity-ic');
+                    if (ic) ic.innerHTML = '<svg class="ai-activity-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+                });
             });
         }
 
-        // Handler global de Esc enquanto edita (capture: funciona mesmo se o
-        // foco saiu do textarea). Registrado em handleQuestionEdit, removido
-        // ao cancelar/enviar.
-        let _editEscHandler = null;
-        function _removeEditEscHandler() {
-            if (_editEscHandler) {
-                document.removeEventListener('keydown', _editEscHandler, true);
-                _editEscHandler = null;
-            }
+        window.electronAPI.stopNotifications();
+    }
+
+    function cancelIaAndFreezeStream() {
+        window.iaCancelled = true;
+        if (window.electronAPI && window.electronAPI.cancelIaRequest) {
+            window.electronAPI.cancelIaRequest();
         }
+        try {
+            if (typeof typingCursor !== 'undefined' && typingCursor && typingCursor.parentNode) {
+                typingCursor.remove();
+            }
+        } catch (_) {}
+        if (typeof streamingElement !== 'undefined') streamingElement = null;
+        if (typeof streamingText !== 'undefined') streamingText = '';
+        if (typeof typingCursor !== 'undefined') typingCursor = null;
+        stopProcessing();
+    }
 
-        function handleQuestionEdit(questionSpan) {
-            if (isEditingQuestion) return;
-
-            isEditingQuestion = true;
-            console.log('Iniciando edição da pergunta');
-
-            const currentText = getQuestionText(questionSpan);
-
-            const container = document.createElement('div');
-            container.className = 'edit-container';
-
-            // Sempre usa textarea para edição
-            const editField = document.createElement('textarea');
-            editField.className = 'edit-textarea';
-            editField.rows = 5;
-            editField.value = currentText;
-            editField.style.width = '100%';
-            editField.style.marginBottom = '10px';
-
-            const sendButton = document.createElement('button');
-            sendButton.className = 'send-button';
-            sendButton.textContent = 'Enviar';
-            sendButton.style.marginRight = '10px';
-
-            const cancelButton = document.createElement('button');
-            cancelButton.className = 'send-button edit-cancel-btn';
-            cancelButton.textContent = 'Cancelar (Esc)';
-
-            const controls = document.createElement('div');
-            controls.className = 'edit-controls';
-            controls.appendChild(sendButton);
-            controls.appendChild(cancelButton);
-
-            container.appendChild(editField);
-            container.appendChild(controls);
-
-            const doCancel = () => cancelEditSimple(questionSpan, container, currentText);
-            const doSend = () => {
-                const newText = editField.value.trim();
-                if (newText) finishEdit(newText, container);
-                else doCancel(); // vazio = cancelar, nunca reenviar em branco
-            };
-
-            sendButton.addEventListener('click', doSend);
-            cancelButton.addEventListener('click', doCancel);
-
-            // Enter envia, Shift+Enter quebra linha, Esc cancela.
-            editField.addEventListener('keydown', function(e) {
-                if (e.key === 'Escape') {
-                    e.preventDefault();
-                    doCancel();
-                } else if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    doSend();
-                }
+    function getFloatingStop() {
+        let btn = document.getElementById('ai-stop-floating');
+        if (!btn) {
+            btn = document.createElement('button');
+            btn.id = 'ai-stop-floating';
+            btn.className = 'ai-stop-floating';
+            btn.textContent = '■ Parar IA';
+            btn.title = 'Interromper a IA';
+            btn.addEventListener('click', () => {
+                cancelIaAndFreezeStream();
             });
-
-            // Esc cancela mesmo com o foco fora do textarea.
-            _editEscHandler = (e) => {
-                if (e.key === 'Escape' && isEditingQuestion) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    doCancel();
-                }
-            };
-            document.addEventListener('keydown', _editEscHandler, true);
-
-            // Substitui o span pelo campo de edição
-            questionSpan.replaceWith(container);
-            editField.focus();
+            document.body.appendChild(btn);
         }
+        return btn;
+    }
 
-        function cancelEditSimple(originalSpan, container, originalText) {
-            console.log('Cancelando edição — nada é reenviado');
-            isEditingQuestion = false;
-            _removeEditEscHandler();
+    function showFloatingStop(mostrar) {
+        const btn = getFloatingStop();
+        btn.classList.toggle('visible', !!mostrar);
+    }
 
-            // Recria o span original com markdown e lápis (setQuestionText faz os dois)
-            setQuestionText(originalSpan, originalText);
+    function startProcessing() {
+        window.iaCancelled = false;
+        const robot = document.getElementById('robot');
+        if (robot) robot.style.display = 'block';
+        showFloatingStop(true);
 
-            // Substitui de volta (listener de clique original do span continua vivo)
-            container.replaceWith(originalSpan);
-        }
-
-        function finishEdit(newText, container) {
-            console.log('Finalizando edição com texto:', newText);
-
-            isEditingQuestion = false;
-            _removeEditEscHandler();
-
-            // Só aqui (envio confirmado) cancela a requisição em andamento —
-            // abrir o editor por engano não pode matar uma resposta em curso.
-            // (o startProcessing() do novo envio limpa o window.iaCancelled)
-            cancelIaAndFreezeStream();
-
-            // Limpa qualquer elemento de streaming anterior
-            const transcriptionElement = document.getElementById('transcription');
-            const existingStreamingElements = transcriptionElement.querySelectorAll('.streaming-response, .response-text');
-            existingStreamingElements.forEach(el => el.remove());
-            console.log('Variáveis de streaming resetadas globalmente');
-            
-            // Recria o span com o novo texto dentro de um interaction-block
-            const questionSpan = document.createElement('span');
-            questionSpan.className = 'question-text';
-            setQuestionText(questionSpan, newText);
-            wireQuestionEdit(questionSpan);
-
-            // Se o container está dentro de um interaction-block, substitui o bloco inteiro
-            const parentBlock = container.closest('.interaction-block');
-            const newBlock = document.createElement('div');
-            newBlock.className = 'interaction-block';
-            newBlock.appendChild(questionSpan);
-            newBlock.appendChild(createBlockActions(document.getElementById('transcription')));
-
-            if (parentBlock) {
-                parentBlock.replaceWith(newBlock);
-            } else {
-                container.replaceWith(newBlock);
-            }
-            currentQuestionElement = questionSpan;
-            
-            console.log('Enviando pergunta editada:', newText);
-            
-            // IMPORTANTE: Inicia o processamento ANTES de enviar
-            startProcessing();
-            console.log('Loading iniciado - robô deve estar visível');
-            
-            // Envia para a IA
-            sentToAI(newText);
-        }
-
-        
-        function stopProcessing() {
-            showFloatingStop(false);
-            // Para animações (instância lottie compartilhada via window.animation)
-            const animation = window.animation;
-            const animationContainer = document.getElementById('animation-container');
-            if (animation) {
-                if (animationContainer) animationContainer.style.display = 'none';
-                animation.stop();
-            }
-            const robot = document.getElementById('robot');
-            if (robot) robot.style.display = 'none';
-
-            const transcriptionElement = document.getElementById('transcription');
-            if (transcriptionElement) {
-                const blocks = transcriptionElement.querySelectorAll('.interaction-block');
-                blocks.forEach(block => {
-                    block.classList.remove('is-processing');
-                    const ph = block.querySelector('.ai-phase');
-                    if (ph && !ph.classList.contains('expanded')) {
+        const transcriptionElement = document.getElementById('transcription');
+        if (transcriptionElement) {
+            const lastBlock = transcriptionElement.querySelector('.interaction-block:last-child');
+            if (lastBlock) {
+                lastBlock.classList.add('is-processing');
+                let ph = lastBlock.querySelector('.ai-phase');
+                if (!ph) {
+                    ph = document.createElement('div');
+                    ph.className = 'ai-phase';
+                    ph.innerHTML = `
+                        <div class="ai-phase-header">
+                            <span class="ai-phase-spin"></span>
+                            <span class="ai-phase-tag">Pensando</span>
+                            <button class="ai-phase-stop" title="Interromper">×</button>
+                            <span class="ai-phase-text">Aguardando resposta...</span>
+                        </div>
+                    `;
+                    const stop = ph.querySelector('.ai-phase-stop');
+                    if (stop) stop.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        cancelIaAndFreezeStream();
+                        const txt = ph.querySelector('.ai-phase-text');
+                        if (txt) txt.textContent = 'Interrompido pelo usuário';
                         ph.classList.add('done');
                         const spin = ph.querySelector('.ai-phase-spin'); if (spin) spin.remove();
-                        const stop = ph.querySelector('.ai-phase-stop'); if (stop) stop.remove();
-                    }
-                });
-            }
-            
-            // Notifica o backend para parar notificações
-            window.electronAPI.stopNotifications();
-        }
-        
-        // Interromper de verdade = pedir o abort NO MAIN e FECHAR a resposta
-        // atual aqui. Só chamar cancelIaRequest não bastava: a resposta em curso
-        // seguia "aberta" no renderer (streamingElement/streamingText vivos), e
-        // qualquer chunk atrasado continuava sendo escrito na tela depois do
-        // clique — inclusive dentro da mensagem de erro, quando havia uma.
-        //
-        // O reset NÃO pode morar em stopProcessing(): o fim normal do stream
-        // chama stopProcessing() ANTES de ler streamingText pra salvar no
-        // histórico e mandar pro TTS. Zerar ali apagaria a resposta boa.
-        function cancelIaAndFreezeStream() {
-            window.iaCancelled = true;
-            if (window.electronAPI && window.electronAPI.cancelIaRequest) {
-                window.electronAPI.cancelIaRequest();
-            }
-            // Congela o que já apareceu: tira o cursor piscando e fecha o
-            // elemento atual, sem apagar o texto que o usuário já leu.
-            try {
-                if (typeof typingCursor !== 'undefined' && typingCursor && typingCursor.parentNode) {
-                    typingCursor.remove();
-                }
-            } catch (_) {}
-            streamingElement = null;
-            streamingText = '';
-            typingCursor = null;
-            stopProcessing();
-        }
-        window.cancelIaAndFreezeStream = cancelIaAndFreezeStream;
-
-        // Botão de parar FIXO na tela. O botão × dentro do bloco "Pensando"
-        // rolava junto com a conversa: com um raciocínio longo ele saía da área
-        // visível e não havia como interromper a IA. Este fica sempre no mesmo
-        // canto, independente do scroll.
-        function getFloatingStop() {
-            let btn = document.getElementById('ai-stop-floating');
-            if (!btn) {
-                btn = document.createElement('button');
-                btn.id = 'ai-stop-floating';
-                btn.className = 'ai-stop-floating';
-                btn.textContent = '■ Parar IA';
-                btn.title = 'Interromper a IA';
-                btn.addEventListener('click', () => {
-                    cancelIaAndFreezeStream();
-                });
-                document.body.appendChild(btn);
-            }
-            return btn;
-        }
-
-        function showFloatingStop(mostrar) {
-            const btn = getFloatingStop();
-            btn.classList.toggle('visible', !!mostrar);
-        }
-
-        function startProcessing() {
-            console.log('startProcessing chamado');
-            // Turno novo: destrava o stream. Sem isto, um único "Parar IA"
-            // deixaria o chat mudo para sempre — a guarda do onStreamChunk
-            // descartaria toda resposta seguinte.
-            window.iaCancelled = false;
-            const robot = document.getElementById('robot');
-            if (robot) robot.style.display = 'block';
-            console.log('Robô definido como visível');
-            showFloatingStop(true);
-
-            const transcriptionElement = document.getElementById('transcription');
-            if (transcriptionElement) {
-                const lastBlock = transcriptionElement.querySelector('.interaction-block:last-child');
-                if (lastBlock) {
-                    lastBlock.classList.add('is-processing');
-                    let ph = lastBlock.querySelector('.ai-phase');
-                    if (!ph) {
-                        ph = document.createElement('div');
-                        ph.className = 'ai-phase';
-                        ph.innerHTML = `
-                            <div class="ai-phase-header">
-                                <span class="ai-phase-spin"></span>
-                                <span class="ai-phase-tag">Pensando</span>
-                                <button class="ai-phase-stop" title="Interromper">×</button>
-                                <span class="ai-phase-text">Aguardando resposta...</span>
-                            </div>
-                        `;
-                        const stop = ph.querySelector('.ai-phase-stop');
-                        if (stop) stop.addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            console.log('Botão interromper clicado');
-                            cancelIaAndFreezeStream();
-                            const txt = ph.querySelector('.ai-phase-text');
-                            if (txt) txt.textContent = 'Interrompido pelo usuário';
-                            ph.classList.add('done');
-                            const spin = ph.querySelector('.ai-phase-spin'); if (spin) spin.remove();
-                            if (stop) stop.remove();
-                        });
-                        lastBlock.appendChild(ph);
-                    }
+                        if (stop) stop.remove();
+                    });
+                    lastBlock.appendChild(ph);
                 }
             }
-            
-            // Reinicia notificações
-            window.electronAPI.startNotifications();
-            console.log('Notificações iniciadas');
         }
- // Question Editing (wireQuestionEdit, handleQuestionEdit, etc.)
 
-    // Expose
+        window.electronAPI.startNotifications();
+    }
+
     window.scrollTranscriptionToBottom = scrollTranscriptionToBottom;
     window.appendQuestionEntry = appendQuestionEntry;
     window.sentToAI = sentToAI;
     window.sentImageToAI = sentImageToAI;
-    window.wireQuestionEdit = wireQuestionEdit;
-    window.handleQuestionEdit = handleQuestionEdit;
-    // Usados pelos módulos ipcOcr.js / ipcResponses.js (IIFEs separadas).
     window.backendSupportsVision = backendSupportsVision;
-    window.getQuestionText = getQuestionText;
-    window.EDIT_ICON_SVG = EDIT_ICON_SVG;
-    window.setQuestionText = setQuestionText;
     window.startProcessing = startProcessing;
     window.stopProcessing = stopProcessing;
+    window.cancelIaAndFreezeStream = cancelIaAndFreezeStream;
 })();

@@ -155,6 +155,9 @@ ipcMain.handle("get-project-context", async () => {
   }
 });
 
+let _lastGitStatusCache = { path: '', time: 0, data: null };
+let _activeGitStatusPromise = null;
+
 ipcMain.handle("get-project-git-status", async (_event, payload) => {
   try {
     let projectPath = payload && payload.path;
@@ -165,18 +168,33 @@ ipcMain.handle("get-project-git-status", async (_event, payload) => {
     if (!projectPath) {
       return { isGit: false, changesCount: 0, modifiedFiles: {}, modifiedDirs: {} };
     }
+
+    const now = Date.now();
+    if (_lastGitStatusCache.path === projectPath && (now - _lastGitStatusCache.time) < 400 && _lastGitStatusCache.data) {
+      return _lastGitStatusCache.data;
+    }
+
+    if (_activeGitStatusPromise && _activeGitStatusPromise.path === projectPath) {
+      return await _activeGitStatusPromise.promise;
+    }
+
     const { execFile } = require("child_process");
-    return await new Promise((resolve) => {
+    const promise = new Promise((resolve) => {
       execFile(
         "git",
         ["-C", projectPath, "-c", "core.quotepath=false", "status", "--porcelain", "-uall"],
-        { timeout: 3500 },
+        { timeout: 5000, maxBuffer: 1024 * 1024 * 10 },
         (err, stdout) => {
           if (err) {
+            if (_lastGitStatusCache.path === projectPath && _lastGitStatusCache.data) {
+              return resolve(_lastGitStatusCache.data);
+            }
             return resolve({ isGit: false, changesCount: 0, modifiedFiles: {}, modifiedDirs: {} });
           }
           if (!stdout) {
-            return resolve({ isGit: true, changesCount: 0, modifiedFiles: {}, modifiedDirs: {} });
+            const emptyRes = { isGit: true, changesCount: 0, modifiedFiles: {}, modifiedDirs: {} };
+            _lastGitStatusCache = { path: projectPath, time: Date.now(), data: emptyRes };
+            return resolve(emptyRes);
           }
           const lines = stdout.split(/\r?\n/);
           const modifiedFiles = {};
@@ -187,23 +205,12 @@ ipcMain.handle("get-project-git-status", async (_event, payload) => {
             if (!line || line.length < 3) continue;
             const code = line.substring(0, 2);
             let relPath = line.substring(3).trim();
-            if (relPath.includes(" -> ")) {
-              relPath = relPath.split(" -> ")[1].trim();
-            }
-            if (relPath.startsWith('"') && relPath.endsWith('"')) {
-              relPath = relPath.substring(1, relPath.length - 1);
-            }
+            if (relPath.includes(" -> ")) relPath = relPath.split(" -> ")[1].trim();
+            if (relPath.startsWith('"') && relPath.endsWith('"')) relPath = relPath.substring(1, relPath.length - 1);
             relPath = relPath.replace(/\\/g, "/").replace(/^\.\//, "");
             if (!relPath) continue;
 
-            let status = 'M';
-            const x = code[0];
-            const y = code[1];
-            if ((x === 'A' || x === 'M' || x === 'R' || x === 'C' || x === 'D') && (y === ' ' || y === '' || y === undefined)) {
-              status = 'A'; // Staged (git add já feito) -> Verde
-            } else {
-              status = 'M'; // Modificado / untracked / unstaged ainda não adicionado -> Vermelho
-            }
+            const status = ((code[0] === 'A' || code[0] === 'M' || code[0] === 'R' || code[0] === 'C' || code[0] === 'D') && (!code[1] || code[1] === ' ')) ? 'A' : 'M';
 
             modifiedFiles[relPath] = status;
             modifiedFiles[relPath.toLowerCase()] = status;
@@ -217,12 +224,22 @@ ipcMain.handle("get-project-git-status", async (_event, payload) => {
               modifiedDirs[currentParent.toLowerCase()] = true;
             }
           }
-          resolve({ isGit: true, changesCount: count, modifiedFiles, modifiedDirs });
+          const result = { isGit: true, changesCount: count, modifiedFiles, modifiedDirs };
+          _lastGitStatusCache = { path: projectPath, time: Date.now(), data: result };
+          resolve(result);
         }
       );
     });
+
+    _activeGitStatusPromise = { path: projectPath, promise };
+    const res = await promise;
+    if (_activeGitStatusPromise && _activeGitStatusPromise.path === projectPath) {
+      _activeGitStatusPromise = null;
+    }
+    return res;
   } catch (e) {
     console.warn("[get-project-git-status] falhou:", e.message);
+    if (_lastGitStatusCache.data) return _lastGitStatusCache.data;
     return { isGit: false, changesCount: 0, modifiedFiles: {}, modifiedDirs: {} };
   }
 });

@@ -4,111 +4,40 @@
 
 const fs = require('fs');
 const path = require('path');
-
-// Extensões suportadas
-const SUPPORTED_EXTS = new Set([
-  '.java', '.ts', '.tsx', '.js', '.jsx', '.cs', '.cpp', '.h', '.hpp', '.php'
-]);
-
-// Pastas ignoradas por padrão
-const IGNORED_DIRS = new Set([
-  'node_modules', '.git', 'dist', '.idea', '.vscode', '.claude', '.gemini',
-  'vendor', 'bin', 'obj', '.next', '.nuxt', '.cache', '__pycache__', 'venv', '.venv', 'env',
-  'coverage', '.output', 'out', 'temp', 'tmp', 'logs', '.bundle', 'whisper', 'assets', 'images', 'audio'
-]);
-
-function shouldIgnoreDir(dirName, parentDir) {
-  if (IGNORED_DIRS.has(dirName)) return true;
-  const normParent = parentDir ? parentDir.replace(/\\/g, '/').toLowerCase() : '';
-
-  if (dirName === 'target' || dirName === 'build') {
-    const generatedPath = path.join(parentDir || '', dirName, dirName === 'target' ? 'generated-sources' : 'generated');
-    const generatedSourcesPath = path.join(parentDir || '', dirName, 'generated-sources');
-    if (fs.existsSync(generatedPath) || fs.existsSync(generatedSourcesPath)) {
-      return false;
-    }
-    return true;
-  }
-
-  if (normParent.endsWith('/target') || normParent.includes('/target/')) {
-    if (!normParent.includes('/target/generated-sources') && !normParent.includes('/target/generated-test-sources')) {
-      if (dirName !== 'generated-sources' && dirName !== 'generated-test-sources') return true;
-    }
-  } else if (normParent.endsWith('/build') || normParent.includes('/build/')) {
-    if (!normParent.includes('/build/generated') && !normParent.includes('/build/generated-sources')) {
-      if (dirName !== 'generated' && dirName !== 'generated-sources') return true;
-    }
-  }
-
-  return false;
-}
-
-// Palavras que nunca valem como "uso" — encher o índice com elas é só custo.
-const USAGE_STOPWORDS = new Set([
-  'if', 'for', 'while', 'switch', 'catch', 'function', 'class', 'return',
-  'import', 'export', 'require', 'const', 'let', 'var', 'new', 'typeof',
-  'instanceof', 'void', 'delete', 'true', 'false', 'null', 'undefined', 'this',
-  'super', 'async', 'await', 'yield', 'try', 'finally', 'else', 'case', 'break',
-  'public', 'private', 'protected', 'static', 'final', 'package', 'interface',
-  'extends', 'implements', 'throws', 'throw', 'int', 'boolean', 'double', 'float',
-  'long', 'char', 'byte', 'short', 'String', 'default', 'continue', 'abstract',
-]);
-
-const ENCLOSING_FUNC_RE = /(?:async\s+)?function\*?\s+([A-Za-z0-9_$]+)|(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=|([A-Za-z0-9_$]+)\s*\([^)]*\)\s*\{/;
-const IDENTIFIER_RE = /[A-Za-z_$][A-Za-z0-9_$]*/g;
-
-// Declaração não é "uso" — é onde a coisa nasce. O findUsages antigo descobria
-// isso montando uma regex por símbolo e relendo o arquivo; aqui a checagem é
-// pelo texto que ANTECEDE o identificador, com regex fixa, então custa quase
-// nada e roda uma vez só, na indexação.
-const DECL_PREFIX_RES = [
-  /(?:const|let|var|class|interface|enum|function|def)\s+$/,             // const foo / class Foo
-  /(?:async\s+)?function\*?\s+$/,                                        // function foo
-  /(?:(?:public|private|protected|static|final|abstract|readonly)\s+)+[A-Za-z0-9_$<>[\],.?]*\s*$/, // private String campo / public void foo
-  /(?:import|from|package)\s+$/,
-];
-
-function isDeclarationAt(lineText, index) {
-  if (index === 0) return false;
-  const antes = lineText.slice(0, index);
-  for (const re of DECL_PREFIX_RES) {
-    if (re.test(antes)) return true;
-  }
-  return false;
-}
-
-// Teto por símbolo. Sem isto, um identificador comum num projeto grande gera
-// dezenas de milhares de entradas — medido: 120.000 usos de um único método.
-// Ninguém lê 120 mil ocorrências, e serializar isso por IPC custa mais que a
-// própria busca.
-const MAX_USAGES_PER_SYMBOL = 300;
-const MIN_USAGE_SYMBOL_LEN = 3;
-
-function normalizePath(p) {
-  if (!p) return '';
-  let norm = path.normalize(p).replace(/\\/g, '/');
-  if (norm.length >= 2 && norm[1] === ':') {
-    norm = norm[0].toUpperCase() + norm.substring(1);
-  }
-  return norm;
-}
+const {
+  SUPPORTED_EXTS,
+  shouldIgnoreDir,
+  normalizePath,
+} = require('./symbolIndexer/symbolConstants.js');
+const {
+  getCacheFilePath,
+  loadDiskCache,
+  saveDiskCache,
+} = require('./symbolIndexer/symbolStorage.js');
+const {
+  indexUsagesInLine,
+  parseFileLines,
+} = require('./symbolIndexer/symbolParser.js');
+const {
+  tryResolveFilePath,
+  searchDefinitionInFile,
+  scanDir,
+  findUsages,
+  resolveReceiverType,
+  findDefinition,
+  findImplementations,
+  getGutterInfo,
+} = require('./symbolIndexer/symbolFinder.js');
 
 class SymbolIndexer {
   constructor() {
     this.projectPath = null;
-    // filePath -> { classes: [], interfaces: [], methods: [], imports: [] }
     this.fileMap = new Map();
-    // interfaceName -> Set of { className, filePath }
     this.implementationsMap = new Map();
-    // symbolName -> Set of { filePath, line, col, kind, className }
     this.symbolMap = new Map();
-    // symbolName -> [{ filePath, line, col, lineText, callerName }]
-    // Índice invertido de USOS, montado na indexação do projeto. É o que
-    // permite responder "onde isto é usado" sem tocar no disco.
     this.usageMap = new Map();
-    this.usagesTruncated = new Set(); // símbolos que bateram o teto
-
-    this.fileMtimes = new Map(); // filePath -> { mtimeMs, size }
+    this.usagesTruncated = new Set();
+    this.fileMtimes = new Map();
     this.indexingSessionId = 0;
     this.isIndexing = false;
     this.indexingProgress = { total: 0, processed: 0 };
@@ -128,223 +57,108 @@ class SymbolIndexer {
   }
 
   getCacheFilePath(projectPath) {
-    try {
-      const crypto = require('crypto');
-      const os = require('os');
-      const cacheBase = process.env.APPDATA || (process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Caches') : path.join(os.homedir(), '.cache'));
-      const targetDir = path.join(cacheBase, 'helper-node', 'index-cache');
-      if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
-      const hash = crypto.createHash('sha256').update(normalizePath(projectPath)).digest('hex').slice(0, 16);
-      return path.join(targetDir, `sym_idx_${hash}.json`);
-    } catch (_) {
-      return null;
-    }
+    return getCacheFilePath(projectPath);
   }
 
   loadDiskCache(projectPath) {
-    const cacheFile = this.getCacheFilePath(projectPath);
-    if (!cacheFile || !fs.existsSync(cacheFile)) return false;
-    try {
-      const raw = fs.readFileSync(cacheFile, 'utf8');
-      const data = JSON.parse(raw);
-      if (!data || data.projectPath !== normalizePath(projectPath)) return false;
-
-      this.fileMap = new Map(data.fileMap || []);
-      this.implementationsMap = new Map((data.implementationsMap || []).map(([k, arr]) => [k, new Set(arr)]));
-      this.symbolMap = new Map(data.symbolMap || []);
-      this.usageMap = new Map(data.usageMap || []);
-      this.fileMtimes = new Map(data.fileMtimes || []);
-      return true;
-    } catch (e) {
-      console.warn('[symbolIndexer] Falha ao carregar cache do disco:', e.message);
-      return false;
-    }
+    return loadDiskCache(this, projectPath);
   }
 
   async saveDiskCache(projectPath) {
-    const cacheFile = this.getCacheFilePath(projectPath);
-    if (!cacheFile) return;
-    try {
-      const data = {
-        projectPath: normalizePath(projectPath),
-        timestamp: Date.now(),
-        fileMap: Array.from(this.fileMap.entries()),
-        implementationsMap: Array.from(this.implementationsMap.entries()).map(([k, set]) => [k, Array.from(set)]),
-        symbolMap: Array.from(this.symbolMap.entries()),
-        usageMap: Array.from(this.usageMap.entries()),
-        fileMtimes: Array.from(this.fileMtimes.entries())
-      };
-      await fs.promises.writeFile(cacheFile, JSON.stringify(data), 'utf8');
-    } catch (e) {
-      console.warn('[symbolIndexer] Falha ao salvar cache do disco:', e.message);
-    }
+    return saveDiskCache(this, projectPath);
   }
 
-  // Tenta resolver uma referencia de arquivo (ex: require('./foo'), import 'bar.js')
   tryResolveFilePath(currentFilePath, rawPath) {
-    if (!rawPath || typeof rawPath !== 'string') return null;
-    const cleanPath = rawPath.replace(/^['"`]|['"`]$/g, '').trim();
-    if (!cleanPath) return null;
-
-    const normCurrent = normalizePath(currentFilePath);
-    const isJavaFile = normCurrent.toLowerCase().endsWith('.java');
-
-    const isExplicitPath = cleanPath.startsWith('./') || cleanPath.startsWith('../') ||
-      cleanPath.startsWith('.\\') || cleanPath.startsWith('..\\') ||
-      cleanPath.includes('/') || cleanPath.includes('\\');
-
-    if (!isExplicitPath) {
-      if (isJavaFile) return null;
-      if (!/\.[a-zA-Z0-9]+$/.test(cleanPath)) return null;
-    }
-
-    const currentDir = normCurrent ? path.dirname(normCurrent) : '';
-    const projDir = this.projectPath || currentDir;
-
-    const basePaths = [];
-    if (path.isAbsolute(cleanPath)) {
-      basePaths.push(cleanPath);
-    } else if (cleanPath.startsWith('./') || cleanPath.startsWith('../') || cleanPath.startsWith('.\\') || cleanPath.startsWith('..\\')) {
-      if (currentDir) basePaths.push(path.resolve(currentDir, cleanPath));
-    } else {
-      if (currentDir) basePaths.push(path.resolve(currentDir, cleanPath));
-      if (projDir) basePaths.push(path.resolve(projDir, cleanPath));
-    }
-
-    const extsToTry = isJavaFile
-      ? ['', '.java']
-      : ['', '.js', '.ts', '.jsx', '.tsx', '.json', '/index.js', '/index.ts'];
-
-    for (const base of basePaths) {
-      for (const ext of extsToTry) {
-        const candidate = normalizePath(base + ext);
-        try {
-          if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
-            const relPath = this.projectPath ? path.relative(this.projectPath, candidate).replace(/\\/g, '/') : candidate;
-            return [{
-              filePath: candidate,
-              relativePath: relPath,
-              line: 1,
-              col: 1,
-              symbol: path.basename(candidate),
-              kind: 'file',
-              className: null
-            }];
-          }
-        } catch (_) {}
-      }
-    }
-    return null;
+    return tryResolveFilePath(this, currentFilePath, rawPath);
   }
 
-  /**
-   * Indexa todo o workspace usando cache em disco imediato (<20ms) e revalidação assíncrona.
-   */
   async indexWorkspace(projectPath) {
     if (!projectPath || !fs.existsSync(projectPath)) return;
-
     const currentSession = ++this.indexingSessionId;
-    const normProj = normalizePath(projectPath);
-    this.projectPath = normProj;
+    this.projectPath = normalizePath(projectPath);
 
-    // 1. Tenta carregar instantaneamente do cache em disco (<20ms)
-    const hasCache = this.loadDiskCache(normProj);
+    const hasCache = this.loadDiskCache(projectPath);
     if (hasCache) {
-      this.isIndexing = false;
-      this.notifyStatus('completed', { total: this.fileMap.size, processed: this.fileMap.size, fromCache: true });
-      console.log(`[symbolIndexer] Índice carregado do cache instantaneamente (${this.fileMap.size} arquivos).`);
-      // Revalidação em segundo plano sem bloquear a inicialização
+      this.notifyStatus('ready', { cached: true });
       setTimeout(() => {
-        this._revalidateWorkspace(currentSession, true).catch(() => {});
-      }, 300);
+        if (this.indexingSessionId === currentSession) {
+          this._revalidateWorkspace(currentSession, true);
+        }
+      }, 500);
       return;
     }
 
-    // 2. Se não havia cache (primeira execução), indexa diretamente
     this.reset();
-    this.projectPath = normProj;
-    this.isIndexing = true;
-    this.notifyStatus('indexing', { processed: 0, total: 0 });
+    this.projectPath = normalizePath(projectPath);
     await this._revalidateWorkspace(currentSession, false);
   }
 
   async _revalidateWorkspace(currentSession, hasCache) {
     if (this.indexingSessionId !== currentSession) return;
     try {
-      const files = await this.scanDirAsync(this.projectPath, currentSession);
+      const files = await this.scanFilesAsync(this.projectPath);
       if (this.indexingSessionId !== currentSession) return;
 
-      const filesSet = new Set(files);
-      let hasChanges = false;
       const toIndex = [];
+      const filesSet = new Set(files);
 
-      // Verifica quais arquivos são novos ou foram modificados
       for (const f of files) {
-        const cached = this.fileMtimes.get(f);
         try {
-          const st = await fs.promises.stat(f);
+          const st = fs.statSync(f);
           if (st.size > 200 * 1024) continue;
+          const cached = this.fileMtimes.get(f);
           if (!cached || cached.mtimeMs !== st.mtimeMs || cached.size !== st.size) {
             toIndex.push(f);
           }
         } catch (_) {}
       }
 
-      // Verifica arquivos deletados
       for (const f of this.fileMap.keys()) {
         if (!filesSet.has(f)) {
           this.removeFileFromMaps(f);
-          hasChanges = true;
         }
       }
 
       if (toIndex.length > 0) {
-        hasChanges = true;
         this.isIndexing = true;
         this.indexingProgress = { total: toIndex.length, processed: 0 };
-        this.notifyStatus('indexing', this.indexingProgress);
+        this.notifyStatus('indexing', { progress: this.indexingProgress });
 
-        const BATCH_SIZE = 5;
+        const BATCH_SIZE = 15;
         for (let i = 0; i < toIndex.length; i += BATCH_SIZE) {
           if (this.indexingSessionId !== currentSession) return;
-          const chunk = toIndex.slice(i, i + BATCH_SIZE);
-          for (const f of chunk) {
+          const batch = toIndex.slice(i, i + BATCH_SIZE);
+          for (const f of batch) {
             this.indexSingleFile(f);
+            this.indexingProgress.processed++;
           }
-          this.indexingProgress.processed = Math.min(i + BATCH_SIZE, toIndex.length);
-          this.notifyStatus('indexing', this.indexingProgress);
-          await new Promise((resolve) => setTimeout(resolve, 20));
+          this.notifyStatus('indexing', { progress: this.indexingProgress });
+          await new Promise((resolve) => setTimeout(resolve, 5));
         }
+
+        this.isIndexing = false;
+        await this.saveDiskCache(this.projectPath);
       }
 
-      if (this.indexingSessionId === currentSession) {
-        this.isIndexing = false;
-        this.notifyStatus('completed', { total: files.length, processed: files.length });
-        if (hasChanges || !hasCache) {
-          await this.saveDiskCache(this.projectPath);
-          console.log(`[symbolIndexer] Cache persistido em disco para ${files.length} arquivos.`);
-        }
-      }
-    } catch (e) {
-      if (this.indexingSessionId === currentSession) {
-        this.isIndexing = false;
-        console.warn('[symbolIndexer] Erro na indexação/revalidação de índice:', e.message);
-      }
+      this.notifyStatus('ready', {
+        filesCount: this.fileMap.size,
+        symbolsCount: this.symbolMap.size,
+        implementationsCount: this.implementationsMap.size,
+        usagesSymbolsCount: this.usageMap.size,
+      });
+    } catch (err) {
+      this.isIndexing = false;
+      this.notifyStatus('error', { error: err.message });
     }
   }
 
-  /**
-   * Varredura assíncrona não-bloqueante usando fila iterativa
-   */
-  async scanDirAsync(startDir, sessionId) {
+  async scanFilesAsync(startDir) {
     const results = [];
     const queue = [startDir];
     let dirsVisited = 0;
 
     while (queue.length > 0) {
-      if (this.indexingSessionId !== sessionId) return results;
-
-      const currentDir = queue.pop();
+      const currentDir = queue.shift();
       try {
         const entries = await fs.promises.readdir(currentDir, { withFileTypes: true });
         for (const entry of entries) {
@@ -393,7 +207,7 @@ class SymbolIndexer {
     if (content === null) {
       try {
         const stat = fs.statSync(filePath);
-        if (stat.size > 200 * 1024) return; // ignora arquivos gigantes (>200KB)
+        if (stat.size > 200 * 1024) return;
         content = fs.readFileSync(filePath, 'utf8');
         this.fileMtimes.set(normPath, { mtimeMs: stat.mtimeMs, size: stat.size });
       } catch (_) {
@@ -406,253 +220,13 @@ class SymbolIndexer {
       } catch (_) {}
     }
 
-    // Remove símbolo antigo deste arquivo antes de re-indexar
     this.removeFileFromMaps(normPath);
-
-    const pkgMatch = content.match(/^\s*package\s+([\w.]+)\s*;/m);
-    const packageName = pkgMatch ? pkgMatch[1] : '';
-
-    const staticImports = [];
-    const RE_STATIC_ALL = /^\s*import\s+static\s+([\w.]+)(?:\.([\w$]+|\*))\s*;/gm;
-    let sm;
-    while ((sm = RE_STATIC_ALL.exec(content)) !== null) {
-      const full = sm[1];
-      const member = sm[2] || '*';
-      const isWildcard = member === '*';
-      const className = full.split('.').pop();
-      staticImports.push({
-        full: `${full}.${member}`,
-        className,
-        member,
-        isWildcard,
-        line: 1
-      });
-    }
-
-    const lines = content.split(/\r?\n/);
-    const fileData = {
-      package: packageName,
-      classes: [],
-      interfaces: [],
-      methods: [],
-      fields: [],
-      imports: [],
-      staticImports
-    };
-
-    let currentInterface = null;
-    let currentClass = null;
-    let currentEnclosingFunc = null;
-
-    for (let i = 0; i < lines.length; i++) {
-      const lineText = lines[i];
-      const lineNum = i + 1; // 1-indexed
-
-      // 0. Índice invertido de usos (símbolo → onde aparece).
-      // Construído aqui porque já estamos varrendo cada linha do projeto uma
-      // vez. Sem ele, findUsages relia TODOS os arquivos do disco a cada hover.
-      this.indexUsagesInLine(normPath, lineText, lineNum, () => currentEnclosingFunc);
-      const encMatch = lineText.match(ENCLOSING_FUNC_RE);
-      if (encMatch) {
-        const fn = encMatch[1] || encMatch[2] || encMatch[3];
-        if (fn && !USAGE_STOPWORDS.has(fn)) currentEnclosingFunc = fn;
-      }
-
-      // 1. Imports
-      const importMatch = lineText.match(/(?:import|using|use|require)\s+([^;'"\n]+)/);
-      if (importMatch) {
-        fileData.imports.push({ text: importMatch[1].trim(), line: lineNum });
-      }
-
-      // 2. Interfaces
-      const interfaceMatch = lineText.match(/(?:public\s+|export\s+|protected\s+)?interface\s+([A-Za-z0-9_$]+)/);
-      if (interfaceMatch) {
-        const interfaceName = interfaceMatch[1];
-        currentInterface = interfaceName;
-        currentClass = null;
-        const col = lineText.indexOf(interfaceName) + 1;
-        const item = {
-          name: interfaceName,
-          fqcn: packageName ? `${packageName}.${interfaceName}` : interfaceName,
-          line: lineNum,
-          col,
-          filePath: normPath,
-          kind: 'interface'
-        };
-        fileData.interfaces.push(item);
-        this.addSymbol(interfaceName, item);
-      }
-
-      // 3. Classes, Enums, Records e Implementações
-      const classMatch = lineText.match(/(?:(?:public|export|default|abstract|final)\s+)*(?:class|enum|record)\s+([A-Za-z0-9_$]+)(?:\s+extends\s+[A-Za-z0-9_$.<>]*)?(?:\s+implements\s+([A-Za-z0-9_$,\s<>]+))?/);
-      if (classMatch) {
-        const className = classMatch[1];
-        currentClass = className;
-        currentInterface = null;
-        const col = lineText.indexOf(className) + 1;
-        const implementsClause = classMatch[2];
-        const item = {
-          name: className,
-          fqcn: packageName ? `${packageName}.${className}` : className,
-          line: lineNum,
-          col,
-          filePath: normPath,
-          kind: 'class',
-          implements: []
-        };
-
-        const implList = [];
-        if (implementsClause) {
-          implList.push(...implementsClause.split(',').map(s => s.trim().replace(/<.*>/, '')));
-        }
-        // Convenção MapStruct / Spring: FooMapperImpl implementa FooMapper
-        if (className.endsWith('Impl')) {
-          const inferredIface = className.slice(0, -4);
-          if (!implList.includes(inferredIface)) {
-            implList.push(inferredIface);
-          }
-        }
-
-        item.implements = implList;
-        for (const implName of implList) {
-          if (!this.implementationsMap.has(implName)) {
-            this.implementationsMap.set(implName, new Set());
-          }
-          this.implementationsMap.get(implName).add({ className, filePath: normPath, line: lineNum });
-        }
-
-        fileData.classes.push(item);
-        this.addSymbol(className, item);
-      }
-
-      // 3.5 Constantes / Campos / Enums (Mappers, Beans, Constantes, Injeções, Valores de Enum)
-      const lineClean = lineText.replace(/@\w+(?:\([^)]*\))?\s*/g, '').trim();
-      const KEYWORDS = new Set([
-        'if', 'for', 'while', 'switch', 'catch', 'return', 'class', 'interface',
-        'enum', 'package', 'import', 'new', 'public', 'private', 'protected',
-        'static', 'final', 'default', 'void', 'throw', 'throws', 'const', 'let', 'var'
-      ]);
-
-      // Campo normal / constante estática (ex: public static final String FOO = "val"; ou int BAR = 1;)
-      const fieldMatch = lineClean.match(/^(?:(?:public|protected|private|static|final|volatile|transient|const|readonly)\s+)+[A-Za-z0-9_$<>[\].,?]+\s+([A-Za-z0-9_$]+)\s*(?:=|;)/);
-      if (fieldMatch && (currentClass || currentInterface)) {
-        const fieldName = fieldMatch[1];
-        if (!KEYWORDS.has(fieldName)) {
-          const col = lineText.indexOf(fieldName) + 1;
-          const owner = currentInterface ? { type: 'interface', name: currentInterface } : { type: 'class', name: currentClass };
-          const item = {
-            name: fieldName,
-            line: lineNum,
-            col: col > 0 ? col : 1,
-            filePath: normPath,
-            kind: currentInterface ? 'interface-constant' : 'field',
-            owner
-          };
-          fileData.fields.push(item);
-          this.addSymbol(fieldName, item);
-        }
-      } else if (currentClass && /^[A-Z][A-Z0-9_$]*(?:\s*\([^)]*\))?\s*(?:,|;|$)/.test(lineClean)) {
-        // Possível constante de enum (ex: PENDING, ou APPROVED("A"), ou REJECTED;)
-        const enumConstMatch = lineClean.match(/^([A-Z][A-Z0-9_$]*)/);
-        if (enumConstMatch && !KEYWORDS.has(enumConstMatch[1])) {
-          const constName = enumConstMatch[1];
-          const col = lineText.indexOf(constName) + 1;
-          const item = {
-            name: constName,
-            line: lineNum,
-            col: col > 0 ? col : 1,
-            filePath: normPath,
-            kind: 'field',
-            owner: { type: 'enum', name: currentClass }
-          };
-          fileData.fields.push(item);
-          this.addSymbol(constName, item);
-        }
-      }
-
-      // 4. Métodos / Funções
-      // (lineClean já contém a linha limpa de anotações inline)
-
-      const methodPatterns = [
-        // async function foo(...) / function foo(...) / function* foo(...) / static function foo(...)
-        { re: /(?:public\s+|protected\s+|private\s+)?(?:static\s+)?(?:async\s+)?function\*?\s+([A-Za-z0-9_$]+)\s*\(/, g: 1 },
-        // const foo = (...) => / let foo = async () => / var foo = function()
-        { re: /(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_$]+|\bfunction\b)/, g: 1 },
-        // foo(...) { / static foo(...) { / static async foo(...) { / public static foo(...) { (métodos JS/TS)
-        { re: /^\s*(?:public\s+|protected\s+|private\s+)?(?:static\s+)?(?:async\s+|get\s+|set\s+)?([A-Za-z0-9_$]+)\s*\([^)]*\)\s*\{/, g: 1 },
-        // foo: function(...) / foo: async function(...)
-        { re: /([A-Za-z0-9_$]+)\s*:\s*(?:async\s+)?function/, g: 1 },
-        // Java/C#/PHP/C++/Kotlin: public void foo(...) / static async Task<Bar> foo(...) / public static <K, V> Map<K, V> foo(...)
-        { re: /^(?:(?:public|protected|private|static|final|async|override|synchronized|default|native)\s+)+[A-Za-z0-9_$<>[\].,?]+\s+([A-Za-z0-9_$]+)\s*\(/, g: 1 },
-        // Python: def foo(...) / async def foo(...)
-        { re: /(?:async\s+)?def\s+([A-Za-z0-9_$]+)\s*\(/, g: 1 },
-        // Go / Rust: func foo / fn foo
-        { re: /(?:pub\s+)?(?:async\s+)?(?:func|fn)\s+(?:\([^)]+\)\s+)?([A-Za-z0-9_$]+)\s*\(/, g: 1 },
-        // Declaração de método de interface Java / TS (ex: UserDto map(User user); ou assinatura multilinha UserDto toDto(...)
-        { re: /^(?:(?:public|protected|default|static|abstract)\s+)*[A-Za-z0-9_$<>[\].,?]+\s+([A-Za-z0-9_$]+)\s*\(/, g: 1 },
-      ];
-
-      for (const pattern of methodPatterns) {
-        const m = lineClean.match(pattern.re) || lineText.match(pattern.re);
-        if (m && m[pattern.g]) {
-          const methodName = m[pattern.g];
-          if (['if', 'for', 'while', 'switch', 'catch', 'constructor', 'function', 'class', 'return', 'import', 'export', 'require', 'static', 'async', 'get', 'set', 'public', 'private', 'protected', 'def', 'fn', 'func', 'interface', 'package', 'new'].includes(methodName)) {
-            continue;
-          }
-          const col = lineText.indexOf(methodName) + 1;
-          const owner = currentInterface ? { type: 'interface', name: currentInterface } : currentClass ? { type: 'class', name: currentClass } : null;
-          const item = {
-            name: methodName,
-            line: lineNum,
-            col: col > 0 ? col : 1,
-            filePath: normPath,
-            kind: currentInterface ? 'interface-method' : 'method',
-            owner
-          };
-          fileData.methods.push(item);
-          this.addSymbol(methodName, item);
-          break;
-        }
-      }
-    }
-
+    const fileData = parseFileLines(this, normPath, content);
     this.fileMap.set(normPath, fileData);
   }
 
-  // Extrai identificadores da linha e registra onde cada um aparece.
-  // Chamado uma vez por linha durante a indexação — o custo fica na abertura do
-  // projeto (em segundo plano), não no hover do usuário.
   indexUsagesInLine(normPath, lineText, lineNum, getEnclosing) {
-    if (!lineText) return;
-    const trimmed = lineText.trim();
-    if (!trimmed) return;
-    // Linha inteira de comentário não é uso.
-    if (trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*')
-      || trimmed.startsWith('#') || trimmed.startsWith('<!--')) return;
-
-    const comentarioInline = lineText.indexOf('//');
-    IDENTIFIER_RE.lastIndex = 0;
-    let m;
-    const jaNestaLinha = new Set();
-    while ((m = IDENTIFIER_RE.exec(lineText)) !== null) {
-      const nome = m[0];
-      if (nome.length < MIN_USAGE_SYMBOL_LEN || USAGE_STOPWORDS.has(nome)) continue;
-      if (comentarioInline !== -1 && m.index > comentarioInline) continue;
-      if (jaNestaLinha.has(nome)) continue; // uma entrada por símbolo por linha
-      jaNestaLinha.add(nome);
-
-      let lista = this.usageMap.get(nome);
-      if (!lista) { lista = []; this.usageMap.set(nome, lista); }
-      if (lista.length >= MAX_USAGES_PER_SYMBOL) { this.usagesTruncated.add(nome); continue; }
-      lista.push({
-        filePath: normPath,
-        line: lineNum,
-        col: m.index + 1,
-        lineText: trimmed,
-        callerName: getEnclosing() || null,
-        isDef: isDeclarationAt(lineText, m.index),
-      });
-    }
+    return indexUsagesInLine(this, normPath, lineText, lineNum, getEnclosing);
   }
 
   addSymbol(name, item) {
@@ -666,18 +240,15 @@ class SymbolIndexer {
     const existing = this.fileMap.get(normPath);
     if (!existing) return;
 
-    // Remover dos símbolos globais
     this.symbolMap.forEach((list, name) => {
       this.symbolMap.set(name, list.filter(item => item.filePath !== normPath));
     });
 
-    // Remover das implementações
     this.implementationsMap.forEach((set, implName) => {
       const updated = new Set([...set].filter(item => item.filePath !== normPath));
       this.implementationsMap.set(implName, updated);
     });
 
-    // Sem isto, reindexar um arquivo salvo duplicaria os usos dele no índice.
     this.usageMap.forEach((list, name) => {
       const filtrada = list.filter(u => u.filePath !== normPath);
       if (filtrada.length) this.usageMap.set(name, filtrada);
@@ -688,534 +259,32 @@ class SymbolIndexer {
     this.fileMtimes.delete(normPath);
   }
 
-  // Busca rápida e precisa por padrão de definição de um símbolo em um arquivo específico
   searchDefinitionInFile(filePath, symbolName) {
-    const normPath = normalizePath(filePath);
-    let content = '';
-    try {
-      content = fs.readFileSync(normPath, 'utf8');
-    } catch (_) {
-      return [];
-    }
-
-    const lines = content.split(/\r?\n/);
-    const results = [];
-    const escaped = symbolName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-    // Expressões regulares seguras (sem ReDoS/backtracking catastrófico)
-    const defRegexes = [
-      // 1. Funções JS/TS: function foo( / async function foo(
-      new RegExp(`^(?:(?:public|protected|private|static|async|export|default)\\s+)*function\\*?\\s+${escaped}\\s*\\(`),
-      // 2. Constantes e variáveis: const foo / let foo / var foo
-      new RegExp(`^(?:(?:export|default)\\s+)*(?:const|let|var)\\s+${escaped}\\b`),
-      // 3. Atribuição: this.foo = ... / foo = ...
-      new RegExp(`^(?:this\\.)?${escaped}\\s*=\\s*`),
-      // 4. Métodos de classe JS/TS: foo(...) { / static async foo(...) {
-      new RegExp(`^(?:(?:public|protected|private|static|async|get|set)\\s+)*${escaped}\\s*\\([^)]*\\)\\s*\\{`),
-      // 5. Propriedade de objeto: foo: function / foo: (
-      new RegExp(`^${escaped}\\s*:\\s*(?:async\\s+)?(?:function|\\()`),
-      // 6. Declaração de Classe / Interface / Enum / Record: class Foo / enum Foo
-      new RegExp(`^(?:(?:public|protected|private|abstract|final|export|default)\\s+)*(?:class|interface|enum|record)\\s+${escaped}\\b`),
-      // 7. Métodos Java/C#/C++/PHP: public void foo(...) / String foo(...) / Map<K,V> foo(...)
-      new RegExp(`^(?:(?:public|protected|private|static|final|async|override|synchronized|default|native|abstract)\\s+)*[A-Za-z0-9_$<>\\[\\],.?]+\\s+${escaped}\\s*\\(`),
-      // 8. Constantes e Campos Java/C#: public static final String FOO = ... / int FOO;
-      new RegExp(`^(?:(?:public|protected|private|static|final|volatile|transient|const|readonly)\\s+)+[A-Za-z0-9_$<>\\[\\],.?]+\\s+${escaped}\\s*(?:=|;|,|\\)|$)`),
-      // 9. Constantes de Enum Java: FOO, / FOO("..."), / FOO;
-      new RegExp(`^${escaped}(?:\\s*\\([^)]*\\))?\\s*(?:,|;|$)`),
-      // 10. Python: def foo(...)
-      new RegExp(`^(?:async\\s+)?def\\s+${escaped}\\s*\\(`),
-      // 11. Go / Rust: func foo / fn foo
-      new RegExp(`^(?:pub\\s+)?(?:async\\s+)?(?:func|fn)\\s+(?:\\([^)]+\\)\\s+)?${escaped}\\s*\\(`)
-    ];
-
-    for (let i = 0; i < lines.length; i++) {
-      const lineText = lines[i];
-      const lineClean = lineText.replace(/@\w+(?:\([^)]*\))?\s*/g, '').trim();
-      for (const rx of defRegexes) {
-        if (rx.test(lineClean) || rx.test(lineText.trim())) {
-          const col = lineText.indexOf(symbolName) + 1;
-          results.push({
-            name: symbolName,
-            line: i + 1,
-            col: col > 0 ? col : 1,
-            filePath: normPath,
-            kind: 'method'
-          });
-          break;
-        }
-      }
-    }
-
-    return results;
+    return searchDefinitionInFile(filePath, symbolName);
   }
 
   scanDir(startDir) {
-    const results = [];
-    try {
-      const entries = fs.readdirSync(startDir, { withFileTypes: true });
-      for (const entry of entries) {
-        const fullPath = path.join(startDir, entry.name);
-        if (entry.isDirectory()) {
-          if (shouldIgnoreDir(entry.name, startDir)) continue;
-          results.push(...this.scanDir(fullPath));
-        } else if (entry.isFile()) {
-          const ext = path.extname(entry.name).toLowerCase();
-          if (SUPPORTED_EXTS.has(ext)) {
-            results.push(normalizePath(fullPath));
-          }
-        }
-      }
-    } catch (_) {}
-    return results;
+    return scanDir(startDir);
   }
 
-  // Encontra todos os pontos onde um método/função é chamado/usado no projeto (usages / callers)
   findUsages(currentFilePath, symbolName) {
-    if (!symbolName || typeof symbolName !== 'string') return [];
-    const cleanSymbol = symbolName.trim();
-    if (!cleanSymbol || !/^[A-Za-z_$][\w$]*$/.test(cleanSymbol)) return [];
-
-    const normCurrent = normalizePath(currentFilePath);
-
-    // Fast-path: índice invertido montado na abertura do projeto
-    const indexados = this.usageMap.get(cleanSymbol);
-    if (indexados && indexados.length > 0) {
-      const resp = [];
-      for (const u of indexados) {
-        if (u.isDef) continue;
-        if (u.filePath === normCurrent && u.lineText && isDeclarationAt(u.lineText, Math.max(0, u.col - 1))) {
-          continue;
-        }
-        const relPath = this.projectPath ? path.relative(this.projectPath, u.filePath).replace(/\\/g, '/') : u.filePath;
-        const fileName = path.basename(u.filePath);
-        resp.push({
-          filePath: u.filePath,
-          relativePath: relPath,
-          fileName,
-          line: u.line,
-          col: u.col,
-          lineText: u.lineText,
-          callerName: u.callerName,
-        });
-      }
-      return resp;
-    }
-
-    // Fallback: varredura no disco se o índice não tiver o símbolo (ex: arquivo novo fora do workspace)
-    const filesToScan = [];
-    if (this.projectPath) {
-      filesToScan.push(...this.scanDir(this.projectPath));
-    }
-    if (normCurrent && !filesToScan.includes(normCurrent) && fs.existsSync(normCurrent)) {
-      filesToScan.push(normCurrent);
-    }
-
-    const defLinesByFile = new Map();
-    for (const f of filesToScan) {
-      const defs = this.searchDefinitionInFile(f, cleanSymbol);
-      if (defs && defs.length > 0) {
-        defLinesByFile.set(f, new Set(defs.map(d => d.line)));
-      }
-    }
-
-    const escaped = cleanSymbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const wordRegex = new RegExp(`\\b${escaped}\\b`);
-    const funcHeaderRegex = /(?:async\s+)?function\*?\s+([A-Za-z0-9_$]+)|(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=|([A-Za-z0-9_$]+)\s*\([^)]*\)\s*\{/;
-
-    const usages = [];
-
-    for (const filePath of filesToScan) {
-      let content = '';
-      try {
-        content = fs.readFileSync(filePath, 'utf8');
-      } catch (_) {
-        continue;
-      }
-
-      const lines = content.split(/\r?\n/);
-      const defLines = defLinesByFile.get(filePath) || new Set();
-
-      let currentEnclosingFunc = null;
-
-      for (let i = 0; i < lines.length; i++) {
-        const lineText = lines[i];
-        const lineNum = i + 1;
-
-        // Atualizar o método contêiner para contextualizar chamadas
-        const funcMatch = lineText.match(funcHeaderRegex);
-        if (funcMatch) {
-          const fnName = funcMatch[1] || funcMatch[2] || funcMatch[3];
-          // Ignorar palavras reservadas que não são métodos customizados
-          const KEYWORDS = new Set(['if', 'for', 'while', 'switch', 'catch', 'function', 'class', 'return', 'import', 'export', 'require', 'const', 'let', 'var', 'new', 'typeof', 'instanceof', 'void', 'delete', 'true', 'false', 'null', 'undefined', 'this', 'super', 'async', 'await', 'yield', 'try', 'finally', 'else', 'case', 'break']);
-          if (fnName && !KEYWORDS.has(fnName) && fnName !== cleanSymbol) {
-            currentEnclosingFunc = fnName;
-          }
-        }
-
-        // Se a linha não contém o símbolo, continua
-        if (!wordRegex.test(lineText)) continue;
-
-        // Se é a própria linha de definição do método, ignora
-        if (defLines.has(lineNum)) continue;
-
-        // Ignorar linhas de comentários (//, /*, *, #, <!--)
-        const trimmed = lineText.trim();
-        if (trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*') || trimmed.startsWith('#') || trimmed.startsWith('<!--')) {
-          continue;
-        }
-
-        const col = lineText.indexOf(cleanSymbol) + 1;
-
-        // Se a ocorrência do símbolo está dentro de um comentário inline (ex: code; // symbol)
-        const lineCommentIdx = lineText.indexOf('//');
-        if (lineCommentIdx !== -1 && col > lineCommentIdx) continue;
-        const relPath = this.projectPath ? path.relative(this.projectPath, filePath).replace(/\\/g, '/') : filePath;
-        const fileName = path.basename(filePath);
-
-        usages.push({
-          filePath,
-          relativePath: relPath,
-          fileName,
-          line: lineNum,
-          col: col > 0 ? col : 1,
-          lineText: trimmed,
-          callerName: currentEnclosingFunc || null
-        });
-      }
-    }
-
-    return usages;
+    return findUsages(this, currentFilePath, symbolName);
   }
 
-  // Encontra as definições/ocorrências de um símbolo clicado
   findDefinition(currentFilePath, symbolName, lineText = '') {
-    if (!symbolName) return [];
-
-    const normCurrent = normalizePath(currentFilePath);
-
-    // Garante que o arquivo atual esteja indexado
-    if (normCurrent && !this.fileMap.has(normCurrent) && fs.existsSync(normCurrent)) {
-      this.indexSingleFile(normCurrent);
-    }
-
-    // 1. Tentar resolver como referência de arquivo (require / import / caminho)
-    const fileMatches = this.tryResolveFilePath(normCurrent, symbolName);
-    if (fileMatches && fileMatches.length > 0) {
-      return fileMatches;
-    }
-
-    let candidates = [...(this.symbolMap.get(symbolName) || [])];
-
-    // Se temos métodos de interface ou classe abstrata, inclui também as implementações concretas (ex: UserMapperImpl)
-    const implCandidates = [];
-    for (const c of candidates) {
-      if (c.kind === 'interface-method' || c.kind === 'interface') {
-        const ownerName = c.owner ? c.owner.name : c.name;
-        if (ownerName) {
-          const impls = this.implementationsMap.get(ownerName);
-          if (impls) {
-            for (const impl of impls) {
-              const implFileData = this.fileMap.get(impl.filePath);
-              const implMethod = implFileData ? implFileData.methods.find(m => m.name === symbolName) : null;
-              if (implMethod) {
-                implCandidates.push(implMethod);
-              }
-            }
-          }
-        }
-      }
-    }
-    for (const ic of implCandidates) {
-      if (!candidates.some(c => c.filePath === ic.filePath && c.line === ic.line)) {
-        candidates.push(ic);
-      }
-    }
-
-    // 2. Fallback: se o mapa global não tem a definição, busca diretamente no arquivo atual
-    if (candidates.length === 0 && normCurrent && fs.existsSync(normCurrent)) {
-      const localMatches = this.searchDefinitionInFile(normCurrent, symbolName);
-      if (localMatches.length > 0) {
-        candidates = localMatches;
-      }
-    }
-
-    if (candidates.length === 0) return [];
-
-    const formatted = candidates.map(c => {
-      const relPath = this.projectPath ? path.relative(this.projectPath, c.filePath).replace(/\\/g, '/') : c.filePath;
-      return {
-        filePath: c.filePath,
-        relativePath: relPath,
-        line: c.line,
-        col: c.col,
-        symbol: c.name || c.symbol || symbolName,
-        kind: c.kind || 'method',
-        className: c.owner ? c.owner.name : (c.className || (c.kind === 'class' ? c.name : null))
-      };
-    });
-
-    if (formatted.length === 1) return formatted;
-
-    const currentData = this.fileMap.get(normCurrent);
-
-    // Tipo do RECEPTOR da chamada: em `pagamentoService.processar(id)`, descobre
-    // que `pagamentoService` é do tipo `PagamentoService` e põe a definição
-    // dentro desse tipo em primeiro lugar.
-    const tipoReceptor = this.resolveReceiverType(normCurrent, symbolName, lineText);
-
-    const pontos = (c) => {
-      let p = 0;
-      const isImplClass = c.kind === 'method' && (
-        (c.className && c.className.endsWith('Impl')) ||
-        (c.filePath && (c.filePath.includes('/generated-sources/') || c.filePath.includes('\\generated-sources\\') || c.filePath.includes('/generated/') || c.filePath.includes('\\generated\\')))
-      );
-
-      if (tipoReceptor) {
-        const base = path.basename(c.filePath, path.extname(c.filePath));
-        const isDirectImpl = c.className === tipoReceptor + 'Impl' || base === tipoReceptor + 'Impl';
-        const isDirectInterface = c.className === tipoReceptor || base === tipoReceptor;
-        const isMapper = tipoReceptor.toLowerCase().includes('mapper') || (c.className && c.className.toLowerCase().includes('mapper'));
-
-        // Se for Mapper (ex: UserMapper), a implementação concreta (UserMapperImpl) tem prioridade máxima (200 pts).
-        // Para services normais (ex: PagamentoService), a declaração na interface tem prioridade direta (150 pts), e a impl vem a seguir (120 pts).
-        if (isMapper && isDirectImpl) {
-          p += 200;
-        } else if (isDirectInterface) {
-          p += 150;
-        } else if (isDirectImpl) {
-          p += 120;
-        } else if (c.className && c.className.includes(tipoReceptor)) {
-          p += 80;
-        } else if (base.includes(tipoReceptor)) {
-          p += 70;
-        }
-      }
-
-      if (isImplClass) {
-        p += 30;
-      }
-
-      if (currentData && currentData.imports && currentData.imports.length > 0) {
-        const base = path.basename(c.filePath, path.extname(c.filePath));
-        if (currentData.imports.some(imp => imp.text.includes(base) || (tipoReceptor && imp.text.includes(tipoReceptor)))) {
-          p += 25;
-        }
-      }
-
-      // Se estamos dentro do arquivo da própria interface/mapper e clicamos no método:
-      // A implementação correspondente (UserMapperImpl.java) tem prioridade máxima
-      if (c.filePath === normCurrent && (c.kind === 'interface-method' || c.kind === 'interface')) {
-        p -= 50;
-      } else if (!tipoReceptor && c.filePath === normCurrent) {
-        p += 50;
-      }
-
-      return p;
-    };
-
-    return [...formatted].sort((a, b) => pontos(b) - pontos(a));
+    return findDefinition(this, currentFilePath, symbolName, lineText);
   }
 
-  // Descobre o tipo declarado da variável ou classe que recebe a chamada.
   resolveReceiverType(normCurrent, symbolName, lineText) {
-    if (!symbolName) return null;
-    const currentData = normCurrent ? this.fileMap.get(normCurrent) : null;
-    const escapedSym = symbolName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-    // 1. Receptor explícito na linha: Chained.Receptor.symbol(...) ou Receptor.symbol(...)
-    if (lineText) {
-      const mRec = lineText.match(
-        new RegExp(`([A-Za-z_$][A-Za-z0-9_$]*)\\s*\\.\\s*${escapedSym}\\b`)
-      );
-      if (mRec) {
-        const receptor = mRec[1];
-        if (receptor !== 'this' && receptor !== 'super') {
-          // A. Chamada encadeada: ClassName.INSTANCE.symbol(...) ou ClassName.MEMBER.symbol(...)
-          const mChain = lineText.match(new RegExp(`([A-Z][A-Za-z0-9_$]*)\\s*\\.\\s*${receptor}\\s*\\.\\s*${escapedSym}\\b`));
-          if (mChain && mChain[1]) {
-            return mChain[1];
-          }
-
-          // B. Mappers.getMapper(ClassName.class).symbol(...)
-          const mMapper = lineText.match(new RegExp(`(?:getMapper|Mappers\\.getMapper)\\s*\\(\\s*([A-Z][A-Za-z0-9_$]*)\\.class\\s*\\)\\s*\\.\\s*${escapedSym}\\b`));
-          if (mMapper && mMapper[1]) {
-            return mMapper[1];
-          }
-
-          // C. Se receptor está em static imports (ex: import static com.example.UserMapper.USER_MAPPER)
-          if (currentData && currentData.staticImports) {
-            const staticImp = currentData.staticImports.find(si => si.member === receptor || si.isWildcard);
-            if (staticImp) {
-              return staticImp.className;
-            }
-          }
-
-          // D. Se receptor é constante ou campo no símbolo global (ex: USER_MAPPER -> UserMapper)
-          const constSyms = this.symbolMap.get(receptor);
-          if (constSyms && constSyms.length > 0) {
-            const foundField = constSyms.find(s => s.fieldType || (s.owner && s.owner.name));
-            if (foundField) {
-              return foundField.fieldType || foundField.owner.name;
-            }
-          }
-
-          // E. Se receptor termina com MAPPER ou _MAPPER (ex: USER_MAPPER -> UserMapper)
-          if (/_?MAPPER$/i.test(receptor)) {
-            const pascal = receptor.toLowerCase()
-              .split('_')
-              .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-              .join('');
-            if (this.implementationsMap.has(pascal) || this.symbolMap.has(pascal) || this.symbolMap.has(pascal + 'Impl')) {
-              return pascal;
-            }
-          }
-
-          // F. Se receptor começa com maiúscula (ClassName.method() ou Enum.VALUE)
-          if (/^[A-Z]/.test(receptor) && receptor !== 'INSTANCE') {
-            return receptor;
-          }
-
-          // G. Se receptor é camelCase (userMapper)
-          let conteudo = '';
-          try { conteudo = fs.readFileSync(normCurrent, 'utf8'); } catch (_) {}
-          if (conteudo) {
-            const mTipo = conteudo.match(
-              new RegExp(`([A-Z][A-Za-z0-9_$]*)(?:<[^>]*>)?\\s+${receptor}\\b\\s*[;=,)]`)
-            );
-            if (mTipo) return mTipo[1];
-          }
-
-          const inferredPascal = receptor.charAt(0).toUpperCase() + receptor.slice(1);
-          if (this.implementationsMap.has(inferredPascal) || this.symbolMap.has(inferredPascal) || this.symbolMap.has(inferredPascal + 'Impl')) {
-            return inferredPascal;
-          }
-        }
-      }
-    }
-
-    // 2. Método chamado sem receptor (ex: map(user)) — Checa se veio de static import
-    if (currentData && currentData.staticImports) {
-      const staticImp = currentData.staticImports.find(si => si.member === symbolName || si.isWildcard);
-      if (staticImp) {
-        return staticImp.className;
-      }
-    }
-
-    // 3. Fallback: Checa static imports direto no conteúdo do arquivo
-    if (normCurrent) {
-      try {
-        const fileContent = fs.readFileSync(normCurrent, 'utf8');
-        const mStaticDirect = fileContent.match(new RegExp(`import\\s+static\\s+[\\w.]+\\.([A-Z][A-Za-z0-9_$]*)\\.${escapedSym}\\s*;`));
-        if (mStaticDirect && mStaticDirect[1]) return mStaticDirect[1];
-
-        const mStaticConst = fileContent.match(/import\s+static\s+[\w.]+\.([A-Z][A-Za-z0-9_$]*)\.([A-Z0-9_$]+)\s*;/);
-        if (mStaticConst && mStaticConst[1]) return mStaticConst[1];
-
-        const mStaticWildcard = fileContent.match(/import\s+static\s+[\w.]+\.([A-Z][A-Za-z0-9_$]*)\.\*\s*;/);
-        if (mStaticWildcard && mStaticWildcard[1]) return mStaticWildcard[1];
-      } catch (_) {}
-    }
-
-    return null;
+    return resolveReceiverType(this, normCurrent, symbolName, lineText);
   }
 
-  // Encontra implementações para uma interface ou método de interface
   findImplementations(currentFilePath, lineNum, symbolName) {
-    const normCurrent = normalizePath(currentFilePath);
-    const fileData = this.fileMap.get(normCurrent);
-    if (!fileData) return [];
-
-    // Verificar se a linha atual declara uma interface
-    const matchedInterface = fileData.interfaces.find(i => i.line === Number(lineNum) || i.name === symbolName);
-    let targetInterfaceName = matchedInterface ? matchedInterface.name : symbolName;
-
-    // Se é um método de interface
-    const matchedMethod = fileData.methods.find(m => m.line === Number(lineNum) && m.kind === 'interface-method');
-    if (matchedMethod && matchedMethod.owner && matchedMethod.owner.name) {
-      targetInterfaceName = matchedMethod.owner.name;
-    }
-
-    const implClasses = this.implementationsMap.get(targetInterfaceName);
-    if (!implClasses || implClasses.size === 0) {
-      // Fallback: busca por convenção Foo -> FooImpl ou FooService -> FooServiceImpl
-      const fallbackName = targetInterfaceName + 'Impl';
-      const fallbackCandidates = this.symbolMap.get(fallbackName) || [];
-      if (fallbackCandidates.length > 0) {
-        return fallbackCandidates.map(c => ({
-          filePath: c.filePath,
-          line: c.line,
-          col: c.col,
-          className: c.name
-        }));
-      }
-      return [];
-    }
-
-    const results = [];
-    for (const impl of implClasses) {
-      // Se for método específico, busca a linha do método na classe implementadora
-      if (matchedMethod) {
-        const implFileData = this.fileMap.get(impl.filePath);
-        const implMethod = implFileData ? implFileData.methods.find(m => m.name === matchedMethod.name) : null;
-        if (implMethod) {
-          results.push({
-            filePath: impl.filePath,
-            line: implMethod.line,
-            col: implMethod.col,
-            className: impl.className
-          });
-          continue;
-        }
-      }
-
-      results.push({
-        filePath: impl.filePath,
-        line: impl.line,
-        col: 1,
-        className: impl.className
-      });
-    }
-
-    return results;
+    return findImplementations(this, currentFilePath, lineNum, symbolName);
   }
 
-  // Retorna os ícones do gutter para um determinado arquivo (linhas que declaram interfaces ou métodos de interface)
   getGutterInfo(currentFilePath) {
-    const normCurrent = normalizePath(currentFilePath);
-    const fileData = this.fileMap.get(normCurrent);
-    if (!fileData) return [];
-
-    const gutters = [];
-
-    // Interfaces no arquivo
-    for (const interf of fileData.interfaces) {
-      const impls = this.findImplementations(normCurrent, interf.line, interf.name);
-      if (impls.length > 0) {
-        gutters.push({
-          line: interf.line,
-          symbol: interf.name,
-          kind: 'interface',
-          target: impls[0]
-        });
-      }
-    }
-
-    // Métodos de interface no arquivo
-    for (const method of fileData.methods) {
-      if (method.kind === 'interface-method') {
-        const impls = this.findImplementations(normCurrent, method.line, method.name);
-        if (impls.length > 0) {
-          gutters.push({
-            line: method.line,
-            symbol: method.name,
-            kind: 'interface-method',
-            target: impls[0]
-          });
-        }
-      }
-    }
-
-    return gutters;
+    return getGutterInfo(this, currentFilePath);
   }
 }
 

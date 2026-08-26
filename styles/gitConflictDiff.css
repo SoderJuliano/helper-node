@@ -1,0 +1,185 @@
+/* styles/gitConflictDiff.css
+   Diff table, gutter actions, chunk highlights and center editor CodeMirror styles */
+
+/* Tabela de Linhas do Diff */
+.git-conflict-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.git-conflict-row {
+  height: 20px;
+  line-height: 20px;
+  box-sizing: border-box;
+}
+
+.git-conflict-row:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.git-conflict-gutter-num {
+  width: 42px;
+  min-width: 42px;
+  text-align: right;
+  padding-right: 6px;
+  color: #555555;
+  user-select: none;
+  font-size: 11px;
+  height: 20px;
+  line-height: 20px;
+  box-sizing: border-box;
+}
+
+.git-conflict-gutter-action {
+  width: 32px;
+  min-width: 32px;
+  text-align: center;
+  user-select: none;
+  height: 20px;
+  line-height: 20px;
+  box-sizing: border-box;
+}
+
+.git-conflict-code-cell {
+  padding-left: 6px;
+  white-space: pre;
+  overflow: visible;
+  color: #d4d4d4;
+  height: 20px;
+  line-height: 20px;
+  box-sizing: border-box;
+}
+
+/* Spacer rows */
+.chunk-row-spacer {
+  background: rgba(255, 255, 255, 0.015);
+  height: 20px;
+  line-height: 20px;
+}
+
+.chunk-row-spacer .git-conflict-code-cell {
+  color: transparent;
+}
+
+/* Botões de Ação na Calha */
+.chunk-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 2px;
+  font-size: 10px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  line-height: 1;
+  padding: 0;
+  background: transparent;
+}
+
+.chunk-action-btn svg {
+  width: 11px;
+  height: 11px;
+}
+
+.chunk-btn-accept-left {
+  color: #58a6ff;
+}
+
+.chunk-btn-accept-left:hover {
+  background: rgba(88, 166, 255, 0.2);
+  border-color: #58a6ff;
+}
+
+.chunk-btn-accept-right {
+  color: #3fb950;
+}
+
+.chunk-btn-accept-right:hover {
+  background: rgba(63, 185, 80, 0.2);
+  border-color: #3fb950;
+}
+
+.chunk-btn-ignore {
+  color: #858585;
+  margin-left: 2px;
+}
+
+.chunk-btn-ignore:hover {
+  color: #f85149;
+  background: rgba(248, 81, 73, 0.15);
+  border-color: rgba(248, 81, 73, 0.3);
+}
+
+/* Destaque dos Chunks */
+.chunk-row-equal {
+  background: transparent;
+}
+
+.chunk-row-left-only {
+  background: rgba(56, 139, 253, 0.08);
+}
+
+.chunk-row-left-only .git-conflict-gutter-action {
+  border-left: 2px solid #388bfd;
+}
+
+.chunk-row-right-only {
+  background: rgba(63, 185, 80, 0.08);
+}
+
+.chunk-row-right-only .git-conflict-gutter-action {
+  border-left: 2px solid #3fb950;
+}
+
+.chunk-row-conflict {
+  background: rgba(248, 81, 73, 0.12);
+}
+
+.chunk-row-conflict .git-conflict-gutter-action {
+  border-left: 2px solid #f85149;
+}
+
+.chunk-row-active-conflict {
+  outline: 1px solid rgba(248, 81, 73, 0.6);
+  outline-offset: -1px;
+}
+
+.chunk-row-resolved {
+  opacity: 0.4;
+  text-decoration: line-through;
+}
+
+/* Editor Central (CodeMirror no Centro) */
+.git-conflict-col.center-col .CodeMirror {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  background: #1e1e1e;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.git-conflict-col.center-col .CodeMirror-gutters {
+  background: #252526;
+  border-right: 1px solid #2d2d2d;
+}
+
+.git-conflict-col.center-col .CodeMirror-scroll {
+  overflow-y: scroll !important;
+  overflow-x: auto !important;
+}
+
+/* Linhas de Conflito no Editor Central */
+.cm-conflict-line {
+  background: rgba(248, 81, 73, 0.15) !important;
+}
+
+.cm-conflict-marker-line {
+  background: rgba(248, 81, 73, 0.3) !important;
+  color: #ff7b72 !important;
+  font-weight: bold;
+}

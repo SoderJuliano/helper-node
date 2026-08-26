@@ -1,47 +1,28 @@
 // Window Controls & Sidebar Layout Module
 (async function() {
-    // Custom Window Dragging & Controls (Windows/macOS)
-            const minBtn = document.getElementById('main-win-min-btn');
-            const maxBtn = document.getElementById('main-win-max-btn');
-            const closeBtn = document.getElementById('main-win-close-btn');
-            const controlsOverlay = document.getElementById('win-controls-overlay');
+    // Custom Window Controls (Windows/macOS)
+    const minBtn = document.getElementById('main-win-min-btn');
+    const maxBtn = document.getElementById('main-win-max-btn');
+    const closeBtn = document.getElementById('main-win-close-btn');
+    const controlsOverlay = document.getElementById('win-controls-overlay');
 
-            if (window.electronAPI) {
-                // Hide custom controls on Linux since it has native titlebars/borders
-                if (window.electronAPI.platform === 'linux') {
-                    if (controlsOverlay) controlsOverlay.style.display = 'none';
-                } else {
-                    // Expose functionality on Windows/macOS
-                    if (minBtn) minBtn.addEventListener('click', () => window.electronAPI.minimizeWindow && window.electronAPI.minimizeWindow());
-                    if (maxBtn) maxBtn.addEventListener('click', () => window.electronAPI.maximizeWindow && window.electronAPI.maximizeWindow());
-                    if (closeBtn) closeBtn.addEventListener('click', () => window.electronAPI.closeWindow && window.electronAPI.closeWindow());
-
-                    // Manual Dragging for Windows/macOS frameless transparent window
-                    const dragArea = document.querySelector('.drag-area');
-                    if (dragArea && window.electronAPI.startWindowDrag) {
-                        dragArea.style.setProperty('-webkit-app-region', 'no-drag');
-                        dragArea.style.cursor = 'move';
-                        let isDragging = false;
-                        dragArea.addEventListener('mousedown', (e) => {
-                            if (e.button === 0) {
-                                e.preventDefault();
-                                isDragging = true;
-                                window.electronAPI.startWindowDrag();
-                            }
-                        });
-                        const endDrag = () => {
-                            if (isDragging) {
-                                isDragging = false;
-                                if (window.electronAPI.endWindowDrag) window.electronAPI.endWindowDrag();
-                            }
-                        };
-                        window.addEventListener('mouseup', endDrag, true);
-                        window.addEventListener('pointerup', endDrag, true);
-                        window.addEventListener('pointercancel', endDrag, true);
-                        window.addEventListener('blur', endDrag);
-                    }
-                }
-            }
+    if (window.electronAPI) {
+        if (window.electronAPI.platform === 'linux') {
+            if (controlsOverlay) controlsOverlay.style.display = 'none';
+        } else {
+            const attach = (btn, fn) => {
+                if (!btn) return;
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (typeof fn === 'function') fn();
+                });
+            };
+            attach(minBtn, () => window.electronAPI.minimizeWindow && window.electronAPI.minimizeWindow());
+            attach(maxBtn, () => window.electronAPI.maximizeWindow && window.electronAPI.maximizeWindow());
+            attach(closeBtn, () => window.electronAPI.closeWindow && window.electronAPI.closeWindow());
+        }
+    }
 
     // Sidebar Collapsing
     window.isSidebarCollapsed = function() {

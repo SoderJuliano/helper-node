@@ -351,37 +351,55 @@ function fileIconHtml(name) {
             currentGitStatus = { isGit: false, changesCount: 0, modifiedFiles: {}, modifiedDirs: {} };
             window.currentGitStatus = currentGitStatus;
             let currentGitConflictStatus = { hasConflicts: false, count: 0, conflictFiles: [] };
+            let _gitFetchDebounce = null;
+            let _gitFetchInFlight = null;
 
-            async function fetchAndUpdateGitStatus() {
-                if (window.electronAPI && window.electronAPI.getProjectGitStatus) {
+            async function fetchAndUpdateGitStatus(immediate = false) {
+                if (!immediate) {
+                    if (_gitFetchDebounce) clearTimeout(_gitFetchDebounce);
+                    return new Promise((resolve) => {
+                        _gitFetchDebounce = setTimeout(async () => {
+                            _gitFetchDebounce = null;
+                            const res = await _executeGitStatusFetch();
+                            resolve(res);
+                        }, 200);
+                    });
+                }
+                return _executeGitStatusFetch();
+            }
+
+            async function _executeGitStatusFetch() {
+                if (_gitFetchInFlight) return _gitFetchInFlight;
+                _gitFetchInFlight = (async () => {
                     try {
-                        const wsProjectMain = document.getElementById('ws-project-main');
-                        const pPath = (wsProjectMain && wsProjectMain.dataset && wsProjectMain.dataset.path) || (ctxProject && ctxProject.path) || null;
-                        const res = await window.electronAPI.getProjectGitStatus({ path: pPath });
-                        if (res) {
-                            currentGitStatus = res;
-                            window.currentGitStatus = res;
+                        if (window.electronAPI && window.electronAPI.getProjectGitStatus) {
+                            const wsProjectMain = document.getElementById('ws-project-main');
+                            const pPath = (wsProjectMain && wsProjectMain.dataset && wsProjectMain.dataset.path) || (ctxProject && ctxProject.path) || null;
+                            const res = await window.electronAPI.getProjectGitStatus({ path: pPath });
+                            if (res && (res.isGit !== undefined || res.changesCount !== undefined)) {
+                                currentGitStatus = res;
+                                window.currentGitStatus = res;
+                            }
+                        }
+                        if (window.electronAPI && window.electronAPI.gitConflictGetStatus) {
+                            try {
+                                const cRes = await window.electronAPI.gitConflictGetStatus();
+                                if (cRes && cRes.ok && cRes.data) {
+                                    currentGitConflictStatus = cRes.data;
+                                }
+                            } catch (_) {}
+                        }
+                        updateGitStatusUi();
+                        if (typeof window.applyGitStatusClasses === 'function') {
+                            window.applyGitStatusClasses();
                         }
                     } catch (e) {
-                        console.warn('Erro ao buscar git status:', e);
+                        console.warn('Erro ao atualizar git status:', e);
+                    } finally {
+                        _gitFetchInFlight = null;
                     }
-                }
-                if (window.electronAPI && window.electronAPI.gitConflictGetStatus) {
-                    try {
-                        const cRes = await window.electronAPI.gitConflictGetStatus();
-                        if (cRes && cRes.ok && cRes.data) {
-                            currentGitConflictStatus = cRes.data;
-                        } else {
-                            currentGitConflictStatus = { hasConflicts: false, count: 0, conflictFiles: [] };
-                        }
-                    } catch (_) {
-                        currentGitConflictStatus = { hasConflicts: false, count: 0, conflictFiles: [] };
-                    }
-                }
-                updateGitStatusUi();
-                if (typeof window.applyGitStatusClasses === 'function') {
-                    window.applyGitStatusClasses();
-                }
+                })();
+                return _gitFetchInFlight;
             }
 
             function updateGitStatusUi() {

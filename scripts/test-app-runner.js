@@ -235,7 +235,7 @@ const isWin = process.platform === 'win32';
 const testScript = isWin ? 'test-dummy.bat' : 'test-dummy.sh';
 const testScriptPath = path.join(__dirname, testScript);
 const scriptContent = isWin
-  ? '@echo off\r\necho PaymentServiceTest > testProcessPayment() PASSED\r\necho RUNNER_TEST_OUTPUT_OK\r\n'
+  ? '@echo off\r\necho PaymentServiceTest ^> testProcessPayment() PASSED\r\necho RUNNER_TEST_OUTPUT_OK\r\n'
   : '#!/bin/sh\necho "PaymentServiceTest > testProcessPayment() PASSED"\necho RUNNER_TEST_OUTPUT_OK\n';
 fs.writeFileSync(testScriptPath, scriptContent, 'utf8');
 if (!isWin) fs.chmodSync(testScriptPath, 0o755);

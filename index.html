@@ -52,7 +52,9 @@
         <link rel="stylesheet" href="styles/main.css">
     <link rel="stylesheet" href="styles/codeNav.css">
     <link rel="stylesheet" href="styles/appRunner.css">
+    <link rel="stylesheet" href="styles/appRunnerModal.css">
     <link rel="stylesheet" href="styles/gitConflict.css">
+    <link rel="stylesheet" href="styles/gitConflictDiff.css">
     <link rel="stylesheet" href="styles/newJavaClass.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js"></script>
 </head>
@@ -420,23 +422,41 @@
          ARCHITECTURE.md > Editor de código. Precisa carregar antes do script
          principal (abaixo), que referencia window.EditorController nos
          handlers de clique (tree, chip da IA). -->
+    <script src="renderer/editor/editorConstants.js"></script>
+    <script src="renderer/editor/editorAutocomplete.js"></script>
+    <script src="renderer/editor/editorTabs.js"></script>
+    <script src="renderer/editor/editorAiDiff.js"></script>
+    <script src="renderer/editor/editorFileMutations.js"></script>
     <script src="editorController.js"></script>
     <script src="renderer/codeHighlight.js"></script>
+    <script src="renderer/codeNavUsagesPopup.js"></script>
+    <script src="renderer/codeNavRename.js"></script>
+    <script src="renderer/codeNavContextMenu.js"></script>
     <script src="renderer/codeNavigation.js"></script>
     <script src="renderer/importChecker.js"></script>
 
     
     <!-- Modularized Frontend Scripts -->
     <script src="renderer/windowControls.js"></script>
+    <script src="renderer/modelSelectorMenu.js"></script>
     <script src="renderer/modelSelector.js"></script>
     <script src="renderer/chatInput.js"></script>
+    <script src="renderer/chatInputComposer.js"></script>
     <script src="renderer/markdownRenderer.js"></script>
+    <script src="renderer/chatQuestionEditor.js"></script>
     <script src="renderer/chatMessages.js"></script>
     <script src="renderer/scrollToLatest.js"></script>
+    <script src="renderer/agenticPhases.js"></script>
+    <script src="renderer/liveTranslationAssistant.js"></script>
     <script src="renderer/liveAssistant.js"></script>
+    <script src="renderer/chatHistoryViewer.js"></script>
     <script src="renderer/chatHistory.js"></script>
     <script src="renderer/realtimeAssistant.js"></script>
     <script src="renderer/workspaceContext.js"></script>
+    <script src="renderer/workspaceTreeJavaDeps.js"></script>
+    <script src="renderer/workspaceTreeCreation.js"></script>
+    <script src="renderer/workspaceTreeContextMenu.js"></script>
+    <script src="renderer/workspaceTreeEvents.js"></script>
     <script src="renderer/workspaceTree.js"></script>
     <script src="renderer/workspaceTreeActions.js"></script>
     <script src="renderer/workspaceSearch.js"></script>
@@ -444,12 +464,15 @@
     <script src="renderer/terminal.js"></script>
     <!-- App Runner (Java / Spring Boot / Gradle / Maven / JUnit) -->
     <script src="renderer/appRunner/testResultsViewer.js"></script>
+    <script src="renderer/appRunner/appRunnerConfigModalDom.js"></script>
     <script src="renderer/appRunner/appRunnerConfigModal.js"></script>
     <script src="renderer/appRunner/appRunnerController.js"></script>
     <script src="renderer/appRunner/appRunnerGutter.js"></script>
     <!-- New Java Class Dialog (IntelliJ Style) -->
     <script src="renderer/newJavaClassModal.js"></script>
     <!-- Git Conflict Resolver (3-Way Merge) -->
+    <script src="renderer/gitConflict/gitConflictModalDom.js"></script>
+    <script src="renderer/gitConflict/gitConflictModalEvents.js"></script>
     <script src="renderer/gitConflict/gitConflictModal.js"></script>
     <!-- Listeners IPC (respostas da IA, OCR, streaming) — dependem dos módulos acima -->
     <script src="renderer/pasteImage.js"></script>

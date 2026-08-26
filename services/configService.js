@@ -1,228 +1,23 @@
+// services/configService.js
 const { app } = require("electron");
 const path = require("path");
 const fs = require("fs");
 
-const PROMPT_PT = [
-  "Você é um copiloto que ASSISTE o usuário em tempo real (estudo, código, reuniões, entrevistas, conversas).",
-  "Sua função é AJUDAR O USUÁRIO A RESPONDER — não descrever o que está na tela.",
-  "",
-  "REGRAS DE RESPOSTA (obrigatórias):",
-  "1. Se houver uma CONTA / EXPRESSÃO MATEMÁTICA → RESOLVA passo a passo e dê o resultado final em destaque.",
-  "2. Se houver uma PERGUNTA OBJETIVA (múltipla escolha, verdadeiro/falso, definição) → indique a alternativa correta e justifique em 1 linha.",
-  "3. Se for um CONCEITO TÉCNICO → explique de forma direta e dê um exemplo curto (código, fórmula ou caso prático).",
-  "4. Se for um PEDIDO DE CÓDIGO → entregue o código funcional, sem encher de comentário.",
-  "5. Se a imagem mostrar um ENUNCIADO/ESPECIFICAÇÃO TÉCNICA (README de projeto, requisitos de sistema, trecho de código incompleto/IDE) → PROPONHA uma implementação concreta (estrutura de classes, endpoints, trecho de código relevante), não apenas descreva o que está na tela.",
-  "6. Se a entrada vier de OCR/transcrição e estiver com ruído → reconstrua a intenção pelo contexto e responda mesmo assim. NUNCA diga 'não consegui ler' — chute o melhor entendimento.",
-  "7. Se o conteúdo for uma PERGUNTA, MENSAGEM, E-MAIL ou PEDIDO DIRIGIDO A VOCÊ (pergunta de entrevistador, mensagem de chat, formulário, 'faça/responda isto') → NÃO descreva o que está na tela. Responda COMO O USUÁRIO deveria responder: entregue uma SUGESTÃO DE RESPOSTA pronta, em primeira pessoa, com pelo menos UM exemplo concreto que ele possa falar/enviar. Use o background do usuário (quando fornecido) para personalizar.",
-  "",
-  "IDIOMA (obrigatório — MESMO IDIOMA da pergunta):",
-  "- Detecte o idioma da pergunta/conteúdo e escreva a resposta NO MESMO IDIOMA da pergunta.",
-  "- Pergunta em inglês → resposta (e sugestão de resposta) em INGLÊS. Pergunta em português → em português.",
-  "- Numa sugestão de resposta a uma pergunta em outro idioma, você PODE adicionar uma tradução/explicação curta em PT-BR entre parênteses, mas a resposta sugerida em si fica NO IDIOMA DA PERGUNTA.",
-  "- Se o usuário pedir explicitamente um idioma ('responda em inglês'), obedeça sem exceção.",
-  "",
-  "FORMATO:",
-  "- Texto explicativo: máximo 65 palavras.",
-  "- Código, fórmulas e contas resolvidas: SEM limite de palavras.",
-  "- Direto. Sem floreio. Sem 'Claro!', 'Posso ajudar', 'Espero ter ajudado'.",
-  "- Use **negrito** para o resultado final.",
-  "- NUNCA use LaTeX nem barras invertidas. Sem \\(, \\), \\[, \\], \\frac, \\times, \\cdot, \\sqrt etc.",
-  "- Use símbolos UNICODE direto: × ÷ ² ³ √ π ≈ ≤ ≥ → ∞.",
-  "- Para multiplicação escreva '×' ou '*'. Para potência use ² ³ ou ^.",
-  "- Para frações escreva 'a/b' em texto puro.",
-].join("\n");
-
-const PROMPT_EN = [
-  "You are a copilot that ASSISTS the user in real time (study, code, meetings, interviews, conversations).",
-  "Your job is to HELP THE USER ANSWER — not to describe what's on the screen.",
-  "",
-  "RESPONSE RULES (mandatory):",
-  "1. If there is a MATH EXPRESSION / CALCULATION → SOLVE it step by step and highlight the final result.",
-  "2. If there is an OBJECTIVE QUESTION (multiple choice, true/false, definition) → give the correct option and justify in 1 line.",
-  "3. If it is a TECHNICAL CONCEPT → explain directly and give a short example (code, formula, or practical case).",
-  "4. If it is a CODE REQUEST → deliver working code, no fluff comments.",
-  "5. If the image shows a TECHNICAL SPEC (project README, system requirements, incomplete code/IDE) → PROPOSE a concrete implementation (class structure, endpoints, relevant code snippet), not just a description of what's on screen.",
-  "6. If the input comes from OCR/transcription and is noisy → reconstruct intent from context and answer anyway. NEVER say 'I cannot read' — take the best guess.",
-  "7. If the content is a QUESTION, MESSAGE, EMAIL or REQUEST DIRECTED AT YOU (interviewer question, chat message, form, 'do/answer this') → do NOT describe what's on screen. Answer AS THE USER should answer: deliver a ready-to-use SUGGESTED REPLY, in first person, with at least ONE concrete example they can say/send. Use the user's background (when provided) to personalize.",
-  "",
-  "LANGUAGE (mandatory — SAME LANGUAGE as the question):",
-  "- Detect the language of the question/content and write the answer in the SAME LANGUAGE as the question.",
-  "- Question in English → answer (and suggested reply) in ENGLISH. Question in Portuguese → in Portuguese.",
-  "- In a suggested reply to a question in another language, you MAY add a short translation/explanation in the user's language in parentheses, but the suggested reply itself stays IN THE QUESTION'S LANGUAGE.",
-  "- If the user explicitly asks for a language ('answer in English'), obey without exception.",
-  "",
-  "FORMAT:",
-  "- Explanatory text: max 65 words.",
-  "- Code, formulas, solved calculations: NO word limit.",
-  "- Direct. No fluff. No 'Sure!', 'Hope this helps'.",
-  "- Use **bold** for the final result.",
-  "- NEVER use LaTeX or backslashes. No \\(, \\), \\[, \\], \\frac, \\times, \\cdot, \\sqrt etc.",
-  "- Use UNICODE symbols directly: × ÷ ² ³ √ π ≈ ≤ ≥ → ∞.",
-  "- For multiplication use '×' or '*'. For powers use ² ³ or ^.",
-  "- For fractions write 'a/b' in plain text.",
-].join("\n");
-
-// Variantes LITE (edição 100% online / ChatGPT): enxutas, sem a moldura híbrida
-// (decisão de ferramenta local). Mantêm a palavra 'LaTeX' p/ a migração não tratar
-// como legado. Selecionadas por getDefaultPromptInstruction quando edição = lite.
-const PROMPT_PT_LITE = [
-  "Você é um copiloto técnico ONLINE (ChatGPT) que ASSISTE o usuário em tempo real.",
-  "",
-  "REGRAS DE RESPOSTA:",
-  "1. CONTA / EXPRESSÃO MATEMÁTICA → resolva passo a passo; resultado final em **negrito**.",
-  "2. PERGUNTA OBJETIVA (múltipla escolha, V/F, definição) → alternativa correta + 1 linha de justificativa.",
-  "3. CONCEITO TÉCNICO → explique direto + exemplo curto.",
-  "4. PEDIDO DE CÓDIGO → entregue código funcional, sem encher de comentário.",
-  "5. ENUNCIADO/ESPECIFICAÇÃO TÉCNICA na tela (README, requisitos, IDE) → PROPONHA implementação concreta (estrutura, endpoints, trecho de código), não só descreva.",
-  "6. Entrada com ruído (imagem/áudio) → reconstrua a intenção e responda mesmo assim. Nunca diga 'não consegui ler'.",
-  "7. PERGUNTA/MENSAGEM/PEDIDO DIRIGIDO A VOCÊ (entrevistador, chat, e-mail, formulário) → NÃO descreva a tela. Dê uma SUGESTÃO DE RESPOSTA pronta, em primeira pessoa, com ao menos um exemplo concreto. Use o background do usuário quando fornecido.",
-  "",
-  "IDIOMA: responda NO MESMO IDIOMA da pergunta (pergunta em inglês → resposta em inglês). Pode adicionar tradução curta em PT-BR entre parênteses, mas a resposta sugerida fica no idioma da pergunta. Se o usuário pedir um idioma, obedeça.",
-  "",
-  "FORMATO:",
-  "- Texto explicativo: máximo 65 palavras. Código/fórmulas/contas: sem limite.",
-  "- Direto, sem floreio ('Claro!', 'Posso ajudar', 'Espero ter ajudado').",
-  "- **Negrito** no resultado final e nos termos-chave.",
-  "- NUNCA use LaTeX nem barras invertidas. Use UNICODE: × ÷ ² ³ √ π ≈ ≤ ≥ → ∞. Frações 'a/b' em texto.",
-].join("\n");
-
-const PROMPT_EN_LITE = [
-  "You are an ONLINE technical copilot (ChatGPT) that ASSISTS the user in real time.",
-  "",
-  "RESPONSE RULES:",
-  "1. MATH EXPRESSION / CALCULATION → solve step by step; final result in **bold**.",
-  "2. OBJECTIVE QUESTION (multiple choice, true/false, definition) → correct option + 1-line justification.",
-  "3. TECHNICAL CONCEPT → explain directly + short example.",
-  "4. CODE REQUEST → deliver working code, no fluff comments.",
-  "5. TECHNICAL SPEC on screen (README, requirements, IDE) → PROPOSE concrete implementation (structure, endpoints, code snippet), not just a description.",
-  "6. Noisy input (image/audio) → reconstruct intent and answer anyway. Never say 'I cannot read'.",
-  "7. QUESTION/MESSAGE/REQUEST DIRECTED AT YOU (interviewer, chat, email, form) → do NOT describe the screen. Give a ready SUGGESTED REPLY, first person, with at least one concrete example. Use the user's background when provided.",
-  "",
-  "LANGUAGE: answer in the SAME LANGUAGE as the question (question in English → answer in English). You may add a short translation in parentheses, but the suggested reply stays in the question's language. If the user asks for a language, obey.",
-  "",
-  "FORMAT:",
-  "- Explanatory text: max 65 words. Code/formulas/calculations: no limit.",
-  "- Direct, no fluff ('Sure!', 'Hope this helps').",
-  "- **Bold** for the final result and key terms.",
-  "- NEVER use LaTeX or backslashes. Use UNICODE: × ÷ ² ³ √ π ≈ ≤ ≥ → ∞. Fractions 'a/b' in plain text.",
-].join("\n");
-
-const defaultConfig = {
-  promptInstruction: PROMPT_PT,
-  debugMode: false,
-  printMode: false,
-  osIntegration: false,
-  realtimeAssistant: false,
-  stealthMode: true,
-  language: "pt-br",
-  aiModel: "llama",
-  openAiModel: "gpt-4.1-nano",
-  // Esforço de raciocínio (reasoning_effort) pra modelos gpt-5.x/o-series.
-  // "low" por padrão — prioriza velocidade de resposta. Só é enviado à API
-  // quando o modelo selecionado de fato aceita o parâmetro.
-  openAiReasoningEffort: "low",
-  // Ollama LOCAL (rodando no PC do user na porta 11434). Independente do
-  // backend Java remoto. App NAO instala Ollama nem baixa modelos — mostra
-  // instrucoes na tela de Configuracoes pro user fazer manualmente.
-  ollamaLocalModel: "qwen2.5-coder:7b",
-  ollamaLocalHost: "http://localhost:11434",
-  // Modelo dedicado pra modo VISÃO. nano é fraco demais em visão (confunde
-  // 11x2 com 11x²). gpt-4o-mini ainda é barato e MUITO mais preciso em
-  // imagens (~US$ 0.15 / 1M tokens input + ~150 tokens por imagem high).
-  openAiVisionModel: "gpt-5-nano",
-  openIaToken: "",
-  // Configurações do módulo helperTools (leitura/edição de arquivos +
-  // execução de comandos). DESLIGADO por padrão. Quando ligado, desativa
-  // o modo integrado (osIntegration). Veja services/helperTools/config.js
-  // pra os defaults internos do módulo (whitelists, sandbox, etc).
-  helperTools: {
-    enabled: false,
-  },
-  // Acesso a diretórios (anexos de workspace). Depende de helperTools.
-  // Quando ON, a IA recebe contexto de pastas/arquivos anexados na sessão
-  // e pode ler/editar/apagar arquivos dentro deles (com confirmação).
-  workspaceAccess: {
-    enabled: false,
-  },
-  // Gemini CLI provider — modelo escolhido pelo usuário dentro da lista do CLI.
-  geminiCliModel: "gemini-2.5-flash",
-  // Claude Code CLI provider.
-  claudeCliModel: "sonnet",
-  // GitHub Copilot CLI provider.
-  copilotCliModel: "claude-sonnet-4.5",
-
-  // API Key do backend remoto. Necessário para endpoints pesados (ex: qwen3.6-17b).
-  // Endpoints leves (llama3, qwen25) usam o Bearer token fixo hardcoded.
-  backendApiKey: "",
-  // Assistente de Tradução (entrevistas). Captura áudio, detecta fim de fala,
-  // transcreve via gpt-4o-mini-transcribe e retorna tradução + sugestão de
-  // resposta em PT-BR ou idioma escolhido.
-  translationAssistant: {
-    enabled: false,
-    userName: "",
-    userBackground: "",
-    targetLanguage: "pt-br",
-    testMode: false,
-    // Microfone escolhido pelo usuário (nome do source pactl). Vazio = automático.
-    micDevice: "",
-  },
-  // Base de conhecimento atualizável (mini-RAG). O texto fica em arquivo separado
-  // (<userData>/knowledge/), aqui só os flags. Compartilhada por Assistente + Tradutor.
-  knowledgeBase: {
-    enabled: true,
-    aiRewrite: true, // IA reorganiza o texto antes de salvar (default ON)
-  },
-  // Banco de respostas (RAG de conversas): guarda perguntas do entrevistador + as
-  // SUAS respostas que pontuaram bem (nota >= minScore, avaliada em background), e
-  // reaproveita como dica quando uma pergunta quase igual aparece. Arquivo separado
-  // (<userData>/knowledge/answers.json). Compartilhado por Assistente + Tradutor.
-  answerBank: {
-    enabled: true,
-    minScore: 4, // só salva respostas com nota >= 4 (de 5)
-  },
-  // Assistente Guiado por Visão (RAG + Vision). Tutor em tempo real que observa a
-  // tela por prints periódicos (economia de token — não é vídeo), opcionalmente
-  // ouve mic + áudio do sistema, ACUMULA contexto e só intervém em pontos
-  // estratégicos (não responde a cada print). Guia o dev a escrever o código ele
-  // mesmo — nunca entrega a tarefa inteira pronta. Windows-first (a captura no
-  // Linux será plugada no port). Motor de visão = OpenAI (getOpenAiVisionModel).
-  visionGuide: {
-    enabled: false,
-    intervalSeconds: 5,          // cadência dos prints periódicos
-    minInterventionSeconds: 0,   // 0 = a IA decide quando falar (sem piso de silêncio fixo)
-    listenAudio: true,           // ouvir mic + áudio do sistema pra contexto (Win/mac)
-    useKnowledgeBase: true,      // injeta RAG (docs recentes) quando relevante
-  },
-  // Modo Interativo de Voz via Google Cloud Text-to-Speech (TTS)
-  googleTts: {
-    enabled: false,
-    keyPathOrKey: fs.existsSync("C:\\Users\\soder\\Documents\\sectrets\\gen-lang-client-0083021392-f898f4b44b05.json")
-      ? "C:\\Users\\soder\\Documents\\sectrets\\gen-lang-client-0083021392-f898f4b44b05.json"
-      : "",
-    voiceName: "pt-BR-Neural2-C",
-  },
-  // Identidade e janela da assistente Nexa
-  nexa: {
-    enabled: false,
-    onlyNexa: false,
-  },
-};
+const { defaultConfig } = require("./config/defaultConfig.js");
+const { getDefaultPromptInstruction, NEXA_PERSONA_PROMPT } = require("./config/defaultPrompts.js");
+const { createAccessors } = require("./config/configAccessors.js");
 
 let configPath;
+let currentConfig = null;
 
 function getConfigPath() {
   if (!configPath) {
-    const userDataPath = app.getPath("userData");
+    const userDataPath = (app && typeof app.getPath === 'function')
+      ? app.getPath("userData")
+      : path.join(process.env.APPDATA || process.env.HOME || ".", ".config", "meu-electron-app");
     configPath = path.join(userDataPath, "config.json");
   }
   return configPath;
-}
-
-function getDefaultPromptInstruction(lang) {
-  let lite = false;
-  try { lite = require("./edition").isLite(); } catch (_) {}
-  if (lite) return lang === "pt-br" ? PROMPT_PT_LITE : PROMPT_EN_LITE;
-  return lang === "pt-br" ? PROMPT_PT : PROMPT_EN;
 }
 
 function loadConfig() {
@@ -234,7 +29,6 @@ function loadConfig() {
 
       const lang = loadedConfig.language || defaultConfig.language;
 
-      // Lista de prompts default antigos que devem ser auto-migrados para o novo
       const LEGACY_DEFAULTS = [
         "Você é uma assistente que responde com até 65 palavras.",
         "You are a helpful assistant who responds in up to 65 words.",
@@ -243,26 +37,14 @@ function loadConfig() {
         !loadedConfig.promptInstruction ||
         loadedConfig.promptInstruction.trim() === '' ||
         LEGACY_DEFAULTS.includes(loadedConfig.promptInstruction.trim()) ||
-        // Prompt antigo (sem a regra anti-LaTeX adicionada nesta versão).
-        // Detecta pela ausência da palavra-chave única.
         !loadedConfig.promptInstruction.includes('LaTeX') ||
-        // Prompt antigo (sem a regra de "especificação técnica → proponha
-        // implementação" adicionada nesta versão). Detecta pela ausência da
-        // palavra-chave única em qualquer um dos dois idiomas.
         (!loadedConfig.promptInstruction.includes('PROPONHA') && !loadedConfig.promptInstruction.includes('PROPOSE')) ||
-        // Prompt antigo (antes da regra de IDIOMA = mesmo idioma da pergunta +
-        // "sugira uma resposta" adicionada nesta versão). Detecta pela ausência
-        // do marcador único em qualquer um dos dois idiomas.
         (!loadedConfig.promptInstruction.includes('MESMO IDIOMA') && !loadedConfig.promptInstruction.includes('SAME LANGUAGE'));
+
       if (isLegacy) {
         loadedConfig.promptInstruction = getDefaultPromptInstruction(lang);
       }
 
-      // Migração: instalações antigas gravaram minInterventionSeconds=12 em disco
-      // (era o default de antes). Como o merge abaixo é raso, um valor salvo
-      // sobrescreve o default do código pra sempre — sem isto, o "12s" nunca sai
-      // pra quem já rodou o app uma vez. 12 nunca foi escolha explícita do
-      // usuário (era só o valor de fábrica antigo), então é seguro migrar pra 0.
       if (loadedConfig.visionGuide && loadedConfig.visionGuide.minInterventionSeconds === 12) {
         loadedConfig.visionGuide = { ...loadedConfig.visionGuide, minInterventionSeconds: 0 };
       }
@@ -288,129 +70,18 @@ function saveConfig(config) {
   }
 }
 
-let currentConfig = null;
-
-const NEXA_PERSONA_PROMPT = [
-  "\n[IDENTIDADE DA ASSISTENTE — NEXA]",
-  "Você é a Nexa, a assistente e copiloto pessoal deste ambiente.",
-  "Sua persona: menina/mulher jovem, nerd, inteligente, descontraída, natural e levemente brincalhona.",
-  "Sempre use pronomes e artigos femininos ao se referir a si mesma ('estou pronta', 'sou a Nexa', 'vou te ajudar', 'obrigada' em PT-BR; ou em EN 'ready', 'Nexa', 'helping you').",
-  "NUNCA use referências nem pronomes masculinos ao se referir a você mesma.",
-  "REGRAS DE IDIOMA E MULTILÍNGUE:",
-  "- Você é multilíngue (Português e Inglês).",
-  "- Responda no MESMO idioma em que o usuário se comunicar (Português ou Inglês).",
-  "- Se o usuário falar/escrever em português, responda em português (pt-BR).",
-  "- Se o usuário falar/escrever em inglês (ou alternar de português para inglês durante a conversa), responda em inglês de forma natural.",
-  "- NUNCA traduza a pergunta para o português antes de responder nem force a resposta para português.",
-  "- Mantenha a mesma personalidade, inteligência e leveza em ambos os idiomas."
-].join("\n");
-
-function getNexaConfig() {
+function getCurrentConfig() {
   if (!currentConfig) {
     currentConfig = loadConfig();
   }
-  return { ...defaultConfig.nexa, ...(currentConfig.nexa || {}) };
+  return currentConfig;
 }
 
-function setNexaConfig(cfg) {
-  if (!currentConfig) {
-    currentConfig = loadConfig();
+function persistCurrentConfig() {
+  if (currentConfig) {
+    saveConfig(currentConfig);
+    currentConfig = null;
   }
-
-  if (cfg.enabled) {
-    const googleTtsCfg = currentConfig.googleTts || {};
-    const ttsKey = googleTtsCfg.keyPathOrKey || "";
-    if (!ttsKey || ttsKey.trim() === "") {
-      const isTestEnv = typeof process !== "undefined" && (process.env.NODE_ENV === "test" || process.argv.some(arg => arg.includes("test")));
-      if (!isTestEnv) {
-        throw new Error("Não é possível ativar a Nexa sem uma chave/token válida do Google Cloud TTS (Google API Key).");
-      }
-    }
-  }
-
-  currentConfig.nexa = { ...getNexaConfig(), ...cfg };
-  saveConfig(currentConfig);
-  currentConfig = null;
-}
-
-function getPromptInstruction() {
-  if (!currentConfig) {
-    currentConfig = loadConfig();
-  }
-  let instruction = currentConfig.promptInstruction;
-  if (
-    !instruction ||
-    typeof instruction !== "string" ||
-    instruction.trim() === ""
-  ) {
-    instruction = defaultConfig.promptInstruction;
-  }
-  return instruction;
-}
-
-function setPromptInstruction(instruction) {
-  if (!currentConfig) {
-    currentConfig = loadConfig();
-  }
-  currentConfig.promptInstruction = instruction;
-  saveConfig(currentConfig);
-  currentConfig = null;
-}
-
-function getDebugModeStatus() {
-  if (!currentConfig) {
-    currentConfig = loadConfig();
-  }
-  return currentConfig.debugMode;
-}
-
-function setDebugModeStatus(status) {
-  if (!currentConfig) {
-    currentConfig = loadConfig();
-  }
-  currentConfig.debugMode = status;
-  saveConfig(currentConfig);
-  currentConfig = null;
-}
-
-function getPrintModeStatus() {
-  if (!currentConfig) {
-    currentConfig = loadConfig();
-  }
-  return currentConfig.printMode;
-}
-
-function setPrintModeStatus(status) {
-  if (!currentConfig) {
-    currentConfig = loadConfig();
-  }
-  currentConfig.printMode = status;
-  saveConfig(currentConfig);
-  currentConfig = null;
-}
-
-function getLanguage() {
-  if (!currentConfig) {
-    currentConfig = loadConfig();
-  }
-  return currentConfig.language;
-}
-
-function setLanguage(language) {
-  if (!currentConfig) {
-    currentConfig = loadConfig();
-  }
-
-  const oldLang = currentConfig.language;
-  currentConfig.language = language;
-
-  const oldDefault = getDefaultPromptInstruction(oldLang);
-  if (currentConfig.promptInstruction === oldDefault) {
-    currentConfig.promptInstruction = getDefaultPromptInstruction(language);
-  }
-
-  saveConfig(currentConfig);
-  currentConfig = null;
 }
 
 function initialize() {
@@ -438,372 +109,11 @@ function getIp() {
     });
 }
 
-function getAiModel() {
-  if (!currentConfig) {
-    currentConfig = loadConfig();
-  }
-  return currentConfig.aiModel || defaultConfig.aiModel;
-}
-
-function setAiModel(aiModel) {
-  if (!currentConfig) {
-    currentConfig = loadConfig();
-  }
-  currentConfig.aiModel = aiModel;
-  saveConfig(currentConfig);
-  currentConfig = null;
-}
-
-function getOpenAiModel() {
-  if (!currentConfig) {
-    currentConfig = loadConfig();
-  }
-  return currentConfig.openAiModel || defaultConfig.openAiModel;
-}
-
-function setOpenAiModel(model) {
-  if (!currentConfig) {
-    currentConfig = loadConfig();
-  }
-  currentConfig.openAiModel = model;
-  saveConfig(currentConfig);
-  currentConfig = null;
-}
-
-function getOpenAiReasoningEffort() {
-  if (!currentConfig) {
-    currentConfig = loadConfig();
-  }
-  return currentConfig.openAiReasoningEffort || defaultConfig.openAiReasoningEffort;
-}
-
-function setOpenAiReasoningEffort(effort) {
-  if (!currentConfig) {
-    currentConfig = loadConfig();
-  }
-  currentConfig.openAiReasoningEffort = effort;
-  saveConfig(currentConfig);
-  currentConfig = null;
-}
-
-function getOpenAiVisionModel() {
-  if (!currentConfig) {
-    currentConfig = loadConfig();
-  }
-  return currentConfig.openAiVisionModel || defaultConfig.openAiVisionModel;
-}
-
-function setOpenAiVisionModel(model) {
-  if (!currentConfig) {
-    currentConfig = loadConfig();
-  }
-  currentConfig.openAiVisionModel = model;
-  saveConfig(currentConfig);
-  currentConfig = null;
-}
-
-function getClaudeCliModel() {
-  if (!currentConfig) currentConfig = loadConfig();
-  return currentConfig.claudeCliModel || defaultConfig.claudeCliModel;
-}
-
-
-function setClaudeCliModel(model) {
-  if (!currentConfig) currentConfig = loadConfig();
-  currentConfig.claudeCliModel = model || defaultConfig.claudeCliModel;
-  saveConfig(currentConfig);
-  currentConfig = null;
-}
-
-function getGeminiCliModel() {
-  if (!currentConfig) currentConfig = loadConfig();
-  return currentConfig.geminiCliModel || defaultConfig.geminiCliModel;
-}
-
-function setGeminiCliModel(model) {
-  if (!currentConfig) currentConfig = loadConfig();
-  currentConfig.geminiCliModel = model || defaultConfig.geminiCliModel;
-  saveConfig(currentConfig);
-  currentConfig = null;
-}
-
-function getCopilotCliModel() {
-  if (!currentConfig) currentConfig = loadConfig();
-  return currentConfig.copilotCliModel || defaultConfig.copilotCliModel;
-}
-
-function setCopilotCliModel(model) {
-  if (!currentConfig) currentConfig = loadConfig();
-  currentConfig.copilotCliModel = model || defaultConfig.copilotCliModel;
-  saveConfig(currentConfig);
-  currentConfig = null;
-}
-
-function getBackendModel() {
-  if (!currentConfig) currentConfig = loadConfig();
-  return currentConfig.backendModel || '';
-}
-
-function setBackendModel(model) {
-  if (!currentConfig) currentConfig = loadConfig();
-  currentConfig.backendModel = model || '';
-  saveConfig(currentConfig);
-  currentConfig = null;
-}
-
-function getOllamaLocalModel() {
-  if (!currentConfig) currentConfig = loadConfig();
-  return currentConfig.ollamaLocalModel || defaultConfig.ollamaLocalModel;
-}
-
-function setOllamaLocalModel(model) {
-  if (!currentConfig) currentConfig = loadConfig();
-  const oldModel = currentConfig.ollamaLocalModel;
-  const newModel = model || defaultConfig.ollamaLocalModel;
-  currentConfig.ollamaLocalModel = newModel;
-  saveConfig(currentConfig);
-  
-  if (oldModel !== newModel) {
-    try {
-      const ollamaLocalService = require('./ollamaLocalService');
-      ollamaLocalService.preloadModel(oldModel, newModel).catch(err => {
-        console.error("Erro ao fazer o preload do OllamaLocal:", err);
-      });
-    } catch (e) {
-      console.error(e);
-    }
-  }
-  
-  currentConfig = null;
-}
-
-function getOllamaLocalHost() {
-  if (!currentConfig) currentConfig = loadConfig();
-  return currentConfig.ollamaLocalHost || defaultConfig.ollamaLocalHost;
-}
-
-function setOllamaLocalHost(host) {
-  if (!currentConfig) currentConfig = loadConfig();
-  currentConfig.ollamaLocalHost = host || defaultConfig.ollamaLocalHost;
-  saveConfig(currentConfig);
-  currentConfig = null;
-}
-
-function getAudioCaptureMode() {
-  if (!currentConfig) currentConfig = loadConfig();
-  // 'monitor' (default, sistema) | 'mic' (microfone) | 'both' (mix experimental)
-  return currentConfig.audioCaptureMode || 'monitor';
-}
-
-function setAudioCaptureMode(mode) {
-  if (!currentConfig) currentConfig = loadConfig();
-  if (!['monitor', 'mic', 'both'].includes(mode)) mode = 'monitor';
-  currentConfig.audioCaptureMode = mode;
-  saveConfig(currentConfig);
-  currentConfig = null;
-}
-
-function getOpenIaToken() {
-    if (!currentConfig) {
-        currentConfig = loadConfig();
-    }
-    return currentConfig.openIaToken || "";
-}
-
-function setOpenIaToken(token) {
-    if (!currentConfig) {
-        currentConfig = loadConfig();
-    }
-    currentConfig.openIaToken = token;
-    saveConfig(currentConfig);
-    currentConfig = null;
-}
-
-function getOsIntegrationStatus() {
-  if (!currentConfig) {
-    currentConfig = loadConfig();
-  }
-  return currentConfig.osIntegration || false;
-}
-
-function setOsIntegrationStatus(status) {
-  if (!currentConfig) {
-    currentConfig = loadConfig();
-  }
-  currentConfig.osIntegration = status;
-  saveConfig(currentConfig);
-  currentConfig = null;
-}
-
-function getRealtimeAssistantStatus() {
-  if (!currentConfig) {
-    currentConfig = loadConfig();
-  }
-  return currentConfig.realtimeAssistant || false;
-}
-
-function setRealtimeAssistantStatus(status) {
-  if (!currentConfig) {
-    currentConfig = loadConfig();
-  }
-  currentConfig.realtimeAssistant = status;
-  saveConfig(currentConfig);
-  currentConfig = null;
-}
-
-function getHelperToolsConfig() {
-  if (!currentConfig) {
-    currentConfig = loadConfig();
-  }
-  return currentConfig.helperTools || { enabled: false };
-}
-
-function setHelperToolsConfig(partial) {
-  if (!currentConfig) {
-    currentConfig = loadConfig();
-  }
-  currentConfig.helperTools = {
-    ...(currentConfig.helperTools || {}),
-    ...(partial || {}),
-  };
-  saveConfig(currentConfig);
-  currentConfig = null;
-}
-
-function getHelperToolsEnabled() {
-  return !!getHelperToolsConfig().enabled;
-}
-
-function setHelperToolsEnabled(enabled) {
-  setHelperToolsConfig({ enabled: !!enabled });
-  // Mutex: liga helperTools desliga osIntegration (decisão do usuário).
-  if (enabled) {
-    if (!currentConfig) currentConfig = loadConfig();
-    if (currentConfig.osIntegration) {
-      currentConfig.osIntegration = false;
-      saveConfig(currentConfig);
-      currentConfig = null;
-    }
-  } else {
-    // Desliga workspaceAccess junto (dependência).
-    if (!currentConfig) currentConfig = loadConfig();
-    if (currentConfig.workspaceAccess && currentConfig.workspaceAccess.enabled) {
-      currentConfig.workspaceAccess.enabled = false;
-      saveConfig(currentConfig);
-      currentConfig = null;
-    }
-  }
-}
-
-function getWorkspaceAccessEnabled() {
-  if (!currentConfig) currentConfig = loadConfig();
-  return !!(currentConfig.workspaceAccess && currentConfig.workspaceAccess.enabled);
-}
-
-function setWorkspaceAccessEnabled(enabled) {
-  if (!currentConfig) currentConfig = loadConfig();
-  if (!currentConfig.workspaceAccess) currentConfig.workspaceAccess = {};
-  currentConfig.workspaceAccess.enabled = !!enabled;
-  saveConfig(currentConfig);
-  currentConfig = null;
-}
-
-function getBackendApiKey() {
-  if (!currentConfig) currentConfig = loadConfig();
-  return currentConfig.backendApiKey || "";
-}
-
-function setBackendApiKey(key) {
-  if (!currentConfig) currentConfig = loadConfig();
-  currentConfig.backendApiKey = key || "";
-  saveConfig(currentConfig);
-  currentConfig = null;
-}
-
-function getKnowledgeBaseConfig() {
-  if (!currentConfig) currentConfig = loadConfig();
-  return { ...defaultConfig.knowledgeBase, ...(currentConfig.knowledgeBase || {}) };
-}
-
-function setKnowledgeBaseConfig(partial) {
-  if (!currentConfig) currentConfig = loadConfig();
-  currentConfig.knowledgeBase = {
-    ...(currentConfig.knowledgeBase || defaultConfig.knowledgeBase),
-    ...(partial || {}),
-  };
-  saveConfig(currentConfig);
-  currentConfig = null;
-}
-
-function getAnswerBankConfig() {
-  if (!currentConfig) currentConfig = loadConfig();
-  return { ...defaultConfig.answerBank, ...(currentConfig.answerBank || {}) };
-}
-
-function setAnswerBankConfig(partial) {
-  if (!currentConfig) currentConfig = loadConfig();
-  currentConfig.answerBank = {
-    ...(currentConfig.answerBank || defaultConfig.answerBank),
-    ...(partial || {}),
-  };
-  saveConfig(currentConfig);
-  currentConfig = null;
-}
-
-function getVisionGuideConfig() {
-  if (!currentConfig) currentConfig = loadConfig();
-  return { ...defaultConfig.visionGuide, ...(currentConfig.visionGuide || {}) };
-}
-
-function setVisionGuideConfig(partial) {
-  if (!currentConfig) currentConfig = loadConfig();
-  currentConfig.visionGuide = {
-    ...(currentConfig.visionGuide || defaultConfig.visionGuide),
-    ...(partial || {}),
-  };
-  saveConfig(currentConfig);
-  currentConfig = null;
-}
-
-function getTranslationAssistantConfig() {
-  if (!currentConfig) currentConfig = loadConfig();
-  return { ...defaultConfig.translationAssistant, ...(currentConfig.translationAssistant || {}) };
-}
-
-function setTranslationAssistantConfig(partial) {
-  if (!currentConfig) currentConfig = loadConfig();
-  currentConfig.translationAssistant = {
-    ...(currentConfig.translationAssistant || defaultConfig.translationAssistant),
-    ...partial,
-  };
-  saveConfig(currentConfig);
-  currentConfig = null;
-}
-
-// Bloco de contexto do usuário (nome + background) usado como cabeçalho de
-// sistema em QUALQUER fluxo que responde perguntas (modo integrado, print,
-// paste de imagem, tradutor). Antes só o Tradutor usava esses campos — agora
-// o copiloto principal também personaliza pelas Preferências do Usuário.
-// Retorna '' quando nada foi preenchido (não polui o prompt à toa).
-function getUserContextBlock() {
-  const ta = getTranslationAssistantConfig();
-  const name = (ta.userName || '').trim();
-  const bg = (ta.userBackground || '').trim();
-  if (!name && !bg) return '';
-  const lines = ['[CONTEXTO DO USUÁRIO — use para personalizar a resposta/sugestão]'];
-  if (name) lines.push(`Nome: ${name}`);
-  if (bg) lines.push(`Background: ${bg}`);
-  return lines.join('\n');
-}
-
-// Retorna a configuração completa mesclada com defaults.
-// Útil para IPC handlers genéricos (config-get-all).
 function getConfig() {
   if (!currentConfig) currentConfig = loadConfig();
   return { ...currentConfig };
 }
 
-// Setter genérico com suporte a dot-notation (ex: "translationAssistant.enabled").
 function setConfigValue(dotPath, value) {
   if (!currentConfig) currentConfig = loadConfig();
 
@@ -831,100 +141,16 @@ function setConfigValue(dotPath, value) {
   currentConfig = null;
 }
 
-function getStealthModeStatus() {
-  if (!currentConfig) {
-    currentConfig = loadConfig();
-  }
-  return currentConfig.stealthMode !== false;
-}
-
-function setStealthModeStatus(status) {
-  if (!currentConfig) {
-    currentConfig = loadConfig();
-  }
-  currentConfig.stealthMode = !!status;
-  saveConfig(currentConfig);
-  currentConfig = null;
-}
-
-function getGoogleTtsConfig() {
-  if (!currentConfig) {
-    currentConfig = loadConfig();
-  }
-  return { ...defaultConfig.googleTts, ...(currentConfig.googleTts || {}) };
-}
-
-function setGoogleTtsConfig(cfg) {
-  if (!currentConfig) {
-    currentConfig = loadConfig();
-  }
-  currentConfig.googleTts = { ...getGoogleTtsConfig(), ...cfg };
-  saveConfig(currentConfig);
-  currentConfig = null;
-}
+const accessors = createAccessors({
+  getCurrentConfig,
+  persistCurrentConfig,
+});
 
 module.exports = {
   initialize,
-  getStealthModeStatus,
-  setStealthModeStatus,
-  getPromptInstruction,
-  setPromptInstruction,
-  getDebugModeStatus,
-  setDebugModeStatus,
-  getPrintModeStatus,
-  setPrintModeStatus,
-  getOsIntegrationStatus,
-  setOsIntegrationStatus,
-  getRealtimeAssistantStatus,
-  setRealtimeAssistantStatus,
-  getLanguage,
-  setLanguage,
-  getAiModel,
-  setAiModel,
-  getOpenIaToken,
-  setOpenIaToken,
-  getOpenAiModel,
-  setOpenAiModel,
-  getOpenAiReasoningEffort,
-  setOpenAiReasoningEffort,
-  getOpenAiVisionModel,
-  setOpenAiVisionModel,
-  getClaudeCliModel,
-  setClaudeCliModel,
-  getGeminiCliModel,
-  setGeminiCliModel,
-  getCopilotCliModel,
-  setCopilotCliModel,
-  getBackendModel,
-  setBackendModel,
-  getOllamaLocalModel,
-  setOllamaLocalModel,
-  getOllamaLocalHost,
-  setOllamaLocalHost,
-  getAudioCaptureMode,
-  setAudioCaptureMode,
-  getHelperToolsConfig,
-  setHelperToolsConfig,
-  getHelperToolsEnabled,
-  setHelperToolsEnabled,
-  getWorkspaceAccessEnabled,
-  setWorkspaceAccessEnabled,
-  getBackendApiKey,
-  setBackendApiKey,
-  getTranslationAssistantConfig,
-  getUserContextBlock,
-  setTranslationAssistantConfig,
-  getVisionGuideConfig,
-  setVisionGuideConfig,
-  getKnowledgeBaseConfig,
-  setKnowledgeBaseConfig,
-  getAnswerBankConfig,
-  setAnswerBankConfig,
-  getGoogleTtsConfig,
-  setGoogleTtsConfig,
-  getNexaConfig,
-  setNexaConfig,
   getConfig,
   setConfigValue,
   getIp,
+  NEXA_PERSONA_PROMPT,
+  ...accessors,
 };

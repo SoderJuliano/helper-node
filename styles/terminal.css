@@ -17,7 +17,9 @@
             display: flex; align-items: center; gap: 8px;
             padding: 9px 120px 9px 12px; border-bottom: 1px solid var(--border);
             background: var(--bg-sidebar); flex-shrink: 0;
+            -webkit-app-region: drag;
         }
+        .fv-header > * { -webkit-app-region: no-drag; }
         .fv-ic { width: 14px; height: 14px; opacity: .7; flex-shrink: 0; }
         /* Sem flex:1 de propósito — o nome fica do tamanho do conteúdo (até um
            teto, com "…" se passar disso), igual aba de IDE, pra o × ficar logo

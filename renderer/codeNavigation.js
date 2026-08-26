@@ -6,14 +6,7 @@
   let currentHoverMarker = null;
   let activeCm = null;
   let currentFilePath = null;
-  let activePopup = null;
-
-  // Usages Hover Badge & Popup state
-  let activeUsagesBadge = null;
-  let activeUsagesPopup = null;
-  let usagesTimer = null;
-  let lastHoveredSymbol = null;
-  let isMouseOverBadge = false;
+  let activeCodeLensWidgets = [];
 
   function clearHoverMarker() {
     if (currentHoverMarker) {
@@ -21,42 +14,6 @@
       currentHoverMarker = null;
     }
   }
-
-  function removeActivePopup() {
-    if (activePopup) {
-      activePopup.remove();
-      activePopup = null;
-    }
-  }
-
-  let badgeHideTimer = null;
-
-  function scheduleBadgeRemoval(delayMs = 2000) {
-    clearTimeout(badgeHideTimer);
-    badgeHideTimer = setTimeout(() => {
-      if (!isMouseOverBadge) {
-        removeActiveUsagesBadge();
-      }
-    }, delayMs);
-  }
-
-  function removeActiveUsagesBadge() {
-    clearTimeout(badgeHideTimer);
-    badgeHideTimer = null;
-    if (activeUsagesBadge && !isMouseOverBadge) {
-      activeUsagesBadge.remove();
-      activeUsagesBadge = null;
-    }
-  }
-
-  function removeActiveUsagesPopup() {
-    if (activeUsagesPopup) {
-      activeUsagesPopup.remove();
-      activeUsagesPopup = null;
-    }
-  }
-
-  let activeCodeLensWidgets = [];
 
   function clearCodeLensWidgets() {
     if (activeCodeLensWidgets.length) {
@@ -67,7 +24,6 @@
     }
   }
 
-  // CodeLens fixo e discreto sobre a declaração de métodos (estilo IntelliJ / VS Code)
   async function updateCodeLensUsages(cm, filePath) {
     clearCodeLensWidgets();
     if (!cm || !filePath || !window.electronAPI || !window.electronAPI.codeNavFindUsages) return;
@@ -93,7 +49,9 @@
 
         hint.addEventListener('click', (ev) => {
           ev.stopPropagation();
-          showUsagesPopup(usages, item.symbol, ev.clientX, ev.clientY);
+          if (window.CodeNavUsagesPopup) {
+            window.CodeNavUsagesPopup.showUsagesPopup(usages, item.symbol, ev.clientX, ev.clientY);
+          }
         });
 
         lensEl.appendChild(hint);
@@ -107,368 +65,10 @@
     }
   }
 
-  // Identifica se uma ocorrência de uso pertence a um arquivo, classe ou método de teste
-  function isTestUsage(u) {
-    if (!u) return false;
-    const pathStr = (u.relativePath || u.filePath || '').toLowerCase();
-    const fileStr = (u.fileName || pathStr.split('/').pop() || '').toLowerCase();
-    const callerStr = (u.callerName || '').toLowerCase();
-
-    // 1. Arquivos ou caminhos de teste (*Test.java, *Tests.java, *test.js, *spec.ts, /test/, __tests__, etc.)
-    if (
-      /(?:^|[._/-])(?:test|tests|spec|specs|it|testcase|unittest)(?:[._/-]|\.|$)/i.test(fileStr) ||
-      fileStr.endsWith('test.java') || fileStr.endsWith('tests.java') ||
-      fileStr.endsWith('testcase.java') || fileStr.endsWith('test.js') ||
-      fileStr.endsWith('test.ts') || fileStr.endsWith('spec.js') ||
-      fileStr.endsWith('spec.ts') || fileStr.endsWith('test.py') ||
-      fileStr.startsWith('test_') ||
-      pathStr.includes('/test/') || pathStr.includes('\\test\\') ||
-      pathStr.includes('/tests/') || pathStr.includes('\\tests\\') ||
-      pathStr.includes('/src/test/') || pathStr.includes('\\src\\test\\') ||
-      pathStr.includes('__tests__') || pathStr.includes('__test__')
-    ) {
-      return true;
-    }
-
-    // 2. Métodos de teste (testMethod, shouldDoSomething, etc.)
-    if (
-      /^test/i.test(callerStr) ||
-      /test$/i.test(callerStr) ||
-      /^should/i.test(callerStr) ||
-      callerStr.includes('test')
-    ) {
-      return true;
-    }
-
-    return false;
-  }
-
-  // Renderiza a janela detalhada de Chamadores (Usages Popup)
-  function showUsagesPopup(usages, symbol, clientX, clientY) {
-    removeActiveUsagesPopup();
-    removeActivePopup();
-
-    const rawList = Array.isArray(usages) ? usages : [];
-
-    // Ordenação: implementações concretas e chamadores reais no topo, testes (*test*, *Test*, *spec*) sempre por último
-    const sortedUsages = [...rawList].sort((a, b) => {
-      const aTest = isTestUsage(a);
-      const bTest = isTestUsage(b);
-      if (aTest && !bTest) return 1;
-      if (!aTest && bTest) return -1;
-      return 0;
-    });
-
-    const popup = document.createElement('div');
-    popup.className = 'code-nav-popup code-nav-usages-popup';
-    activeUsagesPopup = popup;
-
-    // Cabeçalho
-    const header = document.createElement('div');
-    header.className = 'code-nav-popup-header';
-
-    const title = document.createElement('span');
-    title.className = 'code-nav-popup-title';
-    title.textContent = `Usos de "${symbol}" (${sortedUsages.length})`;
-
-    const sub = document.createElement('span');
-    sub.className = 'code-nav-popup-sub';
-    sub.textContent = sortedUsages.length > 0 ? 'Enter: abrir selecionado / Esc: fechar' : 'Sem chamadores no projeto';
-
-    header.appendChild(title);
-    header.appendChild(sub);
-    popup.appendChild(header);
-
-    if (sortedUsages.length === 0) {
-      const emptyDiv = document.createElement('div');
-      emptyDiv.style.padding = '12px';
-      emptyDiv.style.color = '#888';
-      emptyDiv.style.textAlign = 'center';
-      emptyDiv.textContent = 'Nenhum chamador encontrado para este símbolo.';
-      popup.appendChild(emptyDiv);
-    }
-
-    let selectedIndex = 0;
-
-    const itemEls = sortedUsages.map((u, idx) => {
-      const isTest = isTestUsage(u);
-      const item = document.createElement('div');
-      item.className = 'code-nav-popup-item' + (idx === 0 ? ' selected' : '') + (isTest ? ' code-nav-usage-test' : '');
-      item.style.flexDirection = 'column';
-      item.style.alignItems = 'flex-start';
-
-      const topRow = document.createElement('div');
-      topRow.style.display = 'flex';
-      topRow.style.alignItems = 'center';
-      topRow.style.width = '100%';
-      topRow.style.justifyContent = 'space-between';
-
-      const leftDiv = document.createElement('div');
-      leftDiv.style.display = 'flex';
-      leftDiv.style.alignItems = 'center';
-      leftDiv.style.overflow = 'hidden';
-
-      const fileSpan = document.createElement('span');
-      fileSpan.className = 'code-nav-popup-file';
-      fileSpan.textContent = `${u.fileName}:${u.line}`;
-
-      const pathSpan = document.createElement('span');
-      pathSpan.className = 'code-nav-popup-path';
-      pathSpan.textContent = u.relativePath || u.filePath;
-
-      leftDiv.appendChild(fileSpan);
-      leftDiv.appendChild(pathSpan);
-      topRow.appendChild(leftDiv);
-
-      const rightDiv = document.createElement('div');
-      rightDiv.style.display = 'flex';
-      rightDiv.style.alignItems = 'center';
-      rightDiv.style.flexShrink = '0';
-
-      if (u.callerName) {
-        const callerSpan = document.createElement('span');
-        callerSpan.className = 'code-nav-popup-caller';
-        callerSpan.textContent = `em ${u.callerName}()`;
-        rightDiv.appendChild(callerSpan);
-      }
-
-      if (isTest) {
-        const testBadge = document.createElement('span');
-        testBadge.className = 'code-nav-popup-test-badge';
-        testBadge.textContent = 'test';
-        testBadge.title = 'Ocorrência em classe ou arquivo de teste';
-        rightDiv.appendChild(testBadge);
-      }
-
-      topRow.appendChild(rightDiv);
-      item.appendChild(topRow);
-
-      // Trecho da linha de código chamadora
-      if (u.lineText) {
-        const snippetDiv = document.createElement('div');
-        snippetDiv.className = 'code-nav-popup-snippet';
-        snippetDiv.textContent = `${u.line}: ${u.lineText}`;
-        item.appendChild(snippetDiv);
-      }
-
-      item.addEventListener('click', (ev) => {
-        ev.stopPropagation();
-        removeActiveUsagesPopup();
-        if (window.EditorController && u.filePath) {
-          window.EditorController.openFile(u.filePath, u.line, u.col);
-        }
-      });
-
-      popup.appendChild(item);
-      return item;
-    });
-
-    document.body.appendChild(popup);
-
-    // Posicionamento próximo ao ponteiro do mouse
-    const width = popup.offsetWidth || 380;
-    const height = popup.offsetHeight || 240;
-    let x = clientX;
-    let y = clientY + 10;
-    if (x + width > window.innerWidth) x = window.innerWidth - width - 10;
-    if (y + height > window.innerHeight) y = clientY - height - 10;
-    popup.style.left = Math.max(10, x) + 'px';
-    popup.style.top = Math.max(10, y) + 'px';
-
-    const keyHandler = (e) => {
-      if (!activeUsagesPopup) {
-        document.removeEventListener('keydown', keyHandler, true);
-        return;
-      }
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        e.stopPropagation();
-        document.removeEventListener('keydown', keyHandler, true);
-        if (sortedUsages[selectedIndex] && window.EditorController) {
-          const u = sortedUsages[selectedIndex];
-          removeActiveUsagesPopup();
-          window.EditorController.openFile(u.filePath, u.line, u.col);
-        }
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        removeActiveUsagesPopup();
-        document.removeEventListener('keydown', keyHandler, true);
-      } else if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        if (sortedUsages.length > 0) {
-          selectedIndex = (selectedIndex + 1) % sortedUsages.length;
-          itemEls.forEach((el, idx) => el.classList.toggle('selected', idx === selectedIndex));
-          itemEls[selectedIndex]?.scrollIntoView({ block: 'nearest' });
-        }
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        if (sortedUsages.length > 0) {
-          selectedIndex = (selectedIndex - 1 + sortedUsages.length) % sortedUsages.length;
-          itemEls.forEach((el, idx) => el.classList.toggle('selected', idx === selectedIndex));
-          itemEls[selectedIndex]?.scrollIntoView({ block: 'nearest' });
-        }
-      }
-    };
-
-    const clickOutsideHandler = (ev) => {
-      if (popup && !popup.contains(ev.target)) {
-        removeActiveUsagesPopup();
-        document.removeEventListener('mousedown', clickOutsideHandler, true);
-        document.removeEventListener('keydown', keyHandler, true);
-      }
-    };
-
-    setTimeout(() => {
-      document.addEventListener('keydown', keyHandler, true);
-      document.addEventListener('mousedown', clickOutsideHandler, true);
-    }, 0);
-  }
-
-  // Abre todas as ocorrências encontradas em abas do editor
-  async function openAllMatches(matches) {
-    removeActivePopup();
-    if (!Array.isArray(matches) || !matches.length) return;
-    for (let i = matches.length - 1; i >= 0; i--) {
-      if (window.EditorController && matches[i].filePath) {
-        await window.EditorController.openFile(matches[i].filePath, matches[i].line);
-      }
-    }
-  }
-
-  // Renderiza a janela pop-up de seleção quando o símbolo possui múltiplas definições
-  function showDefinitionPopup(matches, symbol, clientX, clientY) {
-    removeActivePopup();
-    removeActiveUsagesPopup();
-    if (!Array.isArray(matches) || !matches.length) return;
-
-    const popup = document.createElement('div');
-    popup.className = 'code-nav-popup';
-    activePopup = popup;
-
-    // Cabeçalho
-    const header = document.createElement('div');
-    header.className = 'code-nav-popup-header';
-
-    const title = document.createElement('span');
-    title.className = 'code-nav-popup-title';
-    title.textContent = `${symbol} (${matches.length})`;
-
-    const sub = document.createElement('span');
-    sub.className = 'code-nav-popup-sub';
-    sub.textContent = 'Enter: abrir todas em abas';
-
-    header.appendChild(title);
-    header.appendChild(sub);
-    popup.appendChild(header);
-
-    let selectedIndex = 0;
-
-    // Lista de ocorrências
-    const itemEls = matches.map((m, idx) => {
-      const item = document.createElement('div');
-      item.className = 'code-nav-popup-item' + (idx === 0 ? ' selected' : '');
-
-      const fileName = m.relativePath ? m.relativePath.split('/').pop() : m.filePath.split('/').pop();
-      const folderPath = m.relativePath || m.filePath;
-
-      const fileSpan = document.createElement('span');
-      fileSpan.className = 'code-nav-popup-file';
-      fileSpan.textContent = `${fileName}:${m.line}`;
-
-      const pathSpan = document.createElement('span');
-      pathSpan.className = 'code-nav-popup-path';
-      pathSpan.textContent = folderPath;
-
-      const badgeSpan = document.createElement('span');
-      badgeSpan.className = 'code-nav-popup-badge';
-      badgeSpan.textContent = m.className ? m.className : (m.kind || 'método');
-
-      const leftDiv = document.createElement('div');
-      leftDiv.style.display = 'flex';
-      leftDiv.style.alignItems = 'center';
-      leftDiv.style.overflow = 'hidden';
-      leftDiv.appendChild(fileSpan);
-      leftDiv.appendChild(pathSpan);
-
-      item.appendChild(leftDiv);
-      item.appendChild(badgeSpan);
-
-      item.addEventListener('click', (ev) => {
-        ev.stopPropagation();
-        removeActivePopup();
-        if (window.EditorController && m.filePath) {
-          window.EditorController.openFile(m.filePath, m.line);
-        }
-      });
-
-      popup.appendChild(item);
-      return item;
-    });
-
-    document.body.appendChild(popup);
-
-    // Posicionamento próximo ao ponteiro do mouse
-    const width = popup.offsetWidth || 340;
-    const height = popup.offsetHeight || 200;
-    let x = clientX;
-    let y = clientY + 10;
-    if (x + width > window.innerWidth) x = window.innerWidth - width - 10;
-    if (y + height > window.innerHeight) y = clientY - height - 10;
-    popup.style.left = Math.max(10, x) + 'px';
-    popup.style.top = Math.max(10, y) + 'px';
-
-    // Teclas: Enter abre todas, Esc fecha, Setas navegam
-    const keyHandler = (e) => {
-      if (!activePopup) {
-        document.removeEventListener('keydown', keyHandler, true);
-        return;
-      }
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        e.stopPropagation();
-        document.removeEventListener('keydown', keyHandler, true);
-        if (matches[selectedIndex]) {
-          openAllMatches(matches);
-        }
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        removeActivePopup();
-        document.removeEventListener('keydown', keyHandler, true);
-      } else if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        selectedIndex = (selectedIndex + 1) % matches.length;
-        itemEls.forEach((el, idx) => el.classList.toggle('selected', idx === selectedIndex));
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        selectedIndex = (selectedIndex - 1 + matches.length) % matches.length;
-        itemEls.forEach((el, idx) => el.classList.toggle('selected', idx === selectedIndex));
-      }
-    };
-
-    const clickOutsideHandler = (ev) => {
-      if (popup && !popup.contains(ev.target)) {
-        removeActivePopup();
-        document.removeEventListener('mousedown', clickOutsideHandler, true);
-        document.removeEventListener('keydown', keyHandler, true);
-      }
-    };
-
-    setTimeout(() => {
-      document.addEventListener('keydown', keyHandler, true);
-      document.addEventListener('mousedown', clickOutsideHandler, true);
-    }, 0);
-  }
-
-  // Atualiza as marcas do gutter e CodeLens para a aba aberta atual
   async function updateGutterMarkers(cm, filePath) {
     if (!cm || !filePath || !window.electronAPI || !window.electronAPI.codeNavGetGutterInfo) return;
 
-    // Limpa calha anterior
     cm.clearGutter('code-nav-gutter');
-
-    // Atualiza os CodeLens fixos de usages estilo IntelliJ
     updateCodeLensUsages(cm, filePath).catch(() => {});
 
     try {
@@ -488,8 +88,6 @@
           ev.stopPropagation();
           if (!window.EditorController || !item.target.filePath) return;
           await window.EditorController.openFile(item.target.filePath, item.target.line);
-          // Deixa o nome realçado no destino até o usuário clicar em qualquer
-          // outro lugar — senão ele chega no arquivo sem saber onde olhar.
           if (window.CodeHighlight && item.symbol) {
             const destCm = window.EditorController.getCm && window.EditorController.getCm();
             if (destCm) {
@@ -499,7 +97,6 @@
           }
         });
 
-        // 0-indexed no CodeMirror
         const lineIdx = item.line - 1;
         cm.setGutterMarker(lineIdx, 'code-nav-gutter', iconEl);
       }
@@ -508,23 +105,19 @@
     }
   }
 
-  // Extrai o símbolo ou caminho de arquivo clicado/focado sob o cursor
   function getSymbolOrPathAtPos(cm, pos) {
     if (!cm || !pos || pos.line < 0) return null;
     const lineText = cm.getLine(pos.line);
     if (!lineText) return null;
     const ch = pos.ch;
 
-    // Checa o tipo do token do CodeMirror na posição atual do cursor/mouse
     const token = cm.getTokenAt(pos);
     const tokenType = (token && token.type) ? token.type : '';
 
-    // 1. Ignorar completamente palavras dentro de comentários (//, /* */, Javadoc, docstrings)
     if (tokenType.includes('comment')) {
       return null;
     }
 
-    // 2. Checar se a posição está dentro de aspas para ser um caminho de arquivo importado
     const quotes = ['"', "'", '`'];
     for (const q of quotes) {
       let first = -1;
@@ -549,17 +142,10 @@
       }
     }
 
-    // Se estiver em uma string comum de texto (e não for caminho de importação), ignora
-    if (tokenType.includes('string')) {
+    if (tokenType.includes('string') || tokenType.includes('keyword')) {
       return null;
     }
 
-    // Ignorar palavras-chave de linguagem (if, return, function, class, etc.)
-    if (tokenType.includes('keyword')) {
-      return null;
-    }
-
-    // 3. Símbolo normal de código (método, função, variável, propriedade, classe)
     const wordRange = cm.findWordAt(pos);
     const symbol = cm.getRange(wordRange.anchor, wordRange.head).trim();
 
@@ -583,16 +169,12 @@
     return null;
   }
 
-  // Checa se o símbolo na posição pos é especificamente uma assinatura, declaração ou chamada de método/função
-  // (Java Spring, JS/TS, Python, C#, etc.), descartando variáveis, classes, tipos e imports avulsos.
   function isMethodAtPos(cm, pos, symbol) {
     if (!cm || !pos || !symbol) return false;
     const lineText = cm.getLine(pos.line) || '';
     if (!lineText) return false;
 
     const trimmedLine = lineText.trim();
-
-    // 1. Descartar completamente se a linha for import/package
     if (/^(?:import|from|package|require|using|use)\b/i.test(trimmedLine)) {
       return false;
     }
@@ -606,52 +188,40 @@
 
     const before = lineText.substring(0, startCh);
     const after = lineText.substring(endCh);
-    const trimmedBefore = before.trim();
     const trimmedAfter = after.trim();
 
-    // 2. Descartar se for declaração de classe, interface, enum, struct ou record
     if (/(?:class|interface|enum|struct|record|type)\s+$/i.test(before)) {
       return false;
     }
 
-    // 3. Chamada de método ou função: seguido diretamente por '(' ou '<...>' seguido por '('
-    // Ex: foo(), obj.bar(), service.find<T>(x), this.doSomething(1, 2)
     if (/^\s*(?:<[^>]+>\s*)?\(/i.test(after)) {
       return true;
     }
 
-    // 4. Declaração de função JS/TS com arrow function: const foo = () => ou let bar = async () =>
     if (/(?:const|let|var)\s+$/i.test(before) && /^\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_$]+)\s*=>/i.test(after)) {
       return true;
     }
 
-    // 5. Declaração de função JS/TS com function keyword: const foo = function(...)
     if (/(?:const|let|var)\s+$/i.test(before) && /^\s*=\s*(?:async\s*)?function\b/i.test(after)) {
       return true;
     }
 
-    // 6. Declaração de método em objeto/classe JS/TS: foo: () => ... ou foo: function(...)
     if (/^\s*:\s*(?:async\s*)?(?:function\b|\([^)]*\)\s*=>)/i.test(after)) {
       return true;
     }
 
-    // 7. Python: def foo(...) ou async def foo(...)
     if (/(?:async\s+)?def\s+$/i.test(before)) {
       return true;
     }
 
-    // 8. JS/TS: function foo(...) ou async function foo(...)
     if (/(?:async\s+)?function\*?\s+$/i.test(before)) {
       return true;
     }
 
-    // 9. Java/C#/TS: declaração de método com visibilidade ou modificadores
-    // Ex: public void foo(...), private String getBar(...), static async Task<T> process(...)
     if (/(?:(?:public|private|protected|static|final|abstract|synchronized|native|default|override|async)\s+)+[A-Za-z0-9_$<>[\].,?]+\s*$/i.test(before) && trimmedAfter.startsWith('(')) {
       return true;
     }
 
-    // 10. Checagem de linha anterior com anotação Spring/Java (@Override, @GetMapping, @Bean, @Test, etc.)
     if (pos.line > 0 && trimmedAfter.startsWith('(')) {
       const prevLine = (cm.getLine(pos.line - 1) || '').trim();
       if (prevLine.startsWith('@')) {
@@ -662,7 +232,6 @@
     return false;
   }
 
-  // Tenta resolver a definição de uma palavra ou caminho de arquivo ao clicar com Ctrl
   async function handleCtrlClick(cm, filePath, pos, mouseEvent) {
     if (!cm || !filePath || !window.electronAPI || !window.electronAPI.codeNavFindDefinition) return;
 
@@ -670,22 +239,13 @@
     if (!item || !item.symbol) return;
 
     const lineText = cm.getLine(pos.line) || '';
-    // `content` só é usado pro fallback de dependência Java (clique num uso do
-    // símbolo, não na linha do import — precisa do arquivo inteiro pra achar
-    // qual import corresponde ao símbolo clicado).
     const matches = await window.electronAPI.codeNavFindDefinition({ filePath, symbol: item.symbol, lineText, content: cm.getValue() });
 
     if (!Array.isArray(matches) || matches.length === 0) return;
 
-    // Vai DIRETO pro melhor candidato, sempre. Abrir uma lista quando havia
-    // mais de um match transformava "Ctrl+clique num método da service" numa
-    // janela de escolha — e o destino óbvio (a própria service) já é o primeiro
-    // da lista, ordenado pelo tipo do receptor no symbolIndexer. Pra descer da
-    // interface até a implementação existe o ícone na calha.
     const alvo = matches[0];
     if (window.EditorController && alvo.filePath) {
       await window.EditorController.openFile(alvo.filePath, alvo.line);
-      // Realça o nome no destino até o próximo clique, igual ao ícone da calha.
       if (window.CodeHighlight && item.symbol) {
         const destCm = window.EditorController.getCm && window.EditorController.getCm();
         if (destCm) {
@@ -696,402 +256,13 @@
     }
   }
 
-  let activeEditorContextMenu = null;
-  let activeRenameState = null;
-
-  function removeActiveEditorContextMenu() {
-    if (activeEditorContextMenu) {
-      activeEditorContextMenu.remove();
-      activeEditorContextMenu = null;
-    }
-  }
-
-  function removeActiveRename() {
-    if (activeRenameState) {
-      if (activeRenameState.cleanup) {
-        activeRenameState.cleanup();
-      }
-      activeRenameState = null;
-    }
-  }
-
-  function findSymbolOccurrencesInCm(cm, symbol) {
-    if (!cm || !symbol) return [];
-    const occurrences = [];
-    const escaped = symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`\\b${escaped}\\b`, 'g');
-    const lineCount = cm.lineCount();
-
-    for (let i = 0; i < lineCount; i++) {
-      const lineText = cm.getLine(i);
-      if (!lineText) continue;
-      let match;
-      while ((match = regex.exec(lineText)) !== null) {
-        occurrences.push({
-          line: i,
-          chStart: match.index,
-          chEnd: match.index + symbol.length
-        });
-      }
-    }
-    return occurrences;
-  }
-
-  async function updateProjectUsages(originalSymbol, finalName, projectUsages, currentFile) {
-    if (!Array.isArray(projectUsages) || projectUsages.length === 0) return;
-    const normCurrent = (currentFile || '').replace(/\\/g, '/').toLowerCase();
-    
-    const usagesByFile = new Map();
-    for (const u of projectUsages) {
-      if (!u.filePath) continue;
-      const normPath = u.filePath.replace(/\\/g, '/');
-      if (normPath.toLowerCase() === normCurrent) continue;
-      if (!usagesByFile.has(normPath)) {
-        usagesByFile.set(normPath, u.filePath);
-      }
-    }
-
-    const escaped = originalSymbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`\\b${escaped}\\b`, 'g');
-
-    for (const [normPath, rawPath] of usagesByFile.entries()) {
-      try {
-        if (window.electronAPI && window.electronAPI.readFileContent && window.electronAPI.editorSaveFile) {
-          const res = await window.electronAPI.readFileContent(rawPath);
-          if (res && typeof res.content === 'string') {
-            if (regex.test(res.content)) {
-              const updatedContent = res.content.replace(regex, finalName);
-              await window.electronAPI.editorSaveFile({ filePath: rawPath, content: updatedContent });
-            }
-          }
-        }
-      } catch (err) {
-        console.warn(`[codeNavigation] Erro ao renomear em ${rawPath}:`, err);
-      }
-    }
-  }
-
-  function startRenameMethod(cm, filePath, originalSymbol, clickPos) {
-    removeActiveRename();
-    removeActiveUsagesBadge();
-    removeActivePopup();
-
-    const originalDocContent = cm.getValue();
-    const localOccurrences = findSymbolOccurrencesInCm(cm, originalSymbol);
-    
-    let projectUsages = [];
-    if (window.electronAPI && window.electronAPI.codeNavFindUsages) {
-      window.electronAPI.codeNavFindUsages({ filePath, symbol: originalSymbol }).then(u => {
-        if (Array.isArray(u)) projectUsages = u;
-      }).catch(() => {});
-    }
-
-    let renameMarkers = [];
-    function updateRedHighlights(symbolToHighlight) {
-      renameMarkers.forEach(m => m.clear());
-      renameMarkers = [];
-      if (!symbolToHighlight) return;
-      const occs = findSymbolOccurrencesInCm(cm, symbolToHighlight);
-      for (const occ of occs) {
-        const marker = cm.markText(
-          { line: occ.line, ch: occ.chStart },
-          { line: occ.line, ch: occ.chEnd },
-          { className: 'cm-rename-highlight-red' }
-        );
-        renameMarkers.push(marker);
-      }
-    }
-
-    updateRedHighlights(originalSymbol);
-
-    // Banner de Aviso com Fundo Vermelho em Destaque
-    const banner = document.createElement('div');
-    banner.className = 'code-rename-banner';
-
-    const header = document.createElement('div');
-    header.className = 'code-rename-header';
-
-    const warningSpan = document.createElement('span');
-    warningSpan.className = 'code-rename-warning-span';
-    warningSpan.innerHTML = `<span>Renomeando método <strong>'${originalSymbol}'</strong> (${localOccurrences.length} uso${localOccurrences.length !== 1 ? 's' : ''})</span>`;
-
-    const timerSpan = document.createElement('span');
-    timerSpan.className = 'code-rename-timer';
-    timerSpan.textContent = 'Auto-confirma em 10s';
-
-    header.appendChild(warningSpan);
-    header.appendChild(timerSpan);
-    banner.appendChild(header);
-
-    const inputWrapper = document.createElement('div');
-    inputWrapper.className = 'code-rename-input-wrapper';
-
-    const renameInput = document.createElement('input');
-    renameInput.type = 'text';
-    renameInput.className = 'code-rename-input';
-    renameInput.value = originalSymbol;
-
-    inputWrapper.appendChild(renameInput);
-    banner.appendChild(inputWrapper);
-
-    const hintsRow = document.createElement('div');
-    hintsRow.className = 'code-rename-hints';
-    hintsRow.innerHTML = `<span><span class="code-rename-hint-key">Enter</span> confirmar</span> <span><span class="code-rename-hint-key">Esc</span> cancelar</span> <span>10s inativo (>1 char): auto-confirma</span>`;
-    banner.appendChild(hintsRow);
-
-    const wrapper = cm.getWrapperElement();
-    wrapper.appendChild(banner);
-
-    renameInput.focus();
-    renameInput.select();
-
-    let autoConfirmTimer = null;
-    let countdownInterval = null;
-    let remainingSeconds = 10;
-
-    function resetTimer() {
-      clearTimeout(autoConfirmTimer);
-      clearInterval(countdownInterval);
-      remainingSeconds = 10;
-      timerSpan.textContent = `Auto-confirma em ${remainingSeconds}s`;
-
-      countdownInterval = setInterval(() => {
-        remainingSeconds--;
-        if (remainingSeconds >= 0) {
-          timerSpan.textContent = `Auto-confirma em ${remainingSeconds}s`;
-        }
-      }, 1000);
-
-      autoConfirmTimer = setTimeout(() => {
-        clearInterval(countdownInterval);
-        const val = renameInput.value.trim();
-        if (val.length > 1 && val !== originalSymbol) {
-          confirmRename(val);
-        }
-      }, 10000);
-    }
-
-    resetTimer();
-
-    renameInput.addEventListener('input', () => {
-      const newName = renameInput.value.trim();
-      if (newName && newName !== originalSymbol) {
-        const escaped = originalSymbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const regex = new RegExp(`\\b${escaped}\\b`, 'g');
-        const updatedDocContent = originalDocContent.replace(regex, newName);
-        
-        const cursor = cm.getCursor();
-        cm.setValue(updatedDocContent);
-        cm.setCursor(cursor);
-        updateRedHighlights(newName);
-      } else if (!newName || newName === originalSymbol) {
-        const cursor = cm.getCursor();
-        cm.setValue(originalDocContent);
-        cm.setCursor(cursor);
-        updateRedHighlights(originalSymbol);
-      }
-      resetTimer();
-    });
-
-    function confirmRename(finalName) {
-      const isConfirmed = finalName && finalName.length > 1 && finalName !== originalSymbol;
-      cleanup();
-      if (isConfirmed) {
-        const escaped = originalSymbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const regex = new RegExp(`\\b${escaped}\\b`, 'g');
-        const updatedDocContent = originalDocContent.replace(regex, finalName);
-        cm.setValue(updatedDocContent);
-
-        if (projectUsages && projectUsages.length > 0) {
-          updateProjectUsages(originalSymbol, finalName, projectUsages, filePath);
-        }
-
-        if (window.EditorController && window.EditorController.markDirty) {
-          window.EditorController.markDirty(filePath);
-        }
-      } else {
-        cm.setValue(originalDocContent);
-      }
-    }
-
-    function cancelRename() {
-      cleanup();
-      cm.setValue(originalDocContent);
-    }
-
-    function cleanup() {
-      clearTimeout(autoConfirmTimer);
-      clearInterval(countdownInterval);
-      renameMarkers.forEach(m => m.clear());
-      renameMarkers = [];
-      if (banner && banner.parentNode) {
-        banner.remove();
-      }
-      document.removeEventListener('keydown', globalKeyListener, true);
-      activeRenameState = null;
-    }
-
-    const globalKeyListener = (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        e.stopPropagation();
-        confirmRename(renameInput.value.trim());
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        cancelRename();
-      }
-    };
-
-    renameInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        e.stopPropagation();
-        confirmRename(renameInput.value.trim());
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        cancelRename();
-      }
-    });
-
-    document.addEventListener('keydown', globalKeyListener, true);
-
-    activeRenameState = {
-      cleanup,
-      confirm: confirmRename,
-      cancel: cancelRename
-    };
-  }
-
-  function showEditorContextMenu(cm, filePath, event) {
-    event.preventDefault();
-    event.stopPropagation();
-
-    removeActiveEditorContextMenu();
-    removeActiveUsagesBadge();
-    removeActivePopup();
-
-    const selection = cm.getSelection();
-    const hasSelection = selection && selection.length > 0;
-
-    const pos = cm.coordsChar({ left: event.clientX, top: event.clientY });
-
-    // Se o usuário selecionou um símbolo ou palavra, usa a seleção como símbolo prioritário
-    let targetSymbol = null;
-    if (hasSelection) {
-      const trimmedSel = selection.trim();
-      if (/^[A-Za-z_$][\w$]*$/.test(trimmedSel)) {
-        targetSymbol = trimmedSel;
-      }
-    }
-
-    if (!targetSymbol) {
-      const item = getSymbolOrPathAtPos(cm, pos);
-      targetSymbol = (item && item.symbol && !item.isPath) ? item.symbol : null;
-    }
-
-    if (!targetSymbol) {
-      const wordRange = cm.findWordAt(pos);
-      const word = cm.getRange(wordRange.anchor, wordRange.head).trim();
-      if (word && /^[A-Za-z_$][\w$]*$/.test(word)) {
-        targetSymbol = word;
-      }
-    }
-
-    if (!hasSelection && !targetSymbol) return;
-
-    const menu = document.createElement('div');
-    menu.className = 'code-editor-context-menu';
-    activeEditorContextMenu = menu;
-
-    if (targetSymbol) {
-      // 1. Opção "Achar Usos" / "Find Usages" (para qualquer símbolo: método, classe, variável, etc.)
-      const btnFindUsages = document.createElement('button');
-      btnFindUsages.className = 'menu-item-find-usages';
-      btnFindUsages.innerHTML = `<span>Achar Usos de '${targetSymbol}'</span>`;
-      btnFindUsages.addEventListener('click', async (ev) => {
-        ev.stopPropagation();
-        removeActiveEditorContextMenu();
-        if (window.electronAPI && window.electronAPI.codeNavFindUsages) {
-          const usages = await window.electronAPI.codeNavFindUsages({ filePath, symbol: targetSymbol });
-          showUsagesPopup(usages, targetSymbol, event.clientX, event.clientY);
-        }
-      });
-      menu.appendChild(btnFindUsages);
-
-      // 2. Opção "Renomear"
-      const btnRename = document.createElement('button');
-      btnRename.className = 'menu-item-rename menu-danger';
-      btnRename.innerHTML = `<span>Renomear '${targetSymbol}'</span>`;
-      btnRename.addEventListener('click', (ev) => {
-        ev.stopPropagation();
-        removeActiveEditorContextMenu();
-        startRenameMethod(cm, filePath, targetSymbol, pos);
-      });
-      menu.appendChild(btnRename);
-    }
-
-    if (hasSelection) {
-      const btnCopy = document.createElement('button');
-      btnCopy.className = 'menu-item-copy';
-      const linesCount = selection.split('\n').length;
-      const label = linesCount > 1 ? `Copiar (${linesCount} linhas)` : 'Copiar';
-      btnCopy.innerHTML = `<span>${label}</span>`;
-      btnCopy.addEventListener('click', async (ev) => {
-        ev.stopPropagation();
-        removeActiveEditorContextMenu();
-        try {
-          if (window.electronAPI && window.electronAPI.copyToClipboard) {
-            window.electronAPI.copyToClipboard(selection);
-          } else {
-            await navigator.clipboard.writeText(selection);
-          }
-        } catch (_) {
-          const ta = document.createElement('textarea');
-          ta.value = selection;
-          document.body.appendChild(ta);
-          ta.select();
-          document.execCommand('copy');
-          ta.remove();
-        }
-      });
-      menu.appendChild(btnCopy);
-    }
-
-    document.body.appendChild(menu);
-
-    const width = menu.offsetWidth || 180;
-    const height = menu.offsetHeight || 80;
-    let x = event.clientX;
-    let y = event.clientY;
-    if (x + width > window.innerWidth) x = window.innerWidth - width - 10;
-    if (y + height > window.innerHeight) y = window.innerHeight - height - 10;
-
-    menu.style.left = Math.max(10, x) + 'px';
-    menu.style.top = Math.max(10, y) + 'px';
-
-    const dismissHandler = (ev) => {
-      if (menu && !menu.contains(ev.target)) {
-        removeActiveEditorContextMenu();
-        document.removeEventListener('mousedown', dismissHandler, true);
-      }
-    };
-    setTimeout(() => {
-      document.addEventListener('mousedown', dismissHandler, true);
-    }, 0);
-  }
-
-  // Configura os ouvintes de evento no CodeMirror
   function attachCodeNavigation(cm, filePath) {
     if (!cm) return;
     activeCm = cm;
     currentFilePath = filePath;
 
-    // Atualiza calha de implementações
     updateGutterMarkers(cm, filePath);
 
-    // Realce de ocorrências da palavra selecionada + régua de coluna.
     if (window.CodeHighlight) {
       window.CodeHighlight.attach(cm);
       window.CodeHighlight.attachRuler(cm);
@@ -1101,11 +272,6 @@
     if (wrapper._hasCodeNav) return;
     wrapper._hasCodeNav = true;
 
-    // A indexação roda em segundo plano e pode não ter terminado quando o
-    // arquivo abriu — nesse caso o gutter vinha VAZIO e os ícones só apareciam
-    // se o usuário fechasse e reabrisse a aba. Refaz a calha quando o índice
-    // termina. Abaixo do guard de propósito: um listener só, não um por
-    // arquivo aberto.
     if (window.electronAPI && window.electronAPI.onSymbolIndexerStatus) {
       window.electronAPI.onSymbolIndexerStatus((data) => {
         if (data && data.status === 'completed' && activeCm && currentFilePath) {
@@ -1114,18 +280,12 @@
       });
     }
 
-    // Menu de contexto no clique do botão direito (Renomear método / Copiar seleção)
     wrapper.addEventListener('contextmenu', (e) => {
-      showEditorContextMenu(cm, currentFilePath, e);
+      if (window.CodeNavContextMenu) {
+        window.CodeNavContextMenu.showEditorContextMenu(cm, currentFilePath, e, getSymbolOrPathAtPos);
+      }
     });
 
-    // Mousemove para efeito de link sob Ctrl & Usages Badge sob hover normal
-    //
-    // ⚠️ Throttled por rAF de propósito. `cm.coordsChar()` força medição de
-    // layout no CodeMirror, e isto rodava em TODO evento de mousemove (~60-120
-    // por segundo ao mover o mouse) — era metade da sensação de "editor pesado,
-    // scroll travando". Além do rAF, se o cursor continua no mesmo caractere
-    // não há nada novo a calcular.
     let rafPendente = false;
     let ultimaPos = null;
     const onMouseMove = (e) => {
@@ -1163,7 +323,6 @@
       clearHoverMarker();
     });
 
-    // Ctrl + MouseDown para disparar Go to Definition
     wrapper.addEventListener('mousedown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.button === 0) {
         const pos = cm.coordsChar({ left: e.clientX, top: e.clientY });
@@ -1176,7 +335,6 @@
       }
     });
 
-    // Atalho de teclado Alt+F7 (padrão IntelliJ) / Shift+F12 (VS Code) para Achar Usos
     wrapper.addEventListener('keydown', async (e) => {
       if ((e.altKey && e.key === 'F7') || (e.shiftKey && e.key === 'F12')) {
         const cursor = cm.getCursor();
@@ -1193,12 +351,12 @@
             targetSymbol = word;
           }
         }
-        if (targetSymbol && window.electronAPI && window.electronAPI.codeNavFindUsages) {
+        if (targetSymbol && window.electronAPI && window.electronAPI.codeNavFindUsages && window.CodeNavUsagesPopup) {
           e.preventDefault();
           e.stopPropagation();
           const coords = cm.charCoords(cursor, 'window');
           const usages = await window.electronAPI.codeNavFindUsages({ filePath: currentFilePath, symbol: targetSymbol });
-          showUsagesPopup(usages, targetSymbol, coords.left, coords.bottom);
+          window.CodeNavUsagesPopup.showUsagesPopup(usages, targetSymbol, coords.left, coords.bottom);
         }
       }
     });
@@ -1212,8 +370,8 @@
 
   window.CodeNavigation = {
     attach: attachCodeNavigation,
-    updateGutterMarkers
+    updateGutterMarkers,
+    getSymbolOrPathAtPos,
+    isMethodAtPos,
   };
 })();
-
-

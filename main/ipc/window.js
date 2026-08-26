@@ -18,7 +18,7 @@ const {
 
 module.exports = function registerIpc() {
 ipcMain.on("window-toggle-maximize", (event) => {
-  const win = BrowserWindow.fromWebContents(event.sender);
+  const win = BrowserWindow.fromWebContents(event.sender) || state.mainWindow;
   if (!win || win.isDestroyed()) return;
   try {
     if (win.isMaximized()) win.unmaximize();
@@ -27,14 +27,14 @@ ipcMain.on("window-toggle-maximize", (event) => {
 });
 
 ipcMain.on("window-minimize", (event) => {
-  const win = BrowserWindow.fromWebContents(event.sender);
+  const win = BrowserWindow.fromWebContents(event.sender) || state.mainWindow;
   if (win && !win.isDestroyed()) {
     try { win.minimize(); } catch (_) {}
   }
 });
 
 ipcMain.on("window-close", (event) => {
-  const win = BrowserWindow.fromWebContents(event.sender);
+  const win = BrowserWindow.fromWebContents(event.sender) || state.mainWindow;
   if (win && !win.isDestroyed()) {
     try { win.close(); } catch (_) {}
   }
@@ -51,7 +51,7 @@ ipcMain.on('frameless-drag-start', (event) => {
   let lastX = wx;
   let lastY = wy;
   let dragTicks = 0;
-  const maxTicks = 60 * 5; // 5 segundos timeout de segurança
+  const maxTicks = 60 * 60; // 60 segundos de timeout de segurança
   const timer = setInterval(() => {
     dragTicks++;
     if (!win || win.isDestroyed() || dragTicks > maxTicks) {

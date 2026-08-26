@@ -186,7 +186,7 @@
     setTimeout(() => document.addEventListener('mousedown', dismiss, true), 0);
   }
 
-  function attach(cm, filePath) {
+  function attachImportChecker(cm, filePath) {
     if (!cm || !filePath) return;
     activeCm = cm;
     currentFilePath = filePath;
@@ -229,5 +229,5 @@
     }, true);
   }
 
-  window.ImportChecker = { attach };
+  window.ImportChecker = { attach: attachImportChecker };
 })();
