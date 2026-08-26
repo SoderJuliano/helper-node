@@ -109,7 +109,6 @@
                             loaded: true
                         }));
                         newEntries.splice(i + 1, 0, ...children);
-                        i += children.length;
                     }
                 } catch (_) {}
             }

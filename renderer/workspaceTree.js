@@ -63,6 +63,11 @@ var creatingFolderParent = null;
                     expandedDirPaths.delete(p);
                 }
             }
+            for (const item of treeEntries) {
+                if (item.isDir && item.path !== e.path && (item.path.replace(/\\/g, '/') + '/').startsWith(pPrefix)) {
+                    item.collapsed = true;
+                }
+            }
             renderTree();
             return;
         }
@@ -123,32 +128,6 @@ var creatingFolderParent = null;
                         loaded: true
                     }));
                     treeEntries.splice(curIdx + 1, 0, ...children);
-                }
-            }
-        }
-
-        let curIdx = treeEntries.indexOf(e);
-        if (curIdx !== -1 && !e.synthetic) {
-            while (curIdx < treeEntries.length) {
-                const item = treeEntries[curIdx];
-                if (item.isDir) {
-                    item.collapsed = false;
-                    expandedDirPaths.add(item.path);
-                }
-                const directSubs = [];
-                for (let k = curIdx + 1; k < treeEntries.length; k++) {
-                    if (treeEntries[k].depth === item.depth + 1) {
-                        directSubs.push(treeEntries[k]);
-                    } else if (treeEntries[k].depth <= item.depth) {
-                        break;
-                    }
-                }
-                const subDirs = directSubs.filter(c => c.isDir && !c.synthetic);
-                const subFiles = directSubs.filter(c => !c.isDir);
-                if (subDirs.length === 1 && subFiles.length === 0) {
-                    curIdx = treeEntries.indexOf(subDirs[0]);
-                } else {
-                    break;
                 }
             }
         }
@@ -365,6 +344,7 @@ var creatingFolderParent = null;
                         treeEntries.splice(idx + 1, removeCount);
                     }
                 }
+                depsNode.collapsed = true;
                 toggleDir(depsNode);
             }
         });
