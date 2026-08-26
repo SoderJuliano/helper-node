@@ -233,6 +233,7 @@ ipcMain.on("save-os-integration-status", (event, status) => {
   helpers.notifyShortcutsChanged();
   
   if (status) {
+    try { require("../nexa/index.js").closeNexaWindow(); configService.setNexaConfig({ enabled: false, onlyNexa: false }); } catch (_) {}
     if (appConfig.notificationsEnabled && Notification.isSupported()) {
       new Notification({ title: 'Helper-Node', body: 'Integração com SO ativada! Interface minimalista habilitada.', silent: true }).show();
     }
@@ -285,6 +286,7 @@ ipcMain.on("save-realtime-assistant-status", async (event, status) => {
   console.log('Realtime assistant status changed to:', status);
 
   if (status) {
+    try { require("../nexa/index.js").closeNexaWindow(); configService.setNexaConfig({ enabled: false, onlyNexa: false }); } catch (_) {}
     if (configService.getOsIntegrationStatus()) {
       helpers.createRealtimeAssistantOverlay();
       if (!helpers.anyRealtimeActive() && configService.getOpenIaToken()) {
@@ -380,6 +382,7 @@ ipcMain.on("set-translation-assistant-config", (event, partial) => {
   if (typeof partial.enabled === 'boolean') {
     const cfg = configService.getConfig();
     if (partial.enabled) {
+      try { require("../nexa/index.js").closeNexaWindow(); configService.setNexaConfig({ enabled: false, onlyNexa: false }); } catch (_) {}
       if (!cfg.openIaToken) {
         if (state.mainWindow && !state.mainWindow.isDestroyed()) {
           state.mainWindow.webContents.send('translation-result', {

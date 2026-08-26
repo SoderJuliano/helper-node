@@ -66,7 +66,7 @@ async function callGPT(systemPrompt, userContent, model, apiKey, onDelta = null)
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userContent },
     ],
-    ...maxTokensParam(model, 400),
+    ...maxTokensParam(model, 600),
     stream: !!onDelta,
   };
   if (supportsReasoningEffort(model)) chatPayload.reasoning_effort = 'low';
@@ -146,22 +146,15 @@ async function getTranslationAndSuggestion(transcript, { userName, userBackgroun
 Usuário: ${userName || 'o candidato'}
 Background: ${userBackground || 'não informado'}
 
-Sua tarefa é sugerir uma resposta direta no idioma original da pergunta (geralmente inglês).
+Sua tarefa é sugerir uma resposta direta no idioma original da pergunta (geralmente inglês), pronta para o candidato falar em voz alta.
 
-Regras para a sugestão de resposta:
-- Responda OBRIGATORIAMENTE na PRIMEIRA PESSOA ("I", "my", "in my experience"). A resposta deve ser escrita para o candidato ler em voz alta falando de si mesmo, e NUNCA em terceira pessoa sobre desenvolvedores/programadores em geral.
-- Use inglês conversacional simples e falado (casual, fácil de ler/pronunciar e direto ao ponto).
-- Evite palavras difíceis, pomposas ou formais demais (evite: leverage -> use, utilize -> use, robust -> solid, implement -> build/write, comprehensive -> complete, execute -> do/run, specialize in -> work with).
-- Mantenha os termos técnicos reais intactos, mas mantenha todo o vocabulário e construções ao redor no inglês falado e informal.
-- Use as versões MODERNAS das tecnologias (Java 21+, Node.js 22+, React 19, Spring Boot 3, etc.). Nunca mencione versões antigas (Java 8, Node 12, etc.) como se fossem atuais.
-- NUNCA inclua bloco de código a menos que o entrevistador PEÇA EXPLICITAMENTE um exemplo, implementação ou trecho de código (palavras como: "show me code", "write a function", "example of", "how would you implement", "give me an example", "código de", "exemplo de", "escreva uma função").
-- Mencionar uma tecnologia (Java, React, Spring) NÃO é pedido de código — responda apenas com texto.
-- Quando o pedido for de código: 1 bloco curto (2-6 linhas) no formato \`\`\`<linguagem>\n<código>\n\`\`\` e máximo 1 frase de contexto antes.
-- Quando NÃO houver pedido de código: 2-3 frases curtas em texto puro, sem código.
-- Não comece com "Certainly!" ou "Of course!".
-- Destaque em **negrito** os termos técnicos-chave (tecnologias, conceitos) na RESPOSTA — facilita o candidato bater o olho.
-
-Responda APENAS com a sugestão de resposta direta no idioma original. NÃO adicione nenhum prefixo como "RESPOSTA:".`;
+Diretrizes para a sugestão de resposta:
+- Responda OBRIGATORIAMENTE na PRIMEIRA PESSOA ("I", "my", "in my experience"). Soe natural como o próprio candidato falando de si mesmo.
+- RESPOSTA PADRÃO CURTA E DIRETA (1 a 3 frases): Para perguntas teóricas, conceituais (ex: "O que é OOP?", "O que é SOLID?"), comportamentais ou perguntas gerais, dê uma resposta curta, técnica e em linguagem falada simples (ex: "OOP is a programming paradigm based on objects and classes to model real-world concepts...").
+- QUANDO FOR PEDIDO DE CÓDIGO OU EXEMPLO PRÁTICO: Se o entrevistador pedir para escrever código, implementar uma função ou mostrar um exemplo completo, forneça a implementação de código necessária e funcional em um bloco \`\`\`<linguagem>\n<código>\n\`\`\` junto com uma breve explicação direta.
+- Use inglês conversacional falado, simples e fluido (casual, fácil de pronunciar, sem palavras pomposas ou enrolação).
+- Mantenha os termos técnicos reais e destaque em **negrito** os termos-chave.
+- Responda APENAS com a sugestão direta. NÃO inclua introduções desnecessárias ("Certainly!", "Of course!") nem prefixos como "RESPOSTA:".`;
 
   const translationPrompt = `Você é um tradutor especialista em entrevistas de emprego.
 Sua tarefa é traduzir a fala do entrevistador para o idioma-alvo: ${targetLanguage}.

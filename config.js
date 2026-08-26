@@ -305,6 +305,20 @@ if (printModeToggle) {
 if (osIntegrationToggle) {
   osIntegrationToggle.addEventListener("change", () => {
     window.ConfigToggles.updateOsIntegrationStatus(osIntegrationToggle.checked);
+    if (osIntegrationToggle.checked && window.ConfigToggles.disableNexaIfActive) {
+      window.ConfigToggles.disableNexaIfActive();
+    }
+  });
+}
+if (realtimeAssistantToggle) {
+  realtimeAssistantToggle.addEventListener("change", () => {
+    window.ConfigToggles.updateRealtimeAssistantStatus(realtimeAssistantToggle.checked);
+    if (realtimeAssistantToggle.checked) {
+      if (window.ConfigToggles.disableNexaIfActive) {
+        window.ConfigToggles.disableNexaIfActive();
+      }
+      window.ConfigToggles.applyRealtimeAssistantExclusivity();
+    }
   });
 }
 if (stealthModeToggle) {
@@ -335,7 +349,10 @@ if (googleTtsToggle) {
 }
 
 saveButton.addEventListener("click", async () => {
-  const isNexaOn = nexaToggle ? nexaToggle.checked : false;
+  const isExclusiveFeatureOn = (osIntegrationToggle && osIntegrationToggle.checked) ||
+                               (realtimeAssistantToggle && realtimeAssistantToggle.checked) ||
+                               (document.getElementById('translation-enabled') && document.getElementById('translation-enabled').checked);
+  const isNexaOn = !isExclusiveFeatureOn && (nexaToggle ? nexaToggle.checked : false);
   const ttsKey = googleTtsKey ? googleTtsKey.value.trim() : "";
 
   if (isNexaOn && !ttsKey) {
@@ -351,6 +368,10 @@ saveButton.addEventListener("click", async () => {
   }
 
   if (nexaToggle) {
+    if (isExclusiveFeatureOn) {
+      nexaToggle.checked = false;
+      window.ConfigToggles.updateNexaStatus(false);
+    }
     ipcRenderer.send("nexa:save-config", { enabled: isNexaOn, onlyNexa: false });
   }
   if (googleTtsToggle) {

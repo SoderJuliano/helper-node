@@ -111,7 +111,6 @@ html.manual-drag #pos-header::before { -webkit-app-region: no-drag !important; }
   display: flex;
   flex-direction: column;
   gap: 14px;
-  scroll-behavior: smooth;
 }
 #messages::-webkit-scrollbar          { width: 5px; }
 #messages::-webkit-scrollbar-track    { background: transparent; }

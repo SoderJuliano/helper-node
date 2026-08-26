@@ -24,9 +24,14 @@
   if (translationEnabledToggle) {
     translationEnabledToggle.addEventListener('change', () => {
       updateTranslationEnabledStatus(translationEnabledToggle.checked);
-      if (translationEnabledToggle.checked && realtimeAssistantToggle && realtimeAssistantToggle.checked) {
-        realtimeAssistantToggle.checked = false;
-        if (window.ConfigToggles) window.ConfigToggles.updateRealtimeAssistantStatus(false);
+      if (translationEnabledToggle.checked) {
+        if (window.ConfigToggles && window.ConfigToggles.disableNexaIfActive) {
+          window.ConfigToggles.disableNexaIfActive();
+        }
+        if (realtimeAssistantToggle && realtimeAssistantToggle.checked) {
+          realtimeAssistantToggle.checked = false;
+          if (window.ConfigToggles) window.ConfigToggles.updateRealtimeAssistantStatus(false);
+        }
       }
       ipcRenderer.send('set-translation-assistant-config', { enabled: translationEnabledToggle.checked });
     });

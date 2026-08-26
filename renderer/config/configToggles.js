@@ -145,6 +145,18 @@
     }
   }
 
+  function disableNexaIfActive() {
+    const nexaToggle = document.getElementById("nexa-toggle");
+    if (nexaToggle && nexaToggle.checked) {
+      nexaToggle.checked = false;
+      updateNexaStatus(false);
+      try {
+        const { ipcRenderer } = require("electron");
+        ipcRenderer.send("nexa:save-config", { enabled: false, onlyNexa: false });
+      } catch (_) {}
+    }
+  }
+
   window.ConfigToggles = {
     updateNexaStatus,
     updateGoogleTtsStatus,
@@ -163,5 +175,6 @@
     releaseOllamaLocalExclusivity,
     applyLiteUi,
     checkBackendToolsAvailability,
+    disableNexaIfActive,
   };
 })();

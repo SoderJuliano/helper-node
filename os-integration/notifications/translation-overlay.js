@@ -57,6 +57,37 @@
       .replace(/\n/g, '<br>');
   }
 
+  let userScrolledUp = false;
+  const messagesContainer = document.getElementById('messages');
+  if (messagesContainer) {
+    messagesContainer.addEventListener('wheel', (e) => {
+      if (e.deltaY < 0) {
+        userScrolledUp = true;
+      } else if (e.deltaY > 0) {
+        const distFromBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight;
+        if (distFromBottom <= 25) {
+          userScrolledUp = false;
+        }
+      }
+    }, { passive: true });
+
+    messagesContainer.addEventListener('scroll', () => {
+      const distFromBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight;
+      if (distFromBottom > 35) {
+        userScrolledUp = true;
+      } else if (distFromBottom <= 15) {
+        userScrolledUp = false;
+      }
+    }, { passive: true });
+  }
+
+  function scrollToBottomIfNeeded(force = false) {
+    if (!messagesContainer) return;
+    if (force || !userScrolledUp) {
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+  }
+
   function addMessage(data) {
     const { transcript, response, mode, type, id } = data || {};
     if (!transcript && !response) return;
@@ -64,7 +95,7 @@
     const empty = document.getElementById('empty');
     if (empty) empty.remove();
 
-    const container = document.getElementById('messages');
+    const container = messagesContainer;
     if (!container) return;
 
     if (type === 'image') {
@@ -74,7 +105,7 @@
       block.innerHTML = `<div class="img-section-label" style="color:#a78bfa;margin-top:0">📸 análise de tela</div>` +
         `<div class="image-response">${formatImageResponse(content)}</div>`;
       container.appendChild(block);
-      container.scrollTop = container.scrollHeight;
+      scrollToBottomIfNeeded();
       requestAnimationFrame(() => { if (api.requestTranslationResize) api.requestTranslationResize(); });
       return;
     }
@@ -137,15 +168,18 @@
       }
     }
 
-    container.scrollTop = container.scrollHeight;
+    scrollToBottomIfNeeded();
     requestAnimationFrame(() => {
       if (api.requestTranslationResize) api.requestTranslationResize();
     });
   }
 
   function clearMessages() {
-    const container = document.getElementById('messages');
-    if (container) container.innerHTML = '<div id="empty">Histórico limpo</div>';
+    const container = messagesContainer;
+    if (container) {
+      container.innerHTML = '<div id="empty">Histórico limpo</div>';
+      userScrolledUp = false;
+    }
   }
 
   document.getElementById('btn-left')?.addEventListener('click', () => {
