@@ -321,3 +321,20 @@
             color: #58a6ff;
             text-decoration: underline;
         }
+
+        /* =====================================================================
+           DRACULA SYNTAX COLORING ENHANCEMENTS (JSON, Gradle, Java, etc.)
+           ===================================================================== */
+        .cm-s-dracula .cm-property { color: #8be9fd !important; font-weight: 600; }
+        .cm-s-dracula .cm-string { color: #f1fa8c !important; }
+        .cm-s-dracula .cm-string-2 { color: #50fa7b !important; }
+        .cm-s-dracula .cm-number { color: #ffb86c !important; }
+        .cm-s-dracula .cm-atom { color: #ff79c6 !important; font-weight: 600; }
+        .cm-s-dracula .cm-keyword { color: #ff79c6 !important; font-weight: 600; }
+        .cm-s-dracula .cm-def { color: #50fa7b !important; }
+        .cm-s-dracula .cm-variable { color: #f8f8f2 !important; }
+        .cm-s-dracula .cm-variable-2 { color: #8be9fd !important; }
+        .cm-s-dracula .cm-type { color: #8be9fd !important; font-weight: 500; }
+        .cm-s-dracula .cm-meta { color: #ff79c6 !important; }
+        .cm-s-dracula .cm-comment { color: #6272a4 !important; font-style: italic; }
+        .cm-s-dracula .cm-operator { color: #ff79c6 !important; }

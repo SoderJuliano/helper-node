@@ -162,46 +162,27 @@
     openFiles.clear();
     const viewer = document.getElementById('file-viewer');
     if (viewer) viewer.classList.remove('open');
-    activePath = null;
     closeEditor();
     renderTabs();
   }
 
   async function closeOtherTabs(keepPath) {
-    const pathsToClose = [];
-    openFiles.forEach((doc, filePath) => {
-      if (filePath !== keepPath) {
-        pathsToClose.push(filePath);
-      }
-    });
-    for (const filePath of pathsToClose) {
-      openFiles.delete(filePath);
+    for (const filePath of Array.from(openFiles.keys())) {
+      if (filePath !== keepPath) openFiles.delete(filePath);
     }
-    if (activePath !== keepPath) {
-      await openFile(keepPath);
-    } else {
-      renderTabs();
-    }
+    if (activePath !== keepPath) await openFile(keepPath);
+    else renderTabs();
   }
 
   async function closeUnmodifiedTabs() {
-    const pathsToClose = [];
-    openFiles.forEach((doc, filePath) => {
-      if (!doc.dirty) {
-        pathsToClose.push(filePath);
-      }
-    });
-    for (const filePath of pathsToClose) {
-      openFiles.delete(filePath);
+    for (const [filePath, doc] of Array.from(openFiles.entries())) {
+      if (!doc.dirty) openFiles.delete(filePath);
     }
     if (!openFiles.has(activePath)) {
-      if (openFiles.size > 0) {
-        const nextPath = openFiles.keys().next().value;
-        await openFile(nextPath);
-      } else {
+      if (openFiles.size > 0) await openFile(openFiles.keys().next().value);
+      else {
         const viewer = document.getElementById('file-viewer');
         if (viewer) viewer.classList.remove('open');
-        activePath = null;
         closeEditor();
       }
     } else {
@@ -212,21 +193,14 @@
   async function closeTab(filePath) {
     const doc = openFiles.get(filePath);
     if (!doc) return;
-
-    if (cm && filePath === activePath) {
-      doc.content = cm.getValue();
-    }
-
+    if (cm && filePath === activePath) doc.content = cm.getValue();
     openFiles.delete(filePath);
 
     if (filePath === activePath) {
-      if (openFiles.size > 0) {
-        const nextPath = openFiles.keys().next().value;
-        await openFile(nextPath);
-      } else {
+      if (openFiles.size > 0) await openFile(openFiles.keys().next().value);
+      else {
         const viewer = document.getElementById('file-viewer');
         if (viewer) viewer.classList.remove('open');
-        activePath = null;
         closeEditor();
       }
     } else {
@@ -331,17 +305,22 @@
     if (!cmInst) return;
     const ext = extOf(filePath);
     const isDependencySource = filePath.includes('.jar!') || filePath.includes('.zip!');
+    const mode = (window.EditorConstants && window.EditorConstants.getModeForPath)
+      ? window.EditorConstants.getModeForPath(filePath)
+      : (CM_MODE_BY_EXT[ext] || null);
+    const label = (window.EditorConstants && window.EditorConstants.getLangLabel)
+      ? window.EditorConstants.getLangLabel(filePath)
+      : (LANG_LABEL_BY_EXT[ext] || (ext || 'texto').toUpperCase());
+
     if (langEl) {
-      langEl.textContent = (LANG_LABEL_BY_EXT[ext] || (ext || 'texto').toUpperCase()) + (isDependencySource ? ' · lib' : '');
+      langEl.textContent = label + (isDependencySource ? ' · lib' : '');
     }
-    cmInst.setOption('mode', CM_MODE_BY_EXT[ext] || null);
+    cmInst.setOption('mode', mode);
     cmInst.setOption('readOnly', isDependencySource);
 
     const indentConfig = (window.EditorConstants && typeof window.EditorConstants.detectIndentation === 'function')
       ? window.EditorConstants.detectIndentation(doc.content, ext)
-      : (ext === 'java' || ext === 'kt' || ext === 'cs' || ext === 'cpp' || ext === 'c' || ext === 'py'
-          ? { indentUnit: 4, tabSize: 4, indentWithTabs: false }
-          : { indentUnit: 2, tabSize: 2, indentWithTabs: false });
+      : { indentUnit: (ext === 'java' || ext === 'kt' || ext === 'py' ? 4 : 2), tabSize: (ext === 'java' || ext === 'kt' || ext === 'py' ? 4 : 2), indentWithTabs: false };
 
     cmInst.setOption('indentUnit', indentConfig.indentUnit);
     cmInst.setOption('tabSize', indentConfig.tabSize);
