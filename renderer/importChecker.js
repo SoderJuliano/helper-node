@@ -1,9 +1,8 @@
 // renderer/importChecker.js
 // Checador de imports do modo IDE (JS/TS via TypeScript Compiler API, Java via
-// classpath do Maven/Gradle) — sublinha em vermelho ondulado o import/símbolo
-// não resolvido, mostra a mensagem no hover e sugere o import mais provável
-// no botão direito, igual ao IntelliJ. Módulo isolado, plugado no CodeMirror
-// do editorController.js do mesmo jeito que renderer/codeNavigation.js.
+// classpath do Maven/Gradle e auto-import Spring/JDK) — sublinha em vermelho ondulado
+// o import/simbolo nao resolvido, mostra popup interativo no hover com botao de 1 clique
+// para importar e sugere auto-import no clique direito e Alt+Enter, igual ao IntelliJ.
 (function () {
   'use strict';
 
@@ -16,6 +15,7 @@
   let checkSeq = 0;
   let hoverPopup = null;
   let hoverPopupDiag = null;
+  let popupCloseTimer = null;
 
   function clearMarkers() {
     markers.forEach((m) => m.clear());
@@ -23,11 +23,19 @@
   }
 
   function removeHoverPopup() {
+    clearTimeout(popupCloseTimer);
     if (hoverPopup) {
       hoverPopup.remove();
       hoverPopup = null;
       hoverPopupDiag = null;
     }
+  }
+
+  function scheduleRemoveHoverPopup(delay = 180) {
+    clearTimeout(popupCloseTimer);
+    popupCloseTimer = setTimeout(() => {
+      removeHoverPopup();
+    }, delay);
   }
 
   async function runCheck(cm, filePath) {
@@ -40,7 +48,7 @@
     } catch (_) {
       diagnostics = [];
     }
-    // Resposta pode chegar depois de trocar de aba/arquivo ou de nova digitação — descarta se obsoleta
+
     if (mySeq !== checkSeq || activeCm !== cm || currentFilePath !== filePath) return;
 
     clearMarkers();
@@ -76,27 +84,73 @@
     return found;
   }
 
-  function showHoverPopup(diag, clientX, clientY) {
-    if (hoverPopupDiag === diag) return;
-    removeHoverPopup();
-    const popup = document.createElement('div');
-    popup.className = 'import-check-hover-popup';
-    popup.textContent = diag.message;
-    document.body.appendChild(popup);
+  // Insere `import <fqn>;` de forma inteligente, ordenada e sem duplicacoes
+  function insertJavaImport(cm, fqn) {
+    if (!cm || !fqn) return;
+    const doc = cm.getDoc();
+    const content = doc.getValue();
+    const lines = content.split('\n');
+    const importLines = [];
+    let packageLineIdx = -1;
+    let firstImportLineIdx = -1;
+    let lastImportLineIdx = -1;
 
-    let x = clientX;
-    let y = clientY + 18;
-    const w = popup.offsetWidth || 260;
-    if (x + w > window.innerWidth) x = window.innerWidth - w - 10;
-    popup.style.left = Math.max(10, x) + 'px';
-    popup.style.top = y + 'px';
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
 
-    hoverPopup = popup;
-    hoverPopupDiag = diag;
+      if (/^package\s+[a-zA-Z0-9_.]+\s*;/.test(trimmed)) {
+        packageLineIdx = i;
+        continue;
+      }
+
+      const impMatch = trimmed.match(/^import(?:\s+static)?\s+([a-zA-Z0-9_.]+)(\.\*)?\s*;/);
+      if (impMatch) {
+        if (firstImportLineIdx === -1) firstImportLineIdx = i;
+        lastImportLineIdx = i;
+
+        const importedFqn = impMatch[1];
+        const isWildcard = !!impMatch[2];
+
+        if (!isWildcard && importedFqn === fqn) return;
+        if (isWildcard) {
+          const pkg = fqn.substring(0, fqn.lastIndexOf('.'));
+          if (importedFqn === pkg) return;
+        }
+
+        importLines.push({ lineIdx: i, text: trimmed, fqn: importedFqn });
+      }
+    }
+
+    const newImportText = `import ${fqn};`;
+
+    if (firstImportLineIdx !== -1 && lastImportLineIdx !== -1) {
+      const allImports = importLines.map((item) => item.text);
+      allImports.push(newImportText);
+
+      allImports.sort((a, b) => {
+        const aIsStatic = a.startsWith('import static');
+        const bIsStatic = b.startsWith('import static');
+        if (aIsStatic !== bIsStatic) return aIsStatic ? 1 : -1;
+        return a.localeCompare(b);
+      });
+
+      const uniqueImports = Array.from(new Set(allImports));
+      const from = { line: firstImportLineIdx, ch: 0 };
+      const to = { line: lastImportLineIdx, ch: doc.getLine(lastImportLineIdx).length };
+      doc.replaceRange(uniqueImports.join('\n'), from, to);
+    } else if (packageLineIdx !== -1) {
+      const lineLen = doc.getLine(packageLineIdx).length;
+      doc.replaceRange('\n\n' + newImportText, { line: packageLineIdx, ch: lineLen });
+    } else {
+      doc.replaceRange(newImportText + '\n\n', { line: 0, ch: 0 });
+    }
+
+    if (currentFilePath) {
+      scheduleCheck(cm, currentFilePath);
+    }
   }
 
-  // Aplica um quick fix do TypeScript (auto-import etc.) — só mexe no arquivo
-  // atual; edits em outros arquivos (raro pra fix de import) ficam de fora.
   function applyTsFix(cm, filePath, fix) {
     const sameFile = fix.changes.filter((c) => c.fileName && c.fileName.replace(/\\/g, '/').toLowerCase() === filePath.replace(/\\/g, '/').toLowerCase());
     if (sameFile.length === 0) return;
@@ -107,25 +161,73 @@
       const to = doc.posFromIndex(tc.start + tc.length);
       doc.replaceRange(tc.newText, from, to);
     }
+    if (currentFilePath) {
+      scheduleCheck(cm, currentFilePath);
+    }
   }
 
-  // Insere `import <fqn>;` logo após o último import existente (ou após o
-  // `package ...;`, se não houver nenhum import ainda)
-  function insertJavaImport(cm, fqn) {
-    const doc = cm.getDoc();
-    const lineCount = doc.lineCount();
-    let insertAfterLine = -1;
-    for (let i = 0; i < lineCount; i++) {
-      const lineText = doc.getLine(i);
-      if (/^\s*import\s+/.test(lineText)) insertAfterLine = i;
-      else if (insertAfterLine === -1 && /^\s*package\s+/.test(lineText)) insertAfterLine = i;
+  function showHoverPopup(cm, filePath, diag, clientX, clientY) {
+    if (hoverPopupDiag === diag) {
+      clearTimeout(popupCloseTimer);
+      return;
     }
-    const importLine = `import ${fqn};`;
-    if (insertAfterLine === -1) {
-      doc.replaceRange(importLine + '\n\n', { line: 0, ch: 0 });
-    } else {
-      doc.replaceRange('\n' + importLine, { line: insertAfterLine, ch: doc.getLine(insertAfterLine).length });
+    removeHoverPopup();
+
+    const popup = document.createElement('div');
+    popup.className = 'import-check-hover-popup';
+
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'import-check-popup-msg';
+    msgDiv.textContent = diag.message;
+    popup.appendChild(msgDiv);
+
+    const isJava = filePath.toLowerCase().endsWith('.java');
+
+    if (isJava && Array.isArray(diag.suggestions) && diag.suggestions.length > 0) {
+      const actionsDiv = document.createElement('div');
+      actionsDiv.className = 'import-check-popup-actions';
+
+      const topCandidates = diag.suggestions.slice(0, 3);
+      topCandidates.forEach((fqn, idx) => {
+        const btn = document.createElement('button');
+        btn.className = 'import-check-popup-btn' + (idx === 0 ? ' primary' : '');
+        btn.innerHTML = `<span class="btn-icon">⚡</span> Importar <strong>${fqn}</strong>`;
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          removeHoverPopup();
+          insertJavaImport(cm, fqn);
+        });
+        actionsDiv.appendChild(btn);
+      });
+
+      if (diag.suggestions.length > 3) {
+        const moreHint = document.createElement('div');
+        moreHint.className = 'import-check-popup-more';
+        moreHint.textContent = `+${diag.suggestions.length - 3} opções (clique direito ou Alt+Enter)`;
+        actionsDiv.appendChild(moreHint);
+      }
+
+      popup.appendChild(actionsDiv);
     }
+
+    popup.addEventListener('mouseenter', () => {
+      clearTimeout(popupCloseTimer);
+    });
+    popup.addEventListener('mouseleave', () => {
+      scheduleRemoveHoverPopup(100);
+    });
+
+    document.body.appendChild(popup);
+
+    let x = clientX;
+    let y = clientY + 18;
+    const w = popup.offsetWidth || 280;
+    if (x + w > window.innerWidth) x = window.innerWidth - w - 10;
+    popup.style.left = Math.max(10, x) + 'px';
+    popup.style.top = y + 'px';
+
+    hoverPopup = popup;
+    hoverPopupDiag = diag;
   }
 
   async function showQuickFixMenu(cm, filePath, diag, clientX, clientY) {
@@ -137,7 +239,7 @@
 
     if (isJava) {
       items = (diag.suggestions || []).map((fqn) => ({
-        label: `Importar ${fqn}`,
+        label: `⚡ Importar ${fqn}`,
         run: () => insertJavaImport(cm, fqn),
       }));
     } else if (window.electronAPI && window.electronAPI.importCheckGetQuickFixes) {
@@ -193,7 +295,7 @@
     clearMarkers();
     removeHoverPopup();
     clearTimeout(debounceTimer);
-    runCheck(cm, filePath); // checagem imediata ao abrir/trocar de aba
+    runCheck(cm, filePath);
 
     const wrapper = cm.getWrapperElement();
     if (wrapper._hasImportCheck) return;
@@ -208,16 +310,36 @@
       const pos = cm.coordsChar({ left: e.clientX, top: e.clientY });
       const diags = diagnosticsAtPos(pos);
       if (diags.length > 0) {
-        showHoverPopup(diags[0], e.clientX, e.clientY);
+        showHoverPopup(cm, currentFilePath, diags[0], e.clientX, e.clientY);
       } else {
-        removeHoverPopup();
+        scheduleRemoveHoverPopup(120);
       }
     });
 
-    wrapper.addEventListener('mouseleave', removeHoverPopup);
+    wrapper.addEventListener('mouseleave', () => {
+      scheduleRemoveHoverPopup(150);
+    });
 
-    // Captura ANTES do menu de contexto do codeNavigation.js: só intercepta
-    // (e some com o clique direito padrão) quando há diagnóstico na posição.
+    // Atalho Alt + Enter para auto-import imediato (estilo IntelliJ)
+    cm.on('keydown', (cmInst, e) => {
+      if (e.altKey && e.key === 'Enter') {
+        const cur = cmInst.getCursor();
+        const diags = diagnosticsAtPos(cur);
+        if (diags.length > 0) {
+          e.preventDefault();
+          e.stopPropagation();
+          const d = diags[0];
+          if (Array.isArray(d.suggestions) && d.suggestions.length === 1) {
+            insertJavaImport(cmInst, d.suggestions[0]);
+          } else {
+            const coords = cmInst.cursorCoords(true, 'page');
+            showQuickFixMenu(cmInst, currentFilePath, d, coords.left, coords.bottom);
+          }
+        }
+      }
+    });
+
+    // Menu de contexto com clique direito
     wrapper.addEventListener('contextmenu', (e) => {
       const pos = cm.coordsChar({ left: e.clientX, top: e.clientY });
       const diags = diagnosticsAtPos(pos);
@@ -231,3 +353,4 @@
 
   window.ImportChecker = { attach: attachImportChecker };
 })();
+
