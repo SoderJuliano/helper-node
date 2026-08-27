@@ -12,10 +12,20 @@
         } else {
             const attach = (btn, fn) => {
                 if (!btn) return;
-                btn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (typeof fn === 'function') fn();
+                const handler = (e) => {
+                    if (e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }
+                    try {
+                        if (typeof fn === 'function') fn();
+                    } catch (err) {
+                        console.warn('[windowControls] Erro ao executar acao de janela:', err);
+                    }
+                };
+                btn.addEventListener('click', handler);
+                btn.addEventListener('mousedown', (e) => {
+                    if (e) e.stopPropagation();
                 });
             };
             attach(minBtn, () => window.electronAPI.minimizeWindow && window.electronAPI.minimizeWindow());

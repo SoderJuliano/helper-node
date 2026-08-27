@@ -81,50 +81,7 @@
         .drag-area { position: absolute; top: 0; left: 0; width: calc(100% - 130px); height: 32px; -webkit-app-region: drag; z-index: 15; pointer-events: none; }
         .hidden { opacity: 0; pointer-events: none; }
 
-        /* Custom Window Controls */
-        .win-controls-overlay {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            display: flex;
-            gap: 6px;
-            z-index: 9999;
-            -webkit-app-region: no-drag !important;
-            pointer-events: auto !important;
-        }
-        .win-controls-overlay button,
-        .win-controls-overlay .win-btn,
-        .win-btn {
-            -webkit-app-region: no-drag !important;
-            pointer-events: auto !important;
-            background: rgba(255, 255, 255, 0.08);
-            border: none;
-            color: var(--text-2);
-            width: 28px;
-            height: 28px;
-            border-radius: 6px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            font-size: 11px;
-            transition: background 0.2s, color 0.2s;
-            padding: 0;
-            margin: 0;
-            outline: none;
-        }
-        .win-controls-overlay button:hover,
-        .win-controls-overlay .win-btn:hover,
-        .win-btn:hover {
-            background: rgba(255, 255, 255, 0.16);
-            color: var(--text);
-        }
-        .win-controls-overlay button.win-close-btn:hover,
-        .win-controls-overlay .win-close-btn:hover,
-        .win-btn.win-close-btn:hover {
-            background: #f87171 !important;
-            color: #fff !important;
-        }
+
 
         /* Painel de atalhos (commands) legado — escondido: usamos a sidebar.
            Mas mantemos o container no DOM (contrato). */

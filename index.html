@@ -66,12 +66,6 @@
 </head>
 <body>
     <div id="app-shell">
-        <!-- Custom Window Controls (Windows/macOS) -->
-        <div class="win-controls-overlay" id="win-controls-overlay">
-            <button class="win-btn win-min-btn" id="main-win-min-btn" title="Minimizar">&#9472;</button>
-            <button class="win-btn win-max-btn" id="main-win-max-btn" title="Maximizar">&#9633;</button>
-            <button class="win-btn win-close-btn" id="main-win-close-btn" title="Fechar">&#10005;</button>
-        </div>
         <!-- ===================== SIDEBAR ===================== -->
         <aside id="sidebar">
             <button class="sidebar-collapse-btn" id="sidebar-collapse-btn" title="Esconder sidebar (Ctrl+B)">
@@ -366,6 +360,18 @@
                 </div>
             </div>
         </main>
+        <!-- Controles customizados de janela (Windows/macOS) -->
+        <div class="win-controls-overlay" id="win-controls-overlay">
+            <button class="win-btn win-min-btn" id="main-win-min-btn" title="Minimizar" type="button">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="1" y1="5" x2="9" y2="5"/></svg>
+            </button>
+            <button class="win-btn win-max-btn" id="main-win-max-btn" title="Maximizar" type="button">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.5" y="1.5" width="7" height="7" rx="1"/></svg>
+            </button>
+            <button class="win-btn win-close-btn" id="main-win-close-btn" title="Fechar" type="button">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="2" y1="2" x2="8" y2="8"/><line x1="8" y1="2" x2="2" y2="8"/></svg>
+            </button>
+        </div>
     </div>
 
     <!-- Elementos preservados (contrato do &lt;script&gt;) -->
@@ -424,11 +430,7 @@
         <button id="agentic-stop-btn" class="agentic-stop-btn" title="Interromper processo">×</button>
     </div>
 
-    <!-- Controller do editor de código (#file-viewer). Script separado (não
-         inline) pra manter o estado de edição isolado do resto da UI — ver
-         ARCHITECTURE.md > Editor de código. Precisa carregar antes do script
-         principal (abaixo), que referencia window.EditorController nos
-         handlers de clique (tree, chip da IA). -->
+    <!-- Controller do editor de código (#file-viewer) -->
     <script src="renderer/editor/editorConstants.js"></script>
     <script src="renderer/editor/editorAutocomplete.js"></script>
     <script src="renderer/editor/editorTabs.js"></script>
@@ -441,8 +443,6 @@
     <script src="renderer/codeNavContextMenu.js"></script>
     <script src="renderer/codeNavigation.js"></script>
     <script src="renderer/importChecker.js"></script>
-
-    
     <!-- Modularized Frontend Scripts -->
     <script src="renderer/windowControls.js"></script>
     <script src="renderer/modelSelectorMenu.js"></script>
