@@ -40,12 +40,16 @@
 
 .app-runner-gutter-marker.is-running {
     color: #38bdf8;
-    animation: app-runner-pulse 1.6s infinite ease-in-out;
+    opacity: 1;
 }
 
-@keyframes app-runner-pulse {
-    0%, 100% { transform: scale(1); opacity: 0.85; }
-    50% { transform: scale(1.2); opacity: 1; }
+.app-runner-gutter-marker.is-running svg {
+    animation: app-runner-spin 1.4s linear infinite;
+}
+
+@keyframes app-runner-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
 }
 
 /* === Popover de Ação da Calha === */
@@ -186,14 +190,44 @@
     border-radius: 4px;
     font-family: var(--font-ui, system-ui, sans-serif);
     text-transform: capitalize;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
 }
 
 .app-runner-status-badge.status-idle { background: rgba(156, 163, 175, 0.15); color: #9ca3af; }
 .app-runner-status-badge.status-starting { background: rgba(250, 204, 21, 0.15); color: #facc15; }
-.app-runner-status-badge.status-running { background: rgba(56, 189, 248, 0.15); color: #38bdf8; animation: app-runner-pulse 1.4s infinite ease-in-out; }
+.app-runner-status-badge.status-running { background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); }
 .app-runner-status-badge.status-completed { background: rgba(74, 222, 128, 0.15); color: #4ade80; }
 .app-runner-status-badge.status-stopped { background: rgba(248, 113, 113, 0.15); color: #f87171; }
 .app-runner-status-badge.status-error { background: rgba(248, 113, 113, 0.25); color: #ef4444; }
+
+.app-runner-wave-bars {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 10px;
+    margin-right: 2px;
+}
+.app-runner-wave-bars span {
+    display: inline-block;
+    width: 2px;
+    background: #38bdf8;
+    border-radius: 1px;
+    animation: appRunnerWave 0.8s ease-in-out infinite alternate;
+}
+.app-runner-wave-bars span:nth-child(1) { height: 30%; animation-delay: 0s; }
+.app-runner-wave-bars span:nth-child(2) { height: 95%; animation-delay: 0.2s; }
+.app-runner-wave-bars span:nth-child(3) { height: 55%; animation-delay: 0.4s; }
+
+.app-runner-wave-bars.starting span {
+    background: #facc15;
+}
+
+@keyframes appRunnerWave {
+    0% { height: 25%; opacity: 0.5; }
+    100% { height: 100%; opacity: 1; }
+}
 
 .app-runner-port-link {
     font-size: 11px;

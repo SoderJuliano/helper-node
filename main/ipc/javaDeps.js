@@ -50,4 +50,13 @@ module.exports = function registerJavaDepsIPC() {
       return { ok: false, error: e.message };
     }
   });
+
+  ipcMain.handle('java-deps:get-sync-log', async (_event, { projectDir } = {}) => {
+    try {
+      if (!projectDir) return '';
+      return javaImportChecker.getSyncLog(projectDir);
+    } catch (e) {
+      return 'Erro ao obter logs: ' + e.message;
+    }
+  });
 };

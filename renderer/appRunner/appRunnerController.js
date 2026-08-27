@@ -306,7 +306,14 @@
         stopped: 'Parado',
         error: 'Erro',
       };
-      this.statusBadgeEl.textContent = labels[this.currentStatus] || this.currentStatus;
+
+      if (this.currentStatus === 'running') {
+        this.statusBadgeEl.innerHTML = '<span class="app-runner-wave-bars"><span></span><span></span><span></span></span> Executando';
+      } else if (this.currentStatus === 'starting') {
+        this.statusBadgeEl.innerHTML = '<span class="app-runner-wave-bars starting"><span></span><span></span><span></span></span> Iniciando…';
+      } else {
+        this.statusBadgeEl.textContent = labels[this.currentStatus] || this.currentStatus;
+      }
 
       if (this.btnStop) {
         this.btnStop.style.display = (this.currentStatus === 'running' || this.currentStatus === 'starting') ? 'inline-flex' : 'none';

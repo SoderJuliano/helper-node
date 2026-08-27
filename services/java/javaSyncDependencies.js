@@ -1,13 +1,14 @@
 // services/java/javaSyncDependencies.js
-// Sincronizacao e download de dependencias Maven e Gradle (estilo IntelliJ).
+// Sincronizacao, download e log de dependencias Maven e Gradle (estilo IntelliJ).
 
 const fs = require('fs');
 const path = require('path');
-const { execFile } = require('child_process');
+const { spawn } = require('child_process');
 const { findJavaProjectRoot, normalizePath } = require('./javaProjectRoot.js');
 const { getOrBuildProjectIndex, projectCache, projectCacheDisk, saveDiskCache, notifyJavaDepsChanged } = require('./javaProjectCache.js');
 
 const DOWNLOAD_TIMEOUT_MS = 180000; // 3 minutos
+const syncLogsMap = new Map();
 
 function detectProjectType(filePath) {
   const found = findJavaProjectRoot(filePath);
@@ -41,10 +42,14 @@ function clearCacheForProject(rootDir) {
   saveDiskCache();
 }
 
+function getSyncLog(rootDir) {
+  const norm = normalizePath(rootDir);
+  return syncLogsMap.get(norm) || 'Sem logs de sincronizacao disponiveis.';
+}
+
 function downloadDependenciesAsync(found, callback) {
   const { rootDir, type } = found;
   const isWin = process.platform === 'win32';
-
   let cmd = '';
   let args = [];
 
@@ -58,11 +63,50 @@ function downloadDependenciesAsync(found, callback) {
     args = ['--refresh-dependencies', 'dependencies', '-q'];
   }
 
-  execFile(cmd, args, { cwd: rootDir, timeout: DOWNLOAD_TIMEOUT_MS, maxBuffer: 64 * 1024 * 1024, shell: true }, (err) => {
-    if (err) {
-      // Fallback tranquilo se go-offline falhar
-      console.warn('[javaSyncDependencies] Nota ao baixar dependencias (aviso)', err.message);
-    }
+  const norm = normalizePath(rootDir);
+  const logBuffer = [`[helper-node] Iniciando download de dependencias (${type}) em: ${rootDir}\nExecutando: ${cmd} ${args.join(' ')}\n\n`];
+  syncLogsMap.set(norm, logBuffer.join(''));
+
+  let proc;
+  try {
+    proc = spawn(cmd, args, { cwd: rootDir, shell: true });
+  } catch (err) {
+    logBuffer.push(`Erro ao iniciar processo: ${err.message}\n`);
+    syncLogsMap.set(norm, logBuffer.join(''));
+    callback(null);
+    return;
+  }
+
+  const timeout = setTimeout(() => {
+    try { proc.kill(); } catch (_) {}
+    logBuffer.push('\n[aviso] Timeout de download atingido.\n');
+    syncLogsMap.set(norm, logBuffer.join(''));
+    callback(null);
+  }, DOWNLOAD_TIMEOUT_MS);
+
+  proc.stdout.on('data', (d) => {
+    logBuffer.push(d.toString());
+    if (logBuffer.length > 500) logBuffer.shift();
+    syncLogsMap.set(norm, logBuffer.join(''));
+  });
+
+  proc.stderr.on('data', (d) => {
+    logBuffer.push(d.toString());
+    if (logBuffer.length > 500) logBuffer.shift();
+    syncLogsMap.set(norm, logBuffer.join(''));
+  });
+
+  proc.on('close', (code) => {
+    clearTimeout(timeout);
+    logBuffer.push(`\n[helper-node] Processo finalizado com codigo ${code}\n`);
+    syncLogsMap.set(norm, logBuffer.join(''));
+    callback(null);
+  });
+
+  proc.on('error', (err) => {
+    clearTimeout(timeout);
+    logBuffer.push(`\n[erro] ${err.message}\n`);
+    syncLogsMap.set(norm, logBuffer.join(''));
     callback(null);
   });
 }
@@ -88,7 +132,6 @@ async function syncDependencies(dirPath, { forceDownload = true } = {}) {
     return { ok: false, error: 'Nao foi possivel inicializar o indice do projeto.' };
   }
 
-  // Aguarda ate o status ficar ready ou error (ate 10 segundos sync ou retorna building)
   let waited = 0;
   while (entry.status === 'building' && waited < 10000) {
     await new Promise(r => setTimeout(r, 500));
@@ -117,4 +160,5 @@ module.exports = {
   detectProjectType,
   clearCacheForProject,
   syncDependencies,
+  getSyncLog,
 };

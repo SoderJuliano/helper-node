@@ -327,21 +327,13 @@ var creatingFolderParent = null;
                     syncBtn.style.cssText = 'margin-left:auto; background:transparent; border:none; color:var(--text-muted, #8b949e); cursor:pointer; padding:2px 4px; border-radius:3px; display:inline-flex; align-items:center; opacity:0.7; transition:all .15s;';
                     syncBtn.addEventListener('mouseenter', () => { syncBtn.style.opacity = '1'; syncBtn.style.color = '#38bdf8'; });
                     syncBtn.addEventListener('mouseleave', () => { syncBtn.style.opacity = '0.7'; syncBtn.style.color = 'var(--text-muted, #8b949e)'; });
-                    syncBtn.addEventListener('click', async (ev) => {
+                    syncBtn.addEventListener('click', (ev) => {
                         ev.stopPropagation();
-                        if (typeof showToast === 'function') showToast('Sincronizando dependências (Maven/Gradle)...');
-                        syncBtn.style.transform = 'rotate(180deg)';
-                        try {
-                            const projectDir = e.projectRoot || e.path.replace(/::dependencies$/, '');
-                            const res = await window.electronAPI.javaDepsSync({ projectDir, forceDownload: true });
-                            if (res && res.ok && typeof showToast === 'function') {
-                                const tool = res.type === 'maven' ? 'Maven' : (res.type === 'gradle' ? 'Gradle' : 'Java');
-                                showToast(`✓ Dependências ${tool} sincronizadas! (${res.jarCount || 0} bibliotecas)`);
-                            }
-                        } catch (err) {
-                            if (typeof showToast === 'function') showToast('Erro ao sincronizar dependências: ' + err.message);
-                        } finally {
-                            if (typeof window.renderTree === 'function') window.renderTree();
+                        const projectDir = e.projectRoot || e.path.replace(/::dependencies$/, '');
+                        if (typeof window.triggerJavaSync === 'function') {
+                            window.triggerJavaSync(projectDir, true);
+                        } else if (window.electronAPI && window.electronAPI.javaDepsSync) {
+                            window.electronAPI.javaDepsSync({ projectDir, forceDownload: true });
                         }
                     });
                     node.appendChild(syncBtn);

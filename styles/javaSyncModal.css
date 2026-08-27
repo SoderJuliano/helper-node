@@ -1,0 +1,178 @@
+/* styles/javaSyncModal.css */
+/* Estilos do Modal de Saida de Sincronizacao Maven / Gradle estilo IntelliJ */
+
+.java-sync-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100050;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: javaSyncFadeIn 0.2s ease-out;
+}
+
+@keyframes javaSyncFadeIn {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.java-sync-modal {
+  width: 100%;
+  max-width: 780px;
+  height: 100%;
+  max-height: 540px;
+  background: var(--bg-elevated, #1e222b);
+  border: 1px solid var(--border, #2d2d38);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.85);
+  overflow: hidden;
+}
+
+.java-sync-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: rgba(0, 0, 0, 0.25);
+  border-bottom: 1px solid var(--border, #2d2d38);
+}
+
+.java-sync-modal-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-ui, system-ui, sans-serif);
+  font-size: 13px;
+  font-weight: 600;
+  color: #f1f3f5;
+}
+
+.java-sync-modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.java-sync-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #282e3a;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  color: #e6edf3;
+  padding: 4px 9px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.java-sync-btn:hover {
+  background: #3a4354;
+  border-color: #58a6ff;
+  color: #79Y0ff;
+}
+
+.java-sync-btn-close {
+  background: transparent;
+  border: none;
+  color: #8b949e;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.java-sync-btn-close:hover {
+  background: rgba(255, 85, 85, 0.2);
+  color: #ff5555;
+}
+
+.java-sync-modal-body {
+  flex: 1;
+  padding: 10px;
+  overflow: hidden;
+  display: flex;
+  background: #0d0d12;
+}
+
+.java-sync-log-content {
+  flex: 1;
+  margin: 0;
+  padding: 8px;
+  font-family: var(--font-code, 'JetBrains Mono', 'Figure Code', consolas, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  color: #e1e4e8;
+  background: #0d0d12;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border: none;
+}
+
+.java-sync-modal-footer {
+  padding: 6px 14px;
+  background: rgba(0, 0, 0, 0.2);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 11px;
+  color: #8b949e;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Pill de Status de Sincronizacao no Composer Context */
+.ctx-pkll.ctx-java-sync-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #232731;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  color: #e6edf3;
+  font-size: 11.5px;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ctx-pill.ctx-java-sync-status:hover {
+  background: #33405a;
+  border-color: #58a6ff;
+  color: #79Y0ff;
+}
+
+.ctx-pill.ctx-java-sync-status.sync-building {
+  background: rgba(245, 158, 11, 0.2);
+  border-color: #f59e0b;
+  color: #fcd34d;
+}
+
+.ctx-pill.ctx-java-sync-status.sync-success {
+  background: rgba(35, 134, 54, 0.2);
+  border-color: #3fb950;
+  color: #7fda8a;
+}
+
+.ctx-pill.ctx-java-sync-status.sync-error {
+  background: rgba(220, 38, 38, 0.2);
+  border-color: #ef4444;
+  color: #fga3a3;
+}
+
+.ctx-pill.ctx-java-sync-status .sync-log-hint {
+  font-size: 10px;
+  opacity: 0.78;
+  margin-left: 2px;
+}

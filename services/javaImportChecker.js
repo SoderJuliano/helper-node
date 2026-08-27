@@ -41,50 +41,15 @@ function getDiagnostics(filePath, content) {
   if (!isSupported(filePath) || typeof content !== 'string') return [];
   const diagnostics = [];
 
-  let proj = null;
-  try {
-    proj = getOrBuildProjectIndex(filePath);
-  } catch (_) {}
-
-  // 1. Checa imports quebrados no cabecalho (se o classpath do projeto estiver pronto)
-  if (proj && proj.status === 'ready') {
-    const imports = collectImports(content);
-    for (const imp of imports) {
-      if (JDK_ALWAYS_OK_PREFIXES.some((p) => imp.fqn.startsWith(p))) continue;
-      if (imp.isWildcard) {
-        if (!proj.knownPackages.has(imp.fqn)) {
-          diagnostics.push({
-            line: imp.line,
-            col: 1,
-            endLine: imp.line,
-            endCol: 80,
-            fqn: imp.fqn,
-            message: `Pacote '${imp.fqn}' não foi encontrado no classpath.`,
-            suggestions: [],
-          });
-        }
-      } else {
-        if (!proj.allClasses.has(imp.fqn)) {
-          const simpleName = imp.fqn.split('.').pop();
-          const suggestions = suggestForSimpleName(simpleName, proj.simpleNameIndex);
-          diagnostics.push({
-            line: imp.line,
-            col: 1,
-            endLine: imp.line,
-            endCol: 80,
-            fqn: imp.fqn,
-            message: `Não foi possível resolver o import '${imp.fqn}'.`,
-            suggestions,
-          });
-        }
-      }
-    }
-  }
-
-  // 2. Extrai simbolos nao resolvidos no corpo do codigo e sugere auto-imports (Spring/JDK/Projeto)
+  // Extrai simbolos, anotacoes e classes nao resolvidos no corpo do codigo
+  // (ex: ObjectUtils.isNull, Arrays.stream, @RestController, ArrayList)
+  // e sugere auto-imports corretos (Spring Boot, JDK, Projeto).
+  // Nunca sublinha as linhas de 'import ...' existentes no topo do arquivo.
   try {
     const autoImportDiags = JavaAutoImportService.getDiagnostics(filePath, content);
-    diagnostics.push(...autoImportDiags);
+    if (Array.isArray(autoImportDiags)) {
+      diagnostics.push(...autoImportDiags);
+    }
   } catch (e) {
     console.warn('[javaImportChecker] Erro ao extrair auto-imports:', e.message);
   }
@@ -92,7 +57,7 @@ function getDiagnostics(filePath, content) {
   return diagnostics;
 }
 
-const { detectProjectType, syncDependencies, clearCacheForProject } = require('./java/javaSyncDependencies.js');
+const { detectProjectType, syncDependencies, clearCacheForProject, getSyncLog } = require('./java/javaSyncDependencies.js');
 
 module.exports = {
   isSupported,
@@ -110,5 +75,6 @@ module.exports = {
   detectProjectType,
   syncDependencies,
   clearCacheForProject,
+  getSyncLog,
 };
 

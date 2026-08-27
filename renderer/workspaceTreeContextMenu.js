@@ -20,25 +20,20 @@
   const SVGI_REFRESH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; color:#a78bfa;"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>';
 
   async function triggerSyncDependencies(targetPath, forceDownload = true) {
-    if (!window.electronAPI || !window.electronAPI.javaDepsSync) return;
-    if (typeof showToast === 'function') {
-      showToast('Sincronizando dependências (Maven/Gradle)...');
-    }
-    try {
-      const res = await window.electronAPI.javaDepsSync({ projectDir: targetPath, forceDownload });
-      if (res && res.ok) {
-        if (typeof showToast === 'function') {
+    if (typeof window.triggerJavaSync === 'function') {
+      window.triggerJavaSync(targetPath, forceDownload);
+    } else if (window.electronAPI && window.electronAPI.javaDepsSync) {
+      if (typeof showToast === 'function') showToast('Sincronizando dependências (Maven/Gradle)...');
+      try {
+        const res = await window.electronAPI.javaDepsSync({ projectDir: targetPath, forceDownload });
+        if (res && res.ok && typeof showToast === 'function') {
           const tool = res.type === 'maven' ? 'Maven' : (res.type === 'gradle' ? 'Gradle' : 'Java');
           showToast(`✓ Dependências ${tool} sincronizadas! (${res.jarCount || 0} bibliotecas)`);
         }
-      } else if (res && res.error) {
-        if (typeof showToast === 'function') showToast('Aviso: ' + res.error);
+      } catch (err) {
+        if (typeof showToast === 'function') showToast('Erro: ' + err.message);
       }
-    } catch (err) {
-      if (typeof showToast === 'function') showToast('Erro ao sincronizar dependências: ' + err.message);
-    }
-    if (typeof window.renderTree === 'function') {
-      window.renderTree();
+      if (typeof window.renderTree === 'function') window.renderTree();
     }
   }
 

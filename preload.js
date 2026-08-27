@@ -125,6 +125,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   javaDepsListClasses: (payload) => ipcRenderer.invoke("java-deps:list-classes", payload),
   javaDepsDetect: (payload) => ipcRenderer.invoke("java-deps:detect", payload),
   javaDepsSync: (payload) => ipcRenderer.invoke("java-deps:sync", payload),
+  javaDepsGetSyncLog: (payload) => ipcRenderer.invoke("java-deps:get-sync-log", payload),
   onJavaDepsChanged: (cb) => ipcRenderer.on("java-deps-changed", (event, data) => cb(data)),
   onShortcutsChanged: (callback) => ipcRenderer.on("shortcuts-changed", () => callback()),
   getDebugModeStatus: () => ipcRenderer.invoke("get-debug-mode-status"), // Added for debug mode access

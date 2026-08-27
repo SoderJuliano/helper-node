@@ -59,6 +59,9 @@ assert.equal(arrayListSuggestions[0].fqn, 'java.util.ArrayList');
 const arraysSuggestions = rankCandidates('Arrays');
 assert.equal(arraysSuggestions[0].fqn, 'java.util.Arrays');
 
+const objectUtilsSuggestions = rankCandidates('ObjectUtils');
+assert.equal(objectUtilsSuggestions[0].fqn, 'org.springframework.util.ObjectUtils');
+
 const dateSuggestions = rankCandidates('Date');
 assert.equal(dateSuggestions[0].fqn, 'java.util.Date', 'java.util.Date deve ter precedencia sobre java.sql.Date');
 
@@ -95,6 +98,8 @@ assert(arrayListDiag.line > 0 && arrayListDiag.col > 0, 'Linha e coluna devem se
 
 const allDiags = javaImportChecker.getDiagnostics(filePath, javaSample);
 assert(allDiags.some(d => d.symbolName === 'ArrayList'), 'javaImportChecker deve retornar auto-imports');
-console.log('  ok   JavaAutoImportService e javaImportChecker geram diagnosticos com sugestoes prontas para o CodeMirror');
+// Garante que a linha 18 (import java.util.List;) NUNCA receba diagnostico de erro
+assert(!allDiags.some(d => d.line === 18), 'Linhas de import no cabecalho nunca devem ser sublinhadas');
+console.log('  ok   JavaAutoImportService e javaImportChecker geram diagnosticos com sugestoes prontas para o CodeMirror (sem sublinhar imports existentes)');
 
 console.log('\nTodos os testes do Auto-Import Java & Spring Boot passaram com sucesso! ί\n\ninfo: Feature pronta para uso no modo IDE.');
