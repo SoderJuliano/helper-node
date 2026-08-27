@@ -371,103 +371,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     requestAnimationFrame(renderLoop);
   }
 
-  // Lógica de drag-and-drop da Nexa
-  let isDraggingWindow = false;
+  // 4. Inicializa o gerenciador de arraste de janela com proteção contra interrupção de trabalho/pensamento
+  if (typeof NexaDragHandler !== "undefined") {
+    new NexaDragHandler({
+      canvas,
+      animController,
+      getCurrentAnimation: () => currentVideoAnimation,
+      setCurrentAnimation: (anim) => { currentVideoAnimation = anim; },
+      getIsSleeping: () => isSleeping
+    });
+  }
 
-  canvas.addEventListener("mousedown", (e) => {
-    if (e.button === 0) { // Botão esquerdo do mouse
-      isDraggingWindow = true;
-      canvas.style.cursor = "grabbing";
-
-      // Inicia o arraste da janela Electron
-      if (window.electronAPI && window.electronAPI.startWindowDrag) {
-        window.electronAPI.startWindowDrag();
-      }
-
-      // Se ela estiver dormindo, NÃO interrompe o sono nem inicia a animação de flutuação!
-      if (isSleeping) {
-        console.log("[NexaRenderer] Janela arrastada enquanto dorme. Mantendo o sono.");
-        return;
-      }
-
-      // Interrompe a animação de vídeo atual
-      if (currentVideoAnimation && currentVideoAnimation.isPlaying) {
-        currentVideoAnimation.stop();
-      }
-
-      // Inicia a animação de flutuar (floating) em loop via Lottie
-      const floatingLottiePath = "renderer/nexa/assets/lottie/floating_lottie/animations/main.json";
-      console.log("[NexaRenderer] Arrastando janela. Iniciando animação de flutuação.");
-      currentVideoAnimation = new NexaLottieAnimation({
-        animationPath: floatingLottiePath,
-        loop: true
-      });
-      currentVideoAnimation.play();
-    }
-  });
-
-  window.addEventListener("mouseup", (e) => {
-    if (isDraggingWindow) {
-      isDraggingWindow = false;
-      canvas.style.cursor = "grab";
-
-      // Finaliza o arraste da janela Electron
-      if (window.electronAPI && window.electronAPI.endWindowDrag) {
-        window.electronAPI.endWindowDrag();
-      }
-
-      // Se ela estiver dormindo, NÃO inicia animação de pouso!
-      if (isSleeping) {
-        console.log("[NexaRenderer] Janela solta enquanto dorme. Mantendo o sono.");
-        return;
-      }
-
-      // Prepara a animação de queda/aterrissagem (landing) sem loop, a 1.5x de velocidade via Lottie,
-      // cortando os primeiros 150ms (piscada estática) e os últimos 350ms (quadrado branco do final)
-      const landingLottiePath = "renderer/nexa/assets/lottie/landing_lottie/animations/main.json";
-      console.log("[NexaRenderer] Soltou janela. Iniciando carregamento do pouso...");
-      
-      const landingAnim = new NexaLottieAnimation({
-        animationPath: landingLottiePath,
-        introTrimEndMs: 350,
-        loop: false,
-        playbackRate: 1.5,
-        trimStartMs: 150
-      });
-      landingAnim.play();
-
-      const oldAnim = currentVideoAnimation;
-
-      // Espera até que o primeiro frame da animação de pouso esteja carregado e pronto para renderizar
-      const checkReadyInterval = setInterval(() => {
-        if (landingAnim.canvas) {
-          clearInterval(checkReadyInterval);
-          
-          if (oldAnim && oldAnim.isPlaying && oldAnim !== landingAnim) {
-            oldAnim.stop();
-          }
-          
-          if (currentVideoAnimation === oldAnim) {
-            currentVideoAnimation = landingAnim;
-            console.log("[NexaRenderer] Animação de pouso pronta. Trocando de flutuação para pouso.");
-          }
-        }
-      }, 16);
-
-      // Limite de segurança de 500ms para fallback
-      setTimeout(() => {
-        clearInterval(checkReadyInterval);
-        if (currentVideoAnimation === oldAnim) {
-          if (oldAnim && oldAnim.isPlaying) {
-            oldAnim.stop();
-          }
-          currentVideoAnimation = landingAnim;
-        }
-      }, 500);
-    }
-  });
-
-  // 4. Inicializa suporte a captura de webcam (Olhos da Nexa)
+  // 5. Inicializa suporte a captura de webcam (Olhos da Nexa)
   if (typeof initNexaWebcam === "function") {
     initNexaWebcam();
   }

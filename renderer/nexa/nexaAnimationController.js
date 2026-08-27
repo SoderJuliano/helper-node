@@ -39,7 +39,7 @@ class NexaAnimationController {
   }
 
   setState(newState) {
-    const valid = ["IDLE", "LISTENING", "THINKING", "SPEAKING"];
+    const valid = ["IDLE", "LISTENING", "THINKING", "SPEAKING", "WORKING"];
     if (!valid.includes(newState)) {
       console.warn("[NexaAnimationController] Estado inválido:", newState);
       return;
