@@ -76,7 +76,7 @@ class CopilotCliProvider {
     const filesBefore = new Map();
     const emittedFiles = new Set();
     try {
-      const out = execSync('git status --porcelain', { cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], timeout: 2000 });
+      const out = execSync('git --no-optional-locks status --porcelain', { cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], timeout: 2000 });
       out.split(/\r?\n/).forEach(line => {
         if (!line) return;
         const st = line.slice(0, 2);
@@ -87,7 +87,7 @@ class CopilotCliProvider {
 
     const emitNewFileChanges = () => {
       try {
-        const out = execSync('git status --porcelain', { cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], timeout: 2000 });
+        const out = execSync('git --no-optional-locks status --porcelain', { cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], timeout: 2000 });
         out.split(/\r?\n/).forEach(line => {
           if (!line) return;
           const st = line.slice(0, 2);
@@ -227,10 +227,10 @@ class CopilotCliProvider {
 
       try {
         const fileDir = path.dirname(absPath);
-        const rawGitRoot = execSync('git rev-parse --show-toplevel', { cwd: fileDir, encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+        const rawGitRoot = execSync('git --no-optional-locks rev-parse --show-toplevel', { cwd: fileDir, encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
         const gitRoot = path.normalize(rawGitRoot);
         const relPath = path.relative(gitRoot, absPath).replace(/\\/g, '/');
-        content = execSync(`git show :"${relPath}"`, { cwd: gitRoot, stdio: ['pipe', 'pipe', 'ignore'], timeout: 1500 }).toString('utf8');
+        content = execSync(`git --no-optional-locks show :"${relPath}"`, { cwd: gitRoot, stdio: ['pipe', 'pipe', 'ignore'], timeout: 1500 }).toString('utf8');
       } catch (_) {
         content = '';
       }

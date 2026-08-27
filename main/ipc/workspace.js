@@ -1,19 +1,5 @@
 // main/ipc/workspace.js
-const {
-  electron, path, os, crypto, exec, spawn, util, fs, fs2,
-  BackendService, GeminiCliProvider, ClaudeCliProvider, TesseractService,
-  OpenAIService, RealtimeAssistantService, RealtimeOpenAiService, ipcService,
-  configService, edition, knowledgeBase, fileEditService, historyService,
-  helperTools, workspace, agenticWorkflow, ollamaAgenticWorkflow,
-  translationAssistant, visionGuide, platformScreenCapture, runTestMode,
-  analyzeInterviewImage, cloudTranscribeAudio,
-  APP_ICON, HIDE_FROM_TASKBAR, IMAGE_COOLDOWN_MS, AUDIO_TMP_DIR,
-  audioFilePath, SCREENSHOT_DIRS, PROJECT_SEARCH_SKIP_DIRS, TREE_HEAVY_DIRS,
-  OS_LIVE_CONTINUATION_WINDOW_MS, OS_LIVE_SAMPLE_RATE, OS_LIVE_SILENCE_RMS,
-  OS_LIVE_SILENCE_MS, OS_LIVE_MAX_MS, OS_LIVE_TMP_DIR,
-  state, helpers,
-  ipcMain
-} = require('../globals.js');
+const { path, fs2, workspace, state, helpers, ipcMain, configService } = require('../globals.js');
 
 module.exports = function registerIpc() {
 ipcMain.handle("get-workspace-access-enabled", () => {
@@ -142,7 +128,7 @@ ipcMain.handle("get-project-context", async () => {
       branch = await new Promise((resolve) => {
         execFile(
           "git",
-          ["-C", dir.path, "rev-parse", "--abbrev-ref", "HEAD"],
+          ["--no-optional-locks", "-C", dir.path, "rev-parse", "--abbrev-ref", "HEAD"],
           { timeout: 2500 },
           (err, stdout) => resolve(err ? null : (stdout || "").trim() || null)
         );
@@ -157,6 +143,7 @@ ipcMain.handle("get-project-context", async () => {
 
 let _lastGitStatusCache = { path: '', time: 0, data: null };
 let _activeGitStatusPromise = null;
+let _activeGitStatusChild = null;
 
 ipcMain.handle("get-project-git-status", async (_event, payload) => {
   try {
@@ -178,11 +165,17 @@ ipcMain.handle("get-project-git-status", async (_event, payload) => {
       return await _activeGitStatusPromise.promise;
     }
 
+    if (_activeGitStatusChild && _activeGitStatusPromise && _activeGitStatusPromise.path !== projectPath) {
+      try { _activeGitStatusChild.kill(); } catch (_) {}
+      _activeGitStatusChild = null;
+    }
+
     const { execFile } = require("child_process");
+    let childRef = null;
     const promise = new Promise((resolve) => {
-      execFile(
+      childRef = execFile(
         "git",
-        ["-C", projectPath, "-c", "core.quotepath=false", "status", "--porcelain", "-uall"],
+        ["--no-optional-locks", "-C", projectPath, "-c", "core.quotepath=false", "status", "--porcelain", "-uall"],
         { timeout: 5000, maxBuffer: 1024 * 1024 * 10 },
         (err, stdout) => {
           if (err) {
@@ -229,12 +222,14 @@ ipcMain.handle("get-project-git-status", async (_event, payload) => {
           resolve(result);
         }
       );
+      _activeGitStatusChild = childRef;
     });
 
     _activeGitStatusPromise = { path: projectPath, promise };
     const res = await promise;
     if (_activeGitStatusPromise && _activeGitStatusPromise.path === projectPath) {
       _activeGitStatusPromise = null;
+      _activeGitStatusChild = null;
     }
     return res;
   } catch (e) {

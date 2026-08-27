@@ -67,7 +67,7 @@ function startWatchingProject(projectDir) {
               helpers.emitGitStatusChanged({ origin: 'git', projectPath: normProjectDir });
             }
           } catch (_) {}
-        }, 120));
+        }, 350));
         return;
       }
 

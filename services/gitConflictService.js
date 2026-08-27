@@ -12,8 +12,10 @@ const {
 } = require('./gitConflict/gitConflictDiff');
 
 function execGit(args, cwd, timeoutMs = 5000) {
+  const isWrite = args.length > 0 && (args[0] === 'add' || args[0] === 'merge' || args[0] === 'commit' || args[0] === 'rebase' || args[0] === 'reset');
+  const finalArgs = isWrite ? ['-C', cwd, ...args] : ['--no-optional-locks', '-C', cwd, ...args];
   return new Promise((resolve) => {
-    execFile('git', ['-C', cwd, ...args], { timeout: timeoutMs, encoding: 'utf8', maxBuffer: 1024 * 1024 * 20 }, (err, stdout, stderr) => {
+    execFile('git', finalArgs, { timeout: timeoutMs, encoding: 'utf8', maxBuffer: 1024 * 1024 * 20 }, (err, stdout, stderr) => {
       resolve({ err, stdout: stdout || '', stderr: stderr || '' });
     });
   });

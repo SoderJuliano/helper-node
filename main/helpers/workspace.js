@@ -33,7 +33,7 @@ helpers.computeLineDiff = function(oldText, newText) {
           fs.writeFileSync(tmpN, normNew);
           let diffOut = "";
           try {
-              require('child_process').execSync(`git diff --no-index -U99999 "${tmpO}" "${tmpN}"`, { encoding: 'utf8', maxBuffer: 1024*1024*50 });
+              require('child_process').execSync(`git --no-optional-locks diff --no-index -U99999 "${tmpO}" "${tmpN}"`, { encoding: 'utf8', maxBuffer: 1024*1024*50 });
           } catch(err) {
               diffOut = err.stdout || "";
           }
