@@ -33,38 +33,96 @@ function stripCommentsAndLiterals(text) {
   let i = 0;
 
   while (i < len) {
+    // 1. Bloco de texto Java 15+ (""" ... """)
+    if (chars[i] === '"' && i + 2 < len && chars[i + 1] === '"' && chars[i + 2] === '"') {
+      chars[i] = ' ';
+      chars[i + 1] = ' ';
+      chars[i + 2] = ' ';
+      i += 3;
+
+      while (i < len) {
+        if (chars[i] === '\\') {
+          chars[i] = ' ';
+          i++;
+          if (i < len && chars[i] !== '\n' && chars[i] !== '\r') {
+            chars[i] = ' ';
+            i++;
+          }
+          continue;
+        }
+        if (chars[i] === '"' && i + 2 < len && chars[i + 1] === '"' && chars[i + 2] === '"') {
+          chars[i] = ' ';
+          chars[i + 1] = ' ';
+          chars[i + 2] = ' ';
+          i += 3;
+          break;
+        }
+        if (chars[i] !== '\n' && chars[i] !== '\r') {
+          chars[i] = ' ';
+        }
+        i++;
+      }
+      continue;
+    }
+
+    // 2. String literal padrao (" ... ")
     if (chars[i] === '"') {
       chars[i] = ' ';
       i++;
-      while (i < len && chars[i] !== '"') {
+      while (i < len) {
         if (chars[i] === '\\') {
           chars[i] = ' ';
           i++;
+          if (i < len && chars[i] !== '\n' && chars[i] !== '\r') {
+            chars[i] = ' ';
+            i++;
+          }
+          continue;
         }
-        if (i < len && chars[i] !== '\n' && chars[i] !== '\r') chars[i] = ' ';
+        if (chars[i] === '"') {
+          chars[i] = ' ';
+          i++;
+          break;
+        }
+        if (chars[i] === '\n' || chars[i] === '\r') {
+          // String nao-fechada na linha (limite seguro)
+          break;
+        }
+        chars[i] = ' ';
         i++;
       }
-      if (i < len && chars[i] === '"') chars[i] = ' ';
-      i++;
       continue;
     }
 
+    // 3. Character literal (' ... ')
     if (chars[i] === "'") {
       chars[i] = ' ';
       i++;
-      while (i < len && chars[i] !== "'") {
+      while (i < len) {
         if (chars[i] === '\\') {
           chars[i] = ' ';
           i++;
+          if (i < len && chars[i] !== '\n' && chars[i] !== '\r') {
+            chars[i] = ' ';
+            i++;
+          }
+          continue;
         }
-        if (i < len && chars[i] !== '\n' && chars[i] !== '\r') chars[i] = ' ';
+        if (chars[i] === "'") {
+          chars[i] = ' ';
+          i++;
+          break;
+        }
+        if (chars[i] === '\n' || chars[i] === '\r') {
+          break;
+        }
+        chars[i] = ' ';
         i++;
       }
-      if (i < len && chars[i] === "'") chars[i] = ' ';
-      i++;
       continue;
     }
 
+    // 4. Comentario de linha (// ... \n)
     if (chars[i] === '/' && i + 1 < len && chars[i + 1] === '/') {
       chars[i] = ' ';
       chars[i + 1] = ' ';
@@ -76,12 +134,15 @@ function stripCommentsAndLiterals(text) {
       continue;
     }
 
+    // 5. Comentario de bloco (/* ... */)
     if (chars[i] === '/' && i + 1 < len && chars[i + 1] === '*') {
       chars[i] = ' ';
       chars[i + 1] = ' ';
       i += 2;
       while (i < len && !(chars[i] === '*' && i + 1 < len && chars[i + 1] === '/')) {
-        if (chars[i] !== '\n' && chars[i] !== '\r') chars[i] = ' ';
+        if (chars[i] !== '\n' && chars[i] !== '\r') {
+          chars[i] = ' ';
+        }
         i++;
       }
       if (i < len) {
