@@ -60,6 +60,14 @@ ipcMain.on("renderer-toggle-recording", async () => {
   try { await helpers.toggleRecording(); } catch (e) { console.error("[renderer-toggle-recording]", e.message); }
 });
 
+ipcMain.on("renderer-cancel-recording", () => {
+  try { helpers.cancelDictation(); } catch (e) { console.error("[renderer-cancel-recording]", e.message); }
+});
+
+ipcMain.handle("cancel-recording", async () => {
+  try { return helpers.cancelDictation(); } catch (e) { console.error("[cancel-recording]", e.message); return false; }
+});
+
 ipcMain.handle("get-audio-input-devices", async () => {
   try {
     if (process.platform !== 'linux') {

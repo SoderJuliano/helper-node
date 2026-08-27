@@ -50,8 +50,17 @@ helpers.releaseDictationMic = function() {
 }
 
 helpers.cancelDictation = function() {
-  if (!state.dictationActive) return false;
+  if (!state.dictationActive && !state.isRecording) return false;
   helpers.releaseDictationMic();
+  state.recordingBusy = false;
+  if (configService.getOsIntegrationStatus()) {
+    helpers.destroyNotificationWindow();
+  } else if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+    try {
+      state.mainWindow.webContents.send('toggle-recording', { isRecording: false, isTranscribing: false, audioFilePath: null, isIdeMode: true, cancelled: true });
+      state.mainWindow.webContents.send('ide-audio-transcribing', { isTranscribing: false });
+    } catch (_) {}
+  }
   return true;
 }
 

@@ -316,6 +316,34 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        .composer-listening-cancel-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(239, 68, 68, 0.14);
+            border: 1px solid rgba(239, 68, 68, 0.28);
+            color: #ef4444;
+            font-size: 13px;
+            line-height: 1;
+            font-weight: 700;
+            width: 17px;
+            height: 17px;
+            border-radius: 50%;
+            cursor: pointer;
+            margin-left: 6px;
+            padding: 0;
+            transition: all .15s ease;
+            flex-shrink: 0;
+        }
+        .composer-listening-cancel-btn:hover {
+            background: rgba(239, 68, 68, 0.32);
+            border-color: #ef4444;
+            color: #fca5a5;
+            transform: scale(1.15);
+        }
+        .composer-listening.transcribing .composer-listening-cancel-btn {
+            display: none;
+        }
         .composer-ghost {
             flex: 1; min-height: 26px; max-height: 220px; padding: 3px 2px;
             color: var(--text-3); font-size: 14px; font-family: var(--font-mono);

@@ -106,6 +106,20 @@
         }
     }
 
+    const cancelListeningBtn = document.getElementById('composer-listening-cancel-btn');
+    if (cancelListeningBtn) {
+        cancelListeningBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            if (window.electronAPI && window.electronAPI.cancelRecording) {
+                window.electronAPI.cancelRecording();
+            }
+            updateListeningIndicator(false, false);
+            if (typeof showToast === 'function') {
+                showToast('Gravação cancelada e descartada.');
+            }
+        });
+    }
+
     if (window.electronAPI && window.electronAPI.onToggleRecording) {
         window.electronAPI.onToggleRecording((event, data) => {
             if (!data) return;

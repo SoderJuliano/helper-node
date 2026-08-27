@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onIdeAudioTranscribed: (callback) => {
     ipcRenderer.on("ide-audio-transcribed", (event, { text }) => callback(text));
   },
+  cancelRecording: () => ipcRenderer.send("renderer-cancel-recording"),
   onTranscriptionError: (callback) => {
     ipcRenderer.on("transcription-error", (event, err) => callback(err));
   },
