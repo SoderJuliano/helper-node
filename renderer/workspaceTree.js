@@ -319,6 +319,34 @@ var creatingFolderParent = null;
                 }
                 node.appendChild(label);
 
+                if (e.synthetic === 'java-deps') {
+                    const syncBtn = document.createElement('button');
+                    syncBtn.className = 'ws-tree-sync-deps-btn';
+                    syncBtn.title = 'Sincronizar / Baixar Dependências (Maven/Gradle)';
+                    syncBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:11px; height:11px;"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>';
+                    syncBtn.style.cssText = 'margin-left:auto; background:transparent; border:none; color:var(--text-muted, #8b949e); cursor:pointer; padding:2px 4px; border-radius:3px; display:inline-flex; align-items:center; opacity:0.7; transition:all .15s;';
+                    syncBtn.addEventListener('mouseenter', () => { syncBtn.style.opacity = '1'; syncBtn.style.color = '#38bdf8'; });
+                    syncBtn.addEventListener('mouseleave', () => { syncBtn.style.opacity = '0.7'; syncBtn.style.color = 'var(--text-muted, #8b949e)'; });
+                    syncBtn.addEventListener('click', async (ev) => {
+                        ev.stopPropagation();
+                        if (typeof showToast === 'function') showToast('Sincronizando dependências (Maven/Gradle)...');
+                        syncBtn.style.transform = 'rotate(180deg)';
+                        try {
+                            const projectDir = e.projectRoot || e.path.replace(/::dependencies$/, '');
+                            const res = await window.electronAPI.javaDepsSync({ projectDir, forceDownload: true });
+                            if (res && res.ok && typeof showToast === 'function') {
+                                const tool = res.type === 'maven' ? 'Maven' : (res.type === 'gradle' ? 'Gradle' : 'Java');
+                                showToast(`✓ Dependências ${tool} sincronizadas! (${res.jarCount || 0} bibliotecas)`);
+                            }
+                        } catch (err) {
+                            if (typeof showToast === 'function') showToast('Erro ao sincronizar dependências: ' + err.message);
+                        } finally {
+                            if (typeof window.renderTree === 'function') window.renderTree();
+                        }
+                    });
+                    node.appendChild(syncBtn);
+                }
+
                 if (gitStatus && !e.isDir) {
                     const tag = document.createElement('span');
                     tag.className = 'ws-tree-git-tag ' + (gitStatus === 'A' ? 'tag-a' : 'tag-m');

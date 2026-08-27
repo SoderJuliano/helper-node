@@ -44,7 +44,14 @@ function findJavaProjectRoot(filePath) {
 }
 
 function _searchJavaProjectRoot(filePath) {
-  let dir = path.dirname(filePath);
+  let dir = filePath;
+  try {
+    if (fs.existsSync(filePath) && !fs.statSync(filePath).isDirectory()) {
+      dir = path.dirname(filePath);
+    }
+  } catch (_) {
+    dir = path.dirname(filePath);
+  }
   const fsRoot = path.parse(dir).root;
   let type = null;
   let moduleDir = null;

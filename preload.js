@@ -123,6 +123,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Dependências Java (nó "Dependencies" da árvore — Maven/Gradle)
   javaDepsListJars: (payload) => ipcRenderer.invoke("java-deps:list-jars", payload),
   javaDepsListClasses: (payload) => ipcRenderer.invoke("java-deps:list-classes", payload),
+  javaDepsDetect: (payload) => ipcRenderer.invoke("java-deps:detect", payload),
+  javaDepsSync: (payload) => ipcRenderer.invoke("java-deps:sync", payload),
   onJavaDepsChanged: (cb) => ipcRenderer.on("java-deps-changed", (event, data) => cb(data)),
   onShortcutsChanged: (callback) => ipcRenderer.on("shortcuts-changed", () => callback()),
   getDebugModeStatus: () => ipcRenderer.invoke("get-debug-mode-status"), // Added for debug mode access

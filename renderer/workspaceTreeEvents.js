@@ -73,7 +73,11 @@
     });
 
     node.addEventListener('contextmenu', (ev) => {
-      if (e.synthetic) { ev.preventDefault(); ev.stopPropagation(); return; }
+      if (e.synthetic && e.synthetic !== 'java-deps' && e.synthetic !== 'java-deps-status') {
+        ev.preventDefault();
+        ev.stopPropagation();
+        return;
+      }
       if (typeof window.showTreeContextMenu === 'function') window.showTreeContextMenu(ev, e);
     });
 

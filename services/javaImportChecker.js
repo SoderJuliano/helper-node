@@ -92,6 +92,8 @@ function getDiagnostics(filePath, content) {
   return diagnostics;
 }
 
+const { detectProjectType, syncDependencies, clearCacheForProject } = require('./java/javaSyncDependencies.js');
+
 module.exports = {
   isSupported,
   getDiagnostics,
@@ -105,5 +107,8 @@ module.exports = {
   listDependencyJars,
   listJarClasses,
   JavaAutoImportService,
+  detectProjectType,
+  syncDependencies,
+  clearCacheForProject,
 };
 

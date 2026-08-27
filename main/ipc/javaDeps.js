@@ -30,4 +30,24 @@ module.exports = function registerJavaDepsIPC() {
       return { classes: [], error: e.message };
     }
   });
+
+  ipcMain.handle('java-deps:detect', async (_event, { projectDir } = {}) => {
+    try {
+      if (!projectDir) return { isJavaProject: false };
+      return javaImportChecker.detectProjectType(projectDir);
+    } catch (e) {
+      console.warn('[javaDeps] Erro ao detectar tipo de projeto:', e.message);
+      return { isJavaProject: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('java-deps:sync', async (_event, { projectDir, forceDownload = true } = {}) => {
+    try {
+      if (!projectDir) return { ok: false, error: 'Diretório do projeto não especificado.' };
+      return await javaImportChecker.syncDependencies(projectDir, { forceDownload });
+    } catch (e) {
+      console.warn('[javaDeps] Erro ao sincronizar dependências:', e.message);
+      return { ok: false, error: e.message };
+    }
+  });
 };
