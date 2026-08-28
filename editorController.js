@@ -247,7 +247,8 @@
     }
 
     let doc = openFiles.get(filePath);
-    if (!doc) {
+    const isDocInError = doc && typeof doc.content === 'string' && doc.content.startsWith('// Não foi possível abrir:');
+    if (!doc || isDocInError) {
       if (langEl) langEl.textContent = '';
       const cmInstLoading = ensureCm();
       if (cmInstLoading) {

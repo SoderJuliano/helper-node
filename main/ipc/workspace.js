@@ -103,14 +103,49 @@ ipcMain.handle("workspace:list", () => workspace.list());
 
 ipcMain.handle("workspace:rename-item", async (event, { oldPath, newPath }) => {
   try {
+    if (!oldPath || !newPath) {
+      return { ok: false, error: "Caminhos inválidos para renomear." };
+    }
     if (!fs2.existsSync(oldPath)) {
       return { ok: false, error: "Arquivo ou pasta de origem não existe." };
     }
-    if (fs2.existsSync(newPath)) {
-      return { ok: false, error: "Já existe um arquivo ou pasta com o novo nome." };
+
+    const normOld = path.resolve(oldPath);
+    const normNew = path.resolve(newPath);
+
+    const isCaseOnlyRename = process.platform === 'win32' && normOld.toLowerCase() === normNew.toLowerCase() && normOld !== normNew;
+    if (isCaseOnlyRename) {
+      const tempRenamePath = normOld + `.__rename_temp_${Date.now()}`;
+      fs2.renameSync(normOld, tempRenamePath);
+      fs2.renameSync(tempRenamePath, normNew);
+    } else {
+      if (normOld !== normNew && fs2.existsSync(normNew)) {
+        return { ok: false, error: "Já existe um arquivo ou pasta com o novo nome." };
+      }
+      fs2.renameSync(normOld, normNew);
     }
-    fs2.renameSync(oldPath, newPath);
-    return { ok: true };
+
+    // Notifica mutação de arquivo para todo o sistema (editor, abas, watchers)
+    helpers.emitFileMutated({ path: normNew, oldPath: normOld, origin: "user" });
+
+    // Atualiza anexo de workspace se a raiz ou item estiver listado
+    try {
+      const atts = workspace.list();
+      for (const a of atts) {
+        if (path.resolve(a.path) === normOld) {
+          a.path = normNew;
+          a.name = path.basename(normNew);
+        }
+      }
+    } catch (_) {}
+
+    // Atualiza o indexador de símbolos
+    try {
+      const symbolIndexer = require('../../services/symbolIndexer.js');
+      symbolIndexer.indexSingleFile(normNew);
+    } catch (_) {}
+
+    return { ok: true, oldPath: normOld, newPath: normNew };
   } catch (e) {
     console.error("[workspace:rename-item] erro:", e.message);
     return { ok: false, error: e.message };
@@ -287,88 +322,8 @@ ipcMain.handle("get-dir-children", async (_event, dirPath) => {
   }
 });
 
-ipcMain.handle("search-project-content", async (_event, query) => {
-  try {
-    const dir = (workspace.list() || []).find((a) => a.type === "dir");
-    if (!dir) return { ok: false, error: "nenhum projeto aberto", matches: [], occurrences: [] };
-    const normalizedQuery = String(query || "").trim().toLowerCase();
-    if (normalizedQuery.length < 4) return { ok: true, query: normalizedQuery, matches: [], occurrences: [] };
-
-    const root = dir.path;
-    const matches = [];
-    const occurrences = [];
-    const MAX_RESULTS = 200;
-    const MAX_OCCURRENCES = 300;
-    const MAX_FILE_SIZE = 1024 * 1024;
-
-    const walk = (dirPath) => {
-      if (matches.length >= MAX_RESULTS) return;
-      let dirEntries = [];
-      try {
-        dirEntries = fs2.readdirSync(dirPath, { withFileTypes: true });
-      } catch (_) {
-        return;
-      }
-      dirEntries.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
-      for (const dirent of dirEntries) {
-        if (matches.length >= MAX_RESULTS) return;
-        if (PROJECT_SEARCH_SKIP_DIRS.has(dirent.name)) continue;
-        const absPath = path.join(dirPath, dirent.name);
-        if (workspace.isPathAllowed && !workspace.isPathAllowed(absPath)) continue;
-        if (dirent.isDirectory()) {
-          walk(absPath);
-          continue;
-        }
-        if (!dirent.isFile()) continue;
-        let st;
-        try {
-          st = fs2.statSync(absPath);
-        } catch (_) {
-          continue;
-        }
-        if (!st.isFile() || st.size > MAX_FILE_SIZE) continue;
-        let buffer;
-        try {
-          buffer = fs2.readFileSync(absPath);
-        } catch (_) {
-          continue;
-        }
-        if (helpers.isLikelyBinaryBuffer(buffer)) continue;
-        const text = buffer.toString("utf8");
-        const lowerText = text.toLowerCase();
-        if (lowerText.includes(normalizedQuery)) {
-          matches.push(absPath);
-          let relPath = absPath;
-          if (absPath.startsWith(root)) {
-            relPath = absPath.substring(root.length).replace(/^[/\\]+/, '').replace(/\\/g, '/');
-          } else {
-            relPath = relPath.replace(/\\/g, '/');
-          }
-          const lines = text.split(/\r?\n/);
-          for (let i = 0; i < lines.length; i++) {
-            const lineStr = lines[i];
-            if (lineStr.toLowerCase().includes(normalizedQuery)) {
-              if (occurrences.length < MAX_OCCURRENCES) {
-                occurrences.push({
-                  path: absPath,
-                  relPath: relPath,
-                  line: i + 1,
-                  text: lineStr.trim()
-                });
-              }
-            }
-          }
-        }
-      }
-    };
-
-    walk(root);
-    return { ok: true, query: normalizedQuery, matches, occurrences, limited: matches.length >= MAX_RESULTS };
-  } catch (e) {
-    console.warn("[search-project-content] falhou:", e.message);
-    return { ok: false, error: e.message, matches: [], occurrences: [] };
-  }
-});
+const registerWorkspaceSearchIPC = require('./workspaceSearch.js');
+registerWorkspaceSearchIPC();
 
 const { resolveWorkspaceFilePath } = require('../helpers/pathResolver.js');
 

@@ -5,7 +5,10 @@
 
   const { normPath, extOf, getFileName, LANG_LABEL_BY_EXT, CM_MODE_BY_EXT } = window.EditorConstants;
 
-  async function handleFileMutated(ctx, { path: p, origin, content, mtimeMs, deleted } = {}) {
+  async function handleFileMutated(ctx, { path: p, oldPath: op, origin, content, mtimeMs, deleted } = {}) {
+    if (op && p) {
+      handleRenamePath(ctx, op, p);
+    }
     if (!p) return;
     const filePath = normPath(p);
 
@@ -99,24 +102,28 @@
     }
   }
 
-  function handleRenamePath(ctx, oldPath, newPath) {
+  function handleRenamePath(ctx, oldRaw, newRaw) {
+    if (!oldRaw || !newRaw) return;
+    const oldPath = normPath(oldRaw);
+    const newPath = normPath(newRaw);
     let changed = false;
     const updates = [];
     ctx.openFiles.forEach((doc, filePath) => {
-      if (filePath === oldPath) {
-        updates.push({ oldPath: filePath, newPath: newPath });
-      } else if (filePath.startsWith(oldPath + '/') || filePath.startsWith(oldPath + '\\')) {
-        const relative = filePath.substring(oldPath.length);
-        updates.push({ oldPath: filePath, newPath: newPath + relative });
+      const nFilePath = normPath(filePath);
+      if (nFilePath === oldPath) {
+        updates.push({ oldKey: filePath, newKey: newPath });
+      } else if (nFilePath.startsWith(oldPath + '/') || nFilePath.startsWith(oldPath + '\\')) {
+        const relative = nFilePath.substring(oldPath.length);
+        updates.push({ oldKey: filePath, newKey: newPath + relative });
       }
     });
 
     updates.forEach(u => {
-      const doc = ctx.openFiles.get(u.oldPath);
-      ctx.openFiles.delete(u.oldPath);
-      ctx.openFiles.set(u.newPath, doc);
-      if (ctx.getActivePath() === u.oldPath) {
-        ctx.setActivePath(u.newPath);
+      const doc = ctx.openFiles.get(u.oldKey);
+      ctx.openFiles.delete(u.oldKey);
+      ctx.openFiles.set(u.newKey, doc);
+      if (normPath(ctx.getActivePath()) === normPath(u.oldKey)) {
+        ctx.setActivePath(u.newKey);
         changed = true;
       }
     });

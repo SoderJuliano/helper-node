@@ -278,28 +278,42 @@ var creatingFolderParent = null;
                 node.appendChild(input);
                 input.addEventListener('click', (ev) => ev.stopPropagation());
                 setTimeout(() => { input.focus(); input.select(); }, 50);
-                input.addEventListener('blur', async () => {
+
+                let isSaving = false;
+                const commitRename = async () => {
+                    if (isSaving) return;
+                    isSaving = true;
                     const val = input.value.trim();
-                    if (val && val !== e.name) {
-                        const lastSlash = Math.max(e.path.lastIndexOf('/'), e.path.lastIndexOf('\\'));
-                        const newPath = e.path.substring(0, lastSlash + 1) + val;
-                        const res = await window.electronAPI.renameItem(e.path, newPath);
-                        if (res.ok) {
-                            if (window.EditorController && typeof window.EditorController.renamePath === 'function') {
-                                window.EditorController.renamePath(e.path, newPath);
+                    try {
+                        if (val && val !== e.name) {
+                            const lastSlash = Math.max(e.path.lastIndexOf('/'), e.path.lastIndexOf('\\'));
+                            const newPath = e.path.substring(0, lastSlash + 1) + val;
+                            const res = await window.electronAPI.renameItem(e.path, newPath);
+                            if (res && res.ok) {
+                                if (window.EditorController && typeof window.EditorController.renamePath === 'function') {
+                                    window.EditorController.renamePath(e.path, newPath);
+                                }
+                                if (typeof window.refreshProjectTree === 'function') await window.refreshProjectTree();
+                            } else {
+                                const errMsg = (res && res.error) || 'Falha ao renomear';
+                                if (typeof showToast === 'function') showToast('Erro ao renomear: ' + errMsg);
                             }
-                            if (typeof window.refreshProjectTree === 'function') await window.refreshProjectTree();
-                        } else {
-                            if (typeof showToast === 'function') showToast('Erro ao renomear: ' + res.error);
                         }
+                    } catch (err) {
+                        console.error('[workspaceTree] Erro ao renomear:', err);
+                    } finally {
+                        renamingPath = null;
+                        renderTree();
                     }
-                    renamingPath = null;
-                    renderTree();
-                });
-                input.addEventListener('keydown', async (ev) => {
+                };
+
+                input.addEventListener('blur', commitRename);
+                input.addEventListener('keydown', (ev) => {
                     if (ev.key === 'Enter') {
+                        ev.preventDefault();
                         input.blur();
                     } else if (ev.key === 'Escape') {
+                        ev.preventDefault();
                         renamingPath = null;
                         renderTree();
                     }

@@ -82,7 +82,7 @@
     });
 
     node.addEventListener('click', (ev) => {
-      if (ev.target.closest('.ws-tree-checkbox') || renamingPath) return;
+      if (ev.target.closest('.ws-tree-checkbox') || (typeof renamingPath !== 'undefined' && renamingPath === e.path)) return;
       if (e.synthetic === 'java-deps-status') return;
       if (e.isDir) {
         if (typeof window.toggleDir === 'function') window.toggleDir(e);
