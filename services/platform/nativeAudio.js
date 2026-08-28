@@ -100,14 +100,15 @@ async function ensureWindow() {
 let closeIdleTimer = null;
 
 // Assina o stream de uma fonte. Abre a janela de captura na primeira assinatura.
-async function subscribe(source, cb) {
+async function subscribe(source, cb, options = {}) {
   clearTimeout(closeIdleTimer);
   if (!subscribers.has(source)) subscribers.set(source, new Set());
   subscribers.get(source).add(cb);
   const w = await ensureWindow();
   // Pede ao renderer para (re)garantir que a fonte está capturando.
   if (w && !w.isDestroyed()) {
-    w.webContents.send('native-audio-start', { source });
+    const deviceId = (options && options.deviceId) ? String(options.deviceId) : '';
+    w.webContents.send('native-audio-start', { source, deviceId });
   }
 }
 

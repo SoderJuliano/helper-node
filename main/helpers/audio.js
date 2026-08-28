@@ -20,10 +20,13 @@ const {
 // que alimenta os motores de VAD. Sem parec/pw-record/ffmpeg, sem Vosk.
 helpers.startDictation = async function() {
   const nativeAudio = require('../../services/platform/nativeAudio');
+  const micDevice = (configService && typeof configService.getMicDevice === 'function')
+    ? configService.getMicDevice()
+    : '';
   state.dictationChunks = [];
   state.dictationBytes = 0;
   state.dictationMicCb = (buf) => { state.dictationChunks.push(buf); state.dictationBytes += buf.length; };
-  await nativeAudio.subscribe('mic', state.dictationMicCb);
+  await nativeAudio.subscribe('mic', state.dictationMicCb, { deviceId: micDevice });
   state.dictationActive = true;
   state.isRecording = true;
 

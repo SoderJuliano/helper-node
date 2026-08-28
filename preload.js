@@ -254,6 +254,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   translationStart: () => ipcRenderer.invoke("translation-start"),
   translationStop: () => ipcRenderer.invoke("translation-stop"),
   getAudioInputDevices: () => ipcRenderer.invoke("get-audio-input-devices"),
+  getMicDevice: () => ipcRenderer.invoke("get-mic-device"),
+  setMicDevice: (deviceId) => ipcRenderer.send("set-mic-device", deviceId),
   // Overlay dedicado (translation-overlay.html)
   requestTranslationResize: () =>
     ipcRenderer.send("request-translation-resize"),

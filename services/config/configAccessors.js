@@ -206,6 +206,18 @@ function createAccessors(ctx) {
       save();
     },
 
+    getMicDevice() {
+      const cfg = get();
+      return cfg.micDevice || (cfg.translationAssistant && cfg.translationAssistant.micDevice) || "";
+    },
+
+    setMicDevice(deviceId) {
+      const cfg = get();
+      cfg.micDevice = deviceId || "";
+      if (cfg.translationAssistant) cfg.translationAssistant.micDevice = deviceId || "";
+      save();
+    },
+
     getOpenIaToken() {
       return get().openIaToken || "";
     },

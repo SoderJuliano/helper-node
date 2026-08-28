@@ -53,14 +53,42 @@
   async function populateMicDevices(selected) {
     if (!translationMicSelect) return;
     let devices = [];
-    try { devices = await ipcRenderer.invoke('get-audio-input-devices'); } catch (_) {}
+
+    try {
+      if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+        let all = await navigator.mediaDevices.enumerateDevices();
+        // Se as labels estiverem vazias, obtém permissão transitória para expor os nomes dos microfones
+        if (all.some(d => d.kind === 'audioinput' && !d.label)) {
+          try {
+            const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            tempStream.getTracks().forEach(t => t.stop());
+            all = await navigator.mediaDevices.enumerateDevices();
+          } catch (_) {}
+        }
+        devices = all
+          .filter(d => d.kind === 'audioinput')
+          .map(d => ({
+            name: d.deviceId,
+            description: d.label || (d.deviceId === 'default' ? 'Padrão do Sistema' : `Microfone (${d.deviceId.slice(0, 8)})`)
+          }));
+      }
+    } catch (_) {}
+
+    if (!devices || devices.length === 0) {
+      try { devices = await ipcRenderer.invoke('get-audio-input-devices'); } catch (_) {}
+    }
+
     translationMicSelect.innerHTML = '<option value="">Automático (padrão do sistema)</option>';
+    const seen = new Set();
     for (const d of (devices || [])) {
+      if (!d.name || d.name === 'default' || seen.has(d.name)) continue;
+      seen.add(d.name);
       const opt = document.createElement('option');
       opt.value = d.name;
       opt.textContent = d.description || d.name;
       translationMicSelect.appendChild(opt);
     }
+
     if (selected) {
       if (![...translationMicSelect.options].some(o => o.value === selected)) {
         const opt = document.createElement('option');
@@ -74,12 +102,15 @@
 
   if (translationMicSelect) {
     translationMicSelect.addEventListener('change', () => {
-      ipcRenderer.send('set-translation-assistant-config', { micDevice: translationMicSelect.value });
+      const dev = translationMicSelect.value || '';
+      ipcRenderer.send('set-mic-device', dev);
+      ipcRenderer.send('set-translation-assistant-config', { micDevice: dev });
     });
   }
   if (translationMicRefresh) {
-    translationMicRefresh.addEventListener('click', () => {
-      populateMicDevices(translationMicSelect ? translationMicSelect.value : '');
+    translationMicRefresh.addEventListener('click', async () => {
+      const current = translationMicSelect ? translationMicSelect.value : '';
+      await populateMicDevices(current);
     });
   }
 
@@ -144,6 +175,7 @@
 
   (async () => {
     try {
+      const globalMic = await ipcRenderer.invoke('get-mic-device');
       const ta = await ipcRenderer.invoke('get-translation-assistant-config');
       if (ta) {
         if (translationEnabledToggle) {
@@ -155,8 +187,8 @@
           translationTestModeInput.checked = false;
           updateTranslationTestModeStatus(false);
         }
-        await populateMicDevices(ta.micDevice || '');
       }
+      await populateMicDevices(globalMic || (ta && ta.micDevice) || '');
 
       const vg = await ipcRenderer.invoke('get-vision-guide-config');
       if (vg) {

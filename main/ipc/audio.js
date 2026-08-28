@@ -68,31 +68,41 @@ ipcMain.handle("cancel-recording", async () => {
   try { return helpers.cancelDictation(); } catch (e) { console.error("[cancel-recording]", e.message); return false; }
 });
 
+ipcMain.on("set-mic-device", (event, deviceId) => {
+  if (configService && typeof configService.setMicDevice === 'function') {
+    configService.setMicDevice(deviceId || '');
+  }
+});
+
+ipcMain.handle("get-mic-device", () => {
+  if (configService && typeof configService.getMicDevice === 'function') {
+    return configService.getMicDevice();
+  }
+  return '';
+});
+
 ipcMain.handle("get-audio-input-devices", async () => {
   try {
-    if (process.platform !== 'linux') {
-      return [];
-    }
-    const { stdout } = await execPromise("LANG=C pactl list sources");
-    const devices = [];
-    let cur = null;
-    for (const line of stdout.split("\n")) {
-      const mName = line.match(/^\s*Name:\s*(.+)$/);
-      const mDesc = line.match(/^\s*Description:\s*(.+)$/);
-      if (line.match(/^Source #/)) { cur = { name: "", description: "" }; }
-      else if (mName && cur) { cur.name = mName[1].trim();
-        // fecha o device anterior quando acha o Name (Name vem antes de Description)
-      }
-      else if (mDesc && cur) {
-        cur.description = mDesc[1].trim();
-        // monitores de saída terminam em .monitor → não são microfones
-        if (cur.name && !cur.name.endsWith(".monitor")) {
-          devices.push({ name: cur.name, description: cur.description || cur.name });
+    if (process.platform === 'linux') {
+      const { stdout } = await execPromise("LANG=C pactl list sources");
+      const devices = [];
+      let cur = null;
+      for (const line of stdout.split("\n")) {
+        const mName = line.match(/^\s*Name:\s*(.+)$/);
+        const mDesc = line.match(/^\s*Description:\s*(.+)$/);
+        if (line.match(/^Source #/)) { cur = { name: "", description: "" }; }
+        else if (mName && cur) { cur.name = mName[1].trim(); }
+        else if (mDesc && cur) {
+          cur.description = mDesc[1].trim();
+          if (cur.name && !cur.name.endsWith(".monitor")) {
+            devices.push({ name: cur.name, description: cur.description || cur.name });
+          }
+          cur = null;
         }
-        cur = null;
       }
+      return devices;
     }
-    return devices;
+    return [];
   } catch (e) {
     console.error("[config] get-audio-input-devices falhou:", e.message);
     return [];

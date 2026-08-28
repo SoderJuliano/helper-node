@@ -40,7 +40,7 @@ function floatTo16kInt16(float32, srcRate) {
   return out;
 }
 
-async function attach(source, stream) {
+async function attach(source, stream, deviceId = '') {
   // Descarta trilhas de vídeo (getDisplayMedia exige vídeo, mas só queremos áudio).
   stream.getVideoTracks().forEach((t) => t.stop());
   if (stream.getAudioTracks().length === 0) {
@@ -91,44 +91,66 @@ async function attach(source, stream) {
   node.connect(muteGain);
   muteGain.connect(ctx.destination);
 
-  active[source] = { stream, ctx, node, srcNode, muteGain, streaming: true, idleTimer: null };
-  log(`${source}: capturando @ ${ctx.sampleRate}Hz -> 16kHz mono (canais: ${stream.getAudioTracks().length})`);
+  active[source] = { stream, ctx, node, srcNode, muteGain, streaming: true, idleTimer: null, deviceId };
+  const label = (stream.getAudioTracks()[0] && stream.getAudioTracks()[0].label) || (deviceId ? `id:${deviceId.slice(0, 8)}` : 'default');
+  log(`${source}: capturando [${label}] @ ${ctx.sampleRate}Hz -> 16kHz mono`);
 }
 
-async function startSource(source) {
+async function startSource(source, deviceId = '') {
+  const reqDevId = deviceId ? String(deviceId).trim() : '';
   if (active[source]) {
-    active[source].streaming = true;
-    if (active[source].idleTimer) {
-      clearTimeout(active[source].idleTimer);
-      active[source].idleTimer = null;
+    // Se mudou o deviceId solicitado, reinicia com o novo microfone
+    if (reqDevId && active[source].deviceId !== reqDevId) {
+      log(`${source}: trocando dispositivo de [${active[source].deviceId}] para [${reqDevId}]...`);
+      destroySource(source);
+    } else {
+      active[source].streaming = true;
+      if (active[source].idleTimer) {
+        clearTimeout(active[source].idleTimer);
+        active[source].idleTimer = null;
+      }
+      if (active[source].ctx && active[source].ctx.state === 'suspended') {
+        try { await active[source].ctx.resume(); } catch (_) {}
+      }
+      ipcRenderer.send('native-audio-ready', { source });
+      log(`${source}: retomado (stream aquecido)`);
+      return;
     }
-    if (active[source].ctx && active[source].ctx.state === 'suspended') {
-      try { await active[source].ctx.resume(); } catch (_) {}
-    }
-    ipcRenderer.send('native-audio-ready', { source });
-    log(`${source}: retomado (stream aquecido)`);
-    return;
   }
 
   try {
     let stream;
     if (source === 'mic') {
+      const audioConstraints = {
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      };
+      if (reqDevId && reqDevId !== 'default') {
+        audioConstraints.deviceId = { exact: reqDevId };
+      }
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            channelCount: 1,
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
+          audio: audioConstraints,
           video: false,
         });
       } catch (advancedErr) {
-        log(`mic: getUserMedia avançado falhou (${advancedErr.message}), tentando fallback simples...`);
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-          video: false,
-        });
+        log(`mic: getUserMedia avançado falhou (${advancedErr.message}), tentando fallback com deviceId ideal ou genérico...`);
+        try {
+          const fallbackConstraints = (reqDevId && reqDevId !== 'default')
+            ? { deviceId: { ideal: reqDevId } }
+            : true;
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: fallbackConstraints,
+            video: false,
+          });
+        } catch (_) {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: false,
+          });
+        }
       }
     } else {
       // sys: loopback do sistema (o main aprova via setDisplayMediaRequestHandler).
@@ -138,7 +160,7 @@ async function startSource(source) {
       });
     }
 
-    await attach(source, stream);
+    await attach(source, stream, reqDevId);
     ipcRenderer.send('native-audio-ready', { source });
   } catch (err) {
     log(`${source}: falha ao capturar — ${err && err.message ? err.message : err}`);
@@ -171,7 +193,7 @@ function destroySource(source) {
   log(`${source}: encerrado e hardware liberado`);
 }
 
-ipcRenderer.on('native-audio-start', (_e, { source }) => { startSource(source); });
+ipcRenderer.on('native-audio-start', (_e, { source, deviceId }) => { startSource(source, deviceId); });
 ipcRenderer.on('native-audio-stop', (_e, { source }) => { stopSource(source); });
 ipcRenderer.on('native-audio-destroy', (_e, { source }) => { destroySource(source); });
 

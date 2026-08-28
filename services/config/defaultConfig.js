@@ -27,6 +27,7 @@ const defaultConfig = {
   claudeCliModel: "sonnet",
   copilotCliModel: "claude-sonnet-4.5",
   backendApiKey: "",
+  micDevice: "",
   translationAssistant: {
     enabled: false,
     userName: "",
