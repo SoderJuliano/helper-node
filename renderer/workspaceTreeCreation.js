@@ -49,7 +49,13 @@
             let targetFilePath = '';
             let initialContent = '';
 
-            if (name.endsWith('.java') || (name.includes('.') && !name.endsWith('/'))) {
+            const isJavaSourceDir = parentDirPath.includes('/src/main/java') || parentDirPath.includes('\\src\\main\\java') ||
+                                    parentDirPath.includes('/src/test/java') || parentDirPath.includes('\\src\\test\\java') ||
+                                    parentDirPath.includes('/src/java') || parentDirPath.includes('\\src\\java');
+
+            const isJavaFile = name.endsWith('.java') || isJavaSourceDir || (!name.includes('.') && /^[A-Z][a-zA-Z0-9_]*$/.test(name));
+
+            if (isJavaFile) {
                 if (typeof window.resolveJavaClassTarget === 'function') {
                     const resolved = window.resolveJavaClassTarget(parentDirPath, name, projectRoot);
                     if (resolved && resolved.typeName) {
@@ -67,15 +73,28 @@
             }
 
             const res = await window.electronAPI.createFile(targetFilePath, initialContent);
-            if (res.ok) {
+            if (res && res.ok) {
                 creatingFileParent = null;
                 if (window.expandedDirPaths) {
                     window.expandedDirPaths.add(parentDirPath);
+                    const lastSlash = Math.max(targetFilePath.lastIndexOf('/'), targetFilePath.lastIndexOf('\\'));
+                    if (lastSlash > 0) {
+                        window.expandedDirPaths.add(targetFilePath.substring(0, lastSlash));
+                    }
                 }
-                await window.refreshProjectTree();
-                if (typeof window.openFileViewer === 'function') window.openFileViewer(targetFilePath);
+                if (typeof window.openFileViewer === 'function') {
+                    await window.openFileViewer(targetFilePath);
+                }
+                if (typeof window.refreshProjectTree === 'function') {
+                    window.refreshProjectTree();
+                }
+                const fileNameOnly = targetFilePath.split(/[/\\]/).pop();
+                if (typeof showToast === 'function') {
+                    showToast(`Arquivo '${fileNameOnly}' criado e aberto!`);
+                }
             } else {
-                if (typeof showToast === 'function') showToast('Erro ao criar: ' + res.error);
+                const errorMsg = (res && res.error) || 'Erro desconhecido';
+                if (typeof showToast === 'function') showToast('Erro ao criar: ' + errorMsg);
                 creatingFileParent = null;
                 window.renderTree();
             }

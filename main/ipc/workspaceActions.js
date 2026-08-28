@@ -131,6 +131,9 @@ ipcMain.handle("workspace:move-item", async (event, { srcPath, destPath }) => {
 
 ipcMain.handle("workspace:create-file", async (event, { filePath, content = "" }) => {
   try {
+    if (!filePath) {
+      return { ok: false, error: "Caminho de arquivo inválido." };
+    }
     if (fs2.existsSync(filePath)) {
       return { ok: false, error: "Arquivo já existe." };
     }
@@ -139,7 +142,15 @@ ipcMain.handle("workspace:create-file", async (event, { filePath, content = "" }
       fs2.mkdirSync(dir, { recursive: true });
     }
     fs2.writeFileSync(filePath, content || "", "utf8");
-    return { ok: true };
+
+    helpers.emitFileMutated({ path: filePath, origin: "user" });
+
+    try {
+      const symbolIndexer = require('../../services/symbolIndexer.js');
+      symbolIndexer.indexSingleFile(filePath, content || "");
+    } catch (_) {}
+
+    return { ok: true, path: filePath };
   } catch (e) {
     console.error("[workspace:create-file] erro:", e.message);
     return { ok: false, error: e.message };

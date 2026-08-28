@@ -97,7 +97,11 @@
     const pkgHeader = packageName ? `package ${packageName};\n\n` : '';
     let body = '';
     if (kind === 'interface') {
-      body = `public interface ${typeName} {\n    \n}\n`;
+      if (typeName.endsWith('Repository')) {
+        body = `import org.springframework.stereotype.Repository;\n\n@Repository\npublic interface ${typeName} {\n    \n}\n`;
+      } else {
+        body = `public interface ${typeName} {\n    \n}\n`;
+      }
     } else if (kind === 'enum') {
       body = `public enum ${typeName} {\n    \n}\n`;
     } else if (kind === 'record') {
@@ -105,7 +109,15 @@
     } else if (kind === 'annotation') {
       body = `public @interface ${typeName} {\n    \n}\n`;
     } else {
-      body = `public class ${typeName} {\n    \n}\n`;
+      if (typeName.endsWith('Service')) {
+        body = `import org.springframework.stereotype.Service;\n\n@Service\npublic class ${typeName} {\n    \n}\n`;
+      } else if (typeName.endsWith('Controller')) {
+        body = `import org.springframework.web.bind.annotation.RestController;\nimport org.springframework.web.bind.annotation.RequestMapping;\n\n@RestController\npublic class ${typeName} {\n    \n}\n`;
+      } else if (typeName.endsWith('Repository')) {
+        body = `import org.springframework.stereotype.Repository;\n\n@Repository\npublic class ${typeName} {\n    \n}\n`;
+      } else {
+        body = `public class ${typeName} {\n    \n}\n`;
+      }
     }
     return `${pkgHeader}${body}`;
   }
@@ -160,11 +172,11 @@
 
         <div class="java-class-footer">
           <div class="java-class-hints">
-            <span>Enter para criar • Esc para cancelar</span>
+            <span>Enter para criar e abrir • Esc para cancelar</span>
           </div>
           <div class="java-class-actions">
             <button type="button" class="java-class-btn java-class-btn-cancel" id="java-class-btn-cancel">Cancelar</button>
-            <button type="button" class="java-class-btn java-class-btn-create" id="java-class-btn-create">Criar</button>
+            <button type="button" class="java-class-btn java-class-btn-create" id="java-class-btn-create">Criar e Abrir</button>
           </div>
         </div>
       </div>
@@ -172,31 +184,36 @@
 
     document.body.appendChild(backdrop);
 
-    const input = backdrop.querySelector('#java-class-name-input');
-    const preview = backdrop.querySelector('#java-class-preview');
-    const chips = backdrop.querySelectorAll('.java-class-type-chip');
-    const btnClose = backdrop.querySelector('#java-class-btn-close');
-    const btnCancel = backdrop.querySelector('#java-class-btn-cancel');
-    const btnCreate = backdrop.querySelector('#java-class-btn-create');
+    const input = document.getElementById('java-class-name-input');
+    const previewEl = document.getElementById('java-class-preview');
+    const chips = document.querySelectorAll('.java-class-type-chip');
+    const btnClose = document.getElementById('java-class-btn-close');
+    const btnCancel = document.getElementById('java-class-btn-cancel');
+    const btnCreate = document.getElementById('java-class-btn-create');
+
+    setTimeout(() => {
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    }, 50);
 
     const updatePreview = () => {
       const val = input.value.trim();
       const resolved = resolveJavaClassTarget(targetDir, val, projectRoot);
-      const pkgTxt = resolved.packageName ? `<span class="pkg-name">${resolved.packageName}</span>` : '<span style="color:#858585;">(raiz padrão)</span>';
-      const fileTxt = resolved.typeName ? ` • Arquivo: <span class="type-name">${resolved.typeName}.java</span>` : '';
-      preview.innerHTML = `Pacote: ${pkgTxt}${fileTxt}`;
+      const pkgSpan = previewEl.querySelector('.pkg-name');
+      if (pkgSpan) {
+        pkgSpan.textContent = resolved.packageName || '(default package)';
+      }
     };
 
     updatePreview();
 
     chips.forEach(chip => {
-      chip.onclick = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
+      chip.onclick = () => {
         chips.forEach(c => c.classList.remove('selected'));
         chip.classList.add('selected');
         selectedKind = chip.dataset.kind;
-        input.focus();
       };
     });
 
@@ -231,16 +248,16 @@
             window.expandedDirPaths.add(targetDir);
           }
 
-          if (typeof window.refreshProjectTree === 'function') {
-            await window.refreshProjectTree();
+          if (typeof window.openFileViewer === 'function') {
+            await window.openFileViewer(resolved.filePath);
           }
 
-          if (typeof window.openFileViewer === 'function') {
-            window.openFileViewer(resolved.filePath);
+          if (typeof window.refreshProjectTree === 'function') {
+            window.refreshProjectTree();
           }
 
           if (typeof window.showToast === 'function') {
-            window.showToast(`Classe Java '${resolved.typeName}' criada com sucesso!`);
+            window.showToast(`Classe Java '${resolved.typeName}' criada e aberta!`);
           }
         } else {
           alert('Erro ao criar classe Java: ' + (res ? res.error : 'erro desconhecido'));
