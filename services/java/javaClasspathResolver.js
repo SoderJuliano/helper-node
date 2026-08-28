@@ -104,6 +104,15 @@ function indexProjectSources(rootDir, allClasses, knownPackages, simpleNameIndex
   }
 }
 
+const {
+  getJavaProcessEnv,
+  generateGradleInitScript,
+  compareVersionsDesc,
+  extractDependenciesFromGradleContent,
+  extractDependenciesFromToml,
+  findJarInCaches,
+} = require('./javaPropertiesBridge.js');
+
 function resolveClasspathMaven(rootDir, callback) {
   const mvnwCmd = process.platform === 'win32' ? 'mvnw.cmd' : 'mvnw';
   const mvnwPath = path.join(rootDir, mvnwCmd);
@@ -111,19 +120,24 @@ function resolveClasspathMaven(rootDir, callback) {
   const outFile = path.join(os.tmpdir(), `helper-ide-cp-${hashOf(rootDir)}.txt`);
   try { fs.unlinkSync(outFile); } catch (_) {}
 
+  const { env } = getJavaProcessEnv(rootDir);
   const args = ['-q', '-B', 'dependency:build-classpath', `-Dmdep.outputFile=${outFile}`];
-  execFile(cmd, args, { cwd: rootDir, timeout: CLASSPATH_TIMEOUT_MS, maxBuffer: 32 * 1024 * 1024, shell: true }, (err) => {
-    if (err) { callback(err); return; }
+  execFile(cmd, args, { cwd: rootDir, env, timeout: CLASSPATH_TIMEOUT_MS, maxBuffer: 32 * 1024 * 1024, shell: true }, (err) => {
     try {
-      const cp = fs.readFileSync(outFile, 'utf8').trim();
-      const sep = process.platform === 'win32' ? ';' : ':';
-      const entries = cp.split(sep).map((s) => s.trim()).filter(Boolean);
-      callback(null, entries);
-    } catch (e) {
-      callback(e);
-    } finally {
+      if (fs.existsSync(outFile)) {
+        const cp = fs.readFileSync(outFile, 'utf8').trim();
+        const sep = process.platform === 'win32' ? ';' : ':';
+        const entries = cp.split(sep).map((s) => s.trim()).filter(Boolean);
+        if (entries.length > 0) {
+          callback(null, entries);
+          return;
+        }
+      }
+    } catch (_) {} finally {
       try { fs.unlinkSync(outFile); } catch (_) {}
     }
+    if (err) { callback(err); return; }
+    callback(null, []);
   });
 }
 
@@ -136,46 +150,7 @@ function resolveClasspathGradle(rootDir, callback) {
   const outPrefix = path.join(os.tmpdir(), `helper-ide-cp-${runId}-`);
   const initFile = path.join(os.tmpdir(), `helper-ide-cp-${runId}.init.gradle`);
 
-  const initScript = `
-allprojects { proj ->
-  def registerAction = {
-    if (proj.tasks.findByName('helperIdePrintClasspath') == null) {
-      proj.tasks.register('helperIdePrintClasspath') {
-        doLast {
-          def safeName = (proj.path == ':' ? '_root_' : proj.path.replaceAll('[^a-zA-Z0-9]', '_'))
-          def out = new File(${JSON.stringify(outPrefix)} + safeName + '.txt')
-          def lines = new LinkedHashSet<String>()
-          try {
-            if (proj.hasProperty('sourceSets')) {
-              proj.sourceSets.each { ss ->
-                try { ss.compileClasspath.files.each { if (it.exists()) lines.add(it.absolutePath) } } catch (e) {}
-                try { ss.runtimeClasspath.files.each { if (it.exists()) lines.add(it.absolutePath) } } catch (e) {}
-                try { ss.output.classesDirs.files.each { if (it.exists()) lines.add(it.absolutePath) } } catch (e) {}
-              }
-            }
-          } catch (e) {}
-          try {
-            proj.configurations.each { cfg ->
-              try {
-                def name = cfg.name.toLowerCase()
-                if (cfg.canBeResolved && (name.contains('classpath') || name.contains('compile') || name.contains('runtime') || name == 'implementation' || name == 'api')) {
-                  cfg.files.each { if (it.exists()) lines.add(it.absolutePath) }
-                }
-              } catch (e) {}
-            }
-          } catch (e) {}
-          out.text = lines.join(System.lineSeparator())
-        }
-      }
-    }
-  }
-  if (proj.state.executed) {
-    registerAction()
-  } else {
-    proj.afterEvaluate { registerAction() }
-  }
-}
-`;
+  const initScript = generateGradleInitScript(outPrefix, rootDir);
 
   try {
     fs.writeFileSync(initFile, initScript, 'utf8');
@@ -184,16 +159,17 @@ allprojects { proj ->
     return;
   }
 
+  const { env } = getJavaProcessEnv(rootDir);
   const args = ['-q', '--console=plain', '--init-script', initFile, 'helperIdePrintClasspath'];
-  execFile(cmd, args, { cwd: rootDir, timeout: CLASSPATH_TIMEOUT_MS, maxBuffer: 32 * 1024 * 1024, shell: true }, (err) => {
+  execFile(cmd, args, { cwd: rootDir, env, timeout: CLASSPATH_TIMEOUT_MS, maxBuffer: 32 * 1024 * 1024, shell: true }, (err) => {
     try { fs.unlinkSync(initFile); } catch (_) {}
-    if (err) { callback(err); return; }
 
+    // Coleta arquivos mesmo se o Gradle retornou warning/erro não-fatal
+    const entries = [];
     try {
       const dir = os.tmpdir();
       const prefixName = path.basename(outPrefix);
       const files = fs.readdirSync(dir).filter((f) => f.startsWith(prefixName) && f.endsWith('.txt'));
-      const entries = [];
       for (const f of files) {
         const full = path.join(dir, f);
         try {
@@ -202,34 +178,20 @@ allprojects { proj ->
         } catch (_) {}
         try { fs.unlinkSync(full); } catch (_) {}
       }
-      callback(null, entries);
-    } catch (e) {
-      callback(e);
-    }
-  });
-}
+    } catch (_) {}
 
-function compareVersionsDesc(a, b) {
-  if (a === b) return 0;
-  const parsePart = (p) => {
-    const num = parseInt(p, 10);
-    return isNaN(num) ? p : num;
-  };
-  const pa = String(a).split(/[-._+]/).map(parsePart);
-  const pb = String(b).split(/[-._+]/).map(parsePart);
-  const maxLen = Math.max(pa.length, pb.length);
-  for (let i = 0; i < maxLen; i++) {
-    const va = pa[i] !== undefined ? pa[i] : 0;
-    const vb = pb[i] !== undefined ? pb[i] : 0;
-    if (typeof va === 'number' && typeof vb === 'number') {
-      if (va !== vb) return vb - va;
-    } else {
-      const sa = String(va);
-      const sb = String(vb);
-      if (sa !== sb) return sb.localeCompare(sa);
+    if (entries.length > 0) {
+      callback(null, entries);
+      return;
     }
-  }
-  return String(b).localeCompare(String(a));
+
+    if (err) {
+      callback(err);
+      return;
+    }
+
+    callback(null, []);
+  });
 }
 
 function scanJarMatchingClass(dir, fqn, maxDepth = 3) {
@@ -333,71 +295,56 @@ function scanLocalJarsImmediately(found, entry) {
       }
     }
 
+    const declaredDeps = [];
+
+    // Maven pom.xml
     const pomFile = path.join(rootDir, 'pom.xml');
     if (fs.existsSync(pomFile)) {
       try {
         const pomContent = fs.readFileSync(pomFile, 'utf8');
-        const m2Repo = path.join(home, '.m2', 'repository');
-        if (fs.existsSync(m2Repo)) {
-          const DEP_RE = /<dependency>[\s\S]*?<groupId>([\w.-]+)<\/groupId>[\s\S]*?<artifactId>([\w.-]+)<\/artifactId>(?:[\s\S]*?<version>([\w.-]+)<\/version>)?[\s\S]*?<\/dependency>/g;
-          let m;
-          while ((m = DEP_RE.exec(pomContent)) !== null) {
-            const groupId = m[1];
-            const artifactId = m[2];
-            const version = m[3];
-            const groupPath = path.join(m2Repo, ...groupId.split('.'), artifactId);
-            if (fs.existsSync(groupPath)) {
-              if (version) {
-                const jarPath = path.join(groupPath, version, `${artifactId}-${version}.jar`);
-                if (fs.existsSync(jarPath)) jarCandidates.push(jarPath);
-              } else {
-                try {
-                  const versions = fs.readdirSync(groupPath).sort(compareVersionsDesc);
-                  for (const v of versions) {
-                    const jarPath = path.join(groupPath, v, `${artifactId}-${v}.jar`);
-                    if (fs.existsSync(jarPath)) { jarCandidates.push(jarPath); break; }
-                  }
-                } catch (_) {}
-              }
-            }
-          }
+        const DEP_RE = /<dependency>[\s\S]*?<groupId>([\w.-]+)<\/groupId>[\s\S]*?<artifactId>([\w.-]+)<\/artifactId>(?:[\s\S]*?<version>([\w.-]+)<\/version>)?[\s\S]*?<\/dependency>/g;
+        let m;
+        while ((m = DEP_RE.exec(pomContent)) !== null) {
+          declaredDeps.push({ groupId: m[1], artifactId: m[2], version: m[3] || null });
         }
       } catch (_) {}
     }
 
-    const gradleFiles = [path.join(rootDir, 'build.gradle'), path.join(rootDir, 'build.gradle.kts')];
+    // Gradle files (raiz e submódulos imediatos)
+    const gradleFiles = [
+      path.join(rootDir, 'build.gradle'),
+      path.join(rootDir, 'build.gradle.kts'),
+      path.join(rootDir, 'gradle', 'libs.versions.toml'),
+    ];
+
+    try {
+      const entries = fs.readdirSync(rootDir, { withFileTypes: true });
+      for (const ent of entries) {
+        if (ent.isDirectory() && !IGNORED_DIRS.has(ent.name)) {
+          const subBg = path.join(rootDir, ent.name, 'build.gradle');
+          const subBgKts = path.join(rootDir, ent.name, 'build.gradle.kts');
+          if (fs.existsSync(subBg)) gradleFiles.push(subBg);
+          if (fs.existsSync(subBgKts)) gradleFiles.push(subBgKts);
+        }
+      }
+    } catch (_) {}
+
     for (const gf of gradleFiles) {
       if (fs.existsSync(gf)) {
         try {
           const content = fs.readFileSync(gf, 'utf8');
-          const gradleCache = path.join(home, '.gradle', 'caches', 'modules-2', 'files-2.1');
-          if (fs.existsSync(gradleCache)) {
-            const GDEP_RE = /(?:implementation|api|compileOnly|runtimeOnly|testImplementation)\s*[\('"]+([\w.-]+):([\w.-]+)(?::([\w.-]+))?[\)'"]/g;
-            let m;
-            while ((m = GDEP_RE.exec(content)) !== null) {
-              const groupId = m[1];
-              const artifactId = m[2];
-              const version = m[3];
-              const groupPath = path.join(gradleCache, groupId, artifactId);
-              if (fs.existsSync(groupPath)) {
-                try {
-                  const versions = version ? [version] : fs.readdirSync(groupPath).sort(compareVersionsDesc);
-                  for (const v of versions) {
-                    const vDir = path.join(groupPath, v);
-                    if (fs.existsSync(vDir)) {
-                      const hashDirs = fs.readdirSync(vDir);
-                      for (const hd of hashDirs) {
-                        const candidate = path.join(vDir, hd, `${artifactId}-${v}.jar`);
-                        if (fs.existsSync(candidate)) { jarCandidates.push(candidate); break; }
-                      }
-                    }
-                  }
-                } catch (_) {}
-              }
-            }
+          if (gf.endsWith('.toml')) {
+            declaredDeps.push(...extractDependenciesFromToml(content));
+          } else {
+            declaredDeps.push(...extractDependenciesFromGradleContent(content));
           }
         } catch (_) {}
       }
+    }
+
+    for (const dep of declaredDeps) {
+      const foundJars = findJarInCaches(dep.groupId, dep.artifactId, dep.version, home);
+      jarCandidates.push(...foundJars);
     }
 
     const uniqueJars = Array.from(new Set(jarCandidates));

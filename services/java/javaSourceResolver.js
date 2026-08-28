@@ -340,10 +340,11 @@ function getClassSource(jarPath, fqcn) {
 function listDependencyJars(dirPath) {
   const proj = getOrBuildProjectIndex(path.join(dirPath, '__helper_ide_dep_probe__.java'));
   if (!proj) return { status: 'unsupported' };
-  if (proj.status !== 'ready') return { status: proj.status, error: proj.error };
   const jars = (proj.classpathEntries || []).map((p) => ({ path: p, name: path.basename(p) }));
   jars.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-  return { status: 'ready', jars };
+  if (proj.status === 'building' && jars.length === 0) return { status: 'building' };
+  if (proj.status === 'error' && jars.length === 0) return { status: 'error', error: proj.error };
+  return { status: 'ready', jars, warning: proj.error || proj.warning };
 }
 
 function listJarClasses(jarPath) {

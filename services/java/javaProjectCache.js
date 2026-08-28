@@ -113,6 +113,15 @@ function buildClasspathIndexAsync(found, entry, key) {
   const resolve = found.type === 'maven' ? resolveClasspathMaven : resolveClasspathGradle;
   resolve(found.rootDir, (err, cpEntries) => {
     if (err) {
+      if (entry.classpathEntries && entry.classpathEntries.length > 0) {
+        entry.status = 'ready';
+        entry.error = null;
+        entry.warning = err.code === 'ENOENT'
+          ? `Comando de build não encontrado (${found.type === 'maven' ? 'mvn/mvnw' : 'gradle/gradlew'})`
+          : err.message;
+        notifyJavaDepsChanged(found.rootDir, 'ready');
+        return;
+      }
       entry.status = 'error';
       entry.error = err.code === 'ENOENT'
         ? `Comando de build não encontrado (${found.type === 'maven' ? 'mvn/mvnw' : 'gradle/gradlew'})`
@@ -135,9 +144,14 @@ function getOrBuildProjectIndex(filePath) {
 
   if (existing && existing.buildFileMtime === mtime) {
     if (existing.status === 'building' && (Date.now() - existing.lastAttemptAt) > CLASSPATH_TIMEOUT_MS) {
-      existing.status = 'error';
-      existing.error = 'Timeout ao resolver classpath (mais de 2min)';
-      notifyJavaDepsChanged(found.rootDir, 'error');
+      if (existing.classpathEntries && existing.classpathEntries.length > 0) {
+        existing.status = 'ready';
+        existing.warning = 'Timeout ao resolver classpath (mais de 2min) — mantendo bibliotecas locais.';
+      } else {
+        existing.status = 'error';
+        existing.error = 'Timeout ao resolver classpath (mais de 2min)';
+      }
+      notifyJavaDepsChanged(found.rootDir, existing.status);
     }
     return existing;
   }
@@ -169,11 +183,11 @@ function getOrBuildProjectIndex(filePath) {
     status: 'building',
     rootDir: found.rootDir,
     buildFileMtime: mtime,
-    allClasses: new Set(),
-    knownPackages: new Set(),
-    simpleNameIndex: new Map(),
-    classSource: new Map(),
-    classpathEntries: [],
+    allClasses: new Set(existing ? existing.allClasses : (diskEntry ? diskEntry.allClasses : [])),
+    knownPackages: new Set(existing ? existing.knownPackages : (diskEntry ? diskEntry.knownPackages : [])),
+    simpleNameIndex: existing ? new Map(existing.simpleNameIndex) : (diskEntry ? new Map((diskEntry.simpleNameIndex || []).map(([k, v]) => [k, new Set(v)])) : new Map()),
+    classSource: existing ? new Map(existing.classSource) : (diskEntry ? new Map(diskEntry.classSource || []) : new Map()),
+    classpathEntries: (existing && existing.classpathEntries) ? [...existing.classpathEntries] : ((diskEntry && diskEntry.classpathEntries) ? [...diskEntry.classpathEntries] : []),
     error: null,
     lastAttemptAt: Date.now(),
   };

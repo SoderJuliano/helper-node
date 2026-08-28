@@ -1,5 +1,5 @@
 // main/ipc/workspace.js
-const { path, fs2, workspace, state, helpers, ipcMain, configService } = require('../globals.js');
+const { path, fs2, workspace, state, helpers, ipcMain, configService, fileEditService } = require('../globals.js');
 
 module.exports = function registerIpc() {
 ipcMain.handle("get-workspace-access-enabled", () => {

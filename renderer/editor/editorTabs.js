@@ -115,8 +115,17 @@
     };
     
     if (filePath) {
+      menu.appendChild(mkItem('Salvar (Ctrl+S)', () => {
+        if (callbacks.saveFile) callbacks.saveFile(filePath);
+        else if (callbacks.saveActive) callbacks.saveActive();
+      }));
       menu.appendChild(mkItem('Fechar outros arquivos', () => {
         if (callbacks.closeOtherTabs) callbacks.closeOtherTabs(filePath);
+      }));
+    } else {
+      menu.appendChild(mkItem('Salvar (Ctrl+S)', () => {
+        if (callbacks.saveFile) callbacks.saveFile();
+        else if (callbacks.saveActive) callbacks.saveActive();
       }));
     }
     

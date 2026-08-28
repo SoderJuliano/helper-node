@@ -32,6 +32,7 @@
         'Ctrl-F': 'findPersistent', 'Cmd-F': 'findPersistent',
         'Ctrl-G': 'findNext', 'Shift-Ctrl-G': 'findPrev',
         'Cmd-G': 'findNext', 'Shift-Cmd-G': 'findPrev',
+        'Ctrl-S': () => { saveActive(); }, 'Cmd-S': () => { saveActive(); },
         'Ctrl-Space': 'autocomplete',
         'Tab': (editor) => (window.EditorAutocomplete.getGhostTextMarker() ? window.EditorAutocomplete.acceptGhostText(editor) : window.CodeMirror.Pass),
         'Esc': (editor) => (window.EditorAutocomplete.getGhostTextMarker() ? window.EditorAutocomplete.clearGhostText() : window.CodeMirror.Pass)
@@ -151,6 +152,8 @@
   function renderTabs() {
     window.EditorTabs.renderTabs(openFiles, activePath, {
       openFile,
+      saveFile,
+      saveActive,
       closeTab,
       closeOtherTabs,
       closeAllTabs,
@@ -367,11 +370,12 @@
     }, 30);
   }
 
-  async function saveActive() {
-    if (!activePath) return;
-    const doc = openFiles.get(activePath);
+  async function saveFile(targetPath) {
+    const filePath = targetPath || activePath;
+    if (!filePath) return;
+    const doc = openFiles.get(filePath);
     if (!doc) return;
-    if (activePath.includes('.jar!') || activePath.includes('.zip!')) {
+    if (filePath.includes('.jar!') || filePath.includes('.zip!')) {
       setSaveStatus('Arquivo de dependência é somente leitura');
       return;
     }
@@ -379,10 +383,13 @@
       setSaveStatus('Salvar indisponível');
       return;
     }
+    if (cm && filePath === activePath) {
+      doc.content = cm.getValue();
+    }
     setSaveStatus('Salvando…');
     try {
       const res = await window.electronAPI.editorSaveFile({
-        path: activePath,
+        path: filePath,
         content: doc.content,
         expectedMtimeMs: doc.mtimeMs,
       });
@@ -392,7 +399,9 @@
         doc.mtimeMs = res.mtimeMs;
         updateDirtyIndicator();
         renderTabs();
-        setConflictBanner(res.conflict ? '⚠ arquivo foi alterado por fora — salvo mesmo assim' : '');
+        if (filePath === activePath) {
+          setConflictBanner(res.conflict ? '⚠ arquivo foi alterado por fora — salvo mesmo assim' : '');
+        }
         setSaveStatus('Salvo ✓');
         setTimeout(() => setSaveStatus(''), 1500);
       } else {
@@ -401,6 +410,10 @@
     } catch (e) {
       setSaveStatus('Erro ao salvar: ' + e.message);
     }
+  }
+
+  async function saveActive() {
+    return saveFile(activePath);
   }
 
   function setSaveStatus(msg) {
@@ -476,7 +489,7 @@
     return !!(cm && cm.hasFocus());
   }
 
-  window.EditorController = { openFile, saveActive, closeEditor, isDirty, focusSearch, hasOpenFile, renamePath, hasFocus, closeAllTabs, toggleChatVisibility, getCm: () => cm };
+  window.EditorController = { openFile, saveActive, saveFile, closeEditor, isDirty, focusSearch, hasOpenFile, renamePath, hasFocus, closeAllTabs, toggleChatVisibility, getCm: () => cm };
 
   if (window.electronAPI && window.electronAPI.onFileMutated) {
     window.electronAPI.onFileMutated(onFileMutated);

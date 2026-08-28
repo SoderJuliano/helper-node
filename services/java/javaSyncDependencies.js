@@ -3,9 +3,11 @@
 
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { spawn } = require('child_process');
-const { findJavaProjectRoot, normalizePath } = require('./javaProjectRoot.js');
+const { findJavaProjectRoot, normalizePath, hashOf } = require('./javaProjectRoot.js');
 const { getOrBuildProjectIndex, projectCache, projectCacheDisk, saveDiskCache, notifyJavaDepsChanged } = require('./javaProjectCache.js');
+const { getJavaProcessEnv, generateGradleInitScript } = require('./javaPropertiesBridge.js');
 
 const DOWNLOAD_TIMEOUT_MS = 180000; // 3 minutos
 const syncLogsMap = new Map();
@@ -62,6 +64,7 @@ function downloadDependenciesAsync(found, callback) {
   const isWin = process.platform === 'win32';
   let cmd = '';
   let args = [];
+  let initFile = null;
 
   if (type === 'maven') {
     const mvnw = path.join(rootDir, isWin ? 'mvnw.cmd' : 'mvnw');
@@ -70,17 +73,32 @@ function downloadDependenciesAsync(found, callback) {
   } else {
     const gradlew = path.join(rootDir, isWin ? 'gradlew.bat' : 'gradlew');
     cmd = fs.existsSync(gradlew) ? gradlew : (isWin ? 'gradle.bat' : 'gradle');
-    args = ['--refresh-dependencies', '--console=plain', 'dependencies'];
+    const runId = hashOf(rootDir);
+    const outPrefix = path.join(os.tmpdir(), `helper-ide-sync-${runId}-`);
+    initFile = path.join(os.tmpdir(), `helper-ide-sync-${runId}.init.gradle`);
+    try {
+      const initScript = generateGradleInitScript(outPrefix, rootDir);
+      fs.writeFileSync(initFile, initScript, 'utf8');
+      args = ['--refresh-dependencies', '--console=plain', '--init-script', initFile, 'dependencies'];
+    } catch (_) {
+      args = ['--refresh-dependencies', '--console=plain', 'dependencies'];
+    }
   }
 
+  const { env, bestJdk, properties } = getJavaProcessEnv(rootDir);
   const norm = normalizePath(rootDir);
-  const logBuffer = [`[helper-node] Iniciando download e sincronizacao de dependencias (${type}) em: ${rootDir}\nExecutando: ${cmd} ${args.join(' ')}\n\n`];
+  const logBuffer = [
+    `[helper-node] Iniciando download e sincronizacao de dependencias (${type}) em: ${rootDir}\n` +
+    (bestJdk ? `[helper-node] Usando JDK: ${bestJdk.version} (${bestJdk.homePath})\n` : '') +
+    `Executando: ${cmd} ${args.join(' ')}\n\n`
+  ];
   syncLogsMap.set(norm, logBuffer.join(''));
 
   let proc;
   try {
-    proc = spawn(cmd, args, { cwd: rootDir, shell: true });
+    proc = spawn(cmd, args, { cwd: rootDir, env, shell: true });
   } catch (err) {
+    if (initFile) { try { fs.unlinkSync(initFile); } catch (_) {} }
     logBuffer.push(`Erro ao iniciar processo: ${err.message}\n`);
     syncLogsMap.set(norm, logBuffer.join(''));
     callback(null);
@@ -108,6 +126,7 @@ function downloadDependenciesAsync(found, callback) {
 
   proc.on('close', (code) => {
     clearTimeout(timeout);
+    if (initFile) { try { fs.unlinkSync(initFile); } catch (_) {} }
     logBuffer.push(`\n[helper-node] Processo finalizado com codigo ${code}\n`);
     syncLogsMap.set(norm, logBuffer.join(''));
     callback(null);
@@ -115,6 +134,7 @@ function downloadDependenciesAsync(found, callback) {
 
   proc.on('error', (err) => {
     clearTimeout(timeout);
+    if (initFile) { try { fs.unlinkSync(initFile); } catch (_) {} }
     logBuffer.push(`\n[erro] ${err.message}\n`);
     syncLogsMap.set(norm, logBuffer.join(''));
     callback(null);
