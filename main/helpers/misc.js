@@ -271,3 +271,60 @@ helpers.stopFramelessDrag = function() {
     state._framelessDrag = null;
   }
 }
+
+helpers.shutdownApp = function() {
+  if (state._isShuttingDown) return;
+  state._isShuttingDown = true;
+  console.log('[main] Encerrando Helper Node e todos os subprocessos...');
+
+  try {
+    if (state.backendCheckInterval) clearInterval(state.backendCheckInterval);
+    if (state.sharingCheckInterval) clearInterval(state.sharingCheckInterval);
+    helpers.clearOsNotifAutoClose();
+  } catch (_) {}
+
+  try { helpers.killTerminal(); } catch (_) {}
+  try {
+    const { AppRunnerService } = require('../../services/appRunner');
+    AppRunnerService.stopCurrent();
+  } catch (_) {}
+  try {
+    const nativeAudio = require('../../services/platform/nativeAudio.js');
+    if (nativeAudio && typeof nativeAudio.destroy === 'function') nativeAudio.destroy();
+  } catch (_) {}
+  try { helpers.cancelDictation(); } catch (_) {}
+  try { helpers.stopAllRealtime(); } catch (_) {}
+  try { helpers.stopClipboardMonitoring(); } catch (_) {}
+  try { globalShortcut.unregisterAll(); } catch (_) {}
+  try {
+    if (state.tray && !state.tray.isDestroyed()) {
+      state.tray.destroy();
+      state.tray = null;
+    }
+  } catch (_) {}
+  try {
+    const { closeNexaWindow } = require('../nexa/index.js');
+    closeNexaWindow();
+  } catch (_) {}
+  try {
+    GeminiCliProvider.shutdown().catch(() => {});
+    ClaudeCliProvider.shutdown().catch(() => {});
+  } catch (_) {}
+
+  try {
+    const { BrowserWindow } = require('electron');
+    BrowserWindow.getAllWindows().forEach((w) => {
+      if (w && !w.isDestroyed()) {
+        try { w.destroy(); } catch (_) {}
+      }
+    });
+  } catch (_) {}
+
+  const { app } = require('electron');
+  try { app.quit(); } catch (_) {}
+
+  setTimeout(() => {
+    try { app.exit(0); } catch (_) {}
+    try { process.exit(0); } catch (_) {}
+  }, 250).unref();
+};

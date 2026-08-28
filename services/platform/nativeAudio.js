@@ -143,4 +143,13 @@ async function prewarm() {
   }
 }
 
-module.exports = { subscribe, unsubscribe, prewarm };
+function destroy() {
+  clearTimeout(closeIdleTimer);
+  subscribers.clear();
+  if (win && !win.isDestroyed()) {
+    try { win.destroy(); } catch (_) {}
+    win = null;
+  }
+}
+
+module.exports = { subscribe, unsubscribe, prewarm, destroy };

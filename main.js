@@ -360,32 +360,18 @@ app.whenReady().then(async () => {
 
   // Verifica o status do backend ao iniciar e depois periodicamente
   helpers.checkBackendStatus();
-  setInterval(helpers.checkBackendStatus, 60000); // Verifica a cada 60 segundos
+  state.backendCheckInterval = setInterval(helpers.checkBackendStatus, 60000); // Verifica a cada 60 segundos
 });
 
 app.on("window-all-closed", () => {
   console.log("All windows closed");
-  clearInterval(state.sharingCheckInterval);
-  helpers.cancelDictation();
-  helpers.stopAllRealtime();
-  if (process.platform !== "darwin" && !state.mainWindow) {
-    app.quit();
-  }
+  helpers.shutdownApp();
+});
+
+app.on("before-quit", () => {
+  helpers.shutdownApp();
 });
 
 app.on("will-quit", () => {
-  globalShortcut.unregisterAll();
-  helpers.stopClipboardMonitoring();
-  helpers.stopAllRealtime();
-  if (state.tray && !state.tray.isDestroyed()) {
-    try { state.tray.destroy(); } catch (_) {}
-    state.tray = null;
-  }
-  try {
-    const { closeNexaWindow } = require("./main/nexa/index.js");
-    closeNexaWindow();
-  } catch (_) {}
-  // CLI providers: encerra processos de forma limpa.
-  GeminiCliProvider.shutdown().catch(e => console.warn('[gemini-cli] shutdown error:', e.message));
-  ClaudeCliProvider.shutdown().catch(e => console.warn('[claude-cli] shutdown error:', e.message));
+  helpers.shutdownApp();
 });

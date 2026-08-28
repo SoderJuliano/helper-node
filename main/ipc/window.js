@@ -35,9 +35,12 @@ ipcMain.on("window-minimize", (event) => {
 
 ipcMain.on("window-close", (event) => {
   const win = BrowserWindow.fromWebContents(event.sender) || state.mainWindow;
-  if (win && !win.isDestroyed()) {
-    try { win.close(); } catch (_) {}
+  if (!win || win.isDestroyed()) return;
+  if (win === state.mainWindow) {
+    helpers.shutdownApp();
+    return;
   }
+  try { win.close(); } catch (_) {}
 });
 
 ipcMain.on('frameless-drag-start', (event) => {
