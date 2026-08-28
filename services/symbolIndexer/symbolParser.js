@@ -202,10 +202,10 @@ function parseFileLines(indexer, normPath, content) {
       { re: /(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_$]+|\bfunction\b)/, g: 1 },
       { re: /^\s*(?:public\s+|protected\s+|private\s+)?(?:static\s+)?(?:async\s+|get\s+|set\s+)?([A-Za-z0-9_$]+)\s*\([^)]*\)\s*\{/, g: 1 },
       { re: /([A-Za-z0-9_$]+)\s*:\s*(?:async\s+)?function/, g: 1 },
-      { re: /^(?:(?:public|protected|private|static|final|async|override|synchronized|default|native)\s+)+[A-Za-z0-9_$<>[\].,?]+\s+([A-Za-z0-9_$]+)\s*\(/, g: 1 },
+      { re: /^(?:(?:public|protected|private|static|final|async|override|synchronized|default|native|abstract)\s+)*(?:<[A-Za-z0-9_$,\s<>?]+>\s+)?(?:[A-Za-z0-9_$<>[\],.?]+(?:\s*<[A-Za-z0-9_$,\s<>?]+>)?(?:\[\])?)\s+([A-Za-z0-9_$]+)\s*\(/, g: 1 },
       { re: /(?:async\s+)?def\s+([A-Za-z0-9_$]+)\s*\(/, g: 1 },
       { re: /(?:pub\s+)?(?:async\s+)?(?:func|fn)\s+(?:\([^)]+\)\s+)?([A-Za-z0-9_$]+)\s*\(/, g: 1 },
-      { re: /^(?:(?:public|protected|default|static|abstract)\s+)*[A-Za-z0-9_$<>[\].,?]+\s+([A-Za-z0-9_$]+)\s*\(/, g: 1 },
+      { re: /^(?:(?:public|protected|default|static|abstract)\s+)*(?:<[A-Za-z0-9_$,\s<>?]+>\s+)?(?:[A-Za-z0-9_$<>[\],.?]+(?:\s*<[A-Za-z0-9_$,\s<>?]+>)?(?:\[\])?)\s+([A-Za-z0-9_$]+)\s*\(/, g: 1 },
     ];
 
     for (const pattern of methodPatterns) {

@@ -7,6 +7,12 @@ const { decompileClassFile } = require('./javaDecompiler.js');
 const { findJavaProjectRoot } = require('./javaProjectRoot.js');
 const { findJarForFqn, findGradleSourcesJar } = require('./javaClasspathResolver.js');
 const { getOrBuildProjectIndex } = require('./javaProjectCache.js');
+const {
+  scanDirForFile,
+  findSourceFileForFqn,
+  findSymbolLineInClassSource,
+  collectImports,
+} = require('./javaSourceFinder.js');
 
 function encodeVirtualPath(jarPath, fqcn) {
   return String(jarPath).replace(/\\/g, '/') + '!' + fqcn.replace(/\./g, '/') + '.java';
@@ -27,51 +33,10 @@ function isSupported(filePath) {
   return typeof filePath === 'string' && filePath.toLowerCase().endsWith('.java');
 }
 
-function collectImports(content) {
-  const lines = content.split(/\r?\n/);
-  const imports = [];
-  const RE = /^\s*import\s+(static\s+)?([\w.]+)(\.\*)?\s*;/;
-  for (let i = 0; i < lines.length; i++) {
-    const m = RE.exec(lines[i]);
-    if (m) {
-      const isStatic = Boolean(m[1]);
-      const fqn = m[2];
-      const isWildcard = Boolean(m[3]);
-      imports.push({ line: i + 1, fqn, isStatic, isWildcard, raw: m[0] });
-    }
-  }
-  return imports;
-}
-
-function findSymbolLineInClassSource(content, symbol) {
-  if (!content || !symbol) return 1;
-  const lines = content.split(/\r?\n/);
-  const escaped = symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-  // 1. Definição de método em Java / classe descompilada
-  const methodRegex = new RegExp(`^(?:(?:public|protected|private|static|final|async|synchronized|default|native|abstract)\\s+)*[A-Za-z0-9_$<>\\[\\],.?]+\\s+${escaped}\\s*\\(`);
-  for (let i = 0; i < lines.length; i++) {
-    if (methodRegex.test(lines[i].trim())) return i + 1;
-  }
-
-  // 2. Campo ou constante enum
-  const fieldRegex = new RegExp(`\\b${escaped}\\b\\s*(?:[;=,)]|$)`);
-  for (let i = 0; i < lines.length; i++) {
-    if (fieldRegex.test(lines[i].trim())) return i + 1;
-  }
-
-  // 3. Primeira Ocorrência do identificador
-  const wordRegex = new RegExp(`\\b${escaped}\\b`);
-  for (let i = 0; i < lines.length; i++) {
-    if (wordRegex.test(lines[i])) return i + 1;
-  }
-
-  return 1;
-}
-
-function resolveClassFqn(proj, className, lineText, content, rootDir) {
+function resolveClassFqn(proj, className, lineText, content, rootDir, fallbackFilePath = null) {
   if (!className) return null;
   let fqn = null;
+  const effectiveRoot = rootDir || (proj && proj.rootDir);
 
   // 1. Import explícito na própria linha
   const impMatch = lineText && lineText.match(/^\s*import\s+(?:static\s+)?([\w.]+)(\.\*)?\s*;/);
@@ -94,11 +59,15 @@ function resolveClassFqn(proj, className, lineText, content, rootDir) {
       const wildcards = imports.filter((i) => !i.isStatic && i.isWildcard);
       for (const w of wildcards) {
         const candidate = `${w.fqn}.${className}`;
+        const localSrc = findSourceFileForFqn(effectiveRoot, candidate, className, fallbackFilePath);
+        if (localSrc) {
+          return { fqn: candidate, filePath: localSrc, isSource: true };
+        }
         if (proj && proj.allClasses && proj.allClasses.has(candidate) && proj.classSource.has(candidate)) {
           fqn = candidate;
           break;
         }
-        const jarFound = findJarForFqn(candidate, rootDir || (proj && proj.rootDir));
+        const jarFound = findJarForFqn(candidate, effectiveRoot);
         if (jarFound) {
           fqn = candidate;
           if (proj && proj.classSource) proj.classSource.set(candidate, jarFound);
@@ -109,17 +78,27 @@ function resolveClassFqn(proj, className, lineText, content, rootDir) {
   }
 
   // 3. Mesmo pacote
-  if (!fqn && content && proj) {
+  if (!fqn && content) {
     const pkgMatch = /^\s*package\s+([\w.]+)\s*;/m.exec(content);
     if (pkgMatch) {
       const samePkgCandidate = `${pkgMatch[1]}.${className}`;
-      if (proj.allClasses && proj.allClasses.has(samePkgCandidate) && proj.classSource.has(samePkgCandidate)) {
+      const localSrc = findSourceFileForFqn(effectiveRoot, samePkgCandidate, className, fallbackFilePath);
+      if (localSrc) {
+        return { fqn: samePkgCandidate, filePath: localSrc, isSource: true };
+      }
+      if (proj && proj.allClasses && proj.allClasses.has(samePkgCandidate) && proj.classSource.has(samePkgCandidate)) {
         fqn = samePkgCandidate;
       }
     }
   }
 
-  // 4. Busca por nome simples no índice de dependências
+  // 4. Checa se é um fonte do projeto antes de buscar em bibliotecas externas
+  const localSrc = findSourceFileForFqn(effectiveRoot, fqn, className, fallbackFilePath);
+  if (localSrc) {
+    return { fqn: fqn || className, filePath: localSrc, isSource: true };
+  }
+
+  // 5. Busca por nome simples no índice de dependências
   if (!fqn && proj && proj.simpleNameIndex && proj.simpleNameIndex.has(className)) {
     const candidates = Array.from(proj.simpleNameIndex.get(className));
     for (const cand of candidates) {
@@ -130,7 +109,7 @@ function resolveClassFqn(proj, className, lineText, content, rootDir) {
     }
   }
 
-  // 5. Verificação de classes padrão do JDK
+  // 6. Verificação de classes padrão do JDK
   if (!fqn && JDK_FQN_MAP.has(className)) {
     fqn = JDK_FQN_MAP.get(className);
     const jdkSrc = getJdkSrcZip();
@@ -146,19 +125,17 @@ function resolveClassFqn(proj, className, lineText, content, rootDir) {
 
   let jarPath = proj && proj.classSource ? proj.classSource.get(fqn) : null;
   if (!jarPath) {
-    jarPath = findJarForFqn(fqn, rootDir || (proj && proj.rootDir));
+    jarPath = findJarForFqn(fqn, effectiveRoot);
     if (jarPath && proj && proj.classSource) {
       proj.classSource.set(fqn, jarPath);
     }
   }
 
-  if (!jarPath) {
-    const pkgParts = fqn.split('.');
-    const artifactName = pkgParts.length > 2 ? pkgParts.slice(0, 3).join('.') : pkgParts[0];
-    jarPath = `${artifactName}.jar`;
+  if (jarPath && (fs.existsSync(jarPath) || jarPath === 'JDK' || jarPath.includes('src.zip'))) {
+    return { fqn, jarPath };
   }
 
-  return { fqn, jarPath };
+  return null;
 }
 
 function resolveSymbolToJar(filePath, symbol, lineText, content) {
@@ -184,6 +161,24 @@ function resolveSymbolToJar(filePath, symbol, lineText, content) {
     }
     const classFqn = classParts.join('.');
     const classNameFromFqn = classParts[classParts.length - 1];
+
+    const localSrc = findSourceFileForFqn(rootDir, classFqn, classNameFromFqn, filePath);
+    if (localSrc && fs.existsSync(localSrc)) {
+      let fileContent = '';
+      try { fileContent = fs.readFileSync(localSrc, 'utf8'); } catch (_) {}
+      const targetSymbol = memberName || symbol;
+      const targetLine = findSymbolLineInClassSource(fileContent, targetSymbol);
+      return {
+        fqn: classFqn,
+        fqcn: classFqn,
+        filePath: localSrc,
+        targetLine,
+        className: classNameFromFqn,
+        isMethod: Boolean(memberName),
+        isSource: true,
+      };
+    }
+
     let jarFound = (proj && proj.classSource && proj.classSource.get(classFqn)) || findJarForFqn(classFqn, rootDir || (proj && proj.rootDir));
     if (jarFound) {
       const src = getClassSource(jarFound, classFqn);
@@ -201,21 +196,37 @@ function resolveSymbolToJar(filePath, symbol, lineText, content) {
   }
 
   // A. Resolver diretamente como classe
-  const classRes = resolveClassFqn(proj, symbol, lineText, content, rootDir);
+  const classRes = resolveClassFqn(proj, symbol, lineText, content, rootDir, filePath);
   if (classRes) {
-    return {
-      fqn: classRes.fqn,
-      fqcn: classRes.fqn,
-      jarPath: classRes.jarPath,
-      targetLine: 1,
-      className: classRes.fqn.split('.').pop() || symbol,
-      isMethod: false,
-    };
+    if (classRes.isSource && classRes.filePath) {
+      let fileContent = '';
+      try { fileContent = fs.readFileSync(classRes.filePath, 'utf8'); } catch (_) {}
+      const targetLine = findSymbolLineInClassSource(fileContent, symbol);
+      return {
+        fqn: classRes.fqn,
+        fqcn: classRes.fqn,
+        filePath: classRes.filePath,
+        targetLine,
+        className: classRes.fqn.split('.').pop() || symbol,
+        isMethod: false,
+        isSource: true,
+      };
+    }
+    if (classRes.jarPath) {
+      return {
+        fqn: classRes.fqn,
+        fqcn: classRes.fqn,
+        jarPath: classRes.jarPath,
+        targetLine: 1,
+        className: classRes.fqn.split('.').pop() || symbol,
+        isMethod: false,
+      };
+    }
   }
 
   const escapedSym = symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-  // B. Chamada com receptor
+  // B. Chamada com receptor (ex: userService.saveUser(...) ou PaymentService.process(...))
   if (lineText) {
     const mRec = lineText.match(new RegExp(`([A-Za-z_$][A-Za-z0-9_$]*)\\s*\\.\\s*${escapedSym}\\b`));
     if (mRec && mRec[1] && mRec[1] !== 'this' && mRec[1] !== 'super') {
@@ -229,19 +240,62 @@ function resolveSymbolToJar(filePath, symbol, lineText, content) {
         if (mType) targetClassName = mType[1];
       }
 
+      if (!targetClassName && receptor.length > 0) {
+        targetClassName = receptor.charAt(0).toUpperCase() + receptor.slice(1);
+      }
+
       if (targetClassName) {
-        const recRes = resolveClassFqn(proj, targetClassName, lineText, content, rootDir);
+        const recRes = resolveClassFqn(proj, targetClassName, lineText, content, rootDir, filePath);
         if (recRes) {
-          const src = getClassSource(recRes.jarPath, recRes.fqn);
-          const targetLine = src && src.available ? findSymbolLineInClassSource(src.content, symbol) : 1;
-          return {
-            fqn: recRes.fqn,
-            fqcn: recRes.fqn,
-            jarPath: recRes.jarPath,
-            targetLine,
-            className: targetClassName,
-            isMethod: true,
-          };
+          if (recRes.isSource && recRes.filePath) {
+            let fileContent = '';
+            try { fileContent = fs.readFileSync(recRes.filePath, 'utf8'); } catch (_) {}
+            let targetLine = findSymbolLineInClassSource(fileContent, symbol);
+
+            // Se for interface e não achou implementação no arquivo, tenta a classe Impl
+            if (targetLine === 1 || fileContent.includes('interface ' + targetClassName)) {
+              const implPath = findSourceFileForFqn(rootDir, null, targetClassName + 'Impl', filePath);
+              if (implPath && fs.existsSync(implPath)) {
+                let implContent = '';
+                try { implContent = fs.readFileSync(implPath, 'utf8'); } catch (_) {}
+                const implLine = findSymbolLineInClassSource(implContent, symbol);
+                if (implLine > 1) {
+                  return {
+                    fqn: recRes.fqn + 'Impl',
+                    fqcn: recRes.fqn + 'Impl',
+                    filePath: implPath,
+                    targetLine: implLine,
+                    className: targetClassName + 'Impl',
+                    isMethod: true,
+                    isSource: true,
+                  };
+                }
+              }
+            }
+
+            return {
+              fqn: recRes.fqn,
+              fqcn: recRes.fqn,
+              filePath: recRes.filePath,
+              targetLine,
+              className: targetClassName,
+              isMethod: true,
+              isSource: true,
+            };
+          }
+
+          if (recRes.jarPath) {
+            const src = getClassSource(recRes.jarPath, recRes.fqn);
+            const targetLine = src && src.available ? findSymbolLineInClassSource(src.content, symbol) : 1;
+            return {
+              fqn: recRes.fqn,
+              fqcn: recRes.fqn,
+              jarPath: recRes.jarPath,
+              targetLine,
+              className: targetClassName,
+              isMethod: true,
+            };
+          }
         }
       }
     }
@@ -262,6 +316,15 @@ function resolveSymbolToJar(filePath, symbol, lineText, content) {
       parts.pop();
       const classFqn = parts.join('.');
       const className = classFqn.split('.').pop();
+
+      const localSrc = findSourceFileForFqn(rootDir, classFqn, className, filePath);
+      if (localSrc && fs.existsSync(localSrc)) {
+        let fileContent = '';
+        try { fileContent = fs.readFileSync(localSrc, 'utf8'); } catch (_) {}
+        const targetLine = findSymbolLineInClassSource(fileContent, symbol);
+        return { fqn: classFqn, fqcn: classFqn, filePath: localSrc, targetLine, className, isMethod: true, isSource: true };
+      }
+
       let jarFound = (proj && proj.classSource && proj.classSource.get(classFqn)) || findJarForFqn(classFqn, rootDir || (proj && proj.rootDir));
       if (jarFound) {
         const src = getClassSource(jarFound, classFqn);
@@ -274,6 +337,16 @@ function resolveSymbolToJar(filePath, symbol, lineText, content) {
     for (const ws of wildcardStatics) {
       const classFqn = ws.fqn;
       const className = classFqn.split('.').pop();
+      const localSrc = findSourceFileForFqn(rootDir, classFqn, className, filePath);
+      if (localSrc && fs.existsSync(localSrc)) {
+        let fileContent = '';
+        try { fileContent = fs.readFileSync(localSrc, 'utf8'); } catch (_) {}
+        if (new RegExp(`\\b${escapedSym}\\b`).test(fileContent)) {
+          const targetLine = findSymbolLineInClassSource(fileContent, symbol);
+          return { fqn: classFqn, fqcn: classFqn, filePath: localSrc, targetLine, className, isMethod: true, isSource: true };
+        }
+      }
+
       let jarFound = (proj && proj.classSource && proj.classSource.get(classFqn)) || findJarForFqn(classFqn, rootDir || (proj && proj.rootDir));
       if (jarFound) {
         const src = getClassSource(jarFound, classFqn);

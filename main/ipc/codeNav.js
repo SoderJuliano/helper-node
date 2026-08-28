@@ -29,21 +29,34 @@ module.exports = function registerCodeNavIPC() {
       const matches = symbolIndexer.findDefinition(filePath, symbol, lineText);
       if (Array.isArray(matches) && matches.length > 0) return matches;
 
-      // Não achou no código do próprio projeto — se for Java, tenta resolver
-      // como uma classe vinda de um jar do classpath ("ir para dentro da
-      // dependência", igual IntelliJ faz com External Libraries).
+      // Se não achou diretamente no índice do workspace, tenta a resolução avançada do Java
       if (filePath && filePath.toLowerCase().endsWith('.java')) {
         const dep = javaImportChecker.resolveSymbolToJar(filePath, symbol, lineText, content || '');
         if (dep) {
-          const fqcn = dep.fqcn || dep.fqn;
-          return [{
-            filePath: javaImportChecker.encodeVirtualPath(dep.jarPath, fqcn),
-            line: dep.targetLine || 1,
-            symbol,
-            kind: dep.isMethod ? 'method' : 'class',
-            className: dep.className || (fqcn ? fqcn.split('.').pop() : symbol),
-            isDependency: true,
-          }];
+          // 1. Arquivo de código fonte do próprio projeto
+          if (dep.isSource || (dep.filePath && !dep.filePath.includes('.jar!'))) {
+            return [{
+              filePath: dep.filePath,
+              line: dep.targetLine || 1,
+              symbol,
+              kind: dep.isMethod ? 'method' : 'class',
+              className: dep.className || symbol,
+              isDependency: false,
+            }];
+          }
+
+          // 2. Dependência externa em biblioteca JAR / JDK
+          if (dep.jarPath) {
+            const fqcn = dep.fqcn || dep.fqn;
+            return [{
+              filePath: javaImportChecker.encodeVirtualPath(dep.jarPath, fqcn),
+              line: dep.targetLine || 1,
+              symbol,
+              kind: dep.isMethod ? 'method' : 'class',
+              className: dep.className || (fqcn ? fqcn.split('.').pop() : symbol),
+              isDependency: true,
+            }];
+          }
         }
       }
       return matches;
