@@ -5,7 +5,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { detectProjectType, clearCacheForProject, syncDependencies } = require('../services/java/javaSyncDependencies.js');
+const { detectProjectType, clearCacheForProject, syncDependencies, getSyncLog } = require('../services/java/javaSyncDependencies.js');
 const javaImportChecker = require('../services/javaImportChecker.js');
 
 console.log('=== Testando Deteccao e Sincronizacao de Dependencias Java (Maven / Gradle) ===\n');
@@ -42,10 +42,17 @@ try {
   assert(!nonJavaDetected.isJavaProject, 'Diretorio sem pom/gradle nao deve ser projeto Java');
   console.log('  ok   Diretorio nao-Java rejeitado corretamente');
 
-  // 4. Teste do javaImportChecker detect & sync
+  // 4. Teste de getSyncLog flexivel
+  const logStr = getSyncLog(gradleDir);
+  assert(typeof logStr === 'string', 'getSyncLog deve retornar string');
+  assert(logStr.length > 0, 'getSyncLog deve retornar mensagem informativa');
+  console.log('  ok   getSyncLog retorna logs com fallback seguro');
+
+  // 5. Teste do javaImportChecker detect & sync
   assert(typeof javaImportChecker.detectProjectType === 'function', 'detectProjectType deve estar exportado');
   assert(typeof javaImportChecker.syncDependencies === 'function', 'syncDependencies deve estar exportado');
-  console.log('  ok   javaImportChecker exporta metodos de deteccao e sincronizacao');
+  assert(typeof javaImportChecker.getSyncLog === 'function', 'getSyncLog deve estar exportado');
+  console.log('  ok   javaImportChecker exporta metodos de deteccao, logs e sincronizacao');
 
   console.log('\nTodos os testes de Deteccao e Sincronizacao passaram com sucesso! ί\n');
 } finally {

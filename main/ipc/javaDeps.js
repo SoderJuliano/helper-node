@@ -8,8 +8,9 @@ const { ipcMain } = require('electron');
 const javaImportChecker = require('../../services/javaImportChecker.js');
 
 module.exports = function registerJavaDepsIPC() {
-  ipcMain.handle('java-deps:list-jars', async (_event, { dirPath } = {}) => {
+  ipcMain.handle('java-deps:list-jars', async (_event, payload) => {
     try {
+      const dirPath = typeof payload === 'string' ? payload : (payload && (payload.dirPath || payload.projectDir));
       if (!dirPath) return { status: 'error', error: 'pasta vazia' };
       return javaImportChecker.listDependencyJars(dirPath);
     } catch (e) {
@@ -18,8 +19,9 @@ module.exports = function registerJavaDepsIPC() {
     }
   });
 
-  ipcMain.handle('java-deps:list-classes', async (_event, { jarPath } = {}) => {
+  ipcMain.handle('java-deps:list-classes', async (_event, payload) => {
     try {
+      const jarPath = typeof payload === 'string' ? payload : (payload && payload.jarPath);
       if (!jarPath) return { classes: [] };
       const classes = javaImportChecker.listJarClasses(jarPath);
       return {
@@ -31,8 +33,9 @@ module.exports = function registerJavaDepsIPC() {
     }
   });
 
-  ipcMain.handle('java-deps:detect', async (_event, { projectDir } = {}) => {
+  ipcMain.handle('java-deps:detect', async (_event, payload) => {
     try {
+      const projectDir = typeof payload === 'string' ? payload : (payload && (payload.projectDir || payload.dirPath));
       if (!projectDir) return { isJavaProject: false };
       return javaImportChecker.detectProjectType(projectDir);
     } catch (e) {
@@ -41,8 +44,10 @@ module.exports = function registerJavaDepsIPC() {
     }
   });
 
-  ipcMain.handle('java-deps:sync', async (_event, { projectDir, forceDownload = true } = {}) => {
+  ipcMain.handle('java-deps:sync', async (_event, payload) => {
     try {
+      const projectDir = typeof payload === 'string' ? payload : (payload && (payload.projectDir || payload.dirPath));
+      const forceDownload = payload && typeof payload.forceDownload === 'boolean' ? payload.forceDownload : true;
       if (!projectDir) return { ok: false, error: 'Diretório do projeto não especificado.' };
       return await javaImportChecker.syncDependencies(projectDir, { forceDownload });
     } catch (e) {
@@ -51,9 +56,9 @@ module.exports = function registerJavaDepsIPC() {
     }
   });
 
-  ipcMain.handle('java-deps:get-sync-log', async (_event, { projectDir } = {}) => {
+  ipcMain.handle('java-deps:get-sync-log', async (_event, payload) => {
     try {
-      if (!projectDir) return '';
+      const projectDir = typeof payload === 'string' ? payload : (payload && (payload.projectDir || payload.dirPath));
       return javaImportChecker.getSyncLog(projectDir);
     } catch (e) {
       return 'Erro ao obter logs: ' + e.message;

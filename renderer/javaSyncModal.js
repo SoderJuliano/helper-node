@@ -73,7 +73,7 @@
     if (!syncModal || syncModal.style.display === 'none') return;
     if (!window.electronAPI || !window.electronAPI.javaDepsGetSyncLog) return;
     try {
-      const log = await window.electronAPI.javaDepsGetSyncLog(currentProjectDir);
+      const log = await window.electronAPI.javaDepsGetSyncLog({ projectDir: currentProjectDir });
       const pre = syncModal.querySelector('#java-sync-log-content');
       if (pre && log) {
         pre.textContent = log;
@@ -84,12 +84,16 @@
 
   function openJavaSyncLogModal(projectDir) {
     currentProjectDir = projectDir || currentProjectDir;
+    if (!currentProjectDir) {
+      const wsProj = document.getElementById('ws-project-main');
+      if (wsProj) currentProjectDir = wsProj.dataset.path || '';
+    }
     const modal = createSyncModalDom();
     modal.style.display = 'flex';
     refreshSyncLog();
 
     clearInterval(pollTimer);
-    pollTimer = setInterval(refreshSyncLog, 1000);
+    pollTimer = setInterval(refreshSyncLog, 600);
   }
 
   function closeJavaSyncModal() {
@@ -121,8 +125,8 @@
       pill.innerHTML = `<span class="sync-spinner">🔄</span> ${msg || 'Sincronizando dependências...'} <span class="sync-log-hint">(Ver Saída)</span>`;
       pill.classList.remove('sync-error', 'sync-success');
       pill.classList.add('sync-building');
-    } else if (status === 'success') {
-      pill.innerHTML = `<span>✓</span> ${msg} <span class="sync-log-hint">(Logs)</span>`;
+    } else if (status === 'success' || status === 'ready') {
+      pill.innerHTML = `<span>✓</span> ${msg || 'Dependências prontas'} <span class="sync-log-hint">(Logs)</span>`;
       pill.classList.remove('sync-building', 'sync-error');
       pill.classList.add('sync-success');
       setTimeout(() => {
@@ -168,7 +172,24 @@
     }
   }
 
+  if (window.electronAPI && window.electronAPI.onJavaDepsChanged) {
+    window.electronAPI.onJavaDepsChanged((data) => {
+      if (!data) return;
+      if (data.status === 'building') {
+        updateSyncStatusPill('building', 'Sincronizando dependências...', data.rootDir);
+      } else if (data.status === 'ready') {
+        updateSyncStatusPill('success', 'Dependências atualizadas', data.rootDir);
+        if (typeof window.renderTree === 'function') window.renderTree();
+      } else if (data.status === 'error') {
+        updateSyncStatusPill('error', 'Erro nas dependências', data.rootDir);
+        if (typeof window.renderTree === 'function') window.renderTree();
+      }
+      refreshSyncLog();
+    });
+  }
+
   window.openJavaSyncLogModal = openJavaSyncLogModal;
   window.closeJavaSyncModal = closeJavaSyncModal;
   window.triggerJavaSync = triggerJavaSync;
+  window.updateSyncStatusPill = updateSyncStatusPill;
 })();

@@ -139,19 +139,32 @@ function resolveClasspathGradle(rootDir, callback) {
   const initScript = `
 allprojects { proj ->
   def registerAction = {
-    def sourceSetsExt = proj.extensions.findByName('sourceSets')
-    if (sourceSetsExt != null && proj.tasks.findByName('helperIdePrintClasspath') == null) {
+    if (proj.tasks.findByName('helperIdePrintClasspath') == null) {
       proj.tasks.register('helperIdePrintClasspath') {
         doLast {
-          def main = sourceSetsExt.findByName('main')
-          if (main != null) {
-            def safeName = proj.path.replaceAll('[^a-zA-Z0-9]', '_')
-            def out = new File(${JSON.stringify(outPrefix)} + safeName + '.txt')
-            def lines = []
-            try { main.compileClasspath.files.each { lines << it.absolutePath } } catch (ignored) {}
-            try { main.output.classesDirs.files.each { lines << it.absolutePath } } catch (ignored) {}
-            out.text = lines.join(System.lineSeparator())
-          }
+          def safeName = (proj.path == ':' ? '_root_' : proj.path.replaceAll('[^a-zA-Z0-9]', '_'))
+          def out = new File(${JSON.stringify(outPrefix)} + safeName + '.txt')
+          def lines = new LinkedHashSet<String>()
+          try {
+            if (proj.hasProperty('sourceSets')) {
+              proj.sourceSets.each { ss ->
+                try { ss.compileClasspath.files.each { if (it.exists()) lines.add(it.absolutePath) } } catch (e) {}
+                try { ss.runtimeClasspath.files.each { if (it.exists()) lines.add(it.absolutePath) } } catch (e) {}
+                try { ss.output.classesDirs.files.each { if (it.exists()) lines.add(it.absolutePath) } } catch (e) {}
+              }
+            }
+          } catch (e) {}
+          try {
+            proj.configurations.each { cfg ->
+              try {
+                def name = cfg.name.toLowerCase()
+                if (cfg.canBeResolved && (name.contains('classpath') || name.contains('compile') || name.contains('runtime') || name == 'implementation' || name == 'api')) {
+                  cfg.files.each { if (it.exists()) lines.add(it.absolutePath) }
+                }
+              } catch (e) {}
+            }
+          } catch (e) {}
+          out.text = lines.join(System.lineSeparator())
         }
       }
     }
@@ -171,7 +184,7 @@ allprojects { proj ->
     return;
   }
 
-  const args = ['-q', '--init-script', initFile, 'helperIdePrintClasspath'];
+  const args = ['-q', '--console=plain', '--init-script', initFile, 'helperIdePrintClasspath'];
   execFile(cmd, args, { cwd: rootDir, timeout: CLASSPATH_TIMEOUT_MS, maxBuffer: 32 * 1024 * 1024, shell: true }, (err) => {
     try { fs.unlinkSync(initFile); } catch (_) {}
     if (err) { callback(err); return; }
@@ -194,6 +207,29 @@ allprojects { proj ->
       callback(e);
     }
   });
+}
+
+function compareVersionsDesc(a, b) {
+  if (a === b) return 0;
+  const parsePart = (p) => {
+    const num = parseInt(p, 10);
+    return isNaN(num) ? p : num;
+  };
+  const pa = String(a).split(/[-._+]/).map(parsePart);
+  const pb = String(b).split(/[-._+]/).map(parsePart);
+  const maxLen = Math.max(pa.length, pb.length);
+  for (let i = 0; i < maxLen; i++) {
+    const va = pa[i] !== undefined ? pa[i] : 0;
+    const vb = pb[i] !== undefined ? pb[i] : 0;
+    if (typeof va === 'number' && typeof vb === 'number') {
+      if (va !== vb) return vb - va;
+    } else {
+      const sa = String(va);
+      const sb = String(vb);
+      if (sa !== sb) return sb.localeCompare(sa);
+    }
+  }
+  return String(b).localeCompare(String(a));
 }
 
 function scanJarMatchingClass(dir, fqn, maxDepth = 3) {
@@ -316,7 +352,7 @@ function scanLocalJarsImmediately(found, entry) {
                 if (fs.existsSync(jarPath)) jarCandidates.push(jarPath);
               } else {
                 try {
-                  const versions = fs.readdirSync(groupPath);
+                  const versions = fs.readdirSync(groupPath).sort(compareVersionsDesc);
                   for (const v of versions) {
                     const jarPath = path.join(groupPath, v, `${artifactId}-${v}.jar`);
                     if (fs.existsSync(jarPath)) { jarCandidates.push(jarPath); break; }
@@ -345,7 +381,7 @@ function scanLocalJarsImmediately(found, entry) {
               const groupPath = path.join(gradleCache, groupId, artifactId);
               if (fs.existsSync(groupPath)) {
                 try {
-                  const versions = version ? [version] : fs.readdirSync(groupPath);
+                  const versions = version ? [version] : fs.readdirSync(groupPath).sort(compareVersionsDesc);
                   for (const v of versions) {
                     const vDir = path.join(groupPath, v);
                     if (fs.existsSync(vDir)) {

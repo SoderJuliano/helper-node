@@ -43,8 +43,18 @@ function clearCacheForProject(rootDir) {
 }
 
 function getSyncLog(rootDir) {
+  if (!rootDir) {
+    for (const log of syncLogsMap.values()) {
+      if (log) return log;
+    }
+    return 'Sem logs de sincronizacao disponiveis.';
+  }
   const norm = normalizePath(rootDir);
-  return syncLogsMap.get(norm) || 'Sem logs de sincronizacao disponiveis.';
+  if (syncLogsMap.has(norm)) return syncLogsMap.get(norm);
+  for (const [k, v] of syncLogsMap.entries()) {
+    if (k.includes(norm) || norm.includes(k)) return v;
+  }
+  return 'Sem logs de sincronizacao disponiveis.';
 }
 
 function downloadDependenciesAsync(found, callback) {
@@ -56,15 +66,15 @@ function downloadDependenciesAsync(found, callback) {
   if (type === 'maven') {
     const mvnw = path.join(rootDir, isWin ? 'mvnw.cmd' : 'mvnw');
     cmd = fs.existsSync(mvnw) ? mvnw : (isWin ? 'mvn.cmd' : 'mvn');
-    args = ['dependency:resolve', '-B', '-q'];
+    args = ['-U', '-B', 'dependency:resolve'];
   } else {
     const gradlew = path.join(rootDir, isWin ? 'gradlew.bat' : 'gradlew');
     cmd = fs.existsSync(gradlew) ? gradlew : (isWin ? 'gradle.bat' : 'gradle');
-    args = ['--refresh-dependencies', 'dependencies', '-q'];
+    args = ['--refresh-dependencies', '--console=plain', 'dependencies'];
   }
 
   const norm = normalizePath(rootDir);
-  const logBuffer = [`[helper-node] Iniciando download de dependencias (${type}) em: ${rootDir}\nExecutando: ${cmd} ${args.join(' ')}\n\n`];
+  const logBuffer = [`[helper-node] Iniciando download e sincronizacao de dependencias (${type}) em: ${rootDir}\nExecutando: ${cmd} ${args.join(' ')}\n\n`];
   syncLogsMap.set(norm, logBuffer.join(''));
 
   let proc;
@@ -86,13 +96,13 @@ function downloadDependenciesAsync(found, callback) {
 
   proc.stdout.on('data', (d) => {
     logBuffer.push(d.toString());
-    if (logBuffer.length > 500) logBuffer.shift();
+    if (logBuffer.length > 2000) logBuffer.splice(0, logBuffer.length - 2000);
     syncLogsMap.set(norm, logBuffer.join(''));
   });
 
   proc.stderr.on('data', (d) => {
     logBuffer.push(d.toString());
-    if (logBuffer.length > 500) logBuffer.shift();
+    if (logBuffer.length > 2000) logBuffer.splice(0, logBuffer.length - 2000);
     syncLogsMap.set(norm, logBuffer.join(''));
   });
 
@@ -133,7 +143,7 @@ async function syncDependencies(dirPath, { forceDownload = true } = {}) {
   }
 
   let waited = 0;
-  while (entry.status === 'building' && waited < 10000) {
+  while (entry.status === 'building' && waited < 15000) {
     await new Promise(r => setTimeout(r, 500));
     waited += 500;
   }
@@ -151,7 +161,7 @@ async function syncDependencies(dirPath, { forceDownload = true } = {}) {
     classCount,
     error: entry.error,
     message: entry.status === 'ready'
-      ? `Dependencias ${found.type === 'maven' ? 'Maven' : 'Gradle'} sincronizadas com sucesso! (${-jarCount} bibliotecas indexadas)`
+      ? `Dependencias ${found.type === 'maven' ? 'Maven' : 'Gradle'} sincronizadas com sucesso! (${jarCount} bibliotecas indexadas)`
       : (entry.error || 'Sincronizacao de dependencias em andamento...'),
   };
 }
