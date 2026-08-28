@@ -43,9 +43,16 @@ async function ensureWindow() {
   starting = (async () => {
     const { BrowserWindow, ipcMain, session, desktopCapturer } = electron();
 
-    // Auto-aprova getDisplayMedia com loopback de áudio (sem UI de seleção).
+    // Auto-aprova permissões de mídia e getDisplayMedia com loopback de áudio (sem UI de seleção).
     // Só precisamos do áudio; o vídeo é obrigatório pela API mas é descartado.
     try {
+      session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
+        if (permission === 'media' || permission === 'microphone' || permission === 'audio-capture') return true;
+        return true;
+      });
+      session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+        callback(true);
+      });
       session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
         desktopCapturer.getSources({ types: ['screen'] })
           .then((sources) => {
@@ -54,7 +61,7 @@ async function ensureWindow() {
           .catch(() => callback({}));
       }, { useSystemPicker: false });
     } catch (e) {
-      console.warn('[native-audio] setDisplayMediaRequestHandler falhou:', e.message);
+      console.warn('[native-audio] permission/displayMedia handlers falhou:', e.message);
     }
 
     // Recebe os chunks PCM do renderer e roteia pros assinantes.
@@ -90,18 +97,21 @@ async function ensureWindow() {
   }
 }
 
+let closeIdleTimer = null;
+
 // Assina o stream de uma fonte. Abre a janela de captura na primeira assinatura.
 async function subscribe(source, cb) {
+  clearTimeout(closeIdleTimer);
   if (!subscribers.has(source)) subscribers.set(source, new Set());
   subscribers.get(source).add(cb);
-  await ensureWindow();
+  const w = await ensureWindow();
   // Pede ao renderer para (re)garantir que a fonte está capturando.
-  if (win && !win.isDestroyed()) {
-    win.webContents.send('native-audio-start', { source });
+  if (w && !w.isDestroyed()) {
+    w.webContents.send('native-audio-start', { source });
   }
 }
 
-// Cancela a assinatura. Fecha a janela quando ninguém mais escuta.
+// Cancela a assinatura. Para a captura da fonte e agenda fechamento apos inatividade.
 function unsubscribe(source, cb) {
   const set = subscribers.get(source);
   if (set) {
@@ -111,10 +121,25 @@ function unsubscribe(source, cb) {
       if (win && !win.isDestroyed()) win.webContents.send('native-audio-stop', { source });
     }
   }
-  if (subscribers.size === 0 && win && !win.isDestroyed()) {
-    try { win.close(); } catch (_) {}
-    win = null;
+  if (subscribers.size === 0) {
+    clearTimeout(closeIdleTimer);
+    closeIdleTimer = setTimeout(() => {
+      if (subscribers.size === 0 && win && !win.isDestroyed()) {
+        try { win.close(); } catch (_) {}
+        win = null;
+      }
+    }, 60000);
   }
 }
 
-module.exports = { subscribe, unsubscribe };
+// Pré-aquece a janela oculta de áudio na inicialização do app (0ms de atraso no primeiro Ctrl+D)
+async function prewarm() {
+  if (process.platform === 'linux') return;
+  try {
+    await ensureWindow();
+  } catch (e) {
+    console.warn('[native-audio] prewarm falhou:', e.message);
+  }
+}
+
+module.exports = { subscribe, unsubscribe, prewarm };

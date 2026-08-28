@@ -11,7 +11,7 @@
 const { ipcRenderer } = require('electron');
 
 const TARGET_RATE = 16000;
-const active = {};   // source -> { stream, ctx, node }
+const active = {};   // source -> { stream, ctx, node, srcNode, muteGain, streaming, idleTimer }
 
 function log(msg) { try { ipcRenderer.send('native-audio-log', msg); } catch (_) {} }
 
@@ -40,22 +40,47 @@ function floatTo16kInt16(float32, srcRate) {
   return out;
 }
 
-function attach(source, stream) {
+async function attach(source, stream) {
   // Descarta trilhas de vídeo (getDisplayMedia exige vídeo, mas só queremos áudio).
   stream.getVideoTracks().forEach((t) => t.stop());
   if (stream.getAudioTracks().length === 0) {
-    log(`${source}: sem trilha de áudio (loopback indisponível?)`);
+    log(`${source}: sem trilha de áudio`);
   }
 
-  const ctx = new AudioContext();
+  const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
+  const ctx = new AudioCtxClass();
+
+  if (ctx.state === 'suspended') {
+    try { await ctx.resume(); } catch (e) { log(`${source}: ctx.resume erro: ${e.message}`); }
+  }
+
+  ctx.onstatechange = () => {
+    if (ctx.state === 'suspended' && active[source] && active[source].streaming) {
+      ctx.resume().catch(() => {});
+    }
+  };
+
   const srcNode = ctx.createMediaStreamSource(stream);
-  // ScriptProcessor: deprecated mas confiável e simples (sem AudioWorklet).
-  const node = ctx.createScriptProcessor(4096, 1, 1);
+  // ScriptProcessor: simples e compatível
+  const node = ctx.createScriptProcessor(4096, 2, 1);
 
   node.onaudioprocess = (e) => {
-    const input = e.inputBuffer.getChannelData(0); // Float32 mono
+    if (!active[source] || !active[source].streaming) return;
+
+    const numChannels = e.inputBuffer.numberOfChannels;
+    let input;
+    if (numChannels === 1) {
+      input = e.inputBuffer.getChannelData(0);
+    } else {
+      const ch0 = e.inputBuffer.getChannelData(0);
+      const ch1 = e.inputBuffer.getChannelData(1);
+      input = new Float32Array(ch0.length);
+      for (let i = 0; i < ch0.length; i++) {
+        input[i] = (ch0[i] + ch1[i]) * 0.5;
+      }
+    }
+
     const pcm16 = floatTo16kInt16(input, ctx.sampleRate);
-    // Envia os bytes (Node Buffer sobre o mesmo buffer) — muito mais rápido no IPC.
     const bytes = Buffer.from(pcm16.buffer, pcm16.byteOffset, pcm16.byteLength);
     ipcRenderer.send('native-audio-pcm', { source, bytes });
   };
@@ -64,25 +89,47 @@ function attach(source, stream) {
   muteGain.gain.value = 0;
   srcNode.connect(node);
   node.connect(muteGain);
-  muteGain.connect(ctx.destination); // Necessário p/ o ScriptProcessor disparar sem emitir áudio nos alto-falantes
-  active[source] = { stream, ctx, node, srcNode, muteGain };
-  log(`${source}: capturando @ ${ctx.sampleRate}Hz -> 16kHz`);
+  muteGain.connect(ctx.destination);
+
+  active[source] = { stream, ctx, node, srcNode, muteGain, streaming: true, idleTimer: null };
+  log(`${source}: capturando @ ${ctx.sampleRate}Hz -> 16kHz mono (canais: ${stream.getAudioTracks().length})`);
 }
 
 async function startSource(source) {
-  if (active[source]) return;
+  if (active[source]) {
+    active[source].streaming = true;
+    if (active[source].idleTimer) {
+      clearTimeout(active[source].idleTimer);
+      active[source].idleTimer = null;
+    }
+    if (active[source].ctx && active[source].ctx.state === 'suspended') {
+      try { await active[source].ctx.resume(); } catch (_) {}
+    }
+    ipcRenderer.send('native-audio-ready', { source });
+    log(`${source}: retomado (stream aquecido)`);
+    return;
+  }
+
   try {
     let stream;
     if (source === 'mic') {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          channelCount: 1,
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
-        },
-        video: false,
-      });
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            channelCount: 1,
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+          video: false,
+        });
+      } catch (advancedErr) {
+        log(`mic: getUserMedia avançado falhou (${advancedErr.message}), tentando fallback simples...`);
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+          video: false,
+        });
+      }
     } else {
       // sys: loopback do sistema (o main aprova via setDisplayMediaRequestHandler).
       stream = await navigator.mediaDevices.getDisplayMedia({
@@ -90,26 +137,43 @@ async function startSource(source) {
         audio: true,
       });
     }
-    attach(source, stream);
+
+    await attach(source, stream);
+    ipcRenderer.send('native-audio-ready', { source });
   } catch (err) {
     log(`${source}: falha ao capturar — ${err && err.message ? err.message : err}`);
+    ipcRenderer.send('native-audio-error', { source, error: err && err.message ? err.message : String(err) });
   }
 }
 
 function stopSource(source) {
   const a = active[source];
   if (!a) return;
+  a.streaming = false;
+  if (a.idleTimer) clearTimeout(a.idleTimer);
+  // Mantém o microfone/stream aberto por 25s de inatividade para iniciar instantaneamente (0ms) no próximo Ctrl+D
+  a.idleTimer = setTimeout(() => {
+    destroySource(source);
+  }, 25000);
+  log(`${source}: gravação pausada (stream mantido aquecido por 25s)`);
+}
+
+function destroySource(source) {
+  const a = active[source];
+  if (!a) return;
+  if (a.idleTimer) clearTimeout(a.idleTimer);
   try { a.node.disconnect(); } catch (_) {}
   try { if (a.muteGain) a.muteGain.disconnect(); } catch (_) {}
   try { a.srcNode.disconnect(); } catch (_) {}
   try { a.ctx.close(); } catch (_) {}
   try { a.stream.getTracks().forEach((t) => t.stop()); } catch (_) {}
   delete active[source];
-  log(`${source}: parado`);
+  log(`${source}: encerrado e hardware liberado`);
 }
 
 ipcRenderer.on('native-audio-start', (_e, { source }) => { startSource(source); });
 ipcRenderer.on('native-audio-stop', (_e, { source }) => { stopSource(source); });
+ipcRenderer.on('native-audio-destroy', (_e, { source }) => { destroySource(source); });
 
 log('renderer pronto');
 </script>

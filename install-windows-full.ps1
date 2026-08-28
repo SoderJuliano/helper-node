@@ -182,36 +182,55 @@ New-Item -ItemType Directory -Path $WhisperModelsDir -Force | Out-Null
 New-Item -ItemType Directory -Path $CacheBinDir -Force | Out-Null
 New-Item -ItemType Directory -Path $CacheModelsDir -Force | Out-Null
 
-function Download-FileWithCache([string]$url, [string]$targetPath, [string]$cachedPath, [string]$label) {
-    if ((Test-Path $targetPath) -and ((Get-Item $targetPath).Length -gt 0)) {
+function Download-FileWithCache([string]$url, [string]$targetPath, [string]$cachedPath, [string]$label, [long]$minBytes = 1048576) {
+    if ((Test-Path $targetPath) -and ((Get-Item $targetPath).Length -ge $minBytes)) {
         Write-Ok "$label ja presente"
         return
     }
-    if ((Test-Path $cachedPath) -and ((Get-Item $cachedPath).Length -gt 0)) {
+    if ((Test-Path $cachedPath) -and ((Get-Item $cachedPath).Length -ge $minBytes)) {
         Write-Step "Restaurando $label do cache local..."
         Copy-Item -Path $cachedPath -Destination $targetPath -Force
         Write-Ok "$label restaurado do cache"
         return
     }
+    # Limpa arquivos corrompidos ou incompletos de tentativas anteriores
+    if (Test-Path $targetPath) { Remove-Item -Force $targetPath -ErrorAction SilentlyContinue }
+    if (Test-Path $cachedPath) { Remove-Item -Force $cachedPath -ErrorAction SilentlyContinue }
+
     Write-Step "Baixando $label (uma unica vez)..."
     $origProgress = $ProgressPreference
     $ProgressPreference = 'SilentlyContinue'
-    try {
-        Invoke-WebRequest -Uri $url -OutFile $targetPath -UseBasicParsing
-        Copy-Item -Path $targetPath -Destination $cachedPath -Force
-        Write-Ok "$label pronto e salvo no cache"
-    } catch {
-        Write-Host "AVISO: Falha ao baixar $label ($($_.Exception.Message))" -ForegroundColor Yellow
-    } finally {
-        $ProgressPreference = $origProgress
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13 } catch {}
+    
+    $downloadOk = $false
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try {
+            Invoke-WebRequest -Uri $url -OutFile $targetPath -UseBasicParsing -TimeoutSec 180
+            if ((Test-Path $targetPath) -and ((Get-Item $targetPath).Length -ge $minBytes)) {
+                Copy-Item -Path $targetPath -Destination $cachedPath -Force
+                Write-Ok "$label pronto e salvo no cache"
+                $downloadOk = $true
+                break
+            } else {
+                throw "Arquivo baixado incompleto (tamanho menor que $minBytes bytes)."
+            }
+        } catch {
+            Write-Host "AVISO (tentativa $attempt de 3): Falha ao baixar $label ($($_.Exception.Message))" -ForegroundColor Yellow
+            if (Test-Path $targetPath) { Remove-Item -Force $targetPath -ErrorAction SilentlyContinue }
+            Start-Sleep -Seconds 2
+        }
+    }
+    $ProgressPreference = $origProgress
+    if (-not $downloadOk) {
+        Write-Host "AVISO: Nao foi possivel baixar $label apos 3 tentativas. A transcricao offline utilizara fallback ou download posterior." -ForegroundColor Yellow
     }
 }
 
-$hasBin = (Test-Path $WhisperCliExe) -and ((Get-Item $WhisperCliExe).Length -gt 0)
+$hasBin = (Test-Path $WhisperCliExe) -and ((Get-Item $WhisperCliExe).Length -ge 102400)
 
 if (-not $hasBin) {
     $cachedExe = Join-Path $CacheBinDir 'whisper-cli.exe'
-    if ((Test-Path $cachedExe) -and ((Get-Item $cachedExe).Length -gt 0)) {
+    if ((Test-Path $cachedExe) -and ((Get-Item $cachedExe).Length -ge 102400)) {
         Write-Step "Restaurando Whisper.cpp do cache local..."
         Copy-Item -Path "$CacheBinDir\*" -Destination $WhisperBinDir -Recurse -Force
         $hasBin = $true
@@ -221,23 +240,37 @@ if (-not $hasBin) {
 
 if (-not $hasBin) {
     Write-Step "Baixando Whisper.cpp pre-compilado para Windows x64 (uma unica vez)..."
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13 } catch {}
     $whisperZipUrl = 'https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.2/whisper-bin-x64.zip'
     $tmpZip = Join-Path $env:TEMP 'whisper-bin-x64.zip'
     $tmpExtract = Join-Path $env:TEMP 'whisper-bin-x64-extract'
     $origProgress = $ProgressPreference
     $ProgressPreference = 'SilentlyContinue'
     try {
-        Invoke-WebRequest -Uri $whisperZipUrl -OutFile $tmpZip -UseBasicParsing
-        if (Test-Path $tmpExtract) { Remove-Item -Recurse -Force $tmpExtract }
+        if (Test-Path $tmpZip) { Remove-Item -Force $tmpZip -ErrorAction SilentlyContinue }
+        Invoke-WebRequest -Uri $whisperZipUrl -OutFile $tmpZip -UseBasicParsing -TimeoutSec 180
+        if (Test-Path $tmpExtract) { Remove-Item -Recurse -Force $tmpExtract -ErrorAction SilentlyContinue }
         Expand-Archive -Path $tmpZip -DestinationPath $tmpExtract -Force
         
-        $srcDir = if (Test-Path (Join-Path $tmpExtract 'Release')) { Join-Path $tmpExtract 'Release' } else { $tmpExtract }
-        Copy-Item -Path "$srcDir\*" -Destination $WhisperBinDir -Recurse -Force
-        Copy-Item -Path "$srcDir\*" -Destination $CacheBinDir -Recurse -Force
+        $cliFound = Get-ChildItem -Path $tmpExtract -Filter 'whisper-cli.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $cliFound) {
+            $cliFound = Get-ChildItem -Path $tmpExtract -Filter 'main.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+        }
+        if ($cliFound) {
+            $srcDir = $cliFound.DirectoryName
+            Copy-Item -Path "$srcDir\*" -Destination $WhisperBinDir -Recurse -Force
+            Copy-Item -Path "$srcDir\*" -Destination $CacheBinDir -Recurse -Force
+            $installedMain = Join-Path $WhisperBinDir 'main.exe'
+            if ((Test-Path $installedMain) -and (-not (Test-Path $WhisperCliExe))) {
+                Copy-Item -Path $installedMain -Destination $WhisperCliExe -Force
+            }
+            Write-Ok "Whisper.cpp binarios instalados e cacheados"
+        } else {
+            Write-Host "AVISO: Executavel whisper-cli.exe nao localizado no zip extraido." -ForegroundColor Yellow
+        }
         
         Remove-Item -Force $tmpZip -ErrorAction SilentlyContinue
         Remove-Item -Recurse -Force $tmpExtract -ErrorAction SilentlyContinue
-        Write-Ok "Whisper.cpp binarios instalados e cacheados"
     } catch {
         Write-Host "AVISO: Nao foi possivel baixar o binario do Whisper ($($_.Exception.Message))." -ForegroundColor Yellow
     } finally {
@@ -247,18 +280,20 @@ if (-not $hasBin) {
     Write-Ok "Whisper.cpp binarios prontos"
 }
 
-# Baixar os modelos essenciais (ggml-base.bin e ggml-small.bin)
+# Baixar os modelos essenciais com validacao de integridade (tamanho minimo)
 Download-FileWithCache `
     -url 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin' `
     -targetPath (Join-Path $WhisperModelsDir 'ggml-base.bin') `
     -cachedPath (Join-Path $CacheModelsDir 'ggml-base.bin') `
-    -label 'Modelo Whisper ggml-base.bin (~140 MB)'
+    -label 'Modelo Whisper ggml-base.bin (~140 MB)' `
+    -minBytes 104857600
 
 Download-FileWithCache `
     -url 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin' `
     -targetPath (Join-Path $WhisperModelsDir 'ggml-small.bin') `
     -cachedPath (Join-Path $CacheModelsDir 'ggml-small.bin') `
-    -label 'Modelo Whisper ggml-small.bin (~460 MB)'
+    -label 'Modelo Whisper ggml-small.bin (~460 MB)' `
+    -minBytes 314572800
 
 # 6) comando `helper-node` no PATH do usuario atual - sem precisar de admin
 New-Item -ItemType Directory -Path $BinDir -Force | Out-Null

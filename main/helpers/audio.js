@@ -90,14 +90,15 @@ helpers.stopDictationAndTranscribe = async function() {
     } catch (_) {}
   }
 
-  if (!pcm || pcm.length < 3200) { // < ~0.1s de audio util
+  const rms = helpers._computeRMS(pcm);
+  if (!pcm || pcm.length < 4800 || rms < 40) { // < ~0.15s de áudio ou silêncio/microfone mudo
     if (isOsIntegration) {
       helpers.destroyNotificationWindow();
-      helpers.createOsNotificationWindow('response', 'Nenhum audio detectado. Tente novamente.');
+      helpers.createOsNotificationWindow('response', 'Nenhum áudio detectado no microfone.');
     } else {
       try {
         state.mainWindow.webContents.send('ide-audio-transcribing', { isTranscribing: false });
-        state.mainWindow.webContents.send('transcription-error', 'Nenhum audio detectado. Tente de novo.');
+        state.mainWindow.webContents.send('transcription-error', 'Nenhum áudio detectado (verifique o microfone ou fale mais alto).');
       } catch (_) {}
     }
     return;
@@ -119,9 +120,9 @@ helpers.stopDictationAndTranscribe = async function() {
 
     if (!text || !text.trim() || text === '[BLANK_AUDIO]') {
       if (isOsIntegration) {
-        helpers.createOsNotificationWindow('response', 'Nenhum audio detectado. Tente novamente.');
+        helpers.createOsNotificationWindow('response', 'Nenhum audio reconhecido.');
       } else {
-        state.mainWindow.webContents.send('transcription-error', 'Nenhum audio detectado. Tente de novo.');
+        state.mainWindow.webContents.send('transcription-error', 'Nenhum audio reconhecido.');
       }
       return;
     }
@@ -241,7 +242,8 @@ helpers.transcribeAudio = async function(filePath, options = {}) {
       modelPath = fs2.existsSync(modelPathSmall) ? modelPathSmall : (fs2.existsSync(modelPathBase) ? modelPathBase : (fs2.existsSync(modelPathTiny) ? modelPathTiny : modelPathMedium));
       console.log(`Usando modelo ${modelPath ? path.basename(modelPath) : 'default'} (áudio longo)`);
     } else {
-      modelPath = fs2.existsSync(modelPathMedium) ? modelPathMedium : (fs2.existsSync(modelPathSmall) ? modelPathSmall : (fs2.existsSync(modelPathBase) ? modelPathBase : modelPathTiny));
+      // Para áudio curto (press-to-talk), ggml-base é 3x mais rápido na CPU e não atrasa a resposta
+      modelPath = fs2.existsSync(modelPathBase) ? modelPathBase : (fs2.existsSync(modelPathSmall) ? modelPathSmall : (fs2.existsSync(modelPathTiny) ? modelPathTiny : modelPathMedium));
       console.log(`Usando modelo ${modelPath ? path.basename(modelPath) : 'default'}`);
     }
 
@@ -259,7 +261,8 @@ helpers.transcribeAudio = async function(filePath, options = {}) {
       throw new Error("Nenhum modelo Whisper encontrado em whisper/models/ e token OpenAI não configurado");
     }
 
-    const command = `"${whisperPath}" -m "${modelPath}" -f "${filePath}" -l ${whisperLang} --threads 8 --no-timestamps --best-of 5 --beam-size 5`;
+    const threads = Math.min(8, (os.cpus() && os.cpus().length) || 4);
+    const command = `"${whisperPath}" -m "${modelPath}" -f "${filePath}" -l ${whisperLang} -np --threads ${threads} --no-timestamps --temperature 0.0 --no-fallback`;
 
     console.log("Executing whisper:", command);
     return new Promise((resolve, reject) => {
@@ -322,12 +325,36 @@ helpers.transcribeAudio = async function(filePath, options = {}) {
 }
 
 helpers.limparTranscricao = async function(texto) {
-  return texto
-    .replace(
-      /\[\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3}\]\s*/g,
-      ""
-    )
+  if (!texto || typeof texto !== 'string') return '';
+  let clean = texto
+    .replace(/\[\d{2}:\d{2}:\d{2}\.\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}\.\d{3}\]\s*/g, '')
     .trim();
+
+  // Remove marcas de áudio/subtítulo entre colchetes [...], chaves {...} ou parênteses (...)
+  // Ex: [música], [música de fundo], (música instrumental), [risos], (aplausos), [silêncio], [ruído], etc.
+  clean = clean.replace(/\[[^\]]*\]/g, ' ').replace(/\([^\)]*\)/g, ' ').replace(/\{[^\}]*\}/g, ' ');
+
+  // Normaliza múltiplos espaços
+  clean = clean.replace(/\s+/g, ' ').trim();
+
+  // Alucinações típicas de silêncio e ruído do Whisper em português, inglês e espanhol
+  const hallucinationPatterns = [
+    /^(?:m[úu]sica(?:\s+de\s+fundo|\s+instrumental|\s+ambiente|\s+suave|\s+ao\s+fundo|\s+relaxante|\s+tema|\s+animada|\s+alegre|\s+triste|\s+cl[áa]ssica|\s+eletr[ôo]nica|\s+dram[áa]tica)?[\s.,!?:;]*)+$/i,
+    /^(?:som\s+ambiente|ru[íi]do(?:\s+de\s+fundo)?|barulho(?:\s+de\s+fundo)?|sil[êe]ncio|aplausos|risos|palmas|vozes(?:\s+ao\s+fundo)?|tosse|suspiro)[\s.,!?:;]*$/i,
+    /^(?:legendas(?:\s+pela\s+comunidade\s+amara\.org|\s+por\s+amara\.org)?|subtitles\s+by(?:\s+the\s+amara\.org\s+community)?|subt[íi]tulos\s+por)[\s.,!?:;]*$/i,
+    /^(?:obrigad[oa]\s+por\s+assistir|inscreva-se\s+no\s+canal|curta\s+e\s+compartilhe|deixe\s+seu\s+like|ative\s+o\s+sininho|at[ée]\s+a\s+pr[óo]xima|at[ée]\s+o\s+pr[óo]ximo\s+v[íi]deo)[\s.,!?:;]*$/i,
+    /^(?:transmiss[ãa]o(?:\s+encerrada)?|todos\s+os\s+direitos\s+reservados|copyright)[\s.,!?:;]*$/i,
+    /^(?:thank\s+you\s+for\s+watching|please\s+subscribe|thanks\s+for\s+watching|like\s+and\s+subscribe)[\s.,!?:;]*$/i,
+    /^(?:[.\-_*~=+\s,!?:;·…]+)$/
+  ];
+
+  for (const pattern of hallucinationPatterns) {
+    if (pattern.test(clean)) return '';
+  }
+
+  if (/^(?:m[úu]sica[s]?[\s.,!?;:]*)+$/i.test(clean)) return '';
+
+  return clean;
 }
 
 helpers._computeRMS = function(buf) {

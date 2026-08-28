@@ -18,6 +18,11 @@ if (process.platform === "linux") {
   }
 }
 
+// Permite captura de áudio contínua sem depender de gesto do usuário em janelas ocultas
+app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
+app.commandLine.appendSwitch("disable-background-timer-throttling");
+app.commandLine.appendSwitch("disable-renderer-backgrounding");
+
 // Require globals
 const { state, helpers, configService, helperTools, OpenAIService, historyService, ipcService, translationAssistant, visionGuide, GeminiCliProvider, ClaudeCliProvider, workspace } = require("./main/globals.js");
 
@@ -159,6 +164,10 @@ app.whenReady().then(async () => {
   await historyService.initialize();
   helpers.setupTray();
   await helpers.createWindow();
+  try {
+    const nativeAudio = require('./services/platform/nativeAudio.js');
+    if (nativeAudio && typeof nativeAudio.prewarm === 'function') nativeAudio.prewarm();
+  } catch (_) {}
   ipcService.start({
     toggleRecording: helpers.toggleRecording,
     moveToDisplay: helpers.moveToDisplay,
