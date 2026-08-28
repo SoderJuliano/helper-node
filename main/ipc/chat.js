@@ -52,6 +52,9 @@ module.exports = function registerIpc() {
     ClaudeCliProvider.shutdown().catch((e) => {
       console.warn('[claude-cli] clear-ai-sessions shutdown error:', e.message);
     });
+    CopilotCliProvider.shutdown().catch((e) => {
+      console.warn('[copilot-cli] clear-ai-sessions shutdown error:', e.message);
+    });
   });
 
   ipcMain.on("cancel-ia-request", () => {

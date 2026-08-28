@@ -61,7 +61,7 @@ class CopilotCliProvider {
     const os = require('os');
     const fs = require('fs');
     const path = require('path');
-    const { execSync } = require('child_process');
+    const { exec, execSync } = require('child_process');
     let cwd = projectPath;
     if (!cwd || cwd === '/' || !fs.existsSync(cwd)) {
       cwd = (process.cwd() && process.cwd() !== '/') ? process.cwd() : os.homedir();
@@ -81,18 +81,25 @@ class CopilotCliProvider {
         if (!line) return;
         const st = line.slice(0, 2);
         const file = line.slice(3).trim();
-        if (file) filesBefore.set(file, st);
+        if (file && !file.startsWith('.copilot_prompt_')) filesBefore.set(file, st);
       });
     } catch (_) {}
 
-    const emitNewFileChanges = () => {
-      try {
-        const out = execSync('git --no-optional-locks status --porcelain', { cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], timeout: 2000 });
-        out.split(/\r?\n/).forEach(line => {
-          if (!line) return;
+    let diffCheckTimeout = null;
+    let isCheckingDiffs = false;
+
+    const checkFileChangesAsync = () => {
+      if (isCheckingDiffs || this._aborted) return;
+      isCheckingDiffs = true;
+      exec('git --no-optional-locks status --porcelain', { cwd, encoding: 'utf8', timeout: 4000 }, (err, stdout) => {
+        isCheckingDiffs = false;
+        if (err || !stdout || this._aborted) return;
+        const lines = stdout.split(/\r?\n/);
+        for (const line of lines) {
+          if (!line) continue;
           const st = line.slice(0, 2);
           const file = line.slice(3).trim();
-          if (!file) return;
+          if (!file || file.startsWith('.copilot_prompt_')) continue;
           if (!filesBefore.has(file) || filesBefore.get(file) !== st) {
             if (!emittedFiles.has(file)) {
               emittedFiles.add(file);
@@ -100,8 +107,16 @@ class CopilotCliProvider {
               this._createBackupAndEmitDiff(absPath, cwd, sender);
             }
           }
-        });
-      } catch (_) {}
+        }
+      });
+    };
+
+    const scheduleFileCheck = () => {
+      if (diffCheckTimeout || this._aborted) return;
+      diffCheckTimeout = setTimeout(() => {
+        diffCheckTimeout = null;
+        checkFileChangesAsync();
+      }, 1500);
     };
 
     const proc = new CopilotCliProcess();
@@ -123,6 +138,7 @@ class CopilotCliProvider {
 
     const safeClose = (isError, extraStatus) => {
       if (heartbeat) { clearInterval(heartbeat); heartbeat = null; }
+      if (diffCheckTimeout) { clearTimeout(diffCheckTimeout); diffCheckTimeout = null; }
       const status = isError ? 'Erro' : (extraStatus || 'Concluído');
       try { sender.send('agentic-phase-update', { phase: isError ? 'error' : 'completed', status, sessionId: cwd }); } catch (_) {}
       try { sender.send('gemini-stream-complete'); } catch (_) {}
@@ -131,24 +147,20 @@ class CopilotCliProvider {
     let streamedBytes = 0;
     return new Promise((resolve, reject) => {
       proc.onData((chunk) => {
-        // Depois do "Parar IA", NADA mais vai pra tela. O kill leva alguns
-        // milissegundos (SIGINT, espera, taskkill) e o que já estava no pipe
-        // continuava sendo despejado no chat nesse meio-tempo — era isso que
-        // fazia o Copilot "seguir printando" depois de interrompido.
+        // Depois do "Parar IA", NADA mais vai pra tela.
         if (this._aborted) return;
         buf += chunk;
         streamedBytes += chunk.length;
         try { sender.send('gemini-stream-chunk', chunk); } catch (_) {}
-        // Verifica se houve arquivos modificados durante a execução
-        emitNewFileChanges();
+        // Agenda checagem assíncrona não-bloqueante de arquivos modificados
+        scheduleFileCheck();
       });
       proc.onStderr((line) => { if (!this._aborted) errBuf += line + '\n'; });
 
       proc.onClose((code) => {
-        // Interrompido pelo usuário: encerra QUIETO. Um processo morto a pedido
-        // sai com código ≠ 0, e tratar isso como falha era o que pintava o erro
-        // vermelho ("Copilot CLI: exited with code ...") logo depois do clique
-        // em Parar IA. Mesmo caminho que o ClaudeCliSession já fazia.
+        if (diffCheckTimeout) { clearTimeout(diffCheckTimeout); diffCheckTimeout = null; }
+
+        // Interrompido pelo usuário: encerra QUIETO sem erro vermelho
         if (this._aborted) {
           safeClose(false, 'Interrompido');
           this._emitStatus(sender, { state: 'done', projectPath: cwd });
@@ -156,13 +168,10 @@ class CopilotCliProvider {
           return;
         }
 
-        // Emite diffs dos arquivos alterados no fechamento
-        emitNewFileChanges();
+        // Checagem final de diffs
+        checkFileChangesAsync();
 
-        // O aviso de modelo indisponível sai junto com a resposta normal (o
-        // CLI cai noutro modelo e segue), então tem que ser lido tanto no
-        // sucesso quanto no erro — senão o modelo bloqueado nunca some do
-        // seletor.
+        // Aprende restrições de modelo se emitidas pelo CLI
         this._aprenderAcessoDeModelo(buf + '\n' + errBuf, sender);
 
         if (code === 0) {
@@ -174,17 +183,24 @@ class CopilotCliProvider {
           }
           resolve({ text });
         } else {
-          const errText = errBuf.trim() || buf.trim() || `exited with code ${code}`;
-          safeClose(true);
-          const msg = friendlyError(new Error(errText));
-          try { sender.send('transcription-error', msg); } catch (_) {}
-          this._emitStatus(sender, { state: 'error', error: msg });
-          reject(new Error(msg));
+          // Se o processo encerrou com código diferente de 0 mas já havia transmitido conteúdo útil
+          if (streamedBytes > 0 && buf.trim()) {
+            console.warn(`[copilot-cli] Processo encerrou com código ${code} após transmitir ${streamedBytes} bytes.`);
+            safeClose(false, 'Concluído');
+            this._emitStatus(sender, { state: 'done', projectPath: cwd });
+            resolve({ text: buf.trim() });
+          } else {
+            const errText = errBuf.trim() || buf.trim() || `processo finalizado com código ${code}`;
+            safeClose(true);
+            const msg = friendlyError(new Error(errText));
+            try { sender.send('transcription-error', msg); } catch (_) {}
+            this._emitStatus(sender, { state: 'error', error: msg });
+            reject(new Error(msg));
+          }
         }
       });
 
       proc.onError((err) => {
-        // Idem: matar o processo pode disparar 'error' em vez de 'close'.
         if (this._aborted) {
           safeClose(false, 'Interrompido');
           resolve({ text: buf.trim() });

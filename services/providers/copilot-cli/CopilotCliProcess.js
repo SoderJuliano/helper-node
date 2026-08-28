@@ -45,22 +45,20 @@ function fitPromptToCommandLine(prompt, command, otherArgs, cwd) {
     console.log(`[copilot-cli] Prompt grande (${prompt.length} chars) salvo em ${tempFileName} para envio 100% integral sem omissões.`);
 
     let currentInstruction = '';
-    const match = prompt.match(/🎯 INSTRUÇÃO ATUAL DO USUÁRIO[^\n]*\r?\n([\s\S]*?)(?:\r?\n═|$)/);
-    if (match && match[1]) {
-      currentInstruction = match[1].trim();
-    } else {
-      const matchLegacy = prompt.match(/=== FIM DO HISTÓRICO ===\r?\n\r?Pergunta atual:\s*([\s\S]*)$/i);
-      if (matchLegacy && matchLegacy[1]) {
-        currentInstruction = matchLegacy[1].trim();
-      }
+    try {
+      const { extractCurrentInstruction } = require('../../historyFormatter');
+      currentInstruction = extractCurrentInstruction(prompt);
+    } catch (_) {
+      const match = prompt.match(/🎯 INSTRUÇÃO ATUAL DO USUÁRIO[^\n]*\r?\n([\s\S]*?)(?:\r?\n═|$)/);
+      if (match && match[1]) currentInstruction = match[1].trim();
     }
 
     let instructionPrompt;
-    if (currentInstruction) {
-      const preview = currentInstruction.length > 250 ? currentInstruction.slice(0, 250) + '...' : currentInstruction;
-      instructionPrompt = `INSTRUÇÃO ATUAL DO USUÁRIO QUE VOCÊ DEVE EXECUTAR/RESPONDER:\n"${preview}"\n\nO contexto completo, histórico e arquivos extensos foram salvos INTEGRALMENTE sem omissões em "${tempFileName}" no diretório do projeto. Por favor, leia "${tempFileName}" para ter todos os detalhes necessários e responda/execute a instrução atual com precisão.`;
+    if (currentInstruction && currentInstruction !== prompt) {
+      const preview = currentInstruction.length > 350 ? currentInstruction.slice(0, 350) + '...' : currentInstruction;
+      instructionPrompt = `INSTRUÇÃO ATUAL DO USUÁRIO QUE VOCÊ DEVE EXECUTAR/RESPONDER:\n"${preview}"\n\nO contexto completo, histórico de mensagens e arquivos foram salvos INTEGRALMENTE sem omissões no arquivo "${tempFileName}" no diretório do projeto. Por favor, leia "${tempFileName}" para ter todos os detalhes necessários e execute/responda a instrução atual de ponta a ponta sem interrupções.`;
     } else {
-      instructionPrompt = `O usuário enviou uma mensagem/pergunta contendo objetos ou código extenso. O enunciado e todos os objetos colados pelo usuário foram salvos INTEGRALMENTE sem nenhuma omissão no arquivo "${tempFileName}" no diretório do projeto. Por favor, abra e leia o arquivo "${tempFileName}" completamente e responda ao usuário de forma precisa.`;
+      instructionPrompt = `O usuário enviou uma instrução/pergunta com arquivos e código extensos. Todos os detalhes foram salvos INTEGRALMENTE sem omissão em "${tempFileName}" no diretório do projeto. Por favor, leia o arquivo "${tempFileName}" e responda/execute de ponta a ponta sem interrupções.`;
     }
 
     return { promptText: instructionPrompt, tempFile: tempFilePath };
@@ -121,6 +119,17 @@ function getEnrichedEnv() {
   const currentPath = env.PATH || env.Path || '';
   env.PATH = [...extraPaths, currentPath].join(pathSep);
   env.Path = env.PATH;
+
+  // Garante memória heap expandida (8GB) para modelos com 400k+ de contexto (ex: GPT-5.6 Terra, Claude 3.7, GPT-4o)
+  // e evita bloqueios interativos no terminal
+  const existingNodeOpts = env.NODE_OPTIONS || '';
+  if (!existingNodeOpts.includes('--max-old-space-size')) {
+    env.NODE_OPTIONS = (existingNodeOpts + ' --max-old-space-size=8192').trim();
+  }
+  env.FORCE_COLOR = '0';
+  env.NO_COLOR = '1';
+  env.CI = '1';
+
   return env;
 }
 
@@ -293,7 +302,13 @@ class CopilotCliProcess {
       );
     }
 
-    const tailArgs = [ALLOW_ALL_FLAG, NO_ASK_FLAG, '--add-dir', cwd];
+    const tailArgs = [
+      ALLOW_ALL_FLAG,
+      NO_ASK_FLAG,
+      '--stream', 'on',
+      '--no-color',
+      '--add-dir', cwd
+    ];
     if (model) tailArgs.push('--model', model);
     for (const att of dedupeExisting(attachments)) tailArgs.push('--attachment', att);
 
