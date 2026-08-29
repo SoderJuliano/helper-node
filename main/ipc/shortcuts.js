@@ -42,6 +42,7 @@ ipcMain.handle("get-available-shortcuts", () => {
         { id: "recording", keys: `${mod}+D`, action: "Iniciar/Parar gravação de voz", where: "Em todo o SO / App", icon: "🎙️" },
         { id: "manual-input", keys: `${mod}+I`, altKeys: `${shift}+I`, action: "Focar app / Fazer pergunta", where: "Em todo o SO / App", icon: "✍️" },
         { id: "open-config", keys: `${shift}+C`, action: "Abrir Configurações", where: "Em todo o SO / App", icon: "⚙️" },
+        { id: "batch-screenshot", keys: "ALT+S", action: "Abrir fila de prints / Enviar sequência", where: "Em todo o SO / App", icon: "📸" },
         ...(osIntegrationOn && printModeOn ? [{ id: "capture-stealth", keys: `${shift}+S`, action: "Captura stealth + IA", where: "No SO (Modo OS)", icon: "📸" }] : []),
         ...((isX11 || isHyprlandEnv) ? [
           { id: "move-1", keys: `${shift}+1`, action: isHyprlandEnv ? "Mover p/ workspace 1" : "Mover p/ monitor 1", where: "No App", icon: "🖥️" },

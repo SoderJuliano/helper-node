@@ -294,6 +294,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
   setEditorState: (state) => ipcRenderer.send("set-editor-state", state),
 
   realtimeMinimize: () => ipcRenderer.send("realtime-overlay-minimize"),
+
+  // === Fila de Capturas / Multi-Screenshot Batch Overlay ===
+  onBatchAddImage: (cb) => ipcRenderer.on("batch-add-image", (_e, data) => cb(data)),
+  onBatchRemoveImage: (cb) => ipcRenderer.on("batch-remove-image", (_e, id) => cb(id)),
+  onBatchClear: (cb) => ipcRenderer.on("batch-clear", () => cb()),
+  batchRemoveItem: (id) => ipcRenderer.send("batch-remove-item", id),
+  batchSend: () => ipcRenderer.send("batch-send"),
+  batchClear: () => ipcRenderer.send("batch-clear"),
+  batchClose: () => ipcRenderer.send("batch-close"),
+  getBatchScreenshots: () => ipcRenderer.invoke("get-batch-screenshots"),
   platform: process.platform,
   // Drag manual de janelas frameless (Windows/macOS): o app-region:drag é
   // instável em janelas transparent+frameless no Windows. Ver main.js.

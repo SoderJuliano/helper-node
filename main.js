@@ -44,6 +44,7 @@ require("./main/helpers/capture.js");
 require("./main/helpers/misc.js");
 // Depois de misc.js: usa helpers.getEffectiveAiModel em runtime.
 require("./main/helpers/imagePaste.js");
+require("./main/helpers/batchScreenshot.js");
 
 // Register IPC handlers
 require("./main/ipc/window.js")();
@@ -59,6 +60,7 @@ require("./main/ipc/importCheck.js")();
 require("./main/ipc/javaDeps.js")();
 require("./main/ipc/appRunner.js")();
 require("./main/ipc/gitConflict.js")();
+require("./main/ipc/batchScreenshot.js")();
 
 // Unhandled exception silencers
 for (const stream of [process.stdout, process.stderr]) {
@@ -167,6 +169,7 @@ app.whenReady().then(async () => {
   try {
     const nativeAudio = require('./services/platform/nativeAudio.js');
     if (nativeAudio && typeof nativeAudio.prewarm === 'function') nativeAudio.prewarm();
+    if (typeof helpers.createBatchScreenshotOverlay === 'function') helpers.createBatchScreenshotOverlay();
   } catch (_) {}
   ipcService.start({
     toggleRecording: helpers.toggleRecording,

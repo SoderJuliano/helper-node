@@ -305,6 +305,16 @@ helpers.stopClipboardMonitoring = function() {
 helpers.processNewClipboardImage = async function(base64Image) {
   try {
     console.log('🎯 Processando nova imagem do clipboard...');
+
+    // Se a fila de capturas estiver aberta, anexa a imagem à fila
+    if (helpers.isBatchScreenshotModeActive && helpers.isBatchScreenshotModeActive()) {
+      if (state.osNotificationWindow && !state.osNotificationWindow.isDestroyed()) {
+        try { state.osNotificationWindow.close(); } catch (_) {}
+        state.osNotificationWindow = null;
+      }
+      await helpers.addScreenshotToBatch(base64Image);
+      return;
+    }
     
     // Check if OS integration mode is enabled
     const isOsIntegration = configService.getOsIntegrationStatus();

@@ -1,0 +1,112 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: #f1f5f9;
+}
+
+.batch-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: rgba(15, 18, 25, 0.94);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.65), 0 0 1px rgba(255, 255, 255, 0.2);
+  overflow: hidden;
+}
+
+.batch-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  -webkit-app-region: drag;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-icon {
+  font-size: 14px;
+}
+
+.header-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: #e2e8f0;
+  text-transform: uppercase;
+}
+
+.count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  background: rgba(14, 165, 233, 0.25);
+  color: #38bdf8;
+  border: 1px solid rgba(14, 165, 233, 0.4);
+  border-radius: 10px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  -webkit-app-region: no-drag;
+}
+
+.icon-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 11px;
+  transition: all 0.15s ease;
+}
+
+.icon-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f8fafc;
+}
+
+#b�?�����ޭ�g��h��h����X��ܛ�[���ؘJ��K����JN��܎�٘�MXMNB���[X��Z[�]ܘ\\��^�NY[�ΈL�ݙ\����^�]]�ݙ\����^N�Y[�\�^N��^[YۋZ][\Έ�[�\��ܛ��\�]�Y�[��ܛ��\�X��܎��ؘJ�MK�MK�MK��H�[��\�[�B���[X��Z[�]ܘ\\���]�X��]\�ܛ��\�ZY��B��[X��Z[�]ܘ\\���]�X��]\�ܛ��\�][X��X��ܛ�[���ؘJ�MK�MK�MK��N�ܙ\�\�Y]\Έ�B���[\K\�]H\�^N��^�^Y\�X�[ێ���[[�[YۋZ][\Έ�[�\��\�Y�KX�۝[���[�\��Y�L	N^X[Yێ��[�\���܎�͍��Y[�ΈLB���[\KZX�ۈ�۝\�^�N��X\��[�X���N��X�]N���B���[\K]]H�۝\�^�N�L��۝]�ZY�����܎��ML؎B���[\KZ[��۝\�^�N�L\X\��[�]���B��ؙ\�^N�[�[�KX����Y[�Έ\�۝\�^�N�L�۝Y�[Z[N�	ҙ]��Z[��[ۛ��[ۛ��X�N�X��ܛ�[���ؘJ�MK�MK�MK�
+N�ܙ\��\��Y�ؘJ�MK�MK�MK�MJN�ܙ\�\�Y]\Έ���܎��L�N�B���[X��Z[�[\�\�^N��^�\�[YۋZ][\Έ�[�\�ZY��L	NB���[X�X�\���][ێ��[]]�N�Y�LLZY����^\��[�Έ�ܙ\�\�Y]\Έ�ݙ\���ΈY[��ܙ\��\��Y�ؘJ�MK�MK�MK�MJN�X��ܛ�[���L�L��\�Y�ΈL�ؘJ�
+N�[��][ێ��[�ٛܛH�M\�X\�K�ܙ\�X��܈�M\�X\�N[�[X][ێ��\��[�����X�X�X�^�Y\��M�K��JNB���^Y��[Y\��\��[����H�X�]N��[�ٛܛN���[J�JH�[��]VJ�
+NB���X�]N�N�[�ٛܛN���[JJH�[��]VJ
+NB�B���[X�X�\��ݙ\��[�ٛܛN��[��]VJL�
+N�ܙ\�X��܎�����B���[X�Z[Y��Y�L	NZY��L	Nؚ�X�Y�]��ݙ\�\�^N�����B���[X�X�Y�H��][ێ�X���]N���Y����X��ܛ�[���ؘJ��JN��܎������۝\�^�N�\�۝]�ZY����۝Y�[Z[N�	ҙ]��Z[��[ۛ��[ۛ��X�NY[�Έ\�ܙ\�\�Y]\Έ��ܙ\��\��Y�ؘJM�NK���N�[�\�Y]�[�Έ�ۙNB���[X�Y[]H��][ێ�X���]N����Y����Y�M�ZY��M��ܙ\�\�Y]\ΈL	N�X��ܛ�[���ؘJ��K���JN��܎�ٙ���ܙ\���ۙN\�^N��^[YۋZ][\Έ�[�\��\�Y�KX�۝[���[�\��۝\�^�N�\�۝]�ZY�����\��܎��[�\��X�]N��[��][ێ��X�]H�M\�X\�K�[�ٛܛH�M\�X\�NB���[X�X�\��ݙ\��[X�Y[]H�X�]N�NB���[X�Y[]N�ݙ\��[�ٛܛN���[JK�MJN�X��ܛ�[���̍���B����]�Y���\�\�^N��^[YۋZ][\Έ�[�\��\�Y�KX�۝[���X�KX�]�Y[�Y[�Έ�L��X��ܛ�[���ؘJ��JN�ܙ\�]��\��Y�ؘJ�MK�MK�MK��NB������\�Z[�\�^N��^[YۋZ][\Έ�[�\��\���۝\�^�N�L\��܎��ML؎B����Z[�X�]܈�Y��ZY����ܙ\�\�Y]\ΈL	N�X��ܛ�[��̌��MYN��\�Y�Έ̌��MYNB���X�[ۋX��\�^N�[�[�KY�^[YۋZ][\Έ�[�\��\��Y[�Έ\L��۝\�^�N�L\�۝]�ZY����ܙ\�\�Y]\Έ��ܙ\���ۙN�\��܎��[�\��[��][ێ�[�M\�X\�NB�����\�[��X��ܛ�[��[�X\�YܘYY[�
+L�YY�����̍M��X�N��܎�ٙ�������\�Y�Έ��ؘJMM�K�����JNB�����\�[��ݙ\��X��ܛ�[��[�X\�YܘYY[�
+L�YY��͎XLK�YY
+N��\�Y�ΈL��ؘJMM�K����JN�[�ٛܛN��[��]VJL\
+NB�����\�[��\�X�Y�X�]N��N�\��܎���X[��Y�[�ٛܛN��ۙN��\�Y�Έ�ۙNB�����\�[�ؙ�X��ܛ�[���ؘJ��JN�ܙ\�X��܎��ؘJ�MK�MK�MK��N��܎�ٙ��B

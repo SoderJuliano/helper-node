@@ -20,6 +20,7 @@ async function registerGlobalShortcuts() {
         { combo: "Ctrl+Shift+C", action: "open-config" },
         { combo: "Ctrl+Shift+X", action: "capture-screen" },
         { combo: "Ctrl+Shift+S", action: "capture-region-native" },
+        { combo: "Alt+S", action: "toggle-batch-screenshot" },
         { combo: "Ctrl+Shift+1", action: "move-to-display-0" },
         { combo: "Ctrl+Shift+2", action: "move-to-display-1" },
       ]
@@ -29,6 +30,7 @@ async function registerGlobalShortcuts() {
         { combo: "CommandOrControl+Shift+C", action: "open-config" },
         { combo: "CommandOrControl+Shift+X", action: "capture-screen" },
         { combo: "CommandOrControl+Shift+S", action: "capture-region-native" },
+        { combo: "Alt+S", action: "toggle-batch-screenshot" },
         { combo: "CommandOrControl+Shift+1", action: "move-to-display-0" },
         { combo: "CommandOrControl+Shift+2", action: "move-to-display-1" },
       ];
@@ -68,6 +70,13 @@ async function registerGlobalShortcuts() {
 
       if (action === "capture-screen") {
         await helpers.captureScreen();
+        return;
+      }
+
+      if (action === "toggle-batch-screenshot") {
+        if (helpers.toggleBatchScreenshot) {
+          helpers.toggleBatchScreenshot();
+        }
         return;
       }
 

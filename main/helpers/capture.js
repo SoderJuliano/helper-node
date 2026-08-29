@@ -170,6 +170,18 @@ helpers.captureFullScreenAuto = async function() {
     const compressed = await helpers.compressImageForVision(imgBuffer, 'fullscreen');
     const base64 = compressed.dataUrl;
 
+    // Modo Fila de Capturas (Multi-Screenshot Batch Collector):
+    // Se a janela de lote estiver aberta/ativa, agrega a captura à fila
+    // em vez de enviar imediatamente para a IA.
+    if (helpers.isBatchScreenshotModeActive && helpers.isBatchScreenshotModeActive()) {
+      if (osOn && state.osNotificationWindow && !state.osNotificationWindow.isDestroyed()) {
+        try { state.osNotificationWindow.close(); } catch (_) {}
+        state.osNotificationWindow = null;
+      }
+      await helpers.addScreenshotToBatch(base64, imgBuffer);
+      return;
+    }
+
     // Quando Translation Assistant está ativo, usa análise de entrevista dedicada
     // e injeta o resultado diretamente no overlay — sem OCR, sem processOsQuestion.
     if (taCurrentlyActive) {

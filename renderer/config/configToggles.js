@@ -6,37 +6,35 @@
   function updateNexaStatus(isEnabled) {
     const nexaStatus = document.getElementById("nexa-status");
     if (nexaStatus) nexaStatus.textContent = isEnabled ? "ON" : "OFF";
+    const googleTtsContainer = document.getElementById("google-tts-container");
+    if (googleTtsContainer) {
+      googleTtsContainer.style.display = isEnabled ? "block" : "none";
+    }
     const googleTtsVoiceWrapper = document.getElementById("google-tts-voice-wrapper");
     if (googleTtsVoiceWrapper) {
-      googleTtsVoiceWrapper.style.display = isEnabled ? "none" : "block";
+      googleTtsVoiceWrapper.style.display = isEnabled ? "block" : "none";
     }
     const googleTtsToggleItem = document.getElementById("google-tts-toggle-item");
     if (googleTtsToggleItem) {
-      googleTtsToggleItem.style.display = isEnabled ? "none" : "flex";
-    }
-    const googleTtsContainer = document.getElementById("google-tts-container");
-    if (isEnabled && googleTtsContainer) {
-      googleTtsContainer.style.display = "block";
+      googleTtsToggleItem.style.display = "none";
     }
   }
 
   function updateGoogleTtsStatus(isEnabled) {
-    const googleTtsStatus = document.getElementById("google-tts-status");
     const nexaToggle = document.getElementById("nexa-toggle");
+    const isNexa = nexaToggle ? nexaToggle.checked : false;
     const googleTtsContainer = document.getElementById("google-tts-container");
     const googleTtsVoiceWrapper = document.getElementById("google-tts-voice-wrapper");
     const googleTtsToggleItem = document.getElementById("google-tts-toggle-item");
 
-    if (googleTtsStatus) googleTtsStatus.textContent = isEnabled ? "ON" : "OFF";
-    const isNexa = nexaToggle ? nexaToggle.checked : false;
+    if (googleTtsToggleItem) {
+      googleTtsToggleItem.style.display = "none";
+    }
     if (googleTtsContainer) {
-      googleTtsContainer.style.display = (isEnabled || isNexa) ? "block" : "none";
+      googleTtsContainer.style.display = isNexa ? "block" : "none";
     }
     if (googleTtsVoiceWrapper) {
-      googleTtsVoiceWrapper.style.display = isNexa ? "none" : "block";
-    }
-    if (googleTtsToggleItem) {
-      googleTtsToggleItem.style.display = isNexa ? "none" : "flex";
+      googleTtsVoiceWrapper.style.display = isNexa ? "block" : "none";
     }
   }
 

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Helper-Node Fila de Capturas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="multi-screenshot-overlay.css">
+</head>
+<body>
+  <div class="batch-container" id="batch-container">
+    <div class="batch-header" id="batch-header">
+      <div class="header-left">
+        <span class="header-icon">📸</span>
+        <span class="header-title">Fila de Prints</span>
+        <span class="count-badge" id="count-badge">0</span>
+      </div>
+      <div class="header-actions">
+        <button class="icon-btn" id="btn-clear" title="Limpar fila (Esc)" draggable="false">🗑</button>
+        <button class="icon-btn" id="btn-close" title="Fechar (Esc)" draggable="false">✕</button>
+      </div>
+    </div>
+
+    <div class="thumbnails-wrapper" id="thumbnails-wrapper">
+      <div class="empty-state" id="empty-state">
+        <div class="empty-icon">📷</div>
+        <div class="empty-title">Nenhum print capturado</div>
+        <div class="empty-hint">Pressione <kbd>Ctrl+Shift+S</kbd> para adicionar imagens à fila</div>
+      </div>
+      <div class="thumbnails-list" id="thumbnails-list"></div>
+    </div>
+
+    <div class="batch-footer">
+      <div class="footer-hint">
+        <span class="dot-indicator"></span>
+        <span id="footer-status">Pronto para capturar</span>
+      </div>
+      <div class="footer-buttons">
+        <button class="action-btn btn-send" id="btn-send" title="Enviar para IA (Alt+S)">
+          <span class="btn-icon">🚀</span>
+          <span>Enviar (<kbd>Alt+S</kbd>)</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="multi-screenshot-overlay.js"></script>
+</body>
+</html>

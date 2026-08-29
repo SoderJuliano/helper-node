@@ -145,6 +145,8 @@ const state = {
   regionCaptureBuffer: null,
   mainWindow: null,
   nexaWindow: null,
+  batchScreenshotWindow: null,
+  batchScreenshots: [],
   sharingCheckInterval: null,
   globalBypassAllConfirmations: false
 };

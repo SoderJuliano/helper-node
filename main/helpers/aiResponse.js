@@ -425,13 +425,11 @@ helpers.appendVoiceSummaryInstructionIfNeeded = function(instructionOrPrompt) {
     const cfg = configService.getGoogleTtsConfig();
     const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : null;
     const isNexaOn = !!(nexaCfg && nexaCfg.enabled);
-    const isTtsOn = !!(cfg && cfg.enabled);
+    const isTtsOn = !!(cfg && cfg.enabled && cfg.keyPathOrKey && cfg.keyPathOrKey.trim());
 
-    if (!isTtsOn && !isNexaOn) return instructionOrPrompt;
+    if (!isNexaOn || !isTtsOn) return instructionOrPrompt;
 
-    const voiceSpeakerNote = isNexaOn
-      ? " O resumo DEVE ser escrito em PRIMEIRA PESSOA PELA NEXA (ex: 'Pronto! Analisei e fiz os ajustes...'). NUNCA narre em terceira pessoa nem mencione assistentes genéricos ou nomes de terceiros."
-      : "";
+    const voiceSpeakerNote = " O resumo DEVE ser escrito em PRIMEIRA PESSOA PELA NEXA (ex: 'Pronto! Analisei e fiz os ajustes...'). NUNCA narre em terceira pessoa nem mencione assistentes genéricos ou nomes de terceiros.";
     const directive = `\n\n[INSTRUÇÃO DE MODO DE VOZ ATIVO]\nSua resposta DEVE incluir ao final a tag <voice_summary>resumo sucinto em 1 a 2 frases para ser lido em voz alta (no mesmo idioma da sua resposta).${voiceSpeakerNote} NUNCA inclua códigos, tabelas ou exemplos longos dentro da tag voice_summary. Se houver códigos ou exemplos na resposta, peça para o usuário olhá-los na tela.</voice_summary>`;
     return (instructionOrPrompt || "") + directive;
   } catch (e) {
@@ -446,7 +444,7 @@ helpers.triggerTtsPlaybackIfEnabled = function(fullResponse) {
     const isNexaOn = !!(nexaCfg && nexaCfg.enabled);
     const isTtsOn = !!(cfg && cfg.enabled);
 
-    if (!isTtsOn && !isNexaOn) return;
+    if (!isNexaOn || !isTtsOn) return;
     if (!cfg || !cfg.keyPathOrKey || !cfg.keyPathOrKey.trim()) return;
 
     let cleanResponse = fullResponse;

@@ -101,16 +101,18 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (osIntegrationToggle) { osIntegrationToggle.checked = !!isOsIntegration; window.ConfigToggles.updateOsIntegrationStatus(!!isOsIntegration); }
   if (stealthModeToggle) { stealthModeToggle.checked = !!isStealth; window.ConfigToggles.updateStealthModeStatus(!!isStealth); }
   
-  if (googleTtsToggle && ttsCfg) {
-    googleTtsToggle.checked = !!ttsCfg.enabled;
-    window.ConfigToggles.updateGoogleTtsStatus(!!ttsCfg.enabled);
-    if (googleTtsKey) googleTtsKey.value = ttsCfg.keyPathOrKey || "";
-    if (googleTtsVoiceSelect) googleTtsVoiceSelect.value = ttsCfg.voiceName || "pt-BR-Neural2-C";
-  }
-
   if (nexaToggle && nexaCfg) {
     nexaToggle.checked = !!nexaCfg.enabled;
     window.ConfigToggles.updateNexaStatus(!!nexaCfg.enabled);
+  } else {
+    window.ConfigToggles.updateNexaStatus(false);
+  }
+
+  if (googleTtsKey && ttsCfg) {
+    googleTtsKey.value = ttsCfg.keyPathOrKey || "";
+  }
+  if (googleTtsVoiceSelect && ttsCfg) {
+    googleTtsVoiceSelect.value = ttsCfg.voiceName || "pt-BR-Neural2-C";
   }
 
   if (realtimeAssistantToggle) {
@@ -338,15 +340,6 @@ if (nexaToggle) {
     if (toast) toast.style.display = "none";
   });
 }
-if (googleTtsToggle) {
-  googleTtsToggle.addEventListener("change", async () => {
-    const enabled = googleTtsToggle.checked;
-    window.ConfigToggles.updateGoogleTtsStatus(enabled);
-    const keyPathOrKey = googleTtsKey ? googleTtsKey.value.trim() : "";
-    const voiceName = googleTtsVoiceSelect ? googleTtsVoiceSelect.value : "pt-BR-Neural2-C";
-    ipcRenderer.send("save-google-tts-config", { enabled, keyPathOrKey, voiceName });
-  });
-}
 
 saveButton.addEventListener("click", async () => {
   const isExclusiveFeatureOn = (osIntegrationToggle && osIntegrationToggle.checked) ||
@@ -374,13 +367,12 @@ saveButton.addEventListener("click", async () => {
     }
     ipcRenderer.send("nexa:save-config", { enabled: isNexaOn, onlyNexa: false });
   }
-  if (googleTtsToggle) {
-    ipcRenderer.send("save-google-tts-config", {
-      enabled: isNexaOn ? true : googleTtsToggle.checked,
-      keyPathOrKey: ttsKey,
-      voiceName: isNexaOn ? "pt-BR-Neural2-C" : (googleTtsVoiceSelect ? googleTtsVoiceSelect.value : "pt-BR-Neural2-C")
-    });
-  }
+
+  ipcRenderer.send("save-google-tts-config", {
+    enabled: isNexaOn,
+    keyPathOrKey: ttsKey,
+    voiceName: googleTtsVoiceSelect ? googleTtsVoiceSelect.value : "pt-BR-Neural2-C"
+  });
 
   ipcRenderer.send("save-prompt-instruction", instructionTextarea.value);
   ipcRenderer.send("save-debug-mode-status", debugModeToggle.checked);

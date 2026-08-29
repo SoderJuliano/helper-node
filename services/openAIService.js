@@ -66,9 +66,19 @@ class OpenAIService {
             }
         }
 
-        // Build user message — multimodal if image fornecida
+        // Build user message — multimodal if image(s) fornecida(s)
         let userMessage;
-        if (imageBase64) {
+        if (Array.isArray(imageBase64) && imageBase64.length > 0) {
+            const content = [
+                { type: 'text', text: prompt || 'Analise com atenção o conjunto de imagens em sequência e responda diretamente.' }
+            ];
+            for (const img of imageBase64) {
+                if (!img) continue;
+                const dataUrl = img.startsWith('data:') ? img : `data:image/png;base64,${img}`;
+                content.push({ type: 'image_url', image_url: { url: dataUrl, detail: 'high' } });
+            }
+            userMessage = { role: 'user', content };
+        } else if (imageBase64 && typeof imageBase64 === 'string') {
             // Detecta prefixo data: já presente; senão assume PNG
             const dataUrl = imageBase64.startsWith('data:')
                 ? imageBase64
@@ -123,9 +133,13 @@ class OpenAIService {
         let userPreview = '';
         if (lastUser && Array.isArray(lastUser.content)) {
             const txt = lastUser.content.find(c => c.type === 'text');
-            const img = lastUser.content.find(c => c.type === 'image_url');
-            const imgKB = img ? Math.round((img.image_url.url.length * 3) / 4 / 1024) : 0;
-            userPreview = `[text: ${(txt && txt.text || '').slice(0, 60)}…] [image: ${imgKB} KB]`;
+            const imgs = lastUser.content.filter(c => c.type === 'image_url');
+            if (imgs.length > 1) {
+                userPreview = `[text: ${(txt && txt.text || '').slice(0, 60)}…] [images: ${imgs.length}]`;
+            } else if (imgs.length === 1) {
+                const imgKB = Math.round((imgs[0].image_url.url.length * 3) / 4 / 1024);
+                userPreview = `[text: ${(txt && txt.text || '').slice(0, 60)}…] [image: ${imgKB} KB]`;
+            }
         } else if (lastUser) {
             userPreview = `[text: ${(lastUser.content || '').toString().slice(0, 60)}…]`;
         }

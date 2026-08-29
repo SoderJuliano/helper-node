@@ -107,6 +107,12 @@ helpers.captureScreen = async function() {
           const imgBuffer = await fs.readFile(tmpPng);
           const base64Image = `data:image/png;base64,${imgBuffer.toString('base64')}`;
           
+          if (helpers.isBatchScreenshotModeActive && helpers.isBatchScreenshotModeActive()) {
+            helpers.destroyNotificationWindow();
+            await helpers.addScreenshotToBatch(base64Image, imgBuffer);
+            return;
+          }
+
           if (edition.isLite()) {
             // Lite (100% online): sem OCR local — manda a imagem direto pro
             // gpt-4o (visão), que lê o texto e responde no mesmo fluxo.
@@ -196,6 +202,12 @@ helpers.captureScreen = async function() {
         if (screenshotSuccess) {
           const imgBuffer = await fs.readFile(tmpPng);
           const base64Image = `data:image/png;base64,${imgBuffer.toString('base64')}`;
+
+          if (helpers.isBatchScreenshotModeActive && helpers.isBatchScreenshotModeActive()) {
+            await helpers.addScreenshotToBatch(base64Image, imgBuffer);
+            return;
+          }
+
           // Proceed with OCR only if file exists
           try {
             await fs.access(tmpPng);
