@@ -89,6 +89,26 @@ ipcMain.on("close-os-input", () => {
   }
 });
 
+ipcMain.on("pause-autoclose", () => {
+  helpers.clearOsNotifAutoClose();
+  state.osNotifKeepOpen = true;
+  if (state.osNotificationWindow && !state.osNotificationWindow.isDestroyed()) {
+    try {
+      state.osNotificationWindow.webContents.send("autoclose-state", { state: "paused" });
+    } catch (_) {}
+  }
+});
+
+ipcMain.on("cancel-autoclose", () => {
+  helpers.clearOsNotifAutoClose();
+  state.osNotifKeepOpen = true;
+  if (state.osNotificationWindow && !state.osNotificationWindow.isDestroyed()) {
+    try {
+      state.osNotificationWindow.webContents.send("autoclose-state", { state: "paused" });
+    } catch (_) {}
+  }
+});
+
 ipcMain.on("copy-to-clipboard", (event, text) => {
   try {
     clipboard.writeText(text || "");

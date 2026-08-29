@@ -31,6 +31,10 @@ helpers.realtimeProviderResponder = function(transcript, image, onDelta, context
 }
 
 helpers.clearOsNotifAutoClose = function() {
+  if (state.osNotifAutoCloseTimer) {
+    clearInterval(state.osNotifAutoCloseTimer);
+    state.osNotifAutoCloseTimer = null;
+  }
   if (state.osNotifCloseTimer) {
     clearTimeout(state.osNotifCloseTimer);
     state.osNotifCloseTimer = null;
@@ -41,15 +45,59 @@ helpers.startResponseAutoClose = function() {
   helpers.clearOsNotifAutoClose();
   if (state.osNotifKeepOpen) return;
 
-  const seconds = configService.getOsNotificationDuration();
-  if (seconds === 0) return;
+  const AUTO_CLOSE_MS = 10000;
+  const POLL_MS = 100;
+  let remaining = AUTO_CLOSE_MS;
+  let last = Date.now();
+  let prevInside = null;
 
-  state.osNotifCloseTimer = setTimeout(() => {
-    if (state.osNotifKeepOpen) return;
-    if (state.osNotificationWindow && !state.osNotificationWindow.isDestroyed()) {
-      state.osNotificationWindow.hide();
+  state.osNotifAutoCloseTimer = setInterval(() => {
+    const win = state.osNotificationWindow;
+    if (!win || win.isDestroyed()) {
+      helpers.clearOsNotifAutoClose();
+      return;
     }
-  }, seconds * 1000);
+
+    const now = Date.now();
+    const dt = now - last;
+    last = now;
+
+    let inside = false;
+    try {
+      const scr = screen || (electron && electron.screen);
+      if (scr && typeof scr.getCursorScreenPoint === 'function') {
+        const p = scr.getCursorScreenPoint();
+        const b = win.getBounds();
+        if (p && b) {
+          inside = p.x >= b.x && p.x < b.x + b.width && p.y >= b.y && p.y < b.y + b.height;
+        }
+      }
+    } catch (_) {}
+
+    if (inside) {
+      // Usuário passou o mouse em cima da janela:
+      // O timer é cancelado, a barra de progresso desaparece e a janela
+      // fica aberta até fechamento manual no 'x' ou surgimento de nova resposta.
+      helpers.clearOsNotifAutoClose();
+      state.osNotifKeepOpen = true;
+      try {
+        win.webContents.send('autoclose-state', { state: 'paused' });
+      } catch (_) {}
+    } else {
+      if (prevInside !== false) {
+        prevInside = false;
+        try {
+          win.webContents.send('autoclose-state', { state: 'running', ms: AUTO_CLOSE_MS });
+        } catch (_) {}
+      } else {
+        remaining -= dt;
+      }
+      if (remaining <= 0) {
+        helpers.clearOsNotifAutoClose();
+        helpers.destroyNotificationWindow();
+      }
+    }
+  }, POLL_MS);
 }
 
 helpers.switchToOsIntegrationMode = function() {

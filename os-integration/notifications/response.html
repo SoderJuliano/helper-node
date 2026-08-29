@@ -182,7 +182,6 @@
             background: rgba(0, 255, 0, 0.3);
         }
 
-        /* Barra de auto-close (loading reverso). Comeca cheia, encolhe ate 0. */
         #autoclose-bar {
             position: fixed;
             left: 0;
@@ -192,13 +191,14 @@
             background: linear-gradient(90deg, #00d0ff, #00aaff);
             transform-origin: left center;
             transform: scaleX(1);
-            transition: transform linear;
+            transition: transform linear, opacity 0.2s ease;
             opacity: 0.85;
             pointer-events: none;
             z-index: 9999;
         }
         #autoclose-bar.paused {
             opacity: 0;
+            visibility: hidden;
         }
         /* Faixa de arraste no topo — permite mover a janela do modo integrado.
            Linux usa o -webkit-app-region:drag; Windows/macOS usa drag manual (JS). */
@@ -249,17 +249,13 @@
             }
         }
 
-        // === AUTO-CLOSE: barra cosmética controlada pelo MAIN ===
-        // ANTES: o timer ficava aqui e dependia de mouseover/mouseout. Em
-        // COSMIC/Wayland a janela stealth só recebe esses eventos com foco —
-        // por isso o hover-pause "às vezes" funcionava (precisava sair/voltar o
-        // foco). AGORA quem decide pausar/fechar é o processo principal, que lê
-        // a posição GLOBAL do cursor (independe de foco/eventos). Aqui só
-        // animamos a barrinha conforme o estado recebido por IPC.
+        // === AUTO-CLOSE: barra cosmética com suporte a hover e controle pelo MAIN ===
         const AUTO_CLOSE_MS = 10000;
         const bar = document.getElementById('autoclose-bar');
+        let isPaused = false;
 
         function runBar(ms) {
+            if (isPaused) return;
             bar.classList.remove('paused');
             bar.style.transition = 'none';
             bar.style.transform = 'scaleX(1)';
@@ -269,24 +265,44 @@
         }
 
         function pauseBar() {
+            isPaused = true;
             bar.classList.add('paused');
             const computed = getComputedStyle(bar).transform;
             bar.style.transition = 'none';
             bar.style.transform = computed; // congela onde está
+            try {
+                if (window.electronAPI && window.electronAPI.pauseAutoClose) {
+                    window.electronAPI.pauseAutoClose();
+                }
+            } catch (_) {}
         }
 
         if (window.electronAPI && window.electronAPI.onAutoCloseState) {
             window.electronAPI.onAutoCloseState((data) => {
                 if (!data) return;
-                if (data.state === 'paused') pauseBar();
-                else if (data.state === 'running') runBar(data.ms || AUTO_CLOSE_MS);
+                if (data.state === 'paused') {
+                    pauseBar();
+                } else if (data.state === 'running' && !isPaused) {
+                    runBar(data.ms || AUTO_CLOSE_MS);
+                }
             });
         }
+
+        // Detecta entrada do mouse na janela para sumir e pausar o timer imediatamente
+        ['mouseenter', 'mouseover', 'mousemove'].forEach((evt) => {
+            document.addEventListener(evt, () => {
+                if (!isPaused) {
+                    pauseBar();
+                }
+            }, { passive: true });
+        });
 
         // Barra inicial (cosmética) até o main mandar o 1º estado. O fechamento
         // de fato é sempre decidido no main.
         window.addEventListener('load', () => {
-            setTimeout(() => runBar(AUTO_CLOSE_MS), 150);
+            setTimeout(() => {
+                if (!isPaused) runBar(AUTO_CLOSE_MS);
+            }, 150);
         });
         // Function to set response content from main process
         window.setResponseContent = function(content) {

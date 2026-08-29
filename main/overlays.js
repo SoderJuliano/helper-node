@@ -320,6 +320,7 @@ helpers.sendToRealtimeAssistantOverlay = function(channel, payload) {
 
 helpers.destroyNotificationWindow = function() {
   helpers.clearOsNotifAutoClose();
+  state.osNotifKeepOpen = false;
   if (state.osNotificationWindow && !state.osNotificationWindow.isDestroyed()) {
     console.log(`🔔 DESTROYING notification window completely`);
     try {

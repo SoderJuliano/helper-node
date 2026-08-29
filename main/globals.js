@@ -1,16 +1,17 @@
 const electron = require("electron");
+const electronObj = (electron && typeof electron === "object") ? electron : {};
 const {
-  app,
-  BrowserWindow,
-  ipcMain,
-  globalShortcut,
-  screen,
-  desktopCapturer,
-  nativeImage,
-  clipboard,
-  Tray,
-  Menu,
-} = electron;
+  app = {},
+  BrowserWindow = {},
+  ipcMain = {},
+  globalShortcut = {},
+  screen = {},
+  desktopCapturer = {},
+  nativeImage = {},
+  clipboard = {},
+  Tray = {},
+  Menu = {},
+} = electronObj;
 const path = require("path");
 const os = require("os");
 const crypto = require("crypto");
@@ -125,6 +126,7 @@ const state = {
   osInputWindow: null,
   osNotificationWindow: null,
   osNotifAutoCloseTimer: null,
+  osNotifKeepOpen: false,
   osCaptureWindow: null,
   isOsIntegrationMode: false,
   captureToolInterval: null,

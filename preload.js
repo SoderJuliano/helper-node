@@ -70,6 +70,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // posição global). { state: 'paused' } | { state: 'running', ms }
   onAutoCloseState: (callback) =>
     ipcRenderer.on("autoclose-state", (event, data) => callback(data)),
+  pauseAutoClose: () => ipcRenderer.send("pause-autoclose"),
+  cancelAutoClose: () => ipcRenderer.send("cancel-autoclose"),
   getAiModel: () => ipcRenderer.invoke("get-ai-model"),
   setAiModel: (model) => ipcRenderer.send("set-ai-model", model),
   getOpenaiModel: () => ipcRenderer.invoke("get-openai-model"),

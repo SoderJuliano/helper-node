@@ -279,6 +279,8 @@ helpers.createOsNotificationWindow = function(type, content) {
 
   state.osNotificationWindow.on('closed', () => {
     console.log(`🔔 OS notification window closed - Type: ${type}`);
+    helpers.clearOsNotifAutoClose();
+    state.osNotifKeepOpen = false;
     state.osNotificationWindow = null;
   });
 }
