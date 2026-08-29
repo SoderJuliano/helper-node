@@ -28,6 +28,9 @@
       tabSize: 2,
       indentWithTabs: false,
       styleActiveLine: false,
+      autoCloseBrackets: true,
+      matchBrackets: true,
+      autoCloseTags: true,
       extraKeys: {
         'Ctrl-F': 'findPersistent', 'Cmd-F': 'findPersistent',
         'Ctrl-G': 'findNext', 'Shift-Ctrl-G': 'findPrev',
@@ -35,9 +38,21 @@
         'Ctrl-S': () => { saveActive(); }, 'Cmd-S': () => { saveActive(); },
         'Ctrl-Space': 'autocomplete',
         'Tab': (editor) => (window.EditorAutocomplete.getGhostTextMarker() ? window.EditorAutocomplete.acceptGhostText(editor) : window.CodeMirror.Pass),
-        'Esc': (editor) => (window.EditorAutocomplete.getGhostTextMarker() ? window.EditorAutocomplete.clearGhostText() : window.CodeMirror.Pass)
+        'Esc': (editor) => (window.EditorAutocomplete.getGhostTextMarker() ? window.EditorAutocomplete.clearGhostText() : window.CodeMirror.Pass),
+        'Enter': (editor) => {
+          if (window.EditorSmartBrackets && window.EditorSmartBrackets.handleSmartEnter(editor)) return;
+          return window.CodeMirror.Pass;
+        },
+        'Backspace': (editor) => {
+          if (window.EditorSmartBrackets && window.EditorSmartBrackets.handleSmartBackspace(editor)) return;
+          return window.CodeMirror.Pass;
+        }
       },
     });
+
+    if (window.EditorSmartBrackets) {
+      window.EditorSmartBrackets.attach(cm);
+    }
 
     const savedEditorFontSize = localStorage.getItem('editor_font_size');
     const wrapperEl = cm.getWrapperElement();
@@ -149,66 +164,43 @@
     el.style.display = msg ? 'inline' : 'none';
   }
 
+  const tabCtx = {
+    openFiles,
+    getActivePath: () => activePath,
+    openFile,
+    saveFile,
+    saveActive,
+    closeEditor,
+    getCm: () => cm,
+    renderTabs: () => renderTabs()
+  };
+
   function renderTabs() {
     window.EditorTabs.renderTabs(openFiles, activePath, {
       openFile,
       saveFile,
       saveActive,
-      closeTab,
-      closeOtherTabs,
-      closeAllTabs,
-      closeUnmodifiedTabs,
+      closeTab: (p) => window.EditorTabs.closeTab(tabCtx, p),
+      closeOtherTabs: (p) => window.EditorTabs.closeOtherTabs(tabCtx, p),
+      closeAllTabs: () => window.EditorTabs.closeAllTabs(tabCtx),
+      closeUnmodifiedTabs: () => window.EditorTabs.closeUnmodifiedTabs(tabCtx),
     });
   }
 
   async function closeAllTabs() {
-    openFiles.clear();
-    const viewer = document.getElementById('file-viewer');
-    if (viewer) viewer.classList.remove('open');
-    closeEditor();
-    renderTabs();
+    return window.EditorTabs.closeAllTabs(tabCtx);
   }
 
   async function closeOtherTabs(keepPath) {
-    for (const filePath of Array.from(openFiles.keys())) {
-      if (filePath !== keepPath) openFiles.delete(filePath);
-    }
-    if (activePath !== keepPath) await openFile(keepPath);
-    else renderTabs();
+    return window.EditorTabs.closeOtherTabs(tabCtx, keepPath);
   }
 
   async function closeUnmodifiedTabs() {
-    for (const [filePath, doc] of Array.from(openFiles.entries())) {
-      if (!doc.dirty) openFiles.delete(filePath);
-    }
-    if (!openFiles.has(activePath)) {
-      if (openFiles.size > 0) await openFile(openFiles.keys().next().value);
-      else {
-        const viewer = document.getElementById('file-viewer');
-        if (viewer) viewer.classList.remove('open');
-        closeEditor();
-      }
-    } else {
-      renderTabs();
-    }
+    return window.EditorTabs.closeUnmodifiedTabs(tabCtx);
   }
 
   async function closeTab(filePath) {
-    const doc = openFiles.get(filePath);
-    if (!doc) return;
-    if (cm && filePath === activePath) doc.content = cm.getValue();
-    openFiles.delete(filePath);
-
-    if (filePath === activePath) {
-      if (openFiles.size > 0) await openFile(openFiles.keys().next().value);
-      else {
-        const viewer = document.getElementById('file-viewer');
-        if (viewer) viewer.classList.remove('open');
-        closeEditor();
-      }
-    } else {
-      renderTabs();
-    }
+    return window.EditorTabs.closeTab(tabCtx, filePath);
   }
 
   async function openFile(rawFilePath, lineNum, colNum) {
@@ -338,6 +330,9 @@
     renderTabs();
     if (window.CodeNavigation) {
       window.CodeNavigation.attach(cmInst, filePath);
+    }
+    if (window.EditorSmartBrackets) {
+      window.EditorSmartBrackets.attach(cmInst);
     }
     if (!isDependencySource) {
       if (window.ImportChecker) {

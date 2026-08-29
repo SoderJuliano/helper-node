@@ -53,6 +53,10 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/xml-hint.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/html-hint.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/anyword-hint.min.js"></script>
+    <!-- Addons CodeMirror: Fechamento automático de chaves/parênteses e casamento de brackets (estilo VS Code / IntelliJ) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closebrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closetag.min.js"></script>
         <link rel="stylesheet" href="styles/main.css">
     <link rel="stylesheet" href="styles/codeNav.css">
     <link rel="stylesheet" href="styles/importCheck.css">
@@ -432,6 +436,7 @@
 
     <!-- Controller do editor de código (#file-viewer) -->
     <script src="renderer/editor/editorConstants.js"></script>
+    <script src="renderer/editor/editorSmartBrackets.js"></script>
     <script src="renderer/editor/editorAutocomplete.js"></script>
     <script src="renderer/editor/editorTabs.js"></script>
     <script src="renderer/editor/editorAiDiff.js"></script>

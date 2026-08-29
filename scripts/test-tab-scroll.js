@@ -102,11 +102,11 @@ async function runTest() {
       (async () => {
         const files = ${JSON.stringify(fs.readdirSync(tmpDir).map(f => path.join(tmpDir, f)))};
         for (const f of files) {
-          window.EditorController.openFile(f);
+          await window.EditorController.openFile(f);
         }
       })()
     `);
-    await sleep(500);
+    await sleep(800);
 
     const initialScroll = await client.evaluate(`
       document.getElementById('fv-tabs-container').scrollLeft

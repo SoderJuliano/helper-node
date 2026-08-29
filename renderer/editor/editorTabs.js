@@ -156,8 +156,63 @@
     setTimeout(() => document.addEventListener('mousedown', closer, true), 0);
   }
 
+  async function closeAllTabs(ctx) {
+    ctx.openFiles.clear();
+    const viewer = document.getElementById('file-viewer');
+    if (viewer) viewer.classList.remove('open');
+    if (ctx.closeEditor) ctx.closeEditor();
+    if (ctx.renderTabs) ctx.renderTabs();
+  }
+
+  async function closeOtherTabs(ctx, keepPath) {
+    for (const filePath of Array.from(ctx.openFiles.keys())) {
+      if (filePath !== keepPath) ctx.openFiles.delete(filePath);
+    }
+    if (ctx.getActivePath() !== keepPath && ctx.openFile) await ctx.openFile(keepPath);
+    else if (ctx.renderTabs) ctx.renderTabs();
+  }
+
+  async function closeUnmodifiedTabs(ctx) {
+    for (const [filePath, doc] of Array.from(ctx.openFiles.entries())) {
+      if (!doc.dirty) ctx.openFiles.delete(filePath);
+    }
+    if (!ctx.openFiles.has(ctx.getActivePath())) {
+      if (ctx.openFiles.size > 0 && ctx.openFile) await ctx.openFile(ctx.openFiles.keys().next().value);
+      else {
+        const viewer = document.getElementById('file-viewer');
+        if (viewer) viewer.classList.remove('open');
+        if (ctx.closeEditor) ctx.closeEditor();
+      }
+    } else if (ctx.renderTabs) {
+      ctx.renderTabs();
+    }
+  }
+
+  async function closeTab(ctx, filePath) {
+    const doc = ctx.openFiles.get(filePath);
+    if (!doc) return;
+    const cm = ctx.getCm ? ctx.getCm() : null;
+    if (cm && filePath === ctx.getActivePath()) doc.content = cm.getValue();
+    ctx.openFiles.delete(filePath);
+
+    if (filePath === ctx.getActivePath()) {
+      if (ctx.openFiles.size > 0 && ctx.openFile) await ctx.openFile(ctx.openFiles.keys().next().value);
+      else {
+        const viewer = document.getElementById('file-viewer');
+        if (viewer) viewer.classList.remove('open');
+        if (ctx.closeEditor) ctx.closeEditor();
+      }
+    } else if (ctx.renderTabs) {
+      ctx.renderTabs();
+    }
+  }
+
   window.EditorTabs = {
     renderTabs,
     showTabContextMenu,
+    closeTab,
+    closeOtherTabs,
+    closeAllTabs,
+    closeUnmodifiedTabs
   };
 })();
