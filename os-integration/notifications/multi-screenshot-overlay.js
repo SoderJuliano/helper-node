@@ -1,5 +1,5 @@
 (function() {
-  'strict';
+  'use strict';
   const api = window.electronAPI || {};
 
   const state = {
@@ -13,27 +13,29 @@
   const btnSend = document.getElementById('btn-send');
   const btnClear = document.getElementById('btn-clear');
   const btnClose = document.getElementById('btn-close');
-  const footerStatus = document.getElementById('footer-status');
 
   function render() {
     const count = state.screenshots.length;
     if (countBadge) countBadge.textContent = String(count);
 
     if (btnSend) {
-      btnSend.disabled = count === 0;
+      btnSend.disabled = (count === 0);
+      if (count === 0) {
+        btnSend.innerHTML = '<span class="btn-icon">🚀</span><span class="btn-text">Enviar</span><span class="btn-shortcut">Alt+S</span>';
+      } else {
+        btnSend.innerHTML = `<span class="btn-icon">🚀</span><span class="btn-text">Enviar (${count})</span><span class="btn-shortcut">Alt+S</span>`;
+      }
     }
 
     if (count === 0) {
       if (emptyState) emptyState.style.display = 'flex';
       if (thumbnailsList) thumbnailsList.innerHTML = '';
-      if (footerStatus) footerStatus.textContent = 'Pronto para capturar';
       return;
     }
 
     if (emptyState) emptyState.style.display = 'none';
-    if (footerStatus) footerStatus.textContent = ` ${count} print${count > 1 ? 's' : ''} pronto${count > 1 ? 's' : ''} para envio`;
-
     if (!thumbnailsList) return;
+
     thumbnailsList.innerHTML = '';
 
     state.screenshots.forEach((item, index) => {
@@ -44,7 +46,7 @@
       const img = document.createElement('img');
       img.className = 'thumb-img';
       img.src = item.base64Image || item.base64 || '';
-      img.alt = `Print #${index + 1}` ;
+      img.alt = `Print #${index + 1}`;
 
       const badge = document.createElement('div');
       badge.className = 'thumb-badge';
@@ -66,7 +68,9 @@
     });
 
     if (thumbnailsWrapper) {
-      thumbnailsWrapper.scrollLeft = thumbnailsWrapper.scrollWidth;
+      setTimeout(() => {
+        thumbnailsWrapper.scrollTop = thumbnailsWrapper.scrollHeight;
+      }, 20);
     }
   }
 
@@ -102,9 +106,8 @@
     if (state.screenshots.length === 0) return;
     if (btnSend) {
       btnSend.disabled = true;
-      btnSend.innerHTML = '<span class="btn-con">⏳</span><span>Enviando...</span>';
+      btnSend.innerHTML = '<span class="btn-icon">⏳</span><span class="btn-text">Enviando...</span>';
     }
-    if (footerStatus) footerStatus.textContent = 'Enviando para IA...';
     if (api.batchSend) {
       api.batchSend();
     }

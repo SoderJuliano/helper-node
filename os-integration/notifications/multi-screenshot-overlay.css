@@ -1,3 +1,6 @@
+/* os-integration/notifications/multi-screenshot-overlay.css
+   Vertical multi-screenshot batch collector overlay for Helper-Node */
+
 * {
   margin: 0;
   padding: 0;
@@ -9,10 +12,10 @@
 html, body {
   width: 100%;
   height: 100%;
-  background: transparent;
+  background: transparent !important;
   overflow: hidden;
   font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  color: #f1f5f9;
+  color: #ececec;
 }
 
 .batch-container {
@@ -20,93 +23,322 @@ html, body {
   flex-direction: column;
   width: 100%;
   height: 100%;
-  background: rgba(15, 18, 25, 0.94);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 12px;
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.65), 0 0 1px rgba(255, 255, 255, 0.2);
+  background: rgba(18, 20, 26, 0.95);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  backdrop-filter: blur(14px) saturate(140%);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.08);
   overflow: hidden;
 }
 
+/* ---------- HEADER ---------- */
 .batch-header {
+  height: 28px;
+  min-height: 28px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.03);
+  padding: 0 8px;
+  background: rgba(139, 92, 246, 0.08);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   -webkit-app-region: drag;
+  cursor: move;
+  flex-shrink: 0;
 }
 
 .header-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 5px;
 }
 
 .header-icon {
-  font-size: 14px;
+  font-size: 11px;
 }
 
 .header-title {
-  font-size: 12px;
+  font-size: 10.5px;
   font-weight: 700;
-  letter-spacing: 0.3px;
-  color: #e2e8f0;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
+  color: #c4b5fd;
+  font-family: 'DM Sans', sans-serif;
 }
 
 .count-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 6px;
-  font-size: 10px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  font-size: 9.5px;
   font-weight: 700;
   font-family: 'JetBrains Mono', monospace;
-  background: rgba(14, 165, 233, 0.25);
-  color: #38bdf8;
-  border: 1px solid rgba(14, 165, 233, 0.4);
-  border-radius: 10px;
+  background: rgba(139, 92, 246, 0.28);
+  color: #ddd6fe;
+  border: 1px solid rgba(139, 92, 246, 0.45);
+  border-radius: 8px;
 }
 
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   -webkit-app-region: no-drag;
 }
 
 .icon-btn {
   background: transparent;
   border: none;
-  color: #94a3b8;
-  width: 22px;
-  height: 22px;
-  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.4);
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 11px;
-  transition: all 0.15s ease;
+  font-size: 10px;
+  transition: all 0.12s ease;
+  padding: 0;
 }
 
 .icon-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #f8fafc;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
 }
 
-#b�?�����ޭ�g��h��h����X��ܛ�[���ؘJ��K����JN��܎�٘�MXMNB���[X��Z[�]ܘ\\��^�NY[�ΈL�ݙ\����^�]]�ݙ\����^N�Y[�\�^N��^[YۋZ][\Έ�[�\��ܛ��\�]�Y�[��ܛ��\�X��܎��ؘJ�MK�MK�MK��H�[��\�[�B���[X��Z[�]ܘ\\���]�X��]\�ܛ��\�ZY��B��[X��Z[�]ܘ\\���]�X��]\�ܛ��\�][X��X��ܛ�[���ؘJ�MK�MK�MK��N�ܙ\�\�Y]\Έ�B���[\K\�]H\�^N��^�^Y\�X�[ێ���[[�[YۋZ][\Έ�[�\��\�Y�KX�۝[���[�\��Y�L	N^X[Yێ��[�\���܎�͍��Y[�ΈLB���[\KZX�ۈ�۝\�^�N��X\��[�X���N��X�]N���B���[\K]]H�۝\�^�N�L��۝]�ZY�����܎��ML؎B���[\KZ[��۝\�^�N�L\X\��[�]���B��ؙ\�^N�[�[�KX����Y[�Έ\�۝\�^�N�L�۝Y�[Z[N�	ҙ]��Z[��[ۛ��[ۛ��X�N�X��ܛ�[���ؘJ�MK�MK�MK�
-N�ܙ\��\��Y�ؘJ�MK�MK�MK�MJN�ܙ\�\�Y]\Έ���܎��L�N�B���[X��Z[�[\�\�^N��^�\�[YۋZ][\Έ�[�\�ZY��L	NB���[X�X�\���][ێ��[]]�N�Y�LLZY����^\��[�Έ�ܙ\�\�Y]\Έ�ݙ\���ΈY[��ܙ\��\��Y�ؘJ�MK�MK�MK�MJN�X��ܛ�[���L�L��\�Y�ΈL�ؘJ�
-N�[��][ێ��[�ٛܛH�M\�X\�K�ܙ\�X��܈�M\�X\�N[�[X][ێ��\��[�����X�X�X�^�Y\��M�K��JNB���^Y��[Y\��\��[����H�X�]N��[�ٛܛN���[J�JH�[��]VJ�
-NB���X�]N�N�[�ٛܛN���[JJH�[��]VJ
-NB�B���[X�X�\��ݙ\��[�ٛܛN��[��]VJL�
-N�ܙ\�X��܎�����B���[X�Z[Y��Y�L	NZY��L	Nؚ�X�Y�]��ݙ\�\�^N�����B���[X�X�Y�H��][ێ�X���]N���Y����X��ܛ�[���ؘJ��JN��܎������۝\�^�N�\�۝]�ZY����۝Y�[Z[N�	ҙ]��Z[��[ۛ��[ۛ��X�NY[�Έ\�ܙ\�\�Y]\Έ��ܙ\��\��Y�ؘJM�NK���N�[�\�Y]�[�Έ�ۙNB���[X�Y[]H��][ێ�X���]N����Y����Y�M�ZY��M��ܙ\�\�Y]\ΈL	N�X��ܛ�[���ؘJ��K���JN��܎�ٙ���ܙ\���ۙN\�^N��^[YۋZ][\Έ�[�\��\�Y�KX�۝[���[�\��۝\�^�N�\�۝]�ZY�����\��܎��[�\��X�]N��[��][ێ��X�]H�M\�X\�K�[�ٛܛH�M\�X\�NB���[X�X�\��ݙ\��[X�Y[]H�X�]N�NB���[X�Y[]N�ݙ\��[�ٛܛN���[JK�MJN�X��ܛ�[���̍���B����]�Y���\�\�^N��^[YۋZ][\Έ�[�\��\�Y�KX�۝[���X�KX�]�Y[�Y[�Έ�L��X��ܛ�[���ؘJ��JN�ܙ\�]��\��Y�ؘJ�MK�MK�MK��NB������\�Z[�\�^N��^[YۋZ][\Έ�[�\��\���۝\�^�N�L\��܎��ML؎B����Z[�X�]܈�Y��ZY����ܙ\�\�Y]\ΈL	N�X��ܛ�[��̌��MYN��\�Y�Έ̌��MYNB���X�[ۋX��\�^N�[�[�KY�^[YۋZ][\Έ�[�\��\��Y[�Έ\L��۝\�^�N�L\�۝]�ZY����ܙ\�\�Y]\Έ��ܙ\���ۙN�\��܎��[�\��[��][ێ�[�M\�X\�NB�����\�[��X��ܛ�[��[�X\�YܘYY[�
-L�YY�����̍M��X�N��܎�ٙ�������\�Y�Έ��ؘJMM�K�����JNB�����\�[��ݙ\��X��ܛ�[��[�X\�YܘYY[�
-L�YY��͎XLK�YY
-N��\�Y�ΈL��ؘJMM�K����JN�[�ٛܛN��[��]VJL\
-NB�����\�[��\�X�Y�X�]N��N�\��܎���X[��Y�[�ٛܛN��ۙN��\�Y�Έ�ۙNB�����\�[�ؙ�X��ܛ�[���ؘJ��JN�ܙ\�X��܎��ؘJ�MK�MK�MK��N��܎�ٙ��B
+/* ---------- THUMBNAILS WRAPPER (VERTICAL COLUMN) ---------- */
+.thumbnails-wrapper {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.thumbnails-wrapper::-webkit-scrollbar {
+  width: 4px;
+}
+
+.thumbnails-wrapper::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.thumbnails-wrapper::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+}
+
+.thumbnails-wrapper::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 92, 246, 0.5);
+}
+
+/* ---------- EMPTY STATE ---------- */
+.empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px 8px;
+  color: rgba(255, 255, 255, 0.35);
+  gap: 6px;
+}
+
+.empty-icon {
+  font-size: 22px;
+  opacity: 0.5;
+  margin-bottom: 2px;
+}
+
+.empty-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.6);
+  letter-spacing: 0.04em;
+}
+
+.empty-hint {
+  font-size: 9.5px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.empty-hint kbd {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: #c4b5fd;
+}
+
+/* ---------- THUMBNAILS LIST (STACK) ---------- */
+.thumbnails-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.thumb-card {
+  position: relative;
+  width: 100%;
+  height: 74px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  animation: cardFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  flex-shrink: 0;
+}
+
+@keyframes cardFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.thumb-card:hover {
+  border-color: rgba(139, 92, 246, 0.6);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  background: #0d0f14;
+}
+
+.thumb-badge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  background: rgba(15, 17, 23, 0.85);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #38bdf8;
+  font-size: 9px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 1px 4px;
+  border-radius: 3px;
+  line-height: 1.1;
+  pointer-events: none;
+}
+
+.thumb-delete {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 17px;
+  height: 17px;
+  background: rgba(15, 17, 23, 0.85);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  color: rgba(255, 255, 255, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 9px;
+  opacity: 0;
+  transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
+  -webkit-app-region: no-drag;
+}
+
+.thumb-card:hover .thumb-delete {
+  opacity: 1;
+}
+
+.thumb-delete:hover {
+  background: rgba(239, 68, 68, 0.9);
+  color: #fff;
+  border-color: rgba(239, 68, 68, 1);
+}
+
+/* ---------- FOOTER / ACTION BAR ---------- */
+.batch-footer {
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.02);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.btn-send {
+  width: 100%;
+  height: 28px;
+  background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
+  border: 1px solid rgba(167, 139, 250, 0.4);
+  border-radius: 5px;
+  color: #fff;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.35);
+  -webkit-app-region: no-drag;
+}
+
+.btn-send:hover:not(:disabled) {
+  background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+  border-color: rgba(196, 181, 253, 0.6);
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.5);
+  transform: translateY(-1px);
+}
+
+.btn-send:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgba(124, 58, 237, 0.3);
+}
+
+.btn-send:disabled {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.25);
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+.btn-send .btn-icon {
+  font-size: 11px;
+}
+
+.btn-send .btn-shortcut {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  margin-left: 2px;
+}

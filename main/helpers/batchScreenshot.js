@@ -29,11 +29,11 @@ helpers.computeBatchOverlayBounds = function() {
     display = screen.getPrimaryDisplay();
   }
   const wa = display.workArea;
-  const width = 480;
-  const height = 156;
-  // Canto inferior direito (16px de margem)
-  const x = Math.max(wa.x, wa.x + wa.width - width - 16);
-  const y = Math.max(wa.y, wa.y + wa.height - height - 16);
+  const width = 168;
+  const height = Math.min(560, Math.max(360, wa.height - 100));
+  // Posição na lateral direita da tela (retângulo vertical alinhado à direita)
+  const x = Math.max(wa.x, wa.x + wa.width - width - 24);
+  const y = Math.max(wa.y + 10, wa.y + 60);
   return { x, y, width, height };
 };
 
@@ -111,16 +111,17 @@ helpers.showBatchScreenshotOverlay = function() {
   } catch (_) {}
 
   // Sincroniza estado atual com a janela
-  if (Array.isArray(state.batchScreenshots) && state.batchScreenshots.length > 0) {
-    state.batchScreenshots.forEach(item => {
-      try {
+  if (Array.isArray(state.batchScreenshots)) {
+    try {
+      win.webContents.send('batch-clear');
+      state.batchScreenshots.forEach(item => {
         win.webContents.send('batch-add-image', {
           id: item.id,
           base64Image: item.base64,
           timestamp: item.timestamp,
         });
-      } catch (_) {}
-    });
+      });
+    } catch (_) {}
   }
 };
 
