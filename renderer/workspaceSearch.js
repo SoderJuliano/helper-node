@@ -64,7 +64,7 @@ var contentSearchSeq = 0;
         const occContainer = document.getElementById('ws-tree-content-occurrences');
         if (!occContainer) return;
         const filter = currentTreeContentFilter();
-        if (!filter || filter.length < 4 || !contentSearchOccurrences.length) {
+        if (!filter || filter.length < 3 || !contentSearchOccurrences.length) {
             occContainer.style.display = 'none';
             occContainer.innerHTML = '';
             return;
@@ -84,7 +84,8 @@ var contentSearchSeq = 0;
             const row = document.createElement('div');
             row.className = 'ws-occ-item';
 
-            const escapedText = escapeHtml(item.text);
+            const rawSnippet = item.text || item.preview || '';
+            const escapedText = escapeHtml(rawSnippet);
             const lowerEscaped = escapedText.toLowerCase();
             const lowerFilter = filter.toLowerCase();
             let highlighted = '';
@@ -98,8 +99,9 @@ var contentSearchSeq = 0;
             }
             highlighted += escapedText.substring(start);
 
-            const fileName = item.relPath.split('/').pop();
-            const dirPath = item.relPath.includes('/') ? item.relPath.substring(0, item.relPath.lastIndexOf('/')) : '';
+            const rel = String(item.relPath || item.path || '').replace(/\\/g, '/');
+            const fileName = rel.split('/').pop();
+            const dirPath = rel.includes('/') ? rel.substring(0, rel.lastIndexOf('/')) : '';
 
             row.innerHTML = `
                 <div class="ws-occ-file-info">
@@ -158,8 +160,8 @@ var contentSearchSeq = 0;
         const filter = currentTreeContentFilter();
         if (!filter) {
             wsTreeContentFilterHint.textContent = '';
-        } else if (filter.length < 4) {
-            wsTreeContentFilterHint.textContent = 'digite pelo menos 4 letras';
+        } else if (filter.length < 3) {
+            wsTreeContentFilterHint.textContent = 'digite pelo menos 3 letras';
         } else {
             wsTreeContentFilterHint.textContent = contentSearchMatches.length
                 ? `${contentSearchMatches.length} arquivo(s) com ${contentSearchOccurrences.length} ocorrência(s) — Enter abre todos`
@@ -173,7 +175,7 @@ var contentSearchSeq = 0;
     async function runContentSearchNow() {
         const filter = currentTreeContentFilter();
         const searchSeq = ++contentSearchSeq;
-        if (!filter || filter.length < 4) {
+        if (!filter || filter.length < 3) {
             clearContentSearchState();
             updateTreeContentFilterHint();
             renderTree();
@@ -202,7 +204,7 @@ var contentSearchSeq = 0;
         contentSearchDebounce = setTimeout(() => {
             contentSearchDebounce = null;
             runContentSearchNow();
-        }, 180);
+        }, 150);
     }
 
     async function openTreeFilter() {
@@ -264,7 +266,7 @@ var contentSearchSeq = 0;
     if (wsTreeContentFilterInput) {
         wsTreeContentFilterInput.addEventListener('input', () => {
             scheduleContentSearch();
-            if (currentTreeContentFilter().length < 4) {
+            if (currentTreeContentFilter().length < 3) {
                 clearContentSearchState();
                 renderTree();
             }
@@ -275,7 +277,7 @@ var contentSearchSeq = 0;
                 e.stopPropagation(); e.preventDefault(); closeTreeContentFilter();
             } else if (e.key === 'Enter') {
                 e.stopPropagation(); e.preventDefault();
-                if (currentTreeContentFilter().length >= 4 && contentSearchMatches.length) {
+                if (currentTreeContentFilter().length >= 3 && contentSearchMatches.length) {
                     const paths = [...contentSearchMatches];
                     closeTreeContentFilter();
                     openMatchingFiles(paths);
