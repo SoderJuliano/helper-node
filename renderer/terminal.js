@@ -62,6 +62,33 @@ var isTerminalInitialized = false;
         }
         window._termFit = sincronizarTamanho;
 
+        const FONT_SIZE_KEY = 'helper_terminal_font_size';
+        const DEFAULT_FONT_SIZE = 13;
+        const MIN_FONT_SIZE = 8;
+        const MAX_FONT_SIZE = 36;
+
+        function getInitialFontSize() {
+            try {
+                const saved = parseInt(localStorage.getItem(FONT_SIZE_KEY), 10);
+                if (saved && !isNaN(saved) && saved >= MIN_FONT_SIZE && saved <= MAX_FONT_SIZE) {
+                    return saved;
+                }
+            } catch (_) {}
+            return DEFAULT_FONT_SIZE;
+        }
+
+        function setTerminalFontSize(newSize) {
+            if (!term) return;
+            const clamped = Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, Math.round(newSize)));
+            term.options.fontSize = clamped;
+            try { localStorage.setItem(FONT_SIZE_KEY, String(clamped)); } catch (_) {}
+            sincronizarTamanho();
+            if (typeof window.showZoomToast === 'function') {
+                window.showZoomToast(`Fonte do Terminal: ${clamped}px`);
+            }
+        }
+        window._setTerminalFontSize = setTerminalFontSize;
+
         function criarTerminal(host) {
             if (term) return term;
             if (typeof Terminal === 'undefined') {
@@ -71,7 +98,7 @@ var isTerminalInitialized = false;
             term = new Terminal({
                 theme: TEMA,
                 fontFamily: fonteMono(),
-                fontSize: 13,
+                fontSize: getInitialFontSize(),
                 lineHeight: 1.2,
                 cursorBlink: true,
                 // Histórico de rolagem. O emulador antigo guardava a tela inteira
@@ -91,6 +118,17 @@ var isTerminalInitialized = false;
             // lê o buffer real pra conferir cor e largura. Um terminal só dá pra
             // testar de verdade olhando o que foi pra tela.
             window._term = term;
+
+            // Zoom com Ctrl / Cmd + Roda do mouse
+            host.addEventListener('wheel', (e) => {
+                if (e.ctrlKey || e.metaKey) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const delta = e.deltaY < 0 ? 1 : -1;
+                    const currentSize = (term && term.options && term.options.fontSize) || DEFAULT_FONT_SIZE;
+                    setTerminalFontSize(currentSize + delta);
+                }
+            }, { passive: false, capture: true });
 
             // Trava de deduplicação para colar texto (evita envio duplo se o evento
             // de teclado e o evento de paste do DOM dispararem em paralelo)
@@ -177,6 +215,27 @@ var isTerminalInitialized = false;
                         }
                         if (typeof window.showToast === 'function') window.showToast('Texto copiado do terminal!');
                         term.clearSelection();
+                        return false;
+                    }
+                }
+
+                // Atalhos de Zoom no Terminal: Ctrl + '+' / '-' / '0'
+                if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+                    if (k === '+' || k === '=' || e.code === 'NumpadAdd' || e.key === '+') {
+                        e.preventDefault();
+                        const cur = (term && term.options && term.options.fontSize) || DEFAULT_FONT_SIZE;
+                        setTerminalFontSize(cur + 1);
+                        return false;
+                    }
+                    if (k === '-' || e.code === 'NumpadSubtract' || e.key === '-') {
+                        e.preventDefault();
+                        const cur = (term && term.options && term.options.fontSize) || DEFAULT_FONT_SIZE;
+                        setTerminalFontSize(cur - 1);
+                        return false;
+                    }
+                    if (k === '0' || e.code === 'Numpad0') {
+                        e.preventDefault();
+                        setTerminalFontSize(DEFAULT_FONT_SIZE);
                         return false;
                     }
                 }
@@ -410,6 +469,16 @@ var isTerminalInitialized = false;
 
                 const savedH = localStorage.getItem('helper_terminal_height');
                 if (savedH) termContainer.style.height = savedH;
+
+                termContainer.addEventListener('wheel', (e) => {
+                    if (e.ctrlKey || e.metaKey) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const delta = e.deltaY < 0 ? 1 : -1;
+                        const currentSize = (term && term.options && term.options.fontSize) || DEFAULT_FONT_SIZE;
+                        setTerminalFontSize(currentSize + delta);
+                    }
+                }, { passive: false, capture: true });
             }
 
             // Qualquer coisa que mude a caixa (trocar de aba, split, redimensionar

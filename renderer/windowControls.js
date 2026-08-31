@@ -96,11 +96,12 @@
             const shell = document.getElementById('app-shell');
             const resizer = document.getElementById('sidebar-resizer');
             if (!shell || !resizer) return;
-            const MIN_W = 200, MAX_W = 480;
+            const getMinW = () => 140;
+            const getMaxW = () => Math.max(500, Math.min(window.innerWidth - 140, Math.floor(window.innerWidth * 0.85)));
 
             let saved = null;
             try { saved = parseInt(localStorage.getItem('hn-sidebar-w'), 10); } catch (_) {}
-            if (saved && saved >= MIN_W && saved <= MAX_W) {
+            if (saved && saved >= getMinW() && saved <= getMaxW()) {
                 shell.style.setProperty('--sidebar-w', saved + 'px');
             }
 
@@ -108,7 +109,9 @@
 
             function onMove(e) {
                 if (!dragging) return;
-                const w = Math.min(MAX_W, Math.max(MIN_W, startW + (e.clientX - startX)));
+                const minW = getMinW();
+                const maxW = getMaxW();
+                const w = Math.min(maxW, Math.max(minW, startW + (e.clientX - startX)));
                 shell.style.setProperty('--sidebar-w', w + 'px');
             }
             function onUp() {
@@ -121,6 +124,8 @@
                 document.removeEventListener('mouseup', onUp);
                 const w = parseInt(getComputedStyle(shell).gridTemplateColumns, 10);
                 if (w) { try { localStorage.setItem('hn-sidebar-w', String(w)); } catch (_) {} }
+                window.dispatchEvent(new Event('resize'));
+                if (typeof window._termFit === 'function') window._termFit();
             }
             resizer.addEventListener('mousedown', (e) => {
                 if (isSidebarCollapsed()) return;
@@ -133,6 +138,14 @@
                 document.body.classList.add('resizing-sidebar');
                 document.addEventListener('mousemove', onMove);
                 document.addEventListener('mouseup', onUp);
+            });
+            resizer.addEventListener('dblclick', (e) => {
+                if (isSidebarCollapsed()) return;
+                e.preventDefault(); e.stopPropagation();
+                shell.style.setProperty('--sidebar-w', '268px');
+                try { localStorage.setItem('hn-sidebar-w', '268px'); } catch (_) {}
+                window.dispatchEvent(new Event('resize'));
+                if (typeof window._termFit === 'function') window._termFit();
             });
         })();
 

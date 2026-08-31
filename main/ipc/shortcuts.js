@@ -54,6 +54,8 @@ ipcMain.handle("get-available-shortcuts", () => {
       name: "Interface & Chat (Navegação)",
       items: [
         { id: "toggle-sidebar", keys: `${mod}+B`, action: "Mostrar / Ocultar barra lateral", where: "No App", icon: "📁" },
+        { id: "zoom-tree", keys: `${mod}+SCROLL`, action: "Aumentar/diminuir zoom da árvore", where: "Na Sidebar", icon: "🔎" },
+        { id: "zoom-terminal", keys: `${mod}+SCROLL`, action: "Aumentar/diminuir zoom do terminal", where: "No Terminal", icon: "🔎" },
         { id: "toggle-chat", keys: `${mod}+I`, action: "Mostrar Chat / Dividir tela", where: "No App / IDE", icon: "💬" },
         { id: "send-chat", keys: "SHIFT+ENTER", action: "Enviar pergunta para a IA", where: "No Chat", icon: "🚀" },
         { id: "newline-chat", keys: "ENTER", action: "Quebrar linha na mensagem", where: "No Chat", icon: "↵" },
