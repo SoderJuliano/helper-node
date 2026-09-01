@@ -310,18 +310,29 @@ function parseConflictMarkers(fileContent) {
   let curBase = [];
   let curTheirs = [];
   let curEqual = [];
+  let leftLineCounter = 1;
+  let rightLineCounter = 1;
 
   for (let idx = 0; idx < lines.length; idx++) {
     const line = lines[idx];
     if (line.startsWith('<<<<<<<')) {
       if (curEqual.length > 0) {
+        const startLeft = leftLineCounter;
+        const startRight = rightLineCounter;
+        leftLineCounter += curEqual.length;
+        rightLineCounter += curEqual.length;
         chunks.push({
           id: `chunk_${chunkIndex++}`,
           type: 'EQUAL',
           leftLines: [...curEqual],
           baseLines: [...curEqual],
           rightLines: [...curEqual],
-          leftStartLine: 1, leftEndLine: 1, rightStartLine: 1, rightEndLine: 1, baseStartLine: 1, baseEndLine: 1
+          leftStartLine: startLeft,
+          leftEndLine: leftLineCounter - 1,
+          rightStartLine: startRight,
+          rightEndLine: rightLineCounter - 1,
+          baseStartLine: startLeft,
+          baseEndLine: leftLineCounter - 1
         });
         curEqual = [];
       }
@@ -334,13 +345,22 @@ function parseConflictMarkers(fileContent) {
     } else if (line.startsWith('=======') && (state === 'OURS' || state === 'BASE')) {
       state = 'THEIRS';
     } else if (line.startsWith('>>>>>>>') && state === 'THEIRS') {
+      const startLeft = leftLineCounter;
+      const startRight = rightLineCounter;
+      leftLineCounter += curOurs.length;
+      rightLineCounter += curTheirs.length;
       chunks.push({
         id: `chunk_${chunkIndex++}`,
         type: 'CONFLICT',
         leftLines: [...curOurs],
         baseLines: [...curBase],
         rightLines: [...curTheirs],
-        leftStartLine: 1, leftEndLine: 1, rightStartLine: 1, rightEndLine: 1, baseStartLine: 1, baseEndLine: 1
+        leftStartLine: startLeft,
+        leftEndLine: Math.max(startLeft, leftLineCounter - 1),
+        rightStartLine: startRight,
+        rightEndLine: Math.max(startRight, rightLineCounter - 1),
+        baseStartLine: 1,
+        baseEndLine: 1
       });
       curOurs = [];
       curBase = [];
@@ -355,13 +375,22 @@ function parseConflictMarkers(fileContent) {
   }
 
   if (curEqual.length > 0) {
+    const startLeft = leftLineCounter;
+    const startRight = rightLineCounter;
+    leftLineCounter += curEqual.length;
+    rightLineCounter += curEqual.length;
     chunks.push({
       id: `chunk_${chunkIndex++}`,
       type: 'EQUAL',
       leftLines: [...curEqual],
       baseLines: [...curEqual],
       rightLines: [...curEqual],
-      leftStartLine: 1, leftEndLine: 1, rightStartLine: 1, rightEndLine: 1, baseStartLine: 1, baseEndLine: 1
+      leftStartLine: startLeft,
+      leftEndLine: leftLineCounter - 1,
+      rightStartLine: startRight,
+      rightEndLine: rightLineCounter - 1,
+      baseStartLine: startLeft,
+      baseEndLine: leftLineCounter - 1
     });
   }
 

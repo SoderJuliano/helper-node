@@ -1,15 +1,18 @@
 // renderer/gitConflict/gitConflictModalEvents.js
-// Event listeners for Git Conflict modal.
+// Vinculação de eventos para a janela modal de resolução de conflitos Git 3-way.
+
 (function() {
   'use strict';
 
   let keydownHandler = null;
 
   function wireGitConflictEventListeners(modal, handlers) {
+    if (!modal || !handlers) return;
+
     const {
       onClose, onAbort, onSave, onMagic, onAcceptAllLeft, onAcceptAllRight,
       onFileChange, onPrevFile, onNextFile, onPrevConflict, onNextConflict,
-      onScroll, onResize,
+      onScroll
     } = handlers;
 
     const btnClose = modal.querySelector('#git-conflict-btn-close');
@@ -23,28 +26,32 @@
     const btnNext = modal.querySelector('#git-conflict-btn-next');
     const btnPrevConflict = modal.querySelector('#git-conflict-btn-prev-conflict');
     const btnNextConflict = modal.querySelector('#git-conflict-btn-next-conflict');
-    const btnWinMin = modal.querySelector('#git-conflict-win-min');
-    const btnWinMax = modal.querySelector('#git-conflict-win-max');
 
-    if (btnWinMin) {
-      btnWinMin.onclick = (e) => {
+    const triggerClose = (e) => {
+      if (e) {
         e.preventDefault();
         e.stopPropagation();
-        if (window.electronAPI && window.electronAPI.minimizeWindow) window.electronAPI.minimizeWindow();
-      };
+      }
+      if (typeof onClose === 'function') onClose();
+    };
+
+    if (btnClose) {
+      btnClose.onclick = triggerClose;
+      btnClose.onmousedown = triggerClose;
     }
 
-    if (btnWinMax) {
-      btnWinMax.onclick = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (window.electronAPI && window.electronAPI.maximizeWindow) window.electronAPI.maximizeWindow();
-      };
-    }
+    modal.addEventListener('click', (e) => {
+      if (e.target && (e.target.closest('#git-conflict-btn-close') || e.target.closest('.git-conflict-close-btn'))) {
+        triggerClose(e);
+      }
+    });
 
-    if (btnClose && onClose) {
-      btnClose.onclick = (e) => { e.preventDefault(); e.stopPropagation(); onClose(); };
-    }
+    modal.addEventListener('mousedown', (e) => {
+      if (e.target && (e.target.closest('#git-conflict-btn-close') || e.target.closest('.git-conflict-close-btn'))) {
+        triggerClose(e);
+      }
+    });
+
     if (btnAbort && onAbort) {
       btnAbort.onclick = (e) => { e.preventDefault(); e.stopPropagation(); onAbort(); };
     }
@@ -86,29 +93,29 @@
     }
 
     if (keydownHandler) {
-      window.removeEventListener('keydown', keydownHandler);
+      window.removeEventListener('keydown', keydownHandler, true);
     }
+
     keydownHandler = (e) => {
       const m = document.getElementById('git-conflict-modal');
-      if (!m || m.style.display === 'none') return;
+      const isOpen = m && (m.classList.contains('is-open') || (m.style.display && m.style.display !== 'none'));
+      if (!isOpen) return;
+
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
-        if (onClose) onClose();
+        triggerClose(e);
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
         e.stopPropagation();
-        if (onSave) onSave();
+        if (typeof onSave === 'function') onSave();
       }
     };
-    window.addEventListener('keydown', keydownHandler);
 
-    if (onResize) {
-      window.addEventListener('resize', onResize);
-    }
+    window.addEventListener('keydown', keydownHandler, true);
   }
 
   window.GitConflictModalEvents = {
-    wireGitConflictEventListeners,
+    wireGitConflictEventListeners
   };
 })();

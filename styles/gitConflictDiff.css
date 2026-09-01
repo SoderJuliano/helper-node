@@ -1,5 +1,5 @@
 /* styles/gitConflictDiff.css
-   Diff table, gutter actions, chunk highlights and center editor CodeMirror styles */
+   Estilos de tabelas de diff, botões de ação na calha (gutter) e CodeMirror central */
 
 /* Tabela de Linhas do Diff */
 .git-conflict-table {
@@ -12,15 +12,16 @@
   height: 20px;
   line-height: 20px;
   box-sizing: border-box;
+  transition: background 0.1s ease;
 }
 
 .git-conflict-row:hover {
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .git-conflict-gutter-num {
-  width: 42px;
-  min-width: 42px;
+  width: 44px;
+  min-width: 44px;
   text-align: right;
   padding-right: 6px;
   color: #555555;
@@ -32,13 +33,17 @@
 }
 
 .git-conflict-gutter-action {
-  width: 32px;
-  min-width: 32px;
+  width: 36px;
+  min-width: 36px;
   text-align: center;
   user-select: none;
   height: 20px;
   line-height: 20px;
   box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
 }
 
 .git-conflict-code-cell {
@@ -67,49 +72,67 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 15px;
-  height: 15px;
-  border-radius: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
   font-size: 10px;
+  font-weight: bold;
   cursor: pointer;
   border: 1px solid transparent;
   line-height: 1;
   padding: 0;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.05);
+  transition: all 0.12s ease;
 }
 
 .chunk-action-btn svg {
-  width: 11px;
-  height: 11px;
+  width: 12px;
+  height: 12px;
 }
 
 .chunk-btn-accept-left {
   color: #58a6ff;
+  border-color: rgba(88, 166, 255, 0.3);
 }
 
 .chunk-btn-accept-left:hover {
-  background: rgba(88, 166, 255, 0.2);
+  background: #1f6feb;
+  color: #ffffff;
   border-color: #58a6ff;
 }
 
 .chunk-btn-accept-right {
   color: #3fb950;
+  border-color: rgba(63, 185, 80, 0.3);
 }
 
 .chunk-btn-accept-right:hover {
-  background: rgba(63, 185, 80, 0.2);
+  background: #238636;
+  color: #ffffff;
   border-color: #3fb950;
 }
 
 .chunk-btn-ignore {
   color: #858585;
-  margin-left: 2px;
 }
 
 .chunk-btn-ignore:hover {
-  color: #f85149;
-  background: rgba(248, 81, 73, 0.15);
-  border-color: rgba(248, 81, 73, 0.3);
+  color: #ffffff;
+  background: #da3633;
+  border-color: #f85149;
+}
+
+/* Estado de Aceito / Aplicado no Botão */
+.chunk-action-btn.is-accepted {
+  background: #238636 !important;
+  color: #ffffff !important;
+  border-color: #3fb950 !important;
+}
+
+.chunk-action-btn.is-ignored {
+  background: rgba(248, 81, 73, 0.25) !important;
+  color: #f85149 !important;
+  border-color: rgba(248, 81, 73, 0.4) !important;
 }
 
 /* Destaque dos Chunks */
@@ -133,74 +156,47 @@
   border-left: 2px solid #3fb950;
 }
 
+/* Conflito Pendente */
 .chunk-row-conflict {
   background: rgba(248, 81, 73, 0.12);
 }
 
-.chunk-row-conflict .git-conflict-gutter-action {
-  border-left: 2px solid #f85149;
+.left-col .chunk-row-conflict {
+  background: rgba(56, 139, 253, 0.12);
+  border-left: 2px solid #388bfd;
+}
+
+.right-col .chunk-row-conflict {
+  background: rgba(63, 185, 80, 0.12);
+  border-left: 2px solid #3fb950;
 }
 
 .chunk-row-active-conflict {
-  outline: 1px solid rgba(248, 81, 73, 0.6);
+  outline: 1px solid rgba(248, 81, 73, 0.8) !important;
   outline-offset: -1px;
 }
 
-.chunk-row-resolved {
-  opacity: 0.4;
-  text-decoration: line-through;
-}
-
-/* Destaque quando o lado foi aceito na resolução */
+/* Lado Aceito no Resultado (Visual Limpo e Confortável) */
 .chunk-row-accepted-side {
-  background: rgba(56, 139, 253, 0.12) !important;
+  background: rgba(35, 134, 54, 0.15) !important;
+  border-left: 3px solid #3fb950 !important;
   opacity: 1 !important;
 }
 
-.right-col .chunk-row-accepted-side {
-  background: rgba(63, 185, 80, 0.12) !important;
+.chunk-row-accepted-side .git-conflict-code-cell {
+  color: #e6edf3 !important;
 }
 
-.chunk-row-accepted-side .git-conflict-gutter-action {
-  border-left: 2px solid #388bfd !important;
-}
-
-.right-col .chunk-row-accepted-side .git-conflict-gutter-action {
-  border-left: 2px solid #3fb950 !important;
-}
-
-/* Destaque quando o lado foi descartado na resolução */
+/* Lado Rejeitado / Descartado (Muted / Cinza discreto) */
 .chunk-row-rejected-side {
   opacity: 0.35 !important;
   text-decoration: line-through !important;
   background: rgba(0, 0, 0, 0.25) !important;
+  border-left: 2px solid transparent !important;
 }
 
 .chunk-row-rejected-side .git-conflict-code-cell {
-  color: #777777 !important;
-}
-
-.chunk-action-btn.is-active {
-  background: rgba(255, 255, 255, 0.2) !important;
-  border-color: currentColor !important;
-}
-
-.chunk-btn-accept-left.is-active {
-  background: rgba(88, 166, 255, 0.3) !important;
-  border-color: #58a6ff !important;
-  color: #ffffff !important;
-}
-
-.chunk-btn-accept-right.is-active {
-  background: rgba(63, 185, 80, 0.3) !important;
-  border-color: #3fb950 !important;
-  color: #ffffff !important;
-}
-
-.chunk-btn-ignore.is-active {
-  background: rgba(248, 81, 73, 0.3) !important;
-  border-color: #f85149 !important;
-  color: #f85149 !important;
+  color: #7d8590 !important;
 }
 
 /* Editor Central (CodeMirror no Centro) */

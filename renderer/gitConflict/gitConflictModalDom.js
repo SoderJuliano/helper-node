@@ -1,5 +1,6 @@
 // renderer/gitConflict/gitConflictModalDom.js
-// DOM creation and side-table rendering for Git Conflict 3-way modal.
+// Construção e estruturação do DOM do Visualizador de Conflitos 3-Way.
+
 (function() {
   'use strict';
 
@@ -14,18 +15,17 @@
   const SVGI_CLOSE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
   const SVGI_ACCEPT_LEFT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
   const SVGI_ACCEPT_RIGHT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
+  const SVGI_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
   const SVGI_IGNORE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
 
   function buildGitConflictModalDom() {
-    const existing = document.getElementById('git-conflict-modal');
-    if (existing) {
-      existing.remove();
+    let modal = document.getElementById('git-conflict-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'git-conflict-modal';
+      modal.className = 'git-conflict-modal-backdrop';
+      document.body.appendChild(modal);
     }
-
-    const modal = document.createElement('div');
-    modal.id = 'git-conflict-modal';
-    modal.className = 'git-conflict-modal-backdrop';
-    modal.style.display = 'none';
 
     modal.innerHTML = `
       <div class="git-conflict-header">
@@ -69,7 +69,7 @@
         <div class="git-conflict-actions-right">
           <button type="button" class="git-conflict-action-btn git-conflict-save-btn" id="git-conflict-btn-save" title="Salvar arquivo resolvido e marcar como resolvido no Git (Ctrl+S)">
             ${SVGI_SAVE}
-            <span>Salvar</span>
+            <span>Salvar e Concluir</span>
           </button>
           <button type="button" class="git-conflict-action-btn git-conflict-abort-btn" id="git-conflict-btn-abort" title="Abortar processo de merge">
             <span>Abortar Merge</span>
@@ -77,10 +77,6 @@
           <button type="button" class="git-conflict-close-btn" id="git-conflict-btn-close" title="Fechar visualizador de conflitos (Esc)">
             ${SVGI_CLOSE}
           </button>
-          <div class="git-conflict-win-controls">
-            <button type="button" class="git-conflict-win-btn" id="git-conflict-win-min" title="Minimizar janela">—</button>
-            <button type="button" class="git-conflict-win-btn" id="git-conflict-win-max" title="Maximizar / Restaurar janela">⛶</button>
-          </div>
         </div>
       </div>
 
@@ -123,7 +119,6 @@
       </div>
     `;
 
-    document.body.appendChild(modal);
     return modal;
   }
 
@@ -163,6 +158,9 @@
         } else if (state === 'right') {
           rowClassLeft = 'chunk-row-conflict chunk-row-rejected-side';
           rowClassRight = 'chunk-row-conflict chunk-row-accepted-side';
+        } else if (state === 'both') {
+          rowClassLeft = 'chunk-row-conflict chunk-row-accepted-side';
+          rowClassRight = 'chunk-row-conflict chunk-row-accepted-side';
         } else if (state === 'ignored') {
           rowClassLeft = 'chunk-row-conflict chunk-row-rejected-side';
           rowClassRight = 'chunk-row-conflict chunk-row-rejected-side';
@@ -171,21 +169,13 @@
           rowClassRight = 'chunk-row-conflict';
         }
       } else if (isLeftOnly) {
-        if (state === 'ignored') {
-          rowClassLeft = 'chunk-row-left-only chunk-row-rejected-side';
-        } else {
-          rowClassLeft = 'chunk-row-left-only';
-        }
+        rowClassLeft = (state === 'ignored') ? 'chunk-row-left-only chunk-row-rejected-side' : 'chunk-row-left-only chunk-row-accepted-side';
       } else if (isRightOnly) {
-        if (state === 'ignored') {
-          rowClassRight = 'chunk-row-right-only chunk-row-rejected-side';
-        } else {
-          rowClassRight = 'chunk-row-right-only';
-        }
+        rowClassRight = (state === 'ignored') ? 'chunk-row-right-only chunk-row-rejected-side' : 'chunk-row-right-only chunk-row-accepted-side';
       }
 
-      const leftCount = chunk.leftLines.length;
-      const rightCount = chunk.rightLines.length;
+      const leftCount = chunk.leftLines ? chunk.leftLines.length : 0;
+      const rightCount = chunk.rightLines ? chunk.rightLines.length : 0;
       const maxLines = Math.max(leftCount, rightCount, 1);
 
       for (let i = 0; i < maxLines; i++) {
@@ -204,19 +194,20 @@
         tdAction.className = 'git-conflict-gutter-action';
 
         if (i === 0 && (isConflict || isLeftOnly)) {
+          const isLeftAccepted = (state === 'left' || state === 'both');
           const btnAccept = document.createElement('button');
           btnAccept.type = 'button';
-          btnAccept.className = `chunk-action-btn chunk-btn-accept-left ${state === 'left' ? 'is-active' : ''}`;
-          btnAccept.title = state === 'left' ? 'Alteração da esquerda aceita no resultado (clique para alternar)' : 'Aceitar alteração da esquerda no resultado';
-          btnAccept.innerHTML = SVGI_ACCEPT_LEFT;
+          btnAccept.className = `chunk-action-btn chunk-btn-accept-left ${isLeftAccepted ? 'is-accepted' : ''}`;
+          btnAccept.title = isLeftAccepted ? 'Alteração da esquerda aceita no resultado (clique para alternar)' : 'Aceitar alteração da esquerda no resultado';
+          btnAccept.innerHTML = isLeftAccepted ? SVGI_CHECK : SVGI_ACCEPT_LEFT;
           btnAccept.addEventListener('click', (e) => {
             e.stopPropagation();
-            onAction(chunk.id, state === 'left' ? 'unresolved' : 'left');
+            onAction(chunk.id, isLeftAccepted ? 'unresolved' : 'left');
           });
 
           const btnIgnore = document.createElement('button');
           btnIgnore.type = 'button';
-          btnIgnore.className = `chunk-action-btn chunk-btn-ignore ${state === 'ignored' ? 'is-active' : ''}`;
+          btnIgnore.className = `chunk-action-btn chunk-btn-ignore ${state === 'ignored' ? 'is-ignored' : ''}`;
           btnIgnore.title = state === 'ignored' ? 'Bloco ignorado (clique para restaurar)' : 'Ignorar este bloco';
           btnIgnore.innerHTML = SVGI_IGNORE;
           btnIgnore.addEventListener('click', (e) => {
@@ -250,19 +241,20 @@
         tdAction.className = 'git-conflict-gutter-action';
 
         if (i === 0 && (isConflict || isRightOnly)) {
+          const isRightAccepted = (state === 'right' || state === 'both');
           const btnAccept = document.createElement('button');
           btnAccept.type = 'button';
-          btnAccept.className = `chunk-action-btn chunk-btn-accept-right ${state === 'right' ? 'is-active' : ''}`;
-          btnAccept.title = state === 'right' ? 'Alteração da direita aceita no resultado (clique para alternar)' : 'Aceitar alteração da direita no resultado';
-          btnAccept.innerHTML = SVGI_ACCEPT_RIGHT;
+          btnAccept.className = `chunk-action-btn chunk-btn-accept-right ${isRightAccepted ? 'is-accepted' : ''}`;
+          btnAccept.title = isRightAccepted ? 'Alteração da direita aceita no resultado (clique para alternar)' : 'Aceitar alteração da direita no resultado';
+          btnAccept.innerHTML = isRightAccepted ? SVGI_CHECK : SVGI_ACCEPT_RIGHT;
           btnAccept.addEventListener('click', (e) => {
             e.stopPropagation();
-            onAction(chunk.id, state === 'right' ? 'unresolved' : 'right');
+            onAction(chunk.id, isRightAccepted ? 'unresolved' : 'right');
           });
 
           const btnIgnore = document.createElement('button');
           btnIgnore.type = 'button';
-          btnIgnore.className = `chunk-action-btn chunk-btn-ignore ${state === 'ignored' ? 'is-active' : ''}`;
+          btnIgnore.className = `chunk-action-btn chunk-btn-ignore ${state === 'ignored' ? 'is-ignored' : ''}`;
           btnIgnore.title = state === 'ignored' ? 'Bloco ignorado (clique para restaurar)' : 'Ignorar este bloco';
           btnIgnore.innerHTML = SVGI_IGNORE;
           btnIgnore.addEventListener('click', (e) => {
