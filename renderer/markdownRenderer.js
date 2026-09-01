@@ -128,7 +128,14 @@
             const { path: p, line } = parseFilePathAndLine(targetPath);
             const lineAttr = line ? ` data-line="${line}"` : '';
             const title = line ? `Abrir ${p} na linha ${line}` : `Abrir ${p} no editor`;
-            const icon = iconSvg || FILE_ICON_SVG;
+            let icon = iconSvg;
+            if (!icon) {
+                if (line !== undefined || (typeof targetPath === 'string' && (targetPath.includes('#L') || /lines?\s+\d+/i.test(targetPath)))) {
+                    icon = READ_FILE_ICON_SVG;
+                } else {
+                    icon = FILE_ICON_SVG;
+                }
+            }
             const cls = actionClass ? `chat-link chat-file-link ${actionClass}` : 'chat-link chat-file-link';
             let label = (displayLabel || p).trim();
             if (label.startsWith('`') && label.endsWith('`') && label.length > 2) {
