@@ -18,6 +18,7 @@
   const SVGI_MAVEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; color:#f59e0b;"><path d="M16.5 9.4 7.55 4.24a1.78 1.78 0 0 0-2.5 1.55v12.42a1.78 1.78 0 0 0 2.5 1.55L16.5 14.6a1.78 1.78 0 0 0 0-3.2Z"/><path d="m21 12-4.5 2.6v-5.2Z"/></svg>';
   const SVGI_GRADLE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; color:#0284c7;"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 14.93V17a1 1 0 0 1-2 0v-.07A7.003 7.003 0 0 1 5.07 11H5a1 1 0 0 1 0-2h.07A7.003 7.003 0 0 1 11 5.07V5a1 1 0 0 1 2 0v.07A7.003 7.003 0 0 1 18.93 11H19a1 1 0 0 1 0 2h-.07A7.003 7.003 0 0 1 13 16.93z"/></svg>';
   const SVGI_REFRESH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; color:#a78bfa;"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>';
+  const SVGI_DIFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; color:#61afef;"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>';
 
   async function triggerSyncDependencies(targetPath, forceDownload = true) {
     if (typeof window.triggerJavaSync === 'function') {
@@ -71,6 +72,9 @@
     const isGradle = item.name && (item.name.startsWith('build.gradle') || item.name.startsWith('settings.gradle'));
 
     if (item.isRoot) {
+      menu.appendChild(mkItem(SVGI_DIFF, 'Visualizar Diff (Alterações Locais)', () => {
+        if (typeof window.openGitDiffModal === 'function') window.openGitDiffModal(item.path);
+      }));
       menu.appendChild(mkItem(SVGI_PLAY, 'Executar Aplicação (Spring Boot / Gradle)', () => {
         if (window.appRunner) window.appRunner.run(item.path, { kind: 'app' });
       }));

@@ -370,4 +370,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   gitConflictGetFile3Way: (payload) => ipcRenderer.invoke("git-conflict-get-file-3way", payload),
   gitConflictSaveResolved: (payload) => ipcRenderer.invoke("git-conflict-save-resolved", payload),
   gitConflictAbortMerge: (projectPath) => ipcRenderer.invoke("git-conflict-abort-merge", projectPath),
+  // === Git Diff Viewer (Local Changes / Before & After) ===
+  gitDiffGetSummary: (projectPath) => ipcRenderer.invoke("git-diff:get-summary", projectPath),
+  gitDiffGetFile: (payload) => ipcRenderer.invoke("git-diff:get-file", payload),
 });

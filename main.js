@@ -60,6 +60,7 @@ require("./main/ipc/importCheck.js")();
 require("./main/ipc/javaDeps.js")();
 require("./main/ipc/appRunner.js")();
 require("./main/ipc/gitConflict.js")();
+require("./main/ipc/gitDiff.js")();
 require("./main/ipc/batchScreenshot.js")();
 
 // Unhandled exception silencers

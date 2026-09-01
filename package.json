@@ -40,7 +40,8 @@
     "test:history": "node ./scripts/test-history-formatter.js",
     "test:filelinks": "node ./scripts/test-file-links-renderer.js",
     "test:apprunner": "node ./scripts/test-app-runner.js",
-    "test:pathresolver": "node ./scripts/test-path-resolver.js"
+    "test:pathresolver": "node ./scripts/test-path-resolver.js",
+    "test:diff": "node ./scripts/test-git-diff-viewer.js"
   },
   "dependencies": {
     "@ricky0123/vad-web": "^0.0.30",
