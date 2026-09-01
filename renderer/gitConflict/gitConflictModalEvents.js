@@ -3,6 +3,8 @@
 (function() {
   'use strict';
 
+  let keydownHandler = null;
+
   function wireGitConflictEventListeners(modal, handlers) {
     const {
       onClose, onAbort, onSave, onMagic, onAcceptAllLeft, onAcceptAllRight,
@@ -40,7 +42,53 @@
       };
     }
 
-    window.addEventListener('keydown', (e) => {
+    if (btnClose && onClose) {
+      btnClose.onclick = (e) => { e.preventDefault(); e.stopPropagation(); onClose(); };
+    }
+    if (btnAbort && onAbort) {
+      btnAbort.onclick = (e) => { e.preventDefault(); e.stopPropagation(); onAbort(); };
+    }
+    if (btnSave && onSave) {
+      btnSave.onclick = (e) => { e.preventDefault(); e.stopPropagation(); onSave(); };
+    }
+    if (btnMagic && onMagic) {
+      btnMagic.onclick = (e) => { e.preventDefault(); e.stopPropagation(); onMagic(); };
+    }
+    if (btnAcceptAllLeft && onAcceptAllLeft) {
+      btnAcceptAllLeft.onclick = (e) => { e.preventDefault(); e.stopPropagation(); onAcceptAllLeft(); };
+    }
+    if (btnAcceptAllRight && onAcceptAllRight) {
+      btnAcceptAllRight.onclick = (e) => { e.preventDefault(); e.stopPropagation(); onAcceptAllRight(); };
+    }
+
+    if (fileSelect && onFileChange) {
+      fileSelect.onchange = (e) => onFileChange(parseInt(e.target.value, 10) || 0);
+    }
+    if (btnPrev && onPrevFile) {
+      btnPrev.onclick = (e) => { e.preventDefault(); e.stopPropagation(); onPrevFile(); };
+    }
+    if (btnNext && onNextFile) {
+      btnNext.onclick = (e) => { e.preventDefault(); e.stopPropagation(); onNextFile(); };
+    }
+    if (btnPrevConflict && onPrevConflict) {
+      btnPrevConflict.onclick = (e) => { e.preventDefault(); e.stopPropagation(); onPrevConflict(); };
+    }
+    if (btnNextConflict && onNextConflict) {
+      btnNextConflict.onclick = (e) => { e.preventDefault(); e.stopPropagation(); onNextConflict(); };
+    }
+
+    const leftBox = modal.querySelector('#git-conflict-left-container');
+    const rightBox = modal.querySelector('#git-conflict-right-container');
+
+    if (onScroll) {
+      if (leftBox) leftBox.onscroll = () => onScroll(leftBox);
+      if (rightBox) rightBox.onscroll = () => onScroll(rightBox);
+    }
+
+    if (keydownHandler) {
+      window.removeEventListener('keydown', keydownHandler);
+    }
+    keydownHandler = (e) => {
       const m = document.getElementById('git-conflict-modal');
       if (!m || m.style.display === 'none') return;
       if (e.key === 'Escape') {
@@ -52,28 +100,8 @@
         e.stopPropagation();
         if (onSave) onSave();
       }
-    });
-
-    if (btnClose && onClose) btnClose.onclick = (e) => { e.preventDefault(); e.stopPropagation(); onClose(); };
-    if (btnAbort && onAbort) btnAbort.onclick = (e) => { e.preventDefault(); e.stopPropagation(); onAbort(); };
-    if (btnSave && onSave) btnSave.onclick = (e) => { e.preventDefault(); e.stopPropagation(); onSave(); };
-    if (btnMagic && onMagic) btnMagic.onclick = (e) => { e.preventDefault(); e.stopPropagation(); onMagic(); };
-    if (btnAcceptAllLeft && onAcceptAllLeft) btnAcceptAllLeft.onclick = (e) => { e.preventDefault(); e.stopPropagation(); onAcceptAllLeft(); };
-    if (btnAcceptAllRight && onAcceptAllRight) btnAcceptAllRight.onclick = (e) => { e.preventDefault(); e.stopPropagation(); onAcceptAllRight(); };
-
-    if (fileSelect && onFileChange) fileSelect.onchange = (e) => onFileChange(parseInt(e.target.value, 10) || 0);
-    if (btnPrev && onPrevFile) btnPrev.onclick = (e) => { e.preventDefault(); e.stopPropagation(); onPrevFile(); };
-    if (btnNext && onNextFile) btnNext.onclick = (e) => { e.preventDefault(); e.stopPropagation(); onNextFile(); };
-    if (btnPrevConflict && onPrevConflict) btnPrevConflict.onclick = (e) => { e.preventDefault(); e.stopPropagation(); onPrevConflict(); };
-    if (btnNextConflict && onNextConflict) btnNextConflict.onclick = (e) => { e.preventDefault(); e.stopPropagation(); onNextConflict(); };
-
-    const leftBox = modal.querySelector('#git-conflict-left-container');
-    const rightBox = modal.querySelector('#git-conflict-right-container');
-
-    if (onScroll) {
-      leftBox.addEventListener('scroll', () => onScroll(leftBox), { passive: true });
-      rightBox.addEventListener('scroll', () => onScroll(rightBox), { passive: true });
-    }
+    };
+    window.addEventListener('keydown', keydownHandler);
 
     if (onResize) {
       window.addEventListener('resize', onResize);

@@ -151,6 +151,58 @@
   text-decoration: line-through;
 }
 
+/* Destaque quando o lado foi aceito na resolução */
+.chunk-row-accepted-side {
+  background: rgba(56, 139, 253, 0.12) !important;
+  opacity: 1 !important;
+}
+
+.right-col .chunk-row-accepted-side {
+  background: rgba(63, 185, 80, 0.12) !important;
+}
+
+.chunk-row-accepted-side .git-conflict-gutter-action {
+  border-left: 2px solid #388bfd !important;
+}
+
+.right-col .chunk-row-accepted-side .git-conflict-gutter-action {
+  border-left: 2px solid #3fb950 !important;
+}
+
+/* Destaque quando o lado foi descartado na resolução */
+.chunk-row-rejected-side {
+  opacity: 0.35 !important;
+  text-decoration: line-through !important;
+  background: rgba(0, 0, 0, 0.25) !important;
+}
+
+.chunk-row-rejected-side .git-conflict-code-cell {
+  color: #777777 !important;
+}
+
+.chunk-action-btn.is-active {
+  background: rgba(255, 255, 255, 0.2) !important;
+  border-color: currentColor !important;
+}
+
+.chunk-btn-accept-left.is-active {
+  background: rgba(88, 166, 255, 0.3) !important;
+  border-color: #58a6ff !important;
+  color: #ffffff !important;
+}
+
+.chunk-btn-accept-right.is-active {
+  background: rgba(63, 185, 80, 0.3) !important;
+  border-color: #3fb950 !important;
+  color: #ffffff !important;
+}
+
+.chunk-btn-ignore.is-active {
+  background: rgba(248, 81, 73, 0.3) !important;
+  border-color: #f85149 !important;
+  color: #f85149 !important;
+}
+
 /* Editor Central (CodeMirror no Centro) */
 .git-conflict-col.center-col .CodeMirror {
   position: absolute;

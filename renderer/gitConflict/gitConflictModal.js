@@ -41,14 +41,30 @@
       onSave: saveCurrentResolution,
       onMagic: applyNonConflictingChanges,
       onAcceptAllLeft: () => {
-        if (!current3WayData) return;
-        current3WayData.chunks.forEach(c => chunkStates.set(c.id, 'left'));
+        if (!current3WayData || !current3WayData.chunks) return;
+        current3WayData.chunks.forEach(c => {
+          if (c.type === 'CONFLICT' || c.type === 'LEFT_ONLY') {
+            chunkStates.set(c.id, 'left');
+          } else if (c.type === 'RIGHT_ONLY') {
+            chunkStates.set(c.id, 'left');
+          } else {
+            chunkStates.set(c.id, 'both');
+          }
+        });
         rebuildCenterResult();
         renderSideTables();
       },
       onAcceptAllRight: () => {
-        if (!current3WayData) return;
-        current3WayData.chunks.forEach(c => chunkStates.set(c.id, 'right'));
+        if (!current3WayData || !current3WayData.chunks) return;
+        current3WayData.chunks.forEach(c => {
+          if (c.type === 'CONFLICT' || c.type === 'RIGHT_ONLY') {
+            chunkStates.set(c.id, 'right');
+          } else if (c.type === 'LEFT_ONLY') {
+            chunkStates.set(c.id, 'right');
+          } else {
+            chunkStates.set(c.id, 'both');
+          }
+        });
         rebuildCenterResult();
         renderSideTables();
       },
@@ -193,9 +209,10 @@
     document.body.classList.remove('git-conflict-open');
     window.scrollTo(0, 0);
     document.body.scrollTop = 0;
-    if (modalContainer) {
-      modalContainer.style.display = 'none';
-      modalContainer.scrollTop = 0;
+    const m = modalContainer || document.getElementById('git-conflict-modal');
+    if (m) {
+      m.style.display = 'none';
+      m.scrollTop = 0;
     }
   }
 
@@ -409,42 +426,53 @@
   }
 
   async function saveCurrentResolution() {
-    if (!current3WayData) return;
+    if (!current3WayData) {
+      console.warn('[GitConflictModal] Salvar acionado sem arquivo carregado.');
+      return;
+    }
 
     const text = cmCenter ? cmCenter.getValue() : (document.getElementById('git-conflict-cm-textarea')?.value || '');
     if (text.includes('<<<<<<<') || text.includes('>>>>>>>') || text.includes('=======')) {
-      if (!confirm('Atenção: O arquivo ainda contém marcadores de conflito (<<<<<<<, =======, >>>>>>>). Deseja salvar mesmo assim?')) {
+      if (!confirm('Atenção: O arquivo ainda contém marcadores de conflito (<<<<<<<, =======, >>>>>>>).\n\nDeseja salvar mesmo assim?')) {
         return;
       }
     }
 
-    if (!window.electronAPI || !window.electronAPI.gitConflictSaveResolved) return;
+    if (!window.electronAPI || !window.electronAPI.gitConflictSaveResolved) {
+      alert('API gitConflictSaveResolved não disponível.');
+      return;
+    }
 
-    const res = await window.electronAPI.gitConflictSaveResolved({
-      projectPath: currentProjectDir,
-      relPath: current3WayData.relPath,
-      content: text
-    });
+    try {
+      const res = await window.electronAPI.gitConflictSaveResolved({
+        projectPath: currentProjectDir,
+        relPath: current3WayData.relPath,
+        content: text
+      });
 
-    if (res && res.ok) {
-      if (typeof showToast === 'function') {
-        showToast(`Arquivo ${current3WayData.relPath} salvo e adicionado ao Git.`);
-      }
-
-      if (res.remainingConflicts > 0 && res.conflictFiles && res.conflictFiles.length > 0) {
-        conflictFiles = res.conflictFiles;
-        currentFileIndex = 0;
-        updateFileListUi();
-        loadFile3Way(conflictFiles[0].path);
-      } else {
-        if (typeof showToast === 'function') {
-          showToast('Todos os conflitos do repositório foram resolvidos com sucesso.');
+      if (res && res.ok) {
+        if (typeof window.showToast === 'function') {
+          window.showToast(`Arquivo ${current3WayData.relPath} salvo e adicionado ao Git.`);
         }
-        closeGitConflictModal();
-        if (window.fetchAndUpdateGitStatus) window.fetchAndUpdateGitStatus();
+
+        if (res.remainingConflicts > 0 && res.conflictFiles && res.conflictFiles.length > 0) {
+          conflictFiles = res.conflictFiles;
+          currentFileIndex = 0;
+          updateFileListUi();
+          loadFile3Way(conflictFiles[0].path);
+        } else {
+          if (typeof window.showToast === 'function') {
+            window.showToast('Todos os conflitos do repositório foram resolvidos com sucesso.');
+          }
+          closeGitConflictModal();
+          if (typeof window.fetchAndUpdateGitStatus === 'function') window.fetchAndUpdateGitStatus();
+          if (typeof window.triggerTreeRefresh === 'function') window.triggerTreeRefresh();
+        }
+      } else {
+        alert('Erro ao salvar resolução: ' + (res ? res.error : 'erro desconhecido'));
       }
-    } else {
-      alert('Erro ao salvar resolução: ' + (res ? res.error : 'erro desconhecido'));
+    } catch (err) {
+      alert('Erro inesperado ao salvar: ' + (err ? err.message : 'desconhecido'));
     }
   }
 
