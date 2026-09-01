@@ -81,19 +81,9 @@ function registerNexaIpc() {
     }
   });
 
-  ipcMain.handle("nexa:resize-window", (event, width, height) => {
-    const { state } = require("../globals.js");
-    if (state.nexaWindow && !state.nexaWindow.isDestroyed()) {
-      const [currentX, currentY] = state.nexaWindow.getPosition();
-      const [currentW, currentH] = state.nexaWindow.getSize();
-      // Centraliza mantendo a posição relativa do avatar
-      const newX = Math.round(currentX - (width - currentW) / 2);
-      const newY = Math.round(currentY - (height - currentH) / 2);
-      state.nexaWindow.setResizable(true);
-      state.nexaWindow.setBounds({ x: newX, y: newY, width: Math.round(width), height: Math.round(height) });
-      return { ok: true };
-    }
-    return { ok: false };
+  ipcMain.handle("nexa:resize-window", () => {
+    // A janela da Nexa possui tamanho fixo de 360x360 e nunca deve aumentar.
+    return { ok: false, error: "Tamanho fixo de 360x360" };
   });
 
   ipcMain.on("nexa:log-to-main", (event, { level, msg }) => {

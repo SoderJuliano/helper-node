@@ -15,25 +15,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   const ctx = canvas.getContext("2d");
   let lastTime = performance.now();
 
-  // Redimensionamento responsivo do Canvas de acordo com a janela
+  // Tamanho fixo do Canvas (360x360) da janela flutuante da Nexa
   function resizeCanvas() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    canvas.width = 360;
+    canvas.height = 360;
   }
   window.addEventListener("resize", resizeCanvas);
   resizeCanvas();
-
-  // Permite redimensionar a janela flutuante da Nexa usando a roda do mouse (Ctrl/Shift + Scroll ou Scroll na janela)
-  window.addEventListener("wheel", (e) => {
-    if (e.ctrlKey || e.shiftKey) {
-      e.preventDefault();
-      const delta = e.deltaY < 0 ? 30 : -30;
-      const newSize = Math.max(180, Math.min(800, window.innerWidth + delta));
-      if (window.electronAPI && window.electronAPI.resizeNexaWindow) {
-        window.electronAPI.resizeNexaWindow(newSize, newSize);
-      }
-    }
-  }, { passive: false });
 
   // Busca a configuração da Nexa e o trim da animação
   let introTrimEndMs = 100;

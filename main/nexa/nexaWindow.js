@@ -33,11 +33,15 @@ function createNexaWindow() {
   }
 
   const isStealth = configService.getStealthModeStatus();
-  const { x, y, width, height } = floatingBounds();
+  const { x, y } = floatingBounds();
 
   state.nexaWindow = new BrowserWindow({
-    width,
-    height,
+    width: WINDOW_SIZE,
+    height: WINDOW_SIZE,
+    minWidth: WINDOW_SIZE,
+    maxWidth: WINDOW_SIZE,
+    minHeight: WINDOW_SIZE,
+    maxHeight: WINDOW_SIZE,
     x,
     y,
     backgroundColor: "#00000000",
@@ -47,6 +51,9 @@ function createNexaWindow() {
     alwaysOnTop: true,
     skipTaskbar: isStealth,
     resizable: false,
+    maximizable: false,
+    minimizable: false,
+    fullscreenable: false,
     hasShadow: false,
     focusable: true,
     show: false,
@@ -62,6 +69,15 @@ function createNexaWindow() {
   const isLinux = process.platform === "linux";
   state.nexaWindow.setAlwaysOnTop(true, isLinux ? "floating" : "screen-saver");
   state.nexaWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+
+  state.nexaWindow.on("will-resize", (e) => e.preventDefault());
+  state.nexaWindow.on("maximize", (e) => {
+    e.preventDefault();
+    if (state.nexaWindow && !state.nexaWindow.isDestroyed()) {
+      state.nexaWindow.unmaximize();
+      state.nexaWindow.setSize(WINDOW_SIZE, WINDOW_SIZE);
+    }
+  });
 
   const nexaHtmlPath = path.join(ROOT_DIR, "renderer", "nexa", "nexa.html");
 
