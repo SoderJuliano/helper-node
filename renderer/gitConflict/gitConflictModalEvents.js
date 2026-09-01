@@ -85,10 +85,12 @@
     }
 
     const leftBox = modal.querySelector('#git-conflict-left-container');
+    const centerBox = modal.querySelector('#git-conflict-center-container');
     const rightBox = modal.querySelector('#git-conflict-right-container');
 
     if (onScroll) {
       if (leftBox) leftBox.onscroll = () => onScroll(leftBox);
+      if (centerBox) centerBox.onscroll = () => onScroll(centerBox);
       if (rightBox) rightBox.onscroll = () => onScroll(rightBox);
     }
 
@@ -109,6 +111,14 @@
         e.preventDefault();
         e.stopPropagation();
         if (typeof onSave === 'function') onSave();
+      } else if (e.altKey && e.shiftKey && e.key === 'ArrowDown') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof onNextConflict === 'function') onNextConflict();
+      } else if (e.altKey && e.shiftKey && e.key === 'ArrowUp') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof onPrevConflict === 'function') onPrevConflict();
       }
     };
 

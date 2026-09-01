@@ -1,5 +1,5 @@
 // renderer/gitConflict/gitConflictModal.js
-// Visualizador e Resolvedor de Conflitos Git em 3 Vias (Estilo IntelliJ IDEA / VS Code)
+// Visualizador e Resolvedor de Conflitos Git em 3 Vias (Estilo IntelliJ IDEA)
 
 (function() {
   'use strict';
@@ -10,15 +10,11 @@
   let currentFileIndex = 0;
   let current3WayData = null;
   let chunkStates = new Map();
+  let customCenterEdits = new Map();
   let activeConflictIndex = 0;
-  let cmCenter = null;
   let isSyncingScroll = false;
 
   function initGitConflictModalDom() {
-    if (cmCenter) {
-      try { cmCenter.toTextArea(); } catch (_) {}
-      cmCenter = null;
-    }
     modalContainer = window.GitConflictModalDom.buildGitConflictModalDom();
     window.GitConflictModalEvents.wireGitConflictEventListeners(modalContainer, {
       onClose: closeGitConflictModal,
@@ -42,19 +38,21 @@
       onMagic: applyNonConflictingChanges,
       onAcceptAllLeft: () => {
         if (!current3WayData || !current3WayData.chunks) return;
+        customCenterEdits.clear();
         current3WayData.chunks.forEach(c => {
           chunkStates.set(c.id, c.type === 'EQUAL' || c.type === 'SAME_CHANGE' ? 'both' : 'left');
         });
-        rebuildCenterResult();
-        renderSideTables();
+        renderAllPanels();
+        updateConflictStatusBadge();
       },
       onAcceptAllRight: () => {
         if (!current3WayData || !current3WayData.chunks) return;
+        customCenterEdits.clear();
         current3WayData.chunks.forEach(c => {
           chunkStates.set(c.id, c.type === 'EQUAL' || c.type === 'SAME_CHANGE' ? 'both' : 'right');
         });
-        rebuildCenterResult();
-        renderSideTables();
+        renderAllPanels();
+        updateConflictStatusBadge();
       },
       onFileChange: (idx) => {
         currentFileIndex = idx;
@@ -92,17 +90,20 @@
 
         requestAnimationFrame(() => {
           const leftBox = modalContainer ? modalContainer.querySelector('#git-conflict-left-container') : null;
+          const centerBox = modalContainer ? modalContainer.querySelector('#git-conflict-center-container') : null;
           const rightBox = modalContainer ? modalContainer.querySelector('#git-conflict-right-container') : null;
+
           if (source !== leftBox && leftBox && Math.abs(leftBox.scrollTop - top) > 1) {
             leftBox.scrollTop = top;
             leftBox.scrollLeft = left;
           }
+          if (source !== centerBox && centerBox && Math.abs(centerBox.scrollTop - top) > 1) {
+            centerBox.scrollTop = top;
+            centerBox.scrollLeft = left;
+          }
           if (source !== rightBox && rightBox && Math.abs(rightBox.scrollTop - top) > 1) {
             rightBox.scrollTop = top;
             rightBox.scrollLeft = left;
-          }
-          if (cmCenter && source !== cmCenter.getScrollerElement()) {
-            cmCenter.scrollTo(left, top);
           }
           isSyncingScroll = false;
         });
@@ -111,65 +112,12 @@
     return modalContainer;
   }
 
-  function initCodeMirror() {
-    const ta = document.getElementById('git-conflict-cm-textarea');
-    if (!ta || !window.CodeMirror) return;
-    if (cmCenter) {
-      try { cmCenter.toTextArea(); } catch (_) {}
-      cmCenter = null;
-    }
-
-    cmCenter = window.CodeMirror.fromTextArea(ta, {
-      lineNumbers: true,
-      mode: 'javascript',
-      theme: 'dracula',
-      lineWrapping: false,
-      tabSize: 2
-    });
-
-    cmCenter.on('scroll', () => {
-      if (isSyncingScroll) return;
-      isSyncingScroll = true;
-      const scrollInfo = cmCenter.getScrollInfo();
-      const leftBox = document.getElementById('git-conflict-left-container');
-      const rightBox = document.getElementById('git-conflict-right-container');
-
-      requestAnimationFrame(() => {
-        if (leftBox && Math.abs(leftBox.scrollTop - scrollInfo.top) > 1) {
-          leftBox.scrollTop = scrollInfo.top;
-          leftBox.scrollLeft = scrollInfo.left;
-        }
-        if (rightBox && Math.abs(rightBox.scrollTop - scrollInfo.top) > 1) {
-          rightBox.scrollTop = scrollInfo.top;
-          rightBox.scrollLeft = scrollInfo.left;
-        }
-        isSyncingScroll = false;
-      });
-    });
-
-    cmCenter.on('change', () => {
-      updateConflictStatusBadge();
-    });
-  }
-
-  function triggerCmRefresh() {
-    if (!cmCenter) return;
-    cmCenter.refresh();
-    requestAnimationFrame(() => {
-      if (cmCenter) cmCenter.refresh();
-    });
-    setTimeout(() => { if (cmCenter) cmCenter.refresh(); }, 50);
-  }
-
   async function openGitConflictModal(projectDir) {
     currentProjectDir = projectDir || (window.ctxProject ? window.ctxProject.path : null) || null;
     modalContainer = initGitConflictModalDom();
     modalContainer.classList.add('is-open');
     modalContainer.style.display = 'flex';
     document.body.classList.add('git-conflict-open');
-
-    initCodeMirror();
-    triggerCmRefresh();
 
     if (window.electronAPI && window.electronAPI.gitConflictGetStatus) {
       const res = await window.electronAPI.gitConflictGetStatus(currentProjectDir);
@@ -234,8 +182,12 @@
 
     current3WayData = res;
     chunkStates.clear();
+    customCenterEdits.clear();
     activeConflictIndex = 0;
 
+    // Inicialização estilo IntelliJ:
+    // Mudanças não conflitantes da esquerda e da direita são pré-aplicadas;
+    // Conflitos reais iniciam em 'unresolved' para o usuário decidir.
     current3WayData.chunks.forEach(c => {
       if (c.type === 'EQUAL' || c.type === 'SAME_CHANGE') {
         chunkStates.set(c.id, 'both');
@@ -253,22 +205,30 @@
     if (labelLeft) labelLeft.textContent = `(${res.currentBranch || 'Local'})`;
     if (labelRight) labelRight.textContent = `(${res.incomingBranch || 'Incoming'})`;
 
-    renderSideTables();
-
-    if (cmCenter) {
-      cmCenter.setOption('mode', window.GitConflictModalDom.getGitConflictSyntaxMode(relPath));
-      rebuildCenterResult();
-      triggerCmRefresh();
-    } else {
-      const ta = document.getElementById('git-conflict-cm-textarea');
-      if (ta) ta.value = res.initialResult || '';
-    }
-
+    renderAllPanels();
     updateConflictStatusBadge();
 
     setTimeout(() => {
       scrollToConflict(0);
     }, 60);
+  }
+
+  function renderAllPanels() {
+    window.GitConflictModalDom.renderGitConflict3Way(
+      current3WayData,
+      chunkStates,
+      customCenterEdits,
+      (chunkId, action) => {
+        customCenterEdits.delete(chunkId);
+        chunkStates.set(chunkId, action);
+        renderAllPanels();
+        updateConflictStatusBadge();
+      },
+      (chunkId, updatedLines) => {
+        customCenterEdits.set(chunkId, updatedLines);
+        updateConflictStatusBadge();
+      }
+    );
   }
 
   function getConflictChunks() {
@@ -314,95 +274,96 @@
 
     const firstRow = document.querySelector(`#git-conflict-table-left [data-chunk-id="${targetChunk.id}"]`);
     const leftContainer = document.getElementById('git-conflict-left-container');
-    if (firstRow && leftContainer) {
+    const centerContainer = document.getElementById('git-conflict-center-container');
+    const rightContainer = document.getElementById('git-conflict-right-container');
+
+    if (firstRow) {
       const topPos = Math.max(0, firstRow.offsetTop - 80);
-      leftContainer.scrollTop = topPos;
+      if (leftContainer) leftContainer.scrollTop = topPos;
+      if (centerContainer) centerContainer.scrollTop = topPos;
+      if (rightContainer) rightContainer.scrollTop = topPos;
     }
-
-    if (cmCenter) {
-      const lineNum = Math.max(0, (targetChunk.leftStartLine || 1) - 1);
-      cmCenter.scrollIntoView({ line: lineNum, ch: 0 }, 100);
-    }
-  }
-
-  function renderSideTables() {
-    window.GitConflictModalDom.renderGitConflictSideTables(current3WayData, chunkStates, (chunkId, action) => {
-      chunkStates.set(chunkId, action);
-      rebuildCenterResult();
-      renderSideTables();
-    });
-  }
-
-  function rebuildCenterResult() {
-    if (!current3WayData) return;
-
-    const resultLines = [];
-    current3WayData.chunks.forEach(chunk => {
-      const state = chunkStates.get(chunk.id);
-
-      if (state === 'left') {
-        resultLines.push(...chunk.leftLines);
-      } else if (state === 'right') {
-        resultLines.push(...chunk.rightLines);
-      } else if (state === 'both') {
-        resultLines.push(...(chunk.leftLines.length > 0 ? chunk.leftLines : chunk.rightLines));
-      } else if (state === 'ignored') {
-      } else if (state === 'unresolved' && chunk.type === 'CONFLICT') {
-        resultLines.push(`<<<<<<< ${current3WayData.currentBranch || 'Local'}`);
-        resultLines.push(...chunk.leftLines);
-        resultLines.push('=======');
-        resultLines.push(...chunk.rightLines);
-        resultLines.push(`>>>>>>> ${current3WayData.incomingBranch || 'Incoming'}`);
-      } else {
-        resultLines.push(...chunk.leftLines);
-      }
-    });
-
-    const finalContent = resultLines.join('\n');
-    if (cmCenter) {
-      const scrollInfo = cmCenter.getScrollInfo();
-      cmCenter.setValue(finalContent);
-      cmCenter.scrollTo(scrollInfo.left, scrollInfo.top);
-      triggerCmRefresh();
-    } else {
-      const ta = document.getElementById('git-conflict-cm-textarea');
-      if (ta) ta.value = finalContent;
-    }
-    updateConflictStatusBadge();
   }
 
   function applyNonConflictingChanges() {
     if (!current3WayData) return;
+    customCenterEdits.clear();
     current3WayData.chunks.forEach(c => {
       if (c.type === 'LEFT_ONLY') chunkStates.set(c.id, 'left');
       else if (c.type === 'RIGHT_ONLY') chunkStates.set(c.id, 'right');
       else if (c.type === 'SAME_CHANGE' || c.type === 'EQUAL') chunkStates.set(c.id, 'both');
     });
-    rebuildCenterResult();
-    renderSideTables();
+    renderAllPanels();
+    updateConflictStatusBadge();
+    if (typeof window.showToast === 'function') {
+      window.showToast('Alterações sem conflito aplicadas no centro.');
+    }
   }
 
   function updateConflictStatusBadge() {
     const badge = document.getElementById('git-conflict-badge-status');
-    const statsEl = document.getElementById('git-conflict-center-stats');
-    if (!badge) return;
+    const centerBadge = document.getElementById('git-conflict-center-badge');
+    if (!current3WayData) return;
 
-    const text = cmCenter ? cmCenter.getValue() : (document.getElementById('git-conflict-cm-textarea')?.value || '');
-    const markerMatches = text.match(/<<<<<<< /g);
-    const unresolvedCount = markerMatches ? markerMatches.length : 0;
+    const conflictChunks = getConflictChunks();
+    const unresolvedList = conflictChunks.filter(c => chunkStates.get(c.id) === 'unresolved' && !customCenterEdits.has(c.id));
+    const unresolvedCount = unresolvedList.length;
 
-    if (unresolvedCount > 0) {
-      badge.className = 'git-conflict-status-badge has-conflicts';
-      badge.textContent = `${unresolvedCount} conflito${unresolvedCount > 1 ? 's' : ''} pendente${unresolvedCount > 1 ? 's' : ''}`;
-    } else {
-      badge.className = 'git-conflict-status-badge resolved';
-      badge.textContent = 'Todos os conflitos resolvidos';
+    if (badge) {
+      if (unresolvedCount > 0) {
+        badge.className = 'git-conflict-status-badge has-conflicts';
+        badge.textContent = `${unresolvedCount} conflito${unresolvedCount > 1 ? 's' : ''} pendente${unresolvedCount > 1 ? 's' : ''}`;
+      } else {
+        badge.className = 'git-conflict-status-badge resolved';
+        badge.textContent = 'Todos os conflitos resolvidos';
+      }
     }
 
-    if (statsEl) {
-      const lineCount = cmCenter ? cmCenter.lineCount() : (text.split('\n').length);
-      statsEl.textContent = `${lineCount} linhas`;
+    if (centerBadge) {
+      if (unresolvedCount > 0) {
+        centerBadge.className = 'col-center-badge is-pending';
+        centerBadge.textContent = `${unresolvedCount} pendente${unresolvedCount > 1 ? 's' : ''}`;
+      } else {
+        centerBadge.className = 'col-center-badge is-resolved';
+        centerBadge.textContent = 'Pronto para salvar';
+      }
     }
+  }
+
+  function buildFinalMergedContent() {
+    if (!current3WayData) return '';
+
+    const resultLines = [];
+    current3WayData.chunks.forEach(chunk => {
+      if (customCenterEdits.has(chunk.id)) {
+        resultLines.push(...customCenterEdits.get(chunk.id));
+        return;
+      }
+
+      const state = chunkStates.get(chunk.id);
+      if (state === 'left') {
+        resultLines.push(...chunk.leftLines);
+      } else if (state === 'right') {
+        resultLines.push(...chunk.rightLines);
+      } else if (state === 'both') {
+        resultLines.push(...(chunk.leftLines && chunk.leftLines.length > 0 ? chunk.leftLines : chunk.rightLines));
+      } else if (state === 'ignored') {
+      } else if (state === 'unresolved') {
+        if (chunk.type === 'CONFLICT') {
+          resultLines.push(`<<<<<<< ${current3WayData.currentBranch || 'Local'}`);
+          resultLines.push(...chunk.leftLines);
+          resultLines.push('=======');
+          resultLines.push(...chunk.rightLines);
+          resultLines.push(`>>>>>>> ${current3WayData.incomingBranch || 'Incoming'}`);
+        } else {
+          resultLines.push(...chunk.leftLines);
+        }
+      } else {
+        resultLines.push(...chunk.leftLines);
+      }
+    });
+
+    return resultLines.join('\n');
   }
 
   async function saveCurrentResolution() {
@@ -411,10 +372,20 @@
       return;
     }
 
-    const text = cmCenter ? cmCenter.getValue() : (document.getElementById('git-conflict-cm-textarea')?.value || '');
-    if (text.includes('<<<<<<<') || text.includes('>>>>>>>') || text.includes('=======')) {
-      if (!confirm('Atenção: O arquivo ainda contém marcadores de conflito.\n\nDeseja salvar mesmo assim com os marcadores de conflito?')) {
-        scrollToConflict(activeConflictIndex);
+    const conflictChunks = getConflictChunks();
+    const unresolvedList = conflictChunks.filter(c => chunkStates.get(c.id) === 'unresolved' && !customCenterEdits.has(c.id));
+
+    if (unresolvedList.length > 0) {
+      const confirmSave = confirm(
+        `Atenção: Ainda restam ${unresolvedList.length} conflito(s) não resolvido(s) neste arquivo.\n\n` +
+        `Se você salvar agora, os marcadores de conflito Git (<<<<<<< / ======= / >>>>>>>) serão incluídos no arquivo.\n\n` +
+        `Deseja salvar mesmo assim com os marcadores de conflito?`
+      );
+      if (!confirmSave) {
+        const firstUnresolvedIdx = conflictChunks.findIndex(c => c.id === unresolvedList[0].id);
+        if (firstUnresolvedIdx >= 0) {
+          scrollToConflict(firstUnresolvedIdx);
+        }
         return;
       }
     }
@@ -423,6 +394,8 @@
       alert('API gitConflictSaveResolved não disponível.');
       return;
     }
+
+    const text = buildFinalMergedContent();
 
     try {
       const res = await window.electronAPI.gitConflictSaveResolved({
@@ -465,3 +438,4 @@
   window.openGitConflictModal = openGitConflictModal;
   window.closeGitConflictModal = closeGitConflictModal;
 })();
+

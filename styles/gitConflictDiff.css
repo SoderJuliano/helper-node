@@ -1,5 +1,5 @@
 /* styles/gitConflictDiff.css
-   Estilos de tabelas de diff, calha de números e botões de ação simétricos */
+   Estilos de tabelas de diff 3-Way no padrão visual IntelliJ IDEA */
 
 /* Tabela de Linhas do Diff */
 .git-conflict-table {
@@ -17,14 +17,14 @@
 }
 
 .git-conflict-row:hover {
-  background: rgba(255, 255, 255, 0.06) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
 }
 
-/* Coluna de Número de Linha (40px) */
+/* Coluna de Número de Linha (42px) */
 .git-conflict-gutter-num {
-  width: 40px !important;
-  min-width: 40px !important;
-  max-width: 40px !important;
+  width: 42px !important;
+  min-width: 42px !important;
+  max-width: 42px !important;
   text-align: right;
   padding-right: 8px;
   color: #636d83;
@@ -34,15 +34,30 @@
   height: 20px;
   line-height: 20px;
   box-sizing: border-box;
-  background: #1e1e24;
+  background: #18181c;
   border-right: 1px solid rgba(255, 255, 255, 0.04);
 }
 
-/* Coluna de Ação (Botões de aceitar » / « e ignorar ✕) (32px) */
+/* Coluna de Status no Centro (54px) */
+.git-conflict-gutter-status {
+  width: 54px !important;
+  min-width: 54px !important;
+  max-width: 54px !important;
+  text-align: center;
+  user-select: none;
+  height: 20px;
+  line-height: 20px;
+  box-sizing: border-box;
+  background: #18181c;
+  border-right: 1px solid rgba(255, 255, 255, 0.04);
+  padding: 0 2px;
+}
+
+/* Coluna de Ação (Botões de aceitar » / « e ignorar ✕) (38px) */
 .git-conflict-gutter-action {
-  width: 32px !important;
-  min-width: 32px !important;
-  max-width: 32px !important;
+  width: 38px !important;
+  min-width: 38px !important;
+  max-width: 38px !important;
   text-align: center;
   user-select: none;
   height: 20px;
@@ -51,8 +66,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  background: #1e1e24;
+  gap: 3px;
+  background: #18181c;
+  -webkit-app-region: no-drag !important;
+  pointer-events: auto !important;
 }
 
 /* Célula com Código Fonte */
@@ -68,7 +85,19 @@
   font-size: 12px;
 }
 
-/* Spacer rows */
+/* Célula Editável no Centro */
+.git-conflict-editable-cell {
+  outline: none;
+  user-select: text;
+  cursor: text;
+}
+
+.git-conflict-editable-cell:focus {
+  background: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: inset 0 0 0 1px #007acc;
+}
+
+/* Spacer rows (Alinhamento de Altura) */
 .chunk-row-spacer {
   background: rgba(255, 255, 255, 0.015);
   height: 20px;
@@ -76,7 +105,7 @@
 }
 
 .chunk-row-spacer .git-conflict-code-cell {
-  color: transparent;
+  color: transparent !important;
 }
 
 /* Botões de Ação na Calha */
@@ -87,165 +116,280 @@
   width: 16px;
   height: 16px;
   border-radius: 3px;
-  font-size: 10px;
-  cursor: pointer;
+  font-size: 9px;
+  cursor: pointer !important;
   border: 1px solid transparent;
   line-height: 1;
   padding: 0;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.08);
   transition: all 0.12s ease;
   user-select: none;
   flex-shrink: 0;
+  -webkit-app-region: no-drag !important;
+  pointer-events: auto !important;
+  position: relative;
+  z-index: 10;
 }
 
 .chunk-action-btn svg {
-  width: 12px;
-  height: 12px;
-  pointer-events: none;
+  width: 11px !important;
+  height: 11px !important;
+  pointer-events: none !important;
 }
 
-.chunk-btn-accept-left {
-  color: #61afef;
-  border-color: rgba(97, 175, 239, 0.3);
+.chunk-btn-apply-left {
+  color: #58a6ff;
+  border-color: rgba(88, 166, 255, 0.35);
+  background: rgba(56, 139, 253, 0.15);
 }
 
-.chunk-btn-accept-left:hover {
-  background: #4d78cc;
-  color: #ffffff;
-  border-color: #61afef;
+.chunk-btn-apply-left:hover {
+  background: #388bfd !important;
+  color: #ffffff !important;
+  border-color: #58a6ff !important;
 }
 
-.chunk-btn-accept-right {
-  color: #98c379;
-  border-color: rgba(152, 195, 121, 0.3);
+.chunk-btn-apply-right {
+  color: #3fb950;
+  border-color: rgba(63, 185, 80, 0.35);
+  background: rgba(63, 185, 80, 0.15);
 }
 
-.chunk-btn-accept-right:hover {
-  background: #2ea043;
-  color: #ffffff;
-  border-color: #98c379;
+.chunk-btn-apply-right:hover {
+  background: #2ea043 !important;
+  color: #ffffff !important;
+  border-color: #3fb950 !important;
 }
 
 .chunk-btn-ignore {
-  color: #636d83;
+  color: #7d8590;
 }
 
 .chunk-btn-ignore:hover {
-  color: #ffffff;
-  background: #e06c75;
-  border-color: #e06c75;
+  color: #ffffff !important;
+  background: #f85149 !important;
+  border-color: #f85149 !important;
 }
 
-/* Estado de Aceito / Aplicado no Botão */
-.chunk-action-btn.is-accepted {
-  background: #2ea043 !important;
+/* Estado de Aplicado no Botão */
+.chunk-btn-apply-left.is-applied {
+  background: #1f6feb !important;
   color: #ffffff !important;
-  border-color: #98c379 !important;
+  border-color: #58a6ff !important;
+}
+
+.chunk-btn-apply-right.is-applied {
+  background: #238636 !important;
+  color: #ffffff !important;
+  border-color: #3fb950 !important;
 }
 
 .chunk-action-btn.is-ignored {
-  background: rgba(224, 108, 117, 0.25) !important;
-  color: #e06c75 !important;
-  border-color: rgba(224, 108, 117, 0.4) !important;
+  background: rgba(248, 81, 73, 0.25) !important;
+  color: #ff7b72 !important;
+  border-color: rgba(248, 81, 73, 0.4) !important;
 }
 
-/* Destaque dos Chunks */
+/* === Badges de Origem no Centro === */
+.badge-source-left {
+  display: inline-block;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  background: rgba(56, 139, 253, 0.25);
+  color: #58a6ff;
+  border: 1px solid rgba(88, 166, 255, 0.4);
+  letter-spacing: 0.2px;
+}
+
+.badge-source-right {
+  display: inline-block;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  background: rgba(46, 160, 67, 0.25);
+  color: #3fb950;
+  border: 1px solid rgba(63, 185, 80, 0.4);
+  letter-spacing: 0.2px;
+}
+
+.badge-source-unresolved {
+  display: inline-block;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(248, 81, 73, 0.25);
+  color: #f85149;
+  border: 1px solid rgba(248, 81, 73, 0.4);
+}
+
+.badge-source-edit {
+  display: inline-block;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  background: rgba(187, 128, 255, 0.25);
+  color: #bb80ff;
+  border: 1px solid rgba(187, 128, 255, 0.4);
+}
+
+.badge-source-ignored {
+  display: inline-block;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.08);
+  color: #8b949e;
+}
+
+/* === Destaques dos Chunks Laterais === */
 .chunk-row-equal {
   background: transparent;
 }
 
 .chunk-row-left-only {
-  background: rgba(97, 175, 239, 0.08);
+  background: rgba(88, 166, 255, 0.07);
 }
 .chunk-row-left-only .git-conflict-gutter-action {
-  border-left: 2px solid #61afef;
+  border-left: 2px solid #58a6ff;
 }
 
 .chunk-row-right-only {
-  background: rgba(152, 195, 121, 0.08);
+  background: rgba(63, 185, 80, 0.07);
 }
 .chunk-row-right-only .git-conflict-gutter-action {
-  border-left: 2px solid #98c379;
+  border-left: 2px solid #3fb950;
 }
 
-/* Conflito Pendente */
-.left-col .chunk-row-conflict {
-  background: rgba(97, 175, 239, 0.12);
-  border-left: 2px solid #61afef;
+/* Conflito Pendente nas Laterais */
+.chunk-side-unresolved {
+  background: rgba(248, 81, 73, 0.12) !important;
+  border-left: 3px solid #f85149 !important;
 }
 
-.right-col .chunk-row-conflict {
-  background: rgba(152, 195, 121, 0.12);
-  border-left: 2px solid #98c379;
+.chunk-side-unresolved .git-conflict-code-cell {
+  color: #fca5a5 !important;
 }
 
-.chunk-row-active-conflict {
-  outline: 1px solid rgba(229, 192, 123, 0.8) !important;
-  outline-offset: -1px;
+/* Lado que foi aplicado no Centro */
+.chunk-side-applied-left {
+  background: rgba(88, 166, 255, 0.14) !important;
+  border-left: 3px solid #58a6ff !important;
 }
-
-/* Lado Aceito no Resultado (Limpo e Elegante) */
-.chunk-row-accepted-side {
-  background: rgba(152, 195, 121, 0.14) !important;
-  border-left: 3px solid #98c379 !important;
-  opacity: 1 !important;
-}
-
-.chunk-row-accepted-side .git-conflict-code-cell {
+.chunk-side-applied-left .git-conflict-code-cell {
   color: #ffffff !important;
 }
 
-/* Lado Rejeitado / Descartado (Muted / Cinza discreto) */
-.chunk-row-rejected-side {
-  opacity: 0.35 !important;
-  text-decoration: line-through !important;
+.chunk-side-applied-right {
+  background: rgba(63, 185, 80, 0.14) !important;
+  border-left: 3px solid #3fb950 !important;
+}
+.chunk-side-applied-right .git-conflict-code-cell {
+  color: #ffffff !important;
+}
+
+/* Lado não escolhido (neutro, limpo, sem riscado) */
+.chunk-side-other {
+  opacity: 0.5 !important;
   background: rgba(0, 0, 0, 0.15) !important;
-  border-left: 2px solid transparent !important;
 }
 
-.chunk-row-rejected-side .git-conflict-code-cell {
-  color: #5c6370 !important;
+.chunk-side-ignored {
+  opacity: 0.35 !important;
+  background: rgba(0, 0, 0, 0.2) !important;
 }
 
-/* Editor Central (CodeMirror no Centro) */
-.git-conflict-col.center-col .CodeMirror {
-  position: absolute !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-  background: #1e1e24 !important;
-  font-family: "JetBrains Mono", Consolas, monospace !important;
-  font-size: 12px !important;
-  line-height: 20px !important;
+/* Destaque do Conflito Ativo focado */
+.chunk-row-active-conflict {
+  outline: 1px solid rgba(229, 192, 123, 0.9) !important;
+  outline-offset: -1px;
 }
 
-.git-conflict-col.center-col .CodeMirror-gutters {
-  background: #21252b !important;
-  border-right: 1px solid #282c34 !important;
+/* === Destaques do Centro (Resultado do Merge) === */
+.chunk-center-left {
+  background: rgba(56, 139, 253, 0.15) !important;
+  border-left: 4px solid #58a6ff !important;
+  border-top: 1px solid rgba(88, 166, 255, 0.3);
+  border-bottom: 1px solid rgba(88, 166, 255, 0.3);
+}
+.chunk-center-left .git-conflict-code-cell {
+  color: #ffffff !important;
 }
 
-.git-conflict-col.center-col .CodeMirror-linenumber {
-  color: #636d83 !important;
-  padding: 0 5px 0 5px !important;
+.chunk-center-right {
+  background: rgba(46, 160, 67, 0.15) !important;
+  border-left: 4px solid #3fb950 !important;
+  border-top: 1px solid rgba(63, 185, 80, 0.3);
+  border-bottom: 1px solid rgba(63, 185, 80, 0.3);
+}
+.chunk-center-right .git-conflict-code-cell {
+  color: #ffffff !important;
 }
 
-.git-conflict-col.center-col .CodeMirror-scroll {
-  width: 100% !important;
-  height: 100% !important;
-  overflow-y: scroll !important;
-  overflow-x: auto !important;
+.chunk-center-both {
+  background: transparent;
 }
 
-/* Linhas de Conflito no Editor Central */
-.cm-conflict-line {
-  background: rgba(224, 108, 117, 0.15) !important;
+.chunk-center-unresolved {
+  background: rgba(248, 81, 73, 0.2) !important;
+  border-left: 4px solid #f85149 !important;
+  border-top: 1px dashed rgba(248, 81, 73, 0.5) !important;
+  border-bottom: 1px dashed rgba(248, 81, 73, 0.5) !important;
+}
+.chunk-center-unresolved .git-conflict-code-cell {
+  color: #ff9492 !important;
+  font-weight: 500;
 }
 
-.cm-conflict-marker-line {
-  background: rgba(224, 108, 117, 0.3) !important;
-  color: #e06c75 !important;
-  font-weight: bold;
+.chunk-center-custom {
+  background: rgba(187, 128, 255, 0.15) !important;
+  border-left: 4px solid #bb80ff !important;
+  border-top: 1px solid rgba(187, 128, 255, 0.35);
+  border-bottom: 1px solid rgba(187, 128, 255, 0.35);
 }
+.chunk-center-custom .git-conflict-code-cell {
+  color: #ffffff !important;
+}
+
+.chunk-center-ignored {
+  background: rgba(255, 255, 255, 0.02) !important;
+  opacity: 0.45;
+}
+
+/* Badges do Header */
+.col-branch-label {
+  color: #8a8a95;
+  font-weight: normal;
+  font-size: 11px;
+}
+
+.col-center-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+.col-center-badge.is-pending {
+  background: rgba(248, 81, 73, 0.18);
+  color: #f85149;
+  border: 1px solid rgba(248, 81, 73, 0.3);
+}
+
+.col-center-badge.is-resolved {
+  background: rgba(63, 185, 80, 0.18);
+  color: #3fb950;
+  border: 1px solid rgba(63, 185, 80, 0.3);
+}
+
+.col-center-stats {
+  font-size: 11px;
+  color: #8a8a95;
+  font-family: "JetBrains Mono", Consolas, monospace;
+}
+

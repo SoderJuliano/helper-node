@@ -454,31 +454,29 @@ body.git-conflict-open {
   min-width: 0 !important;
   height: 100%;
   min-height: 0;
-  overflow: hidden !important;
+  overflow-y: scroll !important;
+  overflow-x: auto !important;
   background: #1e1e1e;
 }
 
 /* Scrollbars Visíveis no Windows / Webkit */
-.git-conflict-editor-container::-webkit-scrollbar,
-.git-conflict-col.center-col .CodeMirror-scroll::-webkit-scrollbar {
+.git-conflict-editor-container::-webkit-scrollbar {
   width: 10px !important;
   height: 10px !important;
   display: block !important;
 }
 
-.git-conflict-editor-container::-webkit-scrollbar-track,
-.git-conflict-col.center-col .CodeMirror-scroll::-webkit-scrollbar-track {
+.git-conflict-editor-container::-webkit-scrollbar-track {
   background: #181818 !important;
 }
 
-.git-conflict-editor-container::-webkit-scrollbar-thumb,
-.git-conflict-col.center-col .CodeMirror-scroll::-webkit-scrollbar-thumb {
+.git-conflict-editor-container::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.22) !important;
   border-radius: 4px;
   border: 2px solid #181818;
 }
 
-.git-conflict-editor-container::-webkit-scrollbar-thumb:hover,
-.git-conflict-col.center-col .CodeMirror-scroll::-webkit-scrollbar-thumb:hover {
+.git-conflict-editor-container::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.38) !important;
 }
+
