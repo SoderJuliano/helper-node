@@ -303,6 +303,9 @@
   function updateConflictStatusBadge() {
     const badge = document.getElementById('git-conflict-badge-status');
     const centerBadge = document.getElementById('git-conflict-center-badge');
+    const resolvedBanner = document.getElementById('git-conflict-resolved-banner');
+    const resolvedBannerText = document.getElementById('git-conflict-resolved-banner-text');
+    const saveBtn = document.getElementById('git-conflict-btn-save');
     if (!current3WayData) return;
 
     const conflictChunks = getConflictChunks();
@@ -325,7 +328,24 @@
         centerBadge.textContent = `${unresolvedCount} pendente${unresolvedCount > 1 ? 's' : ''}`;
       } else {
         centerBadge.className = 'col-center-badge is-resolved';
-        centerBadge.textContent = 'Pronto para salvar';
+        centerBadge.textContent = '100% resolvido';
+      }
+    }
+
+    if (resolvedBanner) {
+      if (unresolvedCount === 0 && conflictChunks.length > 0) {
+        resolvedBanner.style.display = 'flex';
+        if (resolvedBannerText) {
+          if (conflictFiles.length > 1) {
+            resolvedBannerText.innerHTML = `Todos os conflitos deste arquivo foram resolvidos! Clique em <strong>Salvar e Concluir</strong> para avançar.`;
+          } else {
+            resolvedBannerText.innerHTML = `Todos os conflitos deste arquivo foram resolvidos! Clique em <strong>Salvar e Concluir</strong> para finalizar.`;
+          }
+        }
+        if (saveBtn) saveBtn.classList.add('is-ready-pulse');
+      } else {
+        resolvedBanner.style.display = 'none';
+        if (saveBtn) saveBtn.classList.remove('is-ready-pulse');
       }
     }
   }

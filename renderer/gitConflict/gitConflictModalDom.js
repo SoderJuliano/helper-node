@@ -18,7 +18,8 @@
   const SVGI_APPLY_RIGHT_ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/><polyline points="15 18 21 12 15 6"/></svg>';
   const SVGI_APPLY_LEFT_ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/><polyline points="9 18 3 12 9 6"/></svg>';
   const SVGI_IGNORE_X = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-  const SVGI_UNDO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>';
+  const SVGI_UNDO_LEFT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>';
+  const SVGI_UNDO_RIGHT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"/></svg>';
 
   function buildGitConflictModalDom() {
     let modal = document.getElementById('git-conflict-modal');
@@ -104,6 +105,10 @@
               <span id="git-conflict-center-badge" class="col-center-badge"></span>
             </div>
             <span id="git-conflict-center-stats" class="col-center-stats"></span>
+          </div>
+          <div id="git-conflict-resolved-banner" class="git-conflict-resolved-banner" style="display: none;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;color:#3fb950;flex-shrink:0;"><polyline points="20 6 9 17 4 12"/></svg>
+            <span id="git-conflict-resolved-banner-text">Todos os conflitos deste arquivo foram resolvidos! Clique em <strong>Salvar e Concluir</strong>.</span>
           </div>
           <div class="git-conflict-editor-container" id="git-conflict-center-container">
             <table class="git-conflict-table git-conflict-table-center" id="git-conflict-table-center"></table>
@@ -251,7 +256,7 @@
           btnAccept.type = 'button';
           btnAccept.className = `chunk-action-btn chunk-btn-apply-left ${isApplied ? 'is-applied' : ''}`;
           btnAccept.title = isApplied ? 'Alteração da esquerda aplicada no centro (clique para desfazer)' : 'Aplicar alteração da esquerda no resultado (»)';
-          btnAccept.innerHTML = isApplied ? SVGI_UNDO : SVGI_APPLY_RIGHT_ARROW;
+          btnAccept.innerHTML = isApplied ? SVGI_UNDO_LEFT : SVGI_APPLY_RIGHT_ARROW;
           btnAccept.addEventListener('click', (e) => {
             e.stopPropagation();
             onAction(chunk.id, isApplied ? 'unresolved' : 'left');
@@ -346,7 +351,7 @@
           btnAccept.type = 'button';
           btnAccept.className = `chunk-action-btn chunk-btn-apply-right ${isApplied ? 'is-applied' : ''}`;
           btnAccept.title = isApplied ? 'Alteração da direita aplicada no centro (clique para desfazer)' : 'Aplicar alteração da direita no resultado («)';
-          btnAccept.innerHTML = isApplied ? SVGI_UNDO : SVGI_APPLY_LEFT_ARROW;
+          btnAccept.innerHTML = isApplied ? SVGI_UNDO_RIGHT : SVGI_APPLY_LEFT_ARROW;
           btnAccept.addEventListener('click', (e) => {
             e.stopPropagation();
             onAction(chunk.id, isApplied ? 'unresolved' : 'right');
