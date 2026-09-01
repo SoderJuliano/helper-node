@@ -15,30 +15,25 @@
         #file-viewer.open { display: flex; }
         .fv-header {
             display: flex; align-items: center; gap: 8px;
-            padding: 9px 120px 9px 12px; border-bottom: 1px solid var(--border);
-            background: var(--bg-sidebar); flex-shrink: 0;
+            padding: 4px 10px 0 10px; border-bottom: 1px solid var(--border);
+            background: var(--bg-sidebar); flex-shrink: 0; min-height: 34px;
             -webkit-app-region: drag;
         }
         .fv-header > * { -webkit-app-region: no-drag; }
         .fv-ic { width: 14px; height: 14px; opacity: .7; flex-shrink: 0; }
-        /* Sem flex:1 de propósito — o nome fica do tamanho do conteúdo (até um
-           teto, com "…" se passar disso), igual aba de IDE, pra o × ficar logo
-           depois do nome em vez de esticado lá longe na ponta do header. */
         .fv-path { max-width: 260px; font-family: var(--font-mono); font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 1; }
-        /* Indicador de alteração não salva (dot laranja) — Ctrl+S salva, sem
-           botão explícito: nenhuma IDE tem "botão Salvar" visível o tempo todo. */
         .fv-dirty { display: none; color: #ffb74d; font-size: 10px; flex-shrink: 0; }
-        .fv-close { flex-shrink: 0; width: 24px; height: 24px; background: transparent; border: none; color: var(--text-3); font-size: 17px; cursor: pointer; border-radius: 5px; display: flex; align-items: center; justify-content: center; }
+        .fv-close { flex-shrink: 0; width: 24px; height: 24px; background: transparent; border: none; color: var(--text-3); font-size: 17px; cursor: pointer; border-radius: 5px; display: flex; align-items: center; justify-content: center; margin-bottom: 2px; }
         .fv-close:hover { background: rgba(255,255,255,0.08); color: var(--text); }
         .fv-tabs-container {
             display: flex;
             align-items: flex-end;
-            gap: 2px;
+            gap: 4px;
             overflow-x: auto;
             flex: 1;
-            margin-right: 12px;
-            scrollbar-width: none; /* Firefox */
-            -ms-overflow-style: none; /* IE/Edge */
+            margin-right: 6px;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
             height: 100%;
         }
         .fv-tabs-container::-webkit-scrollbar {
@@ -51,7 +46,7 @@
             display: flex;
             align-items: center;
             gap: 6px;
-            padding: 5px 10px;
+            padding: 4px 10px;
             background: rgba(255,255,255,0.03);
             border: 1px solid var(--border);
             border-bottom: none;
@@ -62,17 +57,11 @@
             cursor: pointer;
             user-select: none;
             transition: all 0.15s ease;
-            /* O nome vinha cortado ("PagamentoServiceImpl.java" → "Servic…")
-               NÃO por causa do max-width, e sim porque a aba é um flex item e
-               encolhia: medida em 42px de largura, sobrando 5px pro nome que
-               precisa de 162px. `flex-shrink: 0` faz a aba manter o tamanho
-               natural e o container (que já tem overflow-x: auto) rolar, igual
-               VS Code. max-width só limita nome absurdamente longo. */
             flex: 0 0 auto;
             max-width: 280px;
             white-space: nowrap;
-            height: 22px;
-            margin-top: 4px;
+            height: 28px;
+            box-sizing: border-box;
         }
         .fv-tab:hover {
             background: rgba(255,255,255,0.07);
