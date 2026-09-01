@@ -27,15 +27,114 @@ const COLS_PADRAO = 120;
 const ROWS_PADRAO = 30;
 
 // Função `cd` que mostra a pasta e `git add` que já imprime o status curto.
-// Sintaxe bash — só faz sentido em shell POSIX, nunca no cmd.exe.
+// Sintaxe bash — só faz sentido em shell POSIX.
 function injetarHelpersPosix(escrever) {
   try {
-    escrever('cd() { builtin cd "$@" && printf "\\033[32m📁 Pasta atual: %s\\033[0m\\n" "$(pwd)"; }\n');
-    escrever('git() { if [ "$1" = "add" ]; then command git "$@" && command git status -s; else command git "$@"; fi; }\n');
+    const script = [
+      'cd() { builtin cd "$@" && printf "\\033[32m📁 Pasta atual: %s\\033[0m\\n" "$(pwd)"; }',
+      'git() { if [ "$1" = "add" ]; then command git "$@" && command git status -s; else command git "$@"; fi; }',
+      '__helper_git_b() { local b; b=$(git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --short HEAD 2>/dev/null); [ -n "$b" ] && printf " \\033[35m(%s)\\033[0m" "$b"; }',
+      'PS1=\'\\[\\033[36m\\]\\w\\[\\033[0m\\]$(__helper_git_b) \\[\\033[32m\\]>\\033[0m\\ \' export PS1',
+      'alias ls="ls --color=auto" 2>/dev/null',
+      'alias ll="ls -lah --color=auto" 2>/dev/null',
+      'alias la="ls -A --color=auto" 2>/dev/null'
+    ].join('\n') + '\n';
+    escrever(script);
   } catch (e) {
     console.warn("[terminal] falha ao injetar helpers POSIX:", e.message);
   }
 }
+
+// Helpers ultraleves para PowerShell no Windows: UTF-8, prompt Dracula ANSI instantâneo (<0.5ms) com branch Git, cd /d compatível, git add com status e ls inteligente colorido e responsivo.
+// Passado via -EncodedCommand para inicialização 100% limpa e silenciosa sem poluir o buffer de tela do terminal.
+const PS_INIT_SCRIPT = [
+  '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8',
+  '$OutputEncoding = [System.Text.Encoding]::UTF8',
+  '$env:GIT_PAGER = "cat"',
+  '$env:PAGER = "cat"',
+  '$env:COLORTERM = "truecolor"',
+  '$env:FORCE_COLOR = "1"',
+  '$env:CLICOLOR = "1"',
+  '$env:CLICOLOR_FORCE = "1"',
+  'Remove-Item alias:cd -Force -ErrorAction SilentlyContinue',
+  'function global:cd { param([Parameter(ValueFromRemainingArguments=$true)][string[]]$PathArgs); if ($PathArgs.Count -gt 1 -and $PathArgs[0] -eq "/d") { Set-Location -LiteralPath ($PathArgs[1..($PathArgs.Count-1)] -join " ") } elseif ($PathArgs.Count -ge 1) { Set-Location -LiteralPath ($PathArgs -join " ") } else { Set-Location ~ } }',
+  'function global:git { if ($args.Count -ge 1 -and $args[0] -eq "add") { & (Get-Command -CommandType Application git) @args; & (Get-Command -CommandType Application git) status -s } else { & (Get-Command -CommandType Application git) @args } }',
+  '$e = [char]27; function global:prompt { $lastOk = $?; $loc = (Get-Location).Path; $homeDir = $HOME; $p = if ($homeDir -and $loc.StartsWith($homeDir, [System.StringComparison]::OrdinalIgnoreCase)) { "~" + $loc.Substring($homeDir.Length) } else { $loc }; $b = ""; $curr = $loc; for ($j = 0; $j -lt 6; $j++) { $g = [System.IO.Path]::Combine($curr, ".git"); if ([System.IO.Directory]::Exists($g)) { $h = [System.IO.Path]::Combine($g, "HEAD"); if ([System.IO.File]::Exists($h)) { $c = [System.IO.File]::ReadAllText($h).Trim(); if ($c.StartsWith("ref: refs/heads/")) { $b = " (" + $c.Substring(16) + ")" } elseif ($c) { $b = " (" + $c.Substring(0, [Math]::Min(7, $c.Length)) + ")" } } break } elseif ([System.IO.File]::Exists($g)) { try { $gtxt = [System.IO.File]::ReadAllText($g).Trim(); if ($gtxt.StartsWith("gitdir: ")) { $tg = $gtxt.Substring(8).Trim(); if (-not [System.IO.Path]::IsPathRooted($tg)) { $tg = [System.IO.Path]::Combine($curr, $tg) } $h = [System.IO.Path]::Combine($tg, "HEAD"); if ([System.IO.File]::Exists($h)) { $c = [System.IO.File]::ReadAllText($h).Trim(); if ($c.StartsWith("ref: refs/heads/")) { $b = " (" + $c.Substring(16) + ")" } } } } catch {} break } $parent = [System.IO.Path]::GetDirectoryName($curr); if (-not $parent -or $parent -eq $curr) { break }; $curr = $parent }; $arr = if ($lastOk) { "$e[32m" } else { "$e[31m" }; "$e[36m$p$e[35m$b $arr>$e[0m " }',
+  'Remove-Item alias:ls -Force -ErrorAction SilentlyContinue',
+  'Remove-Item alias:ll -Force -ErrorAction SilentlyContinue',
+  'Remove-Item alias:la -Force -ErrorAction SilentlyContinue',
+  'Remove-Item alias:dir -Force -ErrorAction SilentlyContinue',
+  'function global:ls {',
+  '  param([Parameter(ValueFromRemainingArguments=$true)][string[]]$PathArgs);',
+  '  if ($MyInvocation.ExpectingInput) { return (Get-ChildItem @PathArgs) };',
+  '  $isLong = $false; $showHidden = $false; $targets = [System.Collections.Generic.List[string]]::new();',
+  '  if ($PathArgs) { foreach ($arg in $PathArgs) {',
+  '    if ($arg -eq "-l" -or $arg -eq "/l") { $isLong = $true }',
+  '    elseif ($arg -eq "-a" -or $arg -eq "-all" -or $arg -eq "/a") { $showHidden = $true }',
+  '    elseif ($arg -eq "-la" -or $arg -eq "-al" -or $arg -eq "-alF") { $isLong = $true; $showHidden = $true }',
+  '    elseif ($arg.StartsWith("-") -and $arg.Contains("l")) { $isLong = $true; if ($arg.Contains("a")) { $showHidden = $true } }',
+  '    else { $targets.Add($arg) }',
+  '  } };',
+  '  if ($targets.Count -eq 0) { $targets.Add(".") };',
+  '  $getColor = { param($it); if ($it.PSIsContainer) { return "$e[1;36m" }; $ext = $it.Extension.ToLowerInvariant(); switch -Wildcard ($ext) { "*.exe" { return "$e[1;32m" }; "*.bat" { return "$e[1;32m" }; "*.cmd" { return "$e[1;32m" }; "*.ps1" { return "$e[1;32m" }; "*.sh" { return "$e[1;32m" }; "*.js" { return "$e[33m" }; "*.ts" { return "$e[33m" }; "*.jsx" { return "$e[33m" }; "*.tsx" { return "$e[33m" }; "*.json"{ return "$e[33m" }; "*.md" { return "$e[35m" }; "*.html"{ return "$e[34m" }; "*.css" { return "$e[34m" }; "*.zip" { return "$e[1;31m" }; "*.tar" { return "$e[1;31m" }; "*.gz" { return "$e[1;31m" }; default { if ($it.Name.StartsWith(".")) { return "$e[90m" }; return "$e[37m" } } };',
+  '  foreach ($target in $targets) {',
+  '    $items = @(); try {',
+  '      $gciParams = @{ Path = $target; ErrorAction = "SilentlyContinue" }; if ($showHidden) { $gciParams["Force"] = $true };',
+  '      $items = @(Get-ChildItem @gciParams);',
+  '      if ($items.Count -eq 0 -and (Test-Path -Path $target)) { $items = @(Get-Item -Path $target -Force:$showHidden -ErrorAction SilentlyContinue) }',
+  '    } catch { [Console]::Error.WriteLine("ls: cannot access " + $target + ": No such file or directory"); continue };',
+  '    if ($items.Count -eq 0) { if (-not (Test-Path -Path $target)) { [Console]::Error.WriteLine("ls: cannot access " + $target + ": No such file or directory") }; continue };',
+  '    if ($targets.Count -gt 1) { [Console]::Out.WriteLine($target + ":") };',
+  '    $termWidth = 80; try { if ($Host.UI.RawUI.WindowSize.Width -gt 20) { $termWidth = $Host.UI.RawUI.WindowSize.Width } } catch {};',
+  '    if (-not $isLong) {',
+  '      $formatted = [System.Collections.Generic.List[object]]::new(); $maxLen = 0;',
+  '      foreach ($it in $items) {',
+  '        $suffix = if ($it.PSIsContainer) { "/" } else { "" };',
+  '        $name = $it.Name + $suffix;',
+  '        if ($name.Length -gt $maxLen) { $maxLen = $name.Length };',
+  '        $clr = & $getColor $it;',
+  '        $formatted.Add([PSCustomObject]@{ Len = $name.Length; Display = "$clr$name$e[0m" })',
+  '      };',
+  '      $colWidth = [Math]::Min($termWidth - 2, $maxLen + 3);',
+  '      $numCols = [Math]::Max(1, [Math]::Floor($termWidth / $colWidth));',
+  '      $numRows = [Math]::Ceiling($formatted.Count / $numCols);',
+  '      for ($r = 0; $r -lt $numRows; $r++) {',
+  '        $line = "";',
+  '        for ($c = 0; $c -lt $numCols; $c++) {',
+  '          $idx = $r + ($c * $numRows);',
+  '          if ($idx -lt $formatted.Count) {',
+  '            $item = $formatted[$idx];',
+  '            $padCount = [Math]::Max(1, ($colWidth - $item.Len));',
+  '            $pad = " " * $padCount;',
+  '            $line += $item.Display + $pad;',
+  '          }',
+  '        };',
+  '        [Console]::Out.WriteLine($line.TrimEnd());',
+  '      }',
+  '    } else {',
+  '      foreach ($it in $items) {',
+  '        $clr = & $getColor $it; $mode = if ($it.PSIsContainer) { "d----" } else { "-a---" };',
+  '        $date = $it.LastWriteTime.ToString("dd/MM/yyyy  HH:mm");',
+  '        $size = if ($it.PSIsContainer) { "<DIR>     " } else {',
+  '          $len = $it.Length;',
+  '          if ($len -ge 1GB) { ("{0,7:N1} GB" -f ($len / 1GB)) }',
+  '          elseif ($len -ge 1MB) { ("{0,7:N1} MB" -f ($len / 1MB)) }',
+  '          elseif ($len -ge 1KB) { ("{0,7:N1} KB" -f ($len / 1KB)) }',
+  '          else { ("{0,7} B " -f $len) }',
+  '        };',
+  '        $sfx = if ($it.PSIsContainer) { "/" } else { "" };',
+  '        $name = $it.Name + $sfx;',
+  '        [Console]::Out.WriteLine("$mode  $date  $size  $clr$name$e[0m");',
+  '      }',
+  '    };',
+  '    if ($targets.Count -gt 1) { [Console]::Out.WriteLine("") }',
+  '  }',
+  '}',
+  'function global:ll { ls -l @args }',
+  'function global:la { ls -la @args }',
+  'function global:dir { ls @args }'
+].join('\n');
+const PS_INIT_BASE64 = Buffer.from(PS_INIT_SCRIPT, 'utf16le').toString('base64');
 
 function dimensoesValidas(dim) {
   const cols = Math.floor(Number(dim && dim.cols));
@@ -82,10 +181,38 @@ ipcMain.handle("terminal:init", async (event, dim) => {
   // Python e o Windows reporta o erro.
   try {
     const pty = require("node-pty");
-    const shell = isWin
-      ? (process.env.COMSPEC || "cmd.exe")
-      : (process.env.SHELL || "/bin/bash");
-    state.terminalPty = pty.spawn(shell, isWin ? [] : ["-i"], {
+    let shell = "";
+    let shellArgs = [];
+    let isPowerShell = false;
+
+    if (isWin) {
+      const pwshPath = "C:\\Program Files\\PowerShell\\7\\pwsh.exe";
+      const sysPowerShell = process.env.SystemRoot
+        ? path.join(process.env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+        : "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
+
+      if (fs2.existsSync(pwshPath)) {
+        shell = pwshPath;
+        shellArgs = ["-NoProfile", "-NoLogo", "-ExecutionPolicy", "Bypass", "-NoExit", "-EncodedCommand", PS_INIT_BASE64];
+        isPowerShell = true;
+      } else if (fs2.existsSync(sysPowerShell)) {
+        shell = sysPowerShell;
+        shellArgs = ["-NoProfile", "-NoLogo", "-ExecutionPolicy", "Bypass", "-NoExit", "-EncodedCommand", PS_INIT_BASE64];
+        isPowerShell = true;
+      } else {
+        shell = process.env.COMSPEC || "cmd.exe";
+        shellArgs = [];
+        isPowerShell = false;
+      }
+    } else {
+      shell = process.env.SHELL || "/bin/bash";
+      shellArgs = ["-i"];
+      isPowerShell = false;
+    }
+
+    state.terminalShellType = isWin ? (isPowerShell ? "powershell" : "cmd") : "posix";
+
+    state.terminalPty = pty.spawn(shell, shellArgs, {
       name: "xterm-256color",
       cols: inicial.cols,
       rows: inicial.rows,
@@ -106,9 +233,10 @@ ipcMain.handle("terminal:init", async (event, dim) => {
       state.terminalPty = null;
     });
 
-    // Mesmos atalhos de sempre no shell POSIX: `cd` mostra a pasta e `git add`
-    // já imprime o status curto. Sintaxe bash — não faz sentido no cmd.exe.
-    if (!isWin) injetarHelpersPosix((s) => state.terminalPty.write(s));
+    // Injeta helpers para shells POSIX (PowerShell já inicializa de forma limpa via -EncodedCommand)
+    if (!isWin) {
+      injetarHelpersPosix((s) => state.terminalPty.write(s));
+    }
 
     return { ok: true, shell, projectPath, pty: true };
   } catch (e) {

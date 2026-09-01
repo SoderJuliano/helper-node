@@ -485,7 +485,7 @@ var isTerminalInitialized = false;
             // a janela) muda cols/rows — e cols/rows errado é o corte na direita.
             if (termContainer && typeof ResizeObserver !== 'undefined') {
                 resizeObserver = new ResizeObserver(() => sincronizarTamanho());
-                resizeObserver.observe(termContainer);
+                [termContainer, document.getElementById('pane-terminal'), document.getElementById('terminal-screen')].forEach(el => { if (el) resizeObserver.observe(el); });
             }
             window.addEventListener('resize', sincronizarTamanho);
 
@@ -501,12 +501,11 @@ var isTerminalInitialized = false;
 
                 document.body.classList.remove('terminal-active', 'split-active', 'app-runner-active');
                 if (layoutClass === 'flex-layout-terminal' || layoutClass === 'flex-layout-split') {
-                    document.body.classList.add(
-                        layoutClass === 'flex-layout-terminal' ? 'terminal-active' : 'split-active'
-                    );
+                    document.body.classList.add(layoutClass === 'flex-layout-terminal' ? 'terminal-active' : 'split-active');
                     initTerminalProcess();
-                    // O painel acabou de ficar visível: só agora dá pra medir.
+                    // O painel acabou de ficar visível: sincroniza imediatamente e após a transição CSS (200ms)
                     setTimeout(() => { sincronizarTamanho(); if (term) term.focus(); }, 50);
+                    setTimeout(() => { sincronizarTamanho(); }, 250);
                 } else if (layoutClass === 'flex-layout-app-runner') {
                     document.body.classList.add('app-runner-active');
                 }
