@@ -191,6 +191,7 @@
   async function openGitDiffModal(projectPath) {
     currentProjectDir = projectPath || (window.ctxProject ? window.ctxProject.path : null) || null;
     modalContainer = initModal();
+    modalContainer.classList.add('is-open');
     modalContainer.style.display = 'flex';
     document.body.classList.add('git-diff-open');
 
@@ -239,6 +240,7 @@
 
   function closeGitDiffModal() {
     if (modalContainer) {
+      modalContainer.classList.remove('is-open');
       modalContainer.style.display = 'none';
     }
     document.body.classList.remove('git-diff-open');

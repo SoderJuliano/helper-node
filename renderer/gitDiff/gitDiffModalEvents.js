@@ -16,12 +16,30 @@
     const leftScroll = container.querySelector('#git-diff-pane-left-scroll');
     const rightScroll = container.querySelector('#git-diff-pane-right-scroll');
 
-    if (closeBtn) {
-      closeBtn.onclick = (e) => {
+    const triggerClose = (e) => {
+      if (e) {
+        e.preventDefault();
         e.stopPropagation();
-        if (typeof handlers.onClose === 'function') handlers.onClose();
-      };
+      }
+      if (typeof handlers.onClose === 'function') handlers.onClose();
+    };
+
+    if (closeBtn) {
+      closeBtn.onclick = triggerClose;
+      closeBtn.onmousedown = triggerClose;
     }
+
+    container.addEventListener('click', (e) => {
+      if (e.target && (e.target.closest('#git-diff-close-btn') || e.target.closest('.git-diff-close-btn'))) {
+        triggerClose(e);
+      }
+    });
+
+    container.addEventListener('mousedown', (e) => {
+      if (e.target && (e.target.closest('#git-diff-close-btn') || e.target.closest('.git-diff-close-btn'))) {
+        triggerClose(e);
+      }
+    });
 
     if (refreshBtn) {
       refreshBtn.onclick = (e) => {
@@ -78,10 +96,11 @@
 
     // Atalho ESC para fechar
     const onKeyDown = (ev) => {
-      if (container.style.display !== 'none' && ev.key === 'Escape') {
+      const isOpen = container.classList.contains('is-open') || (container.style.display && container.style.display !== 'none');
+      if (isOpen && ev.key === 'Escape') {
         ev.preventDefault();
         ev.stopPropagation();
-        if (typeof handlers.onClose === 'function') handlers.onClose();
+        triggerClose(ev);
       }
     };
     window.addEventListener('keydown', onKeyDown, true);

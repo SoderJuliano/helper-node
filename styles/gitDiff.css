@@ -8,12 +8,35 @@ body.git-diff-open { overflow: hidden !important; }
   width: 100vw !important; height: 100vh !important;
   z-index: 999999 !important;
   background: #181a1f !important;
-  display: flex !important; flex-direction: column !important;
+  display: none;
+  flex-direction: column;
   color: #e3e3e8 !important;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
   overflow: hidden !important; margin: 0 !important; padding: 0 !important;
-  box-sizing: border-box !important; -webkit-app-region: no-drag !important;
+  box-sizing: border-box !important;
+  -webkit-app-region: no-drag !important;
+  pointer-events: auto !important;
   user-select: auto !important;
+}
+
+.git-diff-modal-backdrop.is-open {
+  display: flex !important;
+}
+
+/* === Prevenção de Drag no Windows para Todos os Controles === */
+.git-diff-header,
+.git-diff-header-left,
+.git-diff-header-center,
+.git-diff-header-right,
+.git-diff-btn-icon,
+.git-diff-close-btn,
+.git-diff-file-toolbar,
+.git-diff-action-btn,
+.git-diff-sidebar,
+.git-diff-main,
+.git-diff-viewport {
+  -webkit-app-region: no-drag !important;
+  pointer-events: auto !important;
 }
 
 /* === Header Superior === */
@@ -22,6 +45,7 @@ body.git-diff-open { overflow: hidden !important; }
   background: #21252b; border-bottom: 1px solid #2d3139;
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 12px; gap: 12px; flex-shrink: 0; box-sizing: border-box;
+  position: relative; z-index: 10000 !important;
 }
 
 .git-diff-header-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
@@ -45,11 +69,12 @@ body.git-diff-open { overflow: hidden !important; }
   padding: 3px 10px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.git-diff-header-right { display: flex; align-items: center; gap: 6px; }
+.git-diff-header-right { display: flex; align-items: center; gap: 6px; z-index: 10001 !important; }
 .git-diff-btn-icon, .git-diff-close-btn {
   background: transparent; border: 1px solid transparent; color: #abb2bf;
   width: 28px; height: 28px; border-radius: 4px; display: flex;
   align-items: center; justify-content: center; cursor: pointer; transition: all 0.15s ease;
+  user-select: none;
 }
 .git-diff-btn-icon:hover { background: rgba(255, 255, 255, 0.08); color: #ffffff; }
 .git-diff-close-btn:hover {
