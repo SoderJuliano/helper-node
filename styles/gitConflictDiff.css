@@ -1,10 +1,9 @@
 /* styles/gitConflictDiff.css
-   Estilos de tabelas de diff, botões de ação na calha (gutter) e CodeMirror central */
+   Estilos de tabelas de diff, calha de números e botões de ação simétricos */
 
 /* Tabela de Linhas do Diff */
 .git-conflict-table {
   width: 100%;
-  min-width: 100%;
   border-collapse: collapse;
   table-layout: auto;
   box-sizing: border-box;
@@ -18,31 +17,32 @@
 }
 
 .git-conflict-row:hover {
-  background: rgba(255, 255, 255, 0.08) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
 }
 
+/* Coluna de Número de Linha (40px) */
 .git-conflict-gutter-num {
-  width: 44px;
-  min-width: 44px;
-  max-width: 44px;
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
   text-align: right;
-  padding-right: 6px;
-  color: #555555;
+  padding-right: 8px;
+  color: #636d83;
   user-select: none;
   font-size: 11px;
+  font-family: "JetBrains Mono", Consolas, monospace;
   height: 20px;
   line-height: 20px;
   box-sizing: border-box;
-  background: rgba(0, 0, 0, 0.25);
-  position: sticky;
-  left: 0;
-  z-index: 2;
+  background: #1e1e24;
+  border-right: 1px solid rgba(255, 255, 255, 0.04);
 }
 
+/* Coluna de Ação (Botões de aceitar » / « e ignorar ✕) (32px) */
 .git-conflict-gutter-action {
-  width: 38px;
-  min-width: 38px;
-  max-width: 38px;
+  width: 32px !important;
+  min-width: 32px !important;
+  max-width: 32px !important;
   text-align: center;
   user-select: none;
   height: 20px;
@@ -52,20 +52,20 @@
   align-items: center;
   justify-content: center;
   gap: 2px;
-  background: rgba(0, 0, 0, 0.25);
-  position: sticky;
-  left: 44px;
-  z-index: 2;
+  background: #1e1e24;
 }
 
+/* Célula com Código Fonte */
 .git-conflict-code-cell {
   padding-left: 8px;
   padding-right: 16px;
   white-space: pre;
-  color: #d4d4d4;
+  color: #abb2bf;
   height: 20px;
   line-height: 20px;
   box-sizing: border-box;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 12px;
 }
 
 /* Spacer rows */
@@ -88,63 +88,65 @@
   height: 16px;
   border-radius: 3px;
   font-size: 10px;
-  font-weight: bold;
   cursor: pointer;
   border: 1px solid transparent;
   line-height: 1;
   padding: 0;
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.06);
   transition: all 0.12s ease;
+  user-select: none;
+  flex-shrink: 0;
 }
 
 .chunk-action-btn svg {
   width: 12px;
   height: 12px;
+  pointer-events: none;
 }
 
 .chunk-btn-accept-left {
-  color: #58a6ff;
-  border-color: rgba(88, 166, 255, 0.3);
+  color: #61afef;
+  border-color: rgba(97, 175, 239, 0.3);
 }
 
 .chunk-btn-accept-left:hover {
-  background: #1f6feb;
+  background: #4d78cc;
   color: #ffffff;
-  border-color: #58a6ff;
+  border-color: #61afef;
 }
 
 .chunk-btn-accept-right {
-  color: #3fb950;
-  border-color: rgba(63, 185, 80, 0.3);
+  color: #98c379;
+  border-color: rgba(152, 195, 121, 0.3);
 }
 
 .chunk-btn-accept-right:hover {
-  background: #238636;
+  background: #2ea043;
   color: #ffffff;
-  border-color: #3fb950;
+  border-color: #98c379;
 }
 
 .chunk-btn-ignore {
-  color: #858585;
+  color: #636d83;
 }
 
 .chunk-btn-ignore:hover {
   color: #ffffff;
-  background: #da3633;
-  border-color: #f85149;
+  background: #e06c75;
+  border-color: #e06c75;
 }
 
 /* Estado de Aceito / Aplicado no Botão */
 .chunk-action-btn.is-accepted {
-  background: #238636 !important;
+  background: #2ea043 !important;
   color: #ffffff !important;
-  border-color: #3fb950 !important;
+  border-color: #98c379 !important;
 }
 
 .chunk-action-btn.is-ignored {
-  background: rgba(248, 81, 73, 0.25) !important;
-  color: #f85149 !important;
-  border-color: rgba(248, 81, 73, 0.4) !important;
+  background: rgba(224, 108, 117, 0.25) !important;
+  color: #e06c75 !important;
+  border-color: rgba(224, 108, 117, 0.4) !important;
 }
 
 /* Destaque dos Chunks */
@@ -153,62 +155,56 @@
 }
 
 .chunk-row-left-only {
-  background: rgba(56, 139, 253, 0.08);
+  background: rgba(97, 175, 239, 0.08);
 }
-
 .chunk-row-left-only .git-conflict-gutter-action {
-  border-left: 2px solid #388bfd;
+  border-left: 2px solid #61afef;
 }
 
 .chunk-row-right-only {
-  background: rgba(63, 185, 80, 0.08);
+  background: rgba(152, 195, 121, 0.08);
 }
-
 .chunk-row-right-only .git-conflict-gutter-action {
-  border-left: 2px solid #3fb950;
+  border-left: 2px solid #98c379;
 }
 
 /* Conflito Pendente */
-.chunk-row-conflict {
-  background: rgba(248, 81, 73, 0.12);
-}
-
 .left-col .chunk-row-conflict {
-  background: rgba(56, 139, 253, 0.12);
-  border-left: 2px solid #388bfd;
+  background: rgba(97, 175, 239, 0.12);
+  border-left: 2px solid #61afef;
 }
 
 .right-col .chunk-row-conflict {
-  background: rgba(63, 185, 80, 0.12);
-  border-left: 2px solid #3fb950;
+  background: rgba(152, 195, 121, 0.12);
+  border-left: 2px solid #98c379;
 }
 
 .chunk-row-active-conflict {
-  outline: 1px solid rgba(248, 81, 73, 0.8) !important;
+  outline: 1px solid rgba(229, 192, 123, 0.8) !important;
   outline-offset: -1px;
 }
 
-/* Lado Aceito no Resultado (Visual Limpo e Confortável) */
+/* Lado Aceito no Resultado (Limpo e Elegante) */
 .chunk-row-accepted-side {
-  background: rgba(35, 134, 54, 0.15) !important;
-  border-left: 3px solid #3fb950 !important;
+  background: rgba(152, 195, 121, 0.14) !important;
+  border-left: 3px solid #98c379 !important;
   opacity: 1 !important;
 }
 
 .chunk-row-accepted-side .git-conflict-code-cell {
-  color: #e6edf3 !important;
+  color: #ffffff !important;
 }
 
 /* Lado Rejeitado / Descartado (Muted / Cinza discreto) */
 .chunk-row-rejected-side {
   opacity: 0.35 !important;
   text-decoration: line-through !important;
-  background: rgba(0, 0, 0, 0.25) !important;
+  background: rgba(0, 0, 0, 0.15) !important;
   border-left: 2px solid transparent !important;
 }
 
 .chunk-row-rejected-side .git-conflict-code-cell {
-  color: #7d8590 !important;
+  color: #5c6370 !important;
 }
 
 /* Editor Central (CodeMirror no Centro) */
@@ -220,15 +216,20 @@
   bottom: 0 !important;
   width: 100% !important;
   height: 100% !important;
-  background: #1e1e1e !important;
+  background: #1e1e24 !important;
   font-family: "JetBrains Mono", Consolas, monospace !important;
   font-size: 12px !important;
   line-height: 20px !important;
 }
 
 .git-conflict-col.center-col .CodeMirror-gutters {
-  background: #252526;
-  border-right: 1px solid #2d2d2d;
+  background: #21252b !important;
+  border-right: 1px solid #282c34 !important;
+}
+
+.git-conflict-col.center-col .CodeMirror-linenumber {
+  color: #636d83 !important;
+  padding: 0 5px 0 5px !important;
 }
 
 .git-conflict-col.center-col .CodeMirror-scroll {
@@ -240,11 +241,11 @@
 
 /* Linhas de Conflito no Editor Central */
 .cm-conflict-line {
-  background: rgba(248, 81, 73, 0.15) !important;
+  background: rgba(224, 108, 117, 0.15) !important;
 }
 
 .cm-conflict-marker-line {
-  background: rgba(248, 81, 73, 0.3) !important;
-  color: #ff7b72 !important;
+  background: rgba(224, 108, 117, 0.3) !important;
+  color: #e06c75 !important;
   font-weight: bold;
 }

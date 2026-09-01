@@ -85,7 +85,7 @@
           <div class="git-conflict-col-header">
             <div class="git-conflict-col-title">
               <span class="col-tag-left">Sua Versão (Local)</span>
-              <span id="git-conflict-label-left" style="color:#858585; font-weight:normal;"></span>
+              <span id="git-conflict-label-left" style="color:#8a8a95; font-weight:normal;"></span>
             </div>
           </div>
           <div class="git-conflict-editor-container" id="git-conflict-left-container">
@@ -98,7 +98,7 @@
             <div class="git-conflict-col-title">
               <span class="col-tag-center">Resultado do Merge (Editável)</span>
             </div>
-            <span id="git-conflict-center-stats" style="font-size:11px; color:#858585;"></span>
+            <span id="git-conflict-center-stats" style="font-size:11px; color:#8a8a95;"></span>
           </div>
           <div class="git-conflict-editor-container" id="git-conflict-center-container">
             <textarea id="git-conflict-cm-textarea"></textarea>
@@ -109,7 +109,7 @@
           <div class="git-conflict-col-header">
             <div class="git-conflict-col-title">
               <span class="col-tag-right">Versão de Entrada (Incoming)</span>
-              <span id="git-conflict-label-right" style="color:#858585; font-weight:normal;"></span>
+              <span id="git-conflict-label-right" style="color:#8a8a95; font-weight:normal;"></span>
             </div>
           </div>
           <div class="git-conflict-editor-container" id="git-conflict-right-container">
@@ -237,6 +237,10 @@
         tr.className = `git-conflict-row ${rowClassRight}${!isActualLine ? ' chunk-row-spacer' : ''}`;
         tr.dataset.chunkId = chunk.id;
 
+        const tdNum = document.createElement('td');
+        tdNum.className = 'git-conflict-gutter-num';
+        tdNum.textContent = isActualLine ? String(chunk.rightStartLine + i) : '';
+
         const tdAction = document.createElement('td');
         tdAction.className = 'git-conflict-gutter-action';
 
@@ -266,16 +270,12 @@
           tdAction.appendChild(btnIgnore);
         }
 
-        const tdNum = document.createElement('td');
-        tdNum.className = 'git-conflict-gutter-num';
-        tdNum.textContent = isActualLine ? String(chunk.rightStartLine + i) : '';
-
         const tdCode = document.createElement('td');
         tdCode.className = 'git-conflict-code-cell';
         tdCode.textContent = isActualLine ? (lineText || '\u00A0') : '\u00A0';
 
-        tr.appendChild(tdAction);
         tr.appendChild(tdNum);
+        tr.appendChild(tdAction);
         tr.appendChild(tdCode);
         fragRight.appendChild(tr);
       }
