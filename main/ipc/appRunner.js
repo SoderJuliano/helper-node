@@ -135,6 +135,18 @@ module.exports = function registerAppRunnerIpc() {
     }
   });
 
+  ipcMain.handle('app-runner-find-test-location', async (event, { projectDir, className, methodName } = {}) => {
+    try {
+      const loc = AppRunnerService.findTestLocation(projectDir, className, methodName);
+      if (loc) {
+        return { ok: true, data: loc };
+      }
+      return { ok: false, error: 'Localização do teste não encontrada' };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
+
   ipcMain.on('open-app-runner-config', (event, projectDir) => {
     try {
       if (state.mainWindow && !state.mainWindow.isDestroyed()) {

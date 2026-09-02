@@ -7,10 +7,11 @@
   const ICON_SKIP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
 
   class TestResultsViewer {
-    constructor(containerEl, countEl) {
+    constructor(containerEl, countEl, onTestClick) {
       this.containerEl = containerEl;
       this.countEl = countEl;
-      this.tests = new Map(); // key -> { className, methodName, status, duration }
+      this.onTestClick = onTestClick;
+      this.tests = new Map(); // key -> { className, methodName, status, duration, failureMessage }
       this.counts = { passed: 0, failed: 0, skipped: 0 };
     }
 
@@ -74,9 +75,17 @@
         const item = document.createElement('div');
         item.className = `app-runner-test-item ${test.status}`;
         const ic = test.status === 'passed' ? ICON_PASS : (test.status === 'failed' ? ICON_FAIL : ICON_SKIP);
-        const timeHtml = test.duration ? `<span style="margin-left:auto;font-size:10px;opacity:0.6;">${typeof test.duration === 'number' ? (test.duration >= 1 ? test.duration.toFixed(2) + 's' : Math.round(test.duration * 1000) + 'ms') : test.duration}</span>` : '';
-        item.innerHTML = `${ic}<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${test.methodName}</span>${timeHtml}`;
-        item.title = `${test.className ? test.className + '.' : ''}${test.methodName} (${test.status})${test.failureMessage ? '\n' + test.failureMessage : ''}`;
+        const timeHtml = test.duration ? `<span style="margin-left:auto;font-size:10px;opacity:0.6;flex-shrink:0;">${typeof test.duration === 'number' ? (test.duration >= 1 ? test.duration.toFixed(2) + 's' : Math.round(test.duration * 1000) + 'ms') : test.duration}</span>` : '';
+        
+        item.innerHTML = `${ic}<span class="test-name" title="${test.className ? test.className + '.' : ''}${test.methodName}">${test.methodName}</span>${timeHtml}<span class="test-jump-icon" title="Abrir código do teste no editor">↗</span>`;
+        item.title = `${test.className ? test.className + '.' : ''}${test.methodName} (${test.status})\nClique para ir até o código do teste no editor${test.failureMessage ? '\n\nFalha:\n' + test.failureMessage : ''}`;
+
+        item.addEventListener('click', () => {
+          if (typeof this.onTestClick === 'function') {
+            this.onTestClick(test);
+          }
+        });
+
         this.containerEl.appendChild(item);
       }
     }

@@ -358,6 +358,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     return ipcRenderer.invoke("app-runner-save-config", payload);
   },
   appRunnerReimportIntelliJ: (projectDir) => ipcRenderer.invoke("app-runner-reimport-intellij", projectDir),
+  appRunnerFindTestLocation: (payload) => ipcRenderer.invoke("app-runner-find-test-location", payload),
   openAppRunnerConfig: (projectDir) => ipcRenderer.send("open-app-runner-config", projectDir),
   onOpenAppRunnerConfigModal: (cb) => ipcRenderer.on("open-app-runner-config-modal", (event, projectDir) => cb(projectDir)),
   onAppRunnerStreamChunk: (cb) => ipcRenderer.on("app-runner-stream-chunk", (event, chunk) => cb(chunk)),

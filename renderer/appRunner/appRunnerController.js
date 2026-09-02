@@ -60,12 +60,14 @@
       this._wireIpcEvents();
       this._wireUiEvents();
       this._wireResizer();
+      this._wireHorizontalResizer();
     }
 
     _initElements() {
       this.paneEl = document.getElementById('pane-app-runner');
       this.tabBtn = document.getElementById('tab-btn-app-runner');
       this.resizerEl = document.getElementById('app-runner-resizer');
+      this.splitResizerEl = document.getElementById('app-runner-split-resizer');
       this.targetNameEl = document.getElementById('app-runner-target-name');
       this.statusBadgeEl = document.getElementById('app-runner-status-badge');
       this.portLinkEl = document.getElementById('app-runner-port-link');
@@ -86,8 +88,15 @@
         this.paneEl.style.height = savedH;
       }
 
+      const savedW = localStorage.getItem('helper_app_runner_tests_width');
+      if (savedW && this.testsSidebarEl) {
+        this.testsSidebarEl.style.width = savedW;
+      }
+
       if (this.testsListEl && window.TestResultsViewer) {
-        this.testViewer = new window.TestResultsViewer(this.testsListEl, this.testsCountEl);
+        this.testViewer = new window.TestResultsViewer(this.testsListEl, this.testsCountEl, (test) => {
+          this.navigateToTest(test);
+        });
       }
     }
 
@@ -127,6 +136,43 @@
       this.resizerEl.addEventListener('mousedown', onMouseDown);
     }
 
+    _wireHorizontalResizer() {
+      if (!this.splitResizerEl || !this.testsSidebarEl) return;
+
+      let startX = 0;
+      let startW = 0;
+
+      const onMouseDown = (e) => {
+        e.preventDefault();
+        startX = e.clientX;
+        startW = this.testsSidebarEl.offsetWidth;
+        this.splitResizerEl.classList.add('resizing');
+        document.body.style.cursor = 'ew-resize';
+        document.body.style.userSelect = 'none';
+
+        const onMouseMove = (me) => {
+          // Puxar o divisor para a esquerda (dx positivo) aumenta a largura da sidebar
+          const dx = startX - me.clientX;
+          const maxW = Math.max(200, Math.min(window.innerWidth * 0.75, startW + dx));
+          this.testsSidebarEl.style.width = `${maxW}px`;
+        };
+
+        const onMouseUp = () => {
+          this.splitResizerEl.classList.remove('resizing');
+          document.body.style.cursor = '';
+          document.body.style.userSelect = '';
+          window.removeEventListener('mousemove', onMouseMove);
+          window.removeEventListener('mouseup', onMouseUp);
+          localStorage.setItem('helper_app_runner_tests_width', this.testsSidebarEl.style.width);
+        };
+
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+      };
+
+      this.splitResizerEl.addEventListener('mousedown', onMouseDown);
+    }
+
     _wireIpcEvents() {
       if (!window.electronAPI) return;
 
@@ -146,6 +192,7 @@
         window.electronAPI.onAppRunnerTestEvent((testData) => {
           if (this.testViewer) this.testViewer.addTestEvent(testData);
           if (this.testsSidebarEl) this.testsSidebarEl.style.display = 'flex';
+          if (this.splitResizerEl) this.splitResizerEl.style.display = 'block';
         });
       }
 
@@ -153,6 +200,7 @@
         window.electronAPI.onAppRunnerTestSummary((summaryData) => {
           if (this.testViewer) this.testViewer.setSummary(summaryData);
           if (this.testsSidebarEl) this.testsSidebarEl.style.display = 'flex';
+          if (this.splitResizerEl) this.splitResizerEl.style.display = 'block';
         });
       }
 
@@ -215,6 +263,41 @@
       }
     }
 
+    async navigateToTest(test) {
+      if (!test) return;
+      const wsProjectMain = document.getElementById('ws-project-main');
+      const wsPath = wsProjectMain && wsProjectMain.dataset ? wsProjectMain.dataset.path : null;
+      const projectDir = this.lastProjectDir || (window.ctxProject ? window.ctxProject.path : null) || (window.workspaceContext ? window.workspaceContext.projectPath : null) || wsPath;
+
+      let targetFile = null;
+      let lineNum = 1;
+
+      if (window.electronAPI && window.electronAPI.appRunnerFindTestLocation) {
+        try {
+          const res = await window.electronAPI.appRunnerFindTestLocation({
+            projectDir,
+            className: test.className,
+            methodName: test.methodName,
+          });
+          if (res && res.ok && res.data && res.data.filePath) {
+            targetFile = res.data.filePath;
+            lineNum = res.data.line || 1;
+          }
+        } catch (_) {}
+      }
+
+      if (!targetFile && test.className) {
+        targetFile = `${test.className.split('.').pop()}.java`;
+      }
+
+      if (targetFile && typeof window.openFileViewer === 'function') {
+        window.openFileViewer(targetFile, lineNum);
+        if (typeof window.showToast === 'function') {
+          window.showToast(`Navegando para o teste: ${test.methodName}`);
+        }
+      }
+    }
+
     async run(projectDir, target = {}) {
       this.lastProjectDir = projectDir;
       this.lastTarget = target;
@@ -223,8 +306,10 @@
 
       if (target.kind && target.kind.startsWith('test')) {
         if (this.testsSidebarEl) this.testsSidebarEl.style.display = 'flex';
+        if (this.splitResizerEl) this.splitResizerEl.style.display = 'block';
       } else {
         if (this.testsSidebarEl) this.testsSidebarEl.style.display = 'none';
+        if (this.splitResizerEl) this.splitResizerEl.style.display = 'none';
       }
 
       const displayName = target.displayName || target.mainClass || (target.testMethod ? `${target.testClass}.${target.testMethod}` : 'App');

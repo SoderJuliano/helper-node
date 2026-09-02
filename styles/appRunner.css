@@ -308,6 +308,7 @@
     min-height: 0;
     overflow: hidden;
     background: #090a0f;
+    position: relative;
 }
 
 .app-runner-output-container {
@@ -336,13 +337,51 @@
     color: #7dd3fc;
 }
 
+/* Divisória Redimensionável Horizontal (Splitter entre Logs e Testes) */
+.app-runner-split-resizer {
+    width: 6px;
+    cursor: ew-resize;
+    background: var(--border, #2d2d38);
+    flex-shrink: 0;
+    transition: background 0.15s ease, box-shadow 0.15s ease;
+    user-select: none;
+    position: relative;
+    z-index: 10;
+}
+
+.app-runner-split-resizer:hover,
+.app-runner-split-resizer.resizing {
+    background: #38bdf8;
+    box-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
+}
+
 .app-runner-tests-sidebar {
-    width: 280px;
-    border-left: 1px solid var(--border, #2d2d38);
+    width: 340px;
+    min-width: 220px;
+    max-width: 70vw;
     background: var(--bg-sidebar, #16181d);
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
+}
+
+/* Responsividade em Telas Maiores (Full HD, 2K, 4K) */
+@media (min-width: 1920px) {
+    .app-runner-tests-sidebar {
+        width: 400px;
+    }
+}
+
+@media (min-width: 2560px) {
+    .app-runner-tests-sidebar {
+        width: 500px;
+    }
+}
+
+@media (min-width: 3840px) {
+    .app-runner-tests-sidebar {
+        width: 640px;
+    }
 }
 
 .app-runner-tests-header {
@@ -369,21 +408,35 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 4px 8px;
+    padding: 5px 8px;
     border-radius: 4px;
     font-size: 11.5px;
     font-family: var(--font-mono, monospace);
     color: var(--text-2, #a1a1aa);
-    transition: background 0.1s;
+    cursor: pointer;
+    transition: all 0.12s ease;
+    user-select: none;
+    position: relative;
 }
 
 .app-runner-test-item:hover {
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
+}
+
+.app-runner-test-item.passed:hover {
+    background: rgba(74, 222, 128, 0.14);
+    color: #bbf7d0;
+}
+
+.app-runner-test-item.failed:hover {
+    background: rgba(248, 113, 113, 0.18);
+    color: #fecaca;
 }
 
 .app-runner-test-item svg {
-    width: 12px;
-    height: 12px;
+    width: 13px;
+    height: 13px;
     flex-shrink: 0;
 }
 
@@ -391,3 +444,23 @@
 .app-runner-test-item.failed { color: #fca5a5; }
 .app-runner-test-item.failed svg { color: #f87171; }
 .app-runner-test-item.skipped svg { color: #94a3b8; }
+
+.app-runner-test-item .test-name {
+    flex: 1 1 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.app-runner-test-item .test-jump-icon {
+    opacity: 0;
+    font-size: 11px;
+    color: #38bdf8;
+    margin-left: 4px;
+    transition: opacity 0.15s ease;
+    flex-shrink: 0;
+}
+
+.app-runner-test-item:hover .test-jump-icon {
+    opacity: 0.9;
+}

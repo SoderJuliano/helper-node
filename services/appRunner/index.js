@@ -116,6 +116,88 @@ class AppRunnerService {
   static getStatus() {
     return activeRunner.getStatus();
   }
+
+  /**
+   * Localiza o arquivo .java e a linha exata de um método de teste JUnit no projeto.
+   * @param {string} projectDir Diretório do projeto
+   * @param {string} className Nome da classe (ex: 'UserServiceTest' ou 'com.example.UserServiceTest')
+   * @param {string} [methodName] Nome do método de teste (ex: 'shouldCreateUser')
+   * @returns {{ filePath: string, line: number, className: string, methodName: string } | null}
+   */
+  static findTestLocation(projectDir, className, methodName) {
+    if (!projectDir || !fs.existsSync(projectDir)) {
+      return null;
+    }
+
+    const simpleName = className ? className.split('.').pop() : '';
+    const cleanMethod = methodName ? methodName.replace(/\(.*?\)$/, '').trim() : '';
+
+    const findFile = (dir, targetFileName, depth = 0) => {
+      if (depth > 8 || !dir || !fs.existsSync(dir)) return null;
+      const skip = new Set(['node_modules', '.git', '.gradle', 'build', 'target', '.idea', 'dist', '.gemini']);
+      try {
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const ent of entries) {
+          const full = path.join(dir, ent.name);
+          if (ent.isDirectory()) {
+            if (!skip.has(ent.name)) {
+              const res = findFile(full, targetFileName, depth + 1);
+              if (res) return res;
+            }
+          } else if (ent.isFile()) {
+            if (ent.name.toLowerCase() === targetFileName.toLowerCase()) {
+              return full;
+            }
+          }
+        }
+      } catch (_) {}
+      return null;
+    };
+
+    let targetFilePath = null;
+    if (simpleName) {
+      targetFilePath = findFile(projectDir, `${simpleName}.java`);
+    }
+
+    if (!targetFilePath) {
+      return null;
+    }
+
+    try {
+      const source = fs.readFileSync(targetFilePath, 'utf8');
+      const parsed = JavaParser.parse(source, targetFilePath);
+      let line = parsed.classLine || 1;
+
+      if (cleanMethod && parsed.testMethods && parsed.testMethods.length > 0) {
+        const foundMethod = parsed.testMethods.find(m => m.name === cleanMethod || m.name.toLowerCase() === cleanMethod.toLowerCase());
+        if (foundMethod) {
+          line = foundMethod.line || foundMethod.methodLine || line;
+        } else {
+          const lines = source.split(/\r?\n/);
+          for (let i = 0; i < lines.length; i++) {
+            if (lines[i].includes(cleanMethod)) {
+              line = i + 1;
+              break;
+            }
+          }
+        }
+      }
+
+      return {
+        filePath: targetFilePath,
+        line,
+        className: parsed.className || simpleName,
+        methodName: cleanMethod,
+      };
+    } catch (_) {
+      return {
+        filePath: targetFilePath,
+        line: 1,
+        className: simpleName,
+        methodName: cleanMethod,
+      };
+    }
+  }
 }
 
 module.exports = {
