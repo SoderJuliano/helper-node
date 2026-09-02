@@ -44,7 +44,7 @@ try {
   fs.unlinkSync(fitResult.tempFile);
   console.log('  ok   fitPromptToCommandLine salvou prompt gigante de forma integra sem estourar limite do SO');
 
-  // 4. Testa Provider com mock sender
+  // 4. Testa Provider com mock sender e controle de esforço de raciocínio (Reasoning Effort)
   let phaseUpdates = [];
   let chunks = [];
   let completeEmitted = false;
@@ -59,7 +59,31 @@ try {
   assert(typeof CopilotCliProvider.send === 'function', 'CopilotCliProvider deve exportar send()');
   assert(typeof CopilotCliProvider.abortCurrent === 'function', 'CopilotCliProvider deve exportar abortCurrent()');
   assert(typeof CopilotCliProvider.shutdown === 'function', 'CopilotCliProvider deve exportar shutdown()');
-  console.log('  ok   CopilotCliProvider exporta metodos publicos de ciclo de vida');
+  assert(typeof CopilotCliProvider.setEffort === 'function', 'CopilotCliProvider deve exportar setEffort()');
+  assert(typeof CopilotCliProvider.getEffort === 'function', 'CopilotCliProvider deve exportar getEffort()');
+
+  CopilotCliProvider.setEffort('high');
+  assert.strictEqual(CopilotCliProvider.getEffort(), 'high', 'getEffort deve retornar "high"');
+  CopilotCliProvider.setEffort('low');
+  assert.strictEqual(CopilotCliProvider.getEffort(), 'low', 'getEffort deve retornar "low"');
+  console.log('  ok   CopilotCliProvider exporta metodos publicos e controle de Reasoning Effort (Low/Medium/High)');
+
+  // 5. Testa formatação de rótulos e catálogo de modelos Copilot
+  const { formatCopilotLabel, getModels } = require('../services/providers/copilot-cli/CopilotCliModels');
+  assert.strictEqual(formatCopilotLabel('claude-opus-5'), 'Claude Opus 5');
+  assert.strictEqual(formatCopilotLabel('claude-sonnet-5'), 'Claude Sonnet 5');
+  assert.strictEqual(formatCopilotLabel('gpt-5.6-terra'), 'GPT-5.6 Terra');
+  assert.strictEqual(formatCopilotLabel('gpt-5.6-sol'), 'GPT-5.6 Sol');
+  assert.strictEqual(formatCopilotLabel('gpt-5.6-luna'), 'GPT-5.6 Luna');
+  assert.strictEqual(formatCopilotLabel('kimi-k3'), 'Kimi K3');
+  assert.strictEqual(formatCopilotLabel('grok-4.6'), 'Grok 4.6');
+  assert.strictEqual(formatCopilotLabel('mai-code-1-flash-picker'), 'MAI-Code-1.1-Flash');
+  console.log('  ok   formatCopilotLabel formata corretamente todos os modelos corporativos');
+
+  const configService = require('../services/configService');
+  assert(typeof configService.getCopilotCliReasoningEffort === 'function', 'configService deve ter getCopilotCliReasoningEffort');
+  assert(typeof configService.setCopilotCliReasoningEffort === 'function', 'configService deve ter setCopilotCliReasoningEffort');
+  console.log('  ok   configService possui getters e setters de copilotCliReasoningEffort');
 
   console.log('\nTodos os testes de Estabilidade e Recursos do Copilot CLI passaram com sucesso! 🎉\n');
 } finally {

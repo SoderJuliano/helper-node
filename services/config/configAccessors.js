@@ -152,6 +152,16 @@ function createAccessors(ctx) {
       save();
     },
 
+    getCopilotCliReasoningEffort() {
+      return get().copilotCliReasoningEffort || defaultConfig.copilotCliReasoningEffort;
+    },
+
+    setCopilotCliReasoningEffort(effort) {
+      const cfg = get();
+      cfg.copilotCliReasoningEffort = effort || defaultConfig.copilotCliReasoningEffort;
+      save();
+    },
+
     getBackendModel() {
       return get().backendModel || '';
     },

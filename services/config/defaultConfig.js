@@ -26,6 +26,7 @@ const defaultConfig = {
   geminiCliModel: "gemini-2.5-flash",
   claudeCliModel: "sonnet",
   copilotCliModel: "claude-sonnet-4.5",
+  copilotCliReasoningEffort: "medium",
   backendApiKey: "",
   micDevice: "",
   translationAssistant: {

@@ -120,11 +120,54 @@ function parseModelIdsFromHelpConfig(out) {
   return ids;
 }
 
-// O CLI só devolve o ID; o label exibido é o próprio ID (nada de inventar
-// "Claude Sonnet 4.6" a partir de "claude-sonnet-4.6" — o que a UI mostra é
-// exatamente o que o --model aceita, então não há como divergir).
+function formatCopilotLabel(id) {
+  if (!id) return '';
+  if (id === 'auto') return 'auto';
+  const KNOWN_LABELS = {
+    'claude-opus-5': 'Claude Opus 5',
+    'claude-sonnet-5': 'Claude Sonnet 5',
+    'claude-fable-5': 'Claude Fable 5',
+    'claude-opus-4.8': 'Claude Opus 4.8',
+    'claude-opus-4.8-fast': 'Claude Opus 4.8 Fast',
+    'claude-opus-4.7': 'Claude Opus 4.7',
+    'claude-sonnet-4.6': 'Claude Sonnet 4.6',
+    'claude-opus-4.6': 'Claude Opus 4.6',
+    'claude-sonnet-4.5': 'Claude Sonnet 4.5',
+    'claude-opus-4.5': 'Claude Opus 4.5',
+    'claude-haiku-4.5': 'Claude Haiku 4.5',
+    'gpt-5.6-terra': 'GPT-5.6 Terra',
+    'gpt-5.6-sol': 'GPT-5.6 Sol',
+    'gpt-5.6-luna': 'GPT-5.6 Luna',
+    'gpt-5.5': 'GPT-5.5',
+    'gpt-5.4': 'GPT-5.4',
+    'gpt-5.4-mini': 'GPT-5.4 Mini',
+    'gpt-5.3-codex': 'GPT-5.3 Codex',
+    'gpt-5-mini': 'GPT-5 Mini',
+    'gemini-3.7-flash': 'Gemini 3.7 Flash',
+    'gemini-3.6-flash': 'Gemini 3.6 Flash',
+    'gemini-3.5-flash': 'Gemini 3.5 Flash',
+    'gemini-3.1-pro-preview': 'Gemini 3.1 Pro Preview',
+    'grok-4.6': 'Grok 4.6',
+    'grok-4.5': 'Grok 4.5',
+    'kimi-k3': 'Kimi K3',
+    'kimi-k2.7-code': 'Kimi K2.7 Code',
+    'mai-code-1.1-flash': 'MAI-Code-1.1-Flash',
+    'mai-code-1-flash-picker': 'MAI-Code-1.1-Flash',
+  };
+  if (KNOWN_LABELS[id]) return KNOWN_LABELS[id];
+  return id
+    .split('-')
+    .map((p) => {
+      const low = p.toLowerCase();
+      if (low === 'gpt') return 'GPT';
+      if (low === 'mai') return 'MAI';
+      return p.charAt(0).toUpperCase() + p.slice(1);
+    })
+    .join(' ');
+}
+
 function toModels(ids) {
-  return ids.map(id => ({ id, label: id }));
+  return ids.map((id) => ({ id, label: formatCopilotLabel(id) }));
 }
 
 async function fetchModels() {
@@ -138,7 +181,7 @@ async function fetchModels() {
   const models = toModels(ids);
   // 'auto' não aparece na lista do help config, mas é aceito pelo --model e é
   // a 1ª opção do picker do próprio CLI. Só entra se o CLI respondeu de fato.
-  if (!models.some(m => m.id === 'auto')) {
+  if (!models.some((m) => m.id === 'auto')) {
     models.unshift({ id: 'auto', label: 'auto' });
   }
   return models;
@@ -148,29 +191,63 @@ async function fetchModels() {
 // conta é aplicada na saída, nunca no que é gravado — assim um modelo que a
 // org libere depois volta sozinho quando o registro expira, sem precisar
 // invalidar o cache do catálogo.
-async function getModels() {
-  return modelAccess.filterModels(await getCatalog());
+async function getModels(force = false) {
+  return modelAccess.filterModels(await getCatalog(force));
 }
 
 const DEFAULT_COPILOT_CATALOG = [
   { id: 'auto', label: 'auto' },
-  { id: 'gpt-4o', label: 'GPT-4o' },
-  { id: 'claude-3.5-sonnet', label: 'Claude 3.5 Sonnet' },
-  { id: 'o1-preview', label: 'o1-preview' }
+  { id: 'claude-opus-5', label: 'Claude Opus 5' },
+  { id: 'claude-sonnet-5', label: 'Claude Sonnet 5' },
+  { id: 'claude-fable-5', label: 'Claude Fable 5' },
+  { id: 'claude-opus-4.8', label: 'Claude Opus 4.8' },
+  { id: 'claude-opus-4.8-fast', label: 'Claude Opus 4.8 Fast' },
+  { id: 'claude-opus-4.7', label: 'Claude Opus 4.7' },
+  { id: 'claude-sonnet-4.6', label: 'Claude Sonnet 4.6' },
+  { id: 'claude-opus-4.6', label: 'Claude Opus 4.6' },
+  { id: 'claude-sonnet-4.5', label: 'Claude Sonnet 4.5' },
+  { id: 'claude-opus-4.5', label: 'Claude Opus 4.5' },
+  { id: 'claude-haiku-4.5', label: 'Claude Haiku 4.5' },
+  { id: 'gpt-5.6-terra', label: 'GPT-5.6 Terra' },
+  { id: 'gpt-5.6-sol', label: 'GPT-5.6 Sol' },
+  { id: 'gpt-5.6-luna', label: 'GPT-5.6 Luna' },
+  { id: 'gpt-5.5', label: 'GPT-5.5' },
+  { id: 'gpt-5.4', label: 'GPT-5.4' },
+  { id: 'gpt-5.4-mini', label: 'GPT-5.4 Mini' },
+  { id: 'gpt-5.3-codex', label: 'GPT-5.3 Codex' },
+  { id: 'gpt-5-mini', label: 'GPT-5 Mini' },
+  { id: 'gemini-3.7-flash', label: 'Gemini 3.7 Flash' },
+  { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash' },
+  { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash' },
+  { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro Preview' },
+  { id: 'grok-4.6', label: 'Grok 4.6' },
+  { id: 'grok-4.5', label: 'Grok 4.5' },
+  { id: 'kimi-k3', label: 'Kimi K3' },
+  { id: 'kimi-k2.7-code', label: 'Kimi K2.7 Code' },
+  { id: 'mai-code-1.1-flash', label: 'MAI-Code-1.1-Flash' },
+  { id: 'mai-code-1-flash-picker', label: 'MAI-Code-1.1-Flash' },
 ];
 
 // Catálogo sem filtro (o que o binário conhece). Usado pelo seletor via
 // getModels e pelo diagnóstico scripts/probe-copilot-models.js.
-async function getCatalog() {
-  if (cachedModels && Date.now() - lastFetchTime < MEMORY_TTL) return cachedModels;
+async function getCatalog(force = false) {
+  if (!force && cachedModels && Date.now() - lastFetchTime < MEMORY_TTL) return cachedModels;
 
   const disk = readDiskCache();
-  if (disk && !cachedModels) {
+  if (disk && !cachedModels && !force) {
     // Serve o último resultado bom na hora e revalida em segundo plano.
     cachedModels = disk;
     lastFetchTime = Date.now();
     refresh();
     return disk;
+  }
+
+  // Se force foi pedido ou não há cache, tenta buscar na hora
+  if (force || (!disk && !cachedModels)) {
+    try {
+      const live = await refresh();
+      if (live && live.length) return live;
+    } catch (_) {}
   }
 
   if (cachedModels) return cachedModels;
@@ -185,7 +262,7 @@ function refresh() {
   if (inFlight) return inFlight;
   inFlight = fetchModels()
     .then((models) => {
-      if (models) {
+      if (models && models.length) {
         cachedModels = models;
         lastFetchTime = Date.now();
         writeDiskCache(models);
@@ -206,5 +283,5 @@ function getDefaultModel() {
 
 module.exports = {
   DEFAULT_MODEL, getModels, getCatalog, getDefaultModel, refresh,
-  parseModelIdsFromHelpConfig,
+  parseModelIdsFromHelpConfig, formatCopilotLabel,
 };

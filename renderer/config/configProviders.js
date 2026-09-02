@@ -236,11 +236,11 @@
     } catch (_) {}
   }
 
-  async function populateCopilotCliModels(savedModel = null) {
+  async function populateCopilotCliModels(savedModel = null, forceRefresh = false) {
     if (!copilotCliModelSelect) return;
     const currentVal = savedModel || copilotCliModelSelect.value;
     try {
-      const models = await ipcRenderer.invoke('get-copilot-cli-models');
+      const models = await ipcRenderer.invoke('get-copilot-cli-models', forceRefresh);
       copilotCliModelSelect.innerHTML = '';
       if (models && models.length) {
         models.forEach(m => {
@@ -306,6 +306,7 @@
       copilotCliStatusResult.textContent = 'Verificando...';
       copilotCliStatusResult.style.color = '#888';
       try {
+        await populateCopilotCliModels(null, true);
         const res = await ipcRenderer.invoke('check-copilot-cli-installed');
         if (res && res.installed) {
           copilotCliStatusResult.innerHTML = '<span style="color:#9ef0a8">✓ Instalado</span>';
@@ -314,6 +315,29 @@
         }
       } catch (e) {
         copilotCliStatusResult.innerHTML = `<span style="color:#ff6b6b">${e.message}</span>`;
+      }
+    });
+  }
+
+  if (copilotResetBlockedBtn) {
+    copilotResetBlockedBtn.addEventListener('click', async () => {
+      if (copilotResetBlockedResult) {
+        copilotResetBlockedResult.textContent = 'Restaurando...';
+        copilotResetBlockedResult.style.color = '#888';
+      }
+      try {
+        await ipcRenderer.invoke('copilot-cli-reset-blocked-models');
+        await populateCopilotCliModels(null, true);
+        if (copilotResetBlockedResult) {
+          copilotResetBlockedResult.textContent = '✓ Restaurado';
+          copilotResetBlockedResult.style.color = '#9ef0a8';
+          setTimeout(() => { if (copilotResetBlockedResult) copilotResetBlockedResult.textContent = ''; }, 3000);
+        }
+      } catch (e) {
+        if (copilotResetBlockedResult) {
+          copilotResetBlockedResult.textContent = 'Erro ao restaurar';
+          copilotResetBlockedResult.style.color = '#ff6b6b';
+        }
       }
     });
   }

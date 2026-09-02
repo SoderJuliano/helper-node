@@ -45,12 +45,14 @@ async function handleSendToGeminiStream(event, text, sessionId) {
     const _augTxtO2 = _kbO2 ? _kbO2 + "\n\n---\n\n" + _wsTxtO2 : _wsTxtO2;
     const _htO2 = helpers.buildHelperToolsOpenAIOpts(_augTxtO2, instructionO2, configService.getOpenAiModel());
 
+    const _finalBackendPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(_augTxtO2);
+
     if (_htO2.opts && _htO2.opts.tools && _htO2.opts.onToolCall) {
       const AgentService = require('../../services/backendAgentService');
       if (await AgentService.suportaAgente()) {
         console.log("IPC: modo AGENTE (tool calling nativo via /agent)");
         await AgentService.agentStream(
-          _augTxtO2,
+          _finalBackendPrompt,
           (chunk) => { event.sender.send("gemini-stream-chunk", chunk); },
           () => { event.sender.send("gemini-stream-complete"); },
           (error) => {
@@ -75,7 +77,7 @@ async function handleSendToGeminiStream(event, text, sessionId) {
     }
 
     await BackendService.responderStream(
-      _augTxtO2,
+      _finalBackendPrompt,
       (chunk) => {
         event.sender.send("gemini-stream-chunk", chunk);
       },
@@ -137,9 +139,10 @@ async function handleSendToGeminiImageStream(event, { text, image, sessionId }) 
     const _kb = await helpers.knowledgeBlockForOllama(text);
     const _augTxt = _kb ? _kb + "\n\n---\n\n" + _wsTxt : _wsTxt;
     const _ht = helpers.buildHelperToolsOpenAIOpts(_augTxt, instruction, configService.getOpenAiModel());
+    const _finalBackendPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(_augTxt);
 
     await BackendService.responderStream(
-      _augTxt,
+      _finalBackendPrompt,
       (chunk) => { event.sender.send("gemini-stream-chunk", chunk); },
       () => { event.sender.send("gemini-stream-complete"); },
       (error) => {

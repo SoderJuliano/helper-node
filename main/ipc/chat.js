@@ -170,13 +170,29 @@ module.exports = function registerIpc() {
     CopilotCliProvider.setModel(model);
     broadcastAiModelChange({ provider: 'copilotCli', model });
   });
-  ipcMain.handle("get-copilot-cli-models", () => CopilotCliProvider.getModels());
+  ipcMain.handle("get-copilot-cli-reasoning-effort", () => configService.getCopilotCliReasoningEffort());
+  ipcMain.on("set-copilot-cli-reasoning-effort", (event, effort) => {
+    configService.setCopilotCliReasoningEffort(effort);
+    CopilotCliProvider.setEffort(effort);
+    broadcastAiModelChange({ provider: 'copilotCli', model: configService.getCopilotCliModel(), effort });
+  });
+  ipcMain.handle("get-copilot-cli-models", (event, force) => CopilotCliProvider.getModels(force));
   ipcMain.handle("check-copilot-cli-installed", async () => {
     try {
       const ok = await CopilotCliProvider.checkInstalled();
       return { installed: ok };
     } catch (e) {
       return { installed: false, error: String(e && e.message) };
+    }
+  });
+  ipcMain.handle("copilot-cli-reset-blocked-models", async () => {
+    try {
+      const modelAccess = require("../../services/providers/copilot-cli/CopilotCliModelAccess");
+      modelAccess.reset();
+      const models = await CopilotCliProvider.getModels(true);
+      return { ok: true, models };
+    } catch (e) {
+      return { ok: false, error: e.message };
     }
   });
 

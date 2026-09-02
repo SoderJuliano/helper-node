@@ -94,8 +94,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // GitHub Copilot CLI provider
   getCopilotCliModel: () => ipcRenderer.invoke("get-copilot-cli-model"),
   setCopilotCliModel: (model) => ipcRenderer.send("set-copilot-cli-model", model),
-  getCopilotCliModels: () => ipcRenderer.invoke("get-copilot-cli-models"),
+  getCopilotCliReasoningEffort: () => ipcRenderer.invoke("get-copilot-cli-reasoning-effort"),
+  setCopilotCliReasoningEffort: (effort) => ipcRenderer.send("set-copilot-cli-reasoning-effort", effort),
+  getCopilotCliModels: (force) => ipcRenderer.invoke("get-copilot-cli-models", force),
   checkCopilotCliInstalled: () => ipcRenderer.invoke("check-copilot-cli-installed"),
+  copilotCliResetBlockedModels: () => ipcRenderer.invoke("copilot-cli-reset-blocked-models"),
   onCopilotCliStatus: (cb) => ipcRenderer.on("copilot-cli-status", (event, data) => cb(data)),
   // Gemini CLI provider
   getGeminiCliModel: () => ipcRenderer.invoke("get-gemini-cli-model"),

@@ -286,11 +286,11 @@ class CopilotCliProcess {
 
   get pid() { return this._proc ? this._proc.pid : null; }
 
-  // opts: { cwd, model, prompt, binary, attachments }
+  // opts: { cwd, model, effort, prompt, binary, attachments }
   // `attachments` = caminhos de imagem/PDF que vão em `--attachment` em vez de
   // serem transcritos no prompt (o CLI só aceita a flag em modo não-interativo,
   // que é exatamente o nosso `-p`).
-  async start({ cwd, model, prompt, binary, attachments }) {
+  async start({ cwd, model, effort, prompt, binary, attachments }) {
     if (this.alive) throw new Error('CopilotCliProcess already running');
 
     const bin = binary || await resolveBinary();
@@ -310,6 +310,9 @@ class CopilotCliProcess {
       '--add-dir', cwd
     ];
     if (model) tailArgs.push('--model', model);
+    if (effort && ['low', 'medium', 'high', 'none', 'minimal', 'xhigh', 'max'].includes(String(effort).toLowerCase())) {
+      tailArgs.push('--effort', String(effort).toLowerCase());
+    }
     for (const att of dedupeExisting(attachments)) tailArgs.push('--attachment', att);
 
     const { promptText, tempFile } = fitPromptToCommandLine(stripNulls(prompt || ''), bin, tailArgs, cwd);

@@ -42,6 +42,7 @@ function friendlyError(err) {
 class CopilotCliProvider {
   constructor() {
     this._model = getDefaultModel();
+    this._effort = 'medium';
     // Interrupção pedida pelo usuário. Sem isto, matar o processo caía no
     // branch de erro do onClose (código de saída ≠ 0) e o app mostrava um erro
     // vermelho na tela como se a CLI tivesse quebrado — quando na verdade ela
@@ -52,7 +53,10 @@ class CopilotCliProvider {
 
   setModel(model) { this._model = model || getDefaultModel(); }
   getModel()      { return this._model; }
-  getModels()     { return getModels(); }
+  getModels(force = false) { return getModels(force); }
+
+  setEffort(effort) { this._effort = effort || 'medium'; }
+  getEffort()      { return this._effort; }
 
   // Main entry point called from main/ipc/chat.js.
   // opts.attachments = caminhos de imagem/PDF anexados no workspace; vão como
@@ -213,7 +217,10 @@ class CopilotCliProvider {
         reject(new Error(msg));
       });
 
-      proc.start({ cwd, model: this._model, prompt, attachments: opts.attachments }).then(() => {
+      const configService = require('../../configService');
+      const eff = opts.effort || this._effort || configService.getCopilotCliReasoningEffort() || 'medium';
+
+      proc.start({ cwd, model: this._model, effort: eff, prompt, attachments: opts.attachments }).then(() => {
         heartbeat = setInterval(emitHeartbeat, HEARTBEAT_MS);
         emitHeartbeat();
       }).catch((err) => {

@@ -36,8 +36,13 @@ const openAiVisionModelContainer = document.getElementById("openai-vision-model-
 const openAiVisionModelSelect = document.getElementById("openai-vision-model-select");
 const ollamaLocalModelContainer = document.getElementById("ollama-local-model-container");
 const geminiCliModelContainer = document.getElementById("gemini-cli-model-container");
-const claudeCliModelContainer = document.getElementById("claude-cli-model-container");
 const copilotCliModelContainer = document.getElementById("copilot-cli-model-container");
+const copilotCliModelSelect = document.getElementById("copilot-cli-model-select");
+const copilotCliReasoningEffortContainer = document.getElementById("copilot-cli-reasoning-effort-container");
+const copilotCliReasoningEffortSelect = document.getElementById("copilot-cli-reasoning-effort-select");
+const claudeCliModelSelect = document.getElementById("claude-cli-model-select");
+const geminiCliModelSelect = document.getElementById("gemini-cli-model-select");
+const ollamaLocalModelSelect = document.getElementById("ollama-local-model-select");
 const nexaToggle = document.getElementById("nexa-toggle");
 const googleTtsToggle = document.getElementById("google-tts-toggle");
 const googleTtsContainer = document.getElementById("google-tts-container");
@@ -68,6 +73,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     savedClaudeCliModel,
     savedGeminiCliModel,
     savedCopilotCliModel,
+    savedCopilotEffort,
     _edition
   ] = await Promise.all([
     ipcRenderer.invoke("get-prompt-instruction").catch(() => ""),
@@ -92,6 +98,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     ipcRenderer.invoke("get-claude-cli-model").catch(() => null),
     ipcRenderer.invoke("get-gemini-cli-model").catch(() => null),
     ipcRenderer.invoke("get-copilot-cli-model").catch(() => null),
+    ipcRenderer.invoke("get-copilot-cli-reasoning-effort").catch(() => "medium"),
     ipcRenderer.invoke("get-edition").catch(() => "full")
   ]);
 
@@ -154,6 +161,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (backendApiKeyInput && savedBackendApiKey) backendApiKeyInput.value = savedBackendApiKey;
 
   if (savedEffort && openAiReasoningEffortSelect) openAiReasoningEffortSelect.value = savedEffort;
+  if (savedCopilotEffort && copilotCliReasoningEffortSelect) copilotCliReasoningEffortSelect.value = savedCopilotEffort;
 
   const currentProvider = aiModelSelect ? aiModelSelect.value : 'geminiCli';
   const isChatGPT = (currentProvider === 'openIa' || currentProvider === 'openIaCodex');
@@ -187,6 +195,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     window.ConfigProviders.populateClaudeCliModels(savedClaudeCliModel);
   } else if (currentProvider === 'copilotCli') {
     if (copilotCliModelContainer) copilotCliModelContainer.style.display = 'flex';
+    if (copilotCliReasoningEffortContainer) copilotCliReasoningEffortContainer.style.display = 'flex';
     window.ConfigProviders.populateCopilotCliModels(savedCopilotCliModel);
   } else if (currentProvider === 'llama' || currentProvider === 'llama-stream') {
     const backendModelContainerEl = document.getElementById('backend-model-container');
@@ -254,6 +263,7 @@ if (aiModelSelect) {
     if (geminiCliModelContainer) geminiCliModelContainer.style.display = (v === 'geminiCli') ? 'flex' : 'none';
     if (claudeCliModelContainer) claudeCliModelContainer.style.display = (v === 'claudeCli') ? 'flex' : 'none';
     if (copilotCliModelContainer) copilotCliModelContainer.style.display = (v === 'copilotCli') ? 'flex' : 'none';
+    if (copilotCliReasoningEffortContainer) copilotCliReasoningEffortContainer.style.display = (v === 'copilotCli') ? 'flex' : 'none';
     const backendApiKeyContainer = document.getElementById('backend-api-key-container');
     if (backendApiKeyContainer) backendApiKeyContainer.style.display = isOllama ? 'flex' : 'none';
     const backendModelContainerEl = document.getElementById('backend-model-container');
@@ -390,6 +400,11 @@ saveButton.addEventListener("click", async () => {
 
   if (openAiReasoningEffortSelect) ipcRenderer.send("set-openai-reasoning-effort", openAiReasoningEffortSelect.value);
   if (openAiVisionModelSelect) ipcRenderer.send("set-openai-vision-model", openAiVisionModelSelect.value);
+  if (copilotCliModelSelect && copilotCliModelSelect.value) ipcRenderer.send("set-copilot-cli-model", copilotCliModelSelect.value);
+  if (copilotCliReasoningEffortSelect) ipcRenderer.send("set-copilot-cli-reasoning-effort", copilotCliReasoningEffortSelect.value);
+  if (claudeCliModelSelect && claudeCliModelSelect.value) ipcRenderer.send("set-claude-cli-model", claudeCliModelSelect.value);
+  if (geminiCliModelSelect && geminiCliModelSelect.value) ipcRenderer.send("set-gemini-cli-model", geminiCliModelSelect.value);
+  if (ollamaLocalModelSelect && ollamaLocalModelSelect.value) ipcRenderer.send("set-ollama-local-model", ollamaLocalModelSelect.value);
 
   const _tokenVal = (openIaTokenInput.value || "").trim();
   if (_tokenVal) ipcRenderer.send("set-open-ia-token", _tokenVal);
@@ -399,6 +414,32 @@ saveButton.addEventListener("click", async () => {
 
   window.close();
 });
+
+if (copilotCliModelSelect) {
+  copilotCliModelSelect.addEventListener("change", () => {
+    if (copilotCliModelSelect.value) ipcRenderer.send("set-copilot-cli-model", copilotCliModelSelect.value);
+  });
+}
+if (copilotCliReasoningEffortSelect) {
+  copilotCliReasoningEffortSelect.addEventListener("change", () => {
+    if (copilotCliReasoningEffortSelect.value) ipcRenderer.send("set-copilot-cli-reasoning-effort", copilotCliReasoningEffortSelect.value);
+  });
+}
+if (claudeCliModelSelect) {
+  claudeCliModelSelect.addEventListener("change", () => {
+    if (claudeCliModelSelect.value) ipcRenderer.send("set-claude-cli-model", claudeCliModelSelect.value);
+  });
+}
+if (geminiCliModelSelect) {
+  geminiCliModelSelect.addEventListener("change", () => {
+    if (geminiCliModelSelect.value) ipcRenderer.send("set-gemini-cli-model", geminiCliModelSelect.value);
+  });
+}
+if (ollamaLocalModelSelect) {
+  ollamaLocalModelSelect.addEventListener("change", () => {
+    if (ollamaLocalModelSelect.value) ipcRenderer.send("set-ollama-local-model", ollamaLocalModelSelect.value);
+  });
+}
 
 document.getElementById("clear-openai-token")?.addEventListener("click", () => {
   openIaTokenInput.value = "";

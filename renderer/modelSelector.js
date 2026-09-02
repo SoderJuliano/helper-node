@@ -41,6 +41,52 @@
         return label;
     }
 
+    function formatCopilotLabel(id) {
+        if (!id) return 'Copilot CLI';
+        if (id === 'auto') return 'auto (Automático)';
+        const KNOWN_LABELS = {
+            'claude-opus-5': 'Claude Opus 5',
+            'claude-sonnet-5': 'Claude Sonnet 5',
+            'claude-fable-5': 'Claude Fable 5',
+            'claude-opus-4.8': 'Claude Opus 4.8',
+            'claude-opus-4.8-fast': 'Claude Opus 4.8 Fast',
+            'claude-opus-4.7': 'Claude Opus 4.7',
+            'claude-sonnet-4.6': 'Claude Sonnet 4.6',
+            'claude-opus-4.6': 'Claude Opus 4.6',
+            'claude-sonnet-4.5': 'Claude Sonnet 4.5',
+            'claude-opus-4.5': 'Claude Opus 4.5',
+            'claude-haiku-4.5': 'Claude Haiku 4.5',
+            'gpt-5.6-terra': 'GPT-5.6 Terra',
+            'gpt-5.6-sol': 'GPT-5.6 Sol',
+            'gpt-5.6-luna': 'GPT-5.6 Luna',
+            'gpt-5.5': 'GPT-5.5',
+            'gpt-5.4': 'GPT-5.4',
+            'gpt-5.4-mini': 'GPT-5.4 Mini',
+            'gpt-5.3-codex': 'GPT-5.3 Codex',
+            'gpt-5-mini': 'GPT-5 Mini',
+            'gemini-3.7-flash': 'Gemini 3.7 Flash',
+            'gemini-3.6-flash': 'Gemini 3.6 Flash',
+            'gemini-3.5-flash': 'Gemini 3.5 Flash',
+            'gemini-3.1-pro-preview': 'Gemini 3.1 Pro Preview',
+            'grok-4.6': 'Grok 4.6',
+            'grok-4.5': 'Grok 4.5',
+            'kimi-k3': 'Kimi K3',
+            'kimi-k2.7-code': 'Kimi K2.7 Code',
+            'mai-code-1.1-flash': 'MAI-Code-1.1-Flash',
+            'mai-code-1-flash-picker': 'MAI-Code-1.1-Flash',
+        };
+        if (KNOWN_LABELS[id]) return KNOWN_LABELS[id];
+        return id
+            .split('-')
+            .map((p) => {
+                const low = p.toLowerCase();
+                if (low === 'gpt') return 'GPT';
+                if (low === 'mai') return 'MAI';
+                return p.charAt(0).toUpperCase() + p.slice(1);
+            })
+            .join(' ');
+    }
+
     async function loadCliModels() {
         try {
             const claudeRes = await window.electronAPI.getClaudeCliModels();
@@ -69,7 +115,7 @@
             if (Array.isArray(copilotRes) && copilotRes.length) {
                 COPILOT_CLI_MODELS = copilotRes.map(m => ({
                     value: m.id || m.value || m,
-                    label: m.label || m.id || m.value || m
+                    label: m.label || formatCopilotLabel(m.id || m.value || m)
                 }));
             }
         } catch (e) {
@@ -103,9 +149,13 @@
             composerModelName.textContent = found ? found.label : m;
         } else if (provider === 'copilotCli') {
             let m = 'claude-sonnet-4.5';
+            let effort = '';
             try { m = (await window.electronAPI.getCopilotCliModel()) || m; } catch (_) {}
-            const found = COPILOT_CLI_MODELS.find(x => x.value === m);
-            composerModelName.textContent = found ? found.label : m;
+            try { effort = (await window.electronAPI.getCopilotCliReasoningEffort()) || ''; } catch (_) {}
+            const found = COPILOT_CLI_MODELS.find(x => x.value === m || x.id === m);
+            const label = found ? found.label : (m ? formatCopilotLabel(m) : 'Copilot CLI');
+            const effortLabel = effort ? (effort.charAt(0).toUpperCase() + effort.slice(1)) : '';
+            composerModelName.textContent = effortLabel ? `${label} (${effortLabel})` : label;
         } else if (provider === 'llama' || provider === 'llama-stream') {
             let m = '';
             try { m = (await window.electronAPI.getBackendModel()) || ''; } catch (_) {}
@@ -273,30 +323,53 @@
         }
 
         if (provider === 'copilotCli') {
-            if (!COPILOT_CLI_MODELS.length) {
-                setLoad(anchor, true);
-                try {
-                    const copilotRes = await window.electronAPI.getCopilotCliModels();
-                    if (Array.isArray(copilotRes) && copilotRes.length) {
-                        COPILOT_CLI_MODELS = copilotRes.map(m => ({
-                            value: m.id || m.value || m,
-                            label: m.label || m.id || m.value || m
-                        }));
-                    }
-                } catch (e) {
-                    console.warn('Failed to load Copilot CLI models:', e);
-                } finally {
-                    setLoad(anchor, false);
+            setLoad(anchor, true);
+            try {
+                let currentVal = '';
+                let currentEffort = 'medium';
+                try { currentVal = await window.electronAPI.getCopilotCliModel(); } catch (_) {}
+                try { currentEffort = (await window.electronAPI.getCopilotCliReasoningEffort()) || 'medium'; } catch (_) {}
+
+                const copilotRes = await window.electronAPI.getCopilotCliModels(true);
+                if (Array.isArray(copilotRes) && copilotRes.length) {
+                    COPILOT_CLI_MODELS = copilotRes.map(m => ({
+                        value: m.id || m.value || m,
+                        label: m.label || formatCopilotLabel(m.id || m.value || m)
+                    }));
                 }
+
+                const menuList = COPILOT_CLI_MODELS.length ? COPILOT_CLI_MODELS : (
+                    currentVal ? [{ value: currentVal, label: formatCopilotLabel(currentVal) }] : []
+                );
+
+                if (menuList.length === 0) {
+                    if (typeof showToast === 'function') showToast('Nenhum modelo retornado pelo Copilot CLI');
+                    return;
+                }
+
+                buildMenu(anchor, menuList, () => currentVal, (opt) => {
+                    currentVal = opt.value;
+                    try { window.electronAPI.setCopilotCliModel(opt.value); } catch (_) {}
+                    refreshComposerModel();
+                    if (typeof showToast === 'function') showToast('Modelo Copilot: ' + opt.label);
+                }, {
+                    effortSelector: {
+                        getCurrentEffort: () => currentEffort,
+                        onEffortChange: (eff) => {
+                            currentEffort = eff;
+                            try { window.electronAPI.setCopilotCliReasoningEffort(eff); } catch (_) {}
+                            refreshComposerModel();
+                            const cap = eff.charAt(0).toUpperCase() + eff.slice(1);
+                            if (typeof showToast === 'function') showToast(`Esforço de Raciocínio: ${cap}`);
+                        }
+                    }
+                });
+            } catch (e) {
+                console.warn('Falha ao consultar modelos do Copilot:', e);
+                if (typeof showToast === 'function') showToast('Erro ao carregar modelos Copilot');
+            } finally {
+                setLoad(anchor, false);
             }
-            let currentVal = '';
-            try { currentVal = await window.electronAPI.getCopilotCliModel(); } catch (_) {}
-            buildMenu(anchor, COPILOT_CLI_MODELS, () => currentVal, (opt) => {
-                currentVal = opt.value;
-                try { window.electronAPI.setCopilotCliModel(opt.value); } catch (_) {}
-                composerModelName.textContent = opt.label;
-                if (typeof showToast === 'function') showToast('Modelo: ' + opt.label);
-            });
             return;
         }
 

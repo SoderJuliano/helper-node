@@ -289,6 +289,8 @@ function prepareTextForSpeech(text) {
     .replace(/`([^`]+)`/g, '$1')     // remove inline code
     .replace(/<[^>]*>/g, '')         // remove tags HTML
     .replace(/https?:\/\/\S+/g, '')  // remove URLs
+    .replace(/\|[^\n]+\|/g, '')      // remove tabelas markdown
+    .replace(/^[-*#]+\s+/gm, '')     // remove marcadores de lista e headers
     .replace(/[*_~#]/g, '')          // remove símbolos markdown
     .replace(/\s+/g, ' ')            // colapsa espaços duplos
     .trim();
@@ -299,17 +301,18 @@ function prepareTextForSpeech(text) {
 /**
  * Extrai o resumo exclusivo para voz a partir da resposta inteira da IA.
  * Se houver a tag <voice_summary>...</voice_summary>, extrai o conteúdo.
- * Caso contrário, faz o fallback inteligente limpando códigos e limitando a 1-2 frases.
+ * Caso contrário, faz o fallback inteligente limpando códigos e limitando estritamente a 1-2 frases curtas.
  */
 function extractVoiceSummary(fullResponse) {
   if (!fullResponse || typeof fullResponse !== 'string') return '';
 
   const match = fullResponse.match(/<voice_summary>([\s\S]*?)<\/voice_summary>/i);
   if (match && match[1] && match[1].trim()) {
-    return prepareTextForSpeech(match[1].trim());
+    const summary = prepareTextForSpeech(match[1].trim());
+    if (summary) return summary;
   }
 
-  // Fallback: se não veio a tag, limpa e pega as primeiras frases
+  // Fallback: se a IA não gerou a tag, extrai estritamente o início resumido
   const hadCode = /```[\s\S]*?```/.test(fullResponse);
   let textOnly = prepareTextForSpeech(fullResponse);
 
@@ -317,10 +320,15 @@ function extractVoiceSummary(fullResponse) {
     return hadCode ? 'O resultado e os exemplos de código foram exibidos na tela.' : '';
   }
 
-  // Limita a ~250 caracteres ou até 2 pontos finais
-  const sentences = textOnly.match(/[^.!?]+[.!?]+/g) || [textOnly];
+  // Pega o primeiro parágrafo/bloco
+  const firstParagraph = textOnly.split(/\n+/).map(p => p.trim()).filter(Boolean)[0] || textOnly;
+
+  // Limita a 1-2 frases ou ~200 caracteres
+  const sentences = firstParagraph.match(/[^.!?\n]+[.!?]+/g) || [firstParagraph];
   let summary = sentences.slice(0, 2).join(' ').trim();
-  if (!summary) summary = textOnly.slice(0, 200);
+  if (!summary || summary.length > 200) {
+    summary = (summary || firstParagraph).slice(0, 200).replace(/[,;:\s]+[^\s]*$/, '') + '...';
+  }
 
   if (hadCode && !summary.toLowerCase().includes('tela') && !summary.toLowerCase().includes('código')) {
     summary += ' Os detalhes e códigos foram exibidos na tela.';
