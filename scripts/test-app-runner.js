@@ -103,8 +103,8 @@ const gradleAppCmd = BuildToolDetector.buildCommand(mockGradleInfo, { kind: 'app
 });
 assert.strictEqual(gradleAppCmd.executable, 'C:/mock/project/gradlew.bat');
 assert(gradleAppCmd.args.includes('bootRun'));
-assert(gradleAppCmd.args.some(a => a.includes('--spring.profiles.active=dev,local')));
-assert(gradleAppCmd.args.some(a => a.includes('--server.port=8082')));
+assert(gradleAppCmd.args.includes('-Dspring.profiles.active=dev,local'));
+assert(gradleAppCmd.args.includes('--args=--server.port=8082'));
 
 const gradleTestMethodCmd = BuildToolDetector.buildCommand(mockGradleInfo, {
   kind: 'test-method',
@@ -114,7 +114,7 @@ const gradleTestMethodCmd = BuildToolDetector.buildCommand(mockGradleInfo, {
 assert.strictEqual(gradleTestMethodCmd.executable, 'C:/mock/project/gradlew.bat');
 assert(gradleTestMethodCmd.args.includes('test'));
 assert(gradleTestMethodCmd.args.includes('-Dspring.profiles.active=test'));
-console.log('  ok   BuildToolDetector gerou comandos Gradle com activeProfiles, VM options e programArgs');
+console.log('  ok   BuildToolDetector gerou comandos Gradle com activeProfiles, VM options e programArgs separados corretamente');
 
 // Simulação de projeto Maven
 const mockMavenInfo = {
@@ -135,8 +135,8 @@ const mavenAppCmd = BuildToolDetector.buildCommand(mockMavenInfo, { kind: 'app',
 assert.strictEqual(mavenAppCmd.executable, 'C:/mock/maven-project/mvnw.cmd');
 assert(mavenAppCmd.args.includes('spring-boot:run'));
 assert(mavenAppCmd.args.includes('-Dspring-boot.run.profiles=dev'));
-assert(mavenAppCmd.args.includes('-Dspring-boot.run.jvmArguments="-Xmx2048m"'));
-assert(mavenAppCmd.args.includes('-Dspring-boot.run.arguments="--debug"'));
+assert(mavenAppCmd.args.includes('-Dspring-boot.run.jvmArguments=-Xmx2048m'));
+assert(mavenAppCmd.args.includes('-Dspring-boot.run.arguments=--debug'));
 
 const mavenTestMethodCmd = BuildToolDetector.buildCommand(mockMavenInfo, {
   kind: 'test-method',
@@ -160,6 +160,20 @@ fs.mkdirSync(ideaSubDir, { recursive: true });
 
 const mockWorkspaceXml = `
 <project version="4">
+  <component name="PropertiesComponent"><![CDATA[{
+    "keyToString": {
+      "last_opened_file_path": "C:/Projects/demo/path",
+      "project.structure.last.edited": "Modules",
+      "nodejs_package_manager_path": "npm"
+    }
+  }]]></component>
+  <component name="ChatComponent">
+    <map>
+      <entry key="chat_12345" value="Historico de conversa da IA" />
+      <entry key="ai_chat_session" value="data_session" />
+      <entry key="com.github.copilot.chat.state" value="copilot_data" />
+    </map>
+  </component>
   <component name="RunManager">
     <configuration name="DemoApp" type="SpringBootApplicationConfigurationType">
       <option name="VM_PARAMETERS" value="-Dspring.profiles.active=dev -Xmx512m" />
@@ -182,15 +196,23 @@ const mockWorkspaceXml = `
 </project>
 `;
 fs.writeFileSync(path.join(ideaSubDir, 'workspace.xml'), mockWorkspaceXml, 'utf8');
+fs.writeFileSync(path.join(ideaSubDir, 'vcs.xml'), '<project version="4"><component name="VcsDirectoryMappings"><mapping directory="C:/repo" vcs="Git" /></component></project>', 'utf8');
 
 // 3.1 Extração inicial do IntelliJ como baseline
 const initialConfig = IntelliJConfigExtractor.getProjectConfig(mockIdeaDir);
 assert.strictEqual(initialConfig.envVars.SERVER_PORT, '8085');
 assert.strictEqual(initialConfig.envVars.DB_HOST, 'localhost');
 assert.strictEqual(initialConfig.envVars.DB_URL, 'jdbc:postgresql://localhost:5432/db?ssl=true&sslmode=require', 'XML entities devem ser desescapadas');
-assert.strictEqual(initialConfig.envVars.GRADLE_ENV_VAR, 'gradle_val', 'Tags <entry key="..." value="..." /> devem ser extraídas');
+assert.strictEqual(initialConfig.envVars.GRADLE_ENV_VAR, 'gradle_val', 'Tags <entry key="..." value="..." /> dentro de RunManager devem ser extraídas');
 assert.strictEqual(initialConfig.activeProfiles, 'dev');
-console.log('  ok   Baseline inicial importado do IntelliJ (.idea) com sucesso (incluindo XML entities e <entry>)');
+
+// Assegura que nenhuma porcaria de IDE, path do projeto ou chat de IA foi importada
+assert.strictEqual(initialConfig.envVars.last_opened_file_path, undefined, 'last_opened_file_path NÃO deve ser importado');
+assert.strictEqual(initialConfig.envVars['project.structure.last.edited'], undefined, 'project.structure NÃO deve ser importado');
+assert.strictEqual(initialConfig.envVars.chat_12345, undefined, 'chat_12345 NÃO deve ser importado');
+assert.strictEqual(initialConfig.envVars.ai_chat_session, undefined, 'ai_chat_session NÃO deve ser importado');
+assert.strictEqual(initialConfig.envVars['com.github.copilot.chat.state'], undefined, 'copilot chat NÃO deve ser importado');
+console.log('  ok   Baseline inicial importado do IntelliJ (.idea) com sucesso (filtrando lixos de IDE, caminhos e chat de IA)');
 
 // 3.2 Usuário customiza no Helper Node (precedência)
 IntelliJConfigExtractor.saveProjectConfig(mockIdeaDir, {
@@ -208,6 +230,7 @@ assert.strictEqual(effectiveConfig.activeProfiles, 'dev,homolog');
 assert.strictEqual(effectiveConfig.effectiveEnvs.SERVER_PORT, '9090', 'Override do Helper Node deve ter precedência');
 assert.strictEqual(effectiveConfig.effectiveEnvs.CUSTOM_HELPER_KEY, 'helper_val');
 assert.strictEqual(effectiveConfig.effectiveEnvs.DB_HOST, 'localhost', 'Variáveis não sobrescritas do IntelliJ devem ser mantidas se fallback ativo');
+assert.strictEqual(effectiveConfig.effectiveEnvs.last_opened_file_path, undefined);
 assert.strictEqual(effectiveConfig.vmOptions, '-Xmx1024m');
 assert.strictEqual(effectiveConfig.programArgs, '--server.port=9090');
 console.log('  ok   Customizações do Helper Node têm precedência e aliases (env, programArguments) funcionam');
@@ -216,7 +239,8 @@ console.log('  ok   Customizações do Helper Node têm precedência e aliases (
 const reimported = IntelliJConfigExtractor.reimportFromIntelliJ(mockIdeaDir);
 assert.strictEqual(reimported.envVars.DB_URL, 'jdbc:postgresql://localhost:5432/db?ssl=true&sslmode=require');
 assert.strictEqual(reimported.envVars.CUSTOM_HELPER_KEY, 'helper_val', 'Variáveis customizadas do Helper Node devem ser mantidas no reimport');
-console.log('  ok   Reimportação do IntelliJ executada e mesclada com sucesso');
+assert.strictEqual(reimported.envVars.last_opened_file_path, undefined);
+console.log('  ok   Reimportação do IntelliJ executada e mesclada com sucesso (mantendo apenas envs reais)');
 
 // Limpeza da pasta mock
 fs.rmSync(mockIdeaDir, { recursive: true, force: true });

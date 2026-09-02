@@ -121,20 +121,16 @@ class BuildToolDetector {
         if (buildInfo.isSpringBoot || target.isSpringBoot) {
           args.push('bootRun', '--console=plain');
 
-          // Monta lista de argumentos de aplicação para o Spring Boot via --args="..."
-          const appArgs = [];
           if (activeProfiles) {
-            appArgs.push(`--spring.profiles.active=${activeProfiles}`);
+            args.push(`-Dspring.profiles.active=${activeProfiles}`);
+            args.push(`-Dspring-boot.run.profiles=${activeProfiles}`);
           }
           if (target.mainClass) {
-            appArgs.push(`--spring.main.class=${target.mainClass}`);
+            args.push(`-PmainClass=${target.mainClass}`);
+            args.push(`-Dspring-boot.run.main-class=${target.mainClass}`);
           }
           if (programArgs) {
-            appArgs.push(programArgs);
-          }
-
-          if (appArgs.length > 0) {
-            args.push(`--args="${appArgs.join(' ')}"`);
+            args.push(`--args=${programArgs}`);
           }
 
           // Injeta VM options como system properties ou jvmargs no Gradle se definidos
@@ -144,17 +140,20 @@ class BuildToolDetector {
               if (vp.startsWith('-D')) {
                 args.push(vp);
               } else {
-                args.push(`-Dorg.gradle.jvmargs="${vmOptions}"`);
+                args.push(`-Dorg.gradle.jvmargs=${vmOptions}`);
               }
             });
           }
         } else {
           args.push('run', '--console=plain');
+          if (activeProfiles) {
+            args.push(`-Dspring.profiles.active=${activeProfiles}`);
+          }
           if (target.mainClass) {
             args.push(`-PmainClass=${target.mainClass}`);
           }
           if (programArgs) {
-            args.push(`--args="${programArgs}"`);
+            args.push(`--args=${programArgs}`);
           }
           if (vmOptions) {
             const vmParts = vmOptions.split(/\s+/).filter(Boolean);
@@ -219,10 +218,10 @@ class BuildToolDetector {
             args.push(`-Dspring-boot.run.main-class=${target.mainClass}`);
           }
           if (vmOptions) {
-            args.push(`-Dspring-boot.run.jvmArguments="${vmOptions}"`);
+            args.push(`-Dspring-boot.run.jvmArguments=${vmOptions}`);
           }
           if (programArgs) {
-            args.push(`-Dspring-boot.run.arguments="${programArgs}"`);
+            args.push(`-Dspring-boot.run.arguments=${programArgs}`);
           }
         } else {
           args.push('compile', 'exec:java');
@@ -230,7 +229,7 @@ class BuildToolDetector {
             args.push(`-Dexec.mainClass=${target.mainClass}`);
           }
           if (programArgs) {
-            args.push(`-Dexec.args="${programArgs}"`);
+            args.push(`-Dexec.args=${programArgs}`);
           }
           if (vmOptions) {
             const vmParts = vmOptions.split(/\s+/).filter(Boolean);
@@ -243,7 +242,7 @@ class BuildToolDetector {
           args.push(`-Dspring.profiles.active=${activeProfiles}`);
         }
         if (vmOptions) {
-          args.push(`-DargLine="${vmOptions}"`);
+          args.push(`-DargLine=${vmOptions}`);
         }
       } else if (kind === 'test-class') {
         const pattern = target.testClass || '*';
@@ -252,7 +251,7 @@ class BuildToolDetector {
           args.push(`-Dspring.profiles.active=${activeProfiles}`);
         }
         if (vmOptions) {
-          args.push(`-DargLine="${vmOptions}"`);
+          args.push(`-DargLine=${vmOptions}`);
         }
       } else if (kind === 'test-method') {
         const pattern = target.testClass && target.testMethod
@@ -263,7 +262,7 @@ class BuildToolDetector {
           args.push(`-Dspring.profiles.active=${activeProfiles}`);
         }
         if (vmOptions) {
-          args.push(`-DargLine="${vmOptions}"`);
+          args.push(`-DargLine=${vmOptions}`);
         }
       }
 

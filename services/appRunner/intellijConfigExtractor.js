@@ -17,6 +17,73 @@ function unescapeXml(str) {
     .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
 }
 
+/**
+ * Valida se uma chave é um identificador legítimo de variável de ambiente / propriedade Spring / runtime.
+ * Descarta configurações internas da IDE (PropertiesComponent, paths de arquivos, histórico de chat de IA, VCS, etc.).
+ */
+function isValidEnvKey(key) {
+  if (!key || typeof key !== 'string') return false;
+  const trimmed = key.trim();
+  if (!trimmed || trimmed.length > 128) return false;
+
+  // Não pode conter espaços, barras, aspas, tags XML, chaves, colchetes, ponto-e-vírgula ou igual
+  if (/[\s\/\\]/.test(trimmed)) return false;
+  if (/["'<>{}()[\],;=]/.test(trimmed)) return false;
+
+  const lower = trimmed.toLowerCase();
+
+  // Blacklist de propriedades internas de IDE, plugins, chats de IA e estado de UI do IntelliJ
+  if (
+    lower.startsWith('project.structure') ||
+    lower.startsWith('project_structure') ||
+    lower.startsWith('last_opened') ||
+    lower.startsWith('lastopened') ||
+    lower.startsWith('file.type') ||
+    lower.startsWith('file.temp') ||
+    lower.startsWith('file.color') ||
+    lower.startsWith('file.template') ||
+    lower.startsWith('nodejs_package') ||
+    lower.startsWith('nodejs_') ||
+    lower.startsWith('vue.') ||
+    lower.startsWith('git4idea') ||
+    lower.startsWith('vcs.') ||
+    lower.startsWith('vcs_') ||
+    lower.startsWith('selected.tabs') ||
+    lower.startsWith('runonceactivity') ||
+    lower.startsWith('webservertoolwindow') ||
+    lower.startsWith('settings.editor') ||
+    lower.startsWith('documentation.') ||
+    lower.startsWith('ide.') ||
+    lower.startsWith('idea.') ||
+    lower.startsWith('editor.') ||
+    lower.startsWith('com.intellij.') ||
+    lower.startsWith('org.jetbrains.') ||
+    lower.startsWith('com.github.') ||
+    lower.startsWith('copilot.') ||
+    lower.startsWith('kito.') ||
+    lower.startsWith('sonarlint') ||
+    lower.startsWith('xdebugger') ||
+    lower.startsWith('recentprojects') ||
+    lower.startsWith('projectview') ||
+    lower.startsWith('tasks.xml') ||
+    lower.startsWith('changelist') ||
+    lower.startsWith('shelf') ||
+    lower.includes('chat_') ||
+    lower.includes('chat.') ||
+    lower.includes('ai_chat') ||
+    lower.includes('aichat') ||
+    lower.includes('copilot') ||
+    lower === 'last_opened_file_path' ||
+    lower === 'project_path' ||
+    lower === 'key_project_dir'
+  ) {
+    return false;
+  }
+
+  // Identificador padrão de env var (ex: SPRING_PROFILES_ACTIVE, SERVER_PORT, spring.profiles.active, server.port)
+  return /^[a-zA-Z_][a-zA-Z0-9_.-]*$/.test(trimmed);
+}
+
 function parseEnvString(str) {
   const envs = {};
   if (!str) return envs;
@@ -29,7 +96,7 @@ function parseEnvString(str) {
       const k = trimmed.substring(0, eqIdx).trim();
       let v = trimmed.substring(eqIdx + 1).trim();
       if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
-      if (k) envs[k] = unescapeXml(v);
+      if (isValidEnvKey(k)) envs[k] = unescapeXml(v);
     }
   }
   return envs;
@@ -48,7 +115,7 @@ function parseDotEnvFile(filePath) {
         const k = trimmed.substring(0, eqIdx).trim();
         let v = trimmed.substring(eqIdx + 1).trim();
         if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
-        if (k) envs[k] = v;
+        if (isValidEnvKey(k)) envs[k] = v;
       }
     }
   } catch (_) {}
@@ -101,6 +168,167 @@ class IntelliJConfigExtractor {
     return foundDirs;
   }
 
+  /**
+   * Extrai blocos <configuration> válidos a partir de arquivos do IntelliJ.
+   * Apenas examina .idea/runConfigurations/*.xml e <component name="RunManager"> no workspace.xml.
+   */
+  static _extractConfigurationsFromXml(xmlFilePath) {
+    const configs = [];
+    if (!fs.existsSync(xmlFilePath)) return configs;
+
+    try {
+      const content = fs.readFileSync(xmlFilePath, 'utf8');
+      const isWorkspaceXml = path.basename(xmlFilePath).toLowerCase() === 'workspace.xml';
+
+      if (isWorkspaceXml) {
+        // No workspace.xml, APENAS extrai configurações dentro de RunManager ou ProjectRunConfigurationManager
+        const runManagerRegex = /<component\s+name=["'](?:RunManager|ProjectRunConfigurationManager|RunDashboard)["'][\s\S]*?<\/component>/gi;
+        let rmMatch;
+        while ((rmMatch = runManagerRegex.exec(content)) !== null) {
+          const rmBlock = rmMatch[0];
+          const cfgRegex = /<configuration\b[\s\S]*?<\/configuration>/gi;
+          let cMatch;
+          while ((cMatch = cfgRegex.exec(rmBlock)) !== null) {
+            configs.push(cMatch[0]);
+          }
+        }
+      } else {
+        // Em arquivos dedicados em runConfigurations/*.xml
+        const cfgRegex = /<configuration\b[\s\S]*?<\/configuration>/gi;
+        let cMatch;
+        let foundAny = false;
+        while ((cMatch = cfgRegex.exec(content)) !== null) {
+          configs.push(cMatch[0]);
+          foundAny = true;
+        }
+        if (!foundAny && content.includes('<envs>') || content.includes('VM_PARAMETERS') || content.includes('ENV_VARIABLES')) {
+          configs.push(content);
+        }
+      }
+    } catch (_) {}
+
+    return configs;
+  }
+
+  /**
+   * Analisa um bloco <configuration> individual do IntelliJ e extrai envs, VM options, program args e active profiles.
+   */
+  static _parseConfigurationBlock(configBlock, projectDir, xmlFile) {
+    const extractedEnvs = {};
+    const extractedVmOptions = [];
+    let extractedActiveProfiles = '';
+    let extractedProgramArgs = '';
+    const envFilePaths = [];
+
+    // 1. Extrai tags <envs> ... <env name="K" value="V"/> ou <entry key="K" value="V"/> </envs>
+    const envsBlockRegex = /<envs>([\s\S]*?)<\/envs>/gi;
+    let envsBlockMatch;
+    while ((envsBlockMatch = envsBlockRegex.exec(configBlock)) !== null) {
+      const innerEnvs = envsBlockMatch[1];
+      const itemRegex = /<(?:env|entry)\s+([^>]+?)\/?>/gi;
+      let itemMatch;
+      while ((itemMatch = itemRegex.exec(innerEnvs)) !== null) {
+        const attrStr = itemMatch[1];
+        const keyMatch = attrStr.match(/(?:name|key)=["']([^"']+)["']/i);
+        const valMatch = attrStr.match(/value=["']([^"']*)["']/i);
+        if (keyMatch) {
+          const key = keyMatch[1].trim();
+          const val = unescapeXml(valMatch ? valMatch[1] : '');
+          if (isValidEnvKey(key)) {
+            extractedEnvs[key] = val;
+          }
+        }
+      }
+    }
+
+    // 2. Extrai <option name="ENV_VARIABLES|ENVIRONMENT_VARIABLES|envs|env"> com value="..." ou <map><entry key="K" value="V"/></map>
+    const optionEnvRegex = /<option\s+name=["'](?:ENV_VARIABLES|ENVIRONMENT_VARIABLES|envs|env|environmentVariables)["']([^>]*?)>([\s\S]*?)<\/option>|<option\s+name=["'](?:ENV_VARIABLES|ENVIRONMENT_VARIABLES|envs|env|environmentVariables)["']\s+value=["']([^"']+)["']\s*\/?>/gi;
+    let optMatch;
+    while ((optMatch = optionEnvRegex.exec(configBlock)) !== null) {
+      const openingAttrs = optMatch[1] || '';
+      const innerContent = optMatch[2] || '';
+      const directValue = optMatch[3] || '';
+
+      if (directValue) {
+        const parsed = parseEnvString(unescapeXml(directValue));
+        for (const [k, v] of Object.entries(parsed)) {
+          if (isValidEnvKey(k)) extractedEnvs[k] = v;
+        }
+      } else {
+        const valueInAttrs = openingAttrs.match(/value=["']([^"']+)["']/i);
+        if (valueInAttrs && valueInAttrs[1]) {
+          const parsed = parseEnvString(unescapeXml(valueInAttrs[1]));
+          for (const [k, v] of Object.entries(parsed)) {
+            if (isValidEnvKey(k)) extractedEnvs[k] = v;
+          }
+        }
+
+        if (innerContent && innerContent.includes('<entry')) {
+          const entryRegex = /<entry\s+([^>]+?)\/?>/gi;
+          let entryMatch;
+          while ((entryMatch = entryRegex.exec(innerContent)) !== null) {
+            const attrStr = entryMatch[1];
+            const keyMatch = attrStr.match(/(?:key|name)=["']([^"']+)["']/i);
+            const valMatch = attrStr.match(/value=["']([^"']*)["']/i);
+            if (keyMatch) {
+              const key = keyMatch[1].trim();
+              const val = unescapeXml(valMatch ? valMatch[1] : '');
+              if (isValidEnvKey(key)) {
+                extractedEnvs[key] = val;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 3. Suporte ao plugin EnvFile do IntelliJ (<ENTRIES><ENTRY PATH="..."/></ENTRIES> ou <option name="envFile" value="..." />)
+    const envFileEntryRegex = /<ENTRY\s+([^>]+?)\/?>/gi;
+    let efMatch;
+    while ((efMatch = envFileEntryRegex.exec(configBlock)) !== null) {
+      const attrStr = efMatch[1];
+      if (/IS_ENABLED=["']false["']/i.test(attrStr) || /isEnabled=["']false["']/i.test(attrStr)) continue;
+      const pathMatch = attrStr.match(/PATH=["']([^"']+)["']/i);
+      if (pathMatch && pathMatch[1]) {
+        envFilePaths.push(pathMatch[1]);
+      }
+    }
+    const envFileOptMatch = configBlock.match(/<option\s+name=["'](?:envFile|envFiles|env_file)["']\s+value=["']([^"']+)["']/i);
+    if (envFileOptMatch && envFileOptMatch[1]) {
+      envFilePaths.push(envFileOptMatch[1]);
+    }
+
+    // 4. VM_PARAMETERS
+    const vmMatch = configBlock.match(/<option\s+name=["'](?:VM_PARAMETERS|vmParameters)["']\s+value=["']([^"']+)["']/i);
+    if (vmMatch && vmMatch[1]) {
+      const opts = unescapeXml(vmMatch[1]).trim().split(/\s+/).filter(Boolean);
+      opts.forEach(o => { if (!extractedVmOptions.includes(o)) extractedVmOptions.push(o); });
+    }
+
+    // 5. PROGRAM_PARAMETERS
+    const progMatch = configBlock.match(/<option\s+name=["'](?:PROGRAM_PARAMETERS|programParameters)["']\s+value=["']([^"']+)["']/i);
+    if (progMatch && progMatch[1]) {
+      extractedProgramArgs = unescapeXml(progMatch[1]).trim();
+    }
+
+    // 6. SPRING_BOOT_ACTIVE_PROFILES / ACTIVE_PROFILES
+    const profMatch = configBlock.match(/<option\s+name=["'](?:ACTIVE_PROFILES|SPRING_BOOT_ACTIVE_PROFILES|PROFILES|spring\.profiles\.active)["']\s+value=["']([^"']+)["']/i);
+    if (profMatch && profMatch[1]) {
+      extractedActiveProfiles = unescapeXml(profMatch[1]).trim();
+    }
+
+    return {
+      envs: extractedEnvs,
+      vmOptions: extractedVmOptions,
+      activeProfiles: extractedActiveProfiles,
+      programArgs: extractedProgramArgs,
+      envFilePaths,
+      isDefault: /default=["']true["']/i.test(configBlock),
+      isSpringBoot: /SpringBootApplicationConfigurationType/i.test(configBlock),
+      isApp: /type=["']Application["']/i.test(configBlock) || /type=["']GradleRunConfiguration["']/i.test(configBlock),
+    };
+  }
+
   static extractFromIntelliJ(projectDir) {
     if (!projectDir || !fs.existsSync(projectDir)) {
       return { envs: {}, vmOptions: [], activeProfiles: '', programArgs: '', sourceFile: '', envOrigins: {} };
@@ -114,79 +342,89 @@ class IntelliJConfigExtractor {
     let sourceFile = '';
 
     const ideaDirs = this.findIdeaDirectories(projectDir);
-    const xmlFilesToScan = [];
+    const runConfigXmlFiles = [];
 
     for (const ideaDir of ideaDirs) {
+      // 1. Arquivos dedicados em .idea/runConfigurations/*.xml
       const runConfigsDir = path.join(ideaDir, 'runConfigurations');
       if (fs.existsSync(runConfigsDir)) {
         try {
           fs.readdirSync(runConfigsDir).forEach(f => {
             if (f.endsWith('.xml')) {
               const fullP = path.join(runConfigsDir, f);
-              if (!xmlFilesToScan.includes(fullP)) xmlFilesToScan.push(fullP);
+              if (!runConfigXmlFiles.includes(fullP)) runConfigXmlFiles.push(fullP);
             }
           });
         } catch (_) {}
       }
 
+      // 2. .idea/workspace.xml (somente bloco RunManager)
       const workspaceXml = path.join(ideaDir, 'workspace.xml');
-      if (fs.existsSync(workspaceXml) && !xmlFilesToScan.includes(workspaceXml)) xmlFilesToScan.push(workspaceXml);
-
-      try {
-        fs.readdirSync(ideaDir).forEach(f => {
-          if (f.endsWith('.xml') && f !== 'workspace.xml') {
-            const fullP = path.join(ideaDir, f);
-            if (!xmlFilesToScan.includes(fullP)) xmlFilesToScan.push(fullP);
-          }
-        });
-      } catch (_) {}
+      if (fs.existsSync(workspaceXml) && !runConfigXmlFiles.includes(workspaceXml)) {
+        runConfigXmlFiles.push(workspaceXml);
+      }
     }
 
-    for (const xmlFile of xmlFilesToScan) {
-      try {
-        const content = fs.readFileSync(xmlFile, 'utf8');
+    const parsedConfigurations = [];
 
-        // Extrai <env name="KEY" value="VAL" /> ou <env key="KEY" value="VAL" />
-        const envRegex = /<(?:env|entry)\s+(?:name|key)=["']([^"']+)["']\s+value=["']([^"']*)["']\s*\/?>|<(?:env|entry)\s+value=["']([^"']*)["']\s+(?:name|key)=["']([^"']+)["']\s*\/?>/gi;
-        let match;
-        while ((match = envRegex.exec(content)) !== null) {
-          const key = (match[1] || match[4] || '').trim();
-          const val = unescapeXml(match[2] !== undefined ? match[2] : match[3]);
-          if (key) {
-            envs[key] = val;
-            envOrigins[key] = 'intellij';
-            if (!sourceFile) sourceFile = xmlFile;
-          }
-        }
-
-        const envVarsMatch = content.match(/<option\s+name=["'](?:ENV_VARIABLES|ENVIRONMENT_VARIABLES|env)["']\s+value=["']([^"']+)["']/i);
-        if (envVarsMatch && envVarsMatch[1]) {
-          const parsed = parseEnvString(envVarsMatch[1]);
-          for (const [k, v] of Object.entries(parsed)) {
-            envs[k] = v;
-            envOrigins[k] = 'intellij';
-            if (!sourceFile) sourceFile = xmlFile;
-          }
-        }
-
-        const vmMatch = content.match(/<option\s+name=["']VM_PARAMETERS["']\s+value=["']([^"']+)["']/i);
-        if (vmMatch && vmMatch[1]) {
-          const opts = unescapeXml(vmMatch[1]).trim().split(/\s+/).filter(Boolean);
-          opts.forEach(o => { if (!vmOptions.includes(o)) vmOptions.push(o); });
-        }
-
-        const progMatch = content.match(/<option\s+name=["']PROGRAM_PARAMETERS["']\s+value=["']([^"']+)["']/i);
-        if (progMatch && progMatch[1] && !programArgs) {
-          programArgs = unescapeXml(progMatch[1]).trim();
-        }
-
-        const profMatch = content.match(/<option\s+name=["'](?:ACTIVE_PROFILES|SPRING_BOOT_ACTIVE_PROFILES|PROFILES|spring\.profiles\.active)["']\s+value=["']([^"']+)["']/i);
-        if (profMatch && profMatch[1] && !activeProfiles) {
-          activeProfiles = unescapeXml(profMatch[1]).trim();
-        }
-      } catch (_) {}
+    for (const xmlFile of runConfigXmlFiles) {
+      const configBlocks = this._extractConfigurationsFromXml(xmlFile);
+      for (const block of configBlocks) {
+        const parsed = this._parseConfigurationBlock(block, projectDir, xmlFile);
+        parsed.sourceFile = xmlFile;
+        parsedConfigurations.push(parsed);
+      }
     }
 
+    // Ordena configurações: Spring Boot / App reais primeiro, templates default por último
+    parsedConfigurations.sort((a, b) => {
+      if (a.isSpringBoot && !b.isSpringBoot) return -1;
+      if (!a.isSpringBoot && b.isSpringBoot) return 1;
+      if (a.isApp && !b.isApp) return -1;
+      if (!a.isApp && b.isApp) return 1;
+      if (!a.isDefault && b.isDefault) return -1;
+      if (a.isDefault && !b.isDefault) return 1;
+      return 0;
+    });
+
+    for (const cfg of parsedConfigurations) {
+      for (const [k, v] of Object.entries(cfg.envs)) {
+        if (!envs[k] && isValidEnvKey(k)) {
+          envs[k] = v;
+          envOrigins[k] = 'intellij';
+          if (!sourceFile) sourceFile = cfg.sourceFile;
+        }
+      }
+
+      cfg.vmOptions.forEach(o => {
+        if (!vmOptions.includes(o)) vmOptions.push(o);
+      });
+
+      if (!programArgs && cfg.programArgs) {
+        programArgs = cfg.programArgs;
+      }
+
+      if (!activeProfiles && cfg.activeProfiles) {
+        activeProfiles = cfg.activeProfiles;
+      }
+
+      // Processa arquivos .env do plugin EnvFile referenciados na configuração
+      for (const relPath of cfg.envFilePaths) {
+        const fullEnvPath = path.isAbsolute(relPath) ? relPath : path.join(projectDir, relPath);
+        if (fs.existsSync(fullEnvPath)) {
+          const dotEnvs = parseDotEnvFile(fullEnvPath);
+          for (const [k, v] of Object.entries(dotEnvs)) {
+            if (!envs[k] && isValidEnvKey(k)) {
+              envs[k] = v;
+              envOrigins[k] = 'env-file';
+              if (!sourceFile) sourceFile = fullEnvPath;
+            }
+          }
+        }
+      }
+    }
+
+    // Tenta derivar activeProfiles de programArgs, vmOptions ou envs
     if (!activeProfiles && programArgs) {
       const m = programArgs.match(/--spring\.profiles\.active=([^\s"']+)/i);
       if (m) activeProfiles = m[1];
@@ -199,12 +437,13 @@ class IntelliJConfigExtractor {
       activeProfiles = envs.SPRING_PROFILES_ACTIVE;
     }
 
-    for (const envFileName of ['.env', '.env.local', '.env.dev']) {
+    // Lê arquivos .env padrão na raiz do projeto (apenas variáveis com chave válida)
+    for (const envFileName of ['.env', '.env.local', '.env.dev', '.env.development']) {
       const dotEnvPath = path.join(projectDir, envFileName);
       if (fs.existsSync(dotEnvPath)) {
         const dotEnvEnvs = parseDotEnvFile(dotEnvPath);
         for (const [k, v] of Object.entries(dotEnvEnvs)) {
-          if (!envs[k]) {
+          if (!envs[k] && isValidEnvKey(k)) {
             envs[k] = v;
             envOrigins[k] = 'env-file';
             if (!sourceFile) sourceFile = dotEnvPath;
@@ -249,12 +488,42 @@ class IntelliJConfigExtractor {
     if (fs.existsSync(configPath)) {
       try {
         const data = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        const envVars = data.envVars || data.env || data.customEnvs || {};
-        const extracted = data.extractedFromIntelliJ || { envs: {}, vmOptions: [], activeProfiles: '', programArgs: '', sourceFile: '', envOrigins: {} };
-        const envOrigins = data.envOrigins || {};
+        const rawEnvVars = data.envVars || data.env || data.customEnvs || {};
+        const envVars = {};
+        let hadDirtyKeys = false;
 
+        // Limpa e sanitiza chaves que possam ter vindo de extração antiga corrompida
+        for (const [k, v] of Object.entries(rawEnvVars)) {
+          if (isValidEnvKey(k)) {
+            envVars[k] = typeof v === 'string' ? v : String(v);
+          } else {
+            hadDirtyKeys = true;
+          }
+        }
+
+        const extracted = data.extractedFromIntelliJ || { envs: {}, vmOptions: [], activeProfiles: '', programArgs: '', sourceFile: '', envOrigins: {} };
+        if (extracted.envs) {
+          const cleanExtracted = {};
+          const cleanExtractedOrigins = {};
+          for (const [k, v] of Object.entries(extracted.envs)) {
+            if (isValidEnvKey(k)) {
+              cleanExtracted[k] = typeof v === 'string' ? v : String(v);
+              if (extracted.envOrigins && extracted.envOrigins[k]) {
+                cleanExtractedOrigins[k] = extracted.envOrigins[k];
+              }
+            } else {
+              hadDirtyKeys = true;
+            }
+          }
+          extracted.envs = cleanExtracted;
+          extracted.envOrigins = cleanExtractedOrigins;
+        }
+
+        const envOrigins = {};
         for (const [k, v] of Object.entries(envVars)) {
-          if (!envOrigins[k]) {
+          if (data.envOrigins && data.envOrigins[k]) {
+            envOrigins[k] = data.envOrigins[k];
+          } else {
             envOrigins[k] = (extracted.envs && extracted.envs[k] === v) ? ((extracted.envOrigins && extracted.envOrigins[k]) || 'intellij') : 'custom';
           }
         }
@@ -262,7 +531,7 @@ class IntelliJConfigExtractor {
         const programArgs = data.programArgs || data.programArguments || '';
         const vmOptions = typeof data.vmOptions === 'string' ? data.vmOptions : (Array.isArray(data.vmOptions) ? data.vmOptions.join(' ') : '');
 
-        return {
+        const cleanedConfig = {
           projectDir,
           projectName: path.basename(projectDir),
           activeProfiles: data.activeProfiles || '',
@@ -278,6 +547,16 @@ class IntelliJConfigExtractor {
           lastSync: data.lastSync || data.lastModified || new Date().toISOString(),
           lastModified: data.lastModified || data.lastSync || new Date().toISOString(),
         };
+
+        // Se haviam chaves sujas gravadas anteriormente no disco, regrava o arquivo limpo
+        if (hadDirtyKeys) {
+          try {
+            fs.writeFileSync(configPath, JSON.stringify(cleanedConfig, null, 2), 'utf8');
+            this._saveLegacyEnvJson(projectDir, cleanedConfig);
+          } catch (_) {}
+        }
+
+        return cleanedConfig;
       } catch (_) {}
     }
 
@@ -287,7 +566,12 @@ class IntelliJConfigExtractor {
     }
 
     const extracted = this.extractFromIntelliJ(projectDir);
-    const customEnvs = (legacyData && legacyData.customEnvs) ? legacyData.customEnvs : {};
+    const customEnvsRaw = (legacyData && legacyData.customEnvs) ? legacyData.customEnvs : {};
+    const customEnvs = {};
+    for (const [k, v] of Object.entries(customEnvsRaw)) {
+      if (isValidEnvKey(k)) customEnvs[k] = v;
+    }
+
     const hasCustom = Object.keys(customEnvs).length > 0;
     const initialEnvVars = hasCustom ? customEnvs : { ...extracted.envs };
     const initialVmOptions = (legacyData && legacyData.vmOptions && legacyData.vmOptions.length)
@@ -339,9 +623,16 @@ class IntelliJConfigExtractor {
     if (!projectDir) throw new Error('Caminho do projeto inválido.');
 
     const current = this.getProjectConfig(projectDir);
-    const updatedEnvVars = partialConfig.envVars !== undefined
+    const rawEnvVars = partialConfig.envVars !== undefined
       ? partialConfig.envVars
       : (partialConfig.env !== undefined ? partialConfig.env : current.envVars);
+
+    const updatedEnvVars = {};
+    for (const [k, v] of Object.entries(rawEnvVars || {})) {
+      if (isValidEnvKey(k)) {
+        updatedEnvVars[k] = typeof v === 'string' ? v : String(v);
+      }
+    }
 
     const activeProfiles = partialConfig.activeProfiles !== undefined ? String(partialConfig.activeProfiles).trim() : current.activeProfiles;
     const vmOptions = partialConfig.vmOptions !== undefined ? String(partialConfig.vmOptions).trim() : current.vmOptions;
@@ -393,14 +684,26 @@ class IntelliJConfigExtractor {
     const current = this.getProjectConfig(projectDir);
     const extracted = this.extractFromIntelliJ(projectDir);
 
-    const isClean = !current.hasCustomOverrides || Object.keys(current.envVars).length === 0;
-    const mergedEnvVars = isClean ? { ...extracted.envs } : { ...extracted.envs, ...current.envVars };
+    // Mantém APENAS variáveis que o usuário customizou manualmente e que sejam válidas
+    const customEnvs = {};
+    if (current.envVars) {
+      for (const [k, v] of Object.entries(current.envVars)) {
+        if (isValidEnvKey(k) && current.envOrigins && current.envOrigins[k] === 'custom') {
+          customEnvs[k] = v;
+        }
+      }
+    }
+
+    // Mescla: variáveis recém-extraídas do IntelliJ + customizações manuais do usuário
+    const mergedEnvVars = { ...extracted.envs, ...customEnvs };
 
     const updatedOrigins = {};
     for (const [k, v] of Object.entries(mergedEnvVars)) {
-      updatedOrigins[k] = (extracted.envs[k] !== undefined && extracted.envs[k] === v)
-        ? ((extracted.envOrigins && extracted.envOrigins[k]) || 'intellij')
-        : 'custom';
+      if (customEnvs[k] !== undefined) {
+        updatedOrigins[k] = 'custom';
+      } else {
+        updatedOrigins[k] = (extracted.envOrigins && extracted.envOrigins[k]) || 'intellij';
+      }
     }
 
     const programArgs = current.programArgs || extracted.programArgs || '';
