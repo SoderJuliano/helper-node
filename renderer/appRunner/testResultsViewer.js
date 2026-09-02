@@ -24,7 +24,16 @@
 
     addTestEvent(event) {
       if (!event || !event.methodName) return;
-      const key = `${event.className || 'Test'}.${event.methodName}`;
+
+      const mName = String(event.methodName).trim();
+      const cName = String(event.className || '').trim();
+
+      // Ignora eventos de infraestrutura do executor ou classes inteiras
+      if (/^Gradle\s+Test\s+(?:Run|Executor)\b/i.test(mName) || /^Gradle\s+Test\s+(?:Run|Executor)\b/i.test(cName)) return;
+      if (/^\d+$/.test(cName) && (mName === 'initializationError' || /^Test\s+Executor/i.test(mName))) return;
+      if (cName === mName && (mName.endsWith('Test') || mName.endsWith('Tests'))) return;
+
+      const key = `${cName || 'Test'}.${mName}`;
       const status = (event.status || 'passed').toLowerCase();
 
       const prev = this.tests.get(key);
@@ -42,7 +51,7 @@
         else if (status === 'skipped') this.counts.skipped++;
       }
 
-      this.tests.set(key, { ...event, status });
+      this.tests.set(key, { ...event, className: cName, methodName: mName, status });
       this._renderList();
       this._updateSummary();
     }

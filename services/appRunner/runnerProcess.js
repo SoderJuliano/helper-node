@@ -341,25 +341,64 @@ class RunnerProcess extends EventEmitter {
       const trimmed = line.trim();
       if (!trimmed) continue;
 
-      // Ex Gradle: DemoApplicationTests > contextLoads() PASSED
-      // Ex Gradle: com.example.demo.DemoTests > testMethod PASSED
-      // Ex Gradle: MyTest > testCase(String) FAILED
-      const gradleMatch = trimmed.match(/(?:.*>\s*)?([A-Za-z0-9_$]+)\s*>\s*([A-Za-z0-9_$<>[\]., -]+?)(?:\(\))?\s+(PASSED|FAILED|SKIPPED|SUCCESS|FAILURE)\b/i);
-      if (gradleMatch) {
-        const className = gradleMatch[1];
-        const methodName = gradleMatch[2].trim();
-        const rawStatus = gradleMatch[3].toUpperCase();
+      // 2a. Análise avançada de linhas Gradle (ex: 'Gradle Test Executor 1 > DemoTests > contextLoads() PASSED')
+      const statusMatch = trimmed.match(/\b(PASSED|FAILED|SKIPPED|SUCCESS|FAILURE)\s*$/i);
+      if (statusMatch && trimmed.includes('>')) {
+        const rawStatus = statusMatch[1].toUpperCase();
         const status = (rawStatus === 'PASSED' || rawStatus === 'SUCCESS') ? 'passed' :
                        (rawStatus === 'FAILED' || rawStatus === 'FAILURE') ? 'failed' : 'skipped';
-        this.emit('test-event', {
-          className,
-          methodName,
-          status,
+
+        const beforeStatus = trimmed.slice(0, statusMatch.index).trim();
+        const rawParts = beforeStatus.split('>').map(p => p.trim()).filter(Boolean);
+
+        // Remove prefixos de infraestrutura do Gradle (Test Run, Test Executor, :test task)
+        const cleanParts = rawParts.filter(p => {
+          if (/^Gradle\s+Test\s+(?:Run|Executor)\b/i.test(p)) return false;
+          if (/^:\S*test\b/i.test(p)) return false;
+          if (/^Test\s+Executor\s+\d+/i.test(p)) return false;
+          return true;
         });
-        continue;
+
+        if (cleanParts.length >= 2) {
+          const classNamePart = cleanParts[cleanParts.length - 2];
+          const methodNamePart = cleanParts[cleanParts.length - 1];
+
+          const cleanMethodName = methodNamePart.replace(/\(\)$/, '').trim();
+          const simpleClassName = classNamePart.split('.').pop().trim();
+
+          // Evita ruídos como números puros ou método igual à classe
+          if (simpleClassName && !/^\d+$/.test(simpleClassName) && cleanMethodName && cleanMethodName !== simpleClassName) {
+            this.emit('test-event', {
+              className: simpleClassName,
+              fullClassName: classNamePart,
+              methodName: cleanMethodName,
+              status,
+            });
+            continue;
+          }
+        }
       }
 
-      // Ex Maven: Tests run: 3, Failures: 0, Errors: 0, Skipped: 0
+      // 2b. Ex Maven Surefire: [ERROR] Failures: / com.example.DemoTests.testMethod:42
+      const mavenFailMatch = trimmed.match(/\[ERROR\]\s+(?:Failures:\s+)?([A-Za-z0-9_$.]+)\.([A-Za-z0-9_$]+)(?::\d+)?\s*(.*)/);
+      if (mavenFailMatch) {
+        const fullClass = mavenFailMatch[1];
+        const methodName = mavenFailMatch[2];
+        const failureMessage = mavenFailMatch[3] || 'Falha no teste';
+        const simpleClass = fullClass.split('.').pop();
+        if (simpleClass && methodName && !/^\d+$/.test(simpleClass)) {
+          this.emit('test-event', {
+            className: simpleClass,
+            fullClassName: fullClass,
+            methodName,
+            status: 'failed',
+            failureMessage,
+          });
+          continue;
+        }
+      }
+
+      // 2c. Ex Maven: Tests run: 3, Failures: 0, Errors: 0, Skipped: 0
       const mavenSummaryMatch = trimmed.match(/Tests\s+run:\s*(\d+),\s*Failures:\s*(\d+),\s*Errors:\s*(\d+),\s*Skipped:\s*(\d+)/i);
       if (mavenSummaryMatch) {
         this.emit('test-summary', {

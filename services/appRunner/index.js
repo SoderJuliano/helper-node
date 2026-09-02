@@ -129,23 +129,42 @@ class AppRunnerService {
       return null;
     }
 
-    const simpleName = className ? className.split('.').pop() : '';
-    const cleanMethod = methodName ? methodName.replace(/\(.*?\)$/, '').trim() : '';
+    let rawClass = String(className || '').trim().replace(/\.java$/i, '');
+    const cleanMethod = String(methodName || '').trim()
+      .replace(/\[\d+\].*$/, '')
+      .replace(/\(.*?\)$/, '')
+      .trim();
 
-    const findFile = (dir, targetFileName, depth = 0) => {
-      if (depth > 8 || !dir || !fs.existsSync(dir)) return null;
-      const skip = new Set(['node_modules', '.git', '.gradle', 'build', 'target', '.idea', 'dist', '.gemini']);
+    // Remove package se houver
+    let simpleName = rawClass ? rawClass.split('.').pop().trim() : '';
+    // Ignora se simpleName for apenas números ou palavras de infraestrutura
+    if (/^\d+$/.test(simpleName) || /^Gradle\b/i.test(simpleName) || /^Executor\b/i.test(simpleName) || /^Test\b/i.test(simpleName)) {
+      simpleName = '';
+    }
+
+    const searchRoots = [projectDir];
+    try {
+      const parent = path.dirname(projectDir);
+      if (parent && parent !== projectDir && fs.existsSync(parent) && (fs.existsSync(path.join(parent, 'settings.gradle')) || fs.existsSync(path.join(parent, 'pom.xml')))) {
+        searchRoots.push(parent);
+      }
+    } catch (_) {}
+
+    const skipDirs = new Set(['node_modules', '.git', '.gradle', 'build', 'target', '.idea', 'dist', '.gemini', '.metadata']);
+
+    const findFileRecursively = (dir, targetBaseName, depth = 0) => {
+      if (depth > 10 || !dir || !fs.existsSync(dir)) return null;
       try {
         const entries = fs.readdirSync(dir, { withFileTypes: true });
         for (const ent of entries) {
           const full = path.join(dir, ent.name);
           if (ent.isDirectory()) {
-            if (!skip.has(ent.name)) {
-              const res = findFile(full, targetFileName, depth + 1);
+            if (!skipDirs.has(ent.name)) {
+              const res = findFileRecursively(full, targetBaseName, depth + 1);
               if (res) return res;
             }
           } else if (ent.isFile()) {
-            if (ent.name.toLowerCase() === targetFileName.toLowerCase()) {
+            if (ent.name.toLowerCase() === targetBaseName.toLowerCase()) {
               return full;
             }
           }
@@ -155,8 +174,45 @@ class AppRunnerService {
     };
 
     let targetFilePath = null;
+
+    // 1. Tenta buscar pelo nome da classe
     if (simpleName) {
-      targetFilePath = findFile(projectDir, `${simpleName}.java`);
+      for (const root of searchRoots) {
+        targetFilePath = findFileRecursively(root, `${simpleName}.java`);
+        if (targetFilePath) break;
+      }
+    }
+
+    // 2. Se não achou pelo nome da classe, mas temos um método válido, busca nos arquivos .java de teste
+    if (!targetFilePath && cleanMethod && cleanMethod.length > 2) {
+      const findFileByMethod = (dir, targetMethod, depth = 0) => {
+        if (depth > 10 || !dir || !fs.existsSync(dir)) return null;
+        try {
+          const entries = fs.readdirSync(dir, { withFileTypes: true });
+          for (const ent of entries) {
+            const full = path.join(dir, ent.name);
+            if (ent.isDirectory()) {
+              if (!skipDirs.has(ent.name)) {
+                const res = findFileByMethod(full, targetMethod, depth + 1);
+                if (res) return res;
+              }
+            } else if (ent.isFile() && ent.name.endsWith('.java')) {
+              try {
+                const content = fs.readFileSync(full, 'utf8');
+                if (content.includes(targetMethod) && (content.includes('@Test') || full.includes('test'))) {
+                  return full;
+                }
+              } catch (_) {}
+            }
+          }
+        } catch (_) {}
+        return null;
+      };
+
+      for (const root of searchRoots) {
+        targetFilePath = findFileByMethod(root, cleanMethod);
+        if (targetFilePath) break;
+      }
     }
 
     if (!targetFilePath) {
@@ -168,11 +224,20 @@ class AppRunnerService {
       const parsed = JavaParser.parse(source, targetFilePath);
       let line = parsed.classLine || 1;
 
-      if (cleanMethod && parsed.testMethods && parsed.testMethods.length > 0) {
-        const foundMethod = parsed.testMethods.find(m => m.name === cleanMethod || m.name.toLowerCase() === cleanMethod.toLowerCase());
-        if (foundMethod) {
-          line = foundMethod.line || foundMethod.methodLine || line;
-        } else {
+      if (cleanMethod) {
+        if (parsed.testMethods && parsed.testMethods.length > 0) {
+          const foundMethod = parsed.testMethods.find(m =>
+            m.name === cleanMethod ||
+            m.name.toLowerCase() === cleanMethod.toLowerCase() ||
+            cleanMethod.startsWith(m.name) ||
+            m.name.startsWith(cleanMethod)
+          );
+          if (foundMethod) {
+            line = foundMethod.line || foundMethod.methodLine || line;
+          }
+        }
+
+        if (line === (parsed.classLine || 1)) {
           const lines = source.split(/\r?\n/);
           for (let i = 0; i < lines.length; i++) {
             if (lines[i].includes(cleanMethod)) {
@@ -186,14 +251,14 @@ class AppRunnerService {
       return {
         filePath: targetFilePath,
         line,
-        className: parsed.className || simpleName,
+        className: parsed.className || simpleName || path.basename(targetFilePath, '.java'),
         methodName: cleanMethod,
       };
     } catch (_) {
       return {
         filePath: targetFilePath,
         line: 1,
-        className: simpleName,
+        className: simpleName || path.basename(targetFilePath, '.java'),
         methodName: cleanMethod,
       };
     }

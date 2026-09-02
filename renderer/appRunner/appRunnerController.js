@@ -286,14 +286,14 @@
         } catch (_) {}
       }
 
-      if (!targetFile && test.className) {
-        targetFile = `${test.className.split('.').pop()}.java`;
-      }
-
       if (targetFile && typeof window.openFileViewer === 'function') {
         window.openFileViewer(targetFile, lineNum);
         if (typeof window.showToast === 'function') {
           window.showToast(`Navegando para o teste: ${test.methodName}`);
+        }
+      } else {
+        if (typeof window.showToast === 'function') {
+          window.showToast(`Não foi possível encontrar o arquivo de teste para: ${test.methodName}`, 'warning');
         }
       }
     }
