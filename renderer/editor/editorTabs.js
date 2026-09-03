@@ -47,6 +47,14 @@
         }
       });
 
+      tab.addEventListener('auxclick', (e) => {
+        if (e.button === 1) { // Clique do botão do meio do mouse fecha a aba
+          e.preventDefault();
+          e.stopPropagation();
+          if (callbacks.closeTab) callbacks.closeTab(filePath);
+        }
+      });
+
       tab.addEventListener('contextmenu', (ev) => {
         showTabContextMenu(ev, filePath, callbacks);
       });
