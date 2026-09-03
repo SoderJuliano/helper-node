@@ -4,8 +4,10 @@
 // Estado do streaming. Fora da IIFE porque chatHistory (novo chat) e
 // chatMessages (editar pergunta) precisam RESETAR essas variáveis.
 var streamingElement = null;
+var streamBodyElement = null;
 var streamingText = '';
 var typingCursor = null;
+var streamRenderTimer = null;
 
 // Texto CRU do raciocínio da resposta atual. Guardado à parte porque o
 // raciocínio precisa ser re-renderizado inteiro a cada atualização: o modelo
@@ -22,6 +24,73 @@ var thinkingModoTexto = false; // caiu pro modo barato (append incremental)?
 // modelo continuava mandando tokens. Passando do limite, o texto só é
 // ACRESCENTADO (barato) e a formatação completa acontece uma vez, no fim.
 var LIMITE_MARKDOWN_AO_VIVO = 20000;
+
+function prepareLiveStreamingMarkdown(text) {
+    if (!text) return '';
+    let live = text;
+
+    // 1. Fecha bloco de código aberto (```) para que o <pre><code> com syntax highlight seja exibido ao vivo
+    const lines = live.split('\n');
+    let insideCodeFence = false;
+    for (let i = 0; i < lines.length; i++) {
+        if (/^\s*`{3,}/.test(lines[i])) {
+            insideCodeFence = !insideCodeFence;
+        }
+    }
+    if (insideCodeFence) {
+        live += '\n```';
+    }
+
+    return live;
+}
+
+function renderStreamLive() {
+    if (!streamingElement) return;
+    if (!streamBodyElement) {
+        streamBodyElement = streamingElement.querySelector('.stream-body-content');
+        if (!streamBodyElement) {
+            streamBodyElement = document.createElement('div');
+            streamBodyElement.className = 'stream-body-content';
+            streamingElement.appendChild(streamBodyElement);
+        }
+    }
+
+    if (!streamingText) {
+        streamBodyElement.innerHTML = '';
+        if (typingCursor) streamBodyElement.appendChild(typingCursor);
+        return;
+    }
+
+    if (streamingText.length <= LIMITE_MARKDOWN_AO_VIVO) {
+        try {
+            if (typeof window.renderMarkdown === 'function') {
+                const prepared = prepareLiveStreamingMarkdown(streamingText);
+                const html = window.renderMarkdown(prepared, 'stream-live');
+                streamBodyElement.innerHTML = html;
+            } else {
+                streamBodyElement.textContent = streamingText;
+            }
+        } catch (e) {
+            streamBodyElement.textContent = streamingText;
+        }
+    } else {
+        streamBodyElement.textContent = streamingText;
+    }
+
+    if (typingCursor) {
+        streamBodyElement.appendChild(typingCursor);
+    }
+}
+
+function agendarRenderStream() {
+    if (streamRenderTimer) return;
+    streamRenderTimer = setTimeout(() => {
+        streamRenderTimer = null;
+        renderStreamLive();
+        const transcriptionElement = document.getElementById('transcription');
+        autoScrollSeNoFim(transcriptionElement);
+    }, 50); // 50ms (20fps) para renderização suave e 0% travamento da thread
+}
 
 function renderThinking(contentDiv, final) {
     if (!contentDiv) return;
@@ -101,8 +170,6 @@ function autoScrollSeNoFim(el) {
 
                 const transcriptionElement = document.getElementById('transcription');
 
-                console.log('Chunk recebido:', JSON.stringify(chunk), 'Length:', chunk.length);
-
                 // Cria o elemento de streaming na primeira chunk
                 if (!streamingElement) {
                     console.log('Criando novo elemento de streaming');
@@ -113,8 +180,13 @@ function autoScrollSeNoFim(el) {
                     streamingElement = document.createElement('div');
                     streamingElement.className = 'streaming-response';
                     
+                    streamBodyElement = document.createElement('div');
+                    streamBodyElement.className = 'stream-body-content';
+                    streamingElement.appendChild(streamBodyElement);
+
                     typingCursor = document.createElement('span');
                     typingCursor.className = 'typing-cursor';
+                    streamBodyElement.appendChild(typingCursor);
                     
                     const lastBlockStream = transcriptionElement.querySelector('.interaction-block:last-child');
                     if (lastBlockStream) {
@@ -122,7 +194,6 @@ function autoScrollSeNoFim(el) {
                     } else {
                         transcriptionElement.appendChild(streamingElement);
                     }
-                    streamingElement.appendChild(typingCursor);
                     streamingText = '';
                     console.log('Elemento de streaming criado');
                 }
@@ -140,7 +211,7 @@ function autoScrollSeNoFim(el) {
                             details.appendChild(summary);
                             const content = document.createElement('div');
                             details.appendChild(content);
-                            streamingElement.insertBefore(details, typingCursor);
+                            streamingElement.insertBefore(details, streamBodyElement || streamingElement.firstChild);
                         }
                     } else if (chunk.event === 'thinking-end') {
                         if (currentThinkBlock) {
@@ -156,7 +227,7 @@ function autoScrollSeNoFim(el) {
                             details.appendChild(summary);
                             const content = document.createElement('div');
                             details.appendChild(content);
-                            streamingElement.insertBefore(details, typingCursor);
+                            streamingElement.insertBefore(details, streamBodyElement || streamingElement.firstChild);
                             currentThinkBlock = details;
                         }
                         const contentDiv = currentThinkBlock.querySelector('div');
@@ -169,21 +240,9 @@ function autoScrollSeNoFim(el) {
                     return; // Retorna cedo para não jogar thinking no texto final
                 }
 
-                // SIMPLE RULE: Just concatenate tokens as-is, backend should send spaces
-                // If backend doesn't send spaces between words, they will be joined
+                // Concatena o texto recebido e agenda renderização ao vivo com formatação
                 streamingText += chunk;
-                console.log('Total text length:', streamingText.length);
-                
-                // Remove o cursor, atualiza o texto, adiciona o cursor de volta
-                if (typingCursor && typingCursor.parentNode) {
-                    typingCursor.remove();
-                }
-                
-                streamingElement.textContent = streamingText;
-                streamingElement.appendChild(typingCursor);
-
-                // Scroll automático (só se já estiver no fim)
-                autoScrollSeNoFim(transcriptionElement);
+                agendarRenderStream();
             });
 
             window.electronAPI.onStreamComplete(() => {
@@ -293,8 +352,14 @@ function autoScrollSeNoFim(el) {
                     }
                 }
                 
+                if (streamRenderTimer) {
+                    clearTimeout(streamRenderTimer);
+                    streamRenderTimer = null;
+                }
+
                 // Reseta as variáveis
                 streamingElement = null;
+                streamBodyElement = null;
                 streamingText = '';
                 typingCursor = null;
                 
