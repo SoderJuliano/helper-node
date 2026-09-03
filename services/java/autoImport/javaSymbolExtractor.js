@@ -177,9 +177,10 @@ function parseFileHeaders(sanitized) {
       continue;
     }
 
-    const impMatch = trimmed.match(/^import(?:\s+static)?\s+([a-zA-Z0-9_.]+)(\.\*)?\s*;/);
+    const isWildcard = /^import(?:\s+static)?\s+[a-zA-Z0-9_.]+\s*\.\s*\*\s*;/.test(trimmed);
+    const impMatch = trimmed.match(/^import(?:\s+static)?\s+([a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)*)(?:\s*\.\s*\*|\.\*)?\s*;/);
     if (impMatch) {
-      if (impMatch[2]) {
+      if (isWildcard) {
         wildcardPackages.add(impMatch[1]);
       } else {
         const fqn = impMatch[1];
@@ -213,6 +214,70 @@ function parseFileHeaders(sanitized) {
     locallyDefinedTypes,
     typeParameters,
   };
+}
+
+const { SPRING_BOOT_CANONICAL_TYPES, JDK_CANONICAL_TYPES } = require('./javaSpringDictionary.js');
+const { JDK_FQN_MAP } = require('../javaJdkConstants.js');
+
+function isSymbolResolvedByWildcard(name, wildcardPackages, packageName, projectIndex) {
+  if (wildcardPackages && wildcardPackages.size > 0) {
+    for (const wp of wildcardPackages) {
+      const fullCandidate = `${wp}.${name}`;
+
+      // 1. projectIndex.allClasses
+      if (projectIndex && projectIndex.allClasses && projectIndex.allClasses.has(fullCandidate)) {
+        return true;
+      }
+
+      // 2. projectIndex.simpleNameIndex
+      if (projectIndex && projectIndex.simpleNameIndex) {
+        const fqns = projectIndex.simpleNameIndex.get(name);
+        if (fqns) {
+          const list = Array.isArray(fqns) ? fqns : Array.from(fqns);
+          if (list.some((f) => f === fullCandidate || f.startsWith(`${wp}.`))) {
+            return true;
+          }
+        }
+      }
+
+      // 3. Dicionario Canonico Spring Boot (ex: org.springframework.web.bind.annotation.* cobre PostMapping)
+      const springMatches = SPRING_BOOT_CANONICAL_TYPES.get(name);
+      if (springMatches && springMatches.some((f) => f === fullCandidate || f.startsWith(`${wp}.`))) {
+        return true;
+      }
+
+      // 4. Dicionario Canonico JDK (ex: java.util.* cobre List, Map, ArrayList)
+      const jdkMatches = JDK_CANONICAL_TYPES.get(name);
+      if (jdkMatches && jdkMatches.some((f) => f === fullCandidate || f.startsWith(`${wp}.`))) {
+        return true;
+      }
+
+      // 5. Mapa Classico JDK Constants
+      const jdkConstant = JDK_FQN_MAP.get(name);
+      if (jdkConstant && (jdkConstant === fullCandidate || jdkConstant.startsWith(`${wp}.`))) {
+        return true;
+      }
+    }
+  }
+
+  // Checa se o simbolo pertence ao mesmo pacote do arquivo atual
+  if (packageName) {
+    const localCandidate = `${packageName}.${name}`;
+    if (projectIndex && projectIndex.allClasses && projectIndex.allClasses.has(localCandidate)) {
+      return true;
+    }
+    if (projectIndex && projectIndex.simpleNameIndex) {
+      const fqns = projectIndex.simpleNameIndex.get(name);
+      if (fqns) {
+        const list = Array.isArray(fqns) ? fqns : Array.from(fqns);
+        if (list.some((f) => f === localCandidate)) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
 }
 
 function extractUnresolvedSymbols(content, projectIndex = null) {
@@ -264,11 +329,8 @@ function extractUnresolvedSymbols(content, projectIndex = null) {
     if (locallyDefinedTypes.has(name)) return;
     if (importedSimpleNames.has(name)) return;
 
-    if (projectIndex && projectIndex.allClasses) {
-      for (const wp of wildcardPackages) {
-        if (projectIndex.allClasses.has(`${wp}.${name}`)) return;
-      }
-      if (packageName && projectIndex.allClasses.has(`${packageName}.${name}`)) return;
+    if (isSymbolResolvedByWildcard(name, wildcardPackages, packageName, projectIndex)) {
+      return;
     }
 
     const key = `${line}:${col}:${name}`;
@@ -285,5 +347,6 @@ module.exports = {
   stripCommentsAndLiterals,
   parseFileHeaders,
   extractUnresolvedSymbols,
+  isSymbolResolvedByWildcard,
   JAVA_LANG_CLASSES,
 };

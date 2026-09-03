@@ -102,4 +102,44 @@ assert(allDiags.some(d => d.symbolName === 'ArrayList'), 'javaImportChecker deve
 assert(!allDiags.some(d => d.line === 18), 'Linhas de import no cabecalho nunca devem ser sublinhadas');
 console.log('  ok   JavaAutoImportService e javaImportChecker geram diagnosticos com sugestoes prontas para o CodeMirror (sem sublinhar imports existentes)');
 
+// 5. Teste de Wildcard Imports (import org.springframework.web.bind.annotation.*, java.util.*, etc.)
+const wildcardSample = `
+package com.example.demo;
+
+import org.springframework.web.bind.annotation.*;
+import java.util.*;
+import jakarta.persistence.*;
+
+@RestController
+@RequestMapping("/api/orders")
+@Entity
+@Table(name = "orders")
+public class OrderController {
+    @Id
+    @GeneratedValue
+    private Long id;
+
+    private List<String> items;
+    private Map<String, Object> metadata;
+
+    @PostMapping
+    public String createOrder(@RequestBody String body, @RequestParam("type") String type) {
+        ArrayList<String> list = new ArrayList<>();
+        return "created";
+    }
+
+    @GetMapping("/{id}")
+    public String getOrder(@PathVariable("id") String orderId) {
+        return "order";
+    }
+}
+`;
+
+const wildcardSyms = extractUnresolvedSymbols(wildcardSample);
+assert.equal(wildcardSyms.length, 0, 'Nenhum simbolo coberto por wildcard import deve ser listado como pendente');
+
+const wildcardDiags = JavaAutoImportService.getDiagnostics('C:/projects/demo/src/main/java/com/example/demo/OrderController.java', wildcardSample);
+assert.equal(wildcardDiags.length, 0, 'Nao deve gerar diagnosticos para simbolos cobertos por wildcard imports (*)');
+console.log('  ok   Wildcard imports (import package.*) reconhecem e resolvem todas as classes e anotacoes cobertas sem sublinhados indevidos');
+
 console.log('\nTodos os testes do Auto-Import Java & Spring Boot passaram com sucesso! ί\n\ninfo: Feature pronta para uso no modo IDE.');
