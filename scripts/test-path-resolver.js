@@ -65,4 +65,16 @@ const resNoExt = resolveWorkspaceFilePath('CopilotCliProcess', mockWorkspace);
 assert.strictEqual(resNoExt, path.resolve(mockProjectRoot, 'services/providers/copilot-cli/CopilotCliProcess.js'));
 console.log('  ok   Extensão comum detectada e resolvida com sucesso');
 
+// 8. Resolução de caminho absoluto incorreto no Windows (C:/wrong/path/CopilotCliProcess.js)
+console.log('8. Testando caminho absoluto incorreto com letra de unidade no Windows...');
+const resWrongDrive = resolveWorkspaceFilePath('C:/wrong/virtual/path/CopilotCliProcess.js', mockWorkspace);
+assert.strictEqual(resWrongDrive, path.resolve(mockProjectRoot, 'services/providers/copilot-cli/CopilotCliProcess.js'));
+console.log('  ok   Drive letter incorreto removido e arquivo localizado no projeto');
+
+// 9. Resolução com nomes separados por espaço ou snake_case (ex: copilot_cli_process -> CopilotCliProcess.js)
+console.log('9. Testando variação alfanumérica/snake_case...');
+const resAlnum = resolveWorkspaceFilePath('copilot_cli_process', mockWorkspace);
+assert.strictEqual(resAlnum, path.resolve(mockProjectRoot, 'services/providers/copilot-cli/CopilotCliProcess.js'));
+console.log('  ok   Match alfanumérico flexível encontrou o arquivo');
+
 console.log('\nTodos os testes do PathResolver passaram com sucesso! 🎉\n');

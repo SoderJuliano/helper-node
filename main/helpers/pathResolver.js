@@ -15,21 +15,28 @@ const COMMON_EXTENSIONS = [
 
 function findFileFast(rootDir, targetBaseName, targetSuffix) {
   if (!rootDir || !fs.existsSync(rootDir)) return null;
-  const skipDirs = new Set(['node_modules', '.git', '.gradle', 'build', 'target', '.idea', 'dist', '.gemini', '.metadata', '.cache', '.vscode']);
+  const skipDirs = new Set(['node_modules', '.git', '.gradle', 'build', 'target', '.idea', 'dist', '.gemini', '.metadata', '.cache', '.vscode', '.bin', '.output']);
 
-  const targetBaseLower = (targetBaseName || '').toLowerCase();
+  let cleanBase = (targetBaseName || '').trim();
+  cleanBase = cleanBase.replace(/^[`'"\(\[\{<]+|[`'"\)\]\}>.,;:!]+$/g, '');
+  if (!cleanBase) return null;
+
+  const targetBaseLower = cleanBase.toLowerCase();
+  const targetAlnum = targetBaseLower.replace(/[^a-z0-9]/g, '');
   const targetSuffNorm = (targetSuffix || '').replace(/\\/g, '/').toLowerCase();
   const hasExt = targetBaseLower.includes('.');
 
-  let firstBaseMatch = null;
-  let firstExtMatch = null;
+  let exactMatch = null;
+  let extMatch = null;
+  let alnumMatch = null;
+  let partialMatch = null;
 
   // BFS para encontrar arquivos mais próximos da raiz primeiro
   const queue = [{ dir: rootDir, depth: 0 }];
 
   while (queue.length > 0) {
     const { dir, depth } = queue.shift();
-    if (depth > 8) continue;
+    if (depth > 10) continue;
 
     let entries;
     try {
@@ -43,11 +50,14 @@ function findFileFast(rootDir, targetBaseName, targetSuffix) {
     for (const ent of entries) {
       const full = path.join(dir, ent.name);
       if (ent.isDirectory()) {
-        if (!skipDirs.has(ent.name) && depth < 8) {
+        if (!skipDirs.has(ent.name) && depth < 10) {
           subdirs.push(full);
         }
       } else if (ent.isFile()) {
         const entNameLower = ent.name.toLowerCase();
+        const entNameNoExt = entNameLower.replace(/\.[^.]+$/, '');
+        const entAlnum = entNameLower.replace(/[^a-z0-9]/g, '');
+        const entBaseAlnum = entNameNoExt.replace(/[^a-z0-9]/g, '');
 
         // 1. Match exato de nome de arquivo (case-insensitive)
         if (entNameLower === targetBaseLower) {
@@ -55,30 +65,45 @@ function findFileFast(rootDir, targetBaseName, targetSuffix) {
           if (targetSuffNorm && normFull.endsWith(targetSuffNorm)) {
             return full; // Match perfeito de sufixo e nome
           }
-          if (!firstBaseMatch) firstBaseMatch = full;
+          if (!exactMatch) exactMatch = full;
         }
 
         // 2. Se o alvo não tinha extensão (ex: 'UserService' -> 'UserService.java')
-        if (!hasExt && !firstExtMatch) {
+        if (!hasExt && !extMatch) {
           for (const ext of COMMON_EXTENSIONS) {
             if (entNameLower === targetBaseLower + ext) {
-              firstExtMatch = full;
+              extMatch = full;
               break;
             }
+          }
+        }
+
+        // 3. Match alfanumérico flexível (ex: 'user service' ou 'usa service' ou 'user_service' -> 'UserService.java')
+        if (targetAlnum.length >= 3 && !alnumMatch) {
+          if (entBaseAlnum === targetAlnum || entAlnum === targetAlnum) {
+            alnumMatch = full;
+          }
+        }
+
+        // 4. Match parcial se for palavra-chave representativa
+        if (targetAlnum.length >= 4 && !partialMatch) {
+          if (entBaseAlnum.includes(targetAlnum) || (entBaseAlnum.length >= 4 && targetAlnum.includes(entBaseAlnum))) {
+            partialMatch = full;
           }
         }
       }
     }
 
+    // Se já encontramos um match exato ou com extensão nos níveis superiores, encerramos cedo
+    if (exactMatch && depth >= 2) break;
+    if (extMatch && depth >= 3) break;
+
     for (const s of subdirs) {
       queue.push({ dir: s, depth: depth + 1 });
     }
-
-    // Se já encontramos um match exato de baseName nos níveis superiores, encerramos cedo
-    if (firstBaseMatch && depth >= 3) break;
   }
 
-  return firstBaseMatch || firstExtMatch || null;
+  return exactMatch || extMatch || alnumMatch || partialMatch || null;
 }
 
 function findFileRecursively(dir, targetBaseName, targetSuffix, depth = 0) {
@@ -152,7 +177,8 @@ function resolveWorkspaceFilePath(rawPath, workspace) {
     roots.push(cwd);
   }
 
-  const noLeading = p.replace(/^[/\\]+/, '');
+  // Remove barra inicial e letra de unidade do Windows se for caminho relativo ou incorreto
+  const noLeading = p.replace(/^[a-zA-Z]:[/\\]+/, '').replace(/^[/\\]+/, '');
 
   for (const root of roots) {
     if (!root) continue;
@@ -185,10 +211,22 @@ function resolveWorkspaceFilePath(rawPath, workspace) {
       }
     }
 
-    // 4. Busca rápida e resiliente no projeto por basename / sufixo / regex
+    // 4. Busca rápida e resiliente no projeto por basename / sufixo / alnum
     const baseName = path.basename(noLeading);
     if (baseName) {
       const found = findFileFast(root, baseName, noLeading);
+      if (found && fs.existsSync(found)) {
+        setCached(cacheKey, found);
+        return found;
+      }
+    }
+  }
+
+  // 5. Se nenhuma raiz continha o arquivo exato, tenta busca global nos anexos
+  for (const root of roots) {
+    const baseName = path.basename(p);
+    if (baseName) {
+      const found = findFileFast(root, baseName, p);
       if (found && fs.existsSync(found)) {
         setCached(cacheKey, found);
         return found;
