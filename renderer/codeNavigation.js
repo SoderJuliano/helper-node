@@ -274,7 +274,7 @@
 
     if (window.electronAPI && window.electronAPI.onSymbolIndexerStatus) {
       window.electronAPI.onSymbolIndexerStatus((data) => {
-        if (data && data.status === 'completed' && activeCm && currentFilePath) {
+        if (data && (data.status === 'ready' || data.status === 'completed') && activeCm && currentFilePath) {
           updateGutterMarkers(activeCm, currentFilePath);
         }
       });

@@ -214,6 +214,7 @@ function findDefinition(indexer, currentFilePath, symbolName, lineText = '') {
 
   let candidates = [...(indexer.symbolMap.get(symbolName) || [])];
 
+  // Se o símbolo é de uma interface ou se estamos dentro de uma interface:
   const implCandidates = [];
   for (const c of candidates) {
     if (c.kind === 'interface-method' || c.kind === 'interface') {
@@ -222,16 +223,55 @@ function findDefinition(indexer, currentFilePath, symbolName, lineText = '') {
         const impls = indexer.implementationsMap.get(ownerName);
         if (impls) {
           for (const impl of impls) {
-            const implFileData = indexer.fileMap.get(impl.filePath);
-            const implMethod = implFileData ? implFileData.methods.find(m => m.name === symbolName) : null;
+            let implFileData = indexer.fileMap.get(impl.filePath);
+            if (!implFileData && fs.existsSync(impl.filePath)) {
+              indexer.indexSingleFile(impl.filePath);
+              implFileData = indexer.fileMap.get(impl.filePath);
+            }
+            let implMethod = implFileData ? implFileData.methods.find(m => m.name === symbolName) : null;
+            if (!implMethod && fs.existsSync(impl.filePath)) {
+              const localSearch = searchDefinitionInFile(impl.filePath, symbolName);
+              if (localSearch.length > 0) implMethod = localSearch[0];
+            }
             if (implMethod) {
-              implCandidates.push(implMethod);
+              implCandidates.push({
+                ...implMethod,
+                className: impl.className || (implMethod.owner ? implMethod.owner.name : null)
+              });
+            }
+          }
+        }
+
+        // Fallback para NomeImpl
+        const fallbackNames = [ownerName + 'Impl'];
+        if (ownerName.endsWith('Custom')) {
+          fallbackNames.push(ownerName.slice(0, -6) + 'Impl');
+        }
+        for (const fbName of fallbackNames) {
+          const fallbackClasses = indexer.symbolMap.get(fbName) || [];
+          for (const fc of fallbackClasses) {
+            let implFileData = indexer.fileMap.get(fc.filePath);
+            if (!implFileData && fs.existsSync(fc.filePath)) {
+              indexer.indexSingleFile(fc.filePath);
+              implFileData = indexer.fileMap.get(fc.filePath);
+            }
+            let implMethod = implFileData ? implFileData.methods.find(m => m.name === symbolName) : null;
+            if (!implMethod && fs.existsSync(fc.filePath)) {
+              const localSearch = searchDefinitionInFile(fc.filePath, symbolName);
+              if (localSearch.length > 0) implMethod = localSearch[0];
+            }
+            if (implMethod) {
+              implCandidates.push({
+                ...implMethod,
+                className: fc.name
+              });
             }
           }
         }
       }
     }
   }
+
   for (const ic of implCandidates) {
     if (!candidates.some(c => c.filePath === ic.filePath && c.line === ic.line)) {
       candidates.push(ic);
@@ -265,12 +305,41 @@ function findDefinition(indexer, currentFilePath, symbolName, lineText = '') {
   const currentData = indexer.fileMap.get(normCurrent);
   const tipoReceptor = resolveReceiverType(indexer, normCurrent, symbolName, lineText);
 
+  const currentIsInterface = currentData && (
+    (currentData.interfaces && currentData.interfaces.length > 0) ||
+    (currentData.methods && currentData.methods.some(m => m.kind === 'interface-method' && m.name === symbolName))
+  );
+
   const pontos = (c) => {
     let p = 0;
+    const isTestFile = c.filePath && (
+      c.filePath.includes('/src/test/') || c.filePath.includes('\\src\\test\\') ||
+      c.filePath.includes('/test/') || c.filePath.includes('\\test\\') ||
+      /Test(?:s|Case)?\.java$/i.test(c.filePath) || /Spec\.java$/i.test(c.filePath) ||
+      /Mock\.java$/i.test(c.filePath)
+    );
+
+    // Se é arquivo de teste, penaliza fortemente para nunca sobrepor implementação de produção
+    if (isTestFile) {
+      p -= 200;
+    }
+
     const isImplClass = c.kind === 'method' && (
       (c.className && c.className.endsWith('Impl')) ||
       (c.filePath && (c.filePath.includes('/generated-sources/') || c.filePath.includes('\\generated-sources\\') || c.filePath.includes('/generated/') || c.filePath.includes('\\generated\\')))
     );
+
+    // Se estamos navegando a partir de uma interface (ex: UserService -> UserServiceImpl):
+    if (currentIsInterface) {
+      if (isImplClass && !isTestFile) {
+        p += 300;
+      } else if (c.kind === 'method' && c.filePath !== normCurrent && !isTestFile) {
+        p += 200;
+      }
+      if (c.filePath === normCurrent) {
+        p -= 100; // Deprioriza a declaração da própria interface
+      }
+    }
 
     if (tipoReceptor) {
       const base = path.basename(c.filePath, path.extname(c.filePath));
@@ -280,10 +349,10 @@ function findDefinition(indexer, currentFilePath, symbolName, lineText = '') {
 
       if (isMapper && isDirectImpl) {
         p += 200;
-      } else if (isDirectInterface) {
-        p += 150;
       } else if (isDirectImpl) {
-        p += 120;
+        p += 160;
+      } else if (isDirectInterface) {
+        p += 140;
       } else if (c.className && c.className.includes(tipoReceptor)) {
         p += 80;
       } else if (base.includes(tipoReceptor)) {
@@ -291,8 +360,8 @@ function findDefinition(indexer, currentFilePath, symbolName, lineText = '') {
       }
     }
 
-    if (isImplClass) {
-      p += 30;
+    if (isImplClass && !isTestFile) {
+      p += 40;
     }
 
     if (currentData && currentData.imports && currentData.imports.length > 0) {
@@ -302,10 +371,12 @@ function findDefinition(indexer, currentFilePath, symbolName, lineText = '') {
       }
     }
 
-    if (c.filePath === normCurrent && (c.kind === 'interface-method' || c.kind === 'interface')) {
-      p -= 50;
-    } else if (!tipoReceptor && c.filePath === normCurrent) {
-      p += 50;
+    if (!currentIsInterface) {
+      if (c.filePath === normCurrent && (c.kind === 'interface-method' || c.kind === 'interface')) {
+        p -= 50;
+      } else if (!tipoReceptor && c.filePath === normCurrent) {
+        p += 50;
+      }
     }
 
     return p;
@@ -316,43 +387,71 @@ function findDefinition(indexer, currentFilePath, symbolName, lineText = '') {
 
 function findImplementations(indexer, currentFilePath, lineNum, symbolName) {
   const normCurrent = normalizePath(currentFilePath);
-  const fileData = indexer.fileMap.get(normCurrent);
+  let fileData = indexer.fileMap.get(normCurrent);
+  if (!fileData && fs.existsSync(normCurrent)) {
+    indexer.indexSingleFile(normCurrent);
+    fileData = indexer.fileMap.get(normCurrent);
+  }
   if (!fileData) return [];
 
-  const matchedInterface = fileData.interfaces.find(i => i.line === Number(lineNum) || i.name === symbolName);
+  const matchedInterface = fileData.interfaces.find(i => (lineNum && i.line === Number(lineNum)) || i.name === symbolName);
   let targetInterfaceName = matchedInterface ? matchedInterface.name : symbolName;
 
-  const matchedMethod = fileData.methods.find(m => m.line === Number(lineNum) && m.kind === 'interface-method');
+  const matchedMethod = fileData.methods.find(m => (lineNum && m.line === Number(lineNum)) || m.name === symbolName);
   if (matchedMethod && matchedMethod.owner && matchedMethod.owner.name) {
     targetInterfaceName = matchedMethod.owner.name;
   }
 
-  const implClasses = indexer.implementationsMap.get(targetInterfaceName);
-  if (!implClasses || implClasses.size === 0) {
-    const fallbackName = targetInterfaceName + 'Impl';
-    const fallbackCandidates = indexer.symbolMap.get(fallbackName) || [];
-    if (fallbackCandidates.length > 0) {
-      return fallbackCandidates.map(c => ({
-        filePath: c.filePath,
-        line: c.line,
-        col: c.col,
-        className: c.name
-      }));
-    }
-    return [];
+  const implClasses = new Set();
+  const directImpls = indexer.implementationsMap.get(targetInterfaceName);
+  if (directImpls) {
+    for (const d of directImpls) implClasses.add(d);
   }
+
+  // Fallback: NomeImpl
+  const fallbackNames = [targetInterfaceName + 'Impl'];
+  if (targetInterfaceName && targetInterfaceName.endsWith('Custom')) {
+    fallbackNames.push(targetInterfaceName.slice(0, -6) + 'Impl');
+  }
+
+  for (const fbName of fallbackNames) {
+    const fallbackCandidates = indexer.symbolMap.get(fbName) || [];
+    for (const fc of fallbackCandidates) {
+      if (fc.kind === 'class') {
+        implClasses.add({ className: fc.name, filePath: fc.filePath, line: fc.line });
+      }
+    }
+  }
+
+  if (implClasses.size === 0) return [];
 
   const results = [];
   for (const impl of implClasses) {
+    const isTest = impl.filePath && (
+      impl.filePath.includes('/src/test/') || impl.filePath.includes('\\src\\test\\') ||
+      /Test(?:s|Case)?\.java$/i.test(impl.filePath)
+    );
+    if (isTest && implClasses.size > 1) continue;
+
     if (matchedMethod) {
-      const implFileData = indexer.fileMap.get(impl.filePath);
-      const implMethod = implFileData ? implFileData.methods.find(m => m.name === matchedMethod.name) : null;
+      let implFileData = indexer.fileMap.get(impl.filePath);
+      if (!implFileData && fs.existsSync(impl.filePath)) {
+        indexer.indexSingleFile(impl.filePath);
+        implFileData = indexer.fileMap.get(impl.filePath);
+      }
+      let implMethod = implFileData ? implFileData.methods.find(m => m.name === matchedMethod.name) : null;
+      if (!implMethod && fs.existsSync(impl.filePath)) {
+        const found = searchDefinitionInFile(impl.filePath, matchedMethod.name);
+        if (found.length > 0) implMethod = found[0];
+      }
       if (implMethod) {
         results.push({
           filePath: impl.filePath,
           line: implMethod.line,
-          col: implMethod.col,
-          className: impl.className
+          col: implMethod.col || 1,
+          className: impl.className,
+          symbol: matchedMethod.name,
+          kind: 'interface-method'
         });
         continue;
       }
@@ -362,7 +461,9 @@ function findImplementations(indexer, currentFilePath, lineNum, symbolName) {
       filePath: impl.filePath,
       line: impl.line,
       col: 1,
-      className: impl.className
+      className: impl.className,
+      symbol: targetInterfaceName,
+      kind: 'interface'
     });
   }
 
@@ -371,7 +472,11 @@ function findImplementations(indexer, currentFilePath, lineNum, symbolName) {
 
 function getGutterInfo(indexer, currentFilePath) {
   const normCurrent = normalizePath(currentFilePath);
-  const fileData = indexer.fileMap.get(normCurrent);
+  let fileData = indexer.fileMap.get(normCurrent);
+  if (!fileData && fs.existsSync(normCurrent)) {
+    indexer.indexSingleFile(normCurrent);
+    fileData = indexer.fileMap.get(normCurrent);
+  }
   if (!fileData) return [];
 
   const gutters = [];

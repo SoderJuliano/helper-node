@@ -93,8 +93,10 @@ function parseFileLines(indexer, normPath, content) {
       fileData.imports.push({ text: importMatch[1].trim(), line: lineNum });
     }
 
+    const lineClean = lineText.replace(/@\w+(?:\([^)]*\))?\s*/g, '').trim();
+
     // 2. Interfaces
-    const interfaceMatch = lineText.match(/(?:public\s+|export\s+|protected\s+)?interface\s+([A-Za-z0-9_$]+)/);
+    const interfaceMatch = lineClean.match(/(?:(?:public|protected|private|abstract|static|final|sealed|non-sealed|export)\s+)*interface\s+([A-Za-z0-9_$]+)/);
     if (interfaceMatch) {
       const interfaceName = interfaceMatch[1];
       currentInterface = interfaceName;
@@ -104,27 +106,47 @@ function parseFileLines(indexer, normPath, content) {
         name: interfaceName,
         fqcn: packageName ? `${packageName}.${interfaceName}` : interfaceName,
         line: lineNum,
-        col,
+        col: col > 0 ? col : 1,
         filePath: normPath,
-        kind: 'interface'
+        kind: 'interface',
+        extends: []
       };
+
+      const extMatch = lineClean.match(/\bextends\s+([^;{\n]+)/);
+      if (extMatch) {
+        const extList = extMatch[1].split(',').map(s => s.trim().replace(/<.*?>/g, '').trim()).filter(Boolean);
+        item.extends = extList;
+        for (const extName of extList) {
+          if (!indexer.implementationsMap.has(extName)) {
+            indexer.implementationsMap.set(extName, new Set());
+          }
+          indexer.implementationsMap.get(extName).add({ className: interfaceName, filePath: normPath, line: lineNum, isInterface: true });
+        }
+      }
+
       fileData.interfaces.push(item);
       indexer.addSymbol(interfaceName, item);
     }
 
     // 3. Classes, Enums, Records e Implementações
-    const classMatch = lineText.match(/(?:(?:public|export|default|abstract|final)\s+)*(?:class|enum|record)\s+([A-Za-z0-9_$]+)(?:\s+extends\s+[A-Za-z0-9_$.<>]*)?(?:\s+implements\s+([A-Za-z0-9_$,\s<>]+))?/);
-    if (classMatch) {
+    const classMatch = lineClean.match(/(?:(?:public|protected|private|abstract|static|final|sealed|non-sealed|export|default)\s+)*(?:class|enum|record)\s+([A-Za-z0-9_$]+)/);
+    if (classMatch && !lineClean.startsWith('interface ') && !lineClean.includes(' interface ')) {
       const className = classMatch[1];
       currentClass = className;
       currentInterface = null;
       const col = lineText.indexOf(className) + 1;
-      const implementsClause = classMatch[2];
+
+      let implementsClause = null;
+      const impMatch = lineClean.match(/\bimplements\s+([^;{\n]+)/);
+      if (impMatch) {
+        implementsClause = impMatch[1];
+      }
+
       const item = {
         name: className,
         fqcn: packageName ? `${packageName}.${className}` : className,
         line: lineNum,
-        col,
+        col: col > 0 ? col : 1,
         filePath: normPath,
         kind: 'class',
         implements: []
@@ -132,12 +154,19 @@ function parseFileLines(indexer, normPath, content) {
 
       const implList = [];
       if (implementsClause) {
-        implList.push(...implementsClause.split(',').map(s => s.trim().replace(/<.*>/, '')));
+        implList.push(...implementsClause.split(',').map(s => s.trim().replace(/<.*?>/g, '').trim()).filter(Boolean));
       }
+
+      // Convenção 1: NomeImpl implementa Nome
       if (className.endsWith('Impl')) {
         const inferredIface = className.slice(0, -4);
-        if (!implList.includes(inferredIface)) {
+        if (inferredIface && !implList.includes(inferredIface)) {
           implList.push(inferredIface);
+        }
+        // Convenção 2: Spring Data Custom Repositories (ex: UserRepositoryImpl implementa UserRepositoryCustom)
+        const customIface = inferredIface + 'Custom';
+        if (!implList.includes(customIface)) {
+          implList.push(customIface);
         }
       }
 
@@ -146,15 +175,27 @@ function parseFileLines(indexer, normPath, content) {
         if (!indexer.implementationsMap.has(implName)) {
           indexer.implementationsMap.set(implName, new Set());
         }
-        indexer.implementationsMap.get(implName).add({ className, filePath: normPath, line: lineNum });
+        indexer.implementationsMap.get(implName).add({ className, filePath: normPath, line: lineNum, isInterface: false });
       }
 
       fileData.classes.push(item);
       indexer.addSymbol(className, item);
+    } else if (currentClass && lineClean.startsWith('implements ')) {
+      // Suporte a implements em linhas seguintes da declaração da classe
+      const impMatch = lineClean.match(/\bimplements\s+([^;{\n]+)/);
+      if (impMatch) {
+        const raw = impMatch[1];
+        const implList = raw.split(',').map(s => s.trim().replace(/<.*?>/g, '').trim()).filter(Boolean);
+        for (const implName of implList) {
+          if (!indexer.implementationsMap.has(implName)) {
+            indexer.implementationsMap.set(implName, new Set());
+          }
+          indexer.implementationsMap.get(implName).add({ className: currentClass, filePath: normPath, line: lineNum, isInterface: false });
+        }
+      }
     }
 
     // 3.5 Constantes / Campos / Enums
-    const lineClean = lineText.replace(/@\w+(?:\([^)]*\))?\s*/g, '').trim();
     const KEYWORDS = new Set([
       'if', 'for', 'while', 'switch', 'catch', 'return', 'class', 'interface',
       'enum', 'package', 'import', 'new', 'public', 'private', 'protected',

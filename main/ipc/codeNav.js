@@ -6,19 +6,22 @@ const symbolIndexer = require('../../services/symbolIndexer.js');
 const javaImportChecker = require('../../services/javaImportChecker.js');
 
 function ensureIndexed(filePath) {
-  if (!symbolIndexer.projectPath) {
-    try {
-      const { workspace } = require('../globals.js');
-      const dir = (workspace.list() || []).find((a) => a.type === "dir");
-      if (dir && dir.path) {
-        symbolIndexer.indexWorkspace(dir.path);
+  try {
+    const { workspace } = require('../globals.js');
+    const dir = (workspace.list() || []).find((a) => a.type === "dir");
+    const targetProject = dir && dir.path ? dir.path : (filePath && !filePath.includes('.jar!') ? require('path').dirname(filePath) : null);
+    if (targetProject) {
+      const { normalizePath } = require('../../services/symbolIndexer/symbolConstants.js');
+      const normTarget = normalizePath(targetProject);
+      if (!symbolIndexer.projectPath || symbolIndexer.projectPath !== normTarget) {
+        symbolIndexer.indexWorkspace(targetProject);
         return;
       }
-    } catch (_) {}
-    if (filePath && !filePath.includes('.jar!')) {
-      const path = require('path');
-      symbolIndexer.indexWorkspace(path.dirname(filePath));
     }
+  } catch (_) {}
+  if (!symbolIndexer.projectPath && filePath && !filePath.includes('.jar!')) {
+    const path = require('path');
+    symbolIndexer.indexWorkspace(path.dirname(filePath));
   }
 }
 
@@ -88,6 +91,7 @@ module.exports = function registerCodeNavIPC() {
 
   ipcMain.handle('code-nav-get-gutter-info', async (event, { filePath }) => {
     try {
+      ensureIndexed(filePath);
       return symbolIndexer.getGutterInfo(filePath);
     } catch (e) {
       console.error('[codeNav] Erro ao buscar informações de gutter:', e);
