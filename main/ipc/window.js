@@ -36,6 +36,7 @@ ipcMain.on("window-minimize", (event) => {
 ipcMain.on("window-close", (event) => {
   const win = BrowserWindow.fromWebContents(event.sender) || state.mainWindow;
   if (!win || win.isDestroyed()) return;
+  try { win.hide(); } catch (_) {}
   if (win === state.mainWindow) {
     helpers.shutdownApp();
     return;

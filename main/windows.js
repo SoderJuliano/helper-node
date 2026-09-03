@@ -409,6 +409,11 @@ helpers.createWindow = async function() {
     });
 
     state.mainWindow.on("close", () => {
+      try {
+        if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+          state.mainWindow.hide();
+        }
+      } catch (_) {}
       helpers.shutdownApp();
     });
 

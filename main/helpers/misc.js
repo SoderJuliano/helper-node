@@ -325,12 +325,44 @@ helpers.shutdownApp = function() {
   state._isShuttingDown = true;
   console.log('[main] Encerrando Helper Node e todos os subprocessos...');
 
+  // 1. FECHA / OCULTA TODAS AS JANELAS IMEDIATAMENTE (0ms) para que a UI desapareça na hora
+  try {
+    const { BrowserWindow } = require('electron');
+    BrowserWindow.getAllWindows().forEach((w) => {
+      if (w && !w.isDestroyed()) {
+        try { w.hide(); } catch (_) {}
+        try { w.destroy(); } catch (_) {}
+      }
+    });
+  } catch (_) {}
+
+  try {
+    if (state.tray && !state.tray.isDestroyed()) {
+      state.tray.destroy();
+      state.tray = null;
+    }
+  } catch (_) {}
+
+  try {
+    const { closeNexaWindow } = require('../nexa/index.js');
+    closeNexaWindow();
+  } catch (_) {}
+
+  // 2. CANCELA TIMERS E WATCHERS
   try {
     if (state.backendCheckInterval) clearInterval(state.backendCheckInterval);
     if (state.sharingCheckInterval) clearInterval(state.sharingCheckInterval);
     helpers.clearOsNotifAutoClose();
   } catch (_) {}
 
+  try {
+    const workspaceWatcher = require('../../services/workspaceWatcher.js');
+    if (workspaceWatcher && typeof workspaceWatcher.stopWatching === 'function') {
+      workspaceWatcher.stopWatching();
+    }
+  } catch (_) {}
+
+  // 3. ENCERRA PROCESSOS E MONITORAMENTOS DE BACKGROUND
   try { helpers.killTerminal(); } catch (_) {}
   try {
     const { AppRunnerService } = require('../../services/appRunner');
@@ -343,36 +375,32 @@ helpers.shutdownApp = function() {
   try { helpers.cancelDictation(); } catch (_) {}
   try { helpers.stopAllRealtime(); } catch (_) {}
   try { helpers.stopClipboardMonitoring(); } catch (_) {}
+  try { helpers.stopCaptureToolMonitoring(); } catch (_) {}
+  try { helpers.stopScreenshotFolderMonitoring(); } catch (_) {}
   try { globalShortcut.unregisterAll(); } catch (_) {}
   try {
-    if (state.tray && !state.tray.isDestroyed()) {
-      state.tray.destroy();
-      state.tray = null;
+    if (translationAssistant && typeof translationAssistant.stop === 'function') {
+      translationAssistant.stop().catch(() => {});
+    }
+    if (visionGuide && typeof visionGuide.stop === 'function') {
+      visionGuide.stop().catch(() => {});
     }
   } catch (_) {}
   try {
-    const { closeNexaWindow } = require('../nexa/index.js');
-    closeNexaWindow();
-  } catch (_) {}
-  try {
+    const CopilotCliProvider = require('../../services/providers/copilot-cli/CopilotCliProvider.js');
+    if (CopilotCliProvider && typeof CopilotCliProvider.shutdown === 'function') {
+      CopilotCliProvider.shutdown().catch(() => {});
+    }
     GeminiCliProvider.shutdown().catch(() => {});
     ClaudeCliProvider.shutdown().catch(() => {});
-  } catch (_) {}
-
-  try {
-    const { BrowserWindow } = require('electron');
-    BrowserWindow.getAllWindows().forEach((w) => {
-      if (w && !w.isDestroyed()) {
-        try { w.destroy(); } catch (_) {}
-      }
-    });
   } catch (_) {}
 
   const { app } = require('electron');
   try { app.quit(); } catch (_) {}
 
+  // Garante saída definitiva sem travar o processo
   setTimeout(() => {
     try { app.exit(0); } catch (_) {}
     try { process.exit(0); } catch (_) {}
-  }, 250).unref();
+  }, 100).unref();
 };

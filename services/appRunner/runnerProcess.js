@@ -453,7 +453,12 @@ class RunnerProcess extends EventEmitter {
 
     if (isWin) {
       try {
-        execSync(`taskkill /F /T /PID ${pid}`, { stdio: ['ignore', 'ignore', 'ignore'], timeout: 2500 });
+        const p = spawn('taskkill', ['/F', '/T', '/PID', String(pid)], {
+          windowsHide: true,
+          stdio: 'ignore',
+          detached: true,
+        });
+        if (p && typeof p.unref === 'function') p.unref();
       } catch (_) {
         try { process.kill(pid, 'SIGKILL'); } catch (_) {}
       }
@@ -464,7 +469,8 @@ class RunnerProcess extends EventEmitter {
         process.kill(-pid, 'SIGKILL');
       } catch (_) {
         try {
-          execSync(`pkill -TERM -P ${pid} || kill -9 -${pid} || pkill -9 -P ${pid}`, { stdio: ['ignore', 'ignore', 'ignore'], timeout: 2000 });
+          const p = spawn('pkill', ['-9', '-P', String(pid)], { stdio: 'ignore', detached: true });
+          if (p && typeof p.unref === 'function') p.unref();
         } catch (_) {
           try { process.kill(pid, 'SIGKILL'); } catch (_) {}
         }

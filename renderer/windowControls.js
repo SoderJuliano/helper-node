@@ -30,7 +30,10 @@
             };
             attach(minBtn, () => window.electronAPI.minimizeWindow && window.electronAPI.minimizeWindow());
             attach(maxBtn, () => window.electronAPI.maximizeWindow && window.electronAPI.maximizeWindow());
-            attach(closeBtn, () => window.electronAPI.closeWindow && window.electronAPI.closeWindow());
+            attach(closeBtn, () => {
+                try { document.body.style.display = 'none'; } catch (_) {}
+                if (window.electronAPI.closeWindow) window.electronAPI.closeWindow();
+            });
         }
     }
 
