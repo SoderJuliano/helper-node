@@ -393,7 +393,7 @@ var creatingFolderParent = null;
     if (window.electronAPI && window.electronAPI.onJavaDepsChanged) {
         window.electronAPI.onJavaDepsChanged(() => {
             const depsNode = treeEntries.find(e => e.synthetic === 'java-deps');
-            if (depsNode && !depsNode.collapsed) {
+            if (depsNode) {
                 depsNode.loaded = false;
                 const idx = treeEntries.indexOf(depsNode);
                 if (idx !== -1) {
@@ -405,8 +405,12 @@ var creatingFolderParent = null;
                         treeEntries.splice(idx + 1, removeCount);
                     }
                 }
-                depsNode.collapsed = true;
-                toggleDir(depsNode);
+                if (!depsNode.collapsed) {
+                    depsNode.collapsed = true;
+                    toggleDir(depsNode);
+                } else {
+                    renderTree();
+                }
             }
         });
     }

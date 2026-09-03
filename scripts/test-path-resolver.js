@@ -53,4 +53,16 @@ const resDeep = resolveWorkspaceFilePath('copilot-cli/CopilotCliProcess.js', moc
 assert.strictEqual(resDeep, path.resolve(mockProjectRoot, 'services/providers/copilot-cli/CopilotCliProcess.js'));
 console.log('  ok   Busca recursiva encontrou arquivo em subdiretório profundo');
 
+// 6. Resolução apenas com nome do arquivo sem caminho (link incompleto da IA)
+console.log('6. Testando link incompleto contendo apenas o nome do arquivo (CopilotCliProcess.js)...');
+const resBasenameOnly = resolveWorkspaceFilePath('CopilotCliProcess.js', mockWorkspace);
+assert.strictEqual(resBasenameOnly, path.resolve(mockProjectRoot, 'services/providers/copilot-cli/CopilotCliProcess.js'));
+console.log('  ok   Arquivo localizado imediatamente pelo nome no projeto');
+
+// 7. Resolução de nome sem extensão (ex: CopilotCliProcess -> CopilotCliProcess.js)
+console.log('7. Testando nome sem extensão...');
+const resNoExt = resolveWorkspaceFilePath('CopilotCliProcess', mockWorkspace);
+assert.strictEqual(resNoExt, path.resolve(mockProjectRoot, 'services/providers/copilot-cli/CopilotCliProcess.js'));
+console.log('  ok   Extensão comum detectada e resolvida com sucesso');
+
 console.log('\nTodos os testes do PathResolver passaram com sucesso! 🎉\n');

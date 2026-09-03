@@ -229,7 +229,10 @@ var historyState = { loadedSessions: [], currentSession: null };
                         resp.className = 'ia-response';
                         currentBlock.appendChild(resp);
                     }
-                    resp.innerText = (resp.innerText ? resp.innerText + '\n' : '') + msg.content;
+                    const rawContent = (resp.dataset.rawContent ? resp.dataset.rawContent + '\n' : '') + msg.content;
+                    resp.dataset.rawContent = rawContent;
+                    const formatted = typeof window.renderMarkdown === 'function' ? window.renderMarkdown(rawContent) : rawContent;
+                    resp.innerHTML = formatted;
                 }
             });
 

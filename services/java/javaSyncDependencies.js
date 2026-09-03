@@ -65,21 +65,25 @@ function downloadDependenciesAsync(found, callback) {
   let cmd = '';
   let args = [];
   let initFile = null;
+  let outPrefix = null;
+  let mavenOutFile = null;
 
   if (type === 'maven') {
     const mvnw = path.join(rootDir, isWin ? 'mvnw.cmd' : 'mvnw');
     cmd = fs.existsSync(mvnw) ? mvnw : (isWin ? 'mvn.cmd' : 'mvn');
-    args = ['-U', '-B', 'dependency:resolve'];
+    mavenOutFile = path.join(os.tmpdir(), `helper-ide-sync-${hashOf(rootDir)}.txt`);
+    try { fs.unlinkSync(mavenOutFile); } catch (_) {}
+    args = ['-U', '-B', 'dependency:resolve', 'dependency:build-classpath', `-Dmdep.outputFile=${mavenOutFile}`];
   } else {
     const gradlew = path.join(rootDir, isWin ? 'gradlew.bat' : 'gradlew');
     cmd = fs.existsSync(gradlew) ? gradlew : (isWin ? 'gradle.bat' : 'gradle');
     const runId = hashOf(rootDir);
-    const outPrefix = path.join(os.tmpdir(), `helper-ide-sync-${runId}-`);
+    outPrefix = path.join(os.tmpdir(), `helper-ide-sync-${runId}-`);
     initFile = path.join(os.tmpdir(), `helper-ide-sync-${runId}.init.gradle`);
     try {
       const initScript = generateGradleInitScript(outPrefix, rootDir);
       fs.writeFileSync(initFile, initScript, 'utf8');
-      args = ['--refresh-dependencies', '--console=plain', '--init-script', initFile, 'dependencies'];
+      args = ['-q', '--console=plain', '--refresh-dependencies', '--init-script', initFile, 'helperIdePrintClasspath'];
     } catch (_) {
       args = ['--refresh-dependencies', '--console=plain', 'dependencies'];
     }
@@ -93,6 +97,34 @@ function downloadDependenciesAsync(found, callback) {
     `Executando: ${cmd} ${args.join(' ')}\n\n`
   ];
   syncLogsMap.set(norm, logBuffer.join(''));
+
+  const collectResolvedEntries = () => {
+    const entries = [];
+    if (outPrefix) {
+      try {
+        const dir = os.tmpdir();
+        const prefixName = path.basename(outPrefix);
+        const files = fs.readdirSync(dir).filter((f) => f.startsWith(prefixName) && f.endsWith('.txt'));
+        for (const f of files) {
+          const full = path.join(dir, f);
+          try {
+            const txt = fs.readFileSync(full, 'utf8').trim();
+            if (txt) entries.push(...txt.split(/\r?\n/).map((s) => s.trim()).filter(Boolean));
+          } catch (_) {}
+          try { fs.unlinkSync(full); } catch (_) {}
+        }
+      } catch (_) {}
+    }
+    if (mavenOutFile && fs.existsSync(mavenOutFile)) {
+      try {
+        const txt = fs.readFileSync(mavenOutFile, 'utf8').trim();
+        const sep = process.platform === 'win32' ? ';' : ':';
+        if (txt) entries.push(...txt.split(sep).map((s) => s.trim()).filter(Boolean));
+        fs.unlinkSync(mavenOutFile);
+      } catch (_) {}
+    }
+    return entries;
+  };
 
   let proc;
   try {
@@ -109,7 +141,7 @@ function downloadDependenciesAsync(found, callback) {
     try { proc.kill(); } catch (_) {}
     logBuffer.push('\n[aviso] Timeout de download atingido.\n');
     syncLogsMap.set(norm, logBuffer.join(''));
-    callback(null);
+    callback(collectResolvedEntries());
   }, DOWNLOAD_TIMEOUT_MS);
 
   proc.stdout.on('data', (d) => {
@@ -129,7 +161,7 @@ function downloadDependenciesAsync(found, callback) {
     if (initFile) { try { fs.unlinkSync(initFile); } catch (_) {} }
     logBuffer.push(`\n[helper-node] Processo finalizado com codigo ${code}\n`);
     syncLogsMap.set(norm, logBuffer.join(''));
-    callback(null);
+    callback(collectResolvedEntries());
   });
 
   proc.on('error', (err) => {
@@ -137,7 +169,7 @@ function downloadDependenciesAsync(found, callback) {
     if (initFile) { try { fs.unlinkSync(initFile); } catch (_) {} }
     logBuffer.push(`\n[erro] ${err.message}\n`);
     syncLogsMap.set(norm, logBuffer.join(''));
-    callback(null);
+    callback(collectResolvedEntries());
   });
 }
 
@@ -151,38 +183,47 @@ async function syncDependencies(dirPath, { forceDownload = true } = {}) {
   notifyJavaDepsChanged(found.rootDir, 'building');
   clearCacheForProject(found.rootDir);
 
+  let resolvedEntries = [];
   if (forceDownload) {
-    await new Promise((resolve) => {
-      downloadDependenciesAsync(found, () => resolve());
+    resolvedEntries = await new Promise((resolve) => {
+      downloadDependenciesAsync(found, (entries) => resolve(entries || []));
     });
   }
 
-  const entry = getOrBuildProjectIndex(found.rootDir);
+  const key = normalizePath(found.rootDir) + '|' + found.type;
+  let entry = projectCache.get(key);
   if (!entry) {
-    return { ok: false, error: 'Nao foi possivel inicializar o indice do projeto.' };
+    entry = getOrBuildProjectIndex(found.rootDir);
+  }
+
+  if (resolvedEntries && resolvedEntries.length > 0 && entry) {
+    const { buildIndexFromClasspathEntries } = require('./javaProjectCache.js');
+    buildIndexFromClasspathEntries(resolvedEntries, found.moduleDir || found.rootDir, entry, key);
   }
 
   let waited = 0;
-  while (entry.status === 'building' && waited < 15000) {
+  while (entry && entry.status === 'building' && waited < 15000) {
     await new Promise(r => setTimeout(r, 500));
     waited += 500;
   }
 
-  const jarCount = (entry.classpathEntries || []).length;
-  const classCount = (entry.allClasses && entry.allClasses.size) || 0;
+  const jarCount = (entry && entry.classpathEntries ? entry.classpathEntries.length : 0);
+  const classCount = (entry && entry.allClasses ? entry.allClasses.size : 0);
+
+  notifyJavaDepsChanged(found.rootDir, 'ready');
 
   return {
-    ok: entry.status !== 'error',
-    status: entry.status,
+    ok: entry ? entry.status !== 'error' : false,
+    status: entry ? entry.status : 'ready',
     type: found.type,
     rootDir: found.rootDir,
     buildFile: found.buildFile,
     jarCount,
     classCount,
-    error: entry.error,
-    message: entry.status === 'ready'
+    error: entry ? entry.error : null,
+    message: entry && entry.status === 'ready'
       ? `Dependencias ${found.type === 'maven' ? 'Maven' : 'Gradle'} sincronizadas com sucesso! (${jarCount} bibliotecas indexadas)`
-      : (entry.error || 'Sincronizacao de dependencias em andamento...'),
+      : ((entry && entry.error) || 'Sincronizacao de dependencias em andamento...'),
   };
 }
 

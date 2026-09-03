@@ -37,6 +37,30 @@
     transform: scale(0.97);
 }
 
+.chat-file-link.is-loading {
+    opacity: 0.65;
+    cursor: wait !important;
+    pointer-events: none;
+    position: relative;
+}
+
+.chat-file-link.is-loading::after {
+    content: '';
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    margin-left: 4px;
+    border: 1.5px solid rgba(56, 189, 248, 0.35);
+    border-top-color: #38bdf8;
+    border-radius: 50%;
+    animation: spin-chat-file-link 0.6s linear infinite;
+    vertical-align: middle;
+}
+
+@keyframes spin-chat-file-link {
+    to { transform: rotate(360deg); }
+}
+
 .chat-file-link .file-link-icon {
     width: 12px;
     height: 12px;

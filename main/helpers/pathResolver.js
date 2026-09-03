@@ -4,30 +4,85 @@
 const fs = require('fs');
 const path = require('path');
 
-function findFileRecursively(dir, targetBaseName, targetSuffix, depth = 0) {
-  if (depth > 6 || !dir || !fs.existsSync(dir)) return null;
-  const skipDirs = new Set(['node_modules', '.git', '.gradle', 'build', 'target', '.idea', 'dist', '.gemini', '.metadata']);
+const resolvedPathCache = new Map();
+const MAX_CACHE_SIZE = 500;
 
-  try {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
+const COMMON_EXTENSIONS = [
+  '.java', '.kt', '.js', '.ts', '.jsx', '.tsx',
+  '.json', '.xml', '.gradle', '.html', '.css', '.md',
+  '.py', '.yml', '.yaml', '.properties', '.sql', '.sh', '.bat'
+];
+
+function findFileFast(rootDir, targetBaseName, targetSuffix) {
+  if (!rootDir || !fs.existsSync(rootDir)) return null;
+  const skipDirs = new Set(['node_modules', '.git', '.gradle', 'build', 'target', '.idea', 'dist', '.gemini', '.metadata', '.cache', '.vscode']);
+
+  const targetBaseLower = (targetBaseName || '').toLowerCase();
+  const targetSuffNorm = (targetSuffix || '').replace(/\\/g, '/').toLowerCase();
+  const hasExt = targetBaseLower.includes('.');
+
+  let firstBaseMatch = null;
+  let firstExtMatch = null;
+
+  // BFS para encontrar arquivos mais próximos da raiz primeiro
+  const queue = [{ dir: rootDir, depth: 0 }];
+
+  while (queue.length > 0) {
+    const { dir, depth } = queue.shift();
+    if (depth > 8) continue;
+
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch (_) {
+      continue;
+    }
+
+    const subdirs = [];
+
     for (const ent of entries) {
       const full = path.join(dir, ent.name);
       if (ent.isDirectory()) {
-        if (!skipDirs.has(ent.name)) {
-          const subRes = findFileRecursively(full, targetBaseName, targetSuffix, depth + 1);
-          if (subRes) return subRes;
+        if (!skipDirs.has(ent.name) && depth < 8) {
+          subdirs.push(full);
         }
       } else if (ent.isFile()) {
-        if (ent.name.toLowerCase() === targetBaseName.toLowerCase()) {
-          const normFull = full.replace(/\\/g, '/');
-          const normSuff = targetSuffix.replace(/\\/g, '/');
-          if (normFull.endsWith(normSuff)) return full;
-          if (!targetSuffix.includes('/') && !targetSuffix.includes('\\')) return full;
+        const entNameLower = ent.name.toLowerCase();
+
+        // 1. Match exato de nome de arquivo (case-insensitive)
+        if (entNameLower === targetBaseLower) {
+          const normFull = full.replace(/\\/g, '/').toLowerCase();
+          if (targetSuffNorm && normFull.endsWith(targetSuffNorm)) {
+            return full; // Match perfeito de sufixo e nome
+          }
+          if (!firstBaseMatch) firstBaseMatch = full;
+        }
+
+        // 2. Se o alvo não tinha extensão (ex: 'UserService' -> 'UserService.java')
+        if (!hasExt && !firstExtMatch) {
+          for (const ext of COMMON_EXTENSIONS) {
+            if (entNameLower === targetBaseLower + ext) {
+              firstExtMatch = full;
+              break;
+            }
+          }
         }
       }
     }
-  } catch (_) {}
-  return null;
+
+    for (const s of subdirs) {
+      queue.push({ dir: s, depth: depth + 1 });
+    }
+
+    // Se já encontramos um match exato de baseName nos níveis superiores, encerramos cedo
+    if (firstBaseMatch && depth >= 3) break;
+  }
+
+  return firstBaseMatch || firstExtMatch || null;
+}
+
+function findFileRecursively(dir, targetBaseName, targetSuffix, depth = 0) {
+  return findFileFast(dir, targetBaseName, targetSuffix);
 }
 
 function resolveWorkspaceFilePath(rawPath, workspace) {
@@ -69,6 +124,14 @@ function resolveWorkspaceFilePath(rawPath, workspace) {
     return p;
   }
 
+  // Cache lookup
+  const cacheKey = `${p}__${(workspace && workspace.getProjectPath ? workspace.getProjectPath() : '')}`;
+  if (resolvedPathCache.has(cacheKey)) {
+    const cached = resolvedPathCache.get(cacheKey);
+    if (fs.existsSync(cached)) return cached;
+    resolvedPathCache.delete(cacheKey);
+  }
+
   // Coleta raízes candidatas do projeto
   const roots = [];
   const projectPath = (workspace && workspace.getProjectPath) ? workspace.getProjectPath() : null;
@@ -96,35 +159,57 @@ function resolveWorkspaceFilePath(rawPath, workspace) {
 
     // 1. Resolução direta sem barra inicial
     const cand1 = path.resolve(root, noLeading);
-    if (fs.existsSync(cand1)) return cand1;
+    if (fs.existsSync(cand1)) {
+      setCached(cacheKey, cand1);
+      return cand1;
+    }
 
     // 2. Remove prefixo do nome da pasta do projeto (ex: helper-node/services/...)
     const baseProject = path.basename(root);
     if (noLeading.startsWith(baseProject + '/') || noLeading.startsWith(baseProject + '\\')) {
       const stripped = noLeading.substring(baseProject.length + 1);
       const cand2 = path.resolve(root, stripped);
-      if (fs.existsSync(cand2)) return cand2;
+      if (fs.existsSync(cand2)) {
+        setCached(cacheKey, cand2);
+        return cand2;
+      }
     }
 
     // 3. Subpastas comuns de código (src, src/main/java, services, etc.)
     const commonSubdirs = ['src', 'src/main/java', 'src/test/java', 'src/main/resources', 'services', 'renderer', 'main', 'main/ipc', 'main/helpers'];
     for (const sub of commonSubdirs) {
       const candSub = path.resolve(root, sub, noLeading);
-      if (fs.existsSync(candSub)) return candSub;
+      if (fs.existsSync(candSub)) {
+        setCached(cacheKey, candSub);
+        return candSub;
+      }
     }
 
-    // 4. Busca recursiva por basename
+    // 4. Busca rápida e resiliente no projeto por basename / sufixo / regex
     const baseName = path.basename(noLeading);
-    if (baseName && baseName.includes('.')) {
-      const found = findFileRecursively(root, baseName, noLeading);
-      if (found) return found;
+    if (baseName) {
+      const found = findFileFast(root, baseName, noLeading);
+      if (found && fs.existsSync(found)) {
+        setCached(cacheKey, found);
+        return found;
+      }
     }
   }
 
-  return path.resolve(roots[0] || cwd, noLeading);
+  const fallback = path.resolve(roots[0] || cwd, noLeading);
+  return fallback;
+}
+
+function setCached(k, v) {
+  if (resolvedPathCache.size >= MAX_CACHE_SIZE) {
+    const firstKey = resolvedPathCache.keys().next().value;
+    resolvedPathCache.delete(firstKey);
+  }
+  resolvedPathCache.set(k, v);
 }
 
 module.exports = {
   resolveWorkspaceFilePath,
   findFileRecursively,
+  findFileFast,
 };

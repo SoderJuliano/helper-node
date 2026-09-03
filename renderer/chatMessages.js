@@ -85,6 +85,8 @@ var isEditingQuestion = false;
         if (fileLink) {
             e.preventDefault();
             e.stopPropagation();
+            if (fileLink.classList.contains('is-loading')) return;
+
             const rawPath = fileLink.getAttribute('data-file-path') || fileLink.dataset.filePath;
             const rawLine = fileLink.getAttribute('data-line') || fileLink.dataset.line;
             if (rawPath && rawPath !== '#') {
@@ -92,7 +94,13 @@ var isEditingQuestion = false;
                 let { path: filePath, line } = parseFn(rawPath);
                 if (!line && rawLine) line = parseInt(rawLine, 10);
                 if (filePath && typeof window.openFileViewer === 'function') {
-                    window.openFileViewer(filePath, line);
+                    fileLink.classList.add('is-loading');
+                    try {
+                        await window.openFileViewer(filePath, line);
+                    } catch (_) {
+                    } finally {
+                        fileLink.classList.remove('is-loading');
+                    }
                 }
             }
             return;

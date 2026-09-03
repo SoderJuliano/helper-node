@@ -33,9 +33,12 @@
         session.conversations.forEach(msg => {
           const msgDiv = document.createElement('div');
           msgDiv.className = `conversation-message ${msg.role}`;
+          const formattedContent = (typeof window.renderMarkdown === 'function' && msg.role !== 'user')
+            ? window.renderMarkdown(msg.content)
+            : msg.content;
           msgDiv.innerHTML = `
               <div class="conversation-message-label">${msg.role === 'user' ? 'P:' : 'R:'}</div>
-              <div class="conversation-message-content">${msg.content}</div>
+              <div class="conversation-message-content">${formattedContent}</div>
           `;
           conversationContent.appendChild(msgDiv);
         });

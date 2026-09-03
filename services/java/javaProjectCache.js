@@ -204,4 +204,5 @@ module.exports = {
   saveDiskCache,
   notifyJavaDepsChanged,
   getOrBuildProjectIndex,
+  buildIndexFromClasspathEntries,
 };
