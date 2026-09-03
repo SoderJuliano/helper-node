@@ -65,15 +65,43 @@
     width: 12px;
     height: 12px;
     flex-shrink: 0;
-    opacity: 0.85;
+    opacity: 0.9;
 }
 
 .chat-file-link .file-link-icon.edit {
-    color: #38bdf8;
+    color: #34d399;
 }
 
 .chat-file-link .file-link-icon.read {
+    color: #38bdf8;
+}
+
+.chat-file-link .file-link-icon.file {
     color: #94a3b8;
+}
+
+.chat-file-link.action-link-edit {
+    border-color: rgba(52, 211, 153, 0.25);
+    color: #6ee7b7;
+}
+
+.chat-file-link.action-link-edit:hover {
+    background: rgba(52, 211, 153, 0.15);
+    border-color: #34d399;
+    color: #a7f3d0;
+    box-shadow: 0 0 8px rgba(52, 211, 153, 0.25);
+}
+
+.chat-file-link.action-link-read {
+    border-color: rgba(56, 189, 248, 0.25);
+    color: #7dd3fc;
+}
+
+.chat-file-link.action-link-read:hover {
+    background: rgba(56, 189, 248, 0.15);
+    border-color: #38bdf8;
+    color: #bae6fd;
+    box-shadow: 0 0 8px rgba(56, 189, 248, 0.25);
 }
 
 .chat-file-action {
@@ -96,15 +124,15 @@
 }
 
 .chat-action-badge.badge-edit {
-    background: rgba(56, 189, 248, 0.16);
-    color: #38bdf8;
-    border: 1px solid rgba(56, 189, 248, 0.35);
+    background: rgba(52, 211, 153, 0.16);
+    color: #34d399;
+    border: 1px solid rgba(52, 211, 153, 0.35);
 }
 
 .chat-action-badge.badge-read {
-    background: rgba(148, 163, 184, 0.15);
-    color: #cbd5e1;
-    border: 1px solid rgba(148, 163, 184, 0.3);
+    background: rgba(56, 189, 248, 0.16);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.35);
 }
 
 .chat-web-link {

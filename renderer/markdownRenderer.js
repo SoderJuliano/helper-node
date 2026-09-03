@@ -72,9 +72,9 @@
 
         // Delegação de evento para copiar código ao clicar
  // showCopyToast
-        const FILE_ICON_SVG = '<svg class="file-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
-        const EDIT_FILE_ICON_SVG = '<svg class="file-link-icon edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
-        const READ_FILE_ICON_SVG = '<svg class="file-link-icon read" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>';
+        const FILE_ICON_SVG = '<svg class="file-link-icon file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>';
+        const EDIT_FILE_ICON_SVG = '<svg class="file-link-icon edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/><path d="M15 5l4 4"/></svg>';
+        const READ_FILE_ICON_SVG = '<svg class="file-link-icon read" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
 
         function parseFilePathAndLine(raw) {
             if (!raw) return { path: '', line: undefined };
@@ -127,22 +127,34 @@
         function buildFileLinkHtml(targetPath, displayLabel, iconSvg, actionClass) {
             const { path: p, line } = parseFilePathAndLine(targetPath);
             const lineAttr = line ? ` data-line="${line}"` : '';
-            const title = line ? `Abrir ${p} na linha ${line}` : `Abrir ${p} no editor`;
+            const isRead = line !== undefined || (typeof targetPath === 'string' && (targetPath.includes('#L') || /lines?\s+\d+/i.test(targetPath))) || (actionClass && actionClass.includes('read'));
+            const isEdit = (actionClass && actionClass.includes('edit'));
+
             let icon = iconSvg;
+            let finalClass = actionClass ? `chat-link chat-file-link ${actionClass}` : 'chat-link chat-file-link';
+
             if (!icon) {
-                if (line !== undefined || (typeof targetPath === 'string' && (targetPath.includes('#L') || /lines?\s+\d+/i.test(targetPath)))) {
+                if (isRead) {
                     icon = READ_FILE_ICON_SVG;
+                    if (!finalClass.includes('read')) finalClass += ' action-link-read';
+                } else if (isEdit) {
+                    icon = EDIT_FILE_ICON_SVG;
+                    if (!finalClass.includes('edit')) finalClass += ' action-link-edit';
                 } else {
                     icon = FILE_ICON_SVG;
                 }
             }
-            const cls = actionClass ? `chat-link chat-file-link ${actionClass}` : 'chat-link chat-file-link';
+
+            const title = isRead
+                ? (line ? `Visualizar ${p} na linha ${line}` : `Visualizar ${p}`)
+                : (isEdit ? `Editado: ${p}` : `Abrir ${p} no editor`);
+
             let label = (displayLabel || p).trim();
             if (label.startsWith('`') && label.endsWith('`') && label.length > 2) {
                 label = label.slice(1, -1);
             }
             const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-            return `<a href="#" class="${cls}" data-file-path="${esc(p)}"${lineAttr} title="${esc(title)}">${icon}<span>${esc(label)}</span></a>`;
+            return `<a href="#" class="${finalClass}" data-file-path="${esc(p)}"${lineAttr} title="${esc(title)}">${icon}<span>${esc(label)}</span></a>`;
         }
 
         function renderMarkdown(text, idPrefix) {
@@ -190,9 +202,13 @@
                 return saida.join('\n');
             })();
 
-            // 2. Processa linhas de Ação do Copilot CLI / AI: Edit e Read
-            // Ex.: Edit: src/index.js, Read: src/index.js, ● Edit src/index.js, * Read src/index.js, etc.
-            out = out.replace(/(?:^|\n)\s*(?:[●✓*•-]\s*|\d+\.\s*)?(?:(Edit|Editing|Edited|Wrote|Created|Modified)|(Read|Reading|Viewed|Inspected))(?::|\s+file:|\s+)\s*(`?[a-zA-Z0-9_.\/\\#:-]+(?:\s*\(lines?\s+\d+.*?\))?`?|\[[^\]]+\]\([^)]+\))(?=[^\w\/\\.:-]|$)/g, (match, editAct, readAct, rawTarget) => {
+            // 2. Processa linhas de Ação da IA / CLI: Edit (escrita) e Read (leitura)
+            // Ex.: Edit: src/index.js, Read: src/index.js, ● Edit src/index.js, * Modificado: src/index.js, etc.
+            const EDIT_KEYWORDS = 'Edit|Editing|Edited|Wrote|Created|Modified|Updated|Modificado|Editado|Alterado|Criado|Atualizado';
+            const READ_KEYWORDS = 'Read|Reading|Viewed|Inspected|Viewing|Lendo|Lido|Visualizado|Consultado|Analisado|view_file';
+            const ACTION_RE = new RegExp(`(?:^|\\n)\\s*(?:[●✓*•-]\\s*|\\d+\\.\\s*)?(?:(${EDIT_KEYWORDS})|(${READ_KEYWORDS}))(?::|\\s+file:|\\s+)\\s*(\`?[a-zA-Z0-9_.\\/\\\\#:-]+(?:\\s*\\(lines?\\s+\\d+.*?\\))?\`?|\\[[^\\]]+\\]\\([^)]+\\))(?=[^\\w\\/\\\\.:-]|\$)`, 'gi');
+
+            out = out.replace(ACTION_RE, (match, editAct, readAct, rawTarget) => {
                 let target = rawTarget.trim().replace(/^`|`$/g, '');
                 let label = target;
                 const mdLink = target.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
@@ -217,21 +233,26 @@
                     return hold(`<a href="${escapeHTML(trg)}" class="chat-link chat-web-link" target="_blank" rel="noopener noreferrer">${label}</a>`);
                 }
                 if (trg.startsWith('file://') || isLikelyFilePath(trg)) {
-                    return hold(buildFileLinkHtml(trg, label, FILE_ICON_SVG));
+                    const isReadLink = trg.includes('#L') || /lines?\s+\d+/i.test(trg) || /^(view|read|lendo|lido|consult)/i.test(label);
+                    const isEditLink = /^(edit|mod|alter|cria|atual)/i.test(label);
+                    const icon = isReadLink ? READ_FILE_ICON_SVG : (isEditLink ? EDIT_FILE_ICON_SVG : null);
+                    const cls = isReadLink ? 'action-link-read' : (isEditLink ? 'action-link-edit' : '');
+                    return hold(buildFileLinkHtml(trg, label, icon, cls));
                 }
                 return hold(`<a href="${escapeHTML(trg)}" class="chat-link chat-web-link" target="_blank" rel="noopener noreferrer">${label}</a>`);
             });
 
             // 4. Processa URLs file:/// soltas no texto
             out = out.replace(/(?:file:\/\/\/[^\s\)<>"\x00]+|file:\/\/[^\s\)<>"\x00]+)/g, (url) => {
-                return hold(buildFileLinkHtml(url, url, FILE_ICON_SVG));
+                const isReadUrl = url.includes('#L') || /lines?\s+\d+/i.test(url);
+                return hold(buildFileLinkHtml(url, url, isReadUrl ? READ_FILE_ICON_SVG : null, isReadUrl ? 'action-link-read' : ''));
             });
 
             // 5. Código inline `x` → <code> inline ou link de arquivo clicável
             out = out.replace(/`([^`\n]+)`/g, (_, code) => {
                 const trimmed = code.trim();
                 if (isLikelyFilePath(trimmed)) {
-                    return hold(buildFileLinkHtml(trimmed, escapeHTML(trimmed), FILE_ICON_SVG));
+                    return hold(buildFileLinkHtml(trimmed, escapeHTML(trimmed)));
                 }
                 return `<code class="inline-code" title="Clique para copiar">${escapeHTML(code)}</code>`;
             });
