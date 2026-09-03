@@ -214,6 +214,84 @@ const GitDiffService = {
     } catch (e) {
       return { ok: false, error: e.message };
     }
+  },
+
+  async getGitFileLineStatus(filePath) {
+    if (!filePath || typeof filePath !== 'string' || filePath.includes('.jar!') || filePath.includes('.zip!')) {
+      return { ok: true, lines: {} };
+    }
+
+    try {
+      const cwd = path.dirname(filePath);
+      if (!fs.existsSync(cwd)) return { ok: true, lines: {} };
+
+      const topLevelRes = await execGit(['rev-parse', '--show-toplevel'], cwd);
+      const repoRoot = topLevelRes.stdout.trim();
+      if (topLevelRes.err || !repoRoot) {
+        return { ok: true, lines: {} };
+      }
+
+      const relPath = path.relative(repoRoot, filePath).replace(/\\/g, '/');
+
+      // 1. Status do arquivo
+      const statusRes = await execGit(['status', '--porcelain', '-uall', '--', relPath], repoRoot);
+      const statusLine = (statusRes.stdout || '').trim();
+
+      if (!statusLine) {
+        // Arquivo sem alterações (comitado e limpo)
+        return { ok: true, lines: {} };
+      }
+
+      if (statusLine.startsWith('??')) {
+        // Arquivo novo não rastreado
+        return { ok: true, allAdded: true, lines: {} };
+      }
+
+      const linesMap = {};
+      const hunkRegex = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/gm;
+
+      // 2. Diff em relação ao HEAD
+      const headDiffRes = await execGit(['diff', '-U0', 'HEAD', '--', relPath], repoRoot);
+      const diffText = headDiffRes.stdout || '';
+
+      let m;
+      while ((m = hunkRegex.exec(diffText)) !== null) {
+        const oldStart = parseInt(m[1], 10);
+        const oldCount = m[2] !== undefined ? parseInt(m[2], 10) : 1;
+        const newStart = parseInt(m[3], 10);
+        const newCount = m[4] !== undefined ? parseInt(m[4], 10) : 1;
+
+        if (newCount > 0) {
+          const type = (oldCount === 0) ? 'A' : 'M';
+          for (let i = 0; i < newCount; i++) {
+            linesMap[newStart + i] = type;
+          }
+        } else if (oldCount > 0 && newCount === 0) {
+          linesMap[Math.max(1, newStart)] = 'M';
+        }
+      }
+
+      // 3. Checa alterações adicionadas no stage (git diff --cached)
+      if (statusLine.startsWith('A ') || statusLine.startsWith('AM')) {
+        const stagedRes = await execGit(['diff', '--cached', '-U0', 'HEAD', '--', relPath], repoRoot);
+        const stagedText = stagedRes.stdout || '';
+        let sm;
+        while ((sm = hunkRegex.exec(stagedText)) !== null) {
+          const oldCount = sm[2] !== undefined ? parseInt(sm[2], 10) : 1;
+          const newStart = parseInt(sm[3], 10);
+          const newCount = sm[4] !== undefined ? parseInt(sm[4], 10) : 1;
+          if (newCount > 0 && oldCount === 0) {
+            for (let i = 0; i < newCount; i++) {
+              linesMap[newStart + i] = 'A';
+            }
+          }
+        }
+      }
+
+      return { ok: true, lines: linesMap };
+    } catch (e) {
+      return { ok: false, error: e.message, lines: {} };
+    }
   }
 };
 

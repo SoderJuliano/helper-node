@@ -220,3 +220,41 @@ body.git-diff-open { overflow: hidden !important; }
 .git-diff-empty-icon svg { width: 40px; height: 40px; }
 .git-diff-empty-title { font-size: 15px; font-weight: 600; color: #abb2bf; }
 .git-diff-empty-desc { font-size: 12px; color: #5c6370; }
+
+/* === Marcadores Git Discretos na Calha do CodeMirror (m e A) === */
+.git-diff-gutter {
+  width: 14px;
+  min-width: 14px;
+  text-align: center;
+}
+
+.git-gutter-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'JetBrains Mono', Consolas, var(--font-mono, monospace);
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 1;
+  user-select: none;
+  cursor: default;
+  width: 12px;
+  height: 100%;
+  opacity: 0.85;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+}
+
+.git-gutter-marker:hover {
+  opacity: 1;
+  transform: scale(1.15);
+}
+
+.git-gutter-marker.modified {
+  color: #f87171; /* Vermelhinho discreto (M) */
+  text-shadow: 0 0 3px rgba(248, 113, 113, 0.3);
+}
+
+.git-gutter-marker.added {
+  color: #4ade80; /* Verde adicionado (A) */
+  text-shadow: 0 0 3px rgba(74, 222, 128, 0.3);
+}

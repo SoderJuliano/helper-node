@@ -214,6 +214,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   createAndOpenProject: (parentPath, folderName) => ipcRenderer.invoke("workspace:create-and-open-project", { parentPath, folderName }),
   // === Editor de código (#file-viewer) ===
   editorSaveFile: (payload) => ipcRenderer.invoke("editor-save-file", payload),
+  gitGetFileLineStatus: (payload) => ipcRenderer.invoke("git-diff:get-file-line-status", payload),
+  gitDiffGetSummary: (projectPath) => ipcRenderer.invoke("git-diff:get-summary", projectPath),
+  gitDiffGetFile: (payload) => ipcRenderer.invoke("git-diff:get-file", payload),
   // Notifica o editor de qualquer mutação de arquivo (humano, OpenAI, Claude
   // Code CLI, Gemini CLI) — usado só pro indicativo de concorrência em tempo
   // real, nunca pra bloquear nada.

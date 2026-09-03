@@ -42,4 +42,15 @@ module.exports = function registerGitDiffIpc() {
       return { ok: false, error: e.message };
     }
   });
+
+  // Retorna o status de linha (m / A) de um arquivo aberto no editor
+  ipcMain.handle('git-diff:get-file-line-status', async (event, { filePath } = {}) => {
+    try {
+      if (!filePath) return { ok: true, lines: {} };
+      const res = await GitDiffService.getGitFileLineStatus(filePath);
+      return res;
+    } catch (e) {
+      return { ok: false, error: e.message, lines: {} };
+    }
+  });
 };

@@ -22,7 +22,7 @@
     body.appendChild(ta);
     cm = window.CodeMirror.fromTextArea(ta, {
       lineNumbers: true,
-      gutters: ['CodeMirror-linenumbers', 'code-nav-gutter', 'app-runner-gutter'],
+      gutters: ['CodeMirror-linenumbers', 'git-diff-gutter', 'code-nav-gutter', 'app-runner-gutter'],
       theme: 'dracula',
       indentUnit: 2,
       tabSize: 2,
@@ -335,6 +335,9 @@
       window.EditorSmartBrackets.attach(cmInst);
     }
     if (!isDependencySource) {
+      if (window.EditorGitGutter) {
+        window.EditorGitGutter.attach(cmInst, filePath);
+      }
       if (window.ImportChecker) {
         window.ImportChecker.attach(cmInst, filePath);
       }
@@ -358,31 +361,23 @@
           const lineHandle = cmInst.addLineClass(line, 'background', 'code-nav-highlight-line');
           setTimeout(() => {
             if (cmInst) cmInst.removeLineClass(lineHandle, 'background', 'code-nav-highlight-line');
-          }, 1500);
+          }, 1200);
         } catch (_) {}
       } else {
         cmInst.focus();
       }
-    }, 30);
+    }, 0);
   }
 
-  async function saveFile(targetPath) {
-    const filePath = targetPath || activePath;
+  async function saveFile(filePath) {
     if (!filePath) return;
     const doc = openFiles.get(filePath);
     if (!doc) return;
-    if (filePath.includes('.jar!') || filePath.includes('.zip!')) {
-      setSaveStatus('Arquivo de dependência é somente leitura');
-      return;
-    }
-    if (!window.electronAPI || !window.electronAPI.editorSaveFile) {
-      setSaveStatus('Salvar indisponível');
-      return;
-    }
-    if (cm && filePath === activePath) {
+    if (doc.readOnly) return;
+    if (filePath === activePath && cm) {
       doc.content = cm.getValue();
     }
-    setSaveStatus('Salvando…');
+    setSaveStatus('Salvando...');
     try {
       const res = await window.electronAPI.editorSaveFile({
         path: filePath,
@@ -397,6 +392,9 @@
         renderTabs();
         if (filePath === activePath) {
           setConflictBanner(res.conflict ? '⚠ arquivo foi alterado por fora — salvo mesmo assim' : '');
+        }
+        if (window.EditorGitGutter) {
+          window.EditorGitGutter.scheduleUpdate(cm, filePath, 50);
         }
         setSaveStatus('Salvo ✓');
         setTimeout(() => setSaveStatus(''), 1500);
