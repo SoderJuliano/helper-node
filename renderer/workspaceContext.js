@@ -3,23 +3,12 @@ var ctxProject = null;
 var currentGitStatus = { modifiedFiles: {}, modifiedDirs: {} };
 
 const TREE_FILE_TYPE_STYLES = {
-    js: '#f5d76e', jsx: '#f5d76e', mjs: '#f5d76e', cjs: '#f5d76e',
-    ts: '#5a9fd4', tsx: '#5a9fd4',
-    json: '#e8a33d', jsonc: '#e8a33d',
-    html: '#e6714a', htm: '#e6714a',
-    css: '#5b9dd9', scss: '#c876d0', sass: '#c876d0', less: '#5b9dd9',
-    md: '#8fa8bf', markdown: '#8fa8bf',
-    py: '#6aa9d8',
-    sh: '#7fbf7f', bash: '#7fbf7f', zsh: '#7fbf7f',
-    yml: '#a9b665', yaml: '#a9b665',
-    xml: '#e6714a',
+    js: '#f5d76e', jsx: '#f5d76e', mjs: '#f5d76e', cjs: '#f5d76e', ts: '#5a9fd4', tsx: '#5a9fd4',
+    json: '#e8a33d', jsonc: '#e8a33d', html: '#e6714a', htm: '#e6714a', css: '#5b9dd9', scss: '#c876d0',
+    sass: '#c876d0', less: '#5b9dd9', md: '#8fa8bf', markdown: '#8fa8bf', py: '#6aa9d8', sh: '#7fbf7f',
+    bash: '#7fbf7f', zsh: '#7fbf7f', yml: '#a9b665', yaml: '#a9b665', xml: '#e6714a', php: '#8a94c4',
     png: '#c876d0', jpg: '#c876d0', jpeg: '#c876d0', gif: '#c876d0', svg: '#c876d0', ico: '#c876d0', webp: '#c876d0',
-    php: '#8a94c4',
-    java: '#e6714a',
-    go: '#5ac6c6',
-    rs: '#e6714a',
-    lock: '#8a8a95', gitignore: '#8a8a95', env: '#a9b665',
-    txt: '#8a8a95', log: '#8a8a95',
+    java: '#e6714a', go: '#5ac6c6', rs: '#e6714a', lock: '#8a8a95', gitignore: '#8a8a95', env: '#a9b665', txt: '#8a8a95', log: '#8a8a95',
 };
 
 function fileTypeColor(name) {
@@ -89,7 +78,6 @@ function fileIconHtml(name) {
                 const SVGI_GIT_CONFLICT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; margin-right:8px; opacity:0.9; color:#f85149; display:inline-block; vertical-align:middle;"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 9v12"/><path d="M18 9a9 9 0 0 0-9 9"/></svg>';
                 const SVGI_OPEN_EXTERNAL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; margin-right:8px; opacity:0.8; display:inline-block; vertical-align:middle;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
                 const SVGI_CLOSE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; margin-right:8px; opacity:0.8; color:#ff5252; display:inline-block; vertical-align:middle;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-
                 const SVGI_ATTACH_PROJECT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; margin-right:8px; opacity:0.9; color:#38bdf8; display:inline-block; vertical-align:middle;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>';
 
                 const mkItem = (iconHtml, label, fn, danger) => {
@@ -102,23 +90,15 @@ function fileIconHtml(name) {
                     return b;
                 };
                 
-                menu.appendChild(mkItem(SVGI_DIFF, 'Visualizar Diff (Alterações Locais)…', () => {
-                    if (typeof window.openGitDiffModal === 'function') window.openGitDiffModal(projectPath);
-                }));
-
+                menu.appendChild(mkItem(SVGI_DIFF, 'Visualizar Diff (Alterações Locais)…', () => { if (typeof window.openGitDiffModal === 'function') window.openGitDiffModal(projectPath); }));
                 if (currentGitConflictStatus && currentGitConflictStatus.hasConflicts && currentGitConflictStatus.count > 0) {
-                    menu.appendChild(mkItem(SVGI_GIT_CONFLICT, `Resolver Conflitos Git (${currentGitConflictStatus.count})…`, () => {
-                        if (typeof window.openGitConflictModal === 'function') window.openGitConflictModal(projectPath);
-                    }));
+                    menu.appendChild(mkItem(SVGI_GIT_CONFLICT, `Resolver Conflitos Git (${currentGitConflictStatus.count})…`, () => { if (typeof window.openGitConflictModal === 'function') window.openGitConflictModal(projectPath); }));
                 }
-
                 menu.appendChild(mkItem(SVGI_SWITCH_PROJECT, 'Trocar projeto…', () => pickProjectFolder()));
                 menu.appendChild(mkItem(SVGI_ATTACH_PROJECT, 'Anexar outro projeto…', async () => {
                     if (window.electronAPI && window.electronAPI.workspaceAttachProject) {
                         const r = await window.electronAPI.workspaceAttachProject();
-                        if (r && r.attachments && typeof renderWorkspacePanel === 'function') {
-                            renderWorkspacePanel(r.attachments);
-                        }
+                        if (r && r.attachments && typeof renderWorkspacePanel === 'function') renderWorkspacePanel(r.attachments);
                         if (typeof refreshProjectContext === 'function') await refreshProjectContext();
                         if (typeof window.refreshProjectTree === 'function') await window.refreshProjectTree();
                         if (typeof showToast === 'function') showToast('Projeto anexado ao workspace!');
@@ -128,35 +108,27 @@ function fileIconHtml(name) {
                 menu.appendChild(mkItem(SVGI_ADD_FILE, 'Anexar arquivo ao contexto…', async () => {
                     if (window.electronAPI && window.electronAPI.workspacePickFile) {
                         const r = await window.electronAPI.workspacePickFile();
-                        if (r && r.attachments && typeof renderWorkspacePanel === 'function') {
-                            renderWorkspacePanel(r.attachments);
-                        }
+                        if (r && r.attachments && typeof renderWorkspacePanel === 'function') renderWorkspacePanel(r.attachments);
                         if (typeof refreshProjectContext === 'function') refreshProjectContext();
                     }
                 }));
                 if (ctxProject && ctxProject.isBuildTool) {
                     menu.appendChild(mkItem(SVGI_RUN_CONFIG, 'Configurações de Execução (Perfis/Envs)…', () => {
-                        if (typeof window.openAppRunnerConfigModal === 'function') {
-                            window.openAppRunnerConfigModal(projectPath);
-                        }
+                        if (typeof window.openAppRunnerConfigModal === 'function') window.openAppRunnerConfigModal(projectPath);
                     }));
                 }
-                
                 const hr = document.createElement('div');
                 hr.style.cssText = 'height:1px; background:var(--border, #2d2d38); margin:4px 0;';
                 menu.appendChild(hr);
-
                 menu.appendChild(mkItem(SVGI_OPEN_EXTERNAL, 'Abrir no gerenciador de arquivos', () => {
                     if (projectPath && window.electronAPI.workspaceOpenExternal) {
                         const pathToSend = process.platform === 'win32' ? projectPath.replace(/\//g, '\\') : projectPath;
                         window.electronAPI.workspaceOpenExternal(pathToSend);
                     }
                 }));
-                
                 const hr2 = document.createElement('div');
                 hr2.style.cssText = 'height:1px; background:var(--border, #2d2d38); margin:4px 0;';
                 menu.appendChild(hr2);
-
                 menu.appendChild(mkItem(SVGI_CLOSE, 'Fechar projeto(s)', async () => {
                     if (projectId != null && projectId !== '' && window.electronAPI.workspaceRemove) {
                         const updated = await window.electronAPI.workspaceRemove(projectId);
