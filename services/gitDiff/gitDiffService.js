@@ -225,16 +225,25 @@ const GitDiffService = {
       const cwd = path.dirname(filePath);
       if (!fs.existsSync(cwd)) return { ok: true, lines: {} };
 
-      const topLevelRes = await execGit(['rev-parse', '--show-toplevel'], cwd);
-      const repoRoot = topLevelRes.stdout.trim();
-      if (topLevelRes.err || !repoRoot) {
+      // Cache rápido de raiz do repositório Git por diretório (evita rev-parse repetitivo)
+      let repoRoot = GitDiffService._repoRootCache?.get(cwd);
+      if (repoRoot === undefined) {
+        if (!GitDiffService._repoRootCache) GitDiffService._repoRootCache = new Map();
+        const topLevelRes = await execGit(['rev-parse', '--show-toplevel'], cwd, 3000);
+        repoRoot = topLevelRes.stdout.trim() || null;
+        GitDiffService._repoRootCache.set(cwd, repoRoot);
+        // Limpa cache após 30 segundos
+        setTimeout(() => GitDiffService._repoRootCache?.delete(cwd), 30000);
+      }
+
+      if (!repoRoot) {
         return { ok: true, lines: {} };
       }
 
       const relPath = path.relative(repoRoot, filePath).replace(/\\/g, '/');
 
-      // 1. Status do arquivo
-      const statusRes = await execGit(['status', '--porcelain', '-uall', '--', relPath], repoRoot);
+      // 1. Status rápido do arquivo
+      const statusRes = await execGit(['status', '--porcelain', '-uall', '--', relPath], repoRoot, 3000);
       const statusLine = (statusRes.stdout || '').trim();
 
       if (!statusLine) {
@@ -251,7 +260,7 @@ const GitDiffService = {
       const hunkRegex = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/gm;
 
       // 2. Diff em relação ao HEAD
-      const headDiffRes = await execGit(['diff', '-U0', 'HEAD', '--', relPath], repoRoot);
+      const headDiffRes = await execGit(['diff', '-U0', 'HEAD', '--', relPath], repoRoot, 4000);
       const diffText = headDiffRes.stdout || '';
 
       let m;
@@ -273,7 +282,7 @@ const GitDiffService = {
 
       // 3. Checa alterações adicionadas no stage (git diff --cached)
       if (statusLine.startsWith('A ') || statusLine.startsWith('AM')) {
-        const stagedRes = await execGit(['diff', '--cached', '-U0', 'HEAD', '--', relPath], repoRoot);
+        const stagedRes = await execGit(['diff', '--cached', '-U0', 'HEAD', '--', relPath], repoRoot, 3000);
         const stagedText = stagedRes.stdout || '';
         let sm;
         while ((sm = hunkRegex.exec(stagedText)) !== null) {
