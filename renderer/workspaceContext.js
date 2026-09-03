@@ -90,6 +90,8 @@ function fileIconHtml(name) {
                 const SVGI_OPEN_EXTERNAL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; margin-right:8px; opacity:0.8; display:inline-block; vertical-align:middle;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
                 const SVGI_CLOSE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; margin-right:8px; opacity:0.8; color:#ff5252; display:inline-block; vertical-align:middle;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
 
+                const SVGI_ATTACH_PROJECT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px; margin-right:8px; opacity:0.9; color:#38bdf8; display:inline-block; vertical-align:middle;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>';
+
                 const mkItem = (iconHtml, label, fn, danger) => {
                     const b = document.createElement('button');
                     b.innerHTML = `${iconHtml}${label}`;
@@ -111,6 +113,17 @@ function fileIconHtml(name) {
                 }
 
                 menu.appendChild(mkItem(SVGI_SWITCH_PROJECT, 'Trocar projeto…', () => pickProjectFolder()));
+                menu.appendChild(mkItem(SVGI_ATTACH_PROJECT, 'Anexar outro projeto…', async () => {
+                    if (window.electronAPI && window.electronAPI.workspaceAttachProject) {
+                        const r = await window.electronAPI.workspaceAttachProject();
+                        if (r && r.attachments && typeof renderWorkspacePanel === 'function') {
+                            renderWorkspacePanel(r.attachments);
+                        }
+                        if (typeof refreshProjectContext === 'function') await refreshProjectContext();
+                        if (typeof window.refreshProjectTree === 'function') await window.refreshProjectTree();
+                        if (typeof showToast === 'function') showToast('Projeto anexado ao workspace!');
+                    }
+                }));
                 menu.appendChild(mkItem(SVGI_NEW_PROJECT, 'Criar Novo Projeto…', () => createNewProject()));
                 menu.appendChild(mkItem(SVGI_ADD_FILE, 'Anexar arquivo ao contexto…', async () => {
                     if (window.electronAPI && window.electronAPI.workspacePickFile) {
@@ -144,7 +157,7 @@ function fileIconHtml(name) {
                 hr2.style.cssText = 'height:1px; background:var(--border, #2d2d38); margin:4px 0;';
                 menu.appendChild(hr2);
 
-                menu.appendChild(mkItem(SVGI_CLOSE, 'Fechar projeto', async () => {
+                menu.appendChild(mkItem(SVGI_CLOSE, 'Fechar projeto(s)', async () => {
                     if (projectId != null && projectId !== '' && window.electronAPI.workspaceRemove) {
                         const updated = await window.electronAPI.workspaceRemove(projectId);
                         if (typeof renderWorkspacePanel === 'function') renderWorkspacePanel(updated);
@@ -234,7 +247,15 @@ function fileIconHtml(name) {
                 }
                 if (ctxOpenProjectBtn) ctxOpenProjectBtn.style.display = 'none';
                 if (ctxProjectBtn) ctxProjectBtn.style.display = 'inline-flex';
-                if (ctxProjectName) ctxProjectName.textContent = ctxProject.name;
+                if (ctxProjectName) {
+                    if (ctxProject.isMulti && ctxProject.projects && ctxProject.projects.length > 1) {
+                        ctxProjectName.textContent = `${ctxProject.projects.length} Projetos`;
+                        ctxProjectBtn.title = ctxProject.projects.map(p => p.name).join(' | ');
+                    } else {
+                        ctxProjectName.textContent = ctxProject.name;
+                        ctxProjectBtn.title = ctxProject.path;
+                    }
+                }
                 if (ctxProject && ctxProject.path && window.electronAPI && window.electronAPI.appRunnerDetectProject) {
                     try {
                         const buildInfo = await window.electronAPI.appRunnerDetectProject(ctxProject.path);
@@ -276,19 +297,23 @@ function fileIconHtml(name) {
 
             function renderWorkspacePanel(attachments) {
                 const list = attachments || [];
-                const dir = list.find(a => a.type === 'dir');
+                const dirs = list.filter(a => a.type === 'dir');
                 const files = list.filter(a => a.type === 'file');
 
-                if (dir) {
-                    const name = baseName(dir.path);
-                    if (wsProjectMain && wsProjectMain.dataset.path !== dir.path) collapseProjectTree();
+                if (dirs.length > 0) {
+                    const isMulti = dirs.length > 1;
+                    const name = isMulti
+                        ? `${dirs.length} Projetos (${dirs.map(d => baseName(d.path)).join(', ')})`
+                        : baseName(dirs[0].path);
+
+                    if (wsProjectMain && wsProjectMain.dataset.path !== dirs[0].path && !isMulti) collapseProjectTree();
                     if (wsActions) wsActions.style.display = 'none';
                     if (wsProject) wsProject.style.display = '';
                     if (wsProjectName) wsProjectName.textContent = name;
                     if (wsProjectMain) { 
-                        wsProjectMain.dataset.path = dir.path; 
-                        wsProjectMain.dataset.id = dir.id; 
-                        wsProjectMain.title = dir.path; 
+                        wsProjectMain.dataset.path = dirs[0].path; 
+                        wsProjectMain.dataset.id = dirs[0].id; 
+                        wsProjectMain.title = isMulti ? dirs.map(d => d.path).join('\n') : dirs[0].path; 
                     }
                 } else {
                     if (wsActions) wsActions.style.display = '';

@@ -99,6 +99,12 @@ async function openProject(absPath) {
   return store.list();
 }
 
+// Multi-Project: anexa um projeto sem remover os outros diretórios já abertos
+async function attachProject(absPath) {
+  await addPath(absPath, "dir");
+  return store.list();
+}
+
 async function buildContextIfNeeded(modelKey, opts = {}) {
   return await buildContextBlock({ modelKey, ...opts });
 }
@@ -131,10 +137,16 @@ function getProjectPath() {
   return os.homedir();
 }
 
+function getProjectPaths() {
+  return store.list()
+    .filter(a => a.type === "dir" && a.path && fs.existsSync(a.path))
+    .map(a => a.path);
+}
+
 module.exports = {
-  addPath, removePath, list, clear, isPathAllowed, tree, openProject,
+  addPath, removePath, list, clear, isPathAllowed, tree, openProject, attachProject,
   buildContextIfNeeded, markContextSent, resetContextSent,
-  compactHistoryIfNeeded, getProjectPath,
+  compactHistoryIfNeeded, getProjectPath, getProjectPaths,
   budgetFor,
   resolvePortalPath: (p) => store.resolvePortalPath(p),
 };

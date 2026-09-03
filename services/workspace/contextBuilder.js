@@ -318,15 +318,18 @@ async function buildContextBlock(opts = {}) {
   let used = 0;
   const sections = [];
 
-  // Gera tree structure para ajudar IA entender layout do projeto
+  // Gera tree structure para ajudar IA entender layout do projeto (suporte a multi-projeto)
   let treeStructure = '';
-  if (attachments.some(a => a.type === 'dir')) {
-    const dirPath = attachments.find(a => a.type === 'dir')?.path;
-    if (dirPath) {
-      treeStructure = generateTreeStructure(dirPath);
-      const lineCount = treeStructure.split('\n').length;
-      console.log(`[tree] estrutura gerada: ${lineCount} linhas, ${treeStructure.length} chars`);
-    }
+  const dirAttachments = attachments.filter(a => a.type === 'dir' && a.path);
+  if (dirAttachments.length === 1) {
+    const dirPath = dirAttachments[0].path;
+    treeStructure = generateTreeStructure(dirPath);
+    const lineCount = treeStructure.split('\n').length;
+    console.log(`[tree] estrutura gerada: ${lineCount} linhas, ${treeStructure.length} chars`);
+  } else if (dirAttachments.length > 1) {
+    treeStructure = dirAttachments.map(d => `📁 Projeto: ${path.basename(d.path)} (${d.path})\n` + generateTreeStructure(d.path)).join('\n\n');
+    const lineCount = treeStructure.split('\n').length;
+    console.log(`[tree] estrutura multi-projeto gerada (${dirAttachments.length} projetos): ${lineCount} linhas, ${treeStructure.length} chars`);
   }
 
   // Sugere arquivos relevantes baseado na pergunta (se houver no contexto)

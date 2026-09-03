@@ -90,6 +90,20 @@
         triggerSyncDependencies(item.path, false);
       }));
       addSeparator();
+
+      menu.appendChild(mkItem(SVGI_TRASH, 'Desanexar este projeto do workspace', async () => {
+        if (window.electronAPI && window.electronAPI.workspaceList && window.electronAPI.workspaceRemove) {
+          const atts = await window.electronAPI.workspaceList();
+          const targetAtt = atts.find(a => a.path === item.path);
+          if (targetAtt) {
+            const updated = await window.electronAPI.workspaceRemove(targetAtt.id);
+            if (typeof renderWorkspacePanel === 'function') renderWorkspacePanel(updated);
+            if (typeof refreshProjectContext === 'function') await refreshProjectContext();
+            if (typeof window.refreshProjectTree === 'function') await window.refreshProjectTree();
+          }
+        }
+      }));
+      addSeparator();
     } else if (isSyntheticDeps) {
       menu.appendChild(mkItem(SVGI_SYNC, 'Sincronizar / Baixar Dependências (Maven/Gradle)', () => {
         triggerSyncDependencies(projectRootPath || item.path, true);

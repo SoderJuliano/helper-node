@@ -86,6 +86,31 @@ ipcMain.handle("workspace:pick-dir", async () => {
   return { ok: true, added, attachments: workspace.list() };
 });
 
+ipcMain.handle("workspace:attach-project", async (_event, explicitPath) => {
+  let targetPath = explicitPath;
+  if (!targetPath) {
+    const { dialog } = require("electron");
+    const res = await dialog.showOpenDialog(state.mainWindow, {
+      title: "Anexar outro projeto ao workspace",
+      properties: ["openDirectory"],
+    });
+    if (res.canceled || !res.filePaths.length) return { ok: false, canceled: true };
+    targetPath = res.filePaths[0];
+  }
+  try {
+    const { MultiProjectService } = require("../../services/multiProject");
+    const attachments = await MultiProjectService.attachProject(targetPath);
+    helpers.syncTerminalCwd();
+    if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+      state.mainWindow.webContents.send("workspace-changed", { attachments: workspace.list() });
+    }
+    return { ok: true, path: targetPath, attachments };
+  } catch (e) {
+    console.warn("[workspace] attach project falhou:", e.message);
+    return { ok: false, error: e.message };
+  }
+});
+
 ipcMain.handle("workspace:add-path", async (event, { path, type }) => {
   try {
     await workspace.addPath(path, type || "file");
@@ -154,22 +179,20 @@ ipcMain.handle("workspace:rename-item", async (event, { oldPath, newPath }) => {
 
 ipcMain.handle("get-project-context", async () => {
   try {
-    const dir = (workspace.list() || []).find((a) => a.type === "dir");
-    if (!dir) return null;
-    const name = path.basename(dir.path);
-    let branch = null;
-    try {
-      const { execFile } = require("child_process");
-      branch = await new Promise((resolve) => {
-        execFile(
-          "git",
-          ["--no-optional-locks", "-C", dir.path, "rev-parse", "--abbrev-ref", "HEAD"],
-          { timeout: 2500 },
-          (err, stdout) => resolve(err ? null : (stdout || "").trim() || null)
-        );
-      });
-    } catch (_) { /* sem git: mostra só o projeto */ }
-    return { id: dir.id, name, path: dir.path, branch };
+    const { MultiProjectService } = require("../../services/multiProject");
+    const projects = await MultiProjectService.listAttachedProjects();
+    if (!projects || projects.length === 0) return null;
+    const primary = projects[0];
+    return {
+      id: primary.id,
+      name: primary.name,
+      path: primary.path,
+      branch: primary.branch,
+      isBuildTool: primary.isBuildTool,
+      buildType: primary.buildType,
+      isMulti: projects.length > 1,
+      projects,
+    };
   } catch (e) {
     console.warn("[project-context] falhou:", e.message);
     return null;
@@ -297,11 +320,18 @@ ipcMain.handle("get-file-diff", async (event, payload) => {
 
 ipcMain.handle("get-project-tree", async () => {
   try {
-    const dir = (workspace.list() || []).find((a) => a.type === "dir");
-    if (!dir) return null;
-    const root = dir.path;
-    const entries = helpers.collectProjectEntries(root);
-    return { root, path: root, entries, tree: workspace.tree(root) || "" };
+    const { MultiProjectService } = require("../../services/multiProject");
+    const multiResult = MultiProjectService.collectMultiProjectEntries(helpers);
+    if (!multiResult || !multiResult.entries || multiResult.entries.length === 0) return null;
+    const primaryRoot = (multiResult.roots[0] && multiResult.roots[0].path) || '';
+    return {
+      root: primaryRoot,
+      path: primaryRoot,
+      isMulti: multiResult.isMulti,
+      roots: multiResult.roots,
+      entries: multiResult.entries,
+      tree: primaryRoot ? (workspace.tree(primaryRoot) || "") : "",
+    };
   } catch (e) {
     console.warn("[project-tree] falhou:", e.message);
     return null;

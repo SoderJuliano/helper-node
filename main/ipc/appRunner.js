@@ -1,17 +1,18 @@
 // main/ipc/appRunner.js
-// Handlers IPC para execução local de aplicações e testes (Gradle / Maven / Spring Boot / JUnit)
+// Handlers IPC para execução local de aplicações e testes (Gradle / Maven / Spring Boot / JUnit / Multi-Project)
 
 const { ipcMain, state } = require('../globals.js');
 const { AppRunnerService } = require('../../services/appRunner');
+const { multiRunner, MultiRunnerService } = require('../../services/multiProject');
 
 module.exports = function registerAppRunnerIpc() {
   const runner = AppRunnerService.runner;
 
-  // Encaminha eventos do processo para o renderer (mainWindow)
+  // 1. Escuta eventos do runner legado (compatibilidade direta)
   runner.on('data', (chunk) => {
     try {
       if (state.mainWindow && !state.mainWindow.isDestroyed()) {
-        state.mainWindow.webContents.send('app-runner-stream-chunk', chunk);
+        state.mainWindow.webContents.send('app-runner-stream-chunk', typeof chunk === 'string' ? chunk : chunk);
       }
     } catch (_) {}
   });
@@ -48,6 +49,47 @@ module.exports = function registerAppRunnerIpc() {
     } catch (_) {}
   });
 
+  // 2. Escuta eventos do multiRunner concorrente (Multi-Project)
+  multiRunner.on('data', (payload) => {
+    try {
+      if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+        state.mainWindow.webContents.send('app-runner-stream-chunk', payload);
+      }
+    } catch (_) {}
+  });
+
+  multiRunner.on('status', (statusData) => {
+    try {
+      if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+        state.mainWindow.webContents.send('app-runner-status-changed', statusData);
+      }
+    } catch (_) {}
+  });
+
+  multiRunner.on('test-event', (testData) => {
+    try {
+      if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+        state.mainWindow.webContents.send('app-runner-test-event', testData);
+      }
+    } catch (_) {}
+  });
+
+  multiRunner.on('test-summary', (summaryData) => {
+    try {
+      if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+        state.mainWindow.webContents.send('app-runner-test-summary', summaryData);
+      }
+    } catch (_) {}
+  });
+
+  multiRunner.on('app-event', (appData) => {
+    try {
+      if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+        state.mainWindow.webContents.send('app-runner-app-event', appData);
+      }
+    } catch (_) {}
+  });
+
   ipcMain.handle('app-runner-detect-jdks', async (event, preferredPath) => {
     try {
       return { ok: true, data: AppRunnerService.detectJdks(preferredPath) };
@@ -72,27 +114,44 @@ module.exports = function registerAppRunnerIpc() {
     }
   });
 
-  ipcMain.handle('app-runner-run', async (event, { projectDir, target, preferredJdkPath } = {}) => {
+  ipcMain.handle('app-runner-run', async (event, { projectDir, target, preferredJdkPath, runId } = {}) => {
     try {
-      const res = AppRunnerService.runTarget(projectDir, target, preferredJdkPath);
-      return { ok: true, data: res };
+      const res = multiRunner.start(projectDir, target, preferredJdkPath, runId);
+      return { ok: true, data: res, runId: res.runId };
     } catch (e) {
       return { ok: false, error: e.message };
     }
   });
 
-  ipcMain.handle('app-runner-stop', async () => {
+  ipcMain.handle('app-runner-stop', async (event, runId) => {
     try {
-      const stopped = AppRunnerService.stopCurrent();
+      const stopped = runId ? multiRunner.stop(runId) : multiRunner.stopAll();
       return { ok: true, stopped };
     } catch (e) {
       return { ok: false, error: e.message };
     }
   });
 
-  ipcMain.handle('app-runner-get-status', async () => {
+  ipcMain.handle('app-runner-stop-all', async () => {
     try {
-      return { ok: true, data: AppRunnerService.getStatus() };
+      const stopped = multiRunner.stopAll();
+      return { ok: true, stopped };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('app-runner-get-status', async (event, runId) => {
+    try {
+      return { ok: true, data: multiRunner.getStatus(runId) };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('app-runner-list-runners', async () => {
+    try {
+      return { ok: true, data: multiRunner.getAllRunners() };
     } catch (e) {
       return { ok: false, error: e.message };
     }

@@ -55,8 +55,12 @@
       this.lastProjectDir = null;
       this.autoScroll = true;
       this.testViewer = null;
+      this.multiTabs = null;
 
       this._initElements();
+      if (window.MultiProjectTabs) {
+        this.multiTabs = new window.MultiProjectTabs(this);
+      }
       this._wireIpcEvents();
       this._wireUiEvents();
       this._wireResizer();
@@ -177,37 +181,66 @@
       if (!window.electronAPI) return;
 
       if (window.electronAPI.onAppRunnerStreamChunk) {
-        window.electronAPI.onAppRunnerStreamChunk((chunk) => {
-          this.appendOutput(chunk);
+        window.electronAPI.onAppRunnerStreamChunk((payload) => {
+          if (payload && typeof payload === 'object' && payload.runId && payload.chunk !== undefined) {
+            if (this.multiTabs) {
+              this.multiTabs.appendChunk(payload.runId, payload.chunk);
+            } else {
+              this.appendOutput(payload.chunk);
+            }
+          } else {
+            const chunk = typeof payload === 'string' ? payload : (payload && payload.chunk) || '';
+            if (this.multiTabs && this.multiTabs.activeTabId) {
+              this.multiTabs.appendChunk(this.multiTabs.activeTabId, chunk);
+            } else {
+              this.appendOutput(chunk);
+            }
+          }
         });
       }
 
       if (window.electronAPI.onAppRunnerStatusChanged) {
         window.electronAPI.onAppRunnerStatusChanged((statusData) => {
-          this.updateStatus(statusData.status, statusData.currentRun);
+          if (statusData && statusData.runId && this.multiTabs) {
+            this.multiTabs.updateStatus(statusData.runId, statusData);
+          } else {
+            this.updateStatus(statusData.status, statusData.currentRun);
+          }
         });
       }
 
       if (window.electronAPI.onAppRunnerTestEvent) {
         window.electronAPI.onAppRunnerTestEvent((testData) => {
-          if (this.testViewer) this.testViewer.addTestEvent(testData);
-          if (this.testsSidebarEl) this.testsSidebarEl.style.display = 'flex';
-          if (this.splitResizerEl) this.splitResizerEl.style.display = 'block';
+          if (testData && testData.runId && this.multiTabs) {
+            this.multiTabs.addTestEvent(testData.runId, testData);
+          } else {
+            if (this.testViewer) this.testViewer.addTestEvent(testData);
+            if (this.testsSidebarEl) this.testsSidebarEl.style.display = 'flex';
+            if (this.splitResizerEl) this.splitResizerEl.style.display = 'block';
+          }
         });
       }
 
       if (window.electronAPI.onAppRunnerTestSummary) {
         window.electronAPI.onAppRunnerTestSummary((summaryData) => {
-          if (this.testViewer) this.testViewer.setSummary(summaryData);
-          if (this.testsSidebarEl) this.testsSidebarEl.style.display = 'flex';
-          if (this.splitResizerEl) this.splitResizerEl.style.display = 'block';
+          if (summaryData && summaryData.runId && this.multiTabs) {
+            this.multiTabs.setTestSummary(summaryData.runId, summaryData);
+          } else {
+            if (this.testViewer) this.testViewer.setSummary(summaryData);
+            if (this.testsSidebarEl) this.testsSidebarEl.style.display = 'flex';
+            if (this.splitResizerEl) this.splitResizerEl.style.display = 'block';
+          }
         });
       }
 
       if (window.electronAPI.onAppRunnerAppEvent) {
         window.electronAPI.onAppRunnerAppEvent((appData) => {
           if (appData.type === 'server-started' && appData.port) {
-            this.setPort(appData.port);
+            if (appData.runId && this.multiTabs) {
+              this.multiTabs.setPort(appData.runId, appData.port);
+            } else {
+              this.setPort(appData.port);
+            }
           }
         });
       }
@@ -301,27 +334,36 @@
     async run(projectDir, target = {}) {
       this.lastProjectDir = projectDir;
       this.lastTarget = target;
-      this.clear();
       this.showPane();
 
-      if (target.kind && target.kind.startsWith('test')) {
-        if (this.testsSidebarEl) this.testsSidebarEl.style.display = 'flex';
-        if (this.splitResizerEl) this.splitResizerEl.style.display = 'block';
+      const pKey = String(projectDir || '').replace(/\\/g, '/').toLowerCase();
+      const kind = target.kind || 'app';
+      const subTarget = target.mainClass || target.testClass || target.displayName || 'main';
+      const runId = `${pKey}::${kind}::${subTarget}`;
+
+      if (this.multiTabs) {
+        this.multiTabs.getOrCreateTab(runId, { projectDir, target });
+        this.multiTabs.activateTab(runId);
       } else {
-        if (this.testsSidebarEl) this.testsSidebarEl.style.display = 'none';
-        if (this.splitResizerEl) this.splitResizerEl.style.display = 'none';
-      }
+        this.clear();
+        if (target.kind && target.kind.startsWith('test')) {
+          if (this.testsSidebarEl) this.testsSidebarEl.style.display = 'flex';
+          if (this.splitResizerEl) this.splitResizerEl.style.display = 'block';
+        } else {
+          if (this.testsSidebarEl) this.testsSidebarEl.style.display = 'none';
+          if (this.splitResizerEl) this.splitResizerEl.style.display = 'none';
+        }
 
-      const displayName = target.displayName || target.mainClass || (target.testMethod ? `${target.testClass}.${target.testMethod}` : 'App');
-      if (this.targetNameEl) {
-        this.targetNameEl.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg><span>${displayName}</span>`;
+        const displayName = target.displayName || target.mainClass || (target.testMethod ? `${target.testClass}.${target.testMethod}` : 'App');
+        if (this.targetNameEl) {
+          this.targetNameEl.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg><span>${displayName}</span>`;
+        }
+        this.updateStatus('starting');
       }
-
-      this.updateStatus('starting');
 
       try {
         if (window.electronAPI && window.electronAPI.appRunnerRun) {
-          const res = await window.electronAPI.appRunnerRun({ projectDir, target });
+          const res = await window.electronAPI.appRunnerRun({ projectDir, target, runId });
           if (!res.ok) {
             this.appendOutput(`\n\x1b[31mErro ao iniciar: ${res.error}\x1b[0m\n`);
             this.updateStatus('error');
@@ -340,10 +382,15 @@
     }
 
     async stop() {
+      const activeRunId = this.multiTabs ? this.multiTabs.activeTabId : null;
       if (window.electronAPI && window.electronAPI.appRunnerStop) {
-        await window.electronAPI.appRunnerStop();
+        await window.electronAPI.appRunnerStop(activeRunId);
       }
-      this.updateStatus('stopped');
+      if (this.multiTabs && activeRunId) {
+        this.multiTabs.updateStatus(activeRunId, { status: 'stopped' });
+      } else {
+        this.updateStatus('stopped');
+      }
     }
 
     clear() {

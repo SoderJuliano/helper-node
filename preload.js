@@ -196,6 +196,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // === Workspace (anexos pra contexto da IA) ===
   workspacePickFile: () => ipcRenderer.invoke("workspace:pick-file"),
   workspacePickDir: () => ipcRenderer.invoke("workspace:pick-dir"),
+  workspaceAttachProject: (explicitPath) => ipcRenderer.invoke("workspace:attach-project", explicitPath),
   workspaceList: () => ipcRenderer.invoke("workspace:list"),
   workspaceAddPath: (path, type) => ipcRenderer.invoke("workspace:add-path", { path, type }),
   getProjectContext: () => ipcRenderer.invoke("get-project-context"),
@@ -349,8 +350,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   appRunnerDetectProject: (projectDir) => ipcRenderer.invoke("app-runner-detect-project", projectDir),
   appRunnerParseJava: (payload) => ipcRenderer.invoke("app-runner-parse-java", payload),
   appRunnerRun: (payload) => ipcRenderer.invoke("app-runner-run", payload),
-  appRunnerStop: () => ipcRenderer.invoke("app-runner-stop"),
-  appRunnerGetStatus: () => ipcRenderer.invoke("app-runner-get-status"),
+  appRunnerStop: (runId) => ipcRenderer.invoke("app-runner-stop", runId),
+  appRunnerStopAll: () => ipcRenderer.invoke("app-runner-stop-all"),
+  appRunnerListRunners: () => ipcRenderer.invoke("app-runner-list-runners"),
+  appRunnerGetStatus: (runId) => ipcRenderer.invoke("app-runner-get-status", runId),
   appRunnerGetConfig: (projectDir) => ipcRenderer.invoke("app-runner-get-config", projectDir),
   appRunnerSaveConfig: (projectDirOrPayload, maybeConfig) => {
     let payload;
