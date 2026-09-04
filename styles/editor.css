@@ -78,7 +78,7 @@
            ===================================================================== */
         #animation-container { position: fixed; top: 44px; right: 30px; width: 60px; height: 60px; display: none; z-index: 9999; pointer-events: none; opacity: .95; }
         .icon, #robot { position: fixed; top: 44px; right: 30px; width: 44px; height: 44px; display: none; z-index: 1000; border-radius: 8px; }
-        .drag-area { position: absolute; top: 0; left: 0; width: calc(100% - 130px); height: 32px; -webkit-app-region: drag; z-index: 15; pointer-events: none; }
+        .drag-area { display: none !important; pointer-events: none !important; -webkit-app-region: no-drag !important; }
         .hidden { opacity: 0; pointer-events: none; }
 
 
