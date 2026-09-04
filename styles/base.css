@@ -256,7 +256,7 @@
             margin-left: auto;
             font-size: 10px; font-weight: 500; color: var(--text-4);
             font-family: var(--font-mono);
-            -webkit-app-region: no-drag;
+            -webkit-app-region: drag;
         }
 
         /* Botão "+ Novo Chat" discreto e elegante */

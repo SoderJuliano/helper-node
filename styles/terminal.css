@@ -18,14 +18,13 @@
             padding: 4px 10px 0 10px; border-bottom: 1px solid var(--border);
             background: var(--bg-sidebar); flex-shrink: 0; min-height: 36px;
             height: 36px;
-            -webkit-app-region: no-drag !important;
+            -webkit-app-region: drag;
             user-select: none;
             box-sizing: border-box;
         }
-        .fv-header * { -webkit-app-region: no-drag !important; }
-        .fv-ic { width: 14px; height: 14px; opacity: .7; flex-shrink: 0; }
-        .fv-path { max-width: 260px; font-family: var(--font-mono); font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 1; }
-        .fv-dirty { display: none; color: #ffb74d; font-size: 10px; flex-shrink: 0; }
+        .fv-ic { width: 14px; height: 14px; opacity: .7; flex-shrink: 0; -webkit-app-region: no-drag !important; }
+        .fv-path { max-width: 260px; font-family: var(--font-mono); font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 1; -webkit-app-region: no-drag !important; }
+        .fv-dirty { display: none; color: #ffb74d; font-size: 10px; flex-shrink: 0; -webkit-app-region: no-drag !important; }
         .fv-close {
             flex-shrink: 0; width: 26px; height: 26px; background: transparent;
             border: none; color: var(--text-3); font-size: 18px; cursor: pointer;
@@ -44,7 +43,7 @@
             scrollbar-width: none;
             -ms-overflow-style: none;
             height: 100%;
-            -webkit-app-region: no-drag !important;
+            -webkit-app-region: drag;
         }
         .fv-tabs-container::-webkit-scrollbar {
             display: none;
@@ -126,14 +125,15 @@
             background: rgba(255,255,255,0.18);
             color: var(--text);
         }
+        .fv-tab * { -webkit-app-region: no-drag !important; }
         /* Info auxiliar (idioma, conflito, status do save) empurrada pro canto
            direito — separada do grupo nome+×, que fica junto à esquerda. */
-        .fv-lang { margin-left: auto; font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-4); background: rgba(255,255,255,0.05); padding: 2px 7px; border-radius: 5px; flex-shrink: 0; }
+        .fv-lang { margin-left: auto; font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-4); background: rgba(255,255,255,0.05); padding: 2px 7px; border-radius: 5px; flex-shrink: 0; -webkit-app-region: no-drag !important; }
         /* Aviso de concorrência: IA mexeu no mesmo arquivo aberto agora, ou
            conflito detectado ao salvar (arquivo mudou por fora). Só sinaliza —
            não bloqueia nada (ver ARCHITECTURE.md > Editor de código). */
-        .fv-conflict { display: none; max-width: 220px; font-size: 11px; color: #ffb74d; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .fv-save-status { font-size: 11px; color: var(--text-4); flex-shrink: 0; white-space: nowrap; }
+        .fv-conflict { display: none; max-width: 220px; font-size: 11px; color: #ffb74d; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; -webkit-app-region: no-drag !important; }
+        .fv-save-status { font-size: 11px; color: var(--text-4); flex-shrink: 0; white-space: nowrap; -webkit-app-region: no-drag !important; }
         /* Corpo do editor: CodeMirror ocupa 100% da área (troca o antigo <pre><code> read-only) */
         .fv-body { flex: 1; overflow: hidden; min-height: 0; }
         .fv-body .CodeMirror {
