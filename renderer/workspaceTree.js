@@ -192,7 +192,8 @@ var creatingFolderParent = null;
 
             let relPath = e.path;
             const normPath = (e.path || '').replace(/\\/g, '/');
-            const normProject = (projectPath || '').replace(/\\/g, '/').replace(/\/+$/, '');
+            const targetRoot = e.projectRoot || projectPath || '';
+            const normProject = targetRoot.replace(/\\/g, '/').replace(/\/+$/, '');
             if (normProject && normPath.toLowerCase().startsWith(normProject.toLowerCase())) {
                 relPath = normPath.substring(normProject.length).replace(/^\/+/, '');
             } else {

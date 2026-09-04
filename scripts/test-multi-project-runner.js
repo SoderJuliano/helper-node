@@ -149,7 +149,11 @@ async function runAllTests() {
     assert.notStrictEqual(runA.runId, runB.runId, 'IDs de execucao devem ser distintos');
     assert.strictEqual(multiRunner.getAllRunners().length, 2, 'Devem existir 2 runners instanciados');
 
-    await new Promise((resolve) => setTimeout(resolve, 1200));
+    let waited = 0;
+    while (waited < 3500 && (!collectedLogs.A.includes('LOG_FROM_PROJ_A') || !collectedLogs.B.includes('LOG_FROM_PROJ_B'))) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      waited += 100;
+    }
 
     assert(collectedLogs.A.includes('LOG_FROM_PROJ_A'), 'Log de A deve ser coletado');
     assert(collectedLogs.B.includes('LOG_FROM_PROJ_B'), 'Log de B deve ser coletado');
