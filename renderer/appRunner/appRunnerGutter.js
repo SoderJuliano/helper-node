@@ -49,6 +49,21 @@
   }
 
   function getProjectDir(filePath) {
+    if (filePath) {
+      const norm = String(filePath).replace(/\\/g, '/');
+      const idx = norm.indexOf('/src/');
+      if (idx !== -1) {
+        return norm.substring(0, idx);
+      }
+      if (window.ctxProject && window.ctxProject.projects && Array.isArray(window.ctxProject.projects)) {
+        for (const proj of window.ctxProject.projects) {
+          const pNorm = String(proj.path || '').replace(/\\/g, '/');
+          if (norm.startsWith(pNorm)) {
+            return proj.path;
+          }
+        }
+      }
+    }
     const wsProjectMain = document.getElementById('ws-project-main');
     if (wsProjectMain && wsProjectMain.dataset && wsProjectMain.dataset.path) {
       return wsProjectMain.dataset.path;
@@ -58,13 +73,6 @@
     }
     if (window.workspaceContext && window.workspaceContext.projectPath) {
       return window.workspaceContext.projectPath;
-    }
-    if (filePath) {
-      const norm = String(filePath).replace(/\\/g, '/');
-      const idx = norm.indexOf('/src/');
-      if (idx !== -1) {
-        return norm.substring(0, idx);
-      }
     }
     return '';
   }

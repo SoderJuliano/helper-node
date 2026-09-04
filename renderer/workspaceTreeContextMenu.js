@@ -66,7 +66,7 @@
     };
 
     const wsProjectMain = document.getElementById('ws-project-main');
-    const projectRootPath = (wsProjectMain && wsProjectMain.dataset.path) || (item.isRoot ? item.path : '');
+    const projectRootPath = item.projectRoot || (item.isRoot ? item.path : '') || (wsProjectMain && wsProjectMain.dataset.path) || '';
     const isSyntheticDeps = item.synthetic === 'java-deps' || item.synthetic === 'java-deps-status' || (item.path && item.path.includes('::dependencies'));
     const isPom = item.name === 'pom.xml' || (item.path && item.path.endsWith('/pom.xml')) || (item.path && item.path.endsWith('\\pom.xml'));
     const isGradle = item.name && (item.name.startsWith('build.gradle') || item.name.startsWith('settings.gradle'));
@@ -193,7 +193,7 @@
       }));
 
       menu.appendChild(mkItem(SVGI_LINK, 'Copiar Caminho Relativo', () => {
-        const projectPath = wsProjectMain ? wsProjectMain.dataset.path : '';
+        const projectPath = item.projectRoot || (wsProjectMain ? wsProjectMain.dataset.path : '');
         let relPath = item.path;
         if (projectPath && item.path.startsWith(projectPath)) {
           relPath = item.path.substring(projectPath.length).replace(/^[/\\]+/, '');
