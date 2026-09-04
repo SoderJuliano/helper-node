@@ -95,7 +95,7 @@ function fileIconHtml(name) {
                     menu.appendChild(mkItem(SVGI_GIT_CONFLICT, `Resolver Conflitos Git (${currentGitConflictStatus.count})…`, () => { if (typeof window.openGitConflictModal === 'function') window.openGitConflictModal(projectPath); }));
                 }
                 menu.appendChild(mkItem(SVGI_SWITCH_PROJECT, 'Trocar projeto…', () => pickProjectFolder()));
-                menu.appendChild(mkItem(SVGI_ATTACH_PROJECT, 'Anexar outro projeto…', async () => {
+                menu.appendChild(mkItem(SVGI_ATTACH_PROJECT, 'Anexar mais um projeto…', async () => {
                     if (window.electronAPI && window.electronAPI.workspaceAttachProject) {
                         const r = await window.electronAPI.workspaceAttachProject();
                         if (r && r.attachments && typeof renderWorkspacePanel === 'function') renderWorkspacePanel(r.attachments);

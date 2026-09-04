@@ -91,7 +91,7 @@ ipcMain.handle("workspace:attach-project", async (_event, explicitPath) => {
   if (!targetPath) {
     const { dialog } = require("electron");
     const res = await dialog.showOpenDialog(state.mainWindow, {
-      title: "Anexar outro projeto ao workspace",
+      title: "Anexar mais um projeto ao workspace",
       properties: ["openDirectory"],
     });
     if (res.canceled || !res.filePaths.length) return { ok: false, canceled: true };
