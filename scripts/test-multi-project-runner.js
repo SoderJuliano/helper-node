@@ -179,6 +179,7 @@ async function runAllTests() {
 
     console.log('  ok   MultiRunnerService encerra processos individualmente e em lote');
     console.log('\nTodos os testes do Multi-Project Workspace e Multi-Runner passaram com sucesso! 🚀\n');
+    process.exit(0);
   } catch (err) {
     try {
       fs.rmSync(mockRootA, { recursive: true, force: true });
