@@ -66,7 +66,7 @@
                 <span style="flex: 1.2;">Nome da Variável</span>
                 <span style="flex: 2;">Valor</span>
                 <span style="width: 80px; text-align:center;">Origem</span>
-                <span style="width: 32px;"></span>
+                <span style="width: 64px; text-align:center;" title="Marcar para ativar ou desmarcar para ignorar temporariamente">Ativo</span>
               </div>
               <div class="app-runner-env-table-body" id="app-runner-cfg-env-rows"></div>
               <button type="button" class="app-runner-add-env-btn" id="app-runner-cfg-btn-add-env">
@@ -76,7 +76,7 @@
             </div>
 
             <div id="app-runner-cfg-env-raw-wrapper" class="app-runner-env-raw-wrapper" style="display:none;">
-              <textarea id="app-runner-cfg-env-raw" class="app-runner-config-textarea" placeholder="CHAVE=VALOR&#10;DATABASE_URL=jdbc:postgresql://localhost:5432/db&#10;SPRING_PROFILES_ACTIVE=dev" title="Uma variável por linha no formato CHAVE=VALOR. Linhas com # são ignoradas."></textarea>
+              <textarea id="app-runner-cfg-env-raw" class="app-runner-config-textarea" placeholder="CHAVE=VALOR&#10;DATABASE_URL=jdbc:postgresql://localhost:5432/db&#10;# SPRING_PROFILES_ACTIVE=dev (comentadas são desativadas)" title="Uma variável por linha no formato CHAVE=VALOR. Linhas iniciadas com # são mantidas como desativadas."></textarea>
             </div>
           </div>
 
@@ -127,9 +127,9 @@
     return modal;
   }
 
-  function renderAppRunnerEnvRow(key = '', val = '', origin = 'custom') {
+  function renderAppRunnerEnvRow(key = '', val = '', origin = 'custom', enabled = true) {
     const row = document.createElement('div');
-    row.className = 'app-runner-env-row';
+    row.className = 'app-runner-env-row' + (enabled ? '' : ' env-disabled');
 
     const originLabel = origin === 'intellij' ? 'IntelliJ' : (origin === 'env-file' ? '.env' : 'Custom');
     const originClass = origin === 'intellij' ? 'origin-intellij' : 'origin-custom';
@@ -138,15 +138,45 @@
       <input type="text" class="app-runner-env-key" placeholder="NOME_VARIAVEL" value="${key.replace(/"/g, '&quot;')}" />
       <input type="text" class="app-runner-env-val" placeholder="valor" value="${val.replace(/"/g, '&quot;')}" />
       <span class="app-runner-env-origin ${originClass}">${originLabel}</span>
-      <button type="button" class="app-runner-env-del-btn" title="Excluir variável">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:14px; height:14px;">
-          <polyline points="3 6 5 6 21 6"></polyline>
-          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-          <line x1="10" y1="11" x2="10" y2="17"></line>
-          <line x1="14" y1="11" x2="14" y2="17"></line>
-        </svg>
-      </button>
+      <div class="app-runner-env-actions" style="display:inline-flex; align-items:center; gap:6px; flex-shrink:0;">
+        <label class="app-runner-env-toggle-label" title="${enabled ? 'Variável ativa (desmarque para não injetar na execução)' : 'Variável desativada (marque para ativar)'}" style="cursor:pointer; display:inline-flex; align-items:center; margin:0;">
+          <input type="checkbox" class="app-runner-env-checkbox" ${enabled ? 'checked' : ''} style="cursor:pointer; width:15px; height:15px; accent-color:#38bdf8; margin:0;" />
+        </label>
+        <button type="button" class="app-runner-env-del-btn" title="Excluir variável">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:14px; height:14px;">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            <line x1="10" y1="11" x2="10" y2="17"></line>
+            <line x1="14" y1="11" x2="14" y2="17"></line>
+          </svg>
+        </button>
+      </div>
     `;
+
+    const checkbox = row.querySelector('.app-runner-env-checkbox');
+    const keyInput = row.querySelector('.app-runner-env-key');
+    const valInput = row.querySelector('.app-runner-env-val');
+
+    const updateRowVisual = (isChecked) => {
+      if (isChecked) {
+        row.classList.remove('env-disabled');
+        row.style.opacity = '1';
+        if (keyInput) keyInput.style.color = '';
+        if (valInput) valInput.style.color = '';
+        checkbox.parentElement.title = 'Variável ativa (desmarque para não injetar na execução)';
+      } else {
+        row.classList.add('env-disabled');
+        row.style.opacity = '0.55';
+        if (keyInput) keyInput.style.color = '#94a3b8';
+        if (valInput) valInput.style.color = '#94a3b8';
+        checkbox.parentElement.title = 'Variável desativada (marque para ativar)';
+      }
+    };
+
+    checkbox.onchange = () => {
+      updateRowVisual(checkbox.checked);
+    };
+    updateRowVisual(enabled);
 
     const delBtn = row.querySelector('.app-runner-env-del-btn');
     delBtn.onclick = (e) => {
@@ -158,23 +188,35 @@
 
   function parseAppRunnerRawEnv(text) {
     const env = {};
+    const disabledEnvs = [];
     const lines = (text || '').split('\n');
     for (const line of lines) {
       const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      const eqIdx = trimmed.indexOf('=');
+      if (!trimmed) continue;
+      const isDisabled = trimmed.startsWith('#');
+      const clean = isDisabled ? trimmed.replace(/^#+\s*/, '') : trimmed;
+      const eqIdx = clean.indexOf('=');
       if (eqIdx !== -1) {
-        const k = trimmed.substring(0, eqIdx).trim();
-        const v = trimmed.substring(eqIdx + 1).trim();
-        if (k) env[k] = v;
+        const k = clean.substring(0, eqIdx).trim();
+        let v = clean.substring(eqIdx + 1).trim();
+        if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
+        if (k) {
+          env[k] = v;
+          if (isDisabled) {
+            disabledEnvs.push(k);
+          }
+        }
       }
     }
-    return env;
+    return { env, disabledEnvs };
   }
 
-  function formatAppRunnerRawEnv(env) {
+  function formatAppRunnerRawEnv(env, disabledEnvs = []) {
     if (!env || typeof env !== 'object') return '';
-    return Object.entries(env).map(([k, v]) => `${k}=${v}`).join('\n');
+    const disabledSet = new Set(Array.isArray(disabledEnvs) ? disabledEnvs : []);
+    return Object.entries(env).map(([k, v]) => {
+      return disabledSet.has(k) ? `# ${k}=${v}` : `${k}=${v}`;
+    }).join('\n');
   }
 
   window.AppRunnerConfigModalDom = {

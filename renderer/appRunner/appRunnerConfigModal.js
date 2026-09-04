@@ -109,15 +109,15 @@
     const textareaRaw = modal.querySelector('#app-runner-cfg-env-raw');
 
     if (newMode === 'raw') {
-      const currentEnv = collectEnvFromTable();
-      textareaRaw.value = window.AppRunnerConfigModalDom.formatAppRunnerRawEnv(currentEnv);
+      const { env, disabledEnvs } = collectEnvFromTable();
+      textareaRaw.value = window.AppRunnerConfigModalDom.formatAppRunnerRawEnv(env, disabledEnvs);
       wrapperTable.style.display = 'none';
       wrapperRaw.style.display = 'block';
       btnTable.classList.remove('active');
       btnRaw.classList.add('active');
     } else {
-      const envObj = window.AppRunnerConfigModalDom.parseAppRunnerRawEnv(textareaRaw.value);
-      populateEnvTable(envObj);
+      const { env, disabledEnvs } = window.AppRunnerConfigModalDom.parseAppRunnerRawEnv(textareaRaw.value);
+      populateEnvTable(env, disabledEnvs);
       wrapperRaw.style.display = 'none';
       wrapperTable.style.display = 'block';
       btnRaw.classList.remove('active');
@@ -128,27 +128,36 @@
 
   function collectEnvFromTable() {
     const modal = document.getElementById('app-runner-config-modal');
-    if (!modal) return {};
+    if (!modal) return { env: {}, disabledEnvs: [] };
     const rows = modal.querySelectorAll('.app-runner-env-row');
     const env = {};
+    const disabledEnvs = [];
     rows.forEach(row => {
       const k = (row.querySelector('.app-runner-env-key')?.value || '').trim();
       const v = (row.querySelector('.app-runner-env-val')?.value || '').trim();
-      if (k) env[k] = v;
+      const isChecked = row.querySelector('.app-runner-env-checkbox')?.checked !== false;
+      if (k) {
+        env[k] = v;
+        if (!isChecked) {
+          disabledEnvs.push(k);
+        }
+      }
     });
-    return env;
+    return { env, disabledEnvs };
   }
 
-  function populateEnvTable(env = {}) {
+  function populateEnvTable(env = {}, disabledEnvs = []) {
     const modal = document.getElementById('app-runner-config-modal');
     if (!modal) return;
     const container = modal.querySelector('#app-runner-cfg-env-rows');
     container.innerHTML = '';
 
+    const disabledSet = new Set(Array.isArray(disabledEnvs) ? disabledEnvs : []);
     const origins = (currentConfig && currentConfig.envOrigins) || {};
     for (const [k, v] of Object.entries(env)) {
       const origin = origins[k] || 'custom';
-      const row = window.AppRunnerConfigModalDom.renderAppRunnerEnvRow(k, v, origin);
+      const isEnabled = !disabledSet.has(k);
+      const row = window.AppRunnerConfigModalDom.renderAppRunnerEnvRow(k, v, origin, isEnabled);
       container.appendChild(row);
     }
   }
@@ -163,7 +172,8 @@
     modal.querySelector('#app-runner-cfg-intellij-fallback').checked = config.useIntelliJFallback !== false;
 
     const envMap = config.env || config.envVars || {};
-    populateEnvTable(envMap);
+    const disabledEnvs = config.disabledEnvs || config.disabledKeys || [];
+    populateEnvTable(envMap, disabledEnvs);
 
     const detailsEl = modal.querySelector('#app-runner-cfg-sync-details');
     const syncTime = config.lastSync || config.lastModified || (config.extractedFromIntelliJ && config.extractedFromIntelliJ.extractedAt);
@@ -206,11 +216,16 @@
     if (!modal || !currentProjectDir || !window.electronAPI) return;
 
     let env = {};
+    let disabledEnvs = [];
     if (currentMode === 'table') {
-      env = collectEnvFromTable();
+      const collected = collectEnvFromTable();
+      env = collected.env;
+      disabledEnvs = collected.disabledEnvs;
     } else {
       const rawText = modal.querySelector('#app-runner-cfg-env-raw')?.value || '';
-      env = window.AppRunnerConfigModalDom.parseAppRunnerRawEnv(rawText);
+      const parsed = window.AppRunnerConfigModalDom.parseAppRunnerRawEnv(rawText);
+      env = parsed.env;
+      disabledEnvs = parsed.disabledEnvs;
     }
 
     const payload = {
@@ -220,7 +235,8 @@
       programArguments: (modal.querySelector('#app-runner-cfg-prog-args')?.value || '').trim(),
       useIntelliJFallback: modal.querySelector('#app-runner-cfg-intellij-fallback')?.checked !== false,
       envVars: env,
-      env: env
+      env: env,
+      disabledEnvs: disabledEnvs,
     };
 
     const res = await window.electronAPI.appRunnerSaveConfig(currentProjectDir, payload);

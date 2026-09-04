@@ -531,6 +531,10 @@ class IntelliJConfigExtractor {
         const programArgs = data.programArgs || data.programArguments || '';
         const vmOptions = typeof data.vmOptions === 'string' ? data.vmOptions : (Array.isArray(data.vmOptions) ? data.vmOptions.join(' ') : '');
 
+        const disabledEnvs = Array.isArray(data.disabledEnvs)
+          ? data.disabledEnvs.filter(k => typeof k === 'string')
+          : (Array.isArray(data.disabledKeys) ? data.disabledKeys.filter(k => typeof k === 'string') : []);
+
         const cleanedConfig = {
           projectDir,
           projectName: path.basename(projectDir),
@@ -540,6 +544,7 @@ class IntelliJConfigExtractor {
           programArguments: programArgs,
           envVars,
           env: envVars,
+          disabledEnvs,
           envOrigins,
           extractedFromIntelliJ: extracted,
           useIntelliJFallback: data.useIntelliJFallback !== false,
@@ -593,6 +598,7 @@ class IntelliJConfigExtractor {
       programArguments: extracted.programArgs || '',
       envVars: initialEnvVars,
       env: initialEnvVars,
+      disabledEnvs: [],
       envOrigins: initialOrigins,
       extractedFromIntelliJ: {
         envs: extracted.envs,
@@ -648,6 +654,10 @@ class IntelliJConfigExtractor {
         : 'custom';
     }
 
+    const disabledEnvs = Array.isArray(partialConfig.disabledEnvs)
+      ? partialConfig.disabledEnvs.filter(k => typeof k === 'string')
+      : (Array.isArray(current.disabledEnvs) ? current.disabledEnvs : []);
+
     const updatedConfig = {
       ...current,
       activeProfiles,
@@ -656,6 +666,7 @@ class IntelliJConfigExtractor {
       programArguments: programArgs,
       envVars: updatedEnvVars,
       env: updatedEnvVars,
+      disabledEnvs,
       envOrigins: updatedOrigins,
       useIntelliJFallback: partialConfig.useIntelliJFallback !== undefined ? !!partialConfig.useIntelliJFallback : current.useIntelliJFallback,
       hasCustomOverrides: true,
@@ -715,6 +726,7 @@ class IntelliJConfigExtractor {
       programArguments: programArgs,
       envVars: mergedEnvVars,
       env: mergedEnvVars,
+      disabledEnvs: current.disabledEnvs || [],
       envOrigins: updatedOrigins,
       extractedFromIntelliJ: {
         envs: extracted.envs,
@@ -738,6 +750,7 @@ class IntelliJConfigExtractor {
 
   static getEffectiveConfig(projectDir) {
     const config = this.getProjectConfig(projectDir);
+    const disabledSet = new Set(Array.isArray(config.disabledEnvs) ? config.disabledEnvs : []);
 
     let effectiveEnvs = {};
     if (config.useIntelliJFallback && config.extractedFromIntelliJ && config.extractedFromIntelliJ.envs) {
@@ -748,6 +761,13 @@ class IntelliJConfigExtractor {
 
     if (config.activeProfiles && !effectiveEnvs.SPRING_PROFILES_ACTIVE) {
       effectiveEnvs.SPRING_PROFILES_ACTIVE = config.activeProfiles;
+    }
+
+    // Remove variáveis que foram desmarcadas / desativadas pelo usuário
+    if (disabledSet.size > 0) {
+      for (const key of disabledSet) {
+        delete effectiveEnvs[key];
+      }
     }
 
     return {

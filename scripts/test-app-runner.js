@@ -242,6 +242,25 @@ assert.strictEqual(reimported.envVars.CUSTOM_HELPER_KEY, 'helper_val', 'Variáve
 assert.strictEqual(reimported.envVars.last_opened_file_path, undefined);
 console.log('  ok   Reimportação do IntelliJ executada e mesclada com sucesso (mantendo apenas envs reais)');
 
+// 3.4 Teste de Desativação Temporária de Variáveis (Checkbox / disabledEnvs)
+IntelliJConfigExtractor.saveProjectConfig(mockIdeaDir, {
+  disabledEnvs: ['CUSTOM_HELPER_KEY', 'DB_HOST'],
+});
+const configWithDisabled = IntelliJConfigExtractor.getEffectiveConfig(mockIdeaDir);
+assert.strictEqual(configWithDisabled.disabledEnvs.includes('CUSTOM_HELPER_KEY'), true);
+assert.strictEqual(configWithDisabled.disabledEnvs.includes('DB_HOST'), true);
+assert.strictEqual(configWithDisabled.effectiveEnvs.CUSTOM_HELPER_KEY, undefined, 'Variável desmarcada NÃO deve constar nas effectiveEnvs');
+assert.strictEqual(configWithDisabled.effectiveEnvs.DB_HOST, undefined, 'Variável desmarcada NÃO deve constar nas effectiveEnvs');
+assert.strictEqual(configWithDisabled.effectiveEnvs.SERVER_PORT, '9090', 'Variáveis ativas continuam normalmente');
+
+// Reativação
+IntelliJConfigExtractor.saveProjectConfig(mockIdeaDir, {
+  disabledEnvs: [],
+});
+const configReenabled = IntelliJConfigExtractor.getEffectiveConfig(mockIdeaDir);
+assert.strictEqual(configReenabled.effectiveEnvs.CUSTOM_HELPER_KEY, 'helper_val', 'Variável remarcada volta a ser injetada');
+console.log('  ok   Desativação temporária via checkbox (disabledEnvs) filtra a execução sem perder a variável');
+
 // Limpeza da pasta mock
 fs.rmSync(mockIdeaDir, { recursive: true, force: true });
 try {

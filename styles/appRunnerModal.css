@@ -309,57 +309,36 @@
     align-items: center;
     gap: 8px;
     padding: 2px 0;
+    transition: opacity 0.15s ease;
 }
 
-.app-runner-env-row .app-runner-config-input {
-    padding: 5px 8px;
-    font-size: 12px;
+.app-runner-env-row.env-disabled {
+    opacity: 0.55;
 }
 
-.env-origin-tag {
-    font-size: 9.5px;
-    font-weight: 700;
-    text-transform: uppercase;
-    padding: 2px 6px;
-    border-radius: 3px;
-    letter-spacing: 0.3px;
+.app-runner-env-row.env-disabled .app-runner-env-key,
+.app-runner-env-row.env-disabled .app-runner-env-val {
+    color: #94a3b8;
+    text-decoration: line-through;
+    text-decoration-color: rgba(248, 113, 113, 0.4);
 }
-.env-origin-tag.intellij {
-    background: rgba(56, 189, 248, 0.15);
-    color: #38bdf8;
-    border: 1px solid rgba(56, 189, 248, 0.3);
-}
-.env-origin-tag.helper {
-    background: rgba(74, 222, 128, 0.15);
-    color: #4ade80;
-    border: 1px solid rgba(74, 222, 128, 0.3);
-}
+
+.app-runner-env-actions { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.app-runner-env-toggle-label { display: inline-flex; align-items: center; justify-content: center; cursor: pointer; margin: 0; padding: 2px; }
+.app-runner-env-checkbox { cursor: pointer; width: 15px; height: 15px; accent-color: #38bdf8; margin: 0; }
+.app-runner-env-row .app-runner-config-input { padding: 5px 8px; font-size: 12px; }
+
+.env-origin-tag { font-size: 9.5px; font-weight: 700; text-transform: uppercase; padding: 2px 6px; border-radius: 3px; letter-spacing: 0.3px; }
+.env-origin-tag.intellij { background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); }
+.env-origin-tag.helper { background: rgba(74, 222, 128, 0.15); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.3); }
 
 .app-runner-env-del-btn, .env-delete-btn {
-    background: transparent;
-    border: none;
-    color: #ef4444;
-    opacity: 0.75;
-    cursor: pointer;
-    padding: 4px;
-    border-radius: 4px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    transition: opacity 0.15s, background 0.15s, color 0.15s;
-    width: 28px;
-    height: 28px;
-    flex-shrink: 0;
+    background: transparent; border: none; color: #ef4444; opacity: 0.75; cursor: pointer;
+    padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;
+    transition: opacity 0.15s, background 0.15s, color 0.15s; width: 28px; height: 28px; flex-shrink: 0;
 }
-.app-runner-env-del-btn:hover, .env-delete-btn:hover {
-    opacity: 1;
-    background: rgba(239, 68, 68, 0.2);
-    color: #f87171;
-}
-.app-runner-env-del-btn svg, .env-delete-btn svg {
-    width: 14px;
-    height: 14px;
-}
+.app-runner-env-del-btn:hover, .env-delete-btn:hover { opacity: 1; background: rgba(239, 68, 68, 0.2); color: #f87171; }
+.app-runner-env-del-btn svg, .env-delete-btn svg { width: 14px; height: 14px; }
 
 .app-runner-env-empty {
     font-size: 11.5px;
@@ -405,7 +384,6 @@
     flex-direction: column;
     gap: 6px;
 }
-
 .app-runner-checkbox-label {
     display: flex;
     align-items: center;
@@ -415,7 +393,6 @@
     cursor: pointer;
     user-select: none;
 }
-
 .app-runner-sync-details {
     font-size: 11px;
     color: #94a3b8;
@@ -427,7 +404,6 @@
     border-radius: 3px;
     color: #e2e8f0;
 }
-
 .app-runner-config-footer {
     display: flex;
     align-items: center;
@@ -437,14 +413,12 @@
     border-top: 1px solid var(--border, #282c38);
     gap: 12px;
 }
-
 .app-runner-footer-left,
 .app-runner-footer-right {
     display: flex;
     align-items: center;
     gap: 8px;
 }
-
 .app-runner-btn-primary {
     background: #0284c7;
     border: 1px solid #0369a1;
@@ -457,7 +431,6 @@
     transition: background 0.15s;
 }
 .app-runner-btn-primary:hover { background: #0369a1; }
-
 .app-runner-btn-secondary {
     background: rgba(255, 255, 255, 0.08);
     border: 1px solid rgba(255, 255, 255, 0.12);
@@ -475,7 +448,6 @@
     background: rgba(255, 255, 255, 0.14);
     color: #fff;
 }
-
 .app-runner-btn-text {
     background: transparent;
     border: none;
