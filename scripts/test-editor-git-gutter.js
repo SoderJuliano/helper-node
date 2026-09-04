@@ -37,6 +37,7 @@ async function runTests() {
     console.log('  ok   Arquivos virtuais de biblioteca ignorados sem erro');
 
     console.log('\nTodos os testes de marcadores Git no editor passaram com sucesso! 🎉\n');
+    process.exit(0);
   } finally {
     try {
       fs.rmSync(tmpDir, { recursive: true, force: true });

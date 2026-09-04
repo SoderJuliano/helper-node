@@ -99,6 +99,12 @@
     activeCm = cm;
     activeFilePath = filePath;
 
+    // Ao alternar entre abas ou abrir novo arquivo, o CodeMirror limpa os marcadores da calha no setValue.
+    // Invalida o cache deste arquivo para forçar a renderização imediata na nova aba ativa.
+    if (filePath) {
+      lastRenderedState.delete(filePath);
+    }
+
     // Agenda atualização em background sem bloquear o carregamento imediato do arquivo
     scheduleUpdate(cm, filePath, 20);
 
@@ -144,7 +150,14 @@
 
   window.EditorGitGutter = {
     attach,
-    update: (cm, filePath) => scheduleUpdate(cm || activeCm, filePath || activeFilePath, 0),
-    scheduleUpdate: (cm, filePath, delay) => scheduleUpdate(cm || activeCm, filePath || activeFilePath, delay),
+    update: (cm, filePath) => {
+      const target = filePath || activeFilePath;
+      if (target) lastRenderedState.delete(target);
+      scheduleUpdate(cm || activeCm, target, 0);
+    },
+    scheduleUpdate: (cm, filePath, delay) => {
+      const target = filePath || activeFilePath;
+      scheduleUpdate(cm || activeCm, target, delay);
+    },
   };
 })();
