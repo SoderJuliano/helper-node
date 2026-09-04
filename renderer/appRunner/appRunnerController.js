@@ -400,6 +400,14 @@
         this.portLinkEl.style.display = 'none';
         this.portLinkEl.href = '#';
       }
+      if (this.multiTabs && this.multiTabs.activeTabId) {
+        const tab = this.multiTabs.tabs.get(this.multiTabs.activeTabId);
+        if (tab) {
+          tab.outputBuffer = '';
+          tab.testEvents = [];
+          tab.testSummary = null;
+        }
+      }
     }
 
     appendOutput(chunk) {

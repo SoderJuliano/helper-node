@@ -273,6 +273,12 @@
         tabEl.appendChild(closeBtn);
 
         tabEl.addEventListener('click', () => this.activateTab(runId));
+        tabEl.addEventListener('auxclick', (ev) => {
+          if (ev.button === 1) {
+            ev.preventDefault();
+            this.closeTab(runId, ev);
+          }
+        });
         this.stripEl.appendChild(tabEl);
       }
     }

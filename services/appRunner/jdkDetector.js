@@ -68,7 +68,7 @@ class JdkDetector {
     }
 
     // 3. Linux JVM standard directories (Ubuntu, Pop!_OS, Arch Linux / Garuda)
-    if (!isWin) {
+    if (!isWin && process.platform !== 'darwin') {
       const linuxJvmPaths = [
         '/usr/lib/jvm',
         '/usr/lib64/jvm',
@@ -83,6 +83,35 @@ class JdkDetector {
             fs.readdirSync(jvmRoot, { withFileTypes: true }).forEach(ent => {
               if (ent.isDirectory()) {
                 dirs.push({ path: path.join(jvmRoot, ent.name), source: 'Linux (/usr/lib/jvm)' });
+              }
+            });
+          } catch (_) {}
+        }
+      });
+    }
+
+    // 3b. macOS JVM standard directories & Homebrew OpenJDK
+    if (process.platform === 'darwin') {
+      const macJvmRoots = [
+        '/Library/Java/JavaVirtualMachines',
+        path.join(home, 'Library', 'Java', 'JavaVirtualMachines'),
+        '/System/Library/Java/JavaVirtualMachines',
+        '/opt/homebrew/opt/openjdk',
+        '/opt/homebrew/opt/openjdk@11',
+        '/opt/homebrew/opt/openjdk@17',
+        '/opt/homebrew/opt/openjdk@21',
+        '/usr/local/opt/openjdk',
+        '/usr/local/opt/openjdk@11',
+        '/usr/local/opt/openjdk@17',
+        '/usr/local/opt/openjdk@21',
+      ];
+      macJvmRoots.forEach(jvmRoot => {
+        if (fs.existsSync(jvmRoot)) {
+          try {
+            dirs.push({ path: jvmRoot, source: 'macOS (Homebrew/System)' });
+            fs.readdirSync(jvmRoot, { withFileTypes: true }).forEach(ent => {
+              if (ent.isDirectory()) {
+                dirs.push({ path: path.join(jvmRoot, ent.name), source: 'macOS (JavaVirtualMachines)' });
               }
             });
           } catch (_) {}
