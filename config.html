@@ -478,15 +478,15 @@
 
     </div>
     <div id="nexa-error-toast" style="display:none; margin-bottom:10px; padding:10px 14px; background:rgba(255, 77, 77, 0.9); color:#fff; border-radius:6px; font-size:13px; font-weight:bold; text-align:center; -webkit-app-region:no-drag; border:1px solid #ff6b6b;"></div>
-    <div style="display:flex; gap:10px; align-items:center; -webkit-app-region:no-drag;">
-        <button id="save-btn" style="flex:1;">Salvar e Fechar</button>
-        <button id="open-preferences-btn" style="flex:1; margin-top:15px; background-color:#333;">Preferências do Usuário</button>
+    <div class="config-footer-actions">
+        <button id="save-btn">Salvar e Fechar</button>
+        <button id="open-preferences-btn">Preferências do Usuário</button>
     </div>
-    <div style="margin-top: 20px; padding: 15px; background-color: rgba(0, 0, 0, 0.3); border-radius: 5px; -webkit-app-region: no-drag; display: flex; justify-content: space-between; align-items: center;">
-        <p id="backend-url" style="margin: 0; font-size: 13px; color: #aaa;">
-            Backend URL: <span id="backend-url-value" style="font-weight: bold; color: #00aaff; word-break: break-all;">Carregando...</span>
+    <div class="config-footer-info">
+        <p id="backend-url">
+            Backend URL: <span id="backend-url-value">Carregando...</span>
         </p>
-        <p id="app-version" style="margin: 0; font-size: 11px; color: #666; font-style: italic;">
+        <p id="app-version">
             v<span id="app-version-value">...</span>
         </p>
     </div>
