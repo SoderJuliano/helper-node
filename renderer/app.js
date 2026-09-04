@@ -22,7 +22,18 @@
 
     // Listen to changes in project structure or file updates
     if (window.electronAPI) {
+        if (window.electronAPI.onAiModelChanged) {
+            window.electronAPI.onAiModelChanged(async () => {
+                if (typeof window.refreshComposerModel === 'function') window.refreshComposerModel();
+                if (typeof window.refreshWorkspacePanel === 'function') await window.refreshWorkspacePanel();
+                if (typeof window.refreshProjectContext === 'function') await window.refreshProjectContext();
+            });
+        }
+
         window.electronAPI.onWorkspaceChanged(async () => {
+            if (typeof window.refreshWorkspacePanel === 'function') {
+                await window.refreshWorkspacePanel();
+            }
             if (typeof window.refreshProjectTree === 'function') {
                 await window.refreshProjectTree();
             }

@@ -49,6 +49,10 @@ function loadConfig() {
         loadedConfig.visionGuide = { ...loadedConfig.visionGuide, minInterventionSeconds: 0 };
       }
 
+      if (loadedConfig.workspaceAccess && loadedConfig.workspaceAccess.enabled === false && !loadedConfig.workspaceAccess.explicit) {
+        loadedConfig.workspaceAccess.enabled = true;
+      }
+
       return { ...defaultConfig, ...loadedConfig };
     }
   } catch (error) {

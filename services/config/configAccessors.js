@@ -283,23 +283,22 @@ function createAccessors(ctx) {
           cfg.osIntegration = false;
           save();
         }
-      } else {
-        if (cfg.workspaceAccess && cfg.workspaceAccess.enabled) {
-          cfg.workspaceAccess.enabled = false;
-          save();
-        }
       }
     },
 
     getWorkspaceAccessEnabled() {
       const cfg = get();
-      return !!(cfg.workspaceAccess && cfg.workspaceAccess.enabled);
+      if (!cfg.workspaceAccess || typeof cfg.workspaceAccess.enabled === 'undefined') {
+        return true;
+      }
+      return !!cfg.workspaceAccess.enabled;
     },
 
     setWorkspaceAccessEnabled(enabled) {
       const cfg = get();
       if (!cfg.workspaceAccess) cfg.workspaceAccess = {};
       cfg.workspaceAccess.enabled = !!enabled;
+      cfg.workspaceAccess.explicit = true;
       save();
     },
 

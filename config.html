@@ -15,79 +15,93 @@
     <div class="container">
         <div class="setting-item" id="prompt-instruction-header">
             <label for="prompt-instruction">Instrução para IA:</label>
-            <span id="prompt-edit-toggle" title="Liberar edição (área sensível)" style="cursor:pointer; font-size:12px; color:#888; opacity:0.35; transition:opacity 0.2s; -webkit-app-region:no-drag;">editar</span>
+            <div class="setting-actions">
+                <span id="prompt-edit-toggle" title="Liberar edição (área sensível)" style="cursor:pointer; font-size:12px; color:#888; opacity:0.35; transition:opacity 0.2s; -webkit-app-region:no-drag;">editar</span>
+            </div>
         </div>
         <textarea id="prompt-instruction" readonly placeholder="Instrução usada antes de cada pergunta para a IA."></textarea>
         <p id="prompt-edit-warn" style="display:none; font-size:11.5px; color:#ffb74d; margin:6px 0 0 0; -webkit-app-region:no-drag;">Área sensível: editar a instrução sem cuidado pode fazer a IA alucinar em algumas funcionalidades. Por sua conta e risco.</p>
 
         <div class="setting-item" title="Ativa logs detalhados de depuração no console e exibe informações avançadas de conexão.">
             <label for="debug-mode-toggle">Modo Debug</label>
-            <span id="debug-mode-status" style="font-weight: bold; margin-left: 10px; min-width: 30px; text-align: center; -webkit-app-region: no-drag;">OFF</span>
-            <label class="switch">
-                <input type="checkbox" id="debug-mode-toggle" hidden>
-                <div class="switch__wrapper">
-                    <div class="switch__toggle"></div>
-                </div>
-            </label>
+            <div class="setting-actions">
+                <span id="debug-mode-status" class="status-badge">OFF</span>
+                <label class="switch">
+                    <input type="checkbox" id="debug-mode-toggle" hidden>
+                    <div class="switch__wrapper">
+                        <div class="switch__toggle"></div>
+                    </div>
+                </label>
+            </div>
         </div>
 
         <div class="setting-item" title="Tira um screenshot da janela em foco e anexa como imagem de contexto para a IA.">
             <label for="print-mode-toggle">Capturar e enviar print direto do contexto</label>
-            <span id="print-mode-status" style="font-weight: bold; margin-left: 10px; min-width: 30px; text-align: center; -webkit-app-region: no-drag;">OFF</span>
-            <label class="switch">
-                <input type="checkbox" id="print-mode-toggle" hidden>
-                <div class="switch__wrapper">
-                    <div class="switch__toggle"></div>
-                </div>
-            </label>
+            <div class="setting-actions">
+                <span id="print-mode-status" class="status-badge">OFF</span>
+                <label class="switch">
+                    <input type="checkbox" id="print-mode-toggle" hidden>
+                    <div class="switch__wrapper">
+                        <div class="switch__toggle"></div>
+                    </div>
+                </label>
+            </div>
         </div>
 
         <div class="setting-item" title="Permite ao assistente interagir com o sistema operacional e capturar contexto da janela ativa.">
             <label for="os-integration-toggle">Integrar com SO</label>
-            <span id="os-integration-status" style="font-weight: bold; margin-left: 10px; min-width: 30px; text-align: center; -webkit-app-region: no-drag;">OFF</span>
-            <label class="switch">
-                <input type="checkbox" id="os-integration-toggle" hidden>
-                <div class="switch__wrapper">
-                    <div class="switch__toggle"></div>
-                </div>
-            </label>
+            <div class="setting-actions">
+                <span id="os-integration-status" class="status-badge">OFF</span>
+                <label class="switch">
+                    <input type="checkbox" id="os-integration-toggle" hidden>
+                    <div class="switch__wrapper">
+                        <div class="switch__toggle"></div>
+                    </div>
+                </label>
+            </div>
         </div>
 
         <div class="setting-item" title="Assistente que escuta e responde em tempo real. Modelos de raciocínio usam automaticamente gpt-4.1 para respostas ultrarrápidas.">
             <label for="realtime-assistant-toggle">Assistente em tempo real</label>
-            <span id="realtime-assistant-status" style="font-weight: bold; margin-left: 10px; min-width: 30px; text-align: center; -webkit-app-region: no-drag;">OFF</span>
-            <label class="switch">
-                <input type="checkbox" id="realtime-assistant-toggle" hidden>
-                <div class="switch__wrapper">
-                    <div class="switch__toggle"></div>
-                </div>
-            </label>
+            <div class="setting-actions">
+                <span id="realtime-assistant-status" class="status-badge">OFF</span>
+                <label class="switch">
+                    <input type="checkbox" id="realtime-assistant-toggle" hidden>
+                    <div class="switch__wrapper">
+                        <div class="switch__toggle"></div>
+                    </div>
+                </label>
+            </div>
         </div>
 
         <div class="setting-item" title="Permite à IA ler e editar arquivos do seu computador, executar comandos e gerar scripts. Quando ativo, o modo integrado (overlay) é desativado. Usa modelo mais pesado (gpt-4o-mini ou qwen2.5:7b) para edições de código.">
             <label for="helper-tools-toggle">Ferramentas avançadas (ler/editar arquivos, comandos)</label>
-            <span id="helper-tools-status" style="font-weight: bold; margin-left: 10px; min-width: 30px; text-align: center; -webkit-app-region: no-drag;">OFF</span>
-            <label class="switch">
-                <input type="checkbox" id="helper-tools-toggle" hidden>
-                <div class="switch__wrapper">
-                    <div class="switch__toggle"></div>
-                </div>
-            </label>
+            <div class="setting-actions">
+                <span id="helper-tools-status" class="status-badge">OFF</span>
+                <label class="switch">
+                    <input type="checkbox" id="helper-tools-toggle" hidden>
+                    <div class="switch__wrapper">
+                        <div class="switch__toggle"></div>
+                    </div>
+                </label>
+            </div>
         </div>
 
-        <div class="setting-item" id="workspace-access-item" title="Permite anexar pastas e arquivos como contexto da conversa. A IA pode ler/editar dentro deles (com confirmação). Requer Ferramentas Avançadas ligado.">
+        <div class="setting-item" id="workspace-access-item" title="Permite anexar pastas e arquivos como contexto da conversa. A IA pode ler/editar dentro deles (com confirmação).">
             <label for="workspace-access-toggle">Acesso a diretórios (anexar pastas/arquivos)</label>
-            <span id="workspace-access-status" style="font-weight: bold; margin-left: 10px; min-width: 30px; text-align: center; -webkit-app-region: no-drag;">OFF</span>
-            <label class="switch">
-                <input type="checkbox" id="workspace-access-toggle" hidden>
-                <div class="switch__wrapper">
-                    <div class="switch__toggle"></div>
-                </div>
-            </label>
+            <div class="setting-actions">
+                <span id="workspace-access-status" class="status-badge">OFF</span>
+                <label class="switch">
+                    <input type="checkbox" id="workspace-access-toggle" hidden>
+                    <div class="switch__wrapper">
+                        <div class="switch__toggle"></div>
+                    </div>
+                </label>
+            </div>
         </div>
 
         <!-- Configurações de Execução (Maven / Gradle) -->
-        <div id="java-runner-config-section" style="display: none; margin-bottom: 15px; padding: 10px 14px; background-color: rgba(0,0,0,0.35); border-radius: 5px; border: 1px solid rgba(74, 222, 128, 0.25); -webkit-app-region: no-drag;" title="Gerencie variáveis de ambiente, perfis ativos do Spring Boot (--spring.profiles.active), opções de VM e argumentos de subida para o projeto anexado.">
+        <div id="java-runner-config-section" style="display: none; margin-bottom: 12px; padding: 10px 14px; background-color: rgba(0,0,0,0.35); border-radius: 6px; border: 1px solid rgba(74, 222, 128, 0.25); -webkit-app-region: no-drag;" title="Gerencie variáveis de ambiente, perfis ativos do Spring Boot (--spring.profiles.active), opções de VM e argumentos de subida para o projeto anexado.">
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
                 <div style="font-weight: bold; color: #4ade80; display: flex; align-items: center; gap: 8px;">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px;"><polygon points="5 3 19 12 5 21 5 3"/></svg>
@@ -106,39 +120,43 @@
 
         <div class="setting-item" title="Oculta as janelas do assistente em prints, gravações e compartilhamento de tela. Desative para mostrar a ferramenta na gravação.">
             <label for="stealth-mode-toggle">Modo Stealth (Invisibilidade)</label>
-            <span id="stealth-mode-status" style="font-weight: bold; margin-left: 10px; min-width: 30px; text-align: center; -webkit-app-region: no-drag;">ON</span>
-            <label class="switch">
-                <input type="checkbox" id="stealth-mode-toggle" hidden>
-                <div class="switch__wrapper">
-                    <div class="switch__toggle"></div>
-                </div>
-            </label>
+            <div class="setting-actions">
+                <span id="stealth-mode-status" class="status-badge">ON</span>
+                <label class="switch">
+                    <input type="checkbox" id="stealth-mode-toggle" hidden>
+                    <div class="switch__wrapper">
+                        <div class="switch__toggle"></div>
+                    </div>
+                </label>
+            </div>
         </div>
 
         <div class="setting-item" title="Seleciona o idioma principal da interface.">
             <label for="language-select">Idioma</label>
-            <select id="language-select" class="custom-select">
-                <option value="pt-br" selected>Português (BR)</option>
-                <option value="us-en">English (US)</option>
-            </select>
+            <div class="setting-control">
+                <select id="language-select" class="custom-select">
+                    <option value="pt-br" selected>Português (BR)</option>
+                    <option value="us-en">English (US)</option>
+                </select>
+            </div>
         </div>
 
         <!-- Nexa AI Assistant -->
-        <!-- O submenu "Apenas Nexa (Modo Imersivo)" saiu junto com a janela fullscreen
-             dedicada; este toggle é o menu da Nexa em si e continua valendo. -->
         <div class="setting-item" title="Habilita a identidade Nexa e sua persona no modo janela.">
             <label for="nexa-toggle">Nexa AI Assistant</label>
-            <span id="nexa-status" style="font-weight: bold; margin-left: 10px; min-width: 30px; text-align: center; -webkit-app-region: no-drag;">OFF</span>
-            <label class="switch">
-                <input type="checkbox" id="nexa-toggle" hidden>
-                <div class="switch__wrapper">
-                    <div class="switch__toggle"></div>
-                </div>
-            </label>
+            <div class="setting-actions">
+                <span id="nexa-status" class="status-badge">OFF</span>
+                <label class="switch">
+                    <input type="checkbox" id="nexa-toggle" hidden>
+                    <div class="switch__wrapper">
+                        <div class="switch__toggle"></div>
+                    </div>
+                </label>
+            </div>
         </div>
 
         <!-- Opções de Voz / Google Text-to-Speech (Vinculadas à Nexa) -->
-        <div id="google-tts-container" style="display: none; margin-bottom: 15px; padding: 12px; background-color: rgba(0,0,0,0.3); border-radius: 6px; border: 1px solid #444; -webkit-app-region: no-drag;">
+        <div id="google-tts-container" style="display: none; margin-bottom: 12px; padding: 12px; background-color: rgba(0,0,0,0.3); border-radius: 6px; border: 1px solid #444; -webkit-app-region: no-drag;">
             <div style="margin-bottom: 10px;">
                 <label for="google-tts-key" style="font-size: 13px; color: #00aaff; display: block; margin-bottom: 4px;">Credenciais Google TTS da Nexa (JSON ou API Key):</label>
                 <input type="text" id="google-tts-key" class="custom-input" placeholder="Ex: C:\Users\nome\Documentos\chave.json ou AIzaSy...">
@@ -146,7 +164,7 @@
             
             <div id="google-tts-voice-wrapper" style="margin-bottom: 10px;">
                 <label for="google-tts-voice-select" style="font-size: 13px; color: #00aaff; display: block; margin-bottom: 4px;">Voz da Nexa:</label>
-                <select id="google-tts-voice-select" class="custom-select" style="width: 100%;">
+                <select id="google-tts-voice-select" class="custom-select" style="width: 100%; max-width: 100%;">
                     <option value="pt-BR-Neural2-C" selected>Feminina Neural (Loli / Suave - Neural2-C)</option>
                     <option value="pt-BR-Neural2-B">Masculina Neural (Jarvis / Tech - Neural2-B)</option>
                     <option value="pt-BR-Chirp3-HD-Aoede">Feminina HD (Aoede - Chirp3)</option>
@@ -164,149 +182,173 @@
 
         <div class="setting-item" title="Selecione o provedor e ferramenta de IA desejada (OpenAI, Ollama ou CLI nativo).">
             <label for="ai-model">Modo / Ferramenta de IA</label>
-            <select id="ai-model" class="custom-select">
-                <option value="llama" selected>Ollama Backend</option>
-                <option value="llama-stream">Ollama Backend Stream</option>
-                <option value="openIa">ChatGPT</option>
-                <option value="openIaCodex">OpenAI Codex (Autônomo)</option>
-                <option value="ollamaLocal">Ollama Local (offline)</option>
-                <option value="geminiCli">Gemini CLI</option>
-                <option value="claudeCli">Claude Code CLI</option>
-                <option value="copilotCli">Copilot CLI</option>
-            </select>
+            <div class="setting-control">
+                <select id="ai-model" class="custom-select">
+                    <option value="llama" selected>Ollama Backend</option>
+                    <option value="llama-stream">Ollama Backend Stream</option>
+                    <option value="openIa">ChatGPT</option>
+                    <option value="openIaCodex">OpenAI Codex (Autônomo)</option>
+                    <option value="ollamaLocal">Ollama Local (offline)</option>
+                    <option value="geminiCli">Gemini CLI</option>
+                    <option value="claudeCli">Claude Code CLI</option>
+                    <option value="copilotCli">Copilot CLI</option>
+                </select>
+            </div>
         </div>
 
         <div class="setting-item" id="openai-model-container" style="display: none;" title="Selecione o modelo ChatGPT para raciocínio e geração de código.">
             <label for="openai-model-select">Modelo ChatGPT</label>
-            <select id="openai-model-select" class="custom-select">
-                <option value="gpt-4.1-nano" selected>GPT-4.1 Nano</option>
-                <option value="gpt-4.1">GPT-4.1</option>
-                <option value="gpt-5.1">GPT-5.1</option>
-                <option value="gpt-5.4-mini">GPT-5.4 Mini</option>
-                <option value="gpt-5.4">GPT-5.4</option>
-                <option value="gpt-5.5">GPT-5.5</option>
-                <option value="gpt-5.6-luna">GPT-5.6 Luna</option>
-                <option value="gpt-5.6-terra">GPT-5.6 Terra</option>
-                <option value="gpt-5.6-sol">GPT-5.6 Sol</option>
-            </select>
+            <div class="setting-control">
+                <select id="openai-model-select" class="custom-select">
+                    <option value="gpt-4.1-nano" selected>GPT-4.1 Nano</option>
+                    <option value="gpt-4.1">GPT-4.1</option>
+                    <option value="gpt-5.1">GPT-5.1</option>
+                    <option value="gpt-5.4-mini">GPT-5.4 Mini</option>
+                    <option value="gpt-5.4">GPT-5.4</option>
+                    <option value="gpt-5.5">GPT-5.5</option>
+                    <option value="gpt-5.6-luna">GPT-5.6 Luna</option>
+                    <option value="gpt-5.6-terra">GPT-5.6 Terra</option>
+                    <option value="gpt-5.6-sol">GPT-5.6 Sol</option>
+                </select>
+            </div>
         </div>
 
         <div class="setting-item" id="openai-reasoning-effort-container" style="display: none;" title="Define o esforço de raciocínio para modelos GPT-5.x (Baixo para respostas mais rápidas, Alto para máxima precisão).">
             <label for="openai-reasoning-effort-select">Esforço de raciocínio (modelos GPT-5.x)</label>
-            <select id="openai-reasoning-effort-select" class="custom-select">
-                <option value="low">Baixo</option>
-                <option value="medium">Médio</option>
-                <option value="high">Alto</option>
-            </select>
+            <div class="setting-control">
+                <select id="openai-reasoning-effort-select" class="custom-select">
+                    <option value="low">Baixo</option>
+                    <option value="medium">Médio</option>
+                    <option value="high">Alto</option>
+                </select>
+            </div>
         </div>
 
         <div class="setting-item" id="openai-vision-model-container" style="display: none;" title="Define o modelo de visão computacional utilizado para processar capturas de tela e imagens.">
             <label for="openai-vision-model-select">Modelo de visão (imagens/prints)</label>
-            <select id="openai-vision-model-select" class="custom-select">
-                <option value="gpt-4o-mini">GPT-4o Mini</option>
-                <option value="gpt-4o">GPT-4o</option>
-                <option value="gpt-4.1">GPT-4.1</option>
-                <option value="gpt-5.4">GPT-5.4</option>
-                <option value="gpt-5.5">GPT-5.5</option>
-                <option value="gpt-5.6-luna">GPT-5.6 Luna</option>
-                <option value="gpt-5.6-terra">GPT-5.6 Terra</option>
-                <option value="gpt-5.6-sol">GPT-5.6 Sol</option>
-            </select>
+            <div class="setting-control">
+                <select id="openai-vision-model-select" class="custom-select">
+                    <option value="gpt-4o-mini">GPT-4o Mini</option>
+                    <option value="gpt-4o">GPT-4o</option>
+                    <option value="gpt-4.1">GPT-4.1</option>
+                    <option value="gpt-5.4">GPT-5.4</option>
+                    <option value="gpt-5.5">GPT-5.5</option>
+                    <option value="gpt-5.6-luna">GPT-5.6 Luna</option>
+                    <option value="gpt-5.6-terra">GPT-5.6 Terra</option>
+                    <option value="gpt-5.6-sol">GPT-5.6 Sol</option>
+                </select>
+            </div>
         </div>
 
         <div class="setting-item" id="openai-token-container" style="display: none;" title="Chave de API da OpenAI (sk-...).">
             <label for="openai-token">OpenAI Token</label>
-            <input type="password" id="openai-token" class="custom-input" placeholder="Cole seu token da OpenAI aqui">
-            <span id="clear-openai-token" style="cursor: pointer; color: #ff6b6b; margin-left: 10px;">Limpar</span>
+            <div class="setting-control input-group">
+                <input type="password" id="openai-token" class="custom-input" placeholder="Cole seu token da OpenAI aqui">
+                <button type="button" id="clear-openai-token" class="clear-btn" title="Limpar token">Limpar</button>
+            </div>
         </div>
 
         <div class="setting-item" id="backend-api-key-container" style="display: none;" title="Chave de acesso ao servidor backend remoto.">
             <label for="backend-api-key">API Key do Backend</label>
-            <input type="password" id="backend-api-key" class="custom-input" placeholder="Chave de acesso ao backend">
-            <span id="clear-backend-api-key" style="cursor: pointer; color: #ff6b6b; margin-left: 10px;">Limpar</span>
+            <div class="setting-control input-group">
+                <input type="password" id="backend-api-key" class="custom-input" placeholder="Chave de acesso ao backend">
+                <button type="button" id="clear-backend-api-key" class="clear-btn" title="Limpar chave">Limpar</button>
+            </div>
         </div>
 
         <div class="setting-item" id="backend-model-container" style="display: none;" title="Modelo de IA carregado no servidor backend remoto.">
             <label for="backend-model-select">Modelo Pikachu (Backend Remoto)</label>
-            <select id="backend-model-select" class="custom-select">
-                <option value="" disabled selected>Carregando modelos do servidor...</option>
-            </select>
+            <div class="setting-control">
+                <select id="backend-model-select" class="custom-select">
+                    <option value="" disabled selected>Carregando modelos do servidor...</option>
+                </select>
+            </div>
         </div>
 
         <!-- Ollama Local: select de modelo + status e tooltip com manual de instalação e requisitos -->
         <div class="setting-item" id="ollama-local-model-container" style="display: none;" title="Ollama Local (offline) — Instalação manual:&#10;1. Instalar: baixe em ollama.com/download ou 'curl -fsSL https://ollama.com/install.sh | sh'&#10;2. Baixar modelo: ollama pull <modelo> (ex: ollama pull qwen2.5-coder:7b)&#10;3. Requisitos mínimos:&#10;   • qwen2.5-coder:7b: 8GB+ RAM, 6GB+ VRAM&#10;   • llama3.1:8b: 8GB+ RAM, 6GB+ VRAM&#10;   • gemma3:12b: 16GB+ RAM, 10GB+ VRAM&#10;&#10;Suporta ferramentas avançadas e acesso a diretórios.">
-            <label for="ollama-local-model-select" style="display: flex; align-items: center; gap: 6px;">
+            <label for="ollama-local-model-select">
                 <span>Modelo Ollama Local</span>
                 <span class="info-hover-icon" title="Ollama Local (offline) — Instalação manual:&#10;1. Instalar: baixe em ollama.com/download ou 'curl -fsSL https://ollama.com/install.sh | sh'&#10;2. Baixar modelo: ollama pull <modelo> (ex: ollama pull qwen2.5-coder:7b)&#10;3. Requisitos mínimos:&#10;   • qwen2.5-coder:7b: 8GB+ RAM, 6GB+ VRAM&#10;   • llama3.1:8b: 8GB+ RAM, 6GB+ VRAM&#10;   • gemma3:12b: 16GB+ RAM, 10GB+ VRAM&#10;&#10;Suporta ferramentas avançadas e acesso a diretórios.">ⓘ</span>
             </label>
-            <select id="ollama-local-model-select" class="custom-select">
-                <option value="" disabled selected>Carregando modelos do Ollama...</option>
-            </select>
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <button type="button" id="check-ollama-btn" style="margin-top:0; padding:6px 12px; font-size:12px; background:#2a6c45; color:#fff; border:none; border-radius:4px; cursor:pointer;" title="Verificar se o Ollama está rodando e se o modelo está baixado">Verificar</button>
-                <span id="ollama-status-result" style="font-size: 12px;"></span>
+            <div class="setting-control cli-control-group">
+                <select id="ollama-local-model-select" class="custom-select">
+                    <option value="" disabled selected>Carregando modelos do Ollama...</option>
+                </select>
+                <div class="cli-actions">
+                    <button type="button" id="check-ollama-btn" class="action-btn" style="background:#2a6c45; color:#fff;" title="Verificar se o Ollama está rodando e se o modelo está baixado">Verificar</button>
+                    <span id="ollama-status-result" style="font-size: 12px;"></span>
+                </div>
             </div>
         </div>
 
         <!-- Gemini CLI (Antigravity agy): select de modelo + status e tooltip com manual de instalação -->
         <div class="setting-item" id="gemini-cli-model-container" style="display: none;" title="Antigravity CLI (agy) — Instalação manual:&#10;1. Instalar: npm install -g @google/antigravity-cli&#10;2. Autenticar / Configurar: agy install&#10;3. Verificar: agy --version&#10;&#10;O Antigravity CLI gerencia arquivos, terminal e ferramentas diretamente. Ferramentas avançadas e Acesso a diretórios são gerenciados pelo próprio CLI.">
-            <label for="gemini-cli-model-select" style="display: flex; align-items: center; gap: 6px;">
+            <label for="gemini-cli-model-select">
                 <span>Modelo Antigravity (agy)</span>
                 <span id="gemini-cli-model-spinner" class="ai-activity-spinner" style="display: none; width: 13px; height: 13px;"></span>
                 <span class="info-hover-icon" title="Antigravity CLI (agy) — Instalação manual:&#10;1. Instalar: npm install -g @google/antigravity-cli&#10;2. Autenticar / Configurar: agy install&#10;3. Verificar: agy --version&#10;&#10;O Antigravity CLI gerencia arquivos, terminal e ferramentas diretamente. Ferramentas avançadas e Acesso a diretórios são gerenciados pelo próprio CLI.">ⓘ</span>
             </label>
-            <select id="gemini-cli-model-select" class="custom-select">
-                <option value="" disabled selected>Carregando modelos do CLI…</option>
-            </select>
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <button type="button" id="check-gemini-cli-btn" style="margin-top:0; padding:6px 12px; font-size:12px; background:#1a4a3a; color:#fff; border:none; border-radius:4px; cursor:pointer;" title="Verificar se o Antigravity CLI está instalado e pronto">Verificar</button>
-                <span id="gemini-cli-status-result" style="font-size: 12px;"></span>
+            <div class="setting-control cli-control-group">
+                <select id="gemini-cli-model-select" class="custom-select">
+                    <option value="" disabled selected>Carregando modelos do CLI…</option>
+                </select>
+                <div class="cli-actions">
+                    <button type="button" id="check-gemini-cli-btn" class="action-btn" style="background:#1a4a3a; color:#fff;" title="Verificar se o Antigravity CLI está instalado e pronto">Verificar</button>
+                    <span id="gemini-cli-status-result" style="font-size: 12px;"></span>
+                </div>
             </div>
         </div>
 
         <!-- Claude Code CLI: select de modelo + status e tooltip com manual de instalação -->
         <div class="setting-item" id="claude-cli-model-container" style="display: none;" title="Claude Code CLI — Instalação manual:&#10;1. Instalar: npm install -g @anthropic-ai/claude-code&#10;2. Autenticar: claude&#10;3. Verificar: claude --version&#10;&#10;O Claude Code CLI gerencia leitura, edição, bash e ferramentas de forma nativa.">
-            <label for="claude-cli-model-select" style="display: flex; align-items: center; gap: 6px;">
+            <label for="claude-cli-model-select">
                 <span>Modelo Claude CLI</span>
                 <span class="info-hover-icon" title="Claude Code CLI — Instalação manual:&#10;1. Instalar: npm install -g @anthropic-ai/claude-code&#10;2. Autenticar: claude&#10;3. Verificar: claude --version&#10;&#10;O Claude Code CLI gerencia leitura, edição, bash e ferramentas de forma nativa.">ⓘ</span>
             </label>
-            <select id="claude-cli-model-select" class="custom-select">
-                <option value="" disabled selected>Carregando modelos do CLI…</option>
-            </select>
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <button type="button" id="check-claude-cli-btn" style="margin-top:0; padding:6px 12px; font-size:12px; background:#3a2a1a; color:#fff; border:none; border-radius:4px; cursor:pointer;" title="Verificar se o Claude Code CLI está instalado e pronto">Verificar</button>
-                <span id="claude-cli-status-result" style="font-size: 12px;"></span>
+            <div class="setting-control cli-control-group">
+                <select id="claude-cli-model-select" class="custom-select">
+                    <option value="" disabled selected>Carregando modelos do CLI…</option>
+                </select>
+                <div class="cli-actions">
+                    <button type="button" id="check-claude-cli-btn" class="action-btn" style="background:#3a2a1a; color:#fff;" title="Verificar se o Claude Code CLI está instalado e pronto">Verificar</button>
+                    <span id="claude-cli-status-result" style="font-size: 12px;"></span>
+                </div>
             </div>
         </div>
 
         <!-- Copilot CLI: select de modelo + status e tooltip com manual de instalação -->
         <div class="setting-item" id="copilot-cli-model-container" style="display: none;" title="GitHub Copilot CLI — Instalação manual:&#10;1. Instalar: npm install -g @github/copilot (Node 22+)&#10;2. Autenticar: copilot /login&#10;3. Verificar: copilot --version&#10;&#10;Em contas corporativas, certifique-se de que 'Copilot in the CLI' está habilitado nas políticas da organização.">
-            <label for="copilot-cli-model-select" style="display: flex; align-items: center; gap: 6px;">
+            <label for="copilot-cli-model-select">
                 <span>Modelo Copilot CLI</span>
                 <span class="info-hover-icon" title="GitHub Copilot CLI — Instalação manual:&#10;1. Instalar: npm install -g @github/copilot (Node 22+)&#10;2. Autenticar: copilot /login&#10;3. Verificar: copilot --version&#10;&#10;Em contas corporativas, certifique-se de que 'Copilot in the CLI' está habilitado nas políticas da organização.">ⓘ</span>
             </label>
-            <select id="copilot-cli-model-select" class="custom-select">
-                <option value="" disabled selected>Carregando modelos do CLI…</option>
-            </select>
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <button type="button" id="check-copilot-cli-btn" style="margin-top:0; padding:6px 12px; font-size:12px; background:#1a2e3a; color:#fff; border:none; border-radius:4px; cursor:pointer;" title="Verificar se o Copilot CLI está instalado">Verificar</button>
-                <button type="button" id="copilot-reset-blocked-btn" style="margin-top:0; padding:6px 8px; font-size:11px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.18); color:#ffd9a0; border-radius:4px; cursor:pointer;" title="Restaurar catálogo completo de modelos do Copilot">Restaurar</button>
-                <span id="copilot-cli-status-result" style="font-size: 12px;"></span>
-                <span id="copilot-reset-blocked-result" style="font-size: 11px; color: #9ef0a8;"></span>
+            <div class="setting-control cli-control-group">
+                <select id="copilot-cli-model-select" class="custom-select">
+                    <option value="" disabled selected>Carregando modelos do CLI…</option>
+                </select>
+                <div class="cli-actions">
+                    <button type="button" id="check-copilot-cli-btn" class="action-btn" style="background:#1a2e3a; color:#fff;" title="Verificar se o Copilot CLI está instalado">Verificar</button>
+                    <button type="button" id="copilot-reset-blocked-btn" class="action-btn" style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.18); color:#ffd9a0;" title="Restaurar catálogo completo de modelos do Copilot">Restaurar</button>
+                    <span id="copilot-cli-status-result" style="font-size: 12px;"></span>
+                    <span id="copilot-reset-blocked-result" style="font-size: 11px; color: #9ef0a8;"></span>
+                </div>
             </div>
         </div>
 
         <div class="setting-item" id="copilot-cli-reasoning-effort-container" style="display: none;" title="Define o esforço de raciocínio para o GitHub Copilot CLI (Low/Baixo para respostas rápidas, Medium/Médio para balanceado, High/Alto para máxima precisão).">
             <label for="copilot-cli-reasoning-effort-select">Esforço de raciocínio (Reasoning Effort)</label>
-            <select id="copilot-cli-reasoning-effort-select" class="custom-select">
-                <option value="low">Low (Baixo)</option>
-                <option value="medium" selected>Medium (Médio)</option>
-                <option value="high">High (Alto)</option>
-            </select>
+            <div class="setting-control">
+                <select id="copilot-cli-reasoning-effort-select" class="custom-select">
+                    <option value="low">Low (Baixo)</option>
+                    <option value="medium" selected>Medium (Médio)</option>
+                    <option value="high">High (Alto)</option>
+                </select>
+            </div>
         </div>
 
         <!-- Assistente de Tradução (entrevistas) -->
-        <div id="translation-assistant-section" style="margin-top: 14px; padding: 14px; background-color: rgba(0,0,0,0.35); border-radius: 5px; -webkit-app-region: no-drag;" title="Assistente de Tradução para Entrevistas e Áudio (consome créditos OpenAI).">
+        <div id="translation-assistant-section" style="margin-top: 14px; padding: 14px; background-color: rgba(0,0,0,0.35); border-radius: 6px; -webkit-app-region: no-drag;" title="Assistente de Tradução para Entrevistas e Áudio (consome créditos OpenAI).">
             <div style="font-weight: bold; color: #00aaff; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
                 <span>Assistente de Tradução</span>
                 <span class="info-hover-icon" title="Assistente de Tradução — Transcreve e traduz áudios do sistema e do seu microfone em tempo real durante reuniões e entrevistas (consome créditos OpenAI).">ⓘ</span>
@@ -314,48 +356,56 @@
 
             <div class="setting-item" style="margin-bottom: 10px;" title="Ativa a transcrição e tradução em tempo real de áudios">
                 <label for="translation-enabled">Habilitar Assistente de Tradução</label>
-                <span id="translation-enabled-status" style="font-weight: bold; margin-left: 10px; min-width: 30px; text-align: center; -webkit-app-region: no-drag;">OFF</span>
-                <label class="switch">
-                    <input type="checkbox" id="translation-enabled" hidden>
-                    <div class="switch__wrapper">
-                        <div class="switch__toggle"></div>
-                    </div>
-                </label>
+                <div class="setting-actions">
+                    <span id="translation-enabled-status" class="status-badge">OFF</span>
+                    <label class="switch">
+                        <input type="checkbox" id="translation-enabled" hidden>
+                        <div class="switch__wrapper">
+                            <div class="switch__toggle"></div>
+                        </div>
+                    </label>
+                </div>
             </div>
 
             <div class="setting-item" style="margin-bottom: 10px;" title="Idioma de destino para o qual o áudio e texto serão traduzidos">
                 <label for="translation-target-lang">Idioma Alvo</label>
-                <select id="translation-target-lang" class="custom-select">
-                    <option value="pt-br">Português (BR)</option>
-                    <option value="en">English</option>
-                    <option value="es">Español</option>
-                </select>
+                <div class="setting-control">
+                    <select id="translation-target-lang" class="custom-select">
+                        <option value="pt-br">Português (BR)</option>
+                        <option value="en">English</option>
+                        <option value="es">Español</option>
+                    </select>
+                </div>
             </div>
 
             <div class="setting-item" style="margin-bottom: 10px;" title="Microfone usado para capturar sua voz (usado para gravação Ctrl+D / ditado offline e Assistente de Tradução). O áudio do sistema (entrevistador — Meet/Teams/YouTube) é capturado automaticamente.">
                 <label for="translation-mic-device">Seu microfone (Headset / USB / Padrão)</label>
-                <select id="translation-mic-device" class="custom-select">
-                    <option value="">Automático (padrão do sistema)</option>
-                </select>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <button type="button" id="translation-mic-refresh" style="margin-top:0; padding:6px 12px; font-size:12px; background:#1a2e3a; color:#fff; border:none; border-radius:4px; cursor:pointer;" title="Recarregar lista de dispositivos de áudio">Atualizar</button>
+                <div class="setting-control cli-control-group">
+                    <select id="translation-mic-device" class="custom-select">
+                        <option value="">Automático (padrão do sistema)</option>
+                    </select>
+                    <div class="cli-actions">
+                        <button type="button" id="translation-mic-refresh" class="action-btn" style="background:#1a2e3a; color:#fff;" title="Recarregar lista de dispositivos de áudio">Atualizar</button>
+                    </div>
                 </div>
             </div>
 
             <div class="setting-item" style="margin-bottom: 0;" title="Modo de Teste — Reproduz 5 áudios de teste gravados e exibe tradução com resposta sugerida">
                 <label for="translation-test-mode">Modo de Teste</label>
-                <span id="translation-test-mode-status" style="font-weight: bold; margin-left: 10px; min-width: 30px; text-align: center; -webkit-app-region: no-drag;">OFF</span>
-                <label class="switch">
-                    <input type="checkbox" id="translation-test-mode" hidden>
-                    <div class="switch__wrapper">
-                        <div class="switch__toggle"></div>
-                    </div>
-                </label>
+                <div class="setting-actions">
+                    <span id="translation-test-mode-status" class="status-badge">OFF</span>
+                    <label class="switch">
+                        <input type="checkbox" id="translation-test-mode" hidden>
+                        <div class="switch__wrapper">
+                            <div class="switch__toggle"></div>
+                        </div>
+                    </label>
+                </div>
             </div>
         </div>
 
         <!-- Tutor (RAG + Vision) -->
-        <div id="vision-guide-section" style="margin-top: 14px; padding: 14px; background-color: rgba(0,0,0,0.35); border-radius: 5px; -webkit-app-region: no-drag;" title="Tutor em tempo real que observa sua tela por prints periódicos, guia seu raciocínio de código e dá dicas estratégicas (consome créditos OpenAI).">
+        <div id="vision-guide-section" style="margin-top: 14px; padding: 14px; background-color: rgba(0,0,0,0.35); border-radius: 6px; -webkit-app-region: no-drag;" title="Tutor em tempo real que observa sua tela por prints periódicos, guia seu raciocínio de código e dá dicas estratégicas (consome créditos OpenAI).">
             <div style="font-weight: bold; color: #a78bfa; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
                 <span>Tutor (Visão)</span>
                 <span class="info-hover-icon" title="Tutor em tempo real — Observa sua tela por prints periódicos ou editor, guia seu raciocínio de código e dá dicas estratégicas sem entregar a resposta pronta (consome créditos OpenAI).">ⓘ</span>
@@ -363,56 +413,66 @@
 
             <div class="setting-item" style="margin-bottom: 10px;" title="Habilita o acompanhamento por visão em tempo real">
                 <label for="vision-guide-enabled">Habilitar Tutor (Visão)</label>
-                <span id="vision-guide-enabled-status" style="font-weight: bold; margin-left: 10px; min-width: 30px; text-align: center; -webkit-app-region: no-drag;">OFF</span>
-                <label class="switch">
-                    <input type="checkbox" id="vision-guide-enabled" hidden>
-                    <div class="switch__wrapper">
-                        <div class="switch__toggle"></div>
-                    </div>
-                </label>
+                <div class="setting-actions">
+                    <span id="vision-guide-enabled-status" class="status-badge">OFF</span>
+                    <label class="switch">
+                        <input type="checkbox" id="vision-guide-enabled" hidden>
+                        <div class="switch__wrapper">
+                            <div class="switch__toggle"></div>
+                        </div>
+                    </label>
+                </div>
             </div>
 
             <div class="setting-item" style="margin-bottom: 10px;" title="Frequência de captura periódica da tela">
                 <label for="vision-guide-interval">Intervalo entre prints</label>
-                <select id="vision-guide-interval" class="custom-select">
-                    <option value="3">3s</option>
-                    <option value="5">5s</option>
-                    <option value="8">8s</option>
-                    <option value="12">12s</option>
-                </select>
+                <div class="setting-control">
+                    <select id="vision-guide-interval" class="custom-select">
+                        <option value="3">3s</option>
+                        <option value="5">5s</option>
+                        <option value="8">8s</option>
+                        <option value="12">12s</option>
+                    </select>
+                </div>
             </div>
 
             <div class="setting-item" style="margin-bottom: 10px;" title="Tempo mínimo de espera antes de fornecer uma nova dica">
                 <label for="vision-guide-cooldown">Silêncio mínimo entre dicas</label>
-                <select id="vision-guide-cooldown" class="custom-select">
-                    <option value="0">Automático</option>
-                    <option value="8">8s</option>
-                    <option value="12">12s</option>
-                    <option value="20">20s</option>
-                    <option value="30">30s</option>
-                </select>
+                <div class="setting-control">
+                    <select id="vision-guide-cooldown" class="custom-select">
+                        <option value="0">Automático</option>
+                        <option value="8">8s</option>
+                        <option value="12">12s</option>
+                        <option value="20">20s</option>
+                        <option value="30">30s</option>
+                    </select>
+                </div>
             </div>
 
             <div class="setting-item" style="margin-bottom: 10px;" title="Capta o que você ou alguém pergunta por perto para sugerir como responder">
                 <label for="vision-guide-audio">Ouvir microfone e áudio do sistema</label>
-                <span id="vision-guide-audio-status" style="font-weight: bold; margin-left: 10px; min-width: 30px; text-align: center; -webkit-app-region: no-drag;">OFF</span>
-                <label class="switch">
-                    <input type="checkbox" id="vision-guide-audio" hidden>
-                    <div class="switch__wrapper">
-                        <div class="switch__toggle"></div>
-                    </div>
-                </label>
+                <div class="setting-actions">
+                    <span id="vision-guide-audio-status" class="status-badge">OFF</span>
+                    <label class="switch">
+                        <input type="checkbox" id="vision-guide-audio" hidden>
+                        <div class="switch__wrapper">
+                            <div class="switch__toggle"></div>
+                        </div>
+                    </label>
+                </div>
             </div>
 
             <div class="setting-item" style="margin-bottom: 0;" title="Injeta documentos cadastrados na base de conhecimento (RAG) para reconhecer recursos e sintaxes específicas">
                 <label for="vision-guide-rag">Usar Base de Conhecimento (RAG)</label>
-                <span id="vision-guide-rag-status" style="font-weight: bold; margin-left: 10px; min-width: 30px; text-align: center; -webkit-app-region: no-drag;">OFF</span>
-                <label class="switch">
-                    <input type="checkbox" id="vision-guide-rag" hidden>
-                    <div class="switch__wrapper">
-                        <div class="switch__toggle"></div>
-                    </div>
-                </label>
+                <div class="setting-actions">
+                    <span id="vision-guide-rag-status" class="status-badge">OFF</span>
+                    <label class="switch">
+                        <input type="checkbox" id="vision-guide-rag" hidden>
+                        <div class="switch__wrapper">
+                            <div class="switch__toggle"></div>
+                        </div>
+                    </label>
+                </div>
             </div>
         </div>
 

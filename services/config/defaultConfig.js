@@ -21,7 +21,7 @@ const defaultConfig = {
     enabled: false,
   },
   workspaceAccess: {
-    enabled: false,
+    enabled: true,
   },
   geminiCliModel: "gemini-2.5-flash",
   claudeCliModel: "sonnet",

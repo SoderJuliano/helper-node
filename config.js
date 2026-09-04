@@ -446,6 +446,14 @@ document.getElementById("clear-openai-token")?.addEventListener("click", () => {
   ipcRenderer.send("set-open-ia-token", "");
 });
 
+document.getElementById("clear-backend-api-key")?.addEventListener("click", () => {
+  const backendApiKeyInput = document.getElementById("backend-api-key");
+  if (backendApiKeyInput) {
+    backendApiKeyInput.value = "";
+    ipcRenderer.send("save-backend-api-key", "");
+  }
+});
+
 const openPreferencesBtn = document.getElementById('open-preferences-btn');
 if (openPreferencesBtn) {
   openPreferencesBtn.addEventListener('click', () => ipcRenderer.send('open-preferences-ui'));

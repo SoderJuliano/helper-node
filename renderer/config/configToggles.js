@@ -74,10 +74,9 @@
   }
 
   function applyWorkspaceAccessVisibility(provider) {
-    const isCli = (provider === 'geminiCli' || provider === 'claudeCli' || provider === 'copilotCli');
     const workspaceAccessItem = document.getElementById("workspace-access-item");
     if (workspaceAccessItem) {
-      workspaceAccessItem.style.display = isCli ? 'none' : 'flex';
+      workspaceAccessItem.style.display = 'flex';
     }
   }
 
