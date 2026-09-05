@@ -262,11 +262,18 @@
         };
         menu.appendChild(mkItem('Arquivo', async () => {
             const r = await window.electronAPI.workspacePickFile();
-            if (r && r.attachments && typeof renderWorkspacePanel === 'function') renderWorkspacePanel(r.attachments);
+            if (r && r.attachments && typeof window.renderWorkspacePanel === 'function') window.renderWorkspacePanel(r.attachments);
+            if (typeof window.refreshProjectContext === 'function') await window.refreshProjectContext();
         }));
         menu.appendChild(mkItem('Pasta', async () => {
-            const r = await window.electronAPI.workspacePickDir();
-            if (r && r.attachments && typeof renderWorkspacePanel === 'function') renderWorkspacePanel(r.attachments);
+            if (typeof window.pickProjectFolder === 'function') {
+                await window.pickProjectFolder();
+            } else if (window.electronAPI && window.electronAPI.workspacePickDir) {
+                const r = await window.electronAPI.workspacePickDir();
+                if (r && r.attachments && typeof window.renderWorkspacePanel === 'function') window.renderWorkspacePanel(r.attachments);
+                if (typeof window.refreshProjectContext === 'function') await window.refreshProjectContext();
+                if (typeof window.refreshProjectTree === 'function') await window.refreshProjectTree();
+            }
         }));
         document.body.appendChild(menu);
         const r = anchor.getBoundingClientRect();
@@ -304,17 +311,24 @@
         e.stopPropagation();
         if (!(window.electronAPI && window.electronAPI.workspacePickFile)) return;
         const r = await window.electronAPI.workspacePickFile();
-        if (r && r.attachments && typeof renderWorkspacePanel === 'function') renderWorkspacePanel(r.attachments);
-        if (typeof refreshProjectContext === 'function') refreshProjectContext();
+        if (r && r.attachments && typeof window.renderWorkspacePanel === 'function') window.renderWorkspacePanel(r.attachments);
+        if (typeof window.refreshProjectContext === 'function') await window.refreshProjectContext();
     });
 
     if (window.electronAPI && window.electronAPI.onWorkspaceChanged) {
-        window.electronAPI.onWorkspaceChanged((data) => {
+        window.electronAPI.onWorkspaceChanged(async (data) => {
             if (typeof data.enabled === 'boolean' && wsPanel) {
                 wsPanel.style.display = data.enabled ? '' : 'none';
             }
-            if (data.attachments && typeof renderWorkspacePanel === 'function') renderWorkspacePanel(data.attachments);
-            if (typeof refreshProjectContext === 'function') refreshProjectContext();
+            if (data.attachments && typeof window.renderWorkspacePanel === 'function') {
+                window.renderWorkspacePanel(data.attachments);
+            }
+            if (typeof window.refreshProjectContext === 'function') {
+                await window.refreshProjectContext();
+            }
+            if (typeof window.refreshProjectTree === 'function') {
+                await window.refreshProjectTree();
+            }
             if (typeof isTerminalInitialized !== 'undefined' && !isTerminalInitialized && (document.body.classList.contains('terminal-active') || document.body.classList.contains('split-active'))) {
                 if (typeof initTerminalProcess === 'function') initTerminalProcess();
             }

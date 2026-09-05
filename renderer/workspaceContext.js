@@ -58,7 +58,7 @@ function fileIconHtml(name) {
             const list = await window.electronAPI.workspaceList();
             renderWorkspacePanel(list);
         }
-        refreshProjectContext();
+        await refreshProjectContext();
     }
 
             function showProjectMenu(anchor) {
@@ -101,7 +101,7 @@ function fileIconHtml(name) {
                         if (r && r.attachments && typeof renderWorkspacePanel === 'function') renderWorkspacePanel(r.attachments);
                         if (typeof refreshProjectContext === 'function') await refreshProjectContext();
                         if (typeof window.refreshProjectTree === 'function') await window.refreshProjectTree();
-                        if (typeof showToast === 'function') showToast('Projeto anexado ao workspace!');
+                        if (typeof window.showToast === 'function') window.showToast('Projeto anexado ao workspace!');
                     }
                 }));
                 menu.appendChild(mkItem(SVGI_NEW_PROJECT, 'Criar Novo Projeto…', () => createNewProject()));
@@ -192,8 +192,13 @@ function fileIconHtml(name) {
             async function pickProjectFolder() {
                 if (!(window.electronAPI && window.electronAPI.workspacePickDir)) return;
                 const r = await window.electronAPI.workspacePickDir();
-                if (r && r.attachments && typeof renderWorkspacePanel === 'function') renderWorkspacePanel(r.attachments);
+                if (r && r.attachments && typeof renderWorkspacePanel === 'function') {
+                    renderWorkspacePanel(r.attachments);
+                }
                 await refreshProjectContext();
+                if (typeof window.refreshProjectTree === 'function') {
+                    await window.refreshProjectTree();
+                }
             }
 
             async function refreshProjectContext() {
@@ -218,7 +223,11 @@ function fileIconHtml(name) {
                     return;
                 }
                 if (ctxOpenProjectBtn) ctxOpenProjectBtn.style.display = 'none';
-                if (ctxProjectBtn) ctxProjectBtn.style.display = 'inline-flex';
+                if (ctxProjectBtn) {
+                    ctxProjectBtn.style.display = 'inline-flex';
+                    ctxProjectBtn.dataset.path = ctxProject.path || '';
+                    ctxProjectBtn.dataset.id = ctxProject.id || '';
+                }
                 if (ctxProjectName) {
                     if (ctxProject.isMulti && ctxProject.projects && ctxProject.projects.length > 1) {
                         ctxProjectName.textContent = `${ctxProject.projects.length} Projetos`;
@@ -256,9 +265,10 @@ function fileIconHtml(name) {
                 if (res && res.ok) {
                     if (typeof renderWorkspacePanel === 'function') renderWorkspacePanel(res.attachments);
                     await refreshProjectContext();
-                    if (typeof showToast === 'function') showToast('Novo projeto criado e aberto com sucesso!');
+                    if (typeof window.refreshProjectTree === 'function') await window.refreshProjectTree();
+                    if (typeof window.showToast === 'function') window.showToast('Novo projeto criado e aberto com sucesso!');
                 } else {
-                    if (typeof showToast === 'function') showToast('Erro ao criar projeto: ' + (res ? res.error : 'erro desconhecido'));
+                    if (typeof window.showToast === 'function') window.showToast('Erro ao criar projeto: ' + (res ? res.error : 'erro desconhecido'));
                 }
             }
 
@@ -278,7 +288,14 @@ function fileIconHtml(name) {
                         ? `${dirs.length} Projetos (${dirs.map(d => baseName(d.path)).join(', ')})`
                         : baseName(dirs[0].path);
 
-                    if (wsProjectMain && wsProjectMain.dataset.path !== dirs[0].path && !isMulti) collapseProjectTree();
+                    const normCurrent = wsProjectMain && wsProjectMain.dataset.path ? wsProjectMain.dataset.path.replace(/\\/g, '/').toLowerCase() : '';
+                    const normNew = dirs[0].path ? dirs[0].path.replace(/\\/g, '/').toLowerCase() : '';
+
+                    if (normCurrent && normCurrent !== normNew && !isMulti) {
+                        if (typeof window.collapseProjectTree === 'function') {
+                            window.collapseProjectTree();
+                        }
+                    }
                     if (wsActions) wsActions.style.display = 'none';
                     if (wsProject) wsProject.style.display = '';
                     if (wsProjectName) wsProjectName.textContent = name;
@@ -294,7 +311,9 @@ function fileIconHtml(name) {
                         wsProjectMain.dataset.path = ''; 
                         wsProjectMain.dataset.id = ''; 
                     }
-                    collapseProjectTree();
+                    if (typeof window.collapseProjectTree === 'function') {
+                        window.collapseProjectTree();
+                    }
                 }
 
                 if (!wsContent) return;

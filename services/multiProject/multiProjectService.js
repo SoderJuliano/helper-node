@@ -138,7 +138,7 @@ class MultiProjectService {
 
     for (const att of dirAttachments) {
       const pPath = att.path;
-      const name = path.basename(pPath);
+      const name = String(pPath || '').split(/[\\/]/).filter(Boolean).slice(-1)[0] || path.basename(pPath);
       let branch = null;
 
       try {

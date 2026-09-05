@@ -211,16 +211,33 @@ ipcMain.handle("workspace:create-and-open-project", async (event, { parentPath, 
     const newDirs = workspace.list().filter(a => a.type === 'dir').map(a => a.path);
     const oldPath = prevDirs[0] || null;
     const newPath = newDirs[0] || null;
-    const activeProvider = configService.getAiModel();
-    if (oldPath !== newPath && activeProvider === 'geminiCli') {
-      GeminiCliProvider.changeProject(oldPath, newPath).catch(e =>
-        console.warn('[gemini-cli] changeProject error:', e.message)
-      );
-    }
-    if (oldPath !== newPath && activeProvider === 'claudeCli') {
-      ClaudeCliProvider.changeProject(oldPath, newPath).catch(e =>
-        console.warn('[claude-cli] changeProject error:', e.message)
-      );
+    if (oldPath !== newPath) {
+      try {
+        const symbolIndexer = require('../../services/symbolIndexer.js');
+        if (newPath) symbolIndexer.indexWorkspace(newPath);
+      } catch (err) {
+        console.warn('[symbolIndexer] Falha ao indexar novo projeto:', err.message);
+      }
+      try {
+        const workspaceWatcher = require('../../services/workspaceWatcher.js');
+        if (newPath) {
+          workspaceWatcher.startWatchingProject(newPath);
+        } else {
+          workspaceWatcher.stopWatching();
+        }
+      } catch (err) {
+        console.warn('[workspaceWatcher] Falha ao alterar watcher:', err.message);
+      }
+      if (activeProvider === 'geminiCli') {
+        GeminiCliProvider.changeProject(oldPath, newPath).catch(e =>
+          console.warn('[gemini-cli] changeProject error:', e.message)
+        );
+      }
+      if (activeProvider === 'claudeCli') {
+        ClaudeCliProvider.changeProject(oldPath, newPath).catch(e =>
+          console.warn('[claude-cli] changeProject error:', e.message)
+        );
+      }
     }
     if (state.mainWindow && !state.mainWindow.isDestroyed()) {
       state.mainWindow.webContents.send("workspace-changed", { attachments: workspace.list() });

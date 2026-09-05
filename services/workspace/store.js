@@ -110,13 +110,22 @@ function save() {
   }
 }
 
+function normalizeKey(p) {
+  if (!p) return "";
+  const resolved = path.resolve(resolvePortalPath(p));
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
 function add(attachment) {
+  const normKey = normalizeKey(attachment.path);
+  const resolvedPath = path.resolve(resolvePortalPath(attachment.path));
   // dedup por path
-  state.attachments = state.attachments.filter(a => a.path !== attachment.path);
+  state.attachments = state.attachments.filter(a => normalizeKey(a.path) !== normKey);
   state.attachments.push({
     id: "att_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
     addedAt: new Date().toISOString(),
     ...attachment,
+    path: resolvedPath,
   });
   state.contextSent = false; // re-injeta contexto na próxima pergunta
   save();
