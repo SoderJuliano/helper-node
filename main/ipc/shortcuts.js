@@ -290,12 +290,6 @@ ipcMain.on("save-realtime-assistant-status", async (event, status) => {
 
   if (status) {
     try { require("../nexa/index.js").closeNexaWindow(); configService.setNexaConfig({ enabled: false, onlyNexa: false }); } catch (_) {}
-    if (configService.getOsIntegrationStatus()) {
-      helpers.createRealtimeAssistantOverlay();
-      if (!helpers.anyRealtimeActive() && configService.getOpenIaToken()) {
-        helpers.toggleRealtimeAssistantRecording().catch((e) => console.error('[realtime] falha ao iniciar:', e.message));
-      }
-    }
   } else {
     helpers.destroyRealtimeAssistantOverlay();
     await helpers.stopAllRealtime();

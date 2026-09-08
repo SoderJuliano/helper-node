@@ -47,9 +47,11 @@ assert.ok(idePromptOn.startsWith("═══ DIRETIVA DE SISTEMA E IDENTIDADE SUP
 console.log("  ✅ Teste 2 Aprovado: Nexa ON injeta precedência no topo quando chamada para o contexto da Nexa.");
 
 // 3. Teste de Voice Summary com Persona Nexa
+configService.setGoogleTtsConfig({ enabled: true, keyPathOrKey: "dummy_key" });
 const voiceInstruction = helpers.appendVoiceSummaryInstructionIfNeeded("Instrução base");
 assert.ok(voiceInstruction.includes("PRIMEIRA PESSOA PELA NEXA"), "Voice Summary deve instruir resposta em primeira pessoa pela Nexa");
 assert.ok(!voiceInstruction.includes("Antigravity"), "Voice Summary não deve mencionar Antigravity");
+configService.setGoogleTtsConfig({ enabled: false, keyPathOrKey: "" });
 
 console.log("  ✅ Teste 3 Aprovado: Voice Summary configurado para a identidade Nexa.");
 

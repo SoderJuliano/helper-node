@@ -4,7 +4,7 @@ const path = require("path");
 const fs = require("fs");
 
 const { defaultConfig } = require("./config/defaultConfig.js");
-const { getDefaultPromptInstruction, NEXA_PERSONA_PROMPT } = require("./config/defaultPrompts.js");
+const { getDefaultPromptInstruction, sanitizePromptInstruction, NEXA_PERSONA_PROMPT } = require("./config/defaultPrompts.js");
 const { createAccessors } = require("./config/configAccessors.js");
 
 let configPath;
@@ -28,6 +28,10 @@ function loadConfig() {
       const loadedConfig = JSON.parse(fileContent);
 
       const lang = loadedConfig.language || defaultConfig.language;
+
+      if (loadedConfig.promptInstruction) {
+        loadedConfig.promptInstruction = sanitizePromptInstruction(loadedConfig.promptInstruction, lang);
+      }
 
       const LEGACY_DEFAULTS = [
         "Você é uma assistente que responde com até 65 palavras.",

@@ -124,6 +124,29 @@ function getDefaultPromptInstruction(lang) {
   return lang === "pt-br" ? PROMPT_PT : PROMPT_EN;
 }
 
+function sanitizePromptInstruction(instruction, lang = "pt-br") {
+  if (!instruction || typeof instruction !== "string" || instruction.trim() === "") {
+    return getDefaultPromptInstruction(lang);
+  }
+  let cleaned = instruction;
+  if (
+    cleaned.includes("SEU ÚNICO NOME E IDENTIDADE É NEXA") ||
+    cleaned.includes("═══ DIRETIVA DE SISTEMA") ||
+    cleaned.includes("FORMATO OBRIGATÓRIO DE SAÍDA DA NEXA") ||
+    cleaned.includes("═══ BACKGROUND & HISTÓRIA DA NEXA ═══") ||
+    cleaned.includes("[IDENTIDADE DA ASSISTENTE — NEXA]")
+  ) {
+    cleaned = cleaned
+      .replace(/═══ DIRETIVA DE SISTEMA[\s\S]*?═════════════════════════════════════════════════════════════\n*/g, "")
+      .replace(/\[IDENTIDADE DA ASSISTENTE — NEXA\][\s\S]*?(?=\n\n|$)/g, "")
+      .trim();
+  }
+  if (!cleaned || cleaned.length < 20) {
+    return getDefaultPromptInstruction(lang);
+  }
+  return cleaned;
+}
+
 module.exports = {
   PROMPT_PT,
   PROMPT_EN,
@@ -131,4 +154,5 @@ module.exports = {
   PROMPT_EN_LITE,
   NEXA_PERSONA_PROMPT,
   getDefaultPromptInstruction,
+  sanitizePromptInstruction,
 };

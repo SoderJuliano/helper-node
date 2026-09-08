@@ -1,6 +1,6 @@
 // services/config/configAccessors.js
 const { defaultConfig } = require('./defaultConfig.js');
-const { getDefaultPromptInstruction } = require('./defaultPrompts.js');
+const { getDefaultPromptInstruction, sanitizePromptInstruction } = require('./defaultPrompts.js');
 
 function createAccessors(ctx) {
   function get() {
@@ -35,15 +35,14 @@ function createAccessors(ctx) {
     getPromptInstruction() {
       const cfg = get();
       let instruction = cfg.promptInstruction;
-      if (!instruction || typeof instruction !== "string" || instruction.trim() === "") {
-        instruction = defaultConfig.promptInstruction;
-      }
-      return instruction;
+      const lang = cfg.language || defaultConfig.language;
+      return sanitizePromptInstruction(instruction, lang);
     },
 
     setPromptInstruction(instruction) {
       const cfg = get();
-      cfg.promptInstruction = instruction;
+      const lang = cfg.language || defaultConfig.language;
+      cfg.promptInstruction = sanitizePromptInstruction(instruction, lang);
       save();
     },
 

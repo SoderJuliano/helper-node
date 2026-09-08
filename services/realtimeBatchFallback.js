@@ -15,6 +15,7 @@
 const fs = require('fs');
 const path = require('path');
 const { buildTranscriptionPrompt } = require('./techGlossary');
+const { cleanTranscription } = require('./audioTranscriptionCleaner');
 
 const TRANSCRIBE_MODEL = 'gpt-4o-transcribe';
 // Se o proximo segmento (mesma fonte: mic ou sys) fechar dentro desta janela apos
@@ -101,16 +102,18 @@ async function handleBatchSegment(svc, audioPath, source) {
   const id = 'seg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
   svc.iterationCount += 1;
   const iteration = svc.iterationCount;
-  svc.emitUpdate({ type: 'segment_start', id, iteration, timestamp: new Date().toISOString() });
+  svc.emitUpdate({ type: 'segment_start', id, iteration, audioSource: source, timestamp: new Date().toISOString() });
 
   try {
     if (!token) throw new Error('Token da OpenAI não configurado.');
 
-    const transcript = (await transcribeAudio(audioPath, token, TRANSCRIBE_MODEL, svc._glossaryPrompt()) || '').trim();
+    const glossaryPrompt = svc._glossaryPrompt ? svc._glossaryPrompt() : '';
+    const rawTranscript = await transcribeAudio(audioPath, token, TRANSCRIBE_MODEL, glossaryPrompt);
+    const transcript = cleanTranscription(rawTranscript, glossaryPrompt);
+
     if (!transcript || transcript.length < 3) {
-      // Ruído/silêncio: descarta a bolha sem incomodar.
-      svc.emitUpdate({ type: 'segment_whisper_correction', id, iteration, text: transcript || '(sem fala)', source: 'openai', timestamp: new Date().toISOString() });
-      svc.emitUpdate({ type: 'segment_response', id, iteration, response: '(trecho sem conteúdo relevante)', source: 'openai', timestamp: new Date().toISOString() });
+      // Ruído/silêncio/alucinação de glossário: descarta o segmento sem poluir a tela.
+      svc.emitUpdate({ type: 'segment_discard', id, iteration, audioSource: source, timestamp: new Date().toISOString() });
       return;
     }
 
@@ -119,6 +122,7 @@ async function handleBatchSegment(svc, audioPath, source) {
     const otherClosed = svc.lastClosedBySource[otherSource];
     if (isAcousticEcho(transcript, otherClosed)) {
       console.log(`[realtime-batch] Eco acústico detectado em ${source} duplicando ${otherSource}: "${transcript}" - descartando`);
+      svc.emitUpdate({ type: 'segment_discard', id, iteration, audioSource: source, timestamp: new Date().toISOString() });
       return;
     }
 

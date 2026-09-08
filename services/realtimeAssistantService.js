@@ -224,19 +224,19 @@ class RealtimeAssistantService {
 
     // Enfileira tudo (Whisper -> IA -> historico) — IA so chama UMA vez no fim.
     this._enqueueWhisper(async () => {
-      let text = "";
+      const { cleanTranscription } = require('./audioTranscriptionCleaner');
+      let rawText = "";
       try {
-        text = await this._runWhisperAdaptive(id, wavPath);
+        rawText = await this._runWhisperAdaptive(id, wavPath);
       } catch (e) {
         console.warn(`[realtime] whisper falhou em ${id}: ${e.message}`);
       } finally {
         try { await fsp.unlink(wavPath); } catch (_) {}
       }
 
-      text = (text || "").trim();
-      if (!text || text === '[BLANK_AUDIO]') {
-        this.emitUpdate({ type: "segment_whisper_correction", id, iteration, text: '(sem fala)', audioSource: source, source: 'whisper', timestamp: new Date().toISOString() });
-        this.emitUpdate({ type: "segment_response", id, iteration, response: '(trecho sem conteúdo relevante)', audioSource: source, timestamp: new Date().toISOString() });
+      const text = cleanTranscription(rawText);
+      if (!text || text.length < 3) {
+        this.emitUpdate({ type: "segment_discard", id, iteration, audioSource: source, timestamp: new Date().toISOString() });
         return;
       }
 
@@ -245,6 +245,7 @@ class RealtimeAssistantService {
       const otherClosed = this.lastClosedBySource[otherSource];
       if (isAcousticEcho(text, otherClosed)) {
         console.log(`[realtime] Eco acústico detectado em ${source} duplicando ${otherSource}: "${text}" - descartando`);
+        this.emitUpdate({ type: "segment_discard", id, iteration, audioSource: source, timestamp: new Date().toISOString() });
         return;
       }
 

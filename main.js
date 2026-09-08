@@ -347,21 +347,6 @@ app.whenReady().then(async () => {
     }
   } catch (e) { console.error('[vision-guide] erro ao checar auto-start:', e.message); }
 
-  // Retoma o Assistente em Tempo Real se estava ligado no boot
-  try {
-    const isRealtime = configService.getRealtimeAssistantStatus();
-    const bootCfg = configService.getConfig();
-    if (isRealtime && bootCfg.openIaToken && !helpers.anyRealtimeActive()) {
-      setTimeout(() => {
-        helpers.toggleRealtimeAssistantRecording().catch((e) => {
-          console.error('[realtime] auto-start falhou:', e.message);
-        });
-      }, 1500);
-    }
-  } catch (e) {
-    console.error('[realtime] erro ao checar auto-start:', e.message);
-  }
-
   // Verifica o status do backend ao iniciar e depois periodicamente
   helpers.checkBackendStatus();
   state.backendCheckInterval = setInterval(helpers.checkBackendStatus, 60000); // Verifica a cada 60 segundos

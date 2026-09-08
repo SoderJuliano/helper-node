@@ -24,14 +24,19 @@ function looksLikeCompleteQuestion(text) {
   return new RegExp(`(?:^|[,.;:]\\s*)${CUE}\\b`).test(t);
 }
 
-// Duas perguntas sao "a mesma" se o texto final so acrescentou pontuacao ou um
-// rabicho curto ao que ja foi especulado.
+// Duas perguntas são "a mesma" se o texto final for equivalente em termos de palavras,
+// apenas com pontuação ou partículas menores adicionadas.
 function sameQuestion(a, b) {
+  if (!a || !b) return false;
   const norm = (x) => x.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/g, ' ').trim();
   const na = norm(a), nb = norm(b);
   if (na === nb) return true;
-  return nb.startsWith(na) && (nb.length - na.length) <= 12;
-}
 
+  const wa = na.split(' ').filter(Boolean);
+  const wb = nb.split(' ').filter(Boolean);
+  if (wa.length === wb.length && wa.every((w, i) => w === wb[i])) return true;
+
+  return false;
+}
 
 module.exports = { looksLikeCompleteQuestion, sameQuestion };

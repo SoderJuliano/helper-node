@@ -138,9 +138,11 @@ class RealtimeTranscriptionSession {
       return;
     }
     if (t.endsWith('input_audio_transcription.completed')) {
-      const final = (d.transcript || this._pending || '').trim();
+      const raw = (d.transcript || this._pending || '').trim();
       this._pending = '';
-      if (final) this.onCompleted(final);
+      const { cleanTranscription } = require('./audioTranscriptionCleaner');
+      const final = cleanTranscription(raw, this.prompt);
+      if (final && final.length >= 3) this.onCompleted(final);
       return;
     }
   }

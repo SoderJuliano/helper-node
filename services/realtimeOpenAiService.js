@@ -194,7 +194,8 @@ class RealtimeOpenAiService {
   // upload nem de transcricao — vai direto pra resposta.
   async _onStreamTurn(finalText) {
     if (!this.active) return;
-    const text = (finalText || '').trim();
+    const { cleanTranscription } = require('./audioTranscriptionCleaner');
+    const text = cleanTranscription(finalText, this._glossaryPrompt());
     if (!text || text.length < 3) return;
 
     const tStop = this._tSpeechStopped || Date.now();
@@ -202,17 +203,22 @@ class RealtimeOpenAiService {
 
     this._lastInterviewerQuestion = text;
 
-    // Ja respondemos especulativamente a exatamente esse texto? Entao a bolha que
-    // esta na tela ja e a resposta certa — so confirma e sai, sem repetir.
+    // Ja respondemos especulativamente a exatamente esse texto com sucesso?
     const spec = this._spec;
-    if (spec.id && spec.text && sameQuestion(spec.text, text)) {
+    const isSpecValid = spec.response && spec.response !== '(trecho sem conteúdo relevante)' && spec.response !== '(sem resposta)';
+    if (spec.id && spec.text && sameQuestion(spec.text, text) && isSpecValid) {
       this.emitUpdate({ type: 'segment_whisper_correction', id: spec.id, iteration: spec.iteration, text, source: 'openai', timestamp: new Date().toISOString() });
       this.lastClosedBySource.sys = { id: spec.id, text, closedAt: Date.now() };
-      this._spec = { text: '', at: 0, id: null, iteration: null };
+      this._spec = { text: '', at: 0, id: null, iteration: null, response: '' };
       return;
     }
 
-    await this._respond(text, 'sys', { tStop });
+    // Se houve disparo especulativo que resultou em fallback ou precisa de atualização
+    const targetId = (spec.id && sameQuestion(spec.text, text)) ? spec.id : null;
+    const targetIteration = targetId ? spec.iteration : null;
+    this._spec = { text: '', at: 0, id: null, iteration: null, response: '' };
+
+    await this._respond(text, 'sys', { tStop, targetId, targetIteration });
   }
 
   // ---------- Fase 3: disparo especulativo sobre o transcript PARCIAL ----------
@@ -224,7 +230,8 @@ class RealtimeOpenAiService {
       const cfg = this.configService.getConfig ? this.configService.getConfig() : {};
       if (cfg.realtimeSpeculative === false) return;
 
-      const text = (accumulated || '').trim();
+      const { cleanTranscription } = require('./audioTranscriptionCleaner');
+      const text = cleanTranscription(accumulated, this._glossaryPrompt());
 
       // Aproveita que ja temos texto parcial pra adiantar o RAG — quando o turno
       // fechar, o bloco ja esta pronto e nao custa nada no caminho critico.
@@ -237,7 +244,7 @@ class RealtimeOpenAiService {
           (text.length - this._spec.text.length) < SPECULATIVE_MIN_CHARS) return;
       if (!looksLikeCompleteQuestion(text)) return;
 
-      this._spec = { text, at: Date.now(), id: null, iteration: null };
+      this._spec = { text, at: Date.now(), id: null, iteration: null, response: '' };
       console.log(`[realtime-openai] disparo especulativo: "${text.slice(0, 70)}"`);
       this._respond(text, 'sys', { speculative: true }).catch((e) =>
         console.error('[realtime-openai] especulativo falhou:', e.message));
@@ -250,11 +257,18 @@ class RealtimeOpenAiService {
   async _respond(askText, source, opts = {}) {
     const token = this.configService.getOpenIaToken();
     if (!token) return;
-    const id = (opts.speculative ? 'seg_spec_' : 'seg_') + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
-    this.iterationCount += 1;
-    const iteration = this.iterationCount;
+    const id = opts.targetId || ((opts.speculative ? 'seg_spec_' : 'seg_') + Date.now() + '_' + Math.random().toString(36).slice(2, 7));
+    let iteration;
+    if (opts.targetIteration) {
+      iteration = opts.targetIteration;
+    } else {
+      this.iterationCount += 1;
+      iteration = this.iterationCount;
+    }
 
-    this.emitUpdate({ type: 'segment_start', id, iteration, audioSource: source, timestamp: new Date().toISOString() });
+    if (!opts.targetId) {
+      this.emitUpdate({ type: 'segment_start', id, iteration, audioSource: source, timestamp: new Date().toISOString() });
+    }
     this.emitUpdate({ type: 'segment_whisper_correction', id, iteration, text: askText, audioSource: source, source: 'openai', timestamp: new Date().toISOString() });
     if (opts.speculative) { this._spec.id = id; this._spec.iteration = iteration; }
 
@@ -269,6 +283,9 @@ class RealtimeOpenAiService {
         }
         this.emitUpdate({ type: 'segment_response', id, iteration, response: partial, audioSource: source, source: 'openai', timestamp: new Date().toISOString() });
       });
+      if (opts.speculative) {
+        this._spec.response = response;
+      }
       this.emitUpdate({ type: 'segment_response', id, iteration, response, audioSource: source, source: 'openai', timestamp: new Date().toISOString() });
       if (!opts.speculative) {
         await this._writeHistory(askText, response);
@@ -311,7 +328,7 @@ class RealtimeOpenAiService {
     const userPrompt =
       (ragBlock ? ragBlock + '\n\n---\n\n' : '') +
       `TRANSCRIÇÃO do áudio captado:\n"${transcript}"\n\n` +
-      `Aja segundo o system prompt (respostas ultra-curtas em 1-2 linhas com termos em negrito). Se for ruído/saudação sem pergunta, responda '(trecho sem conteúdo relevante)'.`;
+      `Responda de forma ultra-curta com termos técnicos essenciais em **negrito**, conforme o system prompt. Se for estritamente ruído/saudação sem nenhuma pergunta ou intenção técnica, responda '(trecho sem conteúdo relevante)'.`;
 
     const stream = typeof onDelta === 'function';
     const payload = {

@@ -106,9 +106,10 @@ const CATALOG = {
 
 const ALL_CATALOG_TERMS = Object.values(CATALOG).flat();
 
-// Teto conservador de caracteres para o prompt. ~4 chars/token → ~200 tokens,
-// abaixo do limite de ~224 onde os modelos começam a truncar.
-const MAX_PROMPT_CHARS = 800;
+// Teto seguro de caracteres para o prompt do Whisper (~160-200 chars).
+// Whisper opera melhor com dicas de estilo concisas em linguagem natural
+// do que com despejo de dezenas de palavras soltas.
+const MAX_PROMPT_CHARS = 180;
 
 // Normaliza pra comparação: minúsculas, sem acento, sem pontuação.
 function norm(s) {
@@ -121,9 +122,7 @@ function norm(s) {
     .trim();
 }
 
-// Escolhe os termos do catálogo mais relevantes ao contexto. Um termo pontua
-// quando alguma das suas palavras aparece no contexto — assim "Spring Boot" no
-// background puxa o bloco Java inteiro, sem precisar listar tudo à mão.
+// Escolhe os termos mais relevantes ao contexto.
 function pickRelevantTerms(context, budgetChars) {
   const ctx = norm(context);
   if (!ctx) return [];
@@ -152,8 +151,7 @@ function pickRelevantTerms(context, budgetChars) {
   return out;
 }
 
-// Cache: o prompt só muda quando o contexto muda. Evita refazer a seleção a
-// cada segmento de fala (o caminho crítico não paga nada por isso).
+// Cache: o prompt só muda quando o contexto muda.
 let _cacheKey = null;
 let _cacheValue = null;
 
@@ -169,11 +167,25 @@ function buildTranscriptionPrompt({ background = '', context = '' } = {}) {
   const key = `${background}||${context}`;
   if (key === _cacheKey) return _cacheValue;
 
-  const core = CORE.join(', ');
-  const budget = MAX_PROMPT_CHARS - core.length - 2;
-  const extra = budget > 40 ? pickRelevantTerms(`${background} ${context}`, budget) : [];
+  const prefix = 'Vocabulário técnico: ';
+  const budget = MAX_PROMPT_CHARS - prefix.length - 2;
 
-  const prompt = extra.length ? `${core}, ${extra.join(', ')}` : core;
+  // Seleciona termos relevantes ao contexto/background
+  const relevant = pickRelevantTerms(`${background} ${context}`, budget);
+
+  // Termos essenciais padrão para preencher o budget se o contexto for vazio/curto
+  const defaultCore = ['Java', 'Spring Boot', 'SQL', 'Docker', 'Kubernetes', 'Kafka', 'AWS', 'REST', 'TypeScript', 'Node.js', 'SOLID'];
+  const terms = [...relevant];
+  let used = terms.reduce((acc, t) => acc + t.length + 2, 0);
+
+  for (const c of defaultCore) {
+    if (!terms.includes(c) && used + c.length + 2 <= budget) {
+      terms.push(c);
+      used += c.length + 2;
+    }
+  }
+
+  const prompt = terms.length ? `${prefix}${terms.join(', ')}.` : '';
 
   _cacheKey = key;
   _cacheValue = prompt;

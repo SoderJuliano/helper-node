@@ -287,6 +287,15 @@
           }
           break;
 
+        case 'segment_discard':
+          updateStatus('listening');
+          if (currentTurn.id === payload.id) {
+            if (currentTurn.userBlock) currentTurn.userBlock.remove();
+            if (currentTurn.assistantBlock) currentTurn.assistantBlock.remove();
+            currentTurn = { id: null, userBlock: null, assistantBlock: null, lastUserText: '', lastAssistantText: '' };
+          }
+          break;
+
         case 'segment_partial':
           {
             const isMic = (payload.audioSource === 'mic');

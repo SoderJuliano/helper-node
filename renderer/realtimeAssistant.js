@@ -135,6 +135,16 @@ var rtSegments = {};
                         return;
                     }
 
+                    case 'segment_discard': {
+                        const seg = rtSegments.get(payload.id);
+                        if (seg) {
+                            if (seg.userBubble && seg.userBubble.parentNode) seg.userBubble.parentNode.removeChild(seg.userBubble);
+                            if (seg.assistantBubble && seg.assistantBubble.parentNode) seg.assistantBubble.parentNode.removeChild(seg.assistantBubble);
+                            rtSegments.delete(payload.id);
+                        }
+                        return;
+                    }
+
                     case 'segment_partial': {
                         const seg = ensureSegmentBubbles(payload.id, payload.iteration);
                         seg.userText.textContent = payload.text || '';
