@@ -218,6 +218,126 @@ helpers.captureFullScreenAuto = async function() {
       return;
     }
 
+    // Quando o Assistente em Tempo Real está ativo, injeta a captura diretamente
+    // na janela do assistente como uma pergunta visual do recrutador e gera a sugestão de resposta.
+    const realtimeCurrentlyActive = (helpers.anyRealtimeActive && helpers.anyRealtimeActive()) ||
+      (state.realtimeOverlayWindow && !state.realtimeOverlayWindow.isDestroyed());
+
+    if (realtimeCurrentlyActive) {
+      if (state.osNotificationWindow && !state.osNotificationWindow.isDestroyed()) {
+        try { state.osNotificationWindow.close(); } catch (_) {}
+        state.osNotificationWindow = null;
+      }
+
+      const realtimeService = helpers.pickRealtimeService ? helpers.pickRealtimeService() : null;
+      const id = 'seg_screen_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+      const iteration = (realtimeService && typeof realtimeService.iterationCount === 'number')
+        ? ++realtimeService.iterationCount
+        : Date.now();
+
+      const emitRealtime = (payload) => {
+        if (realtimeService && typeof realtimeService.emitUpdate === 'function') {
+          realtimeService.emitUpdate(payload);
+        } else {
+          if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+            state.mainWindow.webContents.send('realtime-assistant-update', payload);
+          }
+          if (helpers.sendToRealtimeAssistantOverlay) {
+            helpers.sendToRealtimeAssistantOverlay('realtime-assistant-update', payload);
+          }
+        }
+      };
+
+      emitRealtime({
+        type: 'segment_start',
+        id,
+        iteration,
+        audioSource: 'screen',
+        timestamp: new Date().toISOString()
+      });
+
+      emitRealtime({
+        type: 'segment_whisper_correction',
+        id,
+        iteration,
+        text: '📸 Analisando pergunta na captura de tela...',
+        audioSource: 'screen',
+        source: 'screen',
+        timestamp: new Date().toISOString()
+      });
+
+      try {
+        const apiKey = configService.getOpenIaToken();
+        const aiModel = helpers.getEffectiveAiModel();
+        let analysis = '';
+
+        // Tenta OCR rápido para identificar e transcrever o texto da pergunta na tela
+        let ocrText = '';
+        try {
+          ocrText = await TesseractService.getTextFromImage(base64);
+        } catch (_) {}
+        const cleanOcr = (ocrText || '').trim();
+
+        if (cleanOcr) {
+          emitRealtime({
+            type: 'segment_whisper_correction',
+            id,
+            iteration,
+            text: `📸 ${cleanOcr}`,
+            audioSource: 'screen',
+            source: 'screen',
+            timestamp: new Date().toISOString()
+          });
+        }
+
+        if (aiModel === 'openIa' || aiModel === 'openIaCodex' || (!aiModel && apiKey)) {
+          if (!apiKey) {
+            emitRealtime({
+              type: 'segment_error',
+              id,
+              iteration,
+              message: '❌ Token da OpenAI não configurado. Configure em Ajustes.',
+              timestamp: new Date().toISOString()
+            });
+            return;
+          }
+          analysis = await analyzeInterviewImage(base64, apiKey);
+        } else {
+          const prompt = cleanOcr
+            ? `Isto apareceu na tela do usuário durante a entrevista:\n\n${cleanOcr}\n\nResponda como sugestão pronta para o usuário responder ao entrevistador.`
+            : 'Isto apareceu na tela do usuário. Diga ao usuário como ele deve responder.';
+          analysis = await BackendService.responder(prompt, { imageBase64: base64 });
+        }
+
+        emitRealtime({
+          type: 'segment_response',
+          id,
+          iteration,
+          response: analysis,
+          audioSource: 'screen',
+          timestamp: new Date().toISOString()
+        });
+
+        if (realtimeService && typeof realtimeService._writeHistory === 'function') {
+          const questionText = cleanOcr ? `[Tela] ${cleanOcr}` : '[Captura de tela]';
+          await realtimeService._writeHistory(questionText, analysis);
+          if (realtimeService.lastClosedBySource) {
+            realtimeService.lastClosedBySource.sys = { id, text: questionText, closedAt: Date.now() };
+          }
+        }
+      } catch (err) {
+        console.error('[realtime-screen-capture] erro:', err.message);
+        emitRealtime({
+          type: 'segment_error',
+          id,
+          iteration,
+          message: `❌ Erro ao analisar captura: ${err.message}`,
+          timestamp: new Date().toISOString()
+        });
+      }
+      return;
+    }
+
     // TA ativo em modo janela (sem overlay) → análise de entrevista via visão, resultado no chat
     if (!osOn && translationAssistant.isActive() && state.mainWindow && !state.mainWindow.isDestroyed()) {
       const apiKey = configService.getOpenIaToken();

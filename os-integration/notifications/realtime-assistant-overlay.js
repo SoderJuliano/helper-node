@@ -67,8 +67,9 @@
     if (!container) return;
     const src = audioSource || 'sys';
     const isMic = (src === 'mic');
-    const roleClass = isMic ? 'mic-turn' : 'sys-turn';
-    const roleLabel = isMic ? '🎙️ Você (Microfone)' : '🔊 Interlocutor (Sistema)';
+    const isScreen = (src === 'screen' || (text && text.startsWith('📸')));
+    const roleClass = isMic ? 'mic-turn' : (isScreen ? 'screen-turn' : 'sys-turn');
+    const roleLabel = isMic ? '🎙️ Você (Microfone)' : (isScreen ? '📸 Pergunta na Tela (Recrutador)' : '🔊 Interlocutor (Sistema)');
 
     if (currentTurn.userBlock && !currentTurn.assistantBlock && currentTurn.audioSource === src) {
       currentTurn.id = id || currentTurn.id;

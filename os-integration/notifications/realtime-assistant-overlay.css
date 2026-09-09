@@ -143,6 +143,10 @@ html.manual-drag #pos-header { -webkit-app-region: no-drag !important; }
   border-left-color: #a78bfa;
   background: rgba(167, 139, 250, 0.07);
 }
+.tip-block.screen-turn {
+  border-left-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.08);
+}
 .tip-block.assistant-turn {
   border-left-color: #4ade80;
   background: rgba(74, 222, 128, 0.07);
