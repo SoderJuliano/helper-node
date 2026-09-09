@@ -201,11 +201,11 @@ helpers.captureFullScreenAuto = async function() {
         response: '',
       });
       try {
-        const analysis = await analyzeInterviewImage(base64, apiKey);
+        const visionResult = await analyzeInterviewImage(base64, apiKey, { structured: true });
         helpers.sendToTranslationOverlay('translation-result', {
           type: 'image', mode: 'image',
-          transcript: '',
-          response: analysis,
+          transcript: visionResult.question ? `📸 ${visionResult.question}` : '',
+          response: visionResult.response,
         });
       } catch (err) {
         console.error('[screenshot-interview] erro:', err.message);
@@ -260,7 +260,7 @@ helpers.captureFullScreenAuto = async function() {
         type: 'segment_whisper_correction',
         id,
         iteration,
-        text: '📸 Analisando pergunta na captura de tela...',
+        text: '📸 Analisando tela com IA de visão...',
         audioSource: 'screen',
         source: 'screen',
         timestamp: new Date().toISOString()
@@ -269,26 +269,8 @@ helpers.captureFullScreenAuto = async function() {
       try {
         const apiKey = configService.getOpenIaToken();
         const aiModel = helpers.getEffectiveAiModel();
+        let questionText = 'Pergunta na tela';
         let analysis = '';
-
-        // Tenta OCR rápido para identificar e transcrever o texto da pergunta na tela
-        let ocrText = '';
-        try {
-          ocrText = await TesseractService.getTextFromImage(base64);
-        } catch (_) {}
-        const cleanOcr = (ocrText || '').trim();
-
-        if (cleanOcr) {
-          emitRealtime({
-            type: 'segment_whisper_correction',
-            id,
-            iteration,
-            text: `📸 ${cleanOcr}`,
-            audioSource: 'screen',
-            source: 'screen',
-            timestamp: new Date().toISOString()
-          });
-        }
 
         if (aiModel === 'openIa' || aiModel === 'openIaCodex' || (!aiModel && apiKey)) {
           if (!apiKey) {
@@ -301,14 +283,29 @@ helpers.captureFullScreenAuto = async function() {
             });
             return;
           }
-          analysis = await analyzeInterviewImage(base64, apiKey);
+          const visionResult = await analyzeInterviewImage(base64, apiKey, { structured: true });
+          questionText = visionResult.question || 'Pergunta na tela';
+          analysis = visionResult.response;
         } else {
-          const prompt = cleanOcr
-            ? `Isto apareceu na tela do usuário durante a entrevista:\n\n${cleanOcr}\n\nResponda como sugestão pronta para o usuário responder ao entrevistador.`
-            : 'Isto apareceu na tela do usuário. Diga ao usuário como ele deve responder.';
+          const prompt = `Isto é uma captura da tela da entrevista do usuário.
+IGNORE qualquer janela do próprio assistente/copiloto.
+Identifique o que está na tela do entrevistador/recrutador e responda como sugestão pronta para o usuário responder.`;
           analysis = await BackendService.responder(prompt, { imageBase64: base64 });
+          questionText = 'Pergunta na tela';
         }
 
+        // Atualiza a transcrição da pergunta detectada na tela (sem caracteres estranhos de OCR)
+        emitRealtime({
+          type: 'segment_whisper_correction',
+          id,
+          iteration,
+          text: `📸 ${questionText}`,
+          audioSource: 'screen',
+          source: 'screen',
+          timestamp: new Date().toISOString()
+        });
+
+        // Emite a resposta da IA
         emitRealtime({
           type: 'segment_response',
           id,
@@ -319,10 +316,10 @@ helpers.captureFullScreenAuto = async function() {
         });
 
         if (realtimeService && typeof realtimeService._writeHistory === 'function') {
-          const questionText = cleanOcr ? `[Tela] ${cleanOcr}` : '[Captura de tela]';
-          await realtimeService._writeHistory(questionText, analysis);
+          const histText = `[Tela] ${questionText}`;
+          await realtimeService._writeHistory(histText, analysis);
           if (realtimeService.lastClosedBySource) {
-            realtimeService.lastClosedBySource.sys = { id, text: questionText, closedAt: Date.now() };
+            realtimeService.lastClosedBySource.sys = { id, text: histText, closedAt: Date.now() };
           }
         }
       } catch (err) {
