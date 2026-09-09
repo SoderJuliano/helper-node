@@ -144,6 +144,11 @@ ipcMain.handle('new-chat', async () => {
       const nexaHistory = require("../nexa/nexaHistory.js");
       nexaHistory.clearHistory();
     } catch (_) {}
+    try {
+      if (OpenAIService && OpenAIService.clearSessions) {
+        OpenAIService.clearSessions();
+      }
+    } catch (_) {}
     return session;
   } catch (error) {
     console.error('Erro ao criar novo chat:', error);
@@ -156,6 +161,11 @@ ipcMain.handle('delete-session', async (event, sessionId) => {
     const success = await historyService.deleteSession(sessionId);
     if (success) {
       console.log(`✓ Sessão ${sessionId} deletada com sucesso`);
+      try {
+        if (OpenAIService && OpenAIService.clearSession) {
+          OpenAIService.clearSession(sessionId);
+        }
+      } catch (_) {}
     }
     return { success };
   } catch (error) {

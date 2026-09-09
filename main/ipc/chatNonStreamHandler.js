@@ -238,6 +238,13 @@ async function handleSendToGeminiVision(event, { text, image }) {
       event.sender.send("transcription-error", "Token da OpenAI não configurado.");
       return;
     }
+    const historyService = require('../../services/historyService');
+    let currentSession = historyService.getCurrentSession();
+    if (!currentSession) {
+      try { currentSession = await historyService.createNewSession('Conversa'); } catch (_) {}
+    }
+    const activeSessionId = currentSession ? currentSession.id : 'default';
+
     const visionModel = configService.getOpenAiVisionModel();
     const visionPrompt = (text && text.trim() ? `${text}\n\n` : '')
       + 'Analise a IMAGEM com atenção. Responda conforme as regras do sistema.\n\n'
@@ -251,8 +258,15 @@ async function handleSendToGeminiVision(event, { text, image }) {
       instruction,
       visionModel,
       image,
-      { stateless: true }
+      { stateless: false, sessionId: activeSessionId }
     );
+    if (currentSession && resposta) {
+      const userContent = text && text.trim() ? text.trim() : 'Image in context';
+      try {
+        await historyService.addMessage(currentSession.id, 'user', userContent);
+        await historyService.addMessage(currentSession.id, 'assistant', resposta);
+      } catch (_) {}
+    }
     event.sender.send("openai-final-response", { resposta, usedKnowledge: false });
     helpers.triggerTtsPlaybackIfEnabled(resposta);
   } catch (error) {

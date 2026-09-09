@@ -257,6 +257,12 @@ helpers.processOsQuestion = async function(text, image = null, opts = {}) {
       console.log(`🤖 OpenAI ${openAiModel}${sendImage ? ' [VISÃO high]' : ' [TEXTO]'}...`);
       const _wsText3 = sendImage ? text : await helpers.prependWorkspaceContextIfNeeded(text, openAiModel);
 
+      let currentSession = historyService.getCurrentSession();
+      if (!currentSession) {
+        try { currentSession = await historyService.createNewSession('Conversa Integrada'); } catch (_) {}
+      }
+      const activeSessionId = currentSession ? currentSession.id : 'default';
+
       const useAgentic = !sendImage && helpers.shouldUseAgentic(text);
 
       if (useAgentic) {
@@ -272,10 +278,10 @@ helpers.processOsQuestion = async function(text, image = null, opts = {}) {
           }
       } else {
           const ht = sendImage
-            ? { opts: { stateless: !!image } }
+            ? { opts: { stateless: false, sessionId: activeSessionId } }
             : (() => {
                 const _ht = helpers.buildHelperToolsOpenAIOpts(_wsText3, instruction, openAiModel);
-                _ht.opts = { ..._ht.opts, stateless: !!image };
+                _ht.opts = { ..._ht.opts, stateless: false, sessionId: activeSessionId };
                 return _ht;
               })();
           try {
@@ -298,12 +304,23 @@ helpers.processOsQuestion = async function(text, image = null, opts = {}) {
                 instruction,
                 textModel,
                 null,
-                { stateless: true }
+                { stateless: false, sessionId: activeSessionId }
               );
             } else {
               throw reqErr;
             }
           }
+      }
+      if (currentSession && resposta) {
+        const userContent = extractedText && extractedText.trim()
+          ? extractedText.trim()
+          : (text && text.trim() ? text.trim() : '[Captura de tela]');
+        try {
+          await historyService.addMessage(currentSession.id, 'user', userContent);
+          await historyService.addMessage(currentSession.id, 'assistant', resposta);
+        } catch (histErr) {
+          console.warn('[processOsQuestion] Erro ao registrar histórico:', histErr.message);
+        }
       }
       console.log(`🤖 Got OpenAI response: ${typeof resposta === 'string' ? resposta.substring(0, 50) : ''}...`);
     } else if (aiModel === 'geminiCli') {

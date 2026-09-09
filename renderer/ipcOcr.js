@@ -111,10 +111,9 @@
                     ocrContainer.textContent = text || 'Nenhum texto encontrado na imagem';
                 }
 
-                // Captura via Ctrl+Shift+S em modo normal: se há imagem e o backend
-                // tem visão, manda a IMAGEM pro modelo (independe do OCR ter texto).
-                if (window.pendingChatImage && await backendSupportsVision()) {
-                    sentImageToAI('', window.pendingChatImage);
+                // Captura via Ctrl+Shift+S ou paste em modo normal: envia a imagem para o backend
+                if (window.pendingChatImage) {
+                    sentImageToAI(text || '', window.pendingChatImage);
                     window.pendingChatImage = null;
                     setTimeout(() => { preview.style.display = 'none'; }, 8000);
                     return;

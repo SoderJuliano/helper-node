@@ -27,9 +27,6 @@ helpers.captureFullScreenAuto = async function() {
   const taCurrentlyActive = translationAssistant.isActive() &&
     state.translationOverlayWindow && !state.translationOverlayWindow.isDestroyed();
 
-  // Pula se nenhum modo está ativo para tratar o screenshot
-  if (!osOn && !printOn && !taCurrentlyActive) { return; }
-
   const tmpDir = path.join(app.getPath('temp'), `helpernode-shot-${Date.now()}`);
   const tmpPng = path.join(app.getPath('temp'), `helpernode-shot-${Date.now()}.png`);
   const isWayland = process.env.XDG_SESSION_TYPE === 'wayland';
@@ -257,6 +254,12 @@ helpers.captureFullScreenAuto = async function() {
     if (isOsIntegration) {
       await helpers.processOsQuestion('', base64, { forceVision: true });
     } else if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+      try {
+        if (state.mainWindow.isMinimized()) state.mainWindow.restore();
+        state.mainWindow.show();
+        state.mainWindow.focus();
+      } catch (_) {}
+
       // Modo janela: roda OCR só pra exibir; manda a IMAGEM pro renderer (que
       // decide visão vs texto). `base64` já é um data URL completo — não
       // re-prefixar, e a chave é `base64Image` (o que o handler ocr-result lê).

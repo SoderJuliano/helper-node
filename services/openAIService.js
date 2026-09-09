@@ -64,6 +64,24 @@ class OpenAIService {
                     this.sessions[sessionId].messages.unshift({ role: 'system', content: effectiveInstruction });
                 }
             }
+
+            // Compacta mensagens multimodais anteriores da sessão para texto puro (economiza tokens e payload)
+            if (!stateless && Array.isArray(this.sessions[sessionId].messages)) {
+                for (let i = 0; i < this.sessions[sessionId].messages.length; i++) {
+                    const m = this.sessions[sessionId].messages[i];
+                    if (m && m.role === 'user' && Array.isArray(m.content)) {
+                        const txtItem = m.content.find(c => c.type === 'text');
+                        m.content = (txtItem && txtItem.text) ? txtItem.text : '[Captura de tela / imagem anterior]';
+                    }
+                }
+
+                // Mantém janela deslizante recente (system prompt + até 20 mensagens)
+                if (this.sessions[sessionId].messages.length > 21) {
+                    const sysMsg = this.sessions[sessionId].messages[0];
+                    const recent = this.sessions[sessionId].messages.slice(-20);
+                    this.sessions[sessionId].messages = [sysMsg, ...recent];
+                }
+            }
         }
 
         // Build user message — multimodal if image(s) fornecida(s)
@@ -329,6 +347,16 @@ class OpenAIService {
         }
         this.sessions[sessionId] = { messages: seeded, lastActivity: Date.now() };
         return seeded.length;
+    }
+
+    clearSessions() {
+        this.sessions = {};
+    }
+
+    clearSession(sessionId = 'default') {
+        if (this.sessions && this.sessions[sessionId]) {
+            delete this.sessions[sessionId];
+        }
     }
 }
 
