@@ -99,12 +99,14 @@
             const shell = document.getElementById('app-shell');
             const resizer = document.getElementById('sidebar-resizer');
             if (!shell || !resizer) return;
-            const getMinW = () => 180;
-            const getMaxW = () => Math.min(380, Math.max(220, Math.floor((window.innerWidth || 800) * 0.4)));
+            const getMinW = () => 160;
+            const getMaxW = () => Math.max(320, Math.min(650, Math.floor((window.innerWidth || 800) * 0.65)));
 
             let saved = null;
             try { saved = parseInt(localStorage.getItem('hn-sidebar-w'), 10); } catch (_) {}
-            if (saved && !isNaN(saved)) {
+            if (saved && !isNaN(saved) && saved >= getMinW() && saved <= Math.floor((window.innerWidth || 800) * 0.5)) {
+                shell.style.setProperty('--sidebar-w', saved + 'px');
+            } else if (saved && !isNaN(saved)) {
                 const clamped = Math.min(getMaxW(), Math.max(getMinW(), saved));
                 shell.style.setProperty('--sidebar-w', clamped + 'px');
             } else {
