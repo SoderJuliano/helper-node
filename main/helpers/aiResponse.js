@@ -424,7 +424,12 @@ helpers.appendVoiceSummaryInstructionIfNeeded = function(instructionOrPrompt) {
   try {
     const cfg = configService.getGoogleTtsConfig();
     const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : null;
-    const isNexaOn = !!(nexaCfg && nexaCfg.enabled);
+    let isNexaVoiceActive = false;
+    try {
+      const nexaVoiceAssistant = require("../../services/nexaVoiceAssistant");
+      isNexaVoiceActive = nexaVoiceAssistant && typeof nexaVoiceAssistant.isActive === "function" && nexaVoiceAssistant.isActive();
+    } catch (_) {}
+    const isNexaOn = !!(nexaCfg && nexaCfg.enabled) || isNexaVoiceActive;
     const isTtsOn = !!(cfg && cfg.enabled && cfg.keyPathOrKey && cfg.keyPathOrKey.trim());
 
     if (!isNexaOn || !isTtsOn) return instructionOrPrompt;
@@ -441,11 +446,19 @@ helpers.triggerTtsPlaybackIfEnabled = function(fullResponse) {
   try {
     const cfg = configService.getGoogleTtsConfig();
     const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : null;
-    const isNexaOn = !!(nexaCfg && nexaCfg.enabled);
+    let isNexaVoiceActive = false;
+    try {
+      const nexaVoiceAssistant = require("../../services/nexaVoiceAssistant");
+      isNexaVoiceActive = nexaVoiceAssistant && typeof nexaVoiceAssistant.isActive === "function" && nexaVoiceAssistant.isActive();
+    } catch (_) {}
+    const isNexaOn = !!(nexaCfg && nexaCfg.enabled) || isNexaVoiceActive;
     const isTtsOn = !!(cfg && cfg.enabled);
 
     if (!isNexaOn || !isTtsOn) return;
-    if (!cfg || !cfg.keyPathOrKey || !cfg.keyPathOrKey.trim()) return;
+    if (!cfg || !cfg.keyPathOrKey || !cfg.keyPathOrKey.trim()) {
+      console.warn("🔊 TTS habilitado mas sem chave/token do Google Cloud TTS configurada.");
+      return;
+    }
 
     let cleanResponse = fullResponse;
     if (isNexaOn && fullResponse) {
@@ -480,14 +493,47 @@ helpers.triggerTtsPlaybackIfEnabled = function(fullResponse) {
       const { ipcMain } = require("electron");
       ipcMain.emit("play-tts-audio", null, audioPayload);
 
+      if (state.nexaWindow && !state.nexaWindow.isDestroyed()) {
+        try { state.nexaWindow.webContents.send("play-tts-audio", audioPayload); } catch (_) {}
+      }
       if (state.mainWindow && !state.mainWindow.isDestroyed()) {
-        state.mainWindow.webContents.send("play-tts-audio", audioPayload);
+        try { state.mainWindow.webContents.send("play-tts-audio", audioPayload); } catch (_) {}
       }
     }).catch(err => {
       console.error("🔊 Erro no Google TTS playback:", err && err.message);
     });
   } catch (e) {
     console.error("🔊 Erro ao acionar TTS:", e && e.message);
+  }
+};
+
+helpers.getIaResponseDirect = async function(text) {
+  const aiModel = helpers.getEffectiveAiModel();
+  const instruction = configService.getPromptInstruction();
+  const token = configService.getOpenIaToken();
+  const openAiModel = configService.getOpenAiModel();
+  
+  const _wsText = await helpers.prependWorkspaceContextIfNeeded(text, openAiModel);
+  const _finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(_wsText);
+
+  if (aiModel === 'openIa' || aiModel === 'openIaCodex') {
+    if (!token) throw new Error("Token da OpenAI não configurado.");
+    const ht = helpers.buildHelperToolsOpenAIOpts(_finalPrompt, instruction, openAiModel);
+    return await OpenAIService.makeOpenAIRequest(
+      _finalPrompt,
+      token,
+      ht.instruction || instruction,
+      ht.model || openAiModel,
+      null,
+      ht.opts
+    );
+  } else if (aiModel === 'ollamaLocal') {
+    const OllamaLocalService = require('../../services/ollamaLocalService');
+    const _ht = helpers.buildHelperToolsOpenAIOpts(_finalPrompt, instruction, openAiModel);
+    return await OllamaLocalService.responder(_finalPrompt, _ht.opts);
+  } else {
+    const _ht = helpers.buildHelperToolsOpenAIOpts(_finalPrompt, instruction, openAiModel);
+    return await BackendService.responder(_finalPrompt, _ht.opts);
   }
 };
 

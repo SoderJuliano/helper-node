@@ -24,6 +24,12 @@ function registerIpc() {
     const shouldBeActive = typeof forcedState === "boolean" ? forcedState : !session.isActive();
     if (shouldBeActive) {
       const { configService } = require("../../main/globals");
+      try {
+        const { createNexaWindow, isNexaWindowOpen } = require("../../main/nexa/nexaWindow.js");
+        if (!isNexaWindowOpen()) {
+          createNexaWindow();
+        }
+      } catch (_) {}
       const micDevice = configService && typeof configService.getMicDevice === "function"
         ? configService.getMicDevice()
         : "";

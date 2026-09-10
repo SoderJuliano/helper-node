@@ -341,6 +341,17 @@ var isEditingQuestion = false;
         window.electronAPI.startNotifications();
     }
 
+    if (window.electronAPI && window.electronAPI.onNexaVoiceSubmitQuestion) {
+        window.electronAPI.onNexaVoiceSubmitQuestion(async ({ text }) => {
+            if (!text || !text.trim()) return;
+            const cleanText = text.trim();
+            // Adiciona a pergunta diretamente no chat sem tocar ou poluir o composer de input
+            appendQuestionEntry(cleanText);
+            startProcessing();
+            await sentToAI(cleanText);
+        });
+    }
+
     window.scrollTranscriptionToBottom = scrollTranscriptionToBottom;
     window.appendQuestionEntry = appendQuestionEntry;
     window.sentToAI = sentToAI;

@@ -171,26 +171,31 @@ class NexaVoiceSession extends EventEmitter {
    * Executa a pergunta enriquecida no modelo ativo e sintetiza a resposta.
    */
   async _executeAssistantQuery(userPrompt, animationHint = "thinking") {
-    const { state, configService, googleTtsService } = require("../../main/globals");
+    const { state, configService, googleTtsService, helpers } = require("../../main/globals");
+
+    // Timeout de segurança (45s) para evitar bloqueio caso a rede/IA falhe
+    if (this.processingTimeout) {
+      clearTimeout(this.processingTimeout);
+    }
+    this.processingTimeout = setTimeout(() => {
+      console.warn("[NexaVoiceSession] Timeout no processamento do turno. Retomando escuta...");
+      this._endProcessingAndResume();
+    }, 45000);
 
     try {
       this.emit("state-changed", { state: "thinking" });
       this.emit("animation-trigger", { animation: animationHint || "thinking" });
 
-      // Injeta instrução de resumo de voz na pergunta enviada
-      const systemDirective = NexaResponseFilter.getVoiceModeSystemPromptInstruction();
-      const promptWithDirective = `${userPrompt}\n${systemDirective}`;
-
-      // Envia a mensagem para a janela principal do chat para renderização visual e streaming
       if (state.mainWindow && !state.mainWindow.isDestroyed()) {
-        try {
-          state.mainWindow.webContents.send("ide-audio-transcribed", { text: userPrompt });
-          state.mainWindow.webContents.send("send-to-gemini-stream-auto", promptWithDirective);
-        } catch (_) {}
+        // Envia pergunta diretamente para o chat da tela (sem poluir o composer de input)
+        state.mainWindow.webContents.send("nexa-voice:submit-question", { text: userPrompt });
       } else {
-        // Fallback quando a janela principal não está disponível
-        const aiResponseHelper = require("../../main/helpers/aiResponse");
-        const rawAiResponse = await aiResponseHelper.getIaResponseDirect(promptWithDirective);
+        // Execução direta quando a janela principal do chat não está disponível
+        const systemDirective = NexaResponseFilter.getVoiceModeSystemPromptInstruction();
+        const promptWithDirective = `${userPrompt}\n${systemDirective}`;
+        const rawAiResponse = helpers.getIaResponseDirect
+          ? await helpers.getIaResponseDirect(promptWithDirective)
+          : "";
         const { voiceSummary, displayText, animation } = NexaResponseFilter.processResponse(rawAiResponse);
         this.context.recordTurn(userPrompt, displayText);
         this.emit("animation-trigger", { animation });
@@ -207,20 +212,22 @@ class NexaVoiceSession extends EventEmitter {
           if (audioBuf && audioBuf.length > 0) {
             const base64Audio = audioBuf.toString("base64");
             if (state.nexaWindow && !state.nexaWindow.isDestroyed()) {
-              state.nexaWindow.webContents.send("play-tts-audio", { audioBase64: base64Audio });
+              state.nexaWindow.webContents.send("play-tts-audio", { audioBase64: base64Audio, text: voiceSummary });
             }
           }
         }
-        this._startFollowUpTimer();
       }
     } catch (err) {
       console.error("[NexaVoiceSession] Erro ao executar query da IA:", err);
-    } finally {
       this._endProcessingAndResume();
     }
   }
 
   handleTtsEnded() {
+    if (this.processingTimeout) {
+      clearTimeout(this.processingTimeout);
+      this.processingTimeout = null;
+    }
     this._endProcessingAndResume();
     this._startFollowUpTimer();
   }

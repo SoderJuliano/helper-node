@@ -120,6 +120,7 @@ async function handleSendToGemini(event, text, sessionId) {
       }
       const usage = OpenAIService.lastUsage;
       event.sender.send("openai-final-response", { resposta, usedKnowledge, usage });
+      helpers.triggerTtsPlaybackIfEnabled(resposta);
       return;
     } else if (aiModel === 'ollamaLocal') {
       console.log("IPC: Usando Ollama Local Service...");
