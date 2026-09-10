@@ -507,13 +507,100 @@ helpers.triggerTtsPlaybackIfEnabled = function(fullResponse) {
   }
 };
 
+helpers.detectScreenVisualIntent = function(text) {
+  if (!text || typeof text !== 'string') return null;
+  const t = text.toLowerCase();
+  
+  const isScreenQuery = /\b(v[eê]r?|olh(a|ar|e|adinha|ada)|enxerg(a|ar|ue)|mostr(a|ar|e)|captur(a|ar|e)|tir(a|ar|e)\s+print|screenshot|print|inspecion(a|ar|e)|analis(a|ar|e)|est[aá]\s+vendo|consegue\s+ver|pode\s+ver)\b.*\b(tela|monitor|display|janela|navegador|browser|brave|chrome|edge|firefox|vscode|vs\s*code|c[oó]digo|desktop|área\s+de\s+trabalho)\b/i.test(t)
+    || /\b(o que tem|o que est[aá]\s+aberto|o que h[aá]|o que voc[eê]\s+v[eê]|o que est[aá])\b.*\b(na|no|minha|meu|nas|nos)\s+(tela|monitor|display|janela|navegador|browser|brave|chrome|segund[oa]\s+monitor|outro\s+monitor)\b/i.test(t)
+    || /\b(consegue|pode)\s+(ver|olhar|enxergar|analisar)\b.*\b(meu\s+|minha\s+)?(monitor|tela|brave|chrome|navegador|browser|janela)\b/i.test(t)
+    || /\b(olhe|veja|olha|olhadinha)\b.*\b(meu\s+|minha\s+|o\s+|a\s+)?(monitor|tela|navegador|brave|chrome|vs\s*code|vscode|c[oó]digo|janela)\b/i.test(t)
+    || /\b(veja|olhe|mostre)\s+(o\s+)?(brave|chrome|navegador|browser|c[oó]digo|vscode)\b/i.test(t)
+    || /\b(o que est[aá]\s+aberto\s+no\s+(meu\s+)?(segundo\s+monitor|monitor|tela))\b/i.test(t);
+
+  if (!isScreenQuery) return null;
+
+  let targetApp = null;
+  if (/brave/i.test(t)) targetApp = 'brave';
+  else if (/chrome/i.test(t)) targetApp = 'chrome';
+  else if (/edge/i.test(t)) targetApp = 'edge';
+  else if (/firefox/i.test(t)) targetApp = 'firefox';
+  else if (/navegador|browser/i.test(t)) targetApp = 'browser';
+  else if (/vscode|vs\s*code|editor/i.test(t)) targetApp = 'code';
+
+  let displayIndex = null;
+  if (/(segund[oa]|outro)\s+(monitor|tela)|monitor\s+2|tela\s+2/i.test(t)) {
+    displayIndex = 1;
+  } else if (/(primeir[oa]|principal)\s+(monitor|tela)|monitor\s+1|tela\s+1/i.test(t)) {
+    displayIndex = 0;
+  }
+
+  return { targetApp, displayIndex };
+};
+
+helpers.prepareVisualPromptContext = async function(text, aiModel) {
+  const visualIntent = helpers.detectScreenVisualIntent(text);
+  if (!visualIntent) return { visualIntent: null, imageBase64: null, ocrText: '', screenshotPath: null, sourceName: '' };
+
+  try {
+    const fsSync = require('fs');
+    const imageAttachments = require('../../services/imageAttachments.js');
+    const dir = imageAttachments.ensureDir();
+    const screenshotPath = path.join(dir, `screen-intent-${Date.now()}.png`);
+    const captureResult = await platformScreenCapture.captureFullScreenToFile(screenshotPath, {
+      targetApp: visualIntent.targetApp,
+      displayIndex: visualIntent.displayIndex,
+    });
+    const sourceName = captureResult && captureResult.sourceName ? captureResult.sourceName : 'Tela / Janela';
+
+    if (fsSync.existsSync(screenshotPath)) {
+      const imageBase64 = imageAttachments.readAsBase64(screenshotPath);
+      let ocrText = '';
+      try {
+        ocrText = (await TesseractService.getTextFromImage(imageBase64)) || '';
+      } catch (ocrErr) {
+        console.warn('[prepareVisualPromptContext] OCR falhou:', ocrErr.message);
+      }
+
+      try {
+        await workspace.addPath(screenshotPath, 'file', {
+          trustAgy: true,
+          meta: { origin: 'screen-capture', ocrText: ocrText.trim() },
+        });
+      } catch (_) {}
+
+      console.log(`📸 [prepareVisualPromptContext] Captura automática realizada: "${sourceName}" -> ${screenshotPath} (OCR ${ocrText.length} chars)`);
+
+      return {
+        visualIntent,
+        imageBase64,
+        ocrText: ocrText.trim(),
+        screenshotPath,
+        sourceName,
+        availableWindows: captureResult.availableWindows || [],
+      };
+    }
+  } catch (err) {
+    console.warn('[prepareVisualPromptContext] Falha ao capturar tela para visual intent:', err.message);
+  }
+
+  return { visualIntent: null, imageBase64: null, ocrText: '', screenshotPath: null, sourceName: '' };
+};
+
 helpers.getIaResponseDirect = async function(text) {
   const aiModel = helpers.getEffectiveAiModel();
   const instruction = configService.getPromptInstruction();
   const token = configService.getOpenIaToken();
   const openAiModel = configService.getOpenAiModel();
   
-  const _wsText = await helpers.prependWorkspaceContextIfNeeded(text, openAiModel);
+  const visualCtx = await helpers.prepareVisualPromptContext(text, aiModel);
+  let promptText = text;
+  if (visualCtx.screenshotPath) {
+    const visualHeader = `[CAPTURA DE TELA EM TEMPO REAL: Janela/Tela "${visualCtx.sourceName}"]\nArquivo: ${visualCtx.screenshotPath}\nTexto capturado da tela por OCR:\n"""\n${visualCtx.ocrText || "(Visual gráfico da janela)"}\n"""\nDIRETIVA VISUAL: Você tem acesso visual direto à tela/janela do usuário capturada acima. Responda DIRETAMENTE sobre o conteúdo da tela. NUNCA diga que não consegue ver a tela.\n\n---\n\n`;
+    promptText = visualHeader + promptText;
+  }
+
+  const _wsText = await helpers.prependWorkspaceContextIfNeeded(promptText, openAiModel);
   const _finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(_wsText);
 
   if (aiModel === 'openIa' || aiModel === 'openIaCodex') {
@@ -524,13 +611,13 @@ helpers.getIaResponseDirect = async function(text) {
       token,
       ht.instruction || instruction,
       ht.model || openAiModel,
-      null,
+      visualCtx.imageBase64 || null,
       ht.opts
     );
   } else if (aiModel === 'ollamaLocal') {
     const OllamaLocalService = require('../../services/ollamaLocalService');
     const _ht = helpers.buildHelperToolsOpenAIOpts(_finalPrompt, instruction, openAiModel);
-    return await OllamaLocalService.responder(_finalPrompt, _ht.opts);
+    return await OllamaLocalService.responder(_finalPrompt, { ..._ht.opts, imageBase64: visualCtx.imageBase64 || null });
   } else {
     const _ht = helpers.buildHelperToolsOpenAIOpts(_finalPrompt, instruction, openAiModel);
     return await BackendService.responder(_finalPrompt, _ht.opts);

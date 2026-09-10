@@ -34,6 +34,15 @@ const TRIGGERS = [
   // Arquivos de sistema e conhecidos
   /\b(no|em|dentro\s+do)\s+(meu\s+)?\.?(bashrc|zshrc|profile|gitconfig|npmrc|env(\.example)?|gitignore|package\.json|index\.html|main\.js|config\.js)\b/i,
 
+  // Captura de tela, visão e inspeção de janelas/navegador
+  /\b(tir(a|ar|e)|captur(a|ar|e)|olh(a|ar|e)|v[eê]r?|mostr(a|ar|e)|enxerg(a|ar|ue))\b.*\b(tela|print|screenshot|janela|navegador|brave|chrome|display|monitor|imagem)\b/i,
+  /\b(o que tem|o que est[aá]|o que h[aá])\b.*\b(na|na\s+minha)\s+(tela|janela|navegador|brave|chrome)\b/i,
+  /\b(consegue|pode)\s+(ver|olhar|capturar|tirar\s+print)\b/i,
+
+  // Preferências do usuário, perfil, currículo e documentos
+  /\b(prefer[êe]ncias?|dados\s+pessoais|meu\s+perfil|meu\s+nome|meu\s+curr[ií]culo|meu\s+cv|minha\s+experi[êe]ncia|minhas\s+informa[çc][õo]es|background)\b/i,
+  /\b(carta\s+de\s+apresenta[çc][ãa]o|curr[ií]culo|cv|pdf)\b/i,
+
   // Problemas técnicos
   /\b(meu\s+)?(java|node|python|docker|git|nginx|systemd|service|servidor|backend|frontend)\s+(n[ãa]o\s+)?(funciona|esta\s+rodando|abre|conecta|responde)/i,
   /\b(n[ãa]o\s+)?(consigo|estou\s+conseguindo)\s+(achar|encontrar|rodar|executar|abrir|instalar|fazer)\b/i,

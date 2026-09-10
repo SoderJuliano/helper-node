@@ -97,16 +97,16 @@ helpers.attachImageToWorkspace = async function(base64Image, { prefix = 'paste',
   return created;
 }
 
-// Imagem colada mais recente em base64, para providers de modo 'inline'
+// Imagem anexada ou colada mais recente em base64, para providers de modo 'inline'
 // (ChatGPT/Codex), que só enxergam pelo canal de visão da API — caminho no
 // prompt não adianta pra eles, e ferramenta também não: TOOL_RESULT é texto.
 // Devolve null para todo o resto, que recebe o caminho.
 helpers.inlineImageForProvider = function(aiModel) {
   try {
     if (imageSupport.forProvider(aiModel).mode !== 'inline') return null;
-    const pasted = workspace.list().filter(a => a.origin === 'paste' && a.path);
-    if (!pasted.length) return null;
-    const alvo = pasted[pasted.length - 1];
+    const images = workspace.list().filter(a => a.path && (a.origin === 'paste' || /\.(png|jpe?g|webp|gif|bmp)$/i.test(a.path)));
+    if (!images.length) return null;
+    const alvo = images[images.length - 1];
     const fs = require('fs');
     if (!fs.existsSync(alvo.path)) return null;
     return imageAttachments.readAsBase64(alvo.path);
@@ -116,13 +116,16 @@ helpers.inlineImageForProvider = function(aiModel) {
   }
 }
 
-// Texto de contexto das imagens coladas, usado por appendAttachmentsContext.
+// Texto de contexto das imagens coladas ou anexadas, usado por appendAttachmentsContext.
 // Separado pra manter a formatação do prompt num lugar só.
 helpers.pastedImageContextFor = function(att) {
-  if (!att || att.origin !== 'paste') return null;
-  let block = `- IMAGEM colada pelo usuário: ${att.path}\n`;
+  if (!att || (att.origin !== 'paste' && att.origin !== 'screen-capture' && !/\.(png|jpe?g|webp|gif|bmp)$/i.test(att.path || ''))) return null;
+  const isPaste = att.origin === 'paste';
+  const isCapture = att.origin === 'screen-capture';
+  const label = isCapture ? 'capturada da tela/janela em tempo real' : (isPaste ? 'colada' : 'anexada');
+  let block = `- IMAGEM (${label}): ${att.path}\n`;
   if (att.ocrText) {
-    block += `  Texto extraído por OCR desta imagem (use pra localizar o trecho correspondente no projeto):\n`;
+    block += `  Texto extraído por OCR desta imagem:\n`;
     block += `  """\n${att.ocrText.split('\n').map(l => '  ' + l).join('\n')}\n  """\n`;
   }
   return block;

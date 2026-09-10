@@ -15,10 +15,10 @@ const defaultConfig = {
   openAiReasoningEffort: "low",
   ollamaLocalModel: "qwen2.5-coder:7b",
   ollamaLocalHost: "http://localhost:11434",
-  openAiVisionModel: "gpt-5-nano",
+  openAiVisionModel: "gpt-4o",
   openIaToken: "",
   helperTools: {
-    enabled: false,
+    enabled: true,
   },
   workspaceAccess: {
     enabled: true,

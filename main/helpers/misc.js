@@ -254,8 +254,65 @@ helpers.getAttachableFilePaths = function() {
   }
 }
 
+helpers.extractTextFromPdfSync = function(filePath) {
+  try {
+    const fsMod = require('fs');
+    const zlib = require('zlib');
+    const buf = fsMod.readFileSync(filePath);
+    let extracted = '';
+    const str = buf.toString('latin1');
+    const flateRegex = /<<[^>]*\/Filter\s*\/FlateDecode[^>]*\/Length\s+(\d+)[^>]*>>\s*stream[\r\n]+/g;
+    let match;
+    while ((match = flateRegex.exec(str)) !== null) {
+      const len = parseInt(match[1], 10);
+      const start = match.index + match[0].length;
+      const raw = buf.slice(start, start + len);
+      try {
+        const inf = zlib.inflateSync(raw).toString('latin1');
+        const tjMatches = inf.match(/\(([^)]+)\)\s*Tj/g);
+        if (tjMatches) {
+          for (const m of tjMatches) {
+            const inner = m.match(/\(([^)]+)\)/);
+            if (inner && inner[1]) extracted += inner[1] + ' ';
+          }
+          extracted += '\n';
+        }
+        const tjArrayMatches = inf.match(/\[([^\]]+)\]\s*TJ/g);
+        if (tjArrayMatches) {
+          for (const arr of tjArrayMatches) {
+            const parts = arr.match(/\(([^)]+)\)/g);
+            if (parts) {
+              const line = parts.map(p => p.slice(1, -1)).join('');
+              extracted += line + ' ';
+            }
+          }
+          extracted += '\n';
+        }
+      } catch (_) {}
+    }
+    return extracted.trim();
+  } catch (e) {
+    return '';
+  }
+};
+
+helpers.getUserPreferencesContext = function() {
+  try {
+    if (configService && typeof configService.getUserContextBlock === 'function') {
+      return configService.getUserContextBlock();
+    }
+  } catch (_) {}
+  return '';
+};
+
 helpers.appendAttachmentsContext = function(prompt) {
   try {
+    let prefix = '';
+    const userCtx = helpers.getUserPreferencesContext();
+    if (userCtx) {
+      prefix += `${userCtx}\n\n---\n\n`;
+    }
+
     const attachments = workspace.list().filter(a => a.type === 'file');
     if (attachments.length > 0) {
       let contextHeader = "=== ARQUIVOS ANEXADOS AO CONTEXTO ===\n";
@@ -268,9 +325,18 @@ helpers.appendAttachmentsContext = function(prompt) {
           const stat = fs.statSync(att.path);
           const pasted = helpers.pastedImageContextFor && helpers.pastedImageContextFor(att);
           if (pasted) { contextHeader += pasted; hasPastedImage = true; continue; }
-          const binary = stat.isFile() && helpers.isBinaryFile(att.path);
-          contextHeader += `- Caminho: ${att.path}${binary ? ' (binário/imagem — anexado como arquivo, não transcrito aqui)' : ''}\n`;
-          if (!binary && stat.isFile() && stat.size < 150 * 1024) {
+          const ext = require('path').extname(att.path).toLowerCase();
+          const isPdf = ext === '.pdf';
+          const binary = stat.isFile() && helpers.isBinaryFile(att.path) && !isPdf;
+          contextHeader += `- Caminho: ${att.path}${binary ? ' (binário — anexado como arquivo)' : ''}\n`;
+          if (isPdf) {
+            const pdfText = helpers.extractTextFromPdfSync(att.path);
+            if (pdfText) {
+              contextHeader += `\n--- Conteúdo do documento PDF (${att.path}) ---\n${pdfText}\n--- Fim do documento ---\n\n`;
+            } else {
+              contextHeader += `  (Documento PDF disponível no caminho indicado acima para análise/processamento)\n\n`;
+            }
+          } else if (!binary && stat.isFile() && stat.size < 150 * 1024) {
             const content = fs.readFileSync(att.path, 'utf8');
             contextHeader += `\n--- Conteúdo do arquivo (${att.path}) ---\n${content}\n--- Fim do arquivo ---\n\n`;
           }
@@ -283,8 +349,9 @@ helpers.appendAttachmentsContext = function(prompt) {
           + "Use o texto do OCR para localizar o ponto correspondente no código do projeto.\n\n";
       }
       contextHeader += "Por favor, utilize os caminhos e conteúdos acima para responder à pergunta atual.\n\nPergunta:\n";
-      return contextHeader + prompt;
+      return prefix + contextHeader + prompt;
     }
+    return prefix ? prefix + prompt : prompt;
   } catch (err) {
     console.warn("Falhou ao anexar contexto de arquivos para o CLI:", err.message);
   }

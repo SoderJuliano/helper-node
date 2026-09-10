@@ -8,7 +8,7 @@ const path = require("path");
 const HOME = os.homedir();
 
 const DEFAULT_HELPER_TOOLS_CONFIG = Object.freeze({
-  enabled: false, // ⚠️ DEFAULT OFF — usuário tem que ligar conscientemente
+  enabled: true,
 
   // Modelos por tipo de operação. Quando aiModel = 'openIa', usa estes
   // identificadores prefixados 'openai:'. Quando aiModel = 'llama' (server

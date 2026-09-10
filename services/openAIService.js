@@ -128,8 +128,18 @@ class OpenAIService {
                  this.sessions[sessionId].lastActivity = now,
                  this.sessions[sessionId].messages);
 
+        let effectiveModel = model || 'gpt-4.1-nano';
+        if (imageBase64 && (imageBase64.length > 0 || typeof imageBase64 === 'string')) {
+            const isTextOnly = /^(gpt-4\.1-nano|gpt-3\.5|text-|gpt-4-0613|gpt-4-0314)/i.test(effectiveModel);
+            if (isTextOnly) {
+                const visionModel = (configService.getOpenAiVisionModel && configService.getOpenAiVisionModel()) || 'gpt-4o';
+                console.log(`👁️ [OpenAIService] Modelo ${effectiveModel} não suporta visão multimodal. Atualizando automaticamente para: ${visionModel}`);
+                effectiveModel = visionModel;
+            }
+        }
+
         const requestPayload = {
-            model: model || 'gpt-4.1-nano',
+            model: effectiveModel,
             messages: messages,
         };
         if (supportsReasoningEffort(requestPayload.model)) {

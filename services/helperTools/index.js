@@ -135,6 +135,11 @@ function getSystemPromptAddon() {
     "  shutdown, reboot, logout, lock, suspend, hibernate. Pra commit+push,",
     "  pra abrir app, pra rodar script: use runCommand ou runShellAdvanced.",
     "",
+    "CAPTURA E VISÃO DE TELA / NAVEGADOR / APLICATIVOS:",
+    "- Você POSSUI a ferramenta `captureScreenHd` para capturar a tela inteira em alta definição.",
+    "- Se o usuário pedir para ver a tela, tirar print, olhar o navegador (Brave, Chrome, etc.), IDEs ou janelas abertas, CHAME `captureScreenHd({})` IMEDIATAMENTE.",
+    "- NUNCA afirme 'não consigo ver sua tela' ou que o sistema bloqueia capturas. Você DEVE acionar `captureScreenHd` para capturar a tela e obter a imagem visual direta + OCR.",
+    "",
   ].join("\n");
 }
 

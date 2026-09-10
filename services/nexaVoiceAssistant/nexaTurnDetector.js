@@ -24,7 +24,7 @@ class NexaTurnDetector extends EventEmitter {
     this.speechThresholdRms = options.speechThresholdRms || 55;  // Limiar calibrado para captação de voz natural no Windows/Mac
     this.silenceThresholdMs = options.silenceThresholdMs || 1000; // Duração de silêncio contínuo para fechar o turno (1.0s ágil e natural)
     this.minSpeechMs = options.minSpeechMs || 200;               // Duração mínima de fala real para considerar válida (permite 'Nexa', 'Para', 'Oi')
-    this.maxTurnDurationMs = options.maxTurnDurationMs || 30000; // Limite máximo de segurança para um turno (30s)
+    this.maxTurnDurationMs = options.maxTurnDurationMs || 120000; // Limite amplo de segurança para turnos longos de fala (120s / 2 min)
     this.preRollMs = options.preRollMs || 350;                   // Buffer circular de pre-roll (350ms)
 
     this.active = false;

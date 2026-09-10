@@ -25,11 +25,19 @@ async function handleSendToGemini(event, text, sessionId) {
       }
     }
 
+    const visualCtx = await helpers.prepareVisualPromptContext(text, aiModel);
+    let promptWithVisualContext = promptWithHistory;
+    if (visualCtx.screenshotPath) {
+      const visualHeader = `[CAPTURA DE TELA EM TEMPO REAL: Janela/Tela "${visualCtx.sourceName}"]\nArquivo: ${visualCtx.screenshotPath}\nTexto capturado da tela por OCR:\n"""\n${visualCtx.ocrText || "(Visual gráfico da janela)"}\n"""\nDIRETIVA VISUAL: Você tem acesso visual direto à tela/janela do usuário capturada acima. Responda DIRETAMENTE sobre o conteúdo visual e textual da tela. NUNCA diga que não consegue ver a tela.\n\n---\n\n`;
+      promptWithVisualContext = visualHeader + promptWithVisualContext;
+    }
+
     if (aiModel === 'geminiCli') {
       const projectPath = workspace.getProjectPath();
       const geminiModel = configService.getGeminiCliModel();
       GeminiCliProvider.setModel(geminiModel);
-      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(text));
+      const textToDeliver = visualCtx.screenshotPath ? promptWithVisualContext : promptWithHistory;
+      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(textToDeliver));
       try {
         const result = await GeminiCliProvider.send(finalPrompt, projectPath, event.sender, sessionId, pastMessages);
         if (result && result.text) {
@@ -46,7 +54,8 @@ async function handleSendToGemini(event, text, sessionId) {
       const projectPath = workspace.getProjectPath();
       const claudeModel = configService.getClaudeCliModel();
       ClaudeCliProvider.setModel(claudeModel);
-      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(text));
+      const textToDeliver = visualCtx.screenshotPath ? promptWithVisualContext : promptWithHistory;
+      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(textToDeliver));
       try {
         const result = await ClaudeCliProvider.send(finalPrompt, projectPath, event.sender, sessionId, pastMessages);
         if (result && result.text) {
@@ -63,7 +72,7 @@ async function handleSendToGemini(event, text, sessionId) {
       const projectPath = workspace.getProjectPath();
       const copilotModel = configService.getCopilotCliModel();
       CopilotCliProvider.setModel(copilotModel);
-      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(promptWithHistory));
+      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(promptWithVisualContext));
       try {
         const result = await CopilotCliProvider.send(finalPrompt, projectPath, event.sender, {
           attachments: helpers.getAttachableFilePaths(),
@@ -95,8 +104,10 @@ async function handleSendToGemini(event, text, sessionId) {
       const useAgentic = helpers.shouldUseAgentic(text);
       if (useAgentic) { try { workspace.resetContextSent(); } catch (_) {} }
 
-      const _wsText2 = await helpers.prependWorkspaceContextIfNeeded(promptWithHistory, openAiModel);
-      const _imgInline = helpers.inlineImageForProvider(aiModel);
+      const userCtx = helpers.getUserPreferencesContext ? helpers.getUserPreferencesContext() : '';
+      const promptWithUserCtx = userCtx ? `${userCtx}\n\n---\n\n${promptWithVisualContext}` : promptWithVisualContext;
+      const _wsText2 = await helpers.prependWorkspaceContextIfNeeded(promptWithUserCtx, openAiModel);
+      const _imgInline = visualCtx.imageBase64 || helpers.inlineImageForProvider(aiModel);
 
       if (useAgentic) {
         console.log('🤖 IPC: Iniciando AGENTIC WORKFLOW (multi-fase)...');
@@ -257,21 +268,27 @@ async function handleSendToGeminiVision(event, { text, image }) {
     }
     const activeSessionId = currentSession ? currentSession.id : 'default';
 
+    const userCtx = helpers.getUserPreferencesContext ? helpers.getUserPreferencesContext() : '';
+    const userPromptWithCtx = userCtx ? `${userCtx}\n\n---\n\n${text || ''}` : (text || '');
+
     const visionPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(
-      (text && text.trim() ? `${text}\n\n` : '')
+      (userPromptWithCtx && userPromptWithCtx.trim() ? `${userPromptWithCtx}\n\n` : '')
       + 'Analise a IMAGEM com atenção. Responda conforme as regras do sistema.\n\n'
       + 'IMPORTANTE: na imagem, "x" entre dois números significa MULTIPLICAÇÃO '
       + '(ex.: "11x2" = 11 × 2 = 22, NÃO é 11 ao quadrado). '
       + 'Notação de potência seria "11²" ou "11^2".'
     );
+    const visionModel = configService.getOpenAiModel() || 'gpt-4o';
+    const ht = helpers.buildHelperToolsOpenAIOpts(visionPrompt, instruction, visionModel);
+    const finalInstruction = ht.instruction ? helpers.appendVoiceSummaryInstructionIfNeeded(ht.instruction) : helpers.appendVoiceSummaryInstructionIfNeeded(instruction);
     console.log(`🤖 IPC visão: OpenAI ${visionModel} [VISÃO high] (chat)...`);
     const resposta = await OpenAIService.makeOpenAIRequest(
       visionPrompt,
       token,
-      helpers.appendVoiceSummaryInstructionIfNeeded(instruction),
-      visionModel,
+      finalInstruction,
+      ht.model || visionModel,
       image,
-      { stateless: false, sessionId: activeSessionId }
+      { stateless: false, sessionId: activeSessionId, ...(ht.opts || {}) }
     );
     if (currentSession && resposta) {
       const userContent = text && text.trim() ? text.trim() : 'Image in context';

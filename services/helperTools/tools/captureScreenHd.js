@@ -18,18 +18,30 @@ const TesseractService = require('../../tesseractService');
 
 module.exports = {
   name: 'captureScreenHd',
-  description: 'Tira um print HD da tela atual do desenvolvedor. Use quando o OCR inicial da tela for insuficiente ou quando pedirem para você ver a tela (UI, ícones, layout). Retorna o CAMINHO do arquivo de imagem (abra-o com sua ferramenta de leitura para enxergá-lo) e o texto extraído por OCR.',
+  description: 'Tira uma captura de tela (print/screenshot HD) em tempo real da tela do desenvolvedor (desktop, janelas abertas, navegador Brave/Chrome, editores, etc). Suporta capturar uma janela específica (ex: Brave, Chrome) ou telas secundárias em multi-monitor. Use sempre que o usuário pedir para você ver a tela, olhar o navegador/código/layout, inspecionar erros visuais ou tirar print. Retorna o caminho da imagem, metadados da janela/tela e o texto OCR extraído.',
   schema: {
     type: 'object',
-    properties: {},
+    properties: {
+      targetApp: {
+        type: 'string',
+        description: 'Nome opcional do aplicativo ou janela a ser capturada (ex: "brave", "chrome", "edge", "code", "browser"). Se omitido, captura a tela do sistema.',
+      },
+      displayIndex: {
+        type: 'integer',
+        description: 'Índice opcional do monitor em setups multi-monitor (0 para principal, 1 para secundário).',
+      },
+    },
   },
   mutates: false,
 
-  async run(args, ctx) {
+  async run(args = {}, ctx = {}) {
     try {
       const dir = imageAttachments.ensureDir();
       const tmpShot = require('path').join(dir, `shot-${Date.now()}.png`);
-      await captureFullScreenToFile(tmpShot);
+      const captureInfo = await captureFullScreenToFile(tmpShot, {
+        targetApp: args.targetApp,
+        displayIndex: args.displayIndex,
+      });
 
       let ocrText = '';
       try {
@@ -48,8 +60,11 @@ module.exports = {
           path: tmpShot,
           format: 'png',
           bytes: stat ? stat.size : null,
+          sourceName: captureInfo && captureInfo.sourceName ? captureInfo.sourceName : 'Tela Principal',
+          sourceType: captureInfo && captureInfo.sourceType ? captureInfo.sourceType : 'screen',
+          availableWindows: captureInfo && captureInfo.availableWindows ? captureInfo.availableWindows : [],
           ocrText: ocrText.trim().slice(0, 8000),
-          note: 'Abra o arquivo em `path` com sua ferramenta de leitura para ver a imagem. `ocrText` é o texto extraído dela.',
+          note: 'A imagem capturada foi injetada no seu canal de visão multimodal de alta resolução. `ocrText` é o texto indexado dela.',
         },
       };
     } catch (e) {

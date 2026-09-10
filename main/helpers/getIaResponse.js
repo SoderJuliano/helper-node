@@ -34,6 +34,13 @@ helpers.getIaResponse = async function(text) {
     const aiModel = helpers.getEffectiveAiModel();
     console.log("Current AI Model:", aiModel);
 
+    const visualCtx = await helpers.prepareVisualPromptContext(text, aiModel);
+    let promptWithVisualContext = text;
+    if (visualCtx.screenshotPath) {
+      const visualHeader = `[CAPTURA DE TELA EM TEMPO REAL: Janela/Tela "${visualCtx.sourceName}"]\nArquivo: ${visualCtx.screenshotPath}\nTexto capturado da tela por OCR:\n"""\n${visualCtx.ocrText || "(Visual gráfico da janela)"}\n"""\nDIRETIVA VISUAL: Você tem acesso visual direto à tela/janela do usuário capturada acima. Responda DIRETAMENTE sobre o conteúdo visual e textual da tela. NUNCA diga que não consegue ver a tela.\n\n---\n\n`;
+      promptWithVisualContext = visualHeader + promptWithVisualContext;
+    }
+
     if (aiModel === 'openIa') {
         const token = configService.getOpenIaToken();
         const instruction = configService.getPromptInstruction();
@@ -59,7 +66,9 @@ helpers.getIaResponse = async function(text) {
         // contexto pra garantir que a estrutura do projeto entre neste turno.
         if (useAgentic) { try { workspace.resetContextSent(); } catch (_) {} }
 
-        const _wsText1 = await helpers.prependWorkspaceContextIfNeeded(text, openAiModel);
+        const userCtx = helpers.getUserPreferencesContext ? helpers.getUserPreferencesContext() : '';
+        const promptWithUserCtx = userCtx ? `${userCtx}\n\n---\n\n${promptWithVisualContext}` : promptWithVisualContext;
+        const _wsText1 = await helpers.prependWorkspaceContextIfNeeded(promptWithUserCtx, openAiModel);
 
         if (useAgentic) {
             console.log('🤖 Iniciando AGENTIC WORKFLOW (multi-fase)...');
@@ -69,7 +78,7 @@ helpers.getIaResponse = async function(text) {
             try {
               resposta = await agenticWorkflow.run(
                   _wsText1,
-                  { token, model: openAiModel, baseInstruction: instruction },
+                  { token, model: openAiModel, baseInstruction: instruction, imageBase64: visualCtx.imageBase64 || null },
                   state.mainWindow.webContents
               );
             } catch (err) {
@@ -88,7 +97,7 @@ helpers.getIaResponse = async function(text) {
               token,
               ht.instruction || instruction,
               ht.model || openAiModel,
-              null,
+              visualCtx.imageBase64 || null,
               ht.opts
             );
         }
@@ -96,7 +105,8 @@ helpers.getIaResponse = async function(text) {
         const projectPath = workspace.getProjectPath();
         const geminiModel = configService.getGeminiCliModel();
         GeminiCliProvider.setModel(geminiModel);
-        const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(text));
+        const textToDeliver = visualCtx.screenshotPath ? promptWithVisualContext : text;
+        const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(textToDeliver));
         clearInterval(state.waitingNotificationInterval);
         state.waitingNotificationInterval = null;
         try {
@@ -110,7 +120,8 @@ helpers.getIaResponse = async function(text) {
         const projectPath = workspace.getProjectPath();
         const claudeModel = configService.getClaudeCliModel();
         ClaudeCliProvider.setModel(claudeModel);
-        const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(text));
+        const textToDeliver = visualCtx.screenshotPath ? promptWithVisualContext : text;
+        const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(textToDeliver));
         clearInterval(state.waitingNotificationInterval);
         state.waitingNotificationInterval = null;
         try {
@@ -124,7 +135,7 @@ helpers.getIaResponse = async function(text) {
         const projectPath = workspace.getProjectPath();
         const copilotModel = configService.getCopilotCliModel();
         CopilotCliProvider.setModel(copilotModel);
-        const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(text));
+        const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(promptWithVisualContext));
         clearInterval(state.waitingNotificationInterval);
         state.waitingNotificationInterval = null;
         try {
