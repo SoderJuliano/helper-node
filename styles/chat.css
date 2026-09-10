@@ -180,9 +180,20 @@
 .ai-activity-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-3); font-family: var(--font-mono); }
 .ai-activity-ic { width: 13px; height: 13px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
 .ai-activity-ic svg { width: 13px; height: 13px; }
+.ai-activity-type-ic { width: 13px; height: 13px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
+.ai-activity-type-icon { width: 13px; height: 13px; }
+.ai-activity-type-icon.read { color: #38bdf8; }
+.ai-activity-type-icon.edit { color: #34d399; }
+.ai-activity-type-icon.cmd { color: #facc15; }
+.ai-activity-type-icon.search { color: #818cf8; }
+.ai-activity-type-icon.file { color: #94a3b8; }
 .ai-activity-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ai-activity-item.running .ai-activity-label { color: var(--text-2); }
 .ai-activity-item.done .ai-activity-label { color: var(--text-3); }
+.ai-activity-item.action-read.running .ai-activity-label { color: #bae6fd; }
+.ai-activity-item.action-edit.running .ai-activity-label { color: #a7f3d0; }
+.ai-activity-item.action-cmd.running .ai-activity-label { color: #fef08a; }
+.ai-activity-item.action-search.running .ai-activity-label { color: #c7d2fe; }
 .ai-activity-item.fail .ai-activity-label { color: var(--text-3); text-decoration: line-through; opacity: .8; }
 .ai-activity-check { color: var(--accent-2); }
 .ai-activity-fail { color: var(--danger); }

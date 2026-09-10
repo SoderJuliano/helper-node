@@ -114,6 +114,26 @@
     const ACT_CHECK = '<svg class="ai-activity-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
     const ACT_FAIL = '<svg class="ai-activity-fail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
     
+    function getActivityType(data) {
+      if (!data) return 'tool';
+      const k = String(data.kind || '').toLowerCase();
+      const n = String(data.name || '').toLowerCase();
+      const l = String(data.label || '').toLowerCase();
+      if (k === 'read' || n.includes('view') || n.includes('read') || l.startsWith('lendo') || l.startsWith('lido') || l.includes('read') || l.includes('view') || l.includes('inspecion')) return 'read';
+      if (k === 'edit' || n.includes('edit') || n.includes('write') || n.includes('patch') || l.startsWith('editando') || l.startsWith('criando') || l.startsWith('escrevendo') || l.startsWith('modificando') || l.startsWith('alterando') || l.includes('edit') || l.includes('write')) return 'edit';
+      if (k === 'command' || n.includes('command') || n.includes('terminal') || l.includes('comando') || l.includes('command') || l.includes('rodando') || l.includes('executando')) return 'cmd';
+      if (k === 'search' || n.includes('grep') || n.includes('find') || n.includes('list') || l.includes('buscando') || l.includes('localizando') || l.includes('listando') || l.includes('pesquisando')) return 'search';
+      return 'tool';
+    }
+
+    function getTypeIconSvg(type) {
+      if (type === 'read') return '<svg class="ai-activity-type-icon read" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+      if (type === 'edit') return '<svg class="ai-activity-type-icon edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/><path d="M15 5l4 4"/></svg>';
+      if (type === 'cmd') return '<svg class="ai-activity-type-icon cmd" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>';
+      if (type === 'search') return '<svg class="ai-activity-type-icon search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
+      return '<svg class="ai-activity-type-icon file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>';
+    }
+
     window.electronAPI.onAiToolActivity((data) => {
       try {
         if (!data || !data.id || !transcriptionElement) return;
@@ -130,25 +150,35 @@
         const evPhase = String(data.phase || data.state || '').toLowerCase();
         if (evPhase === 'start' || evPhase === 'running') {
           if (feed.querySelector(`[data-id="${data.id}"]`)) return;
+          const actType = getActivityType(data);
           const item = document.createElement('div');
-          item.className = 'ai-activity-item running';
+          item.className = `ai-activity-item running action-${actType}`;
           item.dataset.id = data.id;
+          item.dataset.type = actType;
           const fullLabel = data.label || data.name || 'trabalhando…';
           item.title = fullLabel;
+
           const ic = document.createElement('span');
           ic.className = 'ai-activity-ic';
           ic.innerHTML = '<span class="ai-activity-spinner"></span>';
+
+          const typeIc = document.createElement('span');
+          typeIc.className = 'ai-activity-type-ic';
+          typeIc.innerHTML = getTypeIconSvg(actType);
+
           const lbl = document.createElement('span');
           lbl.className = 'ai-activity-label';
           lbl.textContent = fullLabel;
+
           item.appendChild(ic);
+          item.appendChild(typeIc);
           item.appendChild(lbl);
           feed.appendChild(item);
         } else if (evPhase === 'end' || evPhase === 'done' || evPhase === 'error' || evPhase === 'completed' || evPhase === 'finish' || evPhase === 'finished') {
           const item = feed.querySelector(`[data-id="${data.id}"]`);
           if (item) {
             item.classList.remove('running');
-            const isError = !!(data.error || evPhase === 'error' || data.ok === false);
+            const isError = !(!data.error || evPhase === 'error' || data.ok === false);
             item.classList.remove('done', 'fail');
             item.classList.add(isError ? 'fail' : 'done');
             const ic = item.querySelector('.ai-activity-ic');

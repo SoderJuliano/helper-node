@@ -245,7 +245,7 @@ var isEditingQuestion = false;
             blocks.forEach(block => {
                 block.classList.remove('is-processing');
                 const ph = block.querySelector('.ai-phase');
-                if (ph && !ph.classList.contains('expanded')) {
+                if (ph) {
                     ph.classList.add('done');
                     const spin = ph.querySelector('.ai-phase-spin'); if (spin) spin.remove();
                     const stop = ph.querySelector('.ai-phase-stop'); if (stop) stop.remove();

@@ -101,6 +101,8 @@
 
             window.electronAPI.onIaResponse((response, usedKnowledge) => {
                 console.log('IA respondeu:', response, '| base de conhecimento:', !!usedKnowledge);
+                if (typeof window.stopProcessing === 'function') window.stopProcessing();
+
                 if (!response) {
                     document.getElementById('robot').style.display = 'none';
                     console.error('Resposta é undefined ou vazia');
@@ -178,6 +180,8 @@
 
             window.electronAPI.onOpenAIResponse((response, usedKnowledge, usage) => {
                 console.log('OpenAI respondeu:', response, '| base de conhecimento:', !!usedKnowledge, '| usage:', usage);
+                if (typeof window.stopProcessing === 'function') window.stopProcessing();
+
                 if (!response) {
                     document.getElementById('robot').style.display = 'none';
                     console.error('Resposta da OpenAI é undefined ou vazia');

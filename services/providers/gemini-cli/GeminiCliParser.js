@@ -118,10 +118,12 @@ class GeminiCliParser {
       if (m) {
         const rawTarget = (m[1] || '').trim();
         const short = rawTarget.replace(/\\/g, '/').split('/').filter(Boolean).slice(-2).join('/') || rawTarget;
-        this._emit('toolStart', { label, detail: short });
-
-        const isEdit = /edit|writing|updating|modifying|creating|new file/i.test(label) ||
+        const isEdit = /edit|writing|updating|modifying|creating|new file|escrevendo|editando|criando/i.test(label) ||
                        /edit|writing|updating|modifying|creating|new file/i.test(line);
+        const isRead = /read|view|inspect|lendo|lido|consult/i.test(label) || /read|view|inspect/i.test(line);
+        const kind = isEdit ? 'edit' : (isRead ? 'read' : 'tool');
+        this._emit('toolStart', { label, detail: short, kind, name: isEdit ? 'Edit' : (isRead ? 'Read' : 'Tool') });
+
         if (isEdit && m[1]) {
           const filePath = m[1].trim();
           const toolId = `gcli-edit-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
@@ -229,6 +231,7 @@ class GeminiCliParser {
       };
 
       const label = STEP_LABELS[stepType] || STEP_LABELS.default;
+      const kind = (stepType === 'ViewFile' ? 'read' : (stepType === 'CodeAction' ? 'edit' : (stepType === 'RunCommand' ? 'command' : (stepType === 'GrepSearch' || stepType === 'ListDir' ? 'search' : 'tool'))));
 
       if (this._lastStepNum !== undefined && this._lastStepNum !== stepNum) {
         this._closePendingStep();
@@ -236,7 +239,7 @@ class GeminiCliParser {
       this._lastStepNum = stepNum;
       this._stepCount = stepNum;
 
-      this._emit('toolStart', { id: `gcli-step-${stepNum}`, label, detail: `Passo ${stepNum}: ${label}` });
+      this._emit('toolStart', { id: `gcli-step-${stepNum}`, label, detail: `Passo ${stepNum}: ${label}`, name: stepType, kind });
       this._emit('thinking', `${label} (Passo ${stepNum})`);
 
       const estimatedTokens = stepNum * 1500;

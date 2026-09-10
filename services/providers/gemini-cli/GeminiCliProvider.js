@@ -167,6 +167,9 @@ class GeminiCliProvider {
             id,
             phase: 'start',
             label: summarizeTool(toolInfo),
+            kind: toolInfo.kind || toolInfo.name,
+            name: toolInfo.name,
+            filePath: toolInfo.filePath,
           });
         },
 
@@ -177,6 +180,9 @@ class GeminiCliProvider {
               id,
               phase: 'done',
               label: summarizeTool(toolInfo),
+              kind: toolInfo.kind || toolInfo.name,
+              name: toolInfo.name,
+              filePath: toolInfo.filePath,
             });
           }
         },

@@ -203,10 +203,11 @@
             })();
 
             // 2. Processa linhas de Ação da IA / CLI: Edit (escrita) e Read (leitura)
-            // Ex.: Edit: src/index.js, Read: src/index.js, ● Edit src/index.js, * Modificado: src/index.js, etc.
-            const EDIT_KEYWORDS = 'Edit|Editing|Edited|Wrote|Created|Modified|Updated|Modificado|Editado|Alterado|Criado|Atualizado';
-            const READ_KEYWORDS = 'Read|Reading|Viewed|Inspected|Viewing|Lendo|Lido|Visualizado|Consultado|Analisado|view_file';
-            const ACTION_RE = new RegExp(`(?:^|\\n)\\s*(?:[●✓*•-]\\s*|\\d+\\.\\s*)?(?:(${EDIT_KEYWORDS})|(${READ_KEYWORDS}))(?::|\\s+file:|\\s+)\\s*(\`?[a-zA-Z0-9_.\\/\\\\#:-]+(?:\\s*\\(lines?\\s+\\d+.*?\\))?\`?|\\[[^\\]]+\\]\\([^)]+\\))(?=[^\\w\\/\\\\.:-]|\$)`, 'gi');
+            // Ex.: Edit: src/index.js, Read: src/index.js, ● Edit src/index.js, * Modificado: src/index.js,
+            //      view_file: src/index.js, replace_file_content: src/index.js, write_to_file: src/index.js, etc.
+            const EDIT_KEYWORDS = 'Edit|Editing|Edited|Wrote|Written|Created|Modified|Updated|Modificando|Modificado|Editando|Editado|Alterando|Alterado|Criando|Criado|Atualizando|Atualizado|Escrevendo|Escrito|write_to_file|replace_file_content|multi_replace_file_content|apply_diff|patch';
+            const READ_KEYWORDS = 'Read|Reading|Viewed|Viewing|Inspected|Inspecting|Lendo|Lido|Visualizando|Visualizado|Consultando|Consultado|Analisando|Analisado|Inspecionando|Inspecionado|view_file|view_file_content|read_url_content|read_file|grep_search|find_by_name|list_dir';
+            const ACTION_RE = new RegExp(`(?:^|\\n)\\s*(?:[●✓*•-]\\s*|\\d+\\.\\s*)?(?:(${EDIT_KEYWORDS})|(${READ_KEYWORDS}))(?::|\\s+file:|\\s+arquivo:|\\s+código:|\\s+)\\s*(\`?[a-zA-Z0-9_.\\/\\\\#:-]+(?:\\s*\\(lines?\\s+\\d+.*?\\))?\`?|\\[[^\\]]+\\]\\([^)]+\\))(?=[^\\w\\/\\\\.:-]|\$)`, 'gi');
 
             out = out.replace(ACTION_RE, (match, editAct, readAct, rawTarget) => {
                 let target = rawTarget.trim().replace(/^`|`$/g, '');
@@ -218,7 +219,8 @@
                 }
                 if (isLikelyFilePath(target) || target.startsWith('file://')) {
                     if (editAct) {
-                        return hold(`<span class="chat-file-action action-edit"><span class="chat-action-badge badge-edit">Edit</span> ${buildFileLinkHtml(target, label, EDIT_FILE_ICON_SVG, 'action-link-edit')}</span>`);
+                        const badgeLabel = (/write|cri/i.test(editAct) ? 'Create' : 'Edit');
+                        return hold(`<span class="chat-file-action action-edit"><span class="chat-action-badge badge-edit">${badgeLabel}</span> ${buildFileLinkHtml(target, label, EDIT_FILE_ICON_SVG, 'action-link-edit')}</span>`);
                     } else if (readAct) {
                         return hold(`<span class="chat-file-action action-read"><span class="chat-action-badge badge-read">Read</span> ${buildFileLinkHtml(target, label, READ_FILE_ICON_SVG, 'action-link-read')}</span>`);
                     }
@@ -233,8 +235,8 @@
                     return hold(`<a href="${escapeHTML(trg)}" class="chat-link chat-web-link" target="_blank" rel="noopener noreferrer">${label}</a>`);
                 }
                 if (trg.startsWith('file://') || isLikelyFilePath(trg)) {
-                    const isReadLink = trg.includes('#L') || /lines?\s+\d+/i.test(trg) || /^(view|read|lendo|lido|consult)/i.test(label);
-                    const isEditLink = /^(edit|mod|alter|cria|atual)/i.test(label);
+                    const isReadLink = trg.includes('#L') || /lines?\s+\d+/i.test(trg) || /^(view|read|lendo|lido|consult|inspec|view_file|read_url)/i.test(label) || /view_file|read_url/i.test(trg);
+                    const isEditLink = /^(edit|mod|alter|cria|atual|escrev|write_to_file|replace_file_content|multi_replace)/i.test(label) || /write_to_file|replace_file_content|multi_replace/i.test(trg);
                     const icon = isReadLink ? READ_FILE_ICON_SVG : (isEditLink ? EDIT_FILE_ICON_SVG : null);
                     const cls = isReadLink ? 'action-link-read' : (isEditLink ? 'action-link-edit' : '');
                     return hold(buildFileLinkHtml(trg, label, icon, cls));
