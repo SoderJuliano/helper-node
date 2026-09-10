@@ -122,9 +122,10 @@ class NexaVoiceSession extends EventEmitter {
 
       fs.writeFileSync(wavPath, wavHeader);
 
-      // 2. Transcreve o áudio via Whisper
+      // 2. Transcreve o áudio via Whisper e aplica limpeza rigorosa de ruídos/alucinações
       const rawTranscript = await helpers.transcribeDictation(wavPath);
-      const cleanedText = String(rawTranscript || "").trim();
+      const { cleanTranscription } = require("../audioTranscriptionCleaner");
+      const cleanedText = cleanTranscription(rawTranscript);
 
       if (!cleanedText || cleanedText === "[BLANK_AUDIO]") {
         this._endProcessingAndResume();

@@ -10,10 +10,6 @@
     if (googleTtsContainer) {
       googleTtsContainer.style.display = isEnabled ? "block" : "none";
     }
-    const googleTtsVoiceWrapper = document.getElementById("google-tts-voice-wrapper");
-    if (googleTtsVoiceWrapper) {
-      googleTtsVoiceWrapper.style.display = isEnabled ? "block" : "none";
-    }
     const googleTtsToggleItem = document.getElementById("google-tts-toggle-item");
     if (googleTtsToggleItem) {
       googleTtsToggleItem.style.display = "none";
@@ -24,7 +20,6 @@
     const nexaToggle = document.getElementById("nexa-toggle");
     const isNexa = nexaToggle ? nexaToggle.checked : false;
     const googleTtsContainer = document.getElementById("google-tts-container");
-    const googleTtsVoiceWrapper = document.getElementById("google-tts-voice-wrapper");
     const googleTtsToggleItem = document.getElementById("google-tts-toggle-item");
 
     if (googleTtsToggleItem) {
@@ -32,9 +27,6 @@
     }
     if (googleTtsContainer) {
       googleTtsContainer.style.display = isNexa ? "block" : "none";
-    }
-    if (googleTtsVoiceWrapper) {
-      googleTtsVoiceWrapper.style.display = isNexa ? "block" : "none";
     }
   }
 

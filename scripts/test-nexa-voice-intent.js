@@ -123,4 +123,22 @@ console.log("🧪 Iniciando testes de Intent Classifier da Nexa...\n");
   console.log("✅ Caso 16: Transcrição acentuada 'Néxa' -> RESPOND_AUDIO_AND_CHAT");
 }
 
-console.log("\n🎉 Todos os 16 testes do Intent Classifier passaram com sucesso!");
+{
+  const res = NexaIntentClassifier.classify("www.mexa.com/mexa.", { followUpActive: true });
+  assert.strictEqual(res.action, "IGNORE", "URL alucinada www.mexa.com/mexa deve ser ignorada mesmo em follow-up");
+  console.log("✅ Caso 17: Alucinação 'www.mexa.com/mexa.' -> IGNORE");
+}
+
+{
+  const res = NexaIntentClassifier.classify("www.mexpress.com/mexpress", { followUpActive: true });
+  assert.strictEqual(res.action, "IGNORE", "URL alucinada www.mexpress.com/mexpress deve ser ignorada");
+  console.log("✅ Caso 18: Alucinação 'www.mexpress.com/mexpress' -> IGNORE");
+}
+
+{
+  const res = NexaIntentClassifier.classify("ok", { followUpActive: true });
+  assert.strictEqual(res.action, "IGNORE", "Interjeição curta isolada em follow-up deve ser ignorada");
+  console.log("✅ Caso 19: Interjeição curta em follow-up -> IGNORE");
+}
+
+console.log("\n🎉 Todos os 19 testes do Intent Classifier passaram com sucesso!");

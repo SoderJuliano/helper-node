@@ -47,7 +47,6 @@ const nexaToggle = document.getElementById("nexa-toggle");
 const googleTtsToggle = document.getElementById("google-tts-toggle");
 const googleTtsContainer = document.getElementById("google-tts-container");
 const googleTtsKey = document.getElementById("google-tts-key");
-const googleTtsVoiceSelect = document.getElementById("google-tts-voice-select");
 
 document.addEventListener("DOMContentLoaded", async () => {
   const [
@@ -117,9 +116,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (googleTtsKey && ttsCfg) {
     googleTtsKey.value = ttsCfg.keyPathOrKey || "";
-  }
-  if (googleTtsVoiceSelect && ttsCfg) {
-    googleTtsVoiceSelect.value = ttsCfg.voiceName || "pt-BR-Neural2-C";
   }
 
   if (realtimeAssistantToggle) {
@@ -381,7 +377,7 @@ saveButton.addEventListener("click", async () => {
   ipcRenderer.send("save-google-tts-config", {
     enabled: isNexaOn,
     keyPathOrKey: ttsKey,
-    voiceName: googleTtsVoiceSelect ? googleTtsVoiceSelect.value : "pt-BR-Neural2-C"
+    voiceName: "pt-BR-Neural2-C"
   });
 
   ipcRenderer.send("save-prompt-instruction", instructionTextarea.value);

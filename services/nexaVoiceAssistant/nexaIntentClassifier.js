@@ -22,19 +22,27 @@ function stripAccents(str) {
 }
 
 // Padrões de ativação por Wake Word e variações fonéticas geradas pelo Whisper (PT-BR)
-// Exemplos comuns: Nexa, Naxa, Nessa, Neza, Neksa, Nexus, Nexxa, Neca, Necca, Necha, Nixa, Alexa, Anexa
-const WAKE_WORD_REGEX = /\b(nexa|naxa|neza|neksa|nexus|nexxa|neca|necca|necha|nixa|alexa|anexa)\b|^(ei|oi|ola|olá|fala|opa|bom dia|boa tarde|boa noite|alo|alô)?\s*nessa\b|\bnessa\b(?=[,\s:!?]+(voce|vc|tudo|como|o que|qual|quando|onde|me|pode|faz|da|ajuda|ta|esta|estas|ai|escuta|ouve|olha|\?))/i;
-const WAKE_WORD_WORDS_PATTERN = "(nexa|naxa|nessa|neza|neksa|nexus|nexxa|neca|necca|necha|nixa|alexa|anexa)";
+// Exemplos comuns: Nexa, Naxa, Nessa, Neza, Neksa, Nexus, Nexxa, Neca, Necca, Necha, Nixa
+const WAKE_WORD_REGEX = /\b(nexa|naxa|neza|neksa|nexus|nexxa|neca|necca|necha|nixa)\b|^(?:ei|oi|ola|olá|fala|opa|bom dia|boa tarde|boa noite|alo|alô)?\s*nessa\b|\bnessa\b(?=[,\s:!?]+(voce|vc|tudo|como|o que|qual|quando|onde|me|pode|faz|da|ajuda|ta|esta|estas|ai|escuta|ouve|olha|\?))/i;
+const WAKE_WORD_WORDS_PATTERN = "(nexa|naxa|nessa|neza|neksa|nexus|nexxa|neca|necca|necha|nixa)";
+
+// Padrões de links/alucinações ou ruídos que devem ser descartados imediatamente
+const URL_OR_NOISE_PATTERNS = [
+  /^(?:(?:https?:\/\/|www\.)[^\s]+\s*)+$/i,
+  /^[a-z0-9\-._]+\.(?:com|org|net|io|tv|br|edu|gov|co|app|dev|me)(?:\/[^\s]*)?$/i,
+  /^(?:[a-z0-9\-._]+\.(?:com|org|net|br)\/[^\s]*\s*)+$/i,
+  /^(?:chiado|estalos?|fritura|borbulha|sizzl(?:ing|e)|panela)[\s.,!?:;]*$/i,
+];
 
 // Expressões de apresentação em 3ª pessoa (NÃO deve responder por áudio)
 const THIRD_PERSON_PRESENTATION_PATTERNS = [
-  /\b(essa|esta|aqui)\s+(e|eh)\s+(a\s+)?(nexa)\b/i,
-  /\b(apresento|apresentando|mostrando)\s+(a\s+)?(nexa)\b/i,
-  /\b(conhecam|vejam)\s+(a\s+)?(nexa)\b/i,
-  /\b(a\s+)?(nexa)\s+(e|eh)\s+(uma|minha|nossa)\s+(ia|assistente|ferramenta|aplicacao|software)\b/i,
-  /\b(gravei|estou gravando|gravando video|pro youtube|video)\s+.*(nexa)\b/i,
-  /\b(falei da|falei sobre a|comentando da)\s+(nexa)\b/i,
-  /\b(o nome dela|o nome do assistente)\s+(e|eh)\s+(nexa)\b/i,
+  /\b(?:essa|esta|aqui)\s+(?:e|eh)\s+(?:a\s+)?(?:nexa)\b/i,
+  /\b(?:apresento|apresentando|mostrando)\s+(?:a\s+)?(?:nexa)\b/i,
+  /\b(?:conhecam|vejam)\s+(?:a\s+)?(?:nexa)\b/i,
+  /\b(?:a\s+)?(?:nexa)\s+(?:e|eh)\s+(?:uma|minha|nossa)\s+(?:ia|assistente|ferramenta|aplicacao|software)\b/i,
+  /\b(?:gravei|estou gravando|gravando video|pro youtube|video)\s+.*(?:nexa)\b/i,
+  /\b(?:falei da|falei sobre a|comentando da|conversando com a|falando com a)\s+(?:nexa)\b/i,
+  /\b(?:o nome dela|o nome do assistente)\s+(?:e|eh)\s+(?:nexa)\b/i,
 ];
 
 // Pedidos específicos de animação/gestos (apenas animação, sem áudio longo)
@@ -103,6 +111,13 @@ class NexaIntentClassifier {
       return { action: "IGNORE", reason: "Texto vazio" };
     }
 
+    // 0. Descarta imediatamente links, URLs web ou ruídos ambientais
+    for (const pattern of URL_OR_NOISE_PATTERNS) {
+      if (pattern.test(text)) {
+        return { action: "IGNORE", reason: "URL ou ruído descartado" };
+      }
+    }
+
     const normalizedText = stripAccents(text);
     const followUpActive = !!options.followUpActive;
     const hasWakeWord = WAKE_WORD_REGEX.test(normalizedText);
@@ -110,6 +125,13 @@ class NexaIntentClassifier {
     // Se o nome Nexa não foi falado e não estamos em janela de follow-up ativa, descarta silenciosamente
     if (!hasWakeWord && !followUpActive) {
       return { action: "IGNORE", reason: "Wake word ausente e sem follow-up ativo" };
+    }
+
+    // Se está em follow-up sem wake word, descarta ruídos curtos ou frases sem substância
+    if (!hasWakeWord && followUpActive) {
+      if (text.length < 5 || /^(?:ok|hmm|ah|eh|opa|hum|sim|nao|não)[\s.,!?]*$/i.test(text)) {
+        return { action: "IGNORE", reason: "Fala em follow-up muito curta ou interjeição isolada" };
+      }
     }
 
     // 1. Checagem de apresentação em 3ª pessoa (ex: "Essa aqui é a Nexa, minha assistente")
@@ -156,8 +178,8 @@ class NexaIntentClassifier {
     let cleanedQuery = text;
     if (hasWakeWord) {
       cleanedQuery = text
-        .replace(/^(ei|oi|olá|ola|e\s+aí|e\s+ai|opa|fala|alô|alo)?\s*(nexa|néxa|nèxa|nexá|naxa|nessa|neza|neksa|nexus|nexxa|neca|necca|necha|nixa|alexa|anexa)[,\s:!]*/i, "")
-        .replace(/[,\s]*(nexa|néxa|nèxa|nexá|naxa|nessa|neza|neksa|nexus|nexxa|neca|necca|necha|nixa|alexa|anexa)[,\s:!?.]*$/i, "")
+        .replace(/^(?:ei|oi|olá|ola|e\s+aí|e\s+ai|opa|fala|alô|alo)?\s*(?:nexa|néxa|nèxa|nexá|naxa|nessa|neza|neksa|nexus|nexxa|neca|necca|necha|nixa)[,\s:!]*/i, "")
+        .replace(/[,\s]*(?:nexa|néxa|nèxa|nexá|naxa|nessa|neza|neksa|nexus|nexxa|neca|necca|necha|nixa)[,\s:!?.]*$/i, "")
         .trim();
     }
 

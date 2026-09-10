@@ -110,7 +110,7 @@ const ALL_CATALOG_TERMS = Object.values(CATALOG).flat();
 // Teto seguro de caracteres para o prompt do Whisper (~160-200 chars).
 // Whisper opera melhor com dicas de estilo concisas em linguagem natural
 // do que com despejo de dezenas de palavras soltas.
-const MAX_PROMPT_CHARS = 220;
+const MAX_PROMPT_CHARS = 180;
 
 // Normaliza pra comparação: minúsculas, sem acento, sem pontuação.
 function norm(s) {
@@ -168,7 +168,7 @@ function buildTranscriptionPrompt({ background = '', context = '' } = {}) {
   const key = `${background}||${context}`;
   if (key === _cacheKey) return _cacheValue;
 
-  const prefix = 'Nexa, assistente virtual. Vocabulário: ';
+  const prefix = 'Vocabulário técnico: ';
   const budget = MAX_PROMPT_CHARS - prefix.length - 2;
 
   // Seleciona termos relevantes ao contexto/background

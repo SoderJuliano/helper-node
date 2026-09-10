@@ -21,9 +21,9 @@ const BYTES_PER_MS = (SAMPLE_RATE * BYTES_PER_SAMPLE) / 1000; // 32 bytes/ms
 class NexaTurnDetector extends EventEmitter {
   constructor(options = {}) {
     super();
-    this.speechThresholdRms = options.speechThresholdRms || 180; // Limiar de RMS para considerar fala humana
+    this.speechThresholdRms = options.speechThresholdRms || 220; // Limiar de RMS calibrado para evitar falsos positivos de fritura/ruído
     this.silenceThresholdMs = options.silenceThresholdMs || 950;  // Duração de silêncio contínuo para fechar o turno
-    this.minSpeechMs = options.minSpeechMs || 380;               // Duração mínima de fala para considerar válida
+    this.minSpeechMs = options.minSpeechMs || 420;               // Duração mínima de fala real para considerar válida
     this.maxTurnDurationMs = options.maxTurnDurationMs || 30000; // Limite máximo de segurança para um turno (30s)
     this.preRollMs = options.preRollMs || 320;                   // Buffer circular de pre-roll (320ms)
 
