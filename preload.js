@@ -181,6 +181,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   cancelRecording: () => ipcRenderer.send("cancel-recording"),
   // Fallback pra Wayland onde global shortcuts falham: renderer aciona gravação.
   triggerToggleRecording: () => ipcRenderer.send("renderer-toggle-recording"),
+  toggleRecordingShortcut: () => ipcRenderer.send("renderer-toggle-recording"),
   resizeOverlay: (height) => ipcRenderer.send("resize-overlay", height),
   copyToClipboard: (text) => ipcRenderer.send("copy-to-clipboard", text),
   readClipboardText: () => ipcRenderer.invoke("read-clipboard-text"),

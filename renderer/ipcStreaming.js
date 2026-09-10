@@ -169,6 +169,8 @@ function autoScrollSeNoFim(el) {
                 if (window.iaCancelled) return;
 
                 const transcriptionElement = document.getElementById('transcription');
+                const welcomeHero = document.getElementById('welcome-hero');
+                if (welcomeHero) welcomeHero.classList.add('hidden');
 
                 // Cria o elemento de streaming na primeira chunk
                 if (!streamingElement) {

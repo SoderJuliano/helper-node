@@ -138,14 +138,38 @@ helpers.getAudioSources = async function() {
   return sources;
 }
 
-helpers.toggleRealtimeAssistantRecording = async function() {
-  if (helpers.anyRealtimeActive()) {
-    await helpers.stopAllRealtime();
-    state.isRecording = false;
+helpers.startRealtimeAssistant = async function() {
+  if (helpers.anyRealtimeActive()) return true;
+
+  const service = helpers.pickRealtimeService();
+  const isOnline = service === realtimeOpenAiService;
+
+  if (isOnline && !configService.getOpenIaToken()) {
+    if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+      state.mainWindow.webContents.send("transcription-error", "Token da OpenAI não configurado.");
+    }
+    if (appConfig.notificationsEnabled && Notification.isSupported()) {
+      new Notification({
+        title: "Erro de Configuração",
+        body: "Configure o token da OpenAI para usar o assistente em tempo real.",
+        silent: true,
+      }).show();
+    }
+    return false;
+  }
+
+  if (isOnline && translationAssistant.isActive()) {
+    await translationAssistant.stop().catch(() => {});
+  }
+
+  try {
+    await service.start();
+    state.isRecording = true;
 
     if (configService.getOsIntegrationStatus()) {
+      helpers.createRealtimeAssistantOverlay();
       helpers.sendToRealtimeAssistantOverlay("toggle-recording", {
-        isRecording: false,
+        isRecording: true,
         isRealtimeAssistant: true,
         audioFilePath,
       });
@@ -162,41 +186,29 @@ helpers.toggleRealtimeAssistantRecording = async function() {
     if (appConfig.notificationsEnabled && Notification.isSupported()) {
       new Notification({
         title: "Helper-Node",
-        body: "Assistente em tempo real desativado.",
+        body: "Assistente em tempo real ativado. Transcrição ao vivo.",
         silent: true,
       }).show();
     }
-    return;
+    return true;
+  } catch (err) {
+    console.error('[realtimeAssistant] Erro ao iniciar captura:', err.message);
+    state.isRecording = false;
+    return false;
   }
+};
 
-  const service = helpers.pickRealtimeService();
-  const isOnline = service === realtimeOpenAiService;
+helpers.pauseRealtimeAssistant = async function() {
+  const tasks = [];
+  if (realtimeOpenAiService.isActive()) tasks.push(realtimeOpenAiService.stop().catch(() => {}));
+  if (realtimeAssistantService.isActive()) tasks.push(realtimeAssistantService.stop().catch(() => {}));
+  await Promise.all(tasks);
 
-  if (isOnline && !configService.getOpenIaToken()) {
-    if (state.mainWindow && !state.mainWindow.isDestroyed()) {
-      state.mainWindow.webContents.send("transcription-error", "Token da OpenAI não configurado.");
-    }
-    if (appConfig.notificationsEnabled && Notification.isSupported()) {
-      new Notification({
-        title: "Erro de Configuração",
-        body: "Configure o token da OpenAI para usar o assistente em tempo real.",
-        silent: true,
-      }).show();
-    }
-    return;
-  }
-
-  if (isOnline && translationAssistant.isActive()) {
-    await translationAssistant.stop().catch(() => {});
-  }
-
-  await service.start();
-  state.isRecording = true;
+  state.isRecording = false;
 
   if (configService.getOsIntegrationStatus()) {
-    helpers.createRealtimeAssistantOverlay();
     helpers.sendToRealtimeAssistantOverlay("toggle-recording", {
-      isRecording: true,
+      isRecording: false,
       isRealtimeAssistant: true,
       audioFilePath,
     });
@@ -213,11 +225,19 @@ helpers.toggleRealtimeAssistantRecording = async function() {
   if (appConfig.notificationsEnabled && Notification.isSupported()) {
     new Notification({
       title: "Helper-Node",
-      body: "Assistente em tempo real ativado. Transcrição ao vivo.",
+      body: "Assistente em tempo real pausado.",
       silent: true,
     }).show();
   }
-}
+};
+
+helpers.toggleRealtimeAssistantRecording = async function() {
+  if (helpers.anyRealtimeActive()) {
+    await helpers.pauseRealtimeAssistant();
+  } else {
+    await helpers.startRealtimeAssistant();
+  }
+};
 
 helpers.getEffectiveAiModel = function() {
   return edition.isLite() ? 'openIa' : configService.getAiModel();

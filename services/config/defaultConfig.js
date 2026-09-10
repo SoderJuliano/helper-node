@@ -53,14 +53,14 @@ const defaultConfig = {
     useKnowledgeBase: true,
   },
   googleTts: {
-    enabled: false,
+    enabled: true,
     keyPathOrKey: fs.existsSync("C:\\Users\\soder\\Documents\\sectrets\\gen-lang-client-0083021392-f898f4b44b05.json")
       ? "C:\\Users\\soder\\Documents\\sectrets\\gen-lang-client-0083021392-f898f4b44b05.json"
       : "",
     voiceName: "pt-BR-Neural2-C",
   },
   nexa: {
-    enabled: false,
+    enabled: true,
     onlyNexa: false,
   },
 };

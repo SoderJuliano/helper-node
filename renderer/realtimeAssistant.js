@@ -5,85 +5,11 @@ var rtSegments = {};
     const transcriptionElement = document.getElementById('transcription');
     let isListeningState = true;
 
-    function ensureStatusBanner() {
-        if (typeof getOrCreateRealtimeFeed !== 'function') return null;
-        const feed = getOrCreateRealtimeFeed();
-        if (!feed) return null;
-        let banner = document.getElementById('rt-status-banner');
-        if (!banner) {
-            banner = document.createElement('div');
-            banner.id = 'rt-status-banner';
-            banner.className = 'rt-status-banner state-listening';
-            banner.innerHTML = `
-                <div class="rt-status-banner-left">
-                    <span id="rt-status-badge" class="rt-status-banner-badge">OUVINDO (AO VIVO)</span>
-                    <span id="rt-status-subtext" class="rt-status-banner-subtext">[Ctrl+D para pausar]</span>
-                </div>
-                <button id="rt-status-toggle-btn" class="rt-status-banner-btn" type="button" title="Pausar / Continuar (Ctrl+D)">Pausar</button>
-            `;
-            feed.insertBefore(banner, feed.firstChild);
-
-            const toggleBtn = banner.querySelector('#rt-status-toggle-btn');
-            if (toggleBtn) {
-                toggleBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    isListeningState = !isListeningState;
-                    updateRealtimeStatus(isListeningState ? 'listening' : 'paused');
-                    if (window.electronAPI && window.electronAPI.toggleRecordingShortcut) {
-                        window.electronAPI.toggleRecordingShortcut();
-                    }
-                });
-            }
-        }
-        return banner;
-    }
-
     function updateRealtimeStatus(status, customMsg) {
-        const banner = ensureStatusBanner();
-        if (!banner) return;
-
-        const badge = banner.querySelector('#rt-status-badge');
-        const subtext = banner.querySelector('#rt-status-subtext');
-        const btn = banner.querySelector('#rt-status-toggle-btn');
-
-        const map = {
-            listening: {
-                cls: 'state-listening',
-                badge: 'OUVINDO (AO VIVO)',
-                subtext: '[Ctrl+D para pausar]',
-                btn: 'Pausar'
-            },
-            paused: {
-                cls: 'state-paused',
-                badge: 'PAUSADO',
-                subtext: '[Ctrl+D para ouvir]',
-                btn: 'Ouvir'
-            },
-            thinking: {
-                cls: 'state-thinking',
-                badge: 'PROCESSANDO IA',
-                subtext: customMsg || 'Processando resposta...',
-                btn: 'Pausar'
-            },
-            speaking: {
-                cls: 'state-speaking',
-                badge: 'TRANSCREVENDO',
-                subtext: customMsg || 'Detectando fala...',
-                btn: 'Pausar'
-            },
-            error: {
-                cls: 'state-paused',
-                badge: 'ERRO',
-                subtext: customMsg || 'Erro no assistente',
-                btn: 'Ouvir'
-            }
-        };
-
-        const s = map[status] || map.listening;
-        banner.className = `rt-status-banner ${s.cls}`;
-        if (badge) badge.textContent = s.badge;
-        if (subtext) subtext.textContent = s.subtext;
-        if (btn) btn.textContent = s.btn;
+        const existing = document.getElementById('rt-status-banner');
+        if (existing && existing.parentNode) {
+            existing.parentNode.removeChild(existing);
+        }
     }
 
     // ===== Realtime segment-based bubble manager =====
@@ -96,7 +22,6 @@ var rtSegments = {};
     }
 
     function ensureSegmentBubbles(segmentId, iteration) {
-        ensureStatusBanner();
         if (rtSegments.has(segmentId)) return rtSegments.get(segmentId);
 
         const feed = getOrCreateRealtimeFeed();

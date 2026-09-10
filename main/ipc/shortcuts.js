@@ -265,6 +265,9 @@ ipcMain.on("save-os-integration-status", (event, status) => {
       helpers.sendToTranslationOverlay('translation-status', 'mic_open');
     } else if (helpers.anyRealtimeActive() || configService.getRealtimeAssistantStatus()) {
       helpers.createRealtimeAssistantOverlay();
+      if (!helpers.anyRealtimeActive()) {
+        helpers.startRealtimeAssistant().catch((e) => console.error('[RealtimeAssistant] auto-start falhou:', e.message));
+      }
     } else if (visionGuide.isActive() || configService.getVisionGuideConfig().enabled) {
       helpers.createVisionGuideOverlay();
     }
@@ -290,6 +293,12 @@ ipcMain.on("save-realtime-assistant-status", async (event, status) => {
 
   if (status) {
     try { require("../nexa/index.js").closeNexaWindow(); configService.setNexaConfig({ enabled: false, onlyNexa: false }); } catch (_) {}
+    if (configService.getOsIntegrationStatus()) {
+      helpers.createRealtimeAssistantOverlay();
+    }
+    if (!helpers.anyRealtimeActive()) {
+      await helpers.startRealtimeAssistant();
+    }
   } else {
     helpers.destroyRealtimeAssistantOverlay();
     await helpers.stopAllRealtime();

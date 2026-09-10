@@ -308,6 +308,11 @@ app.whenReady().then(async () => {
       if (initialTaCfg && initialTaCfg.enabled) {
         helpers.createTranslationOverlay();
         helpers.sendToTranslationOverlay('translation-status', 'mic_open');
+      } else if (configService.getRealtimeAssistantStatus()) {
+        helpers.createRealtimeAssistantOverlay();
+        if (!helpers.anyRealtimeActive()) {
+          helpers.startRealtimeAssistant().catch(e => console.error('[realtime-assistant] auto-start boot falhou:', e.message));
+        }
       }
     }, 1000);
     
@@ -319,6 +324,10 @@ app.whenReady().then(async () => {
     }
     // Start capture tool monitoring for OS integration
     helpers.startCaptureToolMonitoring();
+  } else if (configService.getRealtimeAssistantStatus() && !helpers.anyRealtimeActive()) {
+    setTimeout(() => {
+      helpers.startRealtimeAssistant().catch(e => console.error('[realtime-assistant] auto-start boot falhou:', e.message));
+    }, 1500);
   }
 
   // Retoma o Tutor (Vision Guide) se ele estava ligado quando o app fechou. Sem

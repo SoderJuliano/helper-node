@@ -103,6 +103,9 @@
                 console.log('IA respondeu:', response, '| base de conhecimento:', !!usedKnowledge);
                 if (typeof window.stopProcessing === 'function') window.stopProcessing();
 
+                const welcomeHero = document.getElementById('welcome-hero');
+                if (welcomeHero) welcomeHero.classList.add('hidden');
+
                 if (!response) {
                     document.getElementById('robot').style.display = 'none';
                     console.error('Resposta é undefined ou vazia');
@@ -165,6 +168,7 @@
                     lastTtsAudio = audioBase64;
                     lastTtsTime = now;
 
+                    // Se a janela da Nexa estiver aberta e configurada, o áudio é tocado por ela
                     try {
                         if (window.electronAPI.getNexaConfig) {
                             const nexaCfg = await window.electronAPI.getNexaConfig();
@@ -221,6 +225,9 @@
             window.electronAPI.onOpenAIResponse((response, usedKnowledge, usage) => {
                 console.log('OpenAI respondeu:', response, '| base de conhecimento:', !!usedKnowledge, '| usage:', usage);
                 if (typeof window.stopProcessing === 'function') window.stopProcessing();
+
+                const welcomeHero = document.getElementById('welcome-hero');
+                if (welcomeHero) welcomeHero.classList.add('hidden');
 
                 if (!response) {
                     document.getElementById('robot').style.display = 'none';

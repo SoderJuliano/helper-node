@@ -7,14 +7,16 @@
                 const robot = document.getElementById('robot');
                 const animationContainer = document.getElementById('animation-container');
                 const transcriptionElement = document.getElementById('transcription');
+                const welcomeHero = document.getElementById('welcome-hero');
 
-                // Esconde outros elementos de carregamento
-                animationContainer.style.display = 'none';
+                // Esconde outros elementos de carregamento e garante que o hero suma imediatamente
+                if (animationContainer) animationContainer.style.display = 'none';
+                if (welcomeHero) welcomeHero.classList.add('hidden');
                 
                 // Se houve erro no OCR, exibir mensagem de erro
                 if (error) {
                     console.warn('OCR Error:', error);
-                    robot.style.display = 'none';
+                    if (robot) robot.style.display = 'none';
                     
                     if (manualInputActive) {
                         // Se estamos em input manual, apenas logar o erro
@@ -26,8 +28,12 @@
                     const errorMsg = document.createElement('p');
                     errorMsg.style.color = '#ff6b6b';
                     errorMsg.textContent = `Erro no OCR: ${error}`;
-                    transcriptionElement.appendChild(errorMsg);
-                    scrollTranscriptionToBottom();
+                    if (transcriptionElement) {
+                        transcriptionElement.appendChild(errorMsg);
+                        if (typeof window.scrollTranscriptionToBottom === 'function') {
+                            window.scrollTranscriptionToBottom();
+                        }
+                    }
                     return;
                 }
 
@@ -36,16 +42,16 @@
                     // Captura (Ctrl+Shift+S) traz o base64 aqui; paste já setou antes.
                     // Só sobrescreve quando vier base64 real (não apaga o do paste).
                     window.pendingChatImage = base64Image;
-                    preview.src = base64Image;
+                    if (preview) preview.src = base64Image;
                 } else if (screenshotPath) {
-                    preview.src = `file://${screenshotPath}`;
+                    if (preview) preview.src = `file://${screenshotPath}`;
                 }
-                preview.style.display = 'block';
+                if (preview) preview.style.display = 'block';
 
                 // Se input manual está ativo, não envia nada ainda; apenas guarda e mostra
                 if (manualInputActive) {
                     pastedImageForManualInput = base64Image || (`file://${screenshotPath}`);
-                    robot.style.display = 'none';
+                    if (robot) robot.style.display = 'none';
                     // Insere o texto OCR no início do input (terminal contenteditable)
                     const tInput = document.querySelector('.manual-input-container .terminal-input');
                     if (tInput && text) {
@@ -56,35 +62,63 @@
                     return;
                 }
 
-                robot.style.display = 'block';
+                if (robot) robot.style.display = 'block';
                 // Alinhar à esquerda para transcrições de imagem
-                transcriptionElement.classList.add('ocr-left');
+                if (transcriptionElement) transcriptionElement.classList.add('ocr-left');
 
                 // --- START MODIFICATION ---
                 // If there's an existing question (from paste event "Image in context"), append to it
                 if (currentQuestionElement && currentQuestionElement.textContent.includes("Image in context")) {
-                    let combinedText = getQuestionText(currentQuestionElement);
+                    let combinedText = typeof window.getQuestionText === 'function'
+                        ? window.getQuestionText(currentQuestionElement)
+                        : (currentQuestionElement.textContent || '');
                     // Add the OCR text, potentially on a new line for clarity
-                    combinedText += `\n${text}`; 
+                    if (text && text.trim()) combinedText += `\n${text.trim()}`; 
                     
-                    currentQuestionElement.textContent = combinedText; // Update the question span
-                    const editIcon = document.createElement('span'); // Re-add edit icon
-                    editIcon.className = 'edit-icon';
-                    editIcon.innerHTML = EDIT_ICON_SVG;
+                    if (typeof window.setQuestionText === 'function') {
+                        window.setQuestionText(currentQuestionElement, combinedText);
+                    } else {
+                        currentQuestionElement.textContent = combinedText;
+                    }
+
+                    if (typeof window.startProcessing === 'function') {
+                        window.startProcessing();
+                    }
 
                     // Se há imagem colada e o backend tem visão, manda a IMAGEM
                     // (não o OCR). É o que faz a captura realmente chegar no modelo.
-                    if (window.pendingChatImage && await backendSupportsVision()) {
-                        sentImageToAI('', window.pendingChatImage);
+                    if (window.pendingChatImage && typeof window.backendSupportsVision === 'function' && await window.backendSupportsVision()) {
+                        if (typeof window.sentImageToAI === 'function') {
+                            window.sentImageToAI(text || '', window.pendingChatImage);
+                        }
                         window.pendingChatImage = null;
                     } else {
-                        sentToAI(text || 'Processo texto da imagem');
+                        if (typeof window.sentToAI === 'function') {
+                            window.sentToAI(text || 'Processo texto da imagem');
+                        }
                     }
 
                     setTimeout(() => {
-                        preview.style.display = 'none';
+                        if (preview) preview.style.display = 'none';
                     }, 8000);
 
+                    return;
+                }
+
+                // Captura via Ctrl+Shift+S ou paste em modo normal: envia a imagem para o backend
+                if (window.pendingChatImage) {
+                    const questionTitle = (text && text.trim()) ? text.trim() : '📸 Captura de tela';
+                    if (typeof window.appendQuestionEntry === 'function') {
+                        window.appendQuestionEntry(questionTitle);
+                    }
+                    if (typeof window.startProcessing === 'function') {
+                        window.startProcessing();
+                    }
+                    if (typeof window.sentImageToAI === 'function') {
+                        window.sentImageToAI(text || '', window.pendingChatImage);
+                    }
+                    window.pendingChatImage = null;
+                    setTimeout(() => { if (preview) preview.style.display = 'none'; }, 8000);
                     return;
                 }
 
@@ -111,27 +145,31 @@
                     ocrContainer.textContent = text || 'Nenhum texto encontrado na imagem';
                 }
 
-                // Captura via Ctrl+Shift+S ou paste em modo normal: envia a imagem para o backend
-                if (window.pendingChatImage) {
-                    sentImageToAI(text || '', window.pendingChatImage);
-                    window.pendingChatImage = null;
-                    setTimeout(() => { preview.style.display = 'none'; }, 8000);
-                    return;
+                if (transcriptionElement) {
+                    transcriptionElement.appendChild(ocrContainer);
+                    if (typeof window.scrollTranscriptionToBottom === 'function') {
+                        window.scrollTranscriptionToBottom();
+                    }
                 }
-
-                transcriptionElement.appendChild(ocrContainer);
-                scrollTranscriptionToBottom();
 
                 // Só envia para IA se encontrou texto
                 if (text && text.trim().length > 0) {
-                    sentToAI(text);
+                    if (typeof window.appendQuestionEntry === 'function') {
+                        window.appendQuestionEntry(text.trim());
+                    }
+                    if (typeof window.startProcessing === 'function') {
+                        window.startProcessing();
+                    }
+                    if (typeof window.sentToAI === 'function') {
+                        window.sentToAI(text);
+                    }
                 } else {
-                    robot.style.display = 'none';
+                    if (robot) robot.style.display = 'none';
                     console.log('Nenhum texto encontrado, não enviando para IA');
                 }
 
                 setTimeout(() => {
-                    preview.style.display = 'none';
+                    if (preview) preview.style.display = 'none';
                 }, 8000);
             });
 })();

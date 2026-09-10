@@ -266,6 +266,14 @@ helpers.createRealtimeAssistantOverlay = function() {
     if (process.platform !== 'linux') {
       try { state.realtimeOverlayWindow.setIgnoreMouseEvents(true, { forward: true }); } catch (_) {}
     }
+    try {
+      const isActive = typeof helpers.anyRealtimeActive === 'function' ? helpers.anyRealtimeActive() : false;
+      helpers.sendToRealtimeAssistantOverlay("toggle-recording", {
+        isRecording: isActive,
+        isRealtimeAssistant: true,
+        audioFilePath,
+      });
+    } catch (_) {}
   });
 
   const keepOnTop = setInterval(() => {

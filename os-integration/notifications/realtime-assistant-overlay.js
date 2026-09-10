@@ -239,7 +239,11 @@
     // Feedback visual imediato antes da confirmação IPC
     isListening = !isListening;
     updateStatus(isListening ? 'listening' : 'paused');
-    window.electronAPI?.toggleRecordingShortcut?.();
+    if (api.triggerToggleRecording) {
+      api.triggerToggleRecording();
+    } else if (api.toggleRecordingShortcut) {
+      api.toggleRecordingShortcut();
+    }
   });
 
   document.addEventListener('dragstart', (e) => e.preventDefault());

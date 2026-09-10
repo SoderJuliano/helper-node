@@ -355,6 +355,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     const deltaTime = Math.min(0.1, (currentTime - lastTime) / 1000.0);
     lastTime = currentTime;
 
+    const currentState = animController ? animController.getCurrentState() : "IDLE";
+
     // Se o estado mudar de IDLE, gerencia acordar da soneca se estiver dormindo
     if (currentState !== "IDLE") {
       if (isSleeping) {
