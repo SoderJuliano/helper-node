@@ -152,6 +152,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
   googleTtsListVoices: (keyPathOrKey) => ipcRenderer.invoke("google-tts-list-voices", keyPathOrKey),
   onPlayTtsAudio: (cb) => ipcRenderer.on("play-tts-audio", (event, data) => cb(data)),
   triggerTtsPlayback: (text) => ipcRenderer.send("trigger-tts-stream-playback", text),
+
+  // === Modo de Voz Contínuo Nexa ===
+  nexaVoiceToggle: (forcedState) => ipcRenderer.invoke("nexa-voice:toggle", forcedState),
+  nexaVoiceGetStatus: () => ipcRenderer.invoke("nexa-voice:get-status"),
+  onNexaVoiceStatusChanged: (cb) => ipcRenderer.on("nexa-voice:status-changed", (event, data) => cb(data)),
+  onNexaVoiceStateChanged: (cb) => ipcRenderer.on("nexa-voice:state-changed", (event, data) => cb(data)),
+  onNexaVoiceSpeechPreview: (cb) => ipcRenderer.on("nexa-voice:speech-preview", (event, data) => cb(data)),
   processPastedImage: (base64Image) =>
     ipcRenderer.send("process-pasted-image", base64Image),
   // Modo IDE: imagem colada vira ANEXO (caminho), não texto no input.
