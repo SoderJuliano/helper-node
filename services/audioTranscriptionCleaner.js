@@ -72,6 +72,55 @@ function isGlossaryOrPromptEcho(text, glossaryPrompt = '') {
 }
 
 /**
+ * Normaliza distorções fonéticas comuns geradas pelo Whisper ou STT
+ * ao transcrever jargão e termos de desenvolvimento falados em PT-BR.
+ *
+ * Exemplos:
+ *  - "Geet", "guite" -> "Git"
+ *  - "comit" -> "commit"
+ *  - "nessa brente", "a brent", "na brenti" -> "nessa branch", "a branch", "na branch"
+ *  - "no isper", "o isper" -> "no Whisper", "o Whisper"
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+function normalizeDevPhonetics(text) {
+  if (!text || typeof text !== 'string') return '';
+
+  let res = text;
+
+  // 1. Variações fonéticas de Nexa ("né xa", "né, xa", "nèxa", "néxa")
+  res = res.replace(/\b(?:n[eé],\s*xa|n[eé]\s+xa)\b/gi, 'Nexa');
+  res = res.replace(/\b(?:n[eè]xa|n[eé]xa)\b/gi, 'Nexa');
+
+  // 2. Variações fonéticas de Git ("Geet", "guite")
+  res = res.replace(/\b(?:geet|guite)\b/gi, 'Git');
+
+  // 3. Variações fonéticas de Commit ("comit" com 1 m isolado)
+  res = res.replace(/\bcomit\b/gi, 'commit');
+  res = res.replace(/\bcomitando\b/gi, 'commitando');
+
+  // 4. Variações fonéticas de Branch ("brente", "brenti", "brench", "brent", "brain" em contexto git)
+  // Exemplos: "comita nessa brente", "muda pra brente", "a brent", "nessa brain", "comita nessa brain"
+  res = res.replace(/\b(comita|comitar|comite|commit|checkout|switch|merge|cria|criar|muda|mudar|entra|entrar|vai pra|vai para|nessa|nesta|na|da|a|uma|nova|sua)\s+(?:a\s+)?(?:brent[ei]?|brain)\b/gi, '$1 branch');
+  res = res.replace(/\b(brent[ei]?|brain)\s+(main|master|develop|feature|bugfix|release|hotfix)\b/gi, 'branch $2');
+  res = res.replace(/\b(traduzindo para a|mudando para a|criando a)\s+(?:brent|brain)\b/gi, '$1 branch');
+  res = res.replace(/\bbrench\b/gi, 'branch');
+
+  // 5. Variações fonéticas de Whisper ("isper", "uísper", "expert" em contexto de transcrição/áudio)
+  res = res.replace(/\b(no|do|o|pro|para o|pelo)\s+isper\b/gi, '$1 Whisper');
+  res = res.replace(/\b(?:u[íi]sper|isper)\b/gi, 'Whisper');
+  res = res.replace(/\b(no|do|o|pro|para o|pelo)\s+expert(?=\s+(?:para|entender|transcrever|capturar|reconhecer|ouvir|gravar|traduzir|processar))\b/gi, '$1 Whisper');
+  res = res.replace(/\bexpert\s+(?:n[ãa]o\s+est[áa]\s+conseguindo\s+entender)\b/gi, 'Whisper não está conseguindo entender');
+
+  // 6. Pull request / Code review
+  res = res.replace(/\bpuli\s+request\b/gi, 'pull request');
+  res = res.replace(/\bcode\s+revi[eê]u\b/gi, 'code review');
+
+  return res;
+}
+
+/**
  * Limpa e valida o texto transcrito.
  * Retorna o texto higienizado, ou '' se for ruído, silêncio ou alucinação.
  *
@@ -104,11 +153,15 @@ function cleanTranscription(rawText, glossaryPrompt = '') {
     return '';
   }
 
+  // Normaliza distorções fonéticas de termos técnicos em PT-BR
+  clean = normalizeDevPhonetics(clean);
+
   return clean;
 }
 
 module.exports = {
   cleanTranscription,
+  normalizeDevPhonetics,
   isGlossaryOrPromptEcho,
   HALLUCINATION_PATTERNS,
 };

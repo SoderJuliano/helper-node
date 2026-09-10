@@ -24,10 +24,11 @@
 // quando ditos com sotaque brasileiro no meio de uma frase em português.
 // ---------------------------------------------------------------------------
 const CORE = [
+  'Nexa', 'Git', 'GitHub', 'commit', 'branch', 'push', 'pull request', 'merge', 'rebase', 'Whisper',
   'SOLID', 'Clean Architecture', 'design patterns', 'code review',
   'Java', 'Spring Boot', 'JavaScript', 'TypeScript', 'Node.js', 'React', 'Python',
   'REST', 'API', 'microserviços', 'Kafka', 'Docker', 'Kubernetes', 'AWS',
-  'SQL', 'PostgreSQL', 'Git', 'GitHub', 'CI/CD', 'deploy', 'backend', 'frontend',
+  'SQL', 'PostgreSQL', 'CI/CD', 'deploy', 'backend', 'frontend',
   'idempotência', 'escalabilidade', 'observabilidade', 'latência', 'throughput',
 ];
 
@@ -109,7 +110,7 @@ const ALL_CATALOG_TERMS = Object.values(CATALOG).flat();
 // Teto seguro de caracteres para o prompt do Whisper (~160-200 chars).
 // Whisper opera melhor com dicas de estilo concisas em linguagem natural
 // do que com despejo de dezenas de palavras soltas.
-const MAX_PROMPT_CHARS = 180;
+const MAX_PROMPT_CHARS = 220;
 
 // Normaliza pra comparação: minúsculas, sem acento, sem pontuação.
 function norm(s) {
@@ -167,14 +168,14 @@ function buildTranscriptionPrompt({ background = '', context = '' } = {}) {
   const key = `${background}||${context}`;
   if (key === _cacheKey) return _cacheValue;
 
-  const prefix = 'Vocabulário técnico: ';
+  const prefix = 'Nexa, assistente virtual. Vocabulário: ';
   const budget = MAX_PROMPT_CHARS - prefix.length - 2;
 
   // Seleciona termos relevantes ao contexto/background
   const relevant = pickRelevantTerms(`${background} ${context}`, budget);
 
   // Termos essenciais padrão para preencher o budget se o contexto for vazio/curto
-  const defaultCore = ['Java', 'Spring Boot', 'SQL', 'Docker', 'Kubernetes', 'Kafka', 'AWS', 'REST', 'TypeScript', 'Node.js', 'SOLID'];
+  const defaultCore = ['Nexa', 'Git', 'GitHub', 'commit', 'branch', 'pull request', 'merge', 'Whisper', 'Java', 'Spring Boot', 'SQL', 'Docker', 'Kubernetes', 'Kafka', 'AWS', 'REST', 'TypeScript', 'Node.js', 'SOLID'];
   const terms = [...relevant];
   let used = terms.reduce((acc, t) => acc + t.length + 2, 0);
 

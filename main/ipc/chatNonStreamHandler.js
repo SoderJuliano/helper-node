@@ -31,7 +31,10 @@ async function handleSendToGemini(event, text, sessionId) {
       GeminiCliProvider.setModel(geminiModel);
       const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(text));
       try {
-        await GeminiCliProvider.send(finalPrompt, projectPath, event.sender, sessionId, pastMessages);
+        const result = await GeminiCliProvider.send(finalPrompt, projectPath, event.sender, sessionId, pastMessages);
+        if (result && result.text) {
+          helpers.triggerTtsPlaybackIfEnabled(result.text);
+        }
       } catch (gcliErr) {
         console.error('[gemini-cli] send error:', gcliErr.message);
         try { event.sender.send('gemini-stream-complete'); } catch (_) {}
@@ -45,7 +48,10 @@ async function handleSendToGemini(event, text, sessionId) {
       ClaudeCliProvider.setModel(claudeModel);
       const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(text));
       try {
-        await ClaudeCliProvider.send(finalPrompt, projectPath, event.sender, sessionId, pastMessages);
+        const result = await ClaudeCliProvider.send(finalPrompt, projectPath, event.sender, sessionId, pastMessages);
+        if (result && result.text) {
+          helpers.triggerTtsPlaybackIfEnabled(result.text);
+        }
       } catch (ccliErr) {
         console.error('[claude-cli] send error:', ccliErr.message);
         try { event.sender.send('gemini-stream-complete'); } catch (_) {}
@@ -59,9 +65,12 @@ async function handleSendToGemini(event, text, sessionId) {
       CopilotCliProvider.setModel(copilotModel);
       const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(promptWithHistory));
       try {
-        await CopilotCliProvider.send(finalPrompt, projectPath, event.sender, {
+        const result = await CopilotCliProvider.send(finalPrompt, projectPath, event.sender, {
           attachments: helpers.getAttachableFilePaths(),
         });
+        if (result && result.text) {
+          helpers.triggerTtsPlaybackIfEnabled(result.text);
+        }
       } catch (cpErr) {
         console.error('[copilot-cli] send error:', cpErr.message);
         try { event.sender.send('gemini-stream-complete'); } catch (_) {}

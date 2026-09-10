@@ -264,8 +264,12 @@ helpers.transcribeAudio = async function(filePath, options = {}) {
       throw new Error("Nenhum modelo Whisper encontrado em whisper/models/ e token OpenAI não configurado");
     }
 
+    const { buildTranscriptionPrompt } = require('../../services/techGlossary');
+    const promptText = buildTranscriptionPrompt();
+    const promptArg = promptText ? ` --prompt "${promptText.replace(/"/g, '\\"')}"` : '';
+
     const threads = Math.min(8, (os.cpus() && os.cpus().length) || 4);
-    const command = `"${whisperPath}" -m "${modelPath}" -f "${filePath}" -l ${whisperLang} -np --threads ${threads} --no-timestamps --temperature 0.0 --no-fallback`;
+    const command = `"${whisperPath}" -m "${modelPath}" -f "${filePath}" -l ${whisperLang} -np --threads ${threads} --no-timestamps --temperature 0.0 --no-fallback${promptArg}`;
 
     console.log("Executing whisper:", command);
     return new Promise((resolve, reject) => {
@@ -276,7 +280,7 @@ helpers.transcribeAudio = async function(filePath, options = {}) {
             try {
               console.log('[transcribeAudio] Whisper local falhou — fallback para transcrição na nuvem (OpenAI)');
               const cloudText = await cloudTranscribeAudio(filePath, token);
-              const cleanText = await helpers.limparTranscricao(cloudText || '');
+              const cleanText = await helpers.limparTranscricao(cloudText || '', promptText);
               if (emitRenderer && state.mainWindow && !state.mainWindow.isDestroyed()) {
                 state.mainWindow.webContents.send("transcription-result", { cleanText });
               }
@@ -294,7 +298,7 @@ helpers.transcribeAudio = async function(filePath, options = {}) {
         }
         const text = stdout.trim();
         console.log("Transcription:", text || "No text recognized");
-        const cleanText = await helpers.limparTranscricao(text);
+        const cleanText = await helpers.limparTranscricao(text, promptText);
         if (emitRenderer && state.mainWindow && !state.mainWindow.isDestroyed()) {
           state.mainWindow.webContents.send("transcription-result", { cleanText });
         }

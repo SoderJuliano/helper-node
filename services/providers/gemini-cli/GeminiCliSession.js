@@ -10,8 +10,14 @@ const { GeminiCliParser } = require('./GeminiCliParser');
 const E = require('./GeminiCliEvents');
 
 function getSessionStatePath() {
-  const { app } = require('electron');
-  return path.join(app.getPath('userData'), 'gemini-cli-sessions.json');
+  try {
+    const { app } = require('electron');
+    if (app && typeof app.getPath === 'function') {
+      return path.join(app.getPath('userData'), 'gemini-cli-sessions.json');
+    }
+  } catch (_) {}
+  const os = require('os');
+  return path.join(os.tmpdir(), 'gemini-cli-sessions.json');
 }
 
 function loadSessions() {

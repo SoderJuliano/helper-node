@@ -241,9 +241,13 @@ class GeminiCliProvider {
         },
 
         onDone: ({ text, thinking }) => {
+          const finalText = text || accumulated;
+          if (!accumulated && finalText) {
+            try { sender.send('gemini-stream-chunk', finalText); } catch (_) {}
+          }
           safeClose(false);
           this._emitStatus(sender, { state: 'waiting', projectPath: cwd });
-          resolve({ text: text || accumulated, thinking: thinking || thinkingAccumulated });
+          resolve({ text: finalText, thinking: thinking || thinkingAccumulated });
         },
 
         onError: (err) => {

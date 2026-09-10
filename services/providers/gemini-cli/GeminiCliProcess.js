@@ -137,6 +137,9 @@ class GeminiCliProcess {
     // criados fora do projeto e "somem" da visão do usuário.
     spawnArgs.push('--add-dir', resolvedCwd);
 
+    // Executa em modo print não-interativo com o prompt fornecido
+    spawnArgs.push('--print', prompt);
+
     this._proc = spawn(spawnBin, spawnArgs, {
       cwd: resolvedCwd,
       stdio: ['pipe', 'pipe', 'pipe'],

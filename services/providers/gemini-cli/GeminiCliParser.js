@@ -168,13 +168,14 @@ class GeminiCliParser {
       this._processLine(this._buf);
       this._buf = '';
     }
-    if (this._responseLines.length > 0) {
-      const fullText = this._responseLines.join('\n').trim();
-      const thinkingText = this._thinkingLines.join('\n').trim();
-      this._responseLines = [];
-      this._thinkingLines = [];
-      this._emit('done', { text: fullText, thinking: thinkingText });
+    let fullText = this._responseLines.join('\n').trim();
+    if (!fullText && this._poller && this._poller.latestContent) {
+      fullText = this._poller.latestContent.trim();
     }
+    const thinkingText = this._thinkingLines.join('\n').trim();
+    this._responseLines = [];
+    this._thinkingLines = [];
+    this._emit('done', { text: fullText, thinking: thinkingText });
   }
 
   reset() {

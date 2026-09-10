@@ -3,6 +3,11 @@ const os = require('os');
 const path = require('path');
 const fs = require('fs');
 
+function shortPath(p) {
+  if (!p || typeof p !== 'string') return '';
+  return p.replace(/\\/g, '/').split('/').filter(Boolean).slice(-2).join('/') || p;
+}
+
 class GeminiCliTranscriptPoller {
   constructor(emitFn) {
     this._emit = emitFn;
@@ -11,6 +16,7 @@ class GeminiCliTranscriptPoller {
     this._processedSteps = new Set();
     this._activeTools = new Map();
     this._currentTurnMinStep = 0;
+    this._latestContent = '';
   }
 
   get agyConvId() {
@@ -25,12 +31,17 @@ class GeminiCliTranscriptPoller {
     return !!this._pollInterval;
   }
 
+  get latestContent() {
+    return this._latestContent;
+  }
+
   reset() {
     this.stop();
     this._agyConvId = null;
     this._processedSteps.clear();
     this._activeTools.clear();
     this._currentTurnMinStep = 0;
+    this._latestContent = '';
   }
 
   start() {
@@ -135,6 +146,21 @@ class GeminiCliTranscriptPoller {
     }
   }
 
+  _closeToolsBefore(stepIndex) {
+    for (const [stepIdx, tools] of this._activeTools.entries()) {
+      if (stepIdx < stepIndex) {
+        for (const tool of tools) {
+          this._emit('toolDone', { id: tool.id, label: tool.label, detail: tool.detail, name: tool.name, kind: tool.kind, filePath: tool.filePath });
+          const isEditOperation = (tool.name === 'write_to_file' || tool.name === 'replace_file_content' || tool.name === 'multi_replace_file_content');
+          if (tool.filePath && isEditOperation) {
+            this._emit('fileTool', { id: tool.id, name: 'Edit', filePath: tool.filePath, phase: 'after' });
+          }
+        }
+        this._activeTools.delete(stepIdx);
+      }
+    }
+  }
+
   processTranscriptEntry(data) {
     const stepIndex = data.step_index;
     const type = data.type;
@@ -142,6 +168,11 @@ class GeminiCliTranscriptPoller {
     if (type === 'PLANNER_RESPONSE') {
       const thinking = data.thinking;
       const toolCalls = data.tool_calls;
+      const content = data.content;
+
+      if (content && typeof content === 'string') {
+        this._latestContent = content;
+      }
 
       if (thinking) {
         const cleanThinking = thinking.trim();
@@ -151,6 +182,7 @@ class GeminiCliTranscriptPoller {
       }
 
       if (toolCalls && toolCalls.length > 0) {
+        this._closeToolsBefore(stepIndex);
         const activeToolsForStep = [];
 
         toolCalls.forEach((tc, idx) => {
@@ -176,7 +208,11 @@ class GeminiCliTranscriptPoller {
             cleanArgs[k] = cleanArg(args[k]);
           }
 
+          let label = '';
+          let detail = '';
+          let filePath = '';
           let kind = 'tool';
+
           if (name === 'run_command') {
             label = 'Executando comando';
             kind = 'command';
@@ -219,6 +255,10 @@ class GeminiCliTranscriptPoller {
             kind = name === 'search_web' ? 'search' : 'read';
             const q = cleanArgs.query || cleanArgs.Url || cleanArgs.url || '';
             detail = q.length > 45 ? q.slice(0, 42) + '…' : q;
+          } else if (name === 'invoke_subagent' || name === 'manage_subagents' || name === 'define_subagent') {
+            label = 'Subagente';
+            kind = 'tool';
+            detail = cleanArgs.toolSummary || cleanArgs.toolAction || '';
           } else {
             label = cleanArgs.toolSummary || cleanArgs.toolAction || name;
             detail = cleanArgs.toolAction || '';
@@ -248,27 +288,8 @@ class GeminiCliTranscriptPoller {
           this._activeTools.set(stepIndex, activeToolsForStep);
         }
       }
-    } else if (type === 'RUN_COMMAND' || type === 'CODE_ACTION' || type === 'GENERIC' || type === 'VIEW_FILE' || type === 'USER_INPUT') {
-      let targetStepIndex = -1;
-      for (const stepIdx of this._activeTools.keys()) {
-        if (stepIdx < stepIndex && stepIdx > targetStepIndex) {
-          targetStepIndex = stepIdx;
-        }
-      }
-
-      if (targetStepIndex !== -1) {
-        const tools = this._activeTools.get(targetStepIndex);
-        if (tools) {
-          for (const tool of tools) {
-            this._emit('toolDone', { id: tool.id, label: tool.label, detail: tool.detail, name: tool.name, kind: tool.kind, filePath: tool.filePath });
-            const isEditOperation = (tool.name === 'write_to_file' || tool.name === 'replace_file_content' || tool.name === 'multi_replace_file_content');
-            if (tool.filePath && isEditOperation) {
-              this._emit('fileTool', { id: tool.id, name: 'Edit', filePath: tool.filePath, phase: 'after' });
-            }
-          }
-          this._activeTools.delete(targetStepIndex);
-        }
-      }
+    } else {
+      this._closeToolsBefore(stepIndex);
     }
   }
 }
