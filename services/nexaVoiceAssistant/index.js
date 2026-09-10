@@ -85,6 +85,20 @@ function registerIpc() {
     }
   });
 
+  // Quando o áudio da Nexa começa a ser reproduzido, marca a sessão como falando (isSpeakingTts = true)
+  ipcMain.on("play-tts-audio", () => {
+    if (session.isActive()) {
+      session.handleTtsStarted();
+    }
+  });
+
+  // Quando o processamento da IA termina no chat sem áudio TTS
+  ipcMain.on("nexa-voice:processing-finished", () => {
+    if (session.isActive() && !session.isSpeakingTts) {
+      session.handleAiProcessingFinished();
+    }
+  });
+
   // Quando o áudio da Nexa termina de ser reproduzido, aciona a janela de follow-up de 8s
   ipcMain.on("nexa:tts-ended", () => {
     if (session.isActive()) {

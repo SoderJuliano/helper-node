@@ -118,10 +118,12 @@ async function handleSendToGemini(event, text, sessionId) {
         if (_kb2) usedKnowledge = true;
         const _augText2 = _kb2 ? _kb2 + "\n\n---\n\n" + _wsText2 : _wsText2;
         const ht = helpers.buildHelperToolsOpenAIOpts(_augText2, instruction, openAiModel, aiModel === 'openIaCodex');
+        const _finalOpenAiPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(_augText2);
+        const _finalOpenAiInstruction = ht.instruction ? helpers.appendVoiceSummaryInstructionIfNeeded(ht.instruction) : helpers.appendVoiceSummaryInstructionIfNeeded(instruction);
         resposta = await OpenAIService.makeOpenAIRequest(
-          _augText2,
+          _finalOpenAiPrompt,
           token,
-          ht.instruction || instruction,
+          _finalOpenAiInstruction,
           ht.model || openAiModel,
           _imgInline,
           ht.opts
@@ -255,17 +257,18 @@ async function handleSendToGeminiVision(event, { text, image }) {
     }
     const activeSessionId = currentSession ? currentSession.id : 'default';
 
-    const visionModel = configService.getOpenAiVisionModel();
-    const visionPrompt = (text && text.trim() ? `${text}\n\n` : '')
+    const visionPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(
+      (text && text.trim() ? `${text}\n\n` : '')
       + 'Analise a IMAGEM com atenção. Responda conforme as regras do sistema.\n\n'
       + 'IMPORTANTE: na imagem, "x" entre dois números significa MULTIPLICAÇÃO '
       + '(ex.: "11x2" = 11 × 2 = 22, NÃO é 11 ao quadrado). '
-      + 'Notação de potência seria "11²" ou "11^2".';
+      + 'Notação de potência seria "11²" ou "11^2".'
+    );
     console.log(`🤖 IPC visão: OpenAI ${visionModel} [VISÃO high] (chat)...`);
     const resposta = await OpenAIService.makeOpenAIRequest(
       visionPrompt,
       token,
-      instruction,
+      helpers.appendVoiceSummaryInstructionIfNeeded(instruction),
       visionModel,
       image,
       { stateless: false, sessionId: activeSessionId }

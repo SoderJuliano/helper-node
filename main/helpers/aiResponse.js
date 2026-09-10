@@ -430,7 +430,7 @@ helpers.appendVoiceSummaryInstructionIfNeeded = function(instructionOrPrompt) {
       isNexaVoiceActive = nexaVoiceAssistant && typeof nexaVoiceAssistant.isActive === "function" && nexaVoiceAssistant.isActive();
     } catch (_) {}
     const isNexaOn = !!(nexaCfg && nexaCfg.enabled) || isNexaVoiceActive;
-    const isTtsOn = !!(cfg && cfg.enabled && cfg.keyPathOrKey && cfg.keyPathOrKey.trim());
+    const isTtsOn = !!(cfg && (cfg.enabled || isNexaVoiceActive) && cfg.keyPathOrKey && cfg.keyPathOrKey.trim());
 
     if (!isNexaOn || !isTtsOn) return instructionOrPrompt;
 
@@ -452,7 +452,7 @@ helpers.triggerTtsPlaybackIfEnabled = function(fullResponse) {
       isNexaVoiceActive = nexaVoiceAssistant && typeof nexaVoiceAssistant.isActive === "function" && nexaVoiceAssistant.isActive();
     } catch (_) {}
     const isNexaOn = !!(nexaCfg && nexaCfg.enabled) || isNexaVoiceActive;
-    const isTtsOn = !!(cfg && cfg.enabled);
+    const isTtsOn = !!(cfg && (cfg.enabled || isNexaVoiceActive));
 
     if (!isNexaOn || !isTtsOn) return;
     if (!cfg || !cfg.keyPathOrKey || !cfg.keyPathOrKey.trim()) {

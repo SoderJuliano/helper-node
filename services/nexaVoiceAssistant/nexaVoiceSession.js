@@ -98,12 +98,23 @@ class NexaVoiceSession extends EventEmitter {
     return this.active;
   }
 
+  handleTtsStarted() {
+    this.isSpeakingTts = true;
+    this.isProcessing = false;
+    this.emit("state-changed", { state: "speaking", followUpActive: false });
+  }
+
   /**
    * Interrompe imediatamente a reprodução de áudio TTS da Nexa (Barge-In).
    */
   stopTtsPlayback() {
     this.isSpeakingTts = false;
-    const { state } = require("../../main/globals");
+    this.isProcessing = false;
+    if (this.processingTimeout) {
+      clearTimeout(this.processingTimeout);
+      this.processingTimeout = null;
+    }
+    const { state, helpers } = require("../../main/globals");
     if (state.nexaWindow && !state.nexaWindow.isDestroyed()) {
       try {
         state.nexaWindow.webContents.send("stop-tts-audio");
@@ -113,6 +124,9 @@ class NexaVoiceSession extends EventEmitter {
       try {
         state.mainWindow.webContents.send("stop-tts-audio");
       } catch (_) {}
+    }
+    if (helpers && typeof helpers.cancelIaAndFreezeStream === "function") {
+      try { helpers.cancelIaAndFreezeStream(); } catch (_) {}
     }
     this.emit("barge-in");
   }
@@ -157,9 +171,31 @@ class NexaVoiceSession extends EventEmitter {
 
       console.log("[NexaVoiceSession] Transcrição:", cleanedText, "-> Ação:", classification.action, "(", classification.reason, ")");
 
-      // A) Se for comando explícito de parada / silêncio (Barge-In)
+      const hasWakeWord = NexaIntentClassifier.hasValidWakeWord(cleanedText);
+
+      // A) BARGE-IN: Se a Nexa estava falando ou processando e o usuário fala para interromper ou chama a wake word
+      if (this.isSpeakingTts || this.isProcessing) {
+        if (classification.action === "STOP_AND_LISTEN" || hasWakeWord) {
+          console.log("[NexaVoiceSession] Barge-in: usuário interveio durante fala/processamento da Nexa.");
+          this.stopTtsPlayback();
+
+          // Se a intervenção foi apenas para chamar a Nexa ou mandar parar (sem uma pergunta complexa anexada)
+          if (classification.action === "STOP_AND_LISTEN" || !classification.cleanedQuery || classification.isCasualGreeting) {
+            this.emit("animation-trigger", { animation: "listening" });
+            this._startFollowUpTimer();
+            this._endProcessingAndResume();
+            return;
+          }
+          // Caso contrário (ex: "Nexa, cria um script pra mim"), prossegue abaixo para responder à nova pergunta
+        } else {
+          // Ruído ambiente ou fala não direcionada à Nexa durante a execução -> ignora
+          return;
+        }
+      }
+
+      // B) Comando de parada explícito fora de fala
       if (classification.action === "STOP_AND_LISTEN") {
-        console.log("[NexaVoiceSession] Barge-in: comando de parada recebido.");
+        console.log("[NexaVoiceSession] Comando de parada recebido em idle.");
         this.stopTtsPlayback();
         this.followUpActive = false;
         if (this.followUpTimer) {
@@ -167,20 +203,6 @@ class NexaVoiceSession extends EventEmitter {
           this.followUpTimer = null;
         }
         this._endProcessingAndResume();
-        return;
-      }
-
-      // B) Se a Nexa estava falando TTS e o usuário começou uma nova fala endereçada a ela
-      if (this.isSpeakingTts) {
-        if (classification.action === "RESPOND_AUDIO_AND_CHAT" || classification.action === "REACT_ANIMATION_ONLY") {
-          console.log("[NexaVoiceSession] Barge-in: usuário interveio durante a fala da Nexa.");
-          this.stopTtsPlayback();
-        } else {
-          // Ruído ou conversa de terceiro enquanto a Nexa falava -> ignora
-          return;
-        }
-      } else if (this.isProcessing) {
-        // Se a IA ainda está gerando uma resposta anterior e não é comando de parada, ignora sobreposição acidental
         return;
       }
 
@@ -211,6 +233,69 @@ class NexaVoiceSession extends EventEmitter {
       if (NexaIntentClassifier.isSentenceIncomplete(classification.cleanedQuery)) {
         console.log("[NexaVoiceSession] Frase incompleta detectada ('" + classification.cleanedQuery + "'), aguardando complemento...");
         this._endProcessingAndResume();
+        return;
+      }
+
+      // Se for resposta direta/presença/saudação casual sem necessidade de execução de ferramentas da IDE
+      if (classification.directVoiceResponse) {
+        this.isProcessing = true;
+        this.emit("speech-preview", { text: cleanedText });
+        this.emit("state-changed", { state: "speaking", followUpActive: this.followUpActive });
+        this.emit("animation-trigger", { animation: classification.animationHint || "wave" });
+
+        const replyText = classification.directVoiceResponse;
+        this.context.recordTurn(cleanedText, replyText);
+
+        const { state, configService, googleTtsService } = require("../../main/globals");
+
+        if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+          try {
+            state.mainWindow.webContents.send("nexa-voice:quick-reply", {
+              question: cleanedText,
+              reply: replyText
+            });
+          } catch (_) {}
+        }
+
+        let audioPlayed = false;
+        if (googleTtsService) {
+          try {
+            const ttsCfg = configService.getGoogleTtsConfig ? configService.getGoogleTtsConfig() : {};
+            const hasTtsKey = !!(ttsCfg && ttsCfg.keyPathOrKey && ttsCfg.keyPathOrKey.trim());
+            if (ttsCfg && (ttsCfg.enabled || this.active) && hasTtsKey) {
+              const voiceName = ttsCfg.voiceName || "pt-BR-Neural2-C";
+              const audioBuf = await googleTtsService.synthesizeText(replyText, {
+                keyOrPath: ttsCfg.keyPathOrKey,
+                voiceName,
+                speakingRate: ttsCfg.speakingRate || 1.0,
+                pitch: ttsCfg.pitch || 0.0
+              });
+              if (audioBuf && audioBuf.length > 0) {
+                const base64Audio = audioBuf.toString("base64");
+                const audioPayload = { audioBase64: base64Audio, text: replyText };
+                const { ipcMain } = require("electron");
+                this.isSpeakingTts = true;
+                this.isProcessing = false;
+                ipcMain.emit("play-tts-audio", null, audioPayload);
+
+                const { isNexaWindowOpen } = require("../../main/nexa/nexaWindow.js");
+                if (isNexaWindowOpen() && state.nexaWindow && !state.nexaWindow.isDestroyed()) {
+                  try { state.nexaWindow.webContents.send("play-tts-audio", audioPayload); } catch (_) {}
+                } else if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+                  try { state.mainWindow.webContents.send("play-tts-audio", audioPayload); } catch (_) {}
+                }
+                audioPlayed = true;
+              }
+            }
+          } catch (ttsErr) {
+            console.warn("[NexaVoiceSession] Erro TTS quick-reply:", ttsErr.message);
+          }
+        }
+
+        if (!audioPlayed) {
+          this._endProcessingAndResume();
+          this._startFollowUpTimer();
+        }
         return;
       }
 
@@ -267,18 +352,21 @@ class NexaVoiceSession extends EventEmitter {
 
         if (voiceSummary && googleTtsService) {
           const ttsCfg = configService.getGoogleTtsConfig ? configService.getGoogleTtsConfig() : {};
-          const voiceName = ttsCfg.voiceName || "pt-BR-Neural2-C";
-          const audioBuf = await googleTtsService.synthesizeText(voiceSummary, {
-            keyOrPath: ttsCfg.keyPathOrKey,
-            voiceName,
-            speakingRate: ttsCfg.speakingRate || 1.0,
-            pitch: ttsCfg.pitch || 0.0
-          });
-          if (audioBuf && audioBuf.length > 0) {
-            const base64Audio = audioBuf.toString("base64");
-            this.isSpeakingTts = true;
-            if (state.nexaWindow && !state.nexaWindow.isDestroyed()) {
-              state.nexaWindow.webContents.send("play-tts-audio", { audioBase64: base64Audio, text: voiceSummary });
+          const hasTtsKey = !!(ttsCfg && ttsCfg.keyPathOrKey && ttsCfg.keyPathOrKey.trim());
+          if (ttsCfg && (ttsCfg.enabled || this.active) && hasTtsKey) {
+            const voiceName = ttsCfg.voiceName || "pt-BR-Neural2-C";
+            const audioBuf = await googleTtsService.synthesizeText(voiceSummary, {
+              keyOrPath: ttsCfg.keyPathOrKey,
+              voiceName,
+              speakingRate: ttsCfg.speakingRate || 1.0,
+              pitch: ttsCfg.pitch || 0.0
+            });
+            if (audioBuf && audioBuf.length > 0) {
+              const base64Audio = audioBuf.toString("base64");
+              this.isSpeakingTts = true;
+              if (state.nexaWindow && !state.nexaWindow.isDestroyed()) {
+                state.nexaWindow.webContents.send("play-tts-audio", { audioBase64: base64Audio, text: voiceSummary });
+              }
             }
           }
         }
@@ -297,6 +385,17 @@ class NexaVoiceSession extends EventEmitter {
     }
     this._endProcessingAndResume();
     this._startFollowUpTimer();
+  }
+
+  handleAiProcessingFinished() {
+    if (this.processingTimeout) {
+      clearTimeout(this.processingTimeout);
+      this.processingTimeout = null;
+    }
+    if (!this.isSpeakingTts) {
+      this._endProcessingAndResume();
+      this._startFollowUpTimer();
+    }
   }
 
   _startFollowUpTimer() {

@@ -16,11 +16,11 @@ function stripAccents(str) {
 
 // Padrões de ativação por Wake Word estritos e variações fonéticas válidas
 // Rejeita categoricamente falsos positivos como "nessa casa", "nessa branch", "nesse apartamento", "neca", "nexus"
-const WAKE_WORD_EXACT = /\b(nexa|n[eéè]xa|nexxa|neksa)\b/i;
-const WAKE_WORD_WITH_GREETING = /\b(?:ei|oi|ol[aá]|fala|opa|bom\s+dia|boa\s+tarde|boa\s+noite|al[oô])\s+(?:nexa|n[eéè]xa|nexxa|neksa|naxa|neza|nessa)\b/i;
-const WAKE_WORD_WITH_VOCATIVE = /\b(?:nexa|n[eéè]xa|nexxa|neksa|naxa|neza|nessa)\s*[,:!?]+\s*(?:voc[eê]|vc|tudo|como|o\s+que|qual|quando|onde|por\s*que|porque|me|pode|faz|d[aá]|ajuda|t[aá]|est[aá]|est[aá]s|a[ií]|escuta|ouve|olha|\?)/i;
-const WAKE_WORD_PHONETIC_DIRECT = /^nessa\s+(?:voc[eê]|vc)\s+(?:est[aá]|t[aá])\s+a[ií]/i;
-const WAKE_WORD_AT_END = /[,\s]+(?:nexa|n[eéè]xa)\s*[!?.]*$/i;
+const WAKE_WORD_EXACT = /\b(nexa|n[eéè]xa|nexxa|neksa|naxa|neza)\b/i;
+const WAKE_WORD_WITH_GREETING = /\b(?:ei|oi|ol[aá]|fala|opa|bom\s+dia|boa\s+tarde|boa\s+noite|al[oô]|e\s+a[ií])\s+(?:nexa|n[eéè]xa|nexxa|neksa|naxa|neza|nessa)\b/i;
+const WAKE_WORD_WITH_VOCATIVE = /\b(?:nexa|n[eéè]xa|nexxa|neksa|naxa|neza|nessa)\s*[,:!?\-]*\s*(?:voc[eê]|vc|tudo|como|o\s+que|qual|quando|onde|por\s*que|porque|me|pode|faz|d[aá]|ajuda|t[aá]|est[aá]|est[aá]s|tas|a[ií]|escuta|ouve|olha|fala|\?)/i;
+const WAKE_WORD_PHONETIC_DIRECT = /^(?:nessa|nexa|n[eéè]xa)\s+(?:voc[eê]|vc)?\s*(?:est[aá]|t[aá]|est[aá]s|tas)?\s*(?:a[ií]|me\s+ouvindo|me\s+escutando|me\s+ouve|me\s+escuta|ouvindo|ouviu|escutou)/i;
+const WAKE_WORD_AT_END = /[,\s]+(?:nexa|n[eéè]xa|nexxa|naxa|neza)\s*[!?.]*$/i;
 
 // Padrões de links/alucinações ou ruídos que devem ser descartados imediatamente
 const URL_OR_NOISE_PATTERNS = [
@@ -286,19 +286,50 @@ class NexaIntentClassifier {
     let cleanedQuery = text;
     if (hasWakeWord) {
       cleanedQuery = text
-        .replace(/^(?:ei|oi|olá|ola|e\s+aí|e\s+ai|opa|fala|alô|alo)?\s*(?:nexa|néxa|nèxa|nexá|naxa|nessa|neza|neksa|nexxa)[,\s:!]*/i, "")
-        .replace(/[,\s]*(?:nexa|néxa|nèxa|nexá|naxa|nessa|neza|neksa|nexxa)[,\s:!?.]*$/i, "")
+        .replace(/^(?:ei|oi|olá|ola|e\s+aí|e\s+ai|opa|fala|alô|alo|bom\s+dia|boa\s+tarde|boa\s+noite)?\s*(?:nexa|néxa|nèxa|nexá|naxa|nessa|neza|neksa|nexxa)[,\s:!\-]*/i, "")
+        .replace(/[,\s\-]*(?:nexa|néxa|nèxa|nexá|naxa|nessa|neza|neksa|nexxa)[,\s:!?.]*$/i, "")
         .trim();
     }
 
-    // Se após limpar só sobrou saudação simples (ex: "Oi Nexa", "Nexa!", "Nessa você está aí.", "tudo bem?")
     const cleanNorm = stripAccents(cleanedQuery).toLowerCase().replace(/[.,!?;:]+$/g, "").trim();
-    if (!cleanedQuery || /^(oi|ola|bom dia|boa tarde|boa noite|tudo bem|como vai|voce esta ai|vc esta ai|esta ai|estas ai)$/i.test(cleanNorm)) {
+
+    // Checagem de conectividade / presença / "Você me ouviu?" / "Tá me ouvindo?"
+    const PRESENCE_PATTERNS = [
+      /^(?:(?:voc[eê]|vc)\s+)?(?:est[aá]|t[aá]|est[aá]s|tas)?\s*(?:me\s+)?(?:ouvindo|escutando|ouviu|ouve|escuta|escutou|a[ií])$/i,
+      /^(?:consegue|pode)\s+(?:me\s+)?(?:ouvir|escutar)$/i,
+      /^(?:t[aá]|est[aá])\s+(?:me\s+ouvindo|me\s+escutando|funcionando|aqui|online)$/i,
+      /^(?:me\s+)?(?:ouviu|escutou|ouve|escuta)$/i,
+      /^(?:ouviu|escutou)$/i
+    ];
+
+    if (PRESENCE_PATTERNS.some((p) => p.test(cleanNorm))) {
+      return {
+        action: "RESPOND_AUDIO_AND_CHAT",
+        cleanedQuery: cleanedQuery || "Você está me ouvindo?",
+        animationHint: "wave",
+        isCasualGreeting: true,
+        directVoiceResponse: "Estou te ouvindo perfeitamente! Como posso te ajudar?",
+        reason: "Checagem de presença e escuta de voz"
+      };
+    }
+
+    const GREETING_PATTERNS = [
+      /^(?:oi|ola|bom\s+dia|boa\s+tarde|boa\s+noite|tudo\s+bem|como\s+vai|como\s+voc[eê]\s+t[aá]|como\s+vc\s+t[aá]|e\s+a[ií]|fala\s+a[ií]|opa|al[oô])$/i,
+    ];
+
+    if (!cleanedQuery || GREETING_PATTERNS.some((p) => p.test(cleanNorm))) {
+      let directReply = "Oi! Tô aqui, pode falar!";
+      let anim = "wave";
+      if (cleanNorm.includes("tudo bem") || cleanNorm.includes("como vai") || cleanNorm.includes("como voce") || cleanNorm.includes("como vc")) {
+        directReply = "Tudo ótimo por aqui! Em que posso ajudar?";
+        anim = "cute";
+      }
       return {
         action: "RESPOND_AUDIO_AND_CHAT",
         cleanedQuery: cleanedQuery || "Olá!",
-        animationHint: "wave",
+        animationHint: anim,
         isCasualGreeting: true,
+        directVoiceResponse: directReply,
         reason: "Saudação casual direta"
       };
     }

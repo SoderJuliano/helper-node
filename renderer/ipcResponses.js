@@ -182,9 +182,38 @@
                         }
                         const audio = new Audio('data:audio/mp3;base64,' + audioBase64);
                         window.currentTtsAudio = audio;
-                        audio.play().catch(e => console.warn('Erro ao reproduzir áudio TTS:', e.message));
+                        audio.onended = () => {
+                            window.currentTtsAudio = null;
+                            if (window.electronAPI && window.electronAPI.sendNexaTtsEnded) {
+                                window.electronAPI.sendNexaTtsEnded();
+                            }
+                        };
+                        audio.onerror = () => {
+                            window.currentTtsAudio = null;
+                            if (window.electronAPI && window.electronAPI.sendNexaTtsEnded) {
+                                window.electronAPI.sendNexaTtsEnded();
+                            }
+                        };
+                        audio.play().catch(e => {
+                            console.warn('Erro ao reproduzir áudio TTS:', e.message);
+                            if (window.electronAPI && window.electronAPI.sendNexaTtsEnded) {
+                                window.electronAPI.sendNexaTtsEnded();
+                            }
+                        });
                     } catch (err) {
                         console.error('Erro na execução do player TTS:', err);
+                    }
+                });
+            }
+
+            if (window.electronAPI && window.electronAPI.onStopTtsAudio) {
+                window.electronAPI.onStopTtsAudio(() => {
+                    if (window.currentTtsAudio) {
+                        try {
+                            window.currentTtsAudio.pause();
+                            window.currentTtsAudio.currentTime = 0;
+                        } catch (_) {}
+                        window.currentTtsAudio = null;
                     }
                 });
             }

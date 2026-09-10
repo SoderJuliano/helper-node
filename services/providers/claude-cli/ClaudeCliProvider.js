@@ -185,20 +185,11 @@ class ClaudeCliProvider {
 
         // Called BEFORE (phase:'before') and AFTER (phase:'after') a file tool.
         onFileTool: ({ id, name, filePath, phase }) => {
+          if (name === 'Read') return;
+
           const absPath = path.isAbsolute(filePath)
             ? filePath
             : path.join(cwd, filePath);
-
-          if (name === 'Read') {
-            if (phase === 'after') {
-              sender.send('workspace-file-written', {
-                action: 'read',
-                path: absPath,
-                backupAt: null,
-              });
-            }
-            return;
-          }
 
           if (phase === 'before') {
             // Read current file content as backup

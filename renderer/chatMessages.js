@@ -261,6 +261,9 @@ var isEditingQuestion = false;
         }
 
         window.electronAPI.stopNotifications();
+        if (window.electronAPI && window.electronAPI.sendNexaVoiceProcessingFinished) {
+            window.electronAPI.sendNexaVoiceProcessingFinished();
+        }
     }
 
     function cancelIaAndFreezeStream() {
@@ -349,6 +352,27 @@ var isEditingQuestion = false;
             appendQuestionEntry(cleanText);
             startProcessing();
             await sentToAI(cleanText);
+        });
+    }
+
+    if (window.electronAPI && window.electronAPI.onNexaVoiceQuickReply) {
+        window.electronAPI.onNexaVoiceQuickReply(({ question, reply }) => {
+            if (!question) return;
+            appendQuestionEntry(question);
+            const transcriptionElement = document.getElementById('transcription');
+            if (transcriptionElement) {
+                const lastBlock = transcriptionElement.querySelector('.interaction-block:last-child');
+                if (lastBlock) {
+                    let resp = lastBlock.querySelector('.ia-response');
+                    if (!resp) {
+                        resp = document.createElement('div');
+                        resp.className = 'ia-response markdown-body';
+                        lastBlock.appendChild(resp);
+                    }
+                    resp.textContent = reply;
+                }
+            }
+            scrollTranscriptionToBottom('smooth');
         });
     }
 

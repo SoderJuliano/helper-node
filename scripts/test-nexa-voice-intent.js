@@ -86,6 +86,30 @@ console.log("🧪 Iniciando testes de Intent Classifier da Nexa...\n");
   console.log("✅ Caso 11: Saudação casual -> RESPOND_AUDIO_AND_CHAT (casual)");
 }
 
+{
+  const res = NexaIntentClassifier.classify("Boa tarde, Nexa");
+  assert.strictEqual(res.action, "RESPOND_AUDIO_AND_CHAT");
+  assert.strictEqual(res.isCasualGreeting, true);
+  assert.ok(res.directVoiceResponse);
+  console.log("✅ Caso 11b: 'Boa tarde, Nexa' -> RESPOND_AUDIO_AND_CHAT (directVoiceResponse)");
+}
+
+{
+  const res = NexaIntentClassifier.classify("Nexa, boa tarde");
+  assert.strictEqual(res.action, "RESPOND_AUDIO_AND_CHAT");
+  assert.strictEqual(res.isCasualGreeting, true);
+  assert.ok(res.directVoiceResponse);
+  console.log("✅ Caso 11c: 'Nexa, boa tarde' -> RESPOND_AUDIO_AND_CHAT (directVoiceResponse)");
+}
+
+{
+  const res = NexaIntentClassifier.classify("Bom dia Nexa");
+  assert.strictEqual(res.action, "RESPOND_AUDIO_AND_CHAT");
+  assert.strictEqual(res.isCasualGreeting, true);
+  assert.ok(res.directVoiceResponse);
+  console.log("✅ Caso 11d: 'Bom dia Nexa' -> RESPOND_AUDIO_AND_CHAT (directVoiceResponse)");
+}
+
 // 5. Casos de JANELA DE FOLLOW-UP ATIVA (Sem precisar falar 'Nexa')
 {
   const res = NexaIntentClassifier.classify("E como eu compilo isso?", { followUpActive: true });
@@ -257,4 +281,36 @@ console.log("🧪 Iniciando testes de Intent Classifier da Nexa...\n");
   console.log("✅ Caso 36: 'Nexa, como funciona polimorfismo em Java?' -> isSentenceIncomplete = false");
 }
 
-console.log("\n🎉 Todos os 36 testes do Intent Classifier passaram com sucesso!");
+// 11. Casos de CHECAGEM DE PRESENÇA / CONECTIVIDADE ("Você me ouviu?", "Tá me ouvindo?")
+{
+  const res = NexaIntentClassifier.classify("Nexa, você me ouviu?");
+  assert.strictEqual(res.action, "RESPOND_AUDIO_AND_CHAT");
+  assert.strictEqual(res.isCasualGreeting, true);
+  assert.ok(res.directVoiceResponse && res.directVoiceResponse.includes("ouvindo"), "Deve responder prontamente sobre escuta");
+  console.log("✅ Caso 37: 'Nexa, você me ouviu?' -> RESPOND_AUDIO_AND_CHAT (directVoiceResponse)");
+}
+
+{
+  const res = NexaIntentClassifier.classify("Nexa, tá me ouvindo?");
+  assert.strictEqual(res.action, "RESPOND_AUDIO_AND_CHAT");
+  assert.strictEqual(res.isCasualGreeting, true);
+  assert.ok(res.directVoiceResponse && res.directVoiceResponse.includes("ouvindo"));
+  console.log("✅ Caso 38: 'Nexa, tá me ouvindo?' -> RESPOND_AUDIO_AND_CHAT (directVoiceResponse)");
+}
+
+{
+  const res = NexaIntentClassifier.classify("Você me ouviu", { followUpActive: true });
+  assert.strictEqual(res.action, "RESPOND_AUDIO_AND_CHAT");
+  assert.strictEqual(res.isCasualGreeting, true);
+  console.log("✅ Caso 39: 'Você me ouviu' em follow-up -> RESPOND_AUDIO_AND_CHAT (directVoiceResponse)");
+}
+
+{
+  const res = NexaIntentClassifier.classify("Nexa!");
+  assert.strictEqual(res.action, "RESPOND_AUDIO_AND_CHAT");
+  assert.strictEqual(res.isCasualGreeting, true);
+  assert.ok(res.directVoiceResponse);
+  console.log("✅ Caso 40: 'Nexa!' -> RESPOND_AUDIO_AND_CHAT (directVoiceResponse)");
+}
+
+console.log("\n🎉 Todos os 40 testes do Intent Classifier passaram com sucesso!");

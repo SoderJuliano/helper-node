@@ -161,6 +161,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onNexaVoiceStateChanged: (cb) => ipcRenderer.on("nexa-voice:state-changed", (event, data) => cb(data)),
   onNexaVoiceSpeechPreview: (cb) => ipcRenderer.on("nexa-voice:speech-preview", (event, data) => cb(data)),
   onNexaVoiceSubmitQuestion: (cb) => ipcRenderer.on("nexa-voice:submit-question", (event, data) => cb(data)),
+  onNexaVoiceQuickReply: (cb) => ipcRenderer.on("nexa-voice:quick-reply", (event, data) => cb(data)),
+  sendNexaVoiceProcessingFinished: () => ipcRenderer.send("nexa-voice:processing-finished"),
   processPastedImage: (base64Image) =>
     ipcRenderer.send("process-pasted-image", base64Image),
   // Modo IDE: imagem colada vira ANEXO (caminho), não texto no input.

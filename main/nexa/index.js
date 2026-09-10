@@ -15,7 +15,7 @@ function initializeNexa() {
   const { configService } = require("../globals.js");
   const nexaCfg = configService.getNexaConfig();
   if (nexaCfg && nexaCfg.enabled) {
-    console.log("🤖 [Nexa Module] Nexa está HABILITADA nas configurações. Criando janela...");
+    console.log("🤖 [Nexa Module] Nexa está HABILITADA nas configurações. Criando janela da Nexa...");
     createNexaWindow();
   } else {
     console.log("🤖 [Nexa Module] Nexa está DESABILITADA (OFF). Nenhuma janela criada.");

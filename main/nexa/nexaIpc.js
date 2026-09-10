@@ -71,6 +71,10 @@ function registerNexaIpc() {
       createNexaWindow();
     } else {
       closeNexaWindow();
+      try {
+        const nexaVoiceAssistant = require("../../services/nexaVoiceAssistant");
+        nexaVoiceAssistant.stop();
+      } catch (_) {}
     }
   });
 

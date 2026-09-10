@@ -21,11 +21,11 @@ const BYTES_PER_MS = (SAMPLE_RATE * BYTES_PER_SAMPLE) / 1000; // 32 bytes/ms
 class NexaTurnDetector extends EventEmitter {
   constructor(options = {}) {
     super();
-    this.speechThresholdRms = options.speechThresholdRms || 260; // Limiar absoluto calibrado
-    this.silenceThresholdMs = options.silenceThresholdMs || 1700; // Duração de silêncio contínuo para fechar o turno (1.7s para não cortar fala no meio)
-    this.minSpeechMs = options.minSpeechMs || 400;               // Duração mínima de fala real para considerar válida
+    this.speechThresholdRms = options.speechThresholdRms || 55;  // Limiar calibrado para captação de voz natural no Windows/Mac
+    this.silenceThresholdMs = options.silenceThresholdMs || 1000; // Duração de silêncio contínuo para fechar o turno (1.0s ágil e natural)
+    this.minSpeechMs = options.minSpeechMs || 200;               // Duração mínima de fala real para considerar válida (permite 'Nexa', 'Para', 'Oi')
     this.maxTurnDurationMs = options.maxTurnDurationMs || 30000; // Limite máximo de segurança para um turno (30s)
-    this.preRollMs = options.preRollMs || 320;                   // Buffer circular de pre-roll (320ms)
+    this.preRollMs = options.preRollMs || 350;                   // Buffer circular de pre-roll (350ms)
 
     this.active = false;
     this.isSpeaking = false;
@@ -36,8 +36,8 @@ class NexaTurnDetector extends EventEmitter {
     this.activeSpeechChunksCount = 0;
     this.totalChunksInTurn = 0;
 
-    // Estimativa adaptativa do piso de ruído (noise floor) para rejeitar música e vídeos de fundo
-    this.noiseFloorRms = 60;
+    // Estimativa adaptativa do piso de ruído (noise floor)
+    this.noiseFloorRms = 20;
 
     // Buffer circular de pre-roll (guarda os últimos 320ms de áudio antes de a fala começar)
     this.preRollChunks = [];
@@ -112,13 +112,13 @@ class NexaTurnDetector extends EventEmitter {
 
     this.emit("level", { rms, isSpeaking: this.isSpeaking, noiseFloor: Math.round(this.noiseFloorRms) });
 
-    // Atualiza suavemente o piso de ruído quando não estiver falando
+    // Atualiza suavemente o piso de ruído quando não estiver falando (com teto em 50)
     if (!this.isSpeaking) {
-      this.noiseFloorRms = this.noiseFloorRms * 0.90 + rms * 0.10;
+      this.noiseFloorRms = Math.min(50, this.noiseFloorRms * 0.90 + rms * 0.10);
     }
 
-    // Limiar dinâmico: deve superar tanto o valor absoluto calibrado quanto o ruído ambiente com margem SNR
-    const dynamicThreshold = Math.max(this.speechThresholdRms, this.noiseFloorRms * 1.6 + 50);
+    // Limiar dinâmico: garante que fala seja detectada com facilidade sem ser bloqueada por ruído moderado
+    const dynamicThreshold = Math.max(this.speechThresholdRms, this.noiseFloorRms * 1.25 + 15);
     const hasVoiceEnergy = rms >= dynamicThreshold;
 
     if (!this.isSpeaking) {
@@ -170,8 +170,8 @@ class NexaTurnDetector extends EventEmitter {
 
         this.resetTurn();
 
-        // Rejeita turnos que foram apenas picos isolados de ruído/música sem densidade de fala real
-        if (effectiveSpeechMs >= this.minSpeechMs && activeRatio >= 0.25) {
+        // Aceita se tiver duração suficiente de fala e densidade mínima razoável
+        if (effectiveSpeechMs >= this.minSpeechMs && (activeRatio >= 0.12 || effectiveSpeechMs >= 600)) {
           this.emit("turn-complete", {
             pcmBuffer: totalPcm,
             durationMs: effectiveSpeechMs,

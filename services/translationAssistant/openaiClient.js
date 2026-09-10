@@ -23,7 +23,7 @@ async function transcribeAudio(audioPath, apiKey) {
   // FormData global (Node 18+): fetch seta o Content-Type multipart/boundary automaticamente
   const form = new FormData();
   form.append('file', blob, fileName);
-  form.append('model', 'gpt-4o-mini-transcribe');
+  form.append('model', 'whisper-1');
 
   // Vocabulário técnico: enviesa o decoder pros termos da entrevista (SOLID,
   // Spring, Kafka...). Cacheado — não adiciona rede nem latência perceptível.

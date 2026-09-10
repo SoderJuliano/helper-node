@@ -336,55 +336,18 @@
     }
 
     if (window.electronAPI && window.electronAPI.onWorkspaceFileWritten) {
-        window.electronAPI.onWorkspaceFileWritten(async (data) => {
+        window.electronAPI.onWorkspaceFileWritten((data) => {
             try {
-                const SVGI_MINI_FILE = '<svg class="file-chip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:11px; height:11px; margin-right:4px; opacity:0.85; display:inline-block; vertical-align:middle;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
-                const SVGI_MINI_READ = SVGI_MINI_FILE;
-                const SVGI_MINI_EDIT = '<svg class="file-chip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:11px; height:11px; margin-right:4px; opacity:0.85; display:inline-block; vertical-align:middle;"><path d="M11 4H4a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
-                const SVGI_MINI_PLUS = '<svg class="file-chip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:11px; height:11px; margin-right:4px; opacity:0.85; display:inline-block; vertical-align:middle;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
-                const SVGI_MINI_TRASH = '<svg class="file-chip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:11px; height:11px; margin-right:4px; opacity:0.85; display:inline-block; vertical-align:middle;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+                if (!data || data.action === 'read') return;
+                const SVGI_MINI_FILE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:11px; height:11px; margin-right:4px; opacity:0.8; display:inline-block; vertical-align:middle;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+                const SVGI_MINI_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:11px; height:11px; margin-right:4px; opacity:0.8; display:inline-block; vertical-align:middle;"><path d="M11 4H4a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+                const SVGI_MINI_PLUS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:11px; height:11px; margin-right:4px; opacity:0.8; display:inline-block; vertical-align:middle;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
+                const SVGI_MINI_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:11px; height:11px; margin-right:4px; opacity:0.8; color:#ff5252; display:inline-block; vertical-align:middle;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
 
-                let action = data.action || 'edit';
-                let diffStats = null;
-
-                // Se for uma suposta edição ou ação não definida, checa o diff (+0 -0 = leitura)
-                if (action === 'edit' || !data.action) {
-                    try {
-                        if (window.electronAPI && window.electronAPI.getFileDiff && data.path) {
-                            diffStats = await window.electronAPI.getFileDiff({ path: data.path, backupAt: data.backupAt });
-                            if (diffStats && diffStats.adds === 0 && diffStats.dels === 0) {
-                                action = 'read';
-                            }
-                        }
-                    } catch (_) {}
-                }
-
-                let verbSvg = SVGI_MINI_EDIT;
-                let actionClass = 'action-edit';
-                let titleText = `${data.path}\n(clique para ver o diff)`;
-
-                if (action === 'read') {
-                    verbSvg = SVGI_MINI_READ;
-                    actionClass = 'action-read';
-                    titleText = `${data.path}\n(leitura / 0 alterações - clique para abrir)`;
-                } else if (action === 'create') {
-                    verbSvg = SVGI_MINI_FILE;
-                    actionClass = 'action-create';
-                    titleText = `${data.path}\n(criado - clique para ver o diff)`;
-                } else if (action === 'delete') {
-                    verbSvg = SVGI_MINI_TRASH;
-                    actionClass = 'action-delete';
-                    titleText = `${data.path}\n(excluído)`;
-                } else if (action === 'append') {
-                    verbSvg = SVGI_MINI_PLUS;
-                    actionClass = 'action-edit';
-                    titleText = `${data.path}\n(conteúdo anexado - clique para ver o diff)`;
-                } else {
-                    if (diffStats && (diffStats.adds > 0 || diffStats.dels > 0)) {
-                        titleText = `${data.path}\n(+${diffStats.adds} -${diffStats.dels} linhas - clique para ver o diff)`;
-                    }
-                }
-
+                const verbSvg = data.action === 'create' ? SVGI_MINI_FILE :
+                                data.action === 'delete' ? SVGI_MINI_TRASH :
+                                data.action === 'append' ? SVGI_MINI_PLUS :
+                                SVGI_MINI_EDIT;
                 const rawPath = (data.path || '').replace(/\\/g, '/');
                 const parts = rawPath.split('/').filter(Boolean);
                 const shortName = parts.length <= 2 ? parts.join('/') : parts.slice(-2).join('/');
@@ -405,25 +368,29 @@
                 // Evita duplicar o mesmo chip no mesmo bloco se o path for idêntico
                 const existing = filesList.querySelector(`[data-path="${CSS.escape(data.path)}"]`);
                 if (existing) {
-                    existing.className = `tool-file-chip ${actionClass}`;
-                    existing.title = titleText;
                     existing.innerHTML = verbSvg + `<span style="vertical-align:middle;">${shortName}</span>`;
                     return;
                 }
 
                 const chip = document.createElement('span');
-                chip.className = `tool-file-chip ${actionClass}`;
+                chip.className = 'tool-file-chip';
                 chip.dataset.path = data.path;
-                chip.title = titleText;
+                chip.title = `${data.path}\n(clique para ver o diff)`;
                 chip.innerHTML = verbSvg + `<span style="vertical-align:middle;">${shortName}</span>`;
                 chip.addEventListener('click', () => {
-                    if (action === 'read' && typeof openFileViewer === 'function') {
-                        openFileViewer(data.path);
-                    } else if (typeof openFileDiff === 'function') {
-                        openFileDiff(data.path, data.backupAt);
-                    }
+                    if (typeof openFileDiff === 'function') openFileDiff(data.path, data.backupAt);
                 });
                 filesList.appendChild(chip);
+
+                // Se a edição resultou em 0 alterações (+0 -0), altera o ícone para folhinha simples
+                if (data.action !== 'create' && data.action !== 'delete' && data.backupAt && window.electronAPI && window.electronAPI.getFileDiff) {
+                    window.electronAPI.getFileDiff({ path: data.path, backupAt: data.backupAt }).then((diffRes) => {
+                        if (diffRes && diffRes.adds === 0 && diffRes.dels === 0) {
+                            chip.innerHTML = SVGI_MINI_FILE + `<span style="vertical-align:middle;">${shortName}</span>`;
+                            chip.title = `${data.path}\n(sem alterações no conteúdo)`;
+                        }
+                    }).catch(() => {});
+                }
 
                 if (transcriptionElement) {
                     transcriptionElement.scrollTo({ top: transcriptionElement.scrollHeight, behavior: 'smooth' });

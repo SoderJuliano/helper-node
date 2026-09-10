@@ -188,20 +188,11 @@ class GeminiCliProvider {
         },
 
         onFileTool: ({ id, name, filePath, phase }) => {
+          if (name === 'Read' || name === 'view_file') return;
+
           const absPath = path.isAbsolute(filePath)
             ? filePath
             : path.join(cwd, filePath);
-
-          if (name === 'Read' || name === 'view_file') {
-            if (phase === 'after') {
-              sender.send('workspace-file-written', {
-                action: 'read',
-                path: absPath,
-                backupAt: null,
-              });
-            }
-            return;
-          }
 
           if (phase === 'before') {
             try {

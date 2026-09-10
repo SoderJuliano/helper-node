@@ -304,6 +304,37 @@ class OpenAIService {
                         tool_call_id: tc.id,
                         content: serialized,
                     });
+
+                    // Se a ferramenta gerou ou retornou um arquivo de imagem (ex: captureScreenHd),
+                    // injeta a imagem no canal de visão multimodal para o próximo passo do modelo
+                    let imagePath = null;
+                    if (result && typeof result === 'object' && result.result && typeof result.result.path === 'string') {
+                        imagePath = result.result.path;
+                    } else if (result && typeof result === 'object' && typeof result.path === 'string') {
+                        imagePath = result.path;
+                    }
+                    if (imagePath && /\.(png|jpe?g|webp|gif)$/i.test(imagePath)) {
+                        try {
+                            const fs = require('fs');
+                            const p = require('path');
+                            if (fs.existsSync(imagePath)) {
+                                const imgBuffer = fs.readFileSync(imagePath);
+                                const base64Data = imgBuffer.toString('base64');
+                                const ext = p.extname(imagePath).slice(1).toLowerCase() || 'png';
+                                const mime = ext === 'jpg' ? 'jpeg' : ext;
+                                requestPayload.messages.push({
+                                    role: 'user',
+                                    content: [
+                                        { type: 'text', text: `[Captura de tela / imagem retornada por ${name} (${p.basename(imagePath)})] - Segue a imagem em alta definição para sua análise visual direta:` },
+                                        { type: 'image_url', image_url: { url: `data:image/${mime};base64,${base64Data}`, detail: 'high' } }
+                                    ]
+                                });
+                                console.log(`📸 [OpenAIService] Imagem visual injetada no payload multimodal: ${imagePath} (${imgBuffer.length} bytes)`);
+                            }
+                        } catch (imgErr) {
+                            console.warn('[OpenAIService] Falha ao carregar imagem capturada para visão:', imgErr.message);
+                        }
+                    }
                 }
 
                 iterations++;
