@@ -181,37 +181,21 @@ class NexaVoiceSession extends EventEmitter {
       const systemDirective = NexaResponseFilter.getVoiceModeSystemPromptInstruction();
       const promptWithDirective = `${userPrompt}\n${systemDirective}`;
 
-      // Envia a mensagem para a janela principal do chat para renderização visual
+      // Envia a mensagem para a janela principal do chat para renderização visual e streaming
       if (state.mainWindow && !state.mainWindow.isDestroyed()) {
         try {
           state.mainWindow.webContents.send("ide-audio-transcribed", { text: userPrompt });
           state.mainWindow.webContents.send("send-to-gemini-stream-auto", promptWithDirective);
         } catch (_) {}
-      }
+      } else {
+        // Fallback quando a janela principal não está disponível
+        const aiResponseHelper = require("../../main/helpers/aiResponse");
+        const rawAiResponse = await aiResponseHelper.getIaResponseDirect(promptWithDirective);
+        const { voiceSummary, displayText, animation } = NexaResponseFilter.processResponse(rawAiResponse);
+        this.context.recordTurn(userPrompt, displayText);
+        this.emit("animation-trigger", { animation });
 
-      // Obtém a resposta da IA (usando helper central de resposta do Helper Node)
-      const aiResponseHelper = require("../../main/helpers/aiResponse");
-      const rawAiResponse = await aiResponseHelper.getIaResponseDirect(promptWithDirective);
-
-      // Processa a resposta extraindo o voice_summary e a animação
-      const { voiceSummary, displayText, animation } = NexaResponseFilter.processResponse(rawAiResponse);
-
-      // Registra no contexto de conversação para possíveis perguntas encadeadas
-      this.context.recordTurn(userPrompt, displayText);
-
-      // Emite evento com o resultado
-      this.emit("response-ready", {
-        voiceSummary,
-        displayText,
-        animation
-      });
-
-      // Dispara a animação resultante da resposta
-      this.emit("animation-trigger", { animation });
-
-      // Sintetiza o áudio via Google TTS
-      if (voiceSummary && googleTtsService) {
-        try {
+        if (voiceSummary && googleTtsService) {
           const ttsCfg = configService.getGoogleTtsConfig ? configService.getGoogleTtsConfig() : {};
           const voiceName = ttsCfg.voiceName || "pt-BR-Neural2-C";
           const audioBuf = await googleTtsService.synthesizeText(voiceSummary, {
@@ -220,31 +204,25 @@ class NexaVoiceSession extends EventEmitter {
             speakingRate: ttsCfg.speakingRate || 1.0,
             pitch: ttsCfg.pitch || 0.0
           });
-
           if (audioBuf && audioBuf.length > 0) {
             const base64Audio = audioBuf.toString("base64");
-            this.emit("state-changed", { state: "speaking" });
-
-            // Envia para a janela da Nexa ou para a janela principal tocar o áudio
             if (state.nexaWindow && !state.nexaWindow.isDestroyed()) {
               state.nexaWindow.webContents.send("play-tts-audio", { audioBase64: base64Audio });
-            } else if (state.mainWindow && !state.mainWindow.isDestroyed()) {
-              state.mainWindow.webContents.send("play-tts-audio", { audioBase64: base64Audio });
             }
           }
-        } catch (ttsErr) {
-          console.warn("[NexaVoiceSession] Falha ao sintetizar TTS:", ttsErr.message);
         }
+        this._startFollowUpTimer();
       }
-
-      // Ativa a janela de follow-up de 8 segundos
-      this._startFollowUpTimer();
-
     } catch (err) {
       console.error("[NexaVoiceSession] Erro ao executar query da IA:", err);
     } finally {
       this._endProcessingAndResume();
     }
+  }
+
+  handleTtsEnded() {
+    this._endProcessingAndResume();
+    this._startFollowUpTimer();
   }
 
   _startFollowUpTimer() {

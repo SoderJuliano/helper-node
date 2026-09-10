@@ -17,13 +17,15 @@ const {
 
 helpers.createConfigWindow = function() {
   if (state.configWindow && !state.configWindow.isDestroyed()) {
+    if (state.configWindow.isMinimized()) state.configWindow.restore();
+    state.configWindow.setAlwaysOnTop(true, "screen-saver");
     state.configWindow.show();
     state.configWindow.focus();
+    state.configWindow.moveTop();
     return;
   }
 
   const isStealth = configService.getStealthModeStatus();
-  const isLinux = process.platform === 'linux';
 
   state.configWindow = new BrowserWindow({
     width: 640,
@@ -36,6 +38,7 @@ helpers.createConfigWindow = function() {
     frame: false,
     thickFrame: false,
     hasShadow: true,
+    alwaysOnTop: true,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -45,7 +48,10 @@ helpers.createConfigWindow = function() {
   });
 
   state.configWindow.loadFile("config.html");
-  state.configWindow.setAlwaysOnTop(true, "floating");
+  state.configWindow.setAlwaysOnTop(true, "screen-saver");
+  state.configWindow.show();
+  state.configWindow.focus();
+  state.configWindow.moveTop();
 
   state.configWindow.on("closed", () => {
     state.configWindow = null;
@@ -54,13 +60,15 @@ helpers.createConfigWindow = function() {
 
 helpers.createPreferencesWindow = function() {
   if (state.preferencesWindow && !state.preferencesWindow.isDestroyed()) {
+    if (state.preferencesWindow.isMinimized()) state.preferencesWindow.restore();
+    state.preferencesWindow.setAlwaysOnTop(true, "screen-saver");
     state.preferencesWindow.show();
     state.preferencesWindow.focus();
+    state.preferencesWindow.moveTop();
     return;
   }
 
   const isStealth = configService.getStealthModeStatus();
-  const isLinux = process.platform === 'linux';
 
   state.preferencesWindow = new BrowserWindow({
     width: 640,
@@ -73,6 +81,7 @@ helpers.createPreferencesWindow = function() {
     frame: false,
     thickFrame: false,
     hasShadow: true,
+    alwaysOnTop: true,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -82,7 +91,10 @@ helpers.createPreferencesWindow = function() {
   });
 
   state.preferencesWindow.loadFile("preferences.html");
-  state.preferencesWindow.setAlwaysOnTop(true, "floating");
+  state.preferencesWindow.setAlwaysOnTop(true, "screen-saver");
+  state.preferencesWindow.show();
+  state.preferencesWindow.focus();
+  state.preferencesWindow.moveTop();
 
   state.preferencesWindow.on("closed", () => {
     state.preferencesWindow = null;

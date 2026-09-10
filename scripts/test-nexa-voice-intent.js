@@ -94,4 +94,33 @@ console.log("🧪 Iniciando testes de Intent Classifier da Nexa...\n");
   console.log("✅ Caso 12: Pergunta em janela de follow-up ativa -> RESPOND_AUDIO_AND_CHAT");
 }
 
-console.log("\n🎉 Todos os 12 testes do Intent Classifier passaram com sucesso!");
+// 6. Casos de VARIAÇÕES FONÉTICAS DO WHISPER (Naxa, Nessa, Néxa)
+{
+  const res = NexaIntentClassifier.classify("Oi Naxa, tudo bem?");
+  assert.strictEqual(res.action, "RESPOND_AUDIO_AND_CHAT");
+  assert.strictEqual(res.isCasualGreeting, true);
+  console.log("✅ Caso 13: Transcrição fonética 'Oi Naxa, tudo bem?' -> RESPOND_AUDIO_AND_CHAT");
+}
+
+{
+  const res = NexaIntentClassifier.classify("Nessa, tudo bem?");
+  assert.strictEqual(res.action, "RESPOND_AUDIO_AND_CHAT");
+  assert.strictEqual(res.isCasualGreeting, true);
+  console.log("✅ Caso 14: Transcrição fonética 'Nessa, tudo bem?' -> RESPOND_AUDIO_AND_CHAT");
+}
+
+{
+  const res = NexaIntentClassifier.classify("Nessa você está aí.");
+  assert.strictEqual(res.action, "RESPOND_AUDIO_AND_CHAT");
+  assert.strictEqual(res.isCasualGreeting, true);
+  console.log("✅ Caso 15: Transcrição fonética 'Nessa você está aí.' -> RESPOND_AUDIO_AND_CHAT");
+}
+
+{
+  const res = NexaIntentClassifier.classify("Néxa, como crio um controller em Java?");
+  assert.strictEqual(res.action, "RESPOND_AUDIO_AND_CHAT");
+  assert.strictEqual(res.cleanedQuery, "como crio um controller em Java?");
+  console.log("✅ Caso 16: Transcrição acentuada 'Néxa' -> RESPOND_AUDIO_AND_CHAT");
+}
+
+console.log("\n🎉 Todos os 16 testes do Intent Classifier passaram com sucesso!");

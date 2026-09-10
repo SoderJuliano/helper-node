@@ -99,13 +99,16 @@
             const shell = document.getElementById('app-shell');
             const resizer = document.getElementById('sidebar-resizer');
             if (!shell || !resizer) return;
-            const getMinW = () => 140;
-            const getMaxW = () => Math.max(500, Math.min(window.innerWidth - 140, Math.floor(window.innerWidth * 0.85)));
+            const getMinW = () => 180;
+            const getMaxW = () => Math.min(380, Math.max(220, Math.floor((window.innerWidth || 800) * 0.4)));
 
             let saved = null;
             try { saved = parseInt(localStorage.getItem('hn-sidebar-w'), 10); } catch (_) {}
-            if (saved && saved >= getMinW() && saved <= getMaxW()) {
-                shell.style.setProperty('--sidebar-w', saved + 'px');
+            if (saved && !isNaN(saved)) {
+                const clamped = Math.min(getMaxW(), Math.max(getMinW(), saved));
+                shell.style.setProperty('--sidebar-w', clamped + 'px');
+            } else {
+                shell.style.setProperty('--sidebar-w', '268px');
             }
 
             let dragging = false, startX = 0, startW = 0;

@@ -78,6 +78,13 @@ function registerIpc() {
       } catch (_) {}
     }
   });
+
+  // Quando o áudio da Nexa termina de ser reproduzido, aciona a janela de follow-up de 8s
+  ipcMain.on("nexa:tts-ended", () => {
+    if (session.isActive()) {
+      session.handleTtsEnded();
+    }
+  });
 }
 
 module.exports = {

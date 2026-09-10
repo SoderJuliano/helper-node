@@ -21,8 +21,10 @@ function stripAccents(str) {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
-// Padrões de ativação por Wake Word
-const WAKE_WORD_REGEX = /\b(nexa|neza|neksa|nexus|nexxa)\b/i;
+// Padrões de ativação por Wake Word e variações fonéticas geradas pelo Whisper (PT-BR)
+// Exemplos comuns: Nexa, Naxa, Nessa, Neza, Neksa, Nexus, Nexxa, Neca, Necca, Necha, Nixa, Alexa, Anexa
+const WAKE_WORD_REGEX = /\b(nexa|naxa|neza|neksa|nexus|nexxa|neca|necca|necha|nixa|alexa|anexa)\b|^(ei|oi|ola|olá|fala|opa|bom dia|boa tarde|boa noite|alo|alô)?\s*nessa\b|\bnessa\b(?=[,\s:!?]+(voce|vc|tudo|como|o que|qual|quando|onde|me|pode|faz|da|ajuda|ta|esta|estas|ai|escuta|ouve|olha|\?))/i;
+const WAKE_WORD_WORDS_PATTERN = "(nexa|naxa|nessa|neza|neksa|nexus|nexxa|neca|necca|necha|nixa|alexa|anexa)";
 
 // Expressões de apresentação em 3ª pessoa (NÃO deve responder por áudio)
 const THIRD_PERSON_PRESENTATION_PATTERNS = [
@@ -154,14 +156,14 @@ class NexaIntentClassifier {
     let cleanedQuery = text;
     if (hasWakeWord) {
       cleanedQuery = text
-        .replace(/^(ei|oi|olá|ola|e\s+aí|e\s+ai|opa)?\s*(nexa|neza|neksa|nexus|nexxa)[,\s:!]*/i, "")
-        .replace(/[,\s]*(nexa|neza|neksa|nexus|nexxa)[,\s:!?.]*$/i, "")
+        .replace(/^(ei|oi|olá|ola|e\s+aí|e\s+ai|opa|fala|alô|alo)?\s*(nexa|néxa|nèxa|nexá|naxa|nessa|neza|neksa|nexus|nexxa|neca|necca|necha|nixa|alexa|anexa)[,\s:!]*/i, "")
+        .replace(/[,\s]*(nexa|néxa|nèxa|nexá|naxa|nessa|neza|neksa|nexus|nexxa|neca|necca|necha|nixa|alexa|anexa)[,\s:!?.]*$/i, "")
         .trim();
     }
 
-    // Se após limpar só sobrou saudação simples (ex: "Oi Nexa", "Nexa!")
-    const cleanNorm = stripAccents(cleanedQuery).toLowerCase();
-    if (!cleanedQuery || /^(oi|ola|bom dia|boa tarde|boa noite|tudo bem|como vai)\??$/i.test(cleanNorm)) {
+    // Se após limpar só sobrou saudação simples (ex: "Oi Nexa", "Nexa!", "Nessa você está aí.", "tudo bem?")
+    const cleanNorm = stripAccents(cleanedQuery).toLowerCase().replace(/[.,!?;:]+$/g, "").trim();
+    if (!cleanedQuery || /^(oi|ola|bom dia|boa tarde|boa noite|tudo bem|como vai|voce esta ai|vc esta ai|esta ai|estas ai)$/i.test(cleanNorm)) {
       return {
         action: "RESPOND_AUDIO_AND_CHAT",
         cleanedQuery: cleanedQuery || "Olá!",

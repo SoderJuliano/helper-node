@@ -197,16 +197,24 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       const audioUrl = `data:audio/mp3;base64,${base64Data}`;
       currentAudio = new Audio(audioUrl);
+      currentAudio.volume = 1.0;
 
-      // Conecta o áudio ao analisador da fala antes de iniciar
-      animController.connectAudioElement(currentAudio);
+      // Dispara a animação visual de fala em loop
+      if (speakingAnimation) {
+        if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== speakingAnimation) {
+          currentVideoAnimation.stop();
+        }
+        speakingAnimation.play();
+        currentVideoAnimation = speakingAnimation;
+      }
+      animController.setState("SPEAKING");
 
       currentAudio.onplay = () => {
         animController.setState("SPEAKING");
       };
 
       currentAudio.onended = () => {
-        console.log("[NexaRenderer] Áudio TTS concluído.");
+        console.log("[NexaRenderer] Áudio TTS concluído com sucesso.");
         currentAudio = null;
         stopSpeakingAnimation();
         animController.setState("IDLE");
@@ -225,14 +233,19 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
       };
 
-      currentAudio.play().catch((err) => {
-        console.error("[NexaRenderer] Falha na reprodução:", err);
-        stopSpeakingAnimation();
-        animController.setState("IDLE");
-        if (window.electronAPI && window.electronAPI.sendNexaTtsEnded) {
-          window.electronAPI.sendNexaTtsEnded();
-        }
-      });
+      const playPromise = currentAudio.play();
+      if (playPromise !== undefined) {
+        playPromise.then(() => {
+          console.log("[NexaRenderer] Reproduzindo áudio TTS no fone/saída de som ativa.");
+        }).catch((err) => {
+          console.error("[NexaRenderer] Falha na reprodução de áudio:", err);
+          stopSpeakingAnimation();
+          animController.setState("IDLE");
+          if (window.electronAPI && window.electronAPI.sendNexaTtsEnded) {
+            window.electronAPI.sendNexaTtsEnded();
+          }
+        });
+      }
     } catch (e) {
       console.error("[NexaRenderer] Exceção ao tocar TTS:", e);
       stopSpeakingAnimation();
