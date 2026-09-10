@@ -4,23 +4,96 @@
   'use strict';
   const api = window.electronAPI || {};
   let isListening = true;
+  let lottieAnimation = null;
+
+  function initLottie() {
+    const container = document.getElementById('status-lottie-container');
+    if (!container || !window.lottie) return;
+    fetch('../../assets/loading.json')
+      .then(response => response.json())
+      .then(animationData => {
+        lottieAnimation = window.lottie.loadAnimation({
+          container: container,
+          renderer: 'svg',
+          loop: true,
+          autoplay: isListening,
+          animationData: animationData
+        });
+        if (!isListening && lottieAnimation) {
+          lottieAnimation.stop();
+        }
+      })
+      .catch(err => console.error('Erro ao carregar animação Lottie no overlay:', err));
+  }
 
   function updateStatus(status, customMsg) {
-    const dot  = document.getElementById('status-dot');
-    const text = document.getElementById('status-text');
+    const badge = document.getElementById('status-badge');
+    const subtext = document.getElementById('status-subtext');
+    const btnPause = document.getElementById('btn-pause');
+
     const map = {
-      listening: { cls: 'listening', txt: '🎙️ Ouvindo microfone e sistema (ao vivo)...' },
-      speaking:  { cls: 'speaking',  txt: '🗣️ Áudio detectado — transcrevendo...' },
-      thinking:  { cls: 'thinking',  txt: '🤖 Processando resposta com IA...' },
-      paused:    { cls: 'paused',    txt: '⏸️ Pausado — Pressione Ctrl+D para ouvir' },
-      error:     { cls: 'error',     txt: '⚠️ ' + (customMsg || 'Erro no áudio/IA') },
+      listening: {
+        badgeCls: 'badge-listening',
+        badgeTxt: 'OUVINDO (AO VIVO)',
+        subTxt: '[Ctrl+D para pausar]',
+        bodyCls: 'state-listening'
+      },
+      paused: {
+        badgeCls: 'badge-paused',
+        badgeTxt: 'PAUSADO',
+        subTxt: '[Ctrl+D para ouvir]',
+        bodyCls: 'state-paused'
+      },
+      thinking: {
+        badgeCls: 'badge-thinking',
+        badgeTxt: 'PROCESSANDO IA',
+        subTxt: customMsg || 'Processando resposta...',
+        bodyCls: 'state-thinking'
+      },
+      speaking: {
+        badgeCls: 'badge-speaking',
+        badgeTxt: 'TRANSCREVENDO',
+        subTxt: customMsg || 'Detectando fala...',
+        bodyCls: 'state-speaking'
+      },
+      error: {
+        badgeCls: 'badge-error',
+        badgeTxt: 'ERRO',
+        subTxt: customMsg || 'Erro no áudio/IA',
+        bodyCls: 'state-error'
+      }
     };
+
     const s = map[status] || map.listening;
-    if (dot) {
-      dot.className = '';
-      if (s.cls) dot.classList.add(s.cls);
+
+    document.body.className = s.bodyCls;
+
+    if (badge) {
+      badge.className = `status-badge ${s.badgeCls}`;
+      badge.textContent = s.badgeTxt;
     }
-    if (text) text.textContent = customMsg || s.txt;
+
+    if (subtext) {
+      subtext.textContent = s.subTxt;
+    }
+
+    if (lottieAnimation) {
+      if (status === 'paused') {
+        lottieAnimation.stop();
+      } else {
+        lottieAnimation.play();
+      }
+    }
+
+    if (btnPause) {
+      if (status === 'paused') {
+        btnPause.textContent = '▶';
+        btnPause.title = 'Ouvir (Ctrl+D)';
+      } else {
+        btnPause.textContent = '⏸';
+        btnPause.title = 'Pausar (Ctrl+D)';
+      }
+    }
   }
 
   function escapeHtml(s) {
@@ -41,7 +114,7 @@
       if (before.trim()) html += '<p>' + inline(before) + '</p>';
       const lang = (m[1] || 'text').toLowerCase();
       const code = m[2].replace(/\n$/, '');
-      html += '<pre><button class="copy-btn">copy</button><code class="lang-' + lang + '">' + escapeHtml(code) + '</code></pre>';
+      html += '<pre><button class="copy-btn">copiar</button><code class="lang-' + lang + '">' + escapeHtml(code) + '</code></pre>';
       lastIdx = codeRe.lastIndex;
     }
     const tail = text.slice(lastIdx);
@@ -69,7 +142,7 @@
     const isMic = (src === 'mic');
     const isScreen = (src === 'screen' || (text && text.startsWith('📸')));
     const roleClass = isMic ? 'mic-turn' : (isScreen ? 'screen-turn' : 'sys-turn');
-    const roleLabel = isMic ? '🎙️ Você (Microfone)' : (isScreen ? '📸 Pergunta na Tela (Recrutador)' : '🔊 Interlocutor (Sistema)');
+    const roleLabel = isMic ? 'Você (Microfone)' : (isScreen ? 'Pergunta na Tela' : 'Interlocutor (Sistema)');
 
     if (currentTurn.userBlock && !currentTurn.assistantBlock && currentTurn.audioSource === src) {
       currentTurn.id = id || currentTurn.id;
@@ -128,7 +201,7 @@
       const mm = String(now.getMinutes()).padStart(2,'0');
       const ts = document.createElement('div');
       ts.className = 'tip-time';
-      ts.textContent = '🤖 Resposta IA · ' + hh + ':' + mm;
+      ts.textContent = 'Resposta IA · ' + hh + ':' + mm;
       block.appendChild(ts);
 
       const body = document.createElement('div');
@@ -163,6 +236,9 @@
 
   const btnPause = document.getElementById('btn-pause');
   btnPause?.addEventListener('click', () => {
+    // Feedback visual imediato antes da confirmação IPC
+    isListening = !isListening;
+    updateStatus(isListening ? 'listening' : 'paused');
     window.electronAPI?.toggleRecordingShortcut?.();
   });
 
@@ -207,8 +283,8 @@
         if (api.copyToClipboard) api.copyToClipboard(code.textContent);
         else await navigator.clipboard.writeText(code.textContent);
         btn.classList.add('copied');
-        btn.textContent = '✓ copiado';
-        setTimeout(() => { btn.classList.remove('copied'); btn.textContent = 'copy'; }, 1300);
+        btn.textContent = 'copiado';
+        setTimeout(() => { btn.classList.remove('copied'); btn.textContent = 'copiar'; }, 1300);
       } catch (_) {}
       return;
     }
@@ -256,13 +332,7 @@
     api.onToggleRecording((event, data) => {
       if (!data) return;
       isListening = !!data.isRecording;
-      if (isListening) {
-        updateStatus('listening');
-        if (btnPause) { btnPause.textContent = '⏸'; btnPause.title = 'Pausar assistente (ou use Ctrl+D)'; }
-      } else {
-        updateStatus('paused');
-        if (btnPause) { btnPause.textContent = '▶'; btnPause.title = 'Continuar assistente (ou use Ctrl+D)'; }
-      }
+      updateStatus(isListening ? 'listening' : 'paused');
     });
   }
 
@@ -282,14 +352,14 @@
           break;
 
         case 'segment_start':
-          updateStatus('speaking');
+          if (isListening) updateStatus('speaking', 'Detectando fala...');
           if (currentTurn.assistantBlock) {
             currentTurn = { id: null, userBlock: null, assistantBlock: null, lastUserText: '', lastAssistantText: '' };
           }
           break;
 
         case 'segment_discard':
-          updateStatus('listening');
+          if (isListening) updateStatus('listening');
           if (currentTurn.id === payload.id) {
             if (currentTurn.userBlock) currentTurn.userBlock.remove();
             if (currentTurn.assistantBlock) currentTurn.assistantBlock.remove();
@@ -300,7 +370,9 @@
         case 'segment_partial':
           {
             const isMic = (payload.audioSource === 'mic');
-            updateStatus('speaking', isMic ? '🎙️ Você falando...' : '🔊 Interlocutor falando...');
+            if (isListening) {
+              updateStatus('speaking', isMic ? 'Você falando...' : 'Interlocutor falando...');
+            }
             if (payload.text && payload.text.trim().length > 3) {
               handleUserText(payload.id, payload.text, payload.audioSource || 'sys');
             }
@@ -308,14 +380,14 @@
           break;
 
         case 'segment_whisper_correction':
-          updateStatus('thinking');
+          if (isListening) updateStatus('thinking', 'Processando com IA...');
           if (payload.text && payload.text.trim().length > 0) {
             handleUserText(payload.id, payload.text, payload.audioSource || 'sys');
           }
           break;
 
         case 'segment_response':
-          updateStatus('listening');
+          if (isListening) updateStatus('listening');
           if (payload.response && payload.response.trim().length > 0) {
             handleAssistantText(payload.id, payload.response);
           }
@@ -332,5 +404,8 @@
     });
   }
 
-  updateStatus('listening');
+  window.addEventListener('DOMContentLoaded', () => {
+    initLottie();
+    updateStatus('listening');
+  });
 })();

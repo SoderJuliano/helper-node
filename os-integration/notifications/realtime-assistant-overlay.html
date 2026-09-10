@@ -14,22 +14,26 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="realtime-assistant-overlay.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js"></script>
 </head>
-<body>
+<body class="state-listening">
   <div id="pos-header" draggable="false">
-    <span class="title">🎙️ Assistente em Tempo Real</span>
+    <span class="title">Assistente em Tempo Real</span>
     <button class="pos-btn" id="btn-left"    title="Esquerda" draggable="false">◀</button>
     <button class="pos-btn" id="btn-center"  title="Centro" draggable="false">◉</button>
     <button class="pos-btn" id="btn-right"   title="Direita" draggable="false">▶</button>
     <button class="pos-btn" id="btn-monitor" title="Próximo monitor" draggable="false">⊞</button>
-    <button class="pos-btn" id="btn-clear"   title="Limpar mensagens" draggable="false">🗑</button>
-    <button class="pos-btn" id="btn-pause"   title="Pausar/Retomar captura (ou use Ctrl+D)" draggable="false">⏸</button>
+    <button class="pos-btn" id="btn-clear"   title="Limpar mensagens" draggable="false">Limpar</button>
+    <button class="pos-btn" id="btn-pause"   title="Pausar (Ctrl+D)" draggable="false">⏸</button>
     <button class="pos-btn" id="btn-min"     title="Minimizar" draggable="false">–</button>
   </div>
 
   <div id="status-bar" draggable="false">
-    <div id="status-dot" class="listening" draggable="false"></div>
-    <span id="status-text" draggable="false">🎙️ Ouvindo microfone e áudio do sistema (ao vivo)...</span>
+    <div class="status-left">
+      <span id="status-badge" class="status-badge badge-listening">OUVINDO (AO VIVO)</span>
+      <span id="status-subtext" class="status-subtext">[Ctrl+D para pausar]</span>
+    </div>
+    <div id="status-lottie-container" class="status-lottie-box"></div>
   </div>
 
   <div id="messages">

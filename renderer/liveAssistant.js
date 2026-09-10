@@ -123,11 +123,7 @@
     if (window.electronAPI && window.electronAPI.onToggleRecording) {
         window.electronAPI.onToggleRecording((event, data) => {
             if (!data) return;
-            if (!data.isRealtimeAssistant) {
-                toggleAnimation(data.isRecording);
-            } else if (!data.isRecording) {
-                toggleAnimation(false);
-            }
+            toggleAnimation(!!data.isRecording);
 
             if (data.isRecording) {
                 const hero = document.getElementById('welcome-hero');
