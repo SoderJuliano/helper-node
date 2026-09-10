@@ -191,13 +191,17 @@ function fileIconHtml(name) {
             //   gerenciamento: trocar / abrir no sistema / fechar) + branch.
             async function pickProjectFolder() {
                 if (!(window.electronAPI && window.electronAPI.workspacePickDir)) return;
-                const r = await window.electronAPI.workspacePickDir();
-                if (r && r.attachments && typeof renderWorkspacePanel === 'function') {
-                    renderWorkspacePanel(r.attachments);
-                }
-                await refreshProjectContext();
-                if (typeof window.refreshProjectTree === 'function') {
-                    await window.refreshProjectTree();
+                try {
+                    const r = await window.electronAPI.workspacePickDir();
+                    if (r && r.attachments && typeof renderWorkspacePanel === 'function') {
+                        renderWorkspacePanel(r.attachments);
+                    }
+                    await refreshProjectContext();
+                    if (typeof window.refreshProjectTree === 'function') {
+                        await window.refreshProjectTree();
+                    }
+                } catch (err) {
+                    console.error('[workspaceContext] Erro ao trocar pasta de projeto:', err);
                 }
             }
 

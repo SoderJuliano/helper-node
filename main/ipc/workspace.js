@@ -1,5 +1,4 @@
-// main/ipc/workspace.js
-const { path, fs2, workspace, state, helpers, ipcMain, configService, fileEditService } = require('../globals.js');
+const { path, fs2, workspace, state, helpers, ipcMain, configService, fileEditService, GeminiCliProvider, ClaudeCliProvider } = require('../globals.js');
 
 module.exports = function registerIpc() {
 ipcMain.handle("get-workspace-access-enabled", () => {
@@ -47,11 +46,11 @@ ipcMain.handle("workspace:pick-dir", async () => {
     } catch (e) { console.warn("[workspace] open project falhou:", e.message); }
   }
   helpers.syncTerminalCwd();
-  // Gemini CLI: reinicia sessão quando o projeto muda.
+  // Gemini CLI / Claude CLI: reinicia sessão quando o projeto muda.
   const newDirs = workspace.list().filter(a => a.type === 'dir').map(a => a.path);
   const oldPath = prevDirs[0] || null;
   const newPath = newDirs[0] || null;
-  const activeProvider = configService.getAiModel();
+  const activeProvider = (configService && configService.getAiModel) ? configService.getAiModel() : null;
   if (oldPath !== newPath) {
     try {
       const symbolIndexer = require('../../services/symbolIndexer.js');
@@ -69,16 +68,24 @@ ipcMain.handle("workspace:pick-dir", async () => {
     } catch (err) {
       console.warn('[workspaceWatcher] Falha ao alterar watcher:', err.message);
     }
-    if (activeProvider === 'geminiCli') {
-      GeminiCliProvider.changeProject(oldPath, newPath).catch(e =>
-        console.warn('[workspace] GeminiCliProvider.changeProject falhou:', e.message)
-      );
+    if (activeProvider === 'geminiCli' && GeminiCliProvider && typeof GeminiCliProvider.changeProject === 'function') {
+      try {
+        GeminiCliProvider.changeProject(oldPath, newPath).catch(e =>
+          console.warn('[workspace] GeminiCliProvider.changeProject falhou:', e.message)
+        );
+      } catch (e) {
+        console.warn('[workspace] GeminiCliProvider.changeProject erro:', e.message);
+      }
     }
-  }
-  if (oldPath !== newPath && activeProvider === 'claudeCli') {
-    ClaudeCliProvider.changeProject(oldPath, newPath).catch(e =>
-      console.warn('[claude-cli] changeProject error:', e.message)
-    );
+    if (activeProvider === 'claudeCli' && ClaudeCliProvider && typeof ClaudeCliProvider.changeProject === 'function') {
+      try {
+        ClaudeCliProvider.changeProject(oldPath, newPath).catch(e =>
+          console.warn('[claude-cli] changeProject error:', e.message)
+        );
+      } catch (e) {
+        console.warn('[claude-cli] changeProject erro:', e.message);
+      }
+    }
   }
   if (state.mainWindow && !state.mainWindow.isDestroyed()) {
     state.mainWindow.webContents.send("workspace-changed", { attachments: workspace.list() });
