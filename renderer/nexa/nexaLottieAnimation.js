@@ -18,6 +18,8 @@ class NexaLottieAnimation {
     this.isLoading = false;
     this.canvas = null;
     this.anim = null;
+    this.onComplete = options.onComplete || null;
+    this.onLoopComplete = options.onLoopComplete || null;
   }
 
   init() {
@@ -84,6 +86,17 @@ class NexaLottieAnimation {
               this.finished = true;
               this.isPlaying = false;
               console.log("[NexaLottieAnimation] Animação concluída.");
+              if (typeof this.onComplete === "function") {
+                const cb = this.onComplete;
+                this.onComplete = null;
+                try { cb(); } catch (e) { console.error(e); }
+              }
+            });
+
+            this.anim.addEventListener("loopComplete", () => {
+              if (typeof this.onLoopComplete === "function") {
+                try { this.onLoopComplete(); } catch (e) { console.error(e); }
+              }
             });
 
             this.anim.addEventListener("DOMLoaded", () => {
@@ -149,6 +162,24 @@ class NexaLottieAnimation {
       this.init();
     } else {
       this.playSegmentOrFull();
+    }
+  }
+
+  finishLoopAndStop(cb) {
+    if (!this.isPlaying || this.finished || !this.anim) {
+      if (cb) cb();
+      return;
+    }
+    this.onComplete = cb;
+    this.loop = false;
+    try {
+      if (typeof this.anim.setLoop === "function") {
+        this.anim.setLoop(false);
+      } else {
+        this.anim.loop = false;
+      }
+    } catch (_) {
+      this.anim.loop = false;
     }
   }
 

@@ -102,6 +102,10 @@ ipcMain.handle("get-audio-input-devices", async () => {
       }
       return devices;
     }
+    const nativeAudio = require('../../services/platform/nativeAudio');
+    if (nativeAudio && typeof nativeAudio.listInputDevices === 'function') {
+      return await nativeAudio.listInputDevices();
+    }
     return [];
   } catch (e) {
     console.error("[config] get-audio-input-devices falhou:", e.message);

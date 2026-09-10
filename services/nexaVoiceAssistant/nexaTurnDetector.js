@@ -45,6 +45,14 @@ class NexaTurnDetector extends EventEmitter {
     this.maxPreRollBytes = Math.round(this.preRollMs * BYTES_PER_MS);
 
     this._onPcmChunk = this._handlePcmChunk.bind(this);
+    this._onDeviceLost = () => {
+      if (this.active) {
+        this.resetTurn();
+      }
+    };
+    if (nativeAudio && nativeAudio.on) {
+      nativeAudio.on("device-lost", this._onDeviceLost);
+    }
   }
 
   /**

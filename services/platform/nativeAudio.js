@@ -18,13 +18,15 @@
 //     É a mesma limitação de sempre — no Linux era parec, no Mac nunca houve.
 
 const path = require('path');
+const EventEmitter = require('events');
 
+const events = new EventEmitter();
 let win = null;              // BrowserWindow oculto de captura
 let starting = null;         // Promise de inicialização em andamento (idempotência)
 const subscribers = new Map(); // source ('mic'|'sys') -> Set<cb(Buffer)>
+const sourceOptions = new Map(); // source -> options ({ deviceId })
 
 function electron() {
-  // require tardio: só quando realmente for usado (evita custo no Linux).
   return require('electron');
 }
 
@@ -44,7 +46,6 @@ async function ensureWindow() {
     const { BrowserWindow, ipcMain, session, desktopCapturer } = electron();
 
     // Auto-aprova permissões de mídia e getDisplayMedia com loopback de áudio (sem UI de seleção).
-    // Só precisamos do áudio; o vídeo é obrigatório pela API mas é descartado.
     try {
       session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
         if (permission === 'media' || permission === 'microphone' || permission === 'audio-capture') return true;
@@ -71,6 +72,34 @@ async function ensureWindow() {
         routePcm(payload.source, Buffer.from(payload.bytes));
       });
       ipcMain.on('native-audio-log', (_evt, msg) => console.log('[native-audio][renderer]', msg));
+
+      ipcMain.on('native-audio-device-lost', (_evt, payload) => {
+        console.warn(`[native-audio] Dispositivo de áudio desconectado (${payload && payload.source}):`, payload);
+        events.emit('device-lost', payload);
+      });
+
+      ipcMain.on('native-audio-device-change', () => {
+        events.emit('device-change');
+      });
+
+      ipcMain.on('native-audio-error', (_evt, payload) => {
+        console.warn('[native-audio] Erro de captura do renderer:', payload);
+        events.emit('error', payload);
+      });
+
+      ipcMain.on('native-audio-renderer-ready', () => {
+        // Reativa todas as fontes que possuam assinantes ativos
+        if (win && !win.isDestroyed()) {
+          for (const [source, set] of subscribers.entries()) {
+            if (set && set.size > 0) {
+              const opts = sourceOptions.get(source) || {};
+              const deviceId = opts.deviceId || '';
+              win.webContents.send('native-audio-start', { source, deviceId });
+            }
+          }
+        }
+      });
+
       ensureWindow._ipcBound = true;
     }
 
@@ -83,6 +112,16 @@ async function ensureWindow() {
         contextIsolation: false,
         backgroundThrottling: false, // CRÍTICO: janela oculta não pode throttlar o áudio
       },
+    });
+
+    win.webContents.on('render-process-gone', (_evt, details) => {
+      console.warn('[native-audio] Processo do renderer finalizou/caiu:', details);
+      win = null;
+      if (subscribers.size > 0) {
+        setTimeout(() => {
+          ensureWindow().catch((e) => console.error('[native-audio] Falha ao recriar janela após crash:', e.message));
+        }, 500);
+      }
     });
 
     await win.loadFile(path.join(__dirname, 'nativeAudioRenderer.html'));
@@ -104,8 +143,10 @@ async function subscribe(source, cb, options = {}) {
   clearTimeout(closeIdleTimer);
   if (!subscribers.has(source)) subscribers.set(source, new Set());
   subscribers.get(source).add(cb);
+  sourceOptions.set(source, options || {});
+
   const w = await ensureWindow();
-  // Pede ao renderer para (re)garantir que a fonte está capturando.
+  // Pede ao renderer para (re)garantir que a fonte está capturando com o deviceId mais recente.
   if (w && !w.isDestroyed()) {
     const deviceId = (options && options.deviceId) ? String(options.deviceId) : '';
     w.webContents.send('native-audio-start', { source, deviceId });
@@ -119,6 +160,7 @@ function unsubscribe(source, cb) {
     if (cb) set.delete(cb); else set.clear();
     if (set.size === 0) {
       subscribers.delete(source);
+      sourceOptions.delete(source);
       if (win && !win.isDestroyed()) win.webContents.send('native-audio-stop', { source });
     }
   }
@@ -129,7 +171,52 @@ function unsubscribe(source, cb) {
         try { win.close(); } catch (_) {}
         win = null;
       }
-    }, 60000);
+    }, 45000);
+  }
+}
+
+// Força reinício de uma fonte (útil ao mudar configurações de microfone ou após reconexão manual)
+async function restart(source, options = {}) {
+  if (options) sourceOptions.set(source, options);
+  const opts = sourceOptions.get(source) || options || {};
+  const deviceId = (opts && opts.deviceId) ? String(opts.deviceId) : '';
+  const w = await ensureWindow();
+  if (w && !w.isDestroyed()) {
+    w.webContents.send('native-audio-restart', { source, deviceId });
+  }
+}
+
+// Lista dispositivos de áudio disponíveis via Chromium
+async function listInputDevices() {
+  if (process.platform === 'linux') return [];
+  try {
+    const w = await ensureWindow();
+    if (!w || w.isDestroyed()) return [];
+
+    const { ipcMain } = electron();
+    const reqId = 'devs_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+
+    return await new Promise((resolve) => {
+      let timer = null;
+      const onReply = (_evt, data) => {
+        if (data && data.reqId === reqId) {
+          if (timer) clearTimeout(timer);
+          ipcMain.removeListener('native-audio-list-devices-reply', onReply);
+          resolve(data.devices || []);
+        }
+      };
+
+      timer = setTimeout(() => {
+        ipcMain.removeListener('native-audio-list-devices-reply', onReply);
+        resolve([]);
+      }, 3000);
+
+      ipcMain.on('native-audio-list-devices-reply', onReply);
+      w.webContents.send('native-audio-list-devices', { reqId });
+    });
+  } catch (err) {
+    console.error('[native-audio] listInputDevices falhou:', err.message);
+    return [];
   }
 }
 
@@ -146,10 +233,22 @@ async function prewarm() {
 function destroy() {
   clearTimeout(closeIdleTimer);
   subscribers.clear();
+  sourceOptions.clear();
   if (win && !win.isDestroyed()) {
     try { win.destroy(); } catch (_) {}
     win = null;
   }
 }
 
-module.exports = { subscribe, unsubscribe, prewarm, destroy };
+module.exports = {
+  subscribe,
+  unsubscribe,
+  restart,
+  listInputDevices,
+  prewarm,
+  destroy,
+  events,
+  on: (event, cb) => events.on(event, cb),
+  once: (event, cb) => events.once(event, cb),
+  removeListener: (event, cb) => events.removeListener(event, cb)
+};

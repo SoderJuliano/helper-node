@@ -67,12 +67,91 @@ document.addEventListener("DOMContentLoaded", async () => {
   const baseIdleAnimation = createLottieAnim("base_idle_lottie", true);
   const speakingAnimation = createLottieAnim("speaking_lottie", true);
   const writingAnimation = createLottieAnim("typing_lottie", true);
+  const thinkingAnimation = createLottieAnim("thinking_lottie", true);
+  const listeningAnimation = createLottieAnim("listening_lottie", false);
 
   let currentVideoAnimation = introAnimation;
   let idleTime = 0;
   let sleepingTime = 0;
   const SLEEP_TIMEOUT = 10 * 60; // 10 minutos (600s)
   let isSleeping = false;
+  let pendingStateTransition = null;
+  let pendingTransitionTimeout = null;
+
+  function isIdleMovementAnimation(anim) {
+    if (!anim || !anim.isPlaying || anim.isFinished()) return false;
+    return (
+      anim === idleBoringAnimation ||
+      anim === idleGlassesAnimation ||
+      anim === idleStretchingAnimation ||
+      anim === idleSquattingAnimation ||
+      anim === idleSleepingAnimation ||
+      (anim.animationPath && (
+        anim.animationPath.includes("idle_lottie") ||
+        anim.animationPath.includes("adjust_glasses") ||
+        anim.animationPath.includes("stretching") ||
+        anim.animationPath.includes("squatting") ||
+        anim.animationPath.includes("sleeping")
+      ))
+    );
+  }
+
+  function applyStateAnimation(stateToApply) {
+    if (pendingTransitionTimeout) {
+      clearTimeout(pendingTransitionTimeout);
+      pendingTransitionTimeout = null;
+    }
+    pendingStateTransition = null;
+    animController.setState(stateToApply);
+
+    if (stateToApply === "LISTENING") {
+      if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== listeningAnimation) {
+        currentVideoAnimation.stop();
+      }
+      if (listeningAnimation) {
+        console.log("[NexaRenderer] Transicionando para LISTENING. Iniciando animação de escuta.");
+        listeningAnimation.play();
+        currentVideoAnimation = listeningAnimation;
+      }
+    } else if (stateToApply === "THINKING") {
+      if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== thinkingAnimation) {
+        currentVideoAnimation.stop();
+      }
+      if (thinkingAnimation) {
+        console.log("[NexaRenderer] Transicionando para THINKING. Iniciando animação de pensamento.");
+        thinkingAnimation.play();
+        currentVideoAnimation = thinkingAnimation;
+      }
+    } else if (stateToApply === "SPEAKING") {
+      if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== speakingAnimation) {
+        currentVideoAnimation.stop();
+      }
+      if (speakingAnimation) {
+        console.log("[NexaRenderer] Transicionando para SPEAKING. Iniciando animação de fala em loop.");
+        speakingAnimation.play();
+        currentVideoAnimation = speakingAnimation;
+      }
+    } else if (stateToApply === "WORKING") {
+      if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== writingAnimation) {
+        currentVideoAnimation.stop();
+      }
+      if (writingAnimation) {
+        console.log("[NexaRenderer] Transicionando para WORKING. Iniciando animação de escrita/leitura de arquivos.");
+        writingAnimation.play();
+        currentVideoAnimation = writingAnimation;
+      }
+    } else {
+      // Estado IDLE ou outros
+      if (currentVideoAnimation && currentVideoAnimation.isPlaying) {
+        const pathStr = currentVideoAnimation.videoPath || currentVideoAnimation.animationPath || "";
+        if (pathStr.includes("thinking") || pathStr.includes("listening") || pathStr.includes("speaking") || pathStr.includes("writing") || pathStr.includes("typing")) {
+          console.log("[NexaRenderer] Parando animação ativa por retorno a IDLE.");
+          currentVideoAnimation.stop();
+          currentVideoAnimation = null;
+        }
+      }
+    }
+  }
 
   // Busca o catálogo de animações do Main
   let animationsCatalog = {};
@@ -116,62 +195,40 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  // 1. Escuta de IPC: Mudança de Estado (IDLE, LISTENING, THINKING, SPEAKING)
+  // 1. Escuta de IPC: Mudança de Estado (IDLE, LISTENING, THINKING, SPEAKING, WORKING)
   if (window.electronAPI && window.electronAPI.onNexaStateChange) {
     window.electronAPI.onNexaStateChange(({ state: newState }) => {
       console.log("[NexaRenderer] Novo estado recebido via IPC:", newState);
-      animController.setState(newState);
-      
-      if (newState === "LISTENING") {
-        if (currentVideoAnimation && currentVideoAnimation.isPlaying) {
-          currentVideoAnimation.stop();
-        }
-        const listeningLottiePath = "renderer/nexa/assets/lottie/listening_lottie/animations/main.json";
-        console.log("[NexaRenderer] Transicionando para LISTENING. Iniciando animação de escuta.");
-        currentVideoAnimation = new NexaLottieAnimation({
-          animationPath: listeningLottiePath,
-          loop: false
-        });
-        currentVideoAnimation.play();
-      } else if (newState === "THINKING") {
-        if (currentVideoAnimation && currentVideoAnimation.isPlaying) {
-          currentVideoAnimation.stop();
-        }
-        const thinkingLottiePath = "renderer/nexa/assets/lottie/thinking_lottie/animations/main.json";
-        console.log("[NexaRenderer] Transicionando para THINKING. Iniciando animação de pensamento.");
-        currentVideoAnimation = new NexaLottieAnimation({
-          animationPath: thinkingLottiePath,
-          loop: true // loop while waiting for AI
-        });
-        currentVideoAnimation.play();
-      } else if (newState === "SPEAKING") {
-        if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== speakingAnimation) {
-          currentVideoAnimation.stop();
-        }
-        if (speakingAnimation) {
-          console.log("[NexaRenderer] Transicionando para SPEAKING. Iniciando animação de fala em loop.");
-          speakingAnimation.play();
-          currentVideoAnimation = speakingAnimation;
-        }
-      } else if (newState === "WORKING") {
-        if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== writingAnimation) {
-          currentVideoAnimation.stop();
-        }
-        if (writingAnimation) {
-          console.log("[NexaRenderer] Transicionando para WORKING. Iniciando animação de escrita de arquivos.");
-          writingAnimation.play();
-          currentVideoAnimation = writingAnimation;
-        }
-      } else {
-        // Se mudou para qualquer outro estado (como IDLE), para animações de escuta, pensamento, fala ou escrita
-        if (currentVideoAnimation && currentVideoAnimation.isPlaying) {
-          const pathStr = currentVideoAnimation.videoPath || currentVideoAnimation.animationPath || "";
-          if (pathStr.includes("thinking") || pathStr.includes("listening") || pathStr.includes("speaking") || pathStr.includes("writing") || pathStr.includes("typing")) {
-            console.log("[NexaRenderer] Parando animação ativa por transição de estado.");
-            currentVideoAnimation.stop();
+
+      // Transição suave: se uma animação de movimento IDLE estiver em curso (espreguiçar, óculos, agachar, idle)
+      // e o novo estado for THINKING ou WORKING (lendo/escrevendo arquivos), primeiro finaliza o ciclo atual
+      // antes de entrar na nova animação, evitando cortes bruscos no meio do movimento!
+      if (isIdleMovementAnimation(currentVideoAnimation) && (newState === "THINKING" || newState === "WORKING")) {
+        console.log(`[NexaRenderer] Animação de movimento em curso (${currentVideoAnimation.animationPath}) -> aguardando fim do loop para transicionar suavemente para ${newState}...`);
+        
+        pendingStateTransition = newState;
+        animController.setState(newState); // Sincroniza estado lógico interno
+
+        if (pendingTransitionTimeout) clearTimeout(pendingTransitionTimeout);
+
+        currentVideoAnimation.finishLoopAndStop(() => {
+          if (pendingStateTransition === newState) {
+            console.log(`[NexaRenderer] Loop da animação idle concluído com sucesso -> iniciando ${newState}.`);
+            applyStateAnimation(newState);
           }
-        }
+        });
+
+        // Timeout de segurança (máximo 3.5s) para garantir a transição sem travar a UI
+        pendingTransitionTimeout = setTimeout(() => {
+          if (pendingStateTransition === newState) {
+            console.log(`[NexaRenderer] Timeout de transição suave atingido -> iniciando ${newState}.`);
+            applyStateAnimation(newState);
+          }
+        }, 3500);
+        return;
       }
+
+      applyStateAnimation(newState);
     });
   }
 
@@ -298,26 +355,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     const deltaTime = Math.min(0.1, (currentTime - lastTime) / 1000.0);
     lastTime = currentTime;
 
-    const currentState = animController.getCurrentState();
-
-    // Se o estado mudar de IDLE, interrompe as animações idle/sleeping imediatamente e acorda a Nexa
+    // Se o estado mudar de IDLE, gerencia acordar da soneca se estiver dormindo
     if (currentState !== "IDLE") {
       if (isSleeping) {
         console.log("[NexaRenderer] Nexa acordou devido a atividade/novo estado:", currentState);
         isSleeping = false;
-        if (currentVideoAnimation === idleSleepingAnimation) {
+        if (currentVideoAnimation === idleSleepingAnimation && !pendingStateTransition) {
           idleSleepingAnimation.stop();
           currentVideoAnimation = null;
-        }
-      }
-      if (currentVideoAnimation && currentVideoAnimation.isPlaying && !currentVideoAnimation.isFinished()) {
-        if (currentVideoAnimation === idleBoringAnimation || 
-            currentVideoAnimation === idleGlassesAnimation ||
-            currentVideoAnimation === idleStretchingAnimation ||
-            currentVideoAnimation === idleSquattingAnimation ||
-            currentVideoAnimation === idleSleepingAnimation) {
-          currentVideoAnimation.stop();
-          console.log("[NexaRenderer] Animação idle interrompida por mudança de estado para:", currentState);
         }
       }
       idleTime = 0;
@@ -331,6 +376,20 @@ document.addEventListener("DOMContentLoaded", async () => {
       currentVideoAnimation.render(ctx, canvas.width, canvas.height);
       if (!currentVideoAnimation.isFinished()) {
         rendered = true;
+      }
+    }
+
+    // Se a animação em curso terminou seu loop e havia uma transição pendente (ex: THINKING/WORKING)
+    if (!rendered && pendingStateTransition) {
+      const targetState = pendingStateTransition;
+      pendingStateTransition = null;
+      applyStateAnimation(targetState);
+      if (currentVideoAnimation && !currentVideoAnimation.isFinished() && currentVideoAnimation.isPlaying) {
+        currentVideoAnimation.update(deltaTime);
+        currentVideoAnimation.render(ctx, canvas.width, canvas.height);
+        if (!currentVideoAnimation.isFinished()) {
+          rendered = true;
+        }
       }
     }
 
