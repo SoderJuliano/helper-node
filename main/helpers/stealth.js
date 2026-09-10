@@ -224,9 +224,14 @@ helpers.processOsQuestion = async function(text, image = null, opts = {}) {
     if (image) {
       if (useVision && (aiModel === 'openIa' || aiModel === 'openIaCodex')) {
         // PROMPT LIMPO no modo visão OpenAI: a imagem vai pelo canal de visão da API
+        const isGenericText = !text || !text.trim();
+        const baseDirective = isGenericText
+          ? `Você é um copiloto em tempo real. Identifique o enunciado, código ou pergunta na tela e entregue a SOLUÇÃO COMPLETA, DIRETA e PRONTA para o usuário responder com excelência técnica (código funcional ideal se programação, resposta em 1ª pessoa se entrevista, alternativa em destaque se teste/múltipla escolha). NUNCA descreva a tela de forma genérica.`
+          : `Analise a IMAGEM com atenção e responda com profundidade técnica às regras do sistema.`;
+
         text = (text && text.trim() ? `${text}\n\n` : '')
-          + 'Analise a IMAGEM com atenção. Responda conforme as regras do sistema.\n\n'
-          + 'IMPORTANTE: na imagem, "x" entre dois números significa MULTIPLICAÇÃO '
+          + baseDirective
+          + '\n\nIMPORTANTE: na imagem, "x" entre dois números significa MULTIPLICAÇÃO '
           + '(ex.: "11x2" = 11 × 2 = 22, NÃO é 11 ao quadrado). '
           + 'Notação de potência seria "11²" ou "11^2".';
       } else {

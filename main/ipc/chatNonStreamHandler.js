@@ -269,19 +269,30 @@ async function handleSendToGeminiVision(event, { text, image }) {
     const activeSessionId = currentSession ? currentSession.id : 'default';
 
     const userCtx = helpers.getUserPreferencesContext ? helpers.getUserPreferencesContext() : '';
-    const userPromptWithCtx = userCtx ? `${userCtx}\n\n---\n\n${text || ''}` : (text || '');
+    const isGenericUserText = !text || !text.trim() || /^(image in context|processo texto da imagem|captura de tela)$/i.test(text.trim());
+    const baseVisionDirective = isGenericUserText
+      ? `Você está analisando uma imagem/captura enviada pelo usuário em uma entrevista técnica, teste ou ambiente de trabalho.
+Identifique com precisão o que está na imagem (pergunta teórica, desafio de código/algoritmo, formulário, quiz de múltipla escolha ou mensagem).
+Entregue a SOLUÇÃO COMPLETA, DIRETA e APROFUNDADA:
+- Se for desafio de código: escreva a solução funcional ideal e explique a complexidade de tempo/espaço.
+- Se for pergunta técnica/comportamental: responda em primeira pessoa com autoridade técnica e exemplo prático pronto para responder ao recrutador.
+- Se for múltipla escolha: indique a alternativa correta em destaque e a justificativa técnica.
+NUNCA faça descrições vagas ou respostas genéricas.`
+      : `Analise a IMAGEM com atenção e responda diretamente ao pedido do usuário com profundidade e precisão técnica.`;
 
+    const userTextPart = (text && text.trim() && !isGenericUserText) ? `${text.trim()}\n\n` : '';
     const visionPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(
-      (userPromptWithCtx && userPromptWithCtx.trim() ? `${userPromptWithCtx}\n\n` : '')
-      + 'Analise a IMAGEM com atenção. Responda conforme as regras do sistema.\n\n'
-      + 'IMPORTANTE: na imagem, "x" entre dois números significa MULTIPLICAÇÃO '
+      (userCtx ? `${userCtx}\n\n---\n\n` : '')
+      + userTextPart
+      + baseVisionDirective
+      + '\n\nIMPORTANTE: na imagem, "x" entre dois números significa MULTIPLICAÇÃO '
       + '(ex.: "11x2" = 11 × 2 = 22, NÃO é 11 ao quadrado). '
       + 'Notação de potência seria "11²" ou "11^2".'
     );
-    const visionModel = configService.getOpenAiModel() || 'gpt-4o';
+    const visionModel = (configService.getOpenAiVisionModel && configService.getOpenAiVisionModel()) || configService.getOpenAiModel() || 'gpt-4o';
     const ht = helpers.buildHelperToolsOpenAIOpts(visionPrompt, instruction, visionModel);
     const finalInstruction = ht.instruction ? helpers.appendVoiceSummaryInstructionIfNeeded(ht.instruction) : helpers.appendVoiceSummaryInstructionIfNeeded(instruction);
-    console.log(`🤖 IPC visão: OpenAI ${visionModel} [VISÃO high] (chat)...`);
+    console.log(`🤖 IPC visão: OpenAI ${ht.model || visionModel} [VISÃO high] (chat)...`);
     const resposta = await OpenAIService.makeOpenAIRequest(
       visionPrompt,
       token,

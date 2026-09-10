@@ -21,9 +21,10 @@ async function captureFullScreenToFile(outPath, options = {}) {
   const { targetApp, displayIndex } = options;
 
   const displays = (screen && typeof screen.getAllDisplays === 'function') ? screen.getAllDisplays() : [];
-  const primaryDisplay = (screen && typeof screen.getPrimaryDisplay === 'function') ? screen.getPrimaryDisplay() : { size: { width: 1920, height: 1080 }, scaleFactor: 1 };
+  const primaryDisplay = (screen && typeof screen.getPrimaryDisplay === 'function') ? screen.getPrimaryDisplay() : { size: { width: 1920, height: 1080 }, scaleFactor: 1, id: 0 };
   const cursor = (screen && typeof screen.getCursorScreenPoint === 'function') ? screen.getCursorScreenPoint() : { x: 0, y: 0 };
   const currentDisplay = (screen && typeof screen.getDisplayNearestPoint === 'function') ? (screen.getDisplayNearestPoint(cursor) || primaryDisplay) : primaryDisplay;
+  const currentDisplayId = currentDisplay && currentDisplay.id !== undefined ? String(currentDisplay.id) : '';
 
   let maxW = 1920;
   let maxH = 1080;
@@ -35,8 +36,9 @@ async function captureFullScreenToFile(outPath, options = {}) {
     if (h > maxH) maxH = h;
   }
 
+  const types = targetApp ? ['screen', 'window'] : ['screen'];
   const sources = await desktopCapturer.getSources({
-    types: ['screen', 'window'],
+    types,
     thumbnailSize: {
       width: Math.max(maxW, 1920),
       height: Math.max(maxH, 1080),
@@ -66,7 +68,7 @@ async function captureFullScreenToFile(outPath, options = {}) {
     });
   }
 
-  // 2. Se displayIndex foi especificado (ex: 1 para segundo monitor / tela secundária)
+  // 2. Se displayIndex foi especificado explicitamente (0 para monitor 1, 1 para monitor 2, etc.)
   if (!selectedSource && typeof displayIndex === 'number' && displayIndex >= 0) {
     if (screenSources[displayIndex]) {
       selectedSource = screenSources[displayIndex];
@@ -84,19 +86,20 @@ async function captureFullScreenToFile(outPath, options = {}) {
     }
   }
 
-  // 4. Se o usuário tem múltiplos monitores e o app/janela não foi isolado como janela individual,
-  // e se o displayIndex não foi fornecido mas temos mais de 1 tela:
-  // Se cursor estiver na tela secundária ou se houver tela secundária (screenSources[1]), prioriza monitor relevante
-  if (!selectedSource && screenSources.length > 1) {
-    if (typeof displayIndex === 'number' && screenSources[displayIndex]) {
-      selectedSource = screenSources[displayIndex];
-    } else {
-      // Se não especificou índice, escolhe a tela com base no cursor ou tela secundária se o alvo for navegador externo
-      selectedSource = screenSources[1] || screenSources[0];
+  // 4. Seleção padrão pelo monitor sob o cursor (setup multi-monitor no Windows/macOS)
+  if (!selectedSource && screenSources.length > 0) {
+    if (currentDisplayId) {
+      selectedSource = screenSources.find(s => String(s.display_id) === currentDisplayId);
+    }
+    if (!selectedSource && typeof displays.findIndex === 'function' && currentDisplayId) {
+      const displayIdx = displays.findIndex(d => String(d.id) === currentDisplayId);
+      if (displayIdx >= 0 && screenSources[displayIdx]) {
+        selectedSource = screenSources[displayIdx];
+      }
     }
   }
 
-  // 5. Fallback para monitor principal ou primeira fonte disponível
+  // 5. Fallback para primeira fonte de tela ou primeira fonte disponível
   if (!selectedSource) {
     selectedSource = screenSources[0] || sources[0];
   }
@@ -110,11 +113,14 @@ async function captureFullScreenToFile(outPath, options = {}) {
 
   return {
     path: outPath,
-    sourceName: selectedSource.name,
+    sourceName: selectedSource.name || 'Tela',
     sourceType: selectedSource.id.startsWith('window:') ? 'window' : 'screen',
     totalSources: sources.length,
     availableWindows: availableWindows.slice(0, 20),
     displaysCount: displays.length,
+    toString() { return outPath; },
+    valueOf() { return outPath; },
+    [Symbol.toPrimitive](hint) { return outPath; },
   };
 }
 

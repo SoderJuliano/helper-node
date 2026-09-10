@@ -58,8 +58,11 @@ helpers.captureFullScreenAuto = async function() {
     //    Este é o caminho stealth NATIVO dessas plataformas.
     if (process.platform !== 'linux') {
       try {
-        capturedPath = await platformScreenCapture.captureFullScreenToFile(tmpPng);
-        success = !!capturedPath;
+        const captureRes = await platformScreenCapture.captureFullScreenToFile(tmpPng);
+        capturedPath = (captureRes && typeof captureRes === 'object' && captureRes.path)
+          ? captureRes.path
+          : (typeof captureRes === 'string' ? captureRes : null);
+        success = !!capturedPath && fs2.existsSync(capturedPath);
       } catch (e) {
         console.warn('📸 desktopCapturer (win/mac) falhou:', (e && e.message) || e);
       }
@@ -236,15 +239,16 @@ helpers.captureFullScreenAuto = async function() {
         : Date.now();
 
       const emitRealtime = (payload) => {
-        if (realtimeService && typeof realtimeService.emitUpdate === 'function') {
-          realtimeService.emitUpdate(payload);
-        } else {
-          if (state.mainWindow && !state.mainWindow.isDestroyed()) {
-            state.mainWindow.webContents.send('realtime-assistant-update', payload);
+        try {
+          if (realtimeService && typeof realtimeService.emitUpdate === 'function') {
+            realtimeService.emitUpdate(payload);
           }
-          if (helpers.sendToRealtimeAssistantOverlay) {
-            helpers.sendToRealtimeAssistantOverlay('realtime-assistant-update', payload);
-          }
+        } catch (_) {}
+        if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+          try { state.mainWindow.webContents.send('realtime-assistant-update', payload); } catch (_) {}
+        }
+        if (typeof helpers.sendToRealtimeAssistantOverlay === 'function') {
+          try { helpers.sendToRealtimeAssistantOverlay('realtime-assistant-update', payload); } catch (_) {}
         }
       };
 
