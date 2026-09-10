@@ -56,12 +56,18 @@ function chunkText(text) {
 }
 
 function cosine(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length || a.length === 0) return 0;
   let dot = 0, na = 0, nb = 0;
-  for (let i = 0; i < a.length; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    na += a[i] * a[i];
+    nb += b[i] * b[i];
+  }
   return na && nb ? dot / (Math.sqrt(na) * Math.sqrt(nb)) : 0;
 }
 
 async function embedOpenAI(texts, token) {
+  if (!token || !Array.isArray(texts) || texts.length === 0) return [];
   const res = await fetch("https://api.openai.com/v1/embeddings", {
     method: "POST",
     headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
@@ -69,6 +75,7 @@ async function embedOpenAI(texts, token) {
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error?.message || "embeddings failed");
+  if (!data || !Array.isArray(data.data)) return [];
   return data.data.map((d) => d.embedding);
 }
 
@@ -259,16 +266,21 @@ async function retrieve(query, { token, topK = 5, queryEmbedding = null } = {}) 
   const kwRank = keywordRank(query, chunks);
 
   let embRank = [];
-  if (chunks[0].embedding && (queryEmbedding || token)) {
+  const hasSomeEmbedding = chunks.some((c) => c && Array.isArray(c.embedding));
+  if (hasSomeEmbedding && (queryEmbedding || token)) {
     try {
       // Reusa o embedding já calculado (queryEmbedding) quando disponível — evita
       // uma chamada de rede a mais quando KB e banco de respostas buscam a mesma query.
-      const qe = queryEmbedding || (await embedOpenAI([query], token))[0];
-      embRank = chunks
-        .map((c, i) => ({ i, s: cosine(qe, c.embedding) }))
-        .filter((x) => x.s > 0.25)
-        .sort((a, b) => b.s - a.s)
-        .map((x) => x.i);
+      const qe = (Array.isArray(queryEmbedding) && queryEmbedding.length > 0)
+        ? queryEmbedding
+        : await embed(query, token);
+      if (Array.isArray(qe) && qe.length > 0) {
+        embRank = chunks
+          .map((c, i) => ({ i, s: (c && Array.isArray(c.embedding)) ? cosine(qe, c.embedding) : 0 }))
+          .filter((x) => x.s > 0.25)
+          .sort((a, b) => b.s - a.s)
+          .map((x) => x.i);
+      }
     } catch (e) { console.warn("[knowledgeBase] retrieve embeddings falhou, só keyword:", e.message); }
   }
 

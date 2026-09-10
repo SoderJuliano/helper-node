@@ -138,21 +138,28 @@ class OpenAIService {
             }
         }
 
-        const requestPayload = {
-            model: effectiveModel,
-            messages: messages,
-        };
-        if (supportsReasoningEffort(requestPayload.model)) {
-            requestPayload.reasoning_effort = configService.getOpenAiReasoningEffort();
-        }
-
         // helperTools: se o caller passou tools[] (schema OpenAI), entra em loop de tool-calling
         const tools = hasTools ? opts.tools : null;
         const onToolCall = typeof opts.onToolCall === 'function' ? opts.onToolCall : null;
         const maxToolCalls = Number.isInteger(opts.maxToolCalls) ? opts.maxToolCalls : 50;
+
+        const requestPayload = {
+            model: effectiveModel,
+            messages: messages,
+        };
+
         if (tools && onToolCall) {
             requestPayload.tools = tools;
             requestPayload.tool_choice = 'auto';
+        }
+
+        // reasoning_effort: só aplica se o modelo suportar E NÃO tiver tools ativas
+        // (A API /v1/chat/completions da OpenAI rejeita reasoning_effort junto com function tools)
+        if (supportsReasoningEffort(requestPayload.model)) {
+            if (!requestPayload.tools) {
+                const effort = configService.getOpenAiReasoningEffort();
+                if (effort) requestPayload.reasoning_effort = effort;
+            }
         }
 
         // Log enxuto: só metadata útil. Sem despejar system prompt nem base64.
@@ -187,8 +194,44 @@ class OpenAIService {
                         }
                     );
                 } catch (err) {
-                    const isRateLimit = err.response && err.response.status === 429;
-                    const isServerError = err.response && err.response.status >= 500;
+                    const status = err.response ? err.response.status : 0;
+                    const errData = err.response?.data?.error || {};
+                    const errMsg = String(errData.message || (typeof err.response?.data === 'string' ? err.response.data : '') || err.message || '');
+                    const errParam = String(errData.param || '');
+
+                    // Auto-recuperação resiliente para erros 400 da OpenAI (incompatibilidade de parâmetros)
+                    if (status === 400 && attempt < retries) {
+                        if (errParam === 'reasoning_effort' || errMsg.toLowerCase().includes('reasoning_effort')) {
+                            if (errMsg.toLowerCase().includes("set reasoning_effort to 'none'") && requestPayload.reasoning_effort !== 'none') {
+                                console.warn('[OpenAI API] Ajustando reasoning_effort para "none" conforme exigido pela API...');
+                                requestPayload.reasoning_effort = 'none';
+                                continue;
+                            } else if (requestPayload.reasoning_effort !== undefined) {
+                                console.warn('[OpenAI API] Removendo reasoning_effort incompatível do payload...');
+                                delete requestPayload.reasoning_effort;
+                                continue;
+                            }
+                        }
+                        if (errParam === 'tools' || errMsg.toLowerCase().includes('tools are not supported')) {
+                            console.warn('[OpenAI API] Ferramentas (tools) não suportadas neste modelo. Removendo tools e tentando novamente...');
+                            delete requestPayload.tools;
+                            delete requestPayload.tool_choice;
+                            continue;
+                        }
+                        if (errMsg.toLowerCase().includes('max_completion_tokens') && requestPayload.max_tokens) {
+                            requestPayload.max_completion_tokens = requestPayload.max_tokens;
+                            delete requestPayload.max_tokens;
+                            continue;
+                        }
+                        if (errMsg.toLowerCase().includes('max_tokens') && requestPayload.max_completion_tokens) {
+                            requestPayload.max_tokens = requestPayload.max_completion_tokens;
+                            delete requestPayload.max_completion_tokens;
+                            continue;
+                        }
+                    }
+
+                    const isRateLimit = status === 429;
+                    const isServerError = status >= 500;
                     const isNetworkError = !err.response || 
                         ['ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED', 'EAI_AGAIN', 'ERR_NETWORK', 'EPIPE', 'ERR_BAD_RESPONSE'].includes(err.code) ||
                         (err.message && (err.message.includes('socket hang up') || err.message.includes('ECONNRESET') || err.message.includes('timeout')));

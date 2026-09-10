@@ -71,7 +71,7 @@ async function callGPT(systemPrompt, userContent, model, apiKey, onDelta = null)
   };
   if (supportsReasoningEffort(model)) chatPayload.reasoning_effort = 'low';
 
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+  let res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
@@ -82,7 +82,21 @@ async function callGPT(systemPrompt, userContent, model, apiKey, onDelta = null)
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.error?.message || 'GPT call failed');
+    if (res.status === 400 && chatPayload.reasoning_effort && (data.error?.param === 'reasoning_effort' || String(data.error?.message).toLowerCase().includes('reasoning_effort'))) {
+      delete chatPayload.reasoning_effort;
+      res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(chatPayload),
+      });
+    }
+    if (!res.ok) {
+      const finalData = data.error ? data : await res.json().catch(() => ({}));
+      throw new Error(finalData.error?.message || 'GPT call failed');
+    }
   }
 
   if (!onDelta) {

@@ -345,16 +345,27 @@ class RealtimeOpenAiService {
     // raciocínio mais baixo aqui, independente da preferência global do usuário.
     if (supportsReasoningEffort(model)) payload.reasoning_effort = 'low';
 
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    let res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      const e = new Error(data.error?.message || 'OpenAI chat failed');
-      e.response = { status: res.status, data };
-      throw e;
+      if (res.status === 400 && payload.reasoning_effort && (data.error?.param === 'reasoning_effort' || String(data.error?.message).toLowerCase().includes('reasoning_effort'))) {
+        delete payload.reasoning_effort;
+        res = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      }
+      if (!res.ok) {
+        const finalData = data.error ? data : await res.json().catch(() => ({}));
+        const e = new Error(finalData.error?.message || 'OpenAI chat failed');
+        e.response = { status: res.status, data: finalData };
+        throw e;
+      }
     }
 
     // Modo não-streaming (compat).
