@@ -139,15 +139,15 @@ async function startSource(source, deviceId = '') {
         log(`mic: getUserMedia avançado falhou (${advancedErr.message}), tentando fallback com deviceId ideal ou genérico...`);
         try {
           const fallbackConstraints = (reqDevId && reqDevId !== 'default')
-            ? { deviceId: { ideal: reqDevId } }
-            : true;
+            ? { deviceId: { ideal: reqDevId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+            : { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
           stream = await navigator.mediaDevices.getUserMedia({
             audio: fallbackConstraints,
             video: false,
           });
         } catch (_) {
           stream = await navigator.mediaDevices.getUserMedia({
-            audio: true,
+            audio: { echoCancellation: true, noiseSuppression: true },
             video: false,
           });
         }

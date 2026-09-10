@@ -19,7 +19,7 @@ const NexaIntentClassifier = require("./nexaIntentClassifier");
 const NexaConversationContext = require("./nexaConversationContext");
 const NexaResponseFilter = require("./nexaResponseFilter");
 
-const FOLLOW_UP_DURATION_MS = 8000; // Janela de 8 segundos para conversa contínua sem wake word
+const FOLLOW_UP_DURATION_MS = 6000; // Janela de 6 segundos para conversa contínua após resposta
 
 class NexaVoiceSession extends EventEmitter {
   constructor(options = {}) {
@@ -29,6 +29,7 @@ class NexaVoiceSession extends EventEmitter {
 
     this.active = false;
     this.isProcessing = false;
+    this.isSpeakingTts = false;
     this.followUpTimer = null;
     this.followUpActive = false;
 
@@ -54,10 +55,7 @@ class NexaVoiceSession extends EventEmitter {
     });
 
     this.turnDetector.on("turn-discarded", (info) => {
-      // Se não havia fala útil, reativa o timer de follow-up se estava ativo
-      if (this.followUpActive && !this.followUpTimer) {
-        this._startFollowUpTimer();
-      }
+      // Turno descartado por ruído/duração curta: NÃO reativa o timer para evitar loops infinitos em som ambiente
     });
   }
 
@@ -68,6 +66,7 @@ class NexaVoiceSession extends EventEmitter {
     if (this.active) return;
     this.active = true;
     this.isProcessing = false;
+    this.isSpeakingTts = false;
     this.followUpActive = false;
     if (this.followUpTimer) clearTimeout(this.followUpTimer);
     this.followUpTimer = null;
@@ -84,11 +83,13 @@ class NexaVoiceSession extends EventEmitter {
     if (!this.active) return;
     this.active = false;
     this.isProcessing = false;
+    this.isSpeakingTts = false;
     this.followUpActive = false;
     if (this.followUpTimer) clearTimeout(this.followUpTimer);
     this.followUpTimer = null;
     this.context.clear();
 
+    this.stopTtsPlayback();
     this.turnDetector.stop();
     this.emit("status-changed", { active: false, state: "idle", followUpActive: false });
   }
@@ -98,20 +99,35 @@ class NexaVoiceSession extends EventEmitter {
   }
 
   /**
+   * Interrompe imediatamente a reprodução de áudio TTS da Nexa (Barge-In).
+   */
+  stopTtsPlayback() {
+    this.isSpeakingTts = false;
+    const { state } = require("../../main/globals");
+    if (state.nexaWindow && !state.nexaWindow.isDestroyed()) {
+      try {
+        state.nexaWindow.webContents.send("stop-tts-audio");
+      } catch (_) {}
+    }
+    if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+      try {
+        state.mainWindow.webContents.send("stop-tts-audio");
+      } catch (_) {}
+    }
+    this.emit("barge-in");
+  }
+
+  /**
    * Processa o áudio capturado ao final de um turno de fala.
    */
   async _handleTurnComplete({ pcmBuffer, sampleRate, channels, bitDepth }) {
-    if (!this.active || this.isProcessing) return;
-    this.isProcessing = true;
+    if (!this.active) return;
 
     const { helpers, state } = require("../../main/globals");
     let wavPath = null;
 
     try {
-      this.emit("state-changed", { state: "thinking", followUpActive: this.followUpActive });
-      this.emit("animation-trigger", { animation: "thinking" });
-
-      // 1. Grava o PCM em arquivo WAV temporário
+      // 1. Grava o PCM em arquivo WAV temporário para transcrição
       const tmpDir = (state && state.AUDIO_TMP_DIR) || path.join(require("os").tmpdir(), "helper-node-audio");
       fs.mkdirSync(tmpDir, { recursive: true });
       wavPath = path.join(tmpDir, `nexa_voice_${Date.now()}.wav`);
@@ -128,24 +144,60 @@ class NexaVoiceSession extends EventEmitter {
       const cleanedText = cleanTranscription(rawTranscript);
 
       if (!cleanedText || cleanedText === "[BLANK_AUDIO]") {
-        this._endProcessingAndResume();
+        if (!this.isSpeakingTts && !this.isProcessing) {
+          this._endProcessingAndResume();
+        }
         return;
       }
 
-      this.emit("speech-preview", { text: cleanedText });
-
-      // 3. Classifica a intenção (IGNORE, REACT_ANIMATION_ONLY, RESPOND_AUDIO_AND_CHAT)
+      // 3. Classifica a intenção
       const classification = NexaIntentClassifier.classify(cleanedText, {
         followUpActive: this.followUpActive
       });
 
       console.log("[NexaVoiceSession] Transcrição:", cleanedText, "-> Ação:", classification.action, "(", classification.reason, ")");
 
-      if (classification.action === "IGNORE") {
+      // A) Se for comando explícito de parada / silêncio (Barge-In)
+      if (classification.action === "STOP_AND_LISTEN") {
+        console.log("[NexaVoiceSession] Barge-in: comando de parada recebido.");
+        this.stopTtsPlayback();
+        this.followUpActive = false;
+        if (this.followUpTimer) {
+          clearTimeout(this.followUpTimer);
+          this.followUpTimer = null;
+        }
         this._endProcessingAndResume();
         return;
       }
 
+      // B) Se a Nexa estava falando TTS e o usuário começou uma nova fala endereçada a ela
+      if (this.isSpeakingTts) {
+        if (classification.action === "RESPOND_AUDIO_AND_CHAT" || classification.action === "REACT_ANIMATION_ONLY") {
+          console.log("[NexaVoiceSession] Barge-in: usuário interveio durante a fala da Nexa.");
+          this.stopTtsPlayback();
+        } else {
+          // Ruído ou conversa de terceiro enquanto a Nexa falava -> ignora
+          return;
+        }
+      } else if (this.isProcessing) {
+        // Se a IA ainda está gerando uma resposta anterior e não é comando de parada, ignora sobreposição acidental
+        return;
+      }
+
+      // C) Ação IGNORAR (ruído, conversa paralela com filho/terceiros, monólogo)
+      if (classification.action === "IGNORE") {
+        if (classification.expireFollowUp || this.followUpActive) {
+          this.followUpActive = false;
+          if (this.followUpTimer) {
+            clearTimeout(this.followUpTimer);
+            this.followUpTimer = null;
+          }
+        }
+        this._endProcessingAndResume();
+        return;
+      }
+
+      // D) Ação ANIMAÇÃO APENAS (ex: "Nexa dá tchauzinho", "Nexa manda coração")
       if (classification.action === "REACT_ANIMATION_ONLY") {
         const anim = classification.animation || "wave";
         this.emit("animation-trigger", { animation: anim });
@@ -154,7 +206,19 @@ class NexaVoiceSession extends EventEmitter {
         return;
       }
 
-      // 4. Ação: RESPOND_AUDIO_AND_CHAT
+      // E) Ação RESPONDER POR ÁUDIO E CHAT
+      // Verifica se a frase parece cortada no meio (ex: termina em vírgula ou conector)
+      if (NexaIntentClassifier.isSentenceIncomplete(classification.cleanedQuery)) {
+        console.log("[NexaVoiceSession] Frase incompleta detectada ('" + classification.cleanedQuery + "'), aguardando complemento...");
+        this._endProcessingAndResume();
+        return;
+      }
+
+      this.isProcessing = true;
+      this.emit("speech-preview", { text: cleanedText });
+      this.emit("state-changed", { state: "thinking", followUpActive: this.followUpActive });
+      this.emit("animation-trigger", { animation: classification.animationHint || "thinking" });
+
       const enrichedQuery = this.context.enrichQueryWithContext(classification.cleanedQuery);
       await this._executeAssistantQuery(enrichedQuery, classification.animationHint);
 
@@ -212,6 +276,7 @@ class NexaVoiceSession extends EventEmitter {
           });
           if (audioBuf && audioBuf.length > 0) {
             const base64Audio = audioBuf.toString("base64");
+            this.isSpeakingTts = true;
             if (state.nexaWindow && !state.nexaWindow.isDestroyed()) {
               state.nexaWindow.webContents.send("play-tts-audio", { audioBase64: base64Audio, text: voiceSummary });
             }
@@ -225,6 +290,7 @@ class NexaVoiceSession extends EventEmitter {
   }
 
   handleTtsEnded() {
+    this.isSpeakingTts = false;
     if (this.processingTimeout) {
       clearTimeout(this.processingTimeout);
       this.processingTimeout = null;

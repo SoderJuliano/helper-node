@@ -23,10 +23,45 @@ const HALLUCINATION_PATTERNS = [
   /^[a-z0-9\-._]+\.(?:com|org|net|io|tv|br|edu|gov|co|app|dev|me)(?:\/[^\s]*)?$/i,
   /^(?:[a-z0-9\-._]+\.(?:com|org|net|br)\/[^\s]*\s*)+$/i,
   /^(?:chiado|estalos?|fritura|borbulha|sizzl(?:ing|e)|panela)[\s.,!?:;]*$/i,
+  /^(?:steve\s+vozze[,\s]+whisper|whisper\s+transcription|whisper\s+ai|whisper)[\s.,!?:;]*$/i,
   /^(?:[.\-_*~=+\s,!?:;·…]+)$/,
   /^\[blank_audio\]$/i,
   /^\(sem\s+fala\)$/i,
 ];
+
+/**
+ * Detecta loops de repetição de palavras ou sílabas causados por alucinação do Whisper em áudio/música/ruído.
+ * Ex: "Sapshopshopshopshopshop...", "da da da da da", "yeah yeah yeah"
+ */
+function isRepetitiveHallucination(text) {
+  if (!text || typeof text !== 'string') return false;
+  const t = text.trim();
+  if (t.length < 4) return false;
+
+  // 1. Repetição de padrão de sílaba/substring dentro de palavras (ex: "Sapshopshopshopshopshop...")
+  if (/(.{2,8})\1{4,}/i.test(t)) {
+    return true;
+  }
+
+  // 2. Repetição da mesma palavra 3 ou mais vezes consecutivas (ex: "shop shop shop shop", "da da da da")
+  if (/(\b\w{2,}\b)(?:[\s,]+\1){2,}/i.test(t)) {
+    return true;
+  }
+
+  // 3. Sentenças com alta densidade de repetição de um mesmo termo (ex: > 40% das palavras são iguais)
+  const words = t.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(Boolean);
+  if (words.length >= 4) {
+    const freq = {};
+    for (const w of words) {
+      freq[w] = (freq[w] || 0) + 1;
+      if (freq[w] >= 3 && (freq[w] / words.length) >= 0.4) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
 
 /**
  * Detecta se uma string é um eco de prompt/glossário gerado por alucinação do Whisper.
@@ -157,6 +192,11 @@ function cleanTranscription(rawText, glossaryPrompt = '') {
     return '';
   }
 
+  // Checa alucinações de repetição/loops geradas em música ou ruído ambiente
+  if (isRepetitiveHallucination(clean)) {
+    return '';
+  }
+
   // Normaliza distorções fonéticas de termos técnicos em PT-BR
   clean = normalizeDevPhonetics(clean);
 
@@ -167,5 +207,6 @@ module.exports = {
   cleanTranscription,
   normalizeDevPhonetics,
   isGlossaryOrPromptEcho,
+  isRepetitiveHallucination,
   HALLUCINATION_PATTERNS,
 };

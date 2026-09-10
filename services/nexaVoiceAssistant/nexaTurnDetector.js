@@ -21,9 +21,9 @@ const BYTES_PER_MS = (SAMPLE_RATE * BYTES_PER_SAMPLE) / 1000; // 32 bytes/ms
 class NexaTurnDetector extends EventEmitter {
   constructor(options = {}) {
     super();
-    this.speechThresholdRms = options.speechThresholdRms || 220; // Limiar de RMS calibrado para evitar falsos positivos de fritura/ruído
-    this.silenceThresholdMs = options.silenceThresholdMs || 950;  // Duração de silêncio contínuo para fechar o turno
-    this.minSpeechMs = options.minSpeechMs || 420;               // Duração mínima de fala real para considerar válida
+    this.speechThresholdRms = options.speechThresholdRms || 260; // Limiar absoluto calibrado
+    this.silenceThresholdMs = options.silenceThresholdMs || 1700; // Duração de silêncio contínuo para fechar o turno (1.7s para não cortar fala no meio)
+    this.minSpeechMs = options.minSpeechMs || 400;               // Duração mínima de fala real para considerar válida
     this.maxTurnDurationMs = options.maxTurnDurationMs || 30000; // Limite máximo de segurança para um turno (30s)
     this.preRollMs = options.preRollMs || 320;                   // Buffer circular de pre-roll (320ms)
 
@@ -33,6 +33,11 @@ class NexaTurnDetector extends EventEmitter {
     this.speechBytes = 0;
     this.silenceAccumMs = 0;
     this.speechDurationMs = 0;
+    this.activeSpeechChunksCount = 0;
+    this.totalChunksInTurn = 0;
+
+    // Estimativa adaptativa do piso de ruído (noise floor) para rejeitar música e vídeos de fundo
+    this.noiseFloorRms = 60;
 
     // Buffer circular de pre-roll (guarda os últimos 320ms de áudio antes de a fala começar)
     this.preRollChunks = [];
@@ -76,6 +81,8 @@ class NexaTurnDetector extends EventEmitter {
     this.speechBytes = 0;
     this.silenceAccumMs = 0;
     this.speechDurationMs = 0;
+    this.activeSpeechChunksCount = 0;
+    this.totalChunksInTurn = 0;
     this.preRollChunks = [];
     this.preRollBytes = 0;
   }
@@ -103,9 +110,16 @@ class NexaTurnDetector extends EventEmitter {
     const chunkMs = Math.round(buf.length / BYTES_PER_MS);
     const rms = NexaTurnDetector.computeRms(buf);
 
-    this.emit("level", { rms, isSpeaking: this.isSpeaking });
+    this.emit("level", { rms, isSpeaking: this.isSpeaking, noiseFloor: Math.round(this.noiseFloorRms) });
 
-    const hasVoiceEnergy = rms >= this.speechThresholdRms;
+    // Atualiza suavemente o piso de ruído quando não estiver falando
+    if (!this.isSpeaking) {
+      this.noiseFloorRms = this.noiseFloorRms * 0.90 + rms * 0.10;
+    }
+
+    // Limiar dinâmico: deve superar tanto o valor absoluto calibrado quanto o ruído ambiente com margem SNR
+    const dynamicThreshold = Math.max(this.speechThresholdRms, this.noiseFloorRms * 1.6 + 50);
+    const hasVoiceEnergy = rms >= dynamicThreshold;
 
     if (!this.isSpeaking) {
       // Estamos aguardando o início de uma fala
@@ -116,6 +130,8 @@ class NexaTurnDetector extends EventEmitter {
         this.speechBytes = this.preRollBytes + buf.length;
         this.speechDurationMs = Math.round(this.speechBytes / BYTES_PER_MS);
         this.silenceAccumMs = 0;
+        this.activeSpeechChunksCount = 1;
+        this.totalChunksInTurn = 1;
         this.preRollChunks = [];
         this.preRollBytes = 0;
         this.emit("speech-start");
@@ -133,9 +149,11 @@ class NexaTurnDetector extends EventEmitter {
       this.speechChunks.push(buf);
       this.speechBytes += buf.length;
       this.speechDurationMs += chunkMs;
+      this.totalChunksInTurn++;
 
       if (hasVoiceEnergy) {
         this.silenceAccumMs = 0; // Zera o silêncio acumulado
+        this.activeSpeechChunksCount++;
       } else {
         this.silenceAccumMs += chunkMs; // Acumula tempo de silêncio após a fala
       }
@@ -148,11 +166,12 @@ class NexaTurnDetector extends EventEmitter {
       if (isSilenceTimeout || isMaxDurationReached) {
         const totalPcm = Buffer.concat(this.speechChunks, this.speechBytes);
         const effectiveSpeechMs = this.speechDurationMs - (isSilenceTimeout ? this.silenceAccumMs : 0);
+        const activeRatio = this.totalChunksInTurn > 0 ? (this.activeSpeechChunksCount / this.totalChunksInTurn) : 0;
 
         this.resetTurn();
 
-        // Só emite o turno se tiver acumulado fala real suficiente (evita estalos ou ruídos rápidos)
-        if (effectiveSpeechMs >= this.minSpeechMs) {
+        // Rejeita turnos que foram apenas picos isolados de ruído/música sem densidade de fala real
+        if (effectiveSpeechMs >= this.minSpeechMs && activeRatio >= 0.25) {
           this.emit("turn-complete", {
             pcmBuffer: totalPcm,
             durationMs: effectiveSpeechMs,
@@ -161,7 +180,9 @@ class NexaTurnDetector extends EventEmitter {
             bitDepth: 16
           });
         } else {
-          this.emit("turn-discarded", { reason: "Duração muito curta: " + effectiveSpeechMs + "ms" });
+          this.emit("turn-discarded", {
+            reason: `Duração/densidade insuficiente: ${effectiveSpeechMs}ms (ratio: ${(activeRatio * 100).toFixed(0)}%)`
+          });
         }
       }
     }

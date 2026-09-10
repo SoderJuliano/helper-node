@@ -12,10 +12,12 @@ var promptHistoryDraft = '';
     function dockComposer(container) {
         const shell = document.getElementById('composer-shell');
         const ghost = document.getElementById('composer-ghost');
+        const micBtn = document.getElementById('composer-mic-toggle');
         const sendBtn = document.getElementById('composer-send');
         if (!shell) { if (transcriptionElement) transcriptionElement.appendChild(container); return; }
         if (ghost) ghost.style.display = 'none';
-        if (sendBtn) shell.insertBefore(container, sendBtn);
+        const targetBefore = micBtn || sendBtn;
+        if (targetBefore) shell.insertBefore(container, targetBefore);
         else shell.appendChild(container);
     }
 

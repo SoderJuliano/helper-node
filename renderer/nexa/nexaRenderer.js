@@ -186,13 +186,27 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  function playTtsAudio(base64Data) {
+  function stopTtsAudio() {
     if (currentAudio) {
       try {
         currentAudio.pause();
-        currentAudio = null;
+        currentAudio.currentTime = 0;
       } catch (_) {}
+      currentAudio = null;
     }
+    stopSpeakingAnimation();
+    animController.setState("IDLE");
+  }
+
+  if (window.electronAPI && window.electronAPI.onStopTtsAudio) {
+    window.electronAPI.onStopTtsAudio(() => {
+      console.log("[NexaRenderer] Barge-in acionado -> parando áudio TTS e animação de fala imediatamente.");
+      stopTtsAudio();
+    });
+  }
+
+  function playTtsAudio(base64Data) {
+    stopTtsAudio();
 
     try {
       const audioUrl = `data:audio/mp3;base64,${base64Data}`;

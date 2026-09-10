@@ -26,8 +26,15 @@
                     <line x1="8" y1="23" x2="16" y2="23"/>
                 </svg>
             `;
-            shell.insertBefore(micBtn, sendBtn);
+            if (sendBtn) {
+                shell.insertBefore(micBtn, sendBtn);
+            } else {
+                shell.appendChild(micBtn);
+            }
         }
+
+        if (micBtn._nexaVoiceInitialized) return;
+        micBtn._nexaVoiceInitialized = true;
 
         let isVoiceActive = false;
 

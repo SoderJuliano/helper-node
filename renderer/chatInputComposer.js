@@ -19,7 +19,7 @@
 
   if (composerGhost && composerShell) {
     composerShell.addEventListener('click', (e) => {
-      if (e.target.closest('.composer-send')) return;
+      if (e.target.closest('.composer-send') || e.target.closest('.composer-mic-toggle')) return;
       if (window.manualInputActive || window.isEditingQuestion) return;
       if (typeof window.openManualInput === 'function') window.openManualInput();
     });

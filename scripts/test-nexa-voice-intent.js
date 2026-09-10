@@ -141,4 +141,120 @@ console.log("🧪 Iniciando testes de Intent Classifier da Nexa...\n");
   console.log("✅ Caso 19: Interjeição curta em follow-up -> IGNORE");
 }
 
-console.log("\n🎉 Todos os 19 testes do Intent Classifier passaram com sucesso!");
+// 7. Casos de ÁUDIO DE VÍDEOS/PODCASTS/MÚSICA EM AMBIENTE (Mesmo com follow-up ativo)
+{
+  const videoTranscript = "E o gasto que mais me surpreendeu não foi o aluguel. Eu descobri esse valor com o PR e agora vou te mostrar exatamente pra onde esse dinheiro foi. Eu pago 1870 reais aluguel nesse apartamento que tem dois quartos, dois manheiros e como.";
+  const res = NexaIntentClassifier.classify(videoTranscript, { followUpActive: true });
+  assert.strictEqual(res.action, "IGNORE", "Narração de vídeo tocando em segundo plano deve ser ignorada");
+  assert.strictEqual(res.expireFollowUp, true, "Deve expirar follow-up imediatamente para evitar loop infinito");
+  console.log("✅ Caso 20: Narração de vídeo sobre finanças/aluguel em follow-up -> IGNORE (expira follow-up)");
+}
+
+{
+  const res = NexaIntentClassifier.classify("nessa casa nós temos três quartos e uma sala grande");
+  assert.strictEqual(res.action, "IGNORE", "Frase normal em PT-BR iniciando com 'nessa [substantivo]' não é wake word");
+  console.log("✅ Caso 21: 'Nessa casa...' em contexto gramatical -> IGNORE");
+}
+
+{
+  const res = NexaIntentClassifier.classify("nesse vídeo vou te mostrar como criar uma API REST", { followUpActive: true });
+  assert.strictEqual(res.action, "IGNORE", "Vídeo de tutorial em background deve ser ignorado");
+  console.log("✅ Caso 22: 'Nesse vídeo vou te mostrar...' em follow-up -> IGNORE");
+}
+
+{
+  const { cleanTranscription } = require("../services/audioTranscriptionCleaner");
+  const cleaned = cleanTranscription("Sapshopshopshopshopshopshopshopshopshopshopshopshops national.");
+  assert.strictEqual(cleaned, "", "Loop de sílabas alucinadas em música deve ser limpo para vazio");
+  const res = NexaIntentClassifier.classify(cleaned);
+  assert.strictEqual(res.action, "IGNORE");
+  console.log("✅ Caso 23: Loop repetitivo de música ('Sapshopshopshop...') -> Descartado");
+}
+
+{
+  const { cleanTranscription } = require("../services/audioTranscriptionCleaner");
+  const cleaned = cleanTranscription("Steve Vozze, Whisper.");
+  assert.strictEqual(cleaned, "", "Alucinação de ruído 'Steve Vozze, Whisper' deve ser limpa para vazio");
+  const res = NexaIntentClassifier.classify(cleaned);
+  assert.strictEqual(res.action, "IGNORE");
+  console.log("✅ Caso 24: Alucinação 'Steve Vozze, Whisper.' -> Descartado");
+}
+
+{
+  const res = NexaIntentClassifier.classify("Nessa, o que é polimorfismo?");
+  assert.strictEqual(res.action, "RESPOND_AUDIO_AND_CHAT");
+  assert.strictEqual(res.cleanedQuery, "o que é polimorfismo?");
+  console.log("✅ Caso 25: Pergunta direta com vocativo 'Nessa, o que é...' -> RESPOND_AUDIO_AND_CHAT");
+}
+
+{
+  const res = NexaIntentClassifier.classify("E como eu compilo no Linux?", { followUpActive: true });
+  assert.strictEqual(res.action, "RESPOND_AUDIO_AND_CHAT");
+  console.log("✅ Caso 26: Pergunta de continuidade em follow-up -> RESPOND_AUDIO_AND_CHAT");
+}
+
+{
+  const res = NexaIntentClassifier.classify("Mostra o código da classe, Nexa.");
+  assert.strictEqual(res.action, "RESPOND_AUDIO_AND_CHAT");
+  assert.strictEqual(res.cleanedQuery, "Mostra o código da classe");
+  console.log("✅ Caso 27: Vocativo 'Nexa' no final da frase -> RESPOND_AUDIO_AND_CHAT");
+}
+
+// 8. Casos de CONVERSA COM FILHOS / FAMÍLIA / TERCEIROS (NUNCA deve responder)
+{
+  const res = NexaIntentClassifier.classify("Filho, vai almoçar agora que a comida tá na mesa");
+  assert.strictEqual(res.action, "IGNORE", "Fala direcionada ao filho deve ser ignorada");
+  console.log("✅ Caso 28: 'Filho, vai almoçar...' -> IGNORE");
+}
+
+{
+  const res = NexaIntentClassifier.classify("Filho, guarda seus brinquedos que já está na hora de dormir");
+  assert.strictEqual(res.action, "IGNORE", "Comando para o filho guardar brinquedos deve ser ignorado");
+  console.log("✅ Caso 29: 'Filho, guarda seus brinquedos...' -> IGNORE");
+}
+
+{
+  const res = NexaIntentClassifier.classify("Amor, você viu onde deixei a chave do carro?");
+  assert.strictEqual(res.action, "IGNORE", "Pergunta para o cônjuge/família deve ser ignorada");
+  console.log("✅ Caso 30: 'Amor, você viu onde deixei...' -> IGNORE");
+}
+
+{
+  const res = NexaIntentClassifier.classify("Gente, vamos pro almoço e depois a gente volta");
+  assert.strictEqual(res.action, "IGNORE", "Fala para colegas/terceiros deve ser ignorada");
+  console.log("✅ Caso 31: 'Gente, vamos pro almoço...' -> IGNORE");
+}
+
+// 9. Casos de COMANDO DE PARADA / INTERRUPÇÃO (Barge-In)
+{
+  const res = NexaIntentClassifier.classify("Nexa, para");
+  assert.strictEqual(res.action, "STOP_AND_LISTEN", "Comando 'Nexa, para' deve interromper a fala imediatamente");
+  console.log("✅ Caso 32: 'Nexa, para' -> STOP_AND_LISTEN");
+}
+
+{
+  const res = NexaIntentClassifier.classify("Cancela, Nexa");
+  assert.strictEqual(res.action, "STOP_AND_LISTEN");
+  console.log("✅ Caso 33: 'Cancela, Nexa' -> STOP_AND_LISTEN");
+}
+
+{
+  const res = NexaIntentClassifier.classify("Silêncio");
+  assert.strictEqual(res.action, "STOP_AND_LISTEN");
+  console.log("✅ Caso 34: 'Silêncio' -> STOP_AND_LISTEN");
+}
+
+// 10. Casos de VERIFICAÇÃO DE FRASE INCOMPLETA (evita corte no meio da fala)
+{
+  const incomplete = NexaIntentClassifier.isSentenceIncomplete("Nexa, eu queria saber se");
+  assert.strictEqual(incomplete, true, "Frase terminando em 'se' deve ser identificada como incompleta");
+  console.log("✅ Caso 35: 'Nexa, eu queria saber se' -> isSentenceIncomplete = true");
+}
+
+{
+  const complete = NexaIntentClassifier.isSentenceIncomplete("Nexa, como funciona polimorfismo em Java?");
+  assert.strictEqual(complete, false, "Pergunta completa não deve ser considerada incompleta");
+  console.log("✅ Caso 36: 'Nexa, como funciona polimorfismo em Java?' -> isSentenceIncomplete = false");
+}
+
+console.log("\n🎉 Todos os 36 testes do Intent Classifier passaram com sucesso!");

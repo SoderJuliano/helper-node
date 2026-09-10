@@ -151,6 +151,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   googleTtsTest: (keyPathOrKey) => ipcRenderer.invoke("google-tts-test", keyPathOrKey),
   googleTtsListVoices: (keyPathOrKey) => ipcRenderer.invoke("google-tts-list-voices", keyPathOrKey),
   onPlayTtsAudio: (cb) => ipcRenderer.on("play-tts-audio", (event, data) => cb(data)),
+  onStopTtsAudio: (cb) => ipcRenderer.on("stop-tts-audio", (event, data) => cb(data)),
   triggerTtsPlayback: (text) => ipcRenderer.send("trigger-tts-stream-playback", text),
 
   // === Modo de Voz Contínuo Nexa ===
@@ -346,6 +347,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   sendNexaTtsEnded: () => ipcRenderer.send("nexa:tts-ended"),
   onNexaStateChange: (cb) => ipcRenderer.on("nexa:state-change", (event, data) => cb(data)),
   onPlayTtsAudio: (cb) => ipcRenderer.on("play-tts-audio", (event, data) => cb(data)),
+  onStopTtsAudio: (cb) => ipcRenderer.on("stop-tts-audio", (event, data) => cb(data)),
   onPlayAnimation: (cb) => ipcRenderer.on("nexa:play-animation", (event, data) => cb(data)),
   logToMain: (level, msg) => ipcRenderer.send("nexa:log-to-main", { level, msg }),
   onRequestWebcam: (cb) => ipcRenderer.on("nexa:request-webcam", (event, data) => cb(data)),
