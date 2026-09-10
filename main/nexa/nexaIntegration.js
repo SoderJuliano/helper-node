@@ -213,15 +213,6 @@ function handleCoreEventForNexa(channel, args) {
   // 4. Recebimento de Áudio do Google TTS
   if (channel === "play-tts-audio") {
     nexaState.setState("SPEAKING");
-    if (isNexaWindowOpen()) {
-      const { state } = require("../globals.js");
-      if (state.nexaWindow && !state.nexaWindow.isDestroyed()) {
-        const audioData = args[1];
-        try {
-          state.nexaWindow.webContents.send("play-tts-audio", audioData);
-        } catch (_) {}
-      }
-    }
   }
 
   // 5. Operações de leitura/escrita direta de arquivos no workspace / editor

@@ -130,6 +130,10 @@ class GeminiCliParser {
           this._emit('fileTool', { id: toolId, name: 'Edit', filePath, phase: 'before' });
           if (!this._pendingFileEdits) this._pendingFileEdits = [];
           this._pendingFileEdits.push({ id: toolId, filePath });
+        } else if (isRead && m[1]) {
+          const filePath = m[1].trim();
+          const toolId = `gcli-read-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+          this._emit('fileTool', { id: toolId, name: 'Read', filePath, phase: 'after' });
         }
         return;
       }

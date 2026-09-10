@@ -26,7 +26,7 @@
             statsEl.innerHTML = `<span class="d-add">+${res.adds}</span><span class="d-del">−${res.dels}</span>`;
             const lines = res.lines || [];
             if (!lines.length || (res.adds === 0 && res.dels === 0)) {
-                body.innerHTML = '<div class="diff-empty">Sem alterações detectadas neste arquivo.</div>';
+                body.innerHTML = '<div class="diff-empty">Sem alterações detectadas neste arquivo (leitura / inalterado).</div>';
                 return;
             }
             body.innerHTML = '';

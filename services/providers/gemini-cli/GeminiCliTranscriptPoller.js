@@ -115,8 +115,11 @@ class GeminiCliTranscriptPoller {
       for (const tool of tools) {
         this._emit('toolDone', { id: tool.id, label: tool.label, detail: tool.detail, name: tool.name, kind: tool.kind, filePath: tool.filePath });
         const isEditOperation = (tool.name === 'write_to_file' || tool.name === 'replace_file_content' || tool.name === 'multi_replace_file_content');
+        const isReadOperation = (tool.name === 'view_file');
         if (tool.filePath && isEditOperation) {
           this._emit('fileTool', { id: tool.id, name: 'Edit', filePath: tool.filePath, phase: 'after' });
+        } else if (tool.filePath && isReadOperation) {
+          this._emit('fileTool', { id: tool.id, name: 'Read', filePath: tool.filePath, phase: 'after' });
         }
       }
     }
@@ -152,8 +155,11 @@ class GeminiCliTranscriptPoller {
         for (const tool of tools) {
           this._emit('toolDone', { id: tool.id, label: tool.label, detail: tool.detail, name: tool.name, kind: tool.kind, filePath: tool.filePath });
           const isEditOperation = (tool.name === 'write_to_file' || tool.name === 'replace_file_content' || tool.name === 'multi_replace_file_content');
+          const isReadOperation = (tool.name === 'view_file');
           if (tool.filePath && isEditOperation) {
             this._emit('fileTool', { id: tool.id, name: 'Edit', filePath: tool.filePath, phase: 'after' });
+          } else if (tool.filePath && isReadOperation) {
+            this._emit('fileTool', { id: tool.id, name: 'Read', filePath: tool.filePath, phase: 'after' });
           }
         }
         this._activeTools.delete(stepIdx);
@@ -279,8 +285,11 @@ class GeminiCliTranscriptPoller {
           this._emit('tokenUpdate', { thinking: estimatedTokens });
 
           const isEditOperation = (name === 'write_to_file' || name === 'replace_file_content' || name === 'multi_replace_file_content');
+          const isReadOperation = (name === 'view_file');
           if (filePath && isEditOperation) {
             this._emit('fileTool', { id: toolId, name: 'Edit', filePath, phase: 'before' });
+          } else if (filePath && isReadOperation) {
+            this._emit('fileTool', { id: toolId, name: 'Read', filePath, phase: 'before' });
           }
         });
 

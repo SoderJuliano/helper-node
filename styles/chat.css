@@ -234,9 +234,11 @@
 .copy-button.copy-error { background: rgba(248,113,113,0.18); color: var(--danger); }
 .copy-button:active { transform: scale(.85); }
 
-.tool-files-list { display: flex; flex-wrap: wrap; gap: 5px; margin: 8px 0 2px; }
-.tool-file-chip { font-size: 11px; background: rgba(255,255,255,0.04); color: var(--text-2); border: 1px solid var(--border); border-radius: 5px; padding: 2px 7px; font-family: var(--font-mono); cursor: pointer; transition: background .15s, border-color .15s; }
-.tool-file-chip:hover { background: rgba(255,255,255,0.08); border-color: var(--border-strong); }
+.tool-files-list { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 2px; }
+.tool-file-chip { display: inline-flex; align-items: center; font-size: 11px; background: rgba(255,255,255,0.04); color: var(--text-2); border: 1px solid var(--border); border-radius: 5px; padding: 2px 7px; font-family: var(--font-mono); cursor: pointer; transition: all .15s ease; }
+.tool-file-chip:hover { background: rgba(255,255,255,0.08); border-color: var(--border-strong); color: var(--text); }
+.tool-file-chip .file-chip-icon { opacity: 0.85; flex-shrink: 0; }
+.tool-file-chip.action-delete { color: #fca5a5; }
 .kb-used-badge { font-size: 11px; color: var(--accent-2); opacity: .85; margin-bottom: 6px; font-style: italic; }
 
 /* Botão discreto para copiar a resposta da IA */

@@ -32,8 +32,8 @@ const TOOL_LABELS = {
   Thinking:      'Pensando',
 };
 
-// Tools that touch files — used for diff emission
-const FILE_TOOLS = new Set(['Edit', 'Write', 'MultiEdit']);
+// Tools that touch files — used for diff and read emission
+const FILE_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'Read']);
 
 function labelForTool(name, input) {
   const base = TOOL_LABELS[name] || name;

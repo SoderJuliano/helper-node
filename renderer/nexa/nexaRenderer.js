@@ -205,7 +205,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
+  let lastAudioBase64 = null;
+  let lastAudioPlayTime = 0;
+
   function playTtsAudio(base64Data) {
+    if (!base64Data) return;
+    const now = Date.now();
+    // Previne repetição acidental do áudio no início por eventos de IPC duplicados
+    if (lastAudioBase64 === base64Data && (now - lastAudioPlayTime < 1000)) {
+      console.log("[NexaRenderer] Áudio TTS duplicado ignorado (debounce).");
+      return;
+    }
+    lastAudioBase64 = base64Data;
+    lastAudioPlayTime = now;
+
     stopTtsAudio();
 
     try {

@@ -192,6 +192,17 @@ class GeminiCliProvider {
             ? filePath
             : path.join(cwd, filePath);
 
+          if (name === 'Read' || name === 'view_file') {
+            if (phase === 'after') {
+              sender.send('workspace-file-written', {
+                action: 'read',
+                path: absPath,
+                backupAt: null,
+              });
+            }
+            return;
+          }
+
           if (phase === 'before') {
             try {
               const backupPath = makeBackupPath(absPath);

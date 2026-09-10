@@ -489,14 +489,14 @@ helpers.triggerTtsPlaybackIfEnabled = function(fullResponse) {
         audioBase64: buf.toString("base64"),
         text: summary
       };
-      // Emite o evento global do IPCMain para acionar nexaIntegration e a janela do renderer
+      // Emite o evento global do IPCMain para acionar nexaIntegration (atualizar estado para SPEAKING)
       const { ipcMain } = require("electron");
       ipcMain.emit("play-tts-audio", null, audioPayload);
 
-      if (state.nexaWindow && !state.nexaWindow.isDestroyed()) {
+      const { isNexaWindowOpen } = require("../nexa/nexaWindow.js");
+      if (isNexaWindowOpen() && state.nexaWindow && !state.nexaWindow.isDestroyed()) {
         try { state.nexaWindow.webContents.send("play-tts-audio", audioPayload); } catch (_) {}
-      }
-      if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+      } else if (state.mainWindow && !state.mainWindow.isDestroyed()) {
         try { state.mainWindow.webContents.send("play-tts-audio", audioPayload); } catch (_) {}
       }
     }).catch(err => {

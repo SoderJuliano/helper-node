@@ -153,7 +153,18 @@
 
             // Reprodução de áudio TTS quando o modo de voz está ativo
             if (window.electronAPI && window.electronAPI.onPlayTtsAudio) {
+                let lastTtsAudio = null;
+                let lastTtsTime = 0;
+
                 window.electronAPI.onPlayTtsAudio(async ({ audioBase64, text }) => {
+                    if (!audioBase64) return;
+                    const now = Date.now();
+                    if (lastTtsAudio === audioBase64 && (now - lastTtsTime < 1000)) {
+                        return;
+                    }
+                    lastTtsAudio = audioBase64;
+                    lastTtsTime = now;
+
                     try {
                         if (window.electronAPI.getNexaConfig) {
                             const nexaCfg = await window.electronAPI.getNexaConfig();
