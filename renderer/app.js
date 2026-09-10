@@ -13,9 +13,10 @@
         if (typeof window.setupTerminalUI === 'function') window.setupTerminalUI();
 
         // Initial shortcuts fetch
+        if (typeof window.renderShortcuts === 'function') window.renderShortcuts();
         if (typeof window.electronAPI !== 'undefined' && window.electronAPI.onShortcutsChanged) {
             window.electronAPI.onShortcutsChanged(() => {
-                if (typeof renderShortcuts === 'function') renderShortcuts();
+                if (typeof window.renderShortcuts === 'function') window.renderShortcuts();
             });
         }
     });
