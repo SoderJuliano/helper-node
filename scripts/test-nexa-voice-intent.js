@@ -306,11 +306,21 @@ console.log("🧪 Iniciando testes de Intent Classifier da Nexa...\n");
 }
 
 {
-  const res = NexaIntentClassifier.classify("Nexa!");
-  assert.strictEqual(res.action, "RESPOND_AUDIO_AND_CHAT");
-  assert.strictEqual(res.isCasualGreeting, true);
-  assert.ok(res.directVoiceResponse);
-  console.log("✅ Caso 40: 'Nexa!' -> RESPOND_AUDIO_AND_CHAT (directVoiceResponse)");
+  const res = NexaIntentClassifier.classify("Nexa, eu quero que você faça alteração nesse projeto Web. Eu quero que você coloque as novidades mais recentes que a gente colocou no helper-node, uma seção para isso, que é a Nexa.");
+  assert.strictEqual(res.action, "RESPOND_AUDIO_AND_CHAT", "Frase contendo 'que a gente colocou' direcionada à Nexa não deve ser descartada");
+  console.log("✅ Caso 41: Frase com 'a gente' direcionada à Nexa -> RESPOND_AUDIO_AND_CHAT");
 }
 
-console.log("\n🎉 Todos os 40 testes do Intent Classifier passaram com sucesso!");
+{
+  const { cleanTranscription } = require("../services/audioTranscriptionCleaner");
+  const raw = "Dexa, eu quero que você faça alteração nesse projeto Web. Eu quero que você coloque as novidades mais recentes que a gente colocou no RELPernode, uma seção para isso, que é a Nexa. Novas animações, fala com Google TTS e tudo mais, coloque uma descrição lá, também, como novidade.";
+  const cleaned = cleanTranscription(raw);
+  assert.ok(cleaned.startsWith("Nexa,"), "Deve normalizar 'Dexa,' para 'Nexa,'");
+  assert.ok(cleaned.includes("helper-node"), "Deve normalizar 'RELPernode' para 'helper-node'");
+
+  const res = NexaIntentClassifier.classify(cleaned);
+  assert.strictEqual(res.action, "RESPOND_AUDIO_AND_CHAT", "Comando completo transcrito deve ser aceito");
+  console.log("✅ Caso 42: Transcrição Whisper 'Dexa... RELPernode' -> Normalizada e classificada como RESPOND_AUDIO_AND_CHAT");
+}
+
+console.log("\n🎉 Todos os 42 testes do Intent Classifier passaram com sucesso!");

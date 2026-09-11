@@ -21,8 +21,9 @@ function getWhisperPaths() {
   const binPath = path.join(rootDir, "whisper", "build", "bin", exeName);
   
   const modelPaths = [
-    path.join(rootDir, "whisper", "models", "ggml-base.bin"),
+    path.join(rootDir, "whisper", "models", "ggml-medium.bin"),
     path.join(rootDir, "whisper", "models", "ggml-small.bin"),
+    path.join(rootDir, "whisper", "models", "ggml-base.bin"),
     path.join(rootDir, "whisper", "models", "ggml-tiny.bin")
   ];
   

@@ -24,7 +24,7 @@
 // quando ditos com sotaque brasileiro no meio de uma frase em português.
 // ---------------------------------------------------------------------------
 const CORE = [
-  'helper-node', 'website-helper-node', 'Nexa', 'Ctrl+D', 'Git', 'GitHub', 'commit', 'branch', 'push', 'pull request', 'merge', 'rebase', 'Whisper',
+  'helper-node', 'website-helper-node', 'Nexa', 'Ctrl+D', 'Git', 'GitHub', 'commit', 'branch', 'push', 'pull request', 'merge', 'rebase', 'master', 'main', 'checkout', 'multithread', 'Whisper',
   'SOLID', 'Clean Architecture', 'design patterns', 'code review',
   'Java', 'Spring Boot', 'Kotlin', 'NestJS', 'Node.js', 'JavaScript', 'TypeScript', 'React', 'Angular', 'Vue.js', 'Python', 'Go', '.NET',
   'REST', 'API', 'endpoint', 'controller', 'service', 'repository', 'microservices', 'microserviços', 'Kafka', 'Docker', 'Kubernetes', 'AWS',
@@ -168,14 +168,14 @@ function buildTranscriptionPrompt({ background = '', context = '' } = {}) {
   const key = `${background}||${context}`;
   if (key === _cacheKey) return _cacheValue;
 
-  const prefix = 'Vocabulário técnico: ';
+  const prefix = 'Assistente Nexa: Nexa, helper-node, website-helper-node, ';
   const budget = MAX_PROMPT_CHARS - prefix.length - 2;
 
   // Seleciona termos relevantes ao contexto/background
   const relevant = pickRelevantTerms(`${background} ${context}`, budget);
 
   // Termos essenciais padrão para preencher o budget se o contexto for vazio/curto
-  const defaultCore = ['Nexa', 'Git', 'GitHub', 'commit', 'branch', 'pull request', 'merge', 'Whisper', 'Java', 'Spring Boot', 'SQL', 'Docker', 'Kubernetes', 'Kafka', 'AWS', 'REST', 'TypeScript', 'Node.js', 'SOLID'];
+  const defaultCore = ['Nexa', 'helper-node', 'website-helper-node', 'Git', 'GitHub', 'commit', 'branch', 'master', 'main', 'pull request', 'merge', 'multithread', 'Whisper', 'Java', 'Spring Boot', 'SQL', 'Docker', 'Kubernetes', 'Kafka', 'AWS', 'REST', 'TypeScript', 'Node.js', 'SOLID'];
   const terms = [...relevant];
   let used = terms.reduce((acc, t) => acc + t.length + 2, 0);
 
@@ -186,7 +186,7 @@ function buildTranscriptionPrompt({ background = '', context = '' } = {}) {
     }
   }
 
-  const prompt = terms.length ? `${prefix}${terms.join(', ')}.` : '';
+  const prompt = terms.length ? `${prefix}${terms.join(', ')}.` : 'Assistente Nexa: Nexa, helper-node, Git, GitHub, commit, branch.';
 
   _cacheKey = key;
   _cacheValue = prompt;

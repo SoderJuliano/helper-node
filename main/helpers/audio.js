@@ -237,20 +237,15 @@ helpers.transcribeAudio = async function(filePath, options = {}) {
     const modelPathMedium = path.join(ROOT_DIR, "whisper/models/ggml-medium.bin");
     const modelPathTiny = path.join(ROOT_DIR, "whisper/models/ggml-tiny.bin");
 
-    // Determinar idioma do whisper: 'auto' permite transcrever PT-BR e Inglês misturados naturalmente
+    // Determinar idioma do whisper: 'pt' direto para PT-BR evita confusão de autodeteção
     const savedLang = configService.getLanguage ? configService.getLanguage() : 'pt-br';
-    const whisperLang = savedLang === 'us-en' ? 'en' : 'auto';
+    const whisperLang = savedLang === 'us-en' ? 'en' : 'pt';
 
-    // Escolher modelo disponível
-    let modelPath;
-    if (duration && duration > 60) {
-      modelPath = fs2.existsSync(modelPathSmall) ? modelPathSmall : (fs2.existsSync(modelPathBase) ? modelPathBase : (fs2.existsSync(modelPathTiny) ? modelPathTiny : modelPathMedium));
-      console.log(`Usando modelo ${modelPath ? path.basename(modelPath) : 'default'} (áudio longo)`);
-    } else {
-      // Para áudio curto (press-to-talk), ggml-base é 3x mais rápido na CPU e não atrasa a resposta
-      modelPath = fs2.existsSync(modelPathBase) ? modelPathBase : (fs2.existsSync(modelPathSmall) ? modelPathSmall : (fs2.existsSync(modelPathTiny) ? modelPathTiny : modelPathMedium));
-      console.log(`Usando modelo ${modelPath ? path.basename(modelPath) : 'default'}`);
-    }
+    // Priorizar modelos de maior precisão (medium -> small -> base -> tiny)
+    // ggml-small (244M) e medium são infinitamente superiores ao ggml-base (74M) em português
+    const modelCandidates = [modelPathMedium, modelPathSmall, modelPathBase, modelPathTiny];
+    const modelPath = modelCandidates.find(p => fs2.existsSync(p)) || null;
+    console.log(`Usando modelo ${modelPath ? path.basename(modelPath) : 'nenhum encontrado'}`);
 
     const token = configService.getOpenIaToken();
     if (!fs2.existsSync(whisperPath) || !modelPath || !fs2.existsSync(modelPath)) {

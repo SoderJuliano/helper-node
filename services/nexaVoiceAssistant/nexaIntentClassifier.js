@@ -16,11 +16,11 @@ function stripAccents(str) {
 
 // Padrões de ativação por Wake Word estritos e variações fonéticas válidas
 // Rejeita categoricamente falsos positivos como "nessa casa", "nessa branch", "nesse apartamento", "neca", "nexus"
-const WAKE_WORD_EXACT = /\b(nexa|n[eéè]xa|nexxa|neksa|naxa|neza)\b/i;
-const WAKE_WORD_WITH_GREETING = /\b(?:ei|oi|ol[aá]|fala|opa|bom\s+dia|boa\s+tarde|boa\s+noite|al[oô]|e\s+a[ií])\s+(?:nexa|n[eéè]xa|nexxa|neksa|naxa|neza|nessa)\b/i;
-const WAKE_WORD_WITH_VOCATIVE = /\b(?:nexa|n[eéè]xa|nexxa|neksa|naxa|neza|nessa)\s*[,:!?\-]*\s*(?:voc[eê]|vc|tudo|como|o\s+que|qual|quando|onde|por\s*que|porque|me|pode|faz|d[aá]|ajuda|t[aá]|est[aá]|est[aá]s|tas|a[ií]|escuta|ouve|olha|fala|\?)/i;
-const WAKE_WORD_PHONETIC_DIRECT = /^(?:nessa|nexa|n[eéè]xa)\s+(?:voc[eê]|vc)?\s*(?:est[aá]|t[aá]|est[aá]s|tas)?\s*(?:a[ií]|me\s+ouvindo|me\s+escutando|me\s+ouve|me\s+escuta|ouvindo|ouviu|escutou)/i;
-const WAKE_WORD_AT_END = /[,\s]+(?:nexa|n[eéè]xa|nexxa|naxa|neza)\s*[!?.]*$/i;
+const WAKE_WORD_EXACT = /\b(nexa|n[eéè]xa|nexxa|neksa|naxa|neza|dexa|decsa)\b/i;
+const WAKE_WORD_WITH_GREETING = /\b(?:ei|oi|ol[aá]|fala|opa|bom\s+dia|boa\s+tarde|boa\s+noite|al[oô]|e\s+a[ií])\s+(?:nexa|n[eéè]xa|nexxa|neksa|naxa|neza|nessa|dessa|dexa|deixa|decsa)\b/i;
+const WAKE_WORD_WITH_VOCATIVE = /\b(?:nexa|n[eéè]xa|nexxa|neksa|naxa|neza|nessa|dessa|dexa|deixa|decsa)\s*[,:!?\-]+\s*(?:voc[eê]|vc|eu|tudo|como|o\s+que|qual|quando|onde|por\s*que|porque|me|pode|faz|fa[çc]a|d[aá]|ajuda|t[aá]|est[aá]|est[aá]s|tas|a[ií]|escuta|ouve|olha|fala|\?)/i;
+const WAKE_WORD_PHONETIC_DIRECT = /^(?:nessa|dessa|dexa|deixa|decsa|nexa|n[eéè]xa)\s+(?:voc[eê]|vc)?\s*(?:est[aá]|t[aá]|est[aá]s|tas)?\s*(?:a[ií]|me\s+ouvindo|me\s+escutando|me\s+ouve|me\s+escuta|ouvindo|ouviu|escutou)/i;
+const WAKE_WORD_AT_END = /[,\s]+(?:nexa|n[eéè]xa|nexxa|naxa|neza|dexa|deixa|decsa)\s*[!?.]*$/i;
 
 // Padrões de links/alucinações ou ruídos que devem ser descartados imediatamente
 const URL_OR_NOISE_PATTERNS = [
@@ -33,8 +33,9 @@ const URL_OR_NOISE_PATTERNS = [
 
 // Padrões de conversa com terceiros / família / filhos na sala (NÃO deve responder)
 // Ex: "Filho, vai almoçar", "Guarda seus brinquedos", "Amor, você viu a chave?", "Vem aqui, filho"
+// NOTA: 'a gente' (nós) nunca deve ser considerado conversa com terceiros.
 const THIRD_PARTY_CONVERSATION_PATTERNS = [
-  /\b(?:filho|filha|amor|esposa|marido|m[aã]e|pai|galera|pessoal|gente|voc[eê]s|meninos?|meninas?|cara|mano|bicho)\b/i,
+  /^(?:filho|filha|amor|esposa|marido|m[aã]e|pai|meninos?|meninas?|galera|pessoal|gente)\s*[,:!]/i,
   /\b(?:vai\s+(?:dormir|almo[çc]ar|jantar|tomar\s+banho|estudar|brincar|pro\s+quarto|pra\s+cama))\b/i,
   /\b(?:guarda\s+(?:os\s+brinquedos|isso|suas\s+coisas|o\s+material))\b/i,
   /\b(?:arruma\s+(?:o\s+quarto|a\s+cama|a\s+casa|a\s+mesa))\b/i,
@@ -42,7 +43,7 @@ const THIRD_PARTY_CONVERSATION_PATTERNS = [
   /\b(?:come\s+(?:a\s+comida|o\s+almo[çc]o|a\s+janta|tudo)|fez\s+a\s+li[çc][ãa]o|fez\s+o\s+dever|escovou\s+os\s+dentes)\b/i,
   /\b(?:olha\s+(?:o\s+cachorro|o\s+gato|o\s+carro|a\s+panela|quem\s+est[aá]\s+a[ií]))\b/i,
   /\b(?:atende\s+(?:o\s+telefone|a\s+porta|o\s+interfone))\b/i,
-  /\b(?:vem\s+(?:c[aá]|aqui|almo[çc]ar|jantar|comer|tomar\s+caf[eé]))\b/i,
+  /\b(?:vem\s+(?:c[aá]|aqui)\s+(?:almo[çc]ar|jantar|comer|tomar\s+caf[eé]))\b/i,
 ];
 
 // Padrões de comandos de parada / interrupção / silêncio (Barge-In)
@@ -224,20 +225,21 @@ class NexaIntentClassifier {
       }
     }
 
+    const hasWakeWord = NexaIntentClassifier.hasValidWakeWord(normalizedText);
+
     // 3. Descarta conversas paralelas com outras pessoas no cômodo (filhos, cônjuge, família, colegas)
-    // Ex: "Filho, vai almoçar", "Guarda seus brinquedos", "Amor, vem cá", a menos que comece explicitamente com "Nexa, ..."
-    const hasExplicitNexaVocativePrefix = /^(?:ei|oi|ol[aá])?\s*(?:nexa|n[eéè]xa)\s*[,:]/i.test(normalizedText);
-    for (const pattern of THIRD_PARTY_CONVERSATION_PATTERNS) {
-      if (pattern.test(normalizedText) && !hasExplicitNexaVocativePrefix) {
-        return {
-          action: "IGNORE",
-          expireFollowUp: true,
-          reason: "Conversa com terceiros/família detectada (não direcionada à Nexa)"
-        };
+    // Se a frase tem Wake Word ou foi explicitamente direcionada à Nexa, ela NÃO é conversa de terceiros
+    if (!hasWakeWord) {
+      for (const pattern of THIRD_PARTY_CONVERSATION_PATTERNS) {
+        if (pattern.test(normalizedText)) {
+          return {
+            action: "IGNORE",
+            expireFollowUp: true,
+            reason: "Conversa com terceiros/família detectada (não direcionada à Nexa)"
+          };
+        }
       }
     }
-
-    const hasWakeWord = NexaIntentClassifier.hasValidWakeWord(normalizedText);
 
     // Se o nome Nexa não foi falado e não estamos em janela de follow-up ativa, descarta silenciosamente
     if (!hasWakeWord && !followUpActive) {
@@ -286,8 +288,8 @@ class NexaIntentClassifier {
     let cleanedQuery = text;
     if (hasWakeWord) {
       cleanedQuery = text
-        .replace(/^(?:ei|oi|olá|ola|e\s+aí|e\s+ai|opa|fala|alô|alo|bom\s+dia|boa\s+tarde|boa\s+noite)?\s*(?:nexa|néxa|nèxa|nexá|naxa|nessa|neza|neksa|nexxa)[,\s:!\-]*/i, "")
-        .replace(/[,\s\-]*(?:nexa|néxa|nèxa|nexá|naxa|nessa|neza|neksa|nexxa)[,\s:!?.]*$/i, "")
+        .replace(/^(?:ei|oi|olá|ola|e\s+aí|e\s+ai|opa|fala|alô|alo|bom\s+dia|boa\s+tarde|boa\s+noite)?\s*(?:nexa|néxa|nèxa|nexá|naxa|nessa|dessa|dexa|deixa|neza|neksa|nexxa|decsa)[,\s:!\-]*/i, "")
+        .replace(/[,\s\-]*(?:nexa|néxa|nèxa|nexá|naxa|nessa|dessa|dexa|deixa|neza|neksa|nexxa|decsa)[,\s:!?.]*$/i, "")
         .trim();
     }
 

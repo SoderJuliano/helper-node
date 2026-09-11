@@ -124,14 +124,27 @@ function normalizeDevPhonetics(text) {
 
   // 1. Variações fonéticas de helper-node e website-helper-node
   res = res.replace(/\b(?:website\s*helper\s*node|site\s*helper\s*node|website-helper-node)\b/gi, 'website-helper-node');
-  res = res.replace(/\b(?:helper\s*node|helper\s*nodi|help\s*node|helper\s*note|elper\s*node|elper\s*nodi|helpenode|ajudador\s*node)\b/gi, 'helper-node');
+  res = res.replace(/\b(?:helper\s*node|helper\s*nodi|help\s*node|helper\s*note|elper\s*node|elper\s*nodi|helpenode|ajudador\s*node|relper\s*node|relpernode|repernode|relper\s*nodi|relpenode)\b/gi, 'helper-node');
 
   // 2. Variações de Ctrl+D
   res = res.replace(/\b(?:control\s*d|controle\s*d|control\s*de|ctrl\s*d)\b/gi, 'Ctrl+D');
 
-  // 3. Variações fonéticas de Nexa ("né xa", "né, xa", "nèxa", "néxa")
+  // 3. Variações fonéticas de Nexa ("né xa", "né, xa", "nèxa", "néxa", "dexa", "deixa", "dessa")
+  // A) Saudações seguidas de distorção fonética (ex: "Fala dexa", "Oi dexa", "Ei dexa", "Opa dexa", "E aí dexa", "Olá dexa")
+  res = res.replace(/\b(ei|oi|ol[aá]|fala|opa|al[oô]|e\s+a[ií]|bom\s+dia|boa\s+tarde|boa\s+noite)\s+(?:dexa|deixa|dessa|nessa|nexxa|neksa|naxa|neza|decsa|meca|lexa)\b/gi, '$1 Nexa');
+
+  // B) Início de frase com vocativo e pontuação (ex: "Dexa,", "Deixa,", "Dessa,", "Nessa,")
+  res = res.replace(/^(?:dexa|deixa|dessa|nessa|nexxa|neksa|naxa|neza|decsa)\s*([,:!\-]+)/gi, 'Nexa$1');
+
+  // C) Início de frase seguido de comandos verbais ou pronomes (ex: "Dexa eu quero", "Deixa eu quero que você", "Dexa faz", "Dexa cria", "Dexa você")
+  res = res.replace(/^(?:dexa|deixa|dessa|nessa|nexxa|neksa|naxa|neza|decsa)\s+(?=(?:eu\s+quero|voc[eê]|vc|faz|fa[çc]a|cria|ajuda|mostra|olha|me\s+ajuda|me\s+diz|me\s+explica|como|quando|onde|por\s*que|porque|o\s+que|qual|pode|consegue|est[aá]|t[aá]|escuta|ouve|tira|coloca|altera|muda|abre|fecha)\b)/gi, 'Nexa, ');
+
+  // D) Fim de frase com vocativo (ex: "o que você acha, dexa?", "me ajuda, dexa")
+  res = res.replace(/([,\s]+)(?:dexa|deixa|nessa|dessa|neksa|nexxa|neza)\s*([!?.]*)$/gi, '$1Nexa$2');
+
+  // E) Variações acentuadas, separadas por espaço ou com k/s
   res = res.replace(/\b(?:n[eé],\s*xa|n[eé]\s+xa)\b/gi, 'Nexa');
-  res = res.replace(/\b(?:n[eè]xa|n[eé]xa)\b/gi, 'Nexa');
+  res = res.replace(/\b(?:n[eè]xa|n[eé]xa|nexxa|neksa|decsa)\b/gi, 'Nexa');
 
   // 4. Variações fonéticas de Git ("Geet", "guite")
   res = res.replace(/\b(?:geet|guite)\b/gi, 'Git');
@@ -140,19 +153,29 @@ function normalizeDevPhonetics(text) {
   res = res.replace(/\bcomit\b/gi, 'commit');
   res = res.replace(/\bcomitando\b/gi, 'commitando');
 
-  // 6. Variações fonéticas de Branch ("brente", "brenti", "brench", "brent", "brain" em contexto git)
-  res = res.replace(/\b(comita|comitar|comite|commit|checkout|switch|merge|cria|criar|muda|mudar|entra|entrar|vai pra|vai para|nessa|nesta|na|da|a|uma|nova|sua)\s+(?:a\s+)?(?:brent[ei]?|brain)\b/gi, '$1 branch');
+  // 6. Variações fonéticas de Branch e Master ("massa", "mastro" em contexto git)
+  res = res.replace(/\b(comita|comitar|comite|commit|checkout|switch|merge|cria|criar|muda|mudar|entra|entrar|vai pra|vai para|subir pra|mandar pra|jogar pra|nessa|nesta|na|da|a|uma|nova|sua)\s+(?:a\s+)?(?:brent[ei]?|brain)\b/gi, '$1 branch');
   res = res.replace(/\b(brent[ei]?|brain)\s+(main|master|develop|feature|bugfix|release|hotfix)\b/gi, 'branch $2');
   res = res.replace(/\b(traduzindo para a|mudando para a|criando a)\s+(?:brent|brain)\b/gi, '$1 branch');
   res = res.replace(/\bbrench\b/gi, 'branch');
+  res = res.replace(/\b(na|da|pra|para a|pro|para o|branch|merge na|commit na|checkout na|checkout|subir pra|jogar pra|mandar pra)\s+(?:massa|masto|mastro)\b/gi, '$1 master');
+  res = res.replace(/\b(branch|brente|brench)\s+(?:massa|mastro)\b/gi, 'branch master');
+  res = res.replace(/\bna\s+massa\b/gi, 'na master');
+  res = res.replace(/\bda\s+massa\b/gi, 'da master');
+  res = res.replace(/\bpra\s+massa\b/gi, 'pra master');
+  res = res.replace(/\bmassa(?=\s+(?:t[aá]\s+trascrevendo|t[aá]\s+transcrevendo|est[aá]|ou\s+main|vs\s+main|ou\s+develop))\b/gi, 'master');
 
-  // 7. Variações fonéticas de Whisper ("isper", "uísper", "expert" em contexto de transcrição/áudio)
-  res = res.replace(/\b(no|do|o|pro|para o|pelo)\s+isper\b/gi, '$1 Whisper');
-  res = res.replace(/\b(?:u[íi]sper|isper)\b/gi, 'Whisper');
+  // 7. Variações fonéticas de Thread / Multithread ("mini-terreda", "multiterreda", "terreda")
+  res = res.replace(/\b(?:mini|multi)[- ]?terreda[s]?\b/gi, 'multithread');
+  res = res.replace(/\bterreda[s]?\b/gi, 'threads');
+
+  // 8. Variações fonéticas de Whisper ("isper", "uísper", "whispers", "expert" em contexto de transcrição/áudio)
+  res = res.replace(/\b(no|do|o|pro|para o|pelo|esse|esses|este|estes)\s+(?:isper|ispers|u[íi]spers?)\b/gi, '$1 Whisper');
+  res = res.replace(/\b(?:u[íi]sper|isper|whispers)\b/gi, 'Whisper');
   res = res.replace(/\b(no|do|o|pro|para o|pelo)\s+expert(?=\s+(?:para|entender|transcrever|capturar|reconhecer|ouvir|gravar|traduzir|processar))\b/gi, '$1 Whisper');
   res = res.replace(/\bexpert\s+(?:n[ãa]o\s+est[áa]\s+conseguindo\s+entender)\b/gi, 'Whisper não está conseguindo entender');
 
-  // 8. Pull request / Code review
+  // 9. Pull request / Code review
   res = res.replace(/\bpuli\s+request\b/gi, 'pull request');
   res = res.replace(/\bcode\s+revi[eê]u\b/gi, 'code review');
 

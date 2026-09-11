@@ -61,7 +61,7 @@ function whisperBinPath() {
 }
 
 function getWhisperModelPath() {
-  const names = ["ggml-base.bin", "ggml-small.bin", "ggml-tiny.bin", "ggml-medium.bin"];
+  const names = ["ggml-medium.bin", "ggml-small.bin", "ggml-base.bin", "ggml-tiny.bin"];
   const searchDirs = [
     path.join(__dirname, "..", "whisper", "models"),
   ];
