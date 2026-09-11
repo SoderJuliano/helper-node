@@ -68,11 +68,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   const baseIdleAnimation = createLottieAnim("base_idle_lottie", true);
   const speakingAnimation = createLottieAnim("speaking_lottie", true);
   const writingAnimation = createLottieAnim("typing_lottie", true);
+  const tesseractAnimation = createLottieAnim("tesseract_lottie", true);
   const thinkingAnimation = createLottieAnim("thinking_lottie", true);
   const listeningAnimation = createLottieAnim("listening_lottie", false);
   const globeAnimation = createLottieAnim("globe_lottie", true);
 
   let currentVideoAnimation = introAnimation;
+  let activeWorkingAnimation = null;
   let idleTime = 0;
   let sleepingTime = 0;
   const SLEEP_TIMEOUT = 10 * 60; // 10 minutos (600s)
@@ -109,6 +111,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     animController.setState(stateToApply);
 
     if (stateToApply === "LISTENING") {
+      activeWorkingAnimation = null;
       if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== listeningAnimation) {
         currentVideoAnimation.stop();
       }
@@ -127,6 +130,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         currentVideoAnimation = thinkingAnimation;
       }
     } else if (stateToApply === "SPEAKING") {
+      activeWorkingAnimation = null;
       if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== speakingAnimation) {
         currentVideoAnimation.stop();
       }
@@ -136,13 +140,19 @@ document.addEventListener("DOMContentLoaded", async () => {
         currentVideoAnimation = speakingAnimation;
       }
     } else if (stateToApply === "WORKING") {
-      if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== writingAnimation) {
+      // Escolhe 50% Tesseract (código como cubo digital) / 50% Terminal (digitação) e mantém consistente durante a mesma tarefa
+      if (!activeWorkingAnimation) {
+        activeWorkingAnimation = Math.random() < 0.5 ? tesseractAnimation : writingAnimation;
+        console.log(`[NexaRenderer] Selecionada animação para tarefa de código (WORKING): ${activeWorkingAnimation === tesseractAnimation ? "Tesseract / Cubo Digital (50%)" : "Terminal / Teclado (50%)"}`);
+      }
+      const animToUse = activeWorkingAnimation || writingAnimation;
+      if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== animToUse) {
         currentVideoAnimation.stop();
       }
-      if (writingAnimation) {
-        console.log("[NexaRenderer] Transicionando para WORKING. Iniciando animação de escrita/leitura de arquivos.");
-        writingAnimation.play();
-        currentVideoAnimation = writingAnimation;
+      if (animToUse) {
+        console.log("[NexaRenderer] Transicionando para WORKING. Iniciando animação:", animToUse === tesseractAnimation ? "tesseract" : "terminal");
+        animToUse.play();
+        currentVideoAnimation = animToUse;
       }
     } else if (stateToApply === "SEARCHING") {
       if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== globeAnimation) {
@@ -155,6 +165,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     } else {
       // Estado IDLE ou outros
+      activeWorkingAnimation = null;
       if (currentVideoAnimation && currentVideoAnimation.isPlaying) {
         const pathStr = currentVideoAnimation.videoPath || currentVideoAnimation.animationPath || "";
         if (
@@ -163,6 +174,8 @@ document.addEventListener("DOMContentLoaded", async () => {
           pathStr.includes("speaking") ||
           pathStr.includes("writing") ||
           pathStr.includes("typing") ||
+          pathStr.includes("tesseract") ||
+          pathStr.includes("cube") ||
           pathStr.includes("globe")
         ) {
           console.log("[NexaRenderer] Parando animação ativa por retorno a IDLE.");

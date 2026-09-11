@@ -35,6 +35,8 @@ class NexaDragHandler {
         animPath.includes('thinking') ||
         animPath.includes('typing') ||
         animPath.includes('writing') ||
+        animPath.includes('tesseract') ||
+        animPath.includes('cube') ||
         animPath.includes('speaking') ||
         animPath.includes('listening') ||
         animPath.includes('globe')

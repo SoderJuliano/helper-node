@@ -127,6 +127,18 @@ const NEXA_ANIMATIONS = {
     description: "Nexa observa um globo holográfico digital girando em loop enquanto pesquisa e consulta informações na internet ou na web.",
     category: "action",
     lottiePath: path.join(__dirname, "../../renderer/nexa/assets/lottie/globe_lottie/animations/main.json")
+  },
+  tesseract_code: {
+    name: "tesseract_code",
+    description: "Nexa manipula e interage com um tesseract holográfico / cubo digital brilhante representando o código em desenvolvimento.",
+    category: "action",
+    lottiePath: path.join(__dirname, "../../renderer/nexa/assets/lottie/tesseract_lottie/animations/main.json")
+  },
+  tesseract: {
+    name: "tesseract",
+    description: "Nexa interage com o tesseract (cubo digital representando o código).",
+    category: "action",
+    lottiePath: path.join(__dirname, "../../renderer/nexa/assets/lottie/tesseract_lottie/animations/main.json")
   }
 };
 
