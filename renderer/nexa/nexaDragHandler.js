@@ -1,15 +1,17 @@
 /**
  * renderer/nexa/nexaDragHandler.js
- * Gerenciador de arraste da janela da Nexa com protecao contra interrupcao de estados ativos (THINKING, WORKING, SPEAKING, LISTENING).
+ * Gerenciador de arraste da janela da Nexa com protecao contra interrupcao de estados ativos (THINKING, WORKING, SPEAKING, LISTENING)
+ * e selecao probabilistica de animacao de arraste (90% se equilibrando / 10% flutuando com pouso).
  */
 
 class NexaDragHandler {
-  constructor({ canvas, animController, getCurrentAnimation, setCurrentAnimation, getIsSleeping }) {
+  constructor({ canvas, animController, getCurrentAnimation, setCurrentAnimation, getIsSleeping, randomProvider }) {
     this.canvas = canvas;
     this.animController = animController;
     this.getCurrentAnimation = getCurrentAnimation;
     this.setCurrentAnimation = setCurrentAnimation;
     this.getIsSleeping = getIsSleeping;
+    this.randomProvider = randomProvider || Math.random;
     this.isDraggingWindow = false;
 
     this._bindEvents();
@@ -36,6 +38,22 @@ class NexaDragHandler {
     return false;
   }
 
+  getDragAnimation() {
+    // 90% de chance para a nova animação de se equilibrar, 10% para a animação antiga de flutuar
+    const rand = this.randomProvider();
+    if (rand < 0.90) {
+      return {
+        path: 'renderer/nexa/assets/lottie/balancing_lottie/animations/main.json',
+        type: 'balancing'
+      };
+    } else {
+      return {
+        path: 'renderer/nexa/assets/lottie/floating_lottie/animations/main.json',
+        type: 'floating'
+      };
+    }
+  }
+
   _bindEvents() {
     if (!this.canvas) return;
 
@@ -58,19 +76,22 @@ class NexaDragHandler {
           return;
         }
 
-        const curAnim = this.getCurrentAnimation();
+        const curAnim = this.getCurrentAnimation ? this.getCurrentAnimation() : null;
         if (curAnim && curAnim.isPlaying) {
           curAnim.stop();
         }
 
-        const floatingLottiePath = 'renderer/nexa/assets/lottie/floating_lottie/animations/main.json';
-        console.log('[�NexaDragHandler] Arrastando em idle. Iniciando animacao de flutuacao.');
-        const floatingAnim = new NexaLottieAnimation({
-          animationPath: floatingLottiePath,
-          loop: true
-        });
-        this.setCurrentAnimation(floatingAnim);
-        floatingAnim.play();
+        const animChoice = this.getDragAnimation();
+        console.log(`[NexaDragHandler] Arrastando em idle. Iniciando animacao de ${animChoice.type === 'balancing' ? 'equilibrio (nova, 90%)' : 'flutuacao (antiga, 10%)'}.`);
+
+        if (typeof NexaLottieAnimation !== 'undefined') {
+          const dragAnim = new NexaLottieAnimation({
+            animationPath: animChoice.path,
+            loop: true
+          });
+          this.setCurrentAnimation(dragAnim);
+          dragAnim.play();
+        }
       }
     });
 
@@ -90,18 +111,30 @@ class NexaDragHandler {
         }
 
         if (this.isBusyWorkingState()) {
-          console.log('[�NexaDragHandler] Janela solta durante atividade. Mantendo animacao ativa ininterrupta.');
+          console.log('[NexaDragHandler] Janela solta durante atividade. Mantendo animacao ativa ininterrupta.');
           return;
         }
 
-        const curAnim = this.getCurrentAnimation();
+        const curAnim = this.getCurrentAnimation ? this.getCurrentAnimation() : null;
         if (!curAnim || !curAnim.isPlaying) return;
 
         const animPath = (curAnim.animationPath || curAnim.videoPath || '').toLowerCase();
+
+        // Se estiver reproduzindo a nova animação de se equilibrar (balancing), não precisa de animação de pouso (landing)
+        if (animPath.includes('balancing') || animPath.includes('balance')) {
+          console.log('[NexaDragHandler] Soltou janela (animacao nova de equilibrio). Retornando diretamente ao repouso sem pouso.');
+          curAnim.stop();
+          this.setCurrentAnimation(null);
+          return;
+        }
+
+        // Se for a animação antiga de flutuar (floating), executa a animação de pouso (landing)
         if (!animPath.includes('floating')) return;
 
         const landingLottiePath = 'renderer/nexa/assets/lottie/landing_lottie/animations/main.json';
-        console.log('[NexaDragHandler] Soltou janela. Iniciando pouso...');
+        console.log('[NexaDragHandler] Soltou janela (animacao antiga de flutuacao). Iniciando pouso...');
+
+        if (typeof NexaLottieAnimation === 'undefined') return;
 
         const landingAnim = new NexaLottieAnimation({
           animationPath: landingLottiePath,
@@ -143,3 +176,4 @@ if (typeof module !== 'undefined' && module.exports) {
 } else {
   window.NexaDragHandler = NexaDragHandler;
 }
+

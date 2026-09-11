@@ -206,8 +206,20 @@ helpers.getIaResponse = async function(text) {
     clearInterval(state.waitingNotificationInterval);
     state.waitingNotificationInterval = null;
 
+    // Alguns providers podem concluir sem produzir conteúdo. Evita que a UI
+    // tente formatar undefined/null e transforme uma resposta válida em erro.
+    if (resposta === undefined || resposta === null) {
+      throw new Error('O provedor de IA não retornou conteúdo.');
+    }
+    const respostaFinal = typeof resposta === 'string'
+      ? resposta
+      : (resposta.content || resposta.text || resposta.response || JSON.stringify(resposta));
+    if (!String(respostaFinal || '').trim()) {
+      throw new Error('O provedor de IA retornou uma resposta vazia.');
+    }
+
     // Formata a resposta para exibição na UI
-    const formattedResposta = helpers.formatToHTML(resposta);
+    const formattedResposta = helpers.formatToHTML(respostaFinal);
     state.mainWindow.webContents.send("gemini-response", { resposta: formattedResposta, usedKnowledge });
 
     // Dispara síntese de áudio por voz se o modo Google TTS estiver ativo

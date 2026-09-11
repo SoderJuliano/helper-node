@@ -50,6 +50,12 @@ const NEXA_ANIMATIONS = {
     category: "action",
     lottiePath: path.join(__dirname, "../../renderer/nexa/assets/lottie/floating_lottie/animations/main.json")
   },
+  balancing: {
+    name: "balancing",
+    description: "Nexa se equilibra enquanto a janela é movida.",
+    category: "action",
+    lottiePath: path.join(__dirname, "../../renderer/nexa/assets/lottie/balancing_lottie/animations/main.json")
+  },
   landing: {
     name: "landing",
     description: "Nexa desce flutuando e pousa de pé de forma graciosa.",
