@@ -64,6 +64,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const idleStretchingAnimation = createLottieAnim("stretching_lottie");
   const idleSquattingAnimation = createLottieAnim("squatting_lottie");
   const idleSleepingAnimation = createLottieAnim("sleeping_lottie", true);
+  const idleReadingAnimation = createLottieAnim("reading_lottie", true);
   const baseIdleAnimation = createLottieAnim("base_idle_lottie", true);
   const speakingAnimation = createLottieAnim("speaking_lottie", true);
   const writingAnimation = createLottieAnim("typing_lottie", true);
@@ -87,12 +88,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       anim === idleStretchingAnimation ||
       anim === idleSquattingAnimation ||
       anim === idleSleepingAnimation ||
+      anim === idleReadingAnimation ||
       (anim.animationPath && (
         anim.animationPath.includes("idle_lottie") ||
         anim.animationPath.includes("adjust_glasses") ||
         anim.animationPath.includes("stretching") ||
         anim.animationPath.includes("squatting") ||
-        anim.animationPath.includes("sleeping")
+        anim.animationPath.includes("sleeping") ||
+        anim.animationPath.includes("reading")
       ))
     );
   }
@@ -374,13 +377,15 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const currentState = animController ? animController.getCurrentState() : "IDLE";
 
-    // Se o estado mudar de IDLE, gerencia acordar da soneca se estiver dormindo
+    // Se o estado mudar de IDLE, gerencia acordar da inatividade/soneca se estiver dormindo/lendo
     if (currentState !== "IDLE") {
       if (isSleeping) {
-        console.log("[NexaRenderer] Nexa acordou devido a atividade/novo estado:", currentState);
+        console.log("[NexaRenderer] Nexa acordou/retornou de AFK devido a atividade/novo estado:", currentState);
         isSleeping = false;
-        if (currentVideoAnimation === idleSleepingAnimation && !pendingStateTransition) {
-          idleSleepingAnimation.stop();
+        if ((currentVideoAnimation === idleSleepingAnimation || currentVideoAnimation === idleReadingAnimation) && !pendingStateTransition) {
+          if (currentVideoAnimation && currentVideoAnimation.isPlaying) {
+            currentVideoAnimation.stop();
+          }
           currentVideoAnimation = null;
         }
       }
@@ -427,19 +432,22 @@ document.addEventListener("DOMContentLoaded", async () => {
         animController.render(ctx, canvas.width, canvas.height);
       }
 
-      // Controle do tempo de inatividade para dormir (10 minutos)
+      // Controle do tempo de inatividade para AFK (10 minutos): Leitura de dia (06h às 18h) ou Sono à noite (18h às 06h)
       if (currentState === "IDLE") {
         if (!isSleeping) {
           sleepingTime += deltaTime;
           if (sleepingTime >= SLEEP_TIMEOUT) {
-            console.log("[NexaRenderer] Nexa adormeceu devido a inatividade de 10 minutos.");
+            const hour = new Date().getHours();
+            const isDaytime = hour >= 6 && hour < 18;
+            console.log(`[NexaRenderer] Nexa entrou em AFK por inatividade de 10 minutos (Horário: ${hour}h - ${isDaytime ? "Dia: Leitura" : "Noite: Sono"}).`);
             isSleeping = true;
             if (currentVideoAnimation && currentVideoAnimation.isPlaying) {
               currentVideoAnimation.stop();
             }
-            if (idleSleepingAnimation) {
-              idleSleepingAnimation.play();
-              currentVideoAnimation = idleSleepingAnimation;
+            const afkAnimation = isDaytime ? idleReadingAnimation : idleSleepingAnimation;
+            if (afkAnimation) {
+              afkAnimation.play();
+              currentVideoAnimation = afkAnimation;
             }
           }
         }

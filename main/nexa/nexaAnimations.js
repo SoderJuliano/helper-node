@@ -44,6 +44,12 @@ const NEXA_ANIMATIONS = {
     category: "idle",
     lottiePath: path.join(__dirname, "../../renderer/nexa/assets/lottie/sleeping_lottie/animations/main.json")
   },
+  reading: {
+    name: "reading",
+    description: "Nexa senta e lê um livro tranquilamente (usada durante o dia em inatividade/AFK ou leitura).",
+    category: "idle",
+    lottiePath: path.join(__dirname, "../../renderer/nexa/assets/lottie/reading_lottie/animations/main.json")
+  },
   floating: {
     name: "floating",
     description: "Nexa flutua suavemente no ar.",
