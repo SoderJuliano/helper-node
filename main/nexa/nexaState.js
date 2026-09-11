@@ -1,16 +1,16 @@
 /**
  * main/nexa/nexaState.js
  * Gerenciador da Máquina de Estados da Nexa.
- * Estados: IDLE, LISTENING, THINKING, SPEAKING, WORKING
+ * Estados: IDLE, LISTENING, THINKING, SPEAKING, WORKING, SEARCHING
  *
- * WORKING é especificamente "mexendo em arquivos" (ler/escrever/editar), não
- * "processando". Raciocinar é THINKING e responder é SPEAKING — quem dispara
- * WORKING é a execução de tools de arquivo, em nexaIntegration.js.
+ * WORKING é especificamente "mexendo em arquivos" (ler/escrever/editar).
+ * SEARCHING é busca/pesquisa ativa na internet ou acesso a páginas web externas (globo holográfico).
+ * Raciocinar é THINKING e responder é SPEAKING.
  */
 
 const { EventEmitter } = require("events");
 
-const VALID_STATES = new Set(["IDLE", "LISTENING", "THINKING", "SPEAKING", "WORKING"]);
+const VALID_STATES = new Set(["IDLE", "LISTENING", "THINKING", "SPEAKING", "WORKING", "SEARCHING"]);
 
 class NexaStateMachine extends EventEmitter {
   constructor() {

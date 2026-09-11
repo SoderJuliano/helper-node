@@ -19,7 +19,13 @@ class NexaDragHandler {
 
   isBusyWorkingState() {
     const currentState = this.animController ? this.animController.getCurrentState() : 'IDLE';
-    if (currentState === 'THINKING' || currentState === 'WORKING' || currentState === 'SPEAKING' || currentState === 'LISTENING') {
+    if (
+      currentState === 'THINKING' ||
+      currentState === 'WORKING' ||
+      currentState === 'SPEAKING' ||
+      currentState === 'LISTENING' ||
+      currentState === 'SEARCHING'
+    ) {
       return true;
     }
     const curAnim = this.getCurrentAnimation ? this.getCurrentAnimation() : null;
@@ -30,7 +36,8 @@ class NexaDragHandler {
         animPath.includes('typing') ||
         animPath.includes('writing') ||
         animPath.includes('speaking') ||
-        animPath.includes('listening')
+        animPath.includes('listening') ||
+        animPath.includes('globe')
       ) {
         return true;
       }

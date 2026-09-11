@@ -69,6 +69,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const writingAnimation = createLottieAnim("typing_lottie", true);
   const thinkingAnimation = createLottieAnim("thinking_lottie", true);
   const listeningAnimation = createLottieAnim("listening_lottie", false);
+  const globeAnimation = createLottieAnim("globe_lottie", true);
 
   let currentVideoAnimation = introAnimation;
   let idleTime = 0;
@@ -140,11 +141,27 @@ document.addEventListener("DOMContentLoaded", async () => {
         writingAnimation.play();
         currentVideoAnimation = writingAnimation;
       }
+    } else if (stateToApply === "SEARCHING") {
+      if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== globeAnimation) {
+        currentVideoAnimation.stop();
+      }
+      if (globeAnimation) {
+        console.log("[NexaRenderer] Transicionando para SEARCHING. Iniciando animação do globo holográfico (pesquisa na web).");
+        globeAnimation.play();
+        currentVideoAnimation = globeAnimation;
+      }
     } else {
       // Estado IDLE ou outros
       if (currentVideoAnimation && currentVideoAnimation.isPlaying) {
         const pathStr = currentVideoAnimation.videoPath || currentVideoAnimation.animationPath || "";
-        if (pathStr.includes("thinking") || pathStr.includes("listening") || pathStr.includes("speaking") || pathStr.includes("writing") || pathStr.includes("typing")) {
+        if (
+          pathStr.includes("thinking") ||
+          pathStr.includes("listening") ||
+          pathStr.includes("speaking") ||
+          pathStr.includes("writing") ||
+          pathStr.includes("typing") ||
+          pathStr.includes("globe")
+        ) {
           console.log("[NexaRenderer] Parando animação ativa por retorno a IDLE.");
           currentVideoAnimation.stop();
           currentVideoAnimation = null;
@@ -201,9 +218,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.log("[NexaRenderer] Novo estado recebido via IPC:", newState);
 
       // Transição suave: se uma animação de movimento IDLE estiver em curso (espreguiçar, óculos, agachar, idle)
-      // e o novo estado for THINKING ou WORKING (lendo/escrevendo arquivos), primeiro finaliza o ciclo atual
+      // e o novo estado for THINKING, WORKING ou SEARCHING (pesquisa web), primeiro finaliza o ciclo atual
       // antes de entrar na nova animação, evitando cortes bruscos no meio do movimento!
-      if (isIdleMovementAnimation(currentVideoAnimation) && (newState === "THINKING" || newState === "WORKING")) {
+      if (isIdleMovementAnimation(currentVideoAnimation) && (newState === "THINKING" || newState === "WORKING" || newState === "SEARCHING")) {
         console.log(`[NexaRenderer] Animação de movimento em curso (${currentVideoAnimation.animationPath}) -> aguardando fim do loop para transicionar suavemente para ${newState}...`);
         
         pendingStateTransition = newState;
