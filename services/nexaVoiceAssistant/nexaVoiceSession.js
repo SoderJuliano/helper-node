@@ -18,6 +18,7 @@ const NexaTurnDetector = require("./nexaTurnDetector");
 const NexaIntentClassifier = require("./nexaIntentClassifier");
 const NexaConversationContext = require("./nexaConversationContext");
 const NexaResponseFilter = require("./nexaResponseFilter");
+const { warmupWhisper } = require("./whisperWarmup");
 
 const FOLLOW_UP_DURATION_MS = 6000; // Janela de 6 segundos para conversa contínua após resposta
 
@@ -42,12 +43,21 @@ class NexaVoiceSession extends EventEmitter {
     });
 
     this.turnDetector.on("speech-start", () => {
+      // Dispara aquecimento preventivo do Whisper em background (0% de impacto na thread de áudio)
+      warmupWhisper().catch(() => {});
+
       // Se estava em follow-up e o usuário começou a falar, cancela o timer para não expirar durante a fala
       if (this.followUpTimer) {
         clearTimeout(this.followUpTimer);
         this.followUpTimer = null;
       }
       this.emit("state-changed", { state: "listening", followUpActive: this.followUpActive });
+    });
+
+    this.turnDetector.on("voice-decay", (decayInfo) => {
+      // Decaimento de voz detectado: garante que o Whisper já esteja aquecido antes do fim dos 800ms
+      warmupWhisper().catch(() => {});
+      this.emit("voice-decay", decayInfo);
     });
 
     this.turnDetector.on("turn-complete", async (turnData) => {
@@ -70,6 +80,9 @@ class NexaVoiceSession extends EventEmitter {
     this.followUpActive = false;
     if (this.followUpTimer) clearTimeout(this.followUpTimer);
     this.followUpTimer = null;
+
+    // Pré-aquece o Whisper em background logo ao iniciar o modo de voz
+    warmupWhisper().catch(() => {});
 
     await this.turnDetector.start(deviceId);
     this.emit("status-changed", { active: true, state: "listening", followUpActive: false });

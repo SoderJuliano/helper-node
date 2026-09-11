@@ -22,7 +22,7 @@ class NexaTurnDetector extends EventEmitter {
   constructor(options = {}) {
     super();
     this.speechThresholdRms = options.speechThresholdRms || 55;  // Limiar calibrado para captação de voz natural no Windows/Mac
-    this.silenceThresholdMs = options.silenceThresholdMs || 1000; // Duração de silêncio contínuo para fechar o turno (1.0s ágil e natural)
+    this.silenceThresholdMs = options.silenceThresholdMs || 800;  // Duração de silêncio contínuo para fechar o turno (800ms ágil e seguro)
     this.minSpeechMs = options.minSpeechMs || 200;               // Duração mínima de fala real para considerar válida (permite 'Nexa', 'Para', 'Oi')
     this.maxTurnDurationMs = options.maxTurnDurationMs || 120000; // Limite amplo de segurança para turnos longos de fala (120s / 2 min)
     this.preRollMs = options.preRollMs || 350;                   // Buffer circular de pre-roll (350ms)
@@ -35,6 +35,12 @@ class NexaTurnDetector extends EventEmitter {
     this.speechDurationMs = 0;
     this.activeSpeechChunksCount = 0;
     this.totalChunksInTurn = 0;
+
+    // Rastreamento de decaimento de voz (Voice Energy Decay)
+    this.peakTurnRms = 0;
+    this.rmsHistory = [];
+    this.isDecaying = false;
+    this.decaySilenceBoost = 1.25;
 
     // Estimativa adaptativa do piso de ruído (noise floor)
     this.noiseFloorRms = 20;
@@ -93,6 +99,9 @@ class NexaTurnDetector extends EventEmitter {
     this.totalChunksInTurn = 0;
     this.preRollChunks = [];
     this.preRollBytes = 0;
+    this.peakTurnRms = 0;
+    this.rmsHistory = [];
+    this.isDecaying = false;
   }
 
   /**
@@ -134,6 +143,9 @@ class NexaTurnDetector extends EventEmitter {
       if (hasVoiceEnergy) {
         // Início de fala detectado! Promove o pre-roll buffer para o início da fala
         this.isSpeaking = true;
+        this.peakTurnRms = rms;
+        this.rmsHistory = [rms];
+        this.isDecaying = false;
         this.speechChunks = [...this.preRollChunks, buf];
         this.speechBytes = this.preRollBytes + buf.length;
         this.speechDurationMs = Math.round(this.speechBytes / BYTES_PER_MS);
@@ -159,11 +171,42 @@ class NexaTurnDetector extends EventEmitter {
       this.speechDurationMs += chunkMs;
       this.totalChunksInTurn++;
 
+      // Atualiza histórico recente de RMS (janela deslizante de 5 chunks)
+      this.rmsHistory.push(rms);
+      if (this.rmsHistory.length > 5) this.rmsHistory.shift();
+
+      const avgRecentRms = this.rmsHistory.reduce((a, b) => a + b, 0) / this.rmsHistory.length;
+
       if (hasVoiceEnergy) {
+        if (rms > this.peakTurnRms) {
+          this.peakTurnRms = rms;
+        }
+        // Se a energia voltar forte, desmarca decaimento (o usuário retomou a fala)
+        if (rms >= dynamicThreshold * 1.3 && avgRecentRms >= this.peakTurnRms * 0.6) {
+          this.isDecaying = false;
+        }
         this.silenceAccumMs = 0; // Zera o silêncio acumulado
         this.activeSpeechChunksCount++;
       } else {
-        this.silenceAccumMs += chunkMs; // Acumula tempo de silêncio após a fala
+        // Acumula tempo de silêncio após a fala (com boost se o decaimento foi confirmado)
+        const effectiveChunkSilence = this.isDecaying
+          ? Math.round(chunkMs * this.decaySilenceBoost)
+          : chunkMs;
+        this.silenceAccumMs += effectiveChunkSilence;
+      }
+
+      // Verifica decaimento de energia (Voice Energy Decay)
+      // Se a fala já dura mais de 200ms e a energia recente caiu substancialmente em relação ao pico do turno
+      if (this.speechDurationMs >= 200 && this.activeSpeechChunksCount >= 4 && this.peakTurnRms > 0) {
+        if ((!hasVoiceEnergy || avgRecentRms < this.peakTurnRms * 0.40) && !this.isDecaying) {
+          this.isDecaying = true;
+          this.emit("voice-decay", {
+            rms,
+            peakTurnRms: this.peakTurnRms,
+            avgRecentRms,
+            silenceAccumMs: this.silenceAccumMs
+          });
+        }
       }
 
       // Condição 1: Silêncio contínuo após a fala atingiu o limiar
