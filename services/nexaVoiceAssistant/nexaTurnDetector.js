@@ -22,12 +22,14 @@ class NexaTurnDetector extends EventEmitter {
   constructor(options = {}) {
     super();
     this.speechThresholdRms = options.speechThresholdRms || 55;  // Limiar calibrado para captação de voz natural no Windows/Mac
-    this.silenceThresholdMs = options.silenceThresholdMs || 800;  // Duração de silêncio contínuo para fechar o turno (800ms ágil e seguro)
-    this.minSpeechMs = options.minSpeechMs || 200;               // Duração mínima de fala real para considerar válida (permite 'Nexa', 'Para', 'Oi')
+    this.silenceThresholdMs = options.silenceThresholdMs || 1100; // Duração de silêncio para fechar o turno (1100ms: ritmo conversacional natural)
+    this.minSpeechMs = options.minSpeechMs || 300;               // Duração mínima de fala real para considerar válida (300ms)
     this.maxTurnDurationMs = options.maxTurnDurationMs || 120000; // Limite amplo de segurança para turnos longos de fala (120s / 2 min)
     this.preRollMs = options.preRollMs || 350;                   // Buffer circular de pre-roll (350ms)
+    this.bargeInThresholdRms = options.bargeInThresholdRms || 115; // Limiar elevado para interrupção de fala durante reprodução TTS
 
     this.active = false;
+    this.ttsActive = false;
     this.isSpeaking = false;
     this.speechChunks = [];
     this.speechBytes = 0;
@@ -40,12 +42,12 @@ class NexaTurnDetector extends EventEmitter {
     this.peakTurnRms = 0;
     this.rmsHistory = [];
     this.isDecaying = false;
-    this.decaySilenceBoost = 1.25;
+    this.decaySilenceBoost = 1.0;
 
     // Estimativa adaptativa do piso de ruído (noise floor)
     this.noiseFloorRms = 20;
 
-    // Buffer circular de pre-roll (guarda os últimos 320ms de áudio antes de a fala começar)
+    // Buffer circular de pre-roll (guarda os últimos 350ms de áudio antes de a fala começar)
     this.preRollChunks = [];
     this.preRollBytes = 0;
     this.maxPreRollBytes = Math.round(this.preRollMs * BYTES_PER_MS);
@@ -58,6 +60,18 @@ class NexaTurnDetector extends EventEmitter {
     };
     if (nativeAudio && nativeAudio.on) {
       nativeAudio.on("device-lost", this._onDeviceLost);
+    }
+  }
+
+  /**
+   * Notifica o detector se a Nexa está falando via TTS.
+   * Evita captura do áudio do próprio alto-falante (loop de áudio).
+   * @param {boolean} active
+   */
+  setTtsActive(active) {
+    this.ttsActive = !!active;
+    if (active) {
+      this.resetTurn();
     }
   }
 
@@ -127,7 +141,32 @@ class NexaTurnDetector extends EventEmitter {
     const chunkMs = Math.round(buf.length / BYTES_PER_MS);
     const rms = NexaTurnDetector.computeRms(buf);
 
-    this.emit("level", { rms, isSpeaking: this.isSpeaking, noiseFloor: Math.round(this.noiseFloorRms) });
+    this.emit("level", { rms, isSpeaking: this.isSpeaking, noiseFloor: Math.round(this.noiseFloorRms), ttsActive: this.ttsActive });
+
+    // Se a Nexa estiver falando via alto-falantes (TTS ativo):
+    if (this.ttsActive) {
+      const bargeInThreshold = Math.max(this.bargeInThresholdRms, this.speechThresholdRms * 2.0, this.noiseFloorRms * 2.2 + 35);
+      if (rms >= bargeInThreshold) {
+        // O usuário falou alto para interromper a Nexa!
+        this.ttsActive = false;
+        this.isSpeaking = true;
+        this.peakTurnRms = rms;
+        this.rmsHistory = [rms];
+        this.isDecaying = false;
+        this.speechChunks = [buf];
+        this.speechBytes = buf.length;
+        this.speechDurationMs = chunkMs;
+        this.silenceAccumMs = 0;
+        this.activeSpeechChunksCount = 1;
+        this.totalChunksInTurn = 1;
+        this.preRollChunks = [];
+        this.preRollBytes = 0;
+        this.emit("barge-in", { rms });
+        this.emit("speech-start");
+      }
+      // Se não atingiu o limiar de barge-in, descarta o buffer (eco do próprio alto-falante)
+      return;
+    }
 
     // Atualiza suavemente o piso de ruído quando não estiver falando (com teto em 50)
     if (!this.isSpeaking) {
@@ -188,11 +227,8 @@ class NexaTurnDetector extends EventEmitter {
         this.silenceAccumMs = 0; // Zera o silêncio acumulado
         this.activeSpeechChunksCount++;
       } else {
-        // Acumula tempo de silêncio após a fala (com boost se o decaimento foi confirmado)
-        const effectiveChunkSilence = this.isDecaying
-          ? Math.round(chunkMs * this.decaySilenceBoost)
-          : chunkMs;
-        this.silenceAccumMs += effectiveChunkSilence;
+        // Acumula tempo de silêncio após a fala
+        this.silenceAccumMs += chunkMs;
       }
 
       // Verifica decaimento de energia (Voice Energy Decay)
@@ -218,21 +254,23 @@ class NexaTurnDetector extends EventEmitter {
         const totalPcm = Buffer.concat(this.speechChunks, this.speechBytes);
         const effectiveSpeechMs = this.speechDurationMs - (isSilenceTimeout ? this.silenceAccumMs : 0);
         const activeRatio = this.totalChunksInTurn > 0 ? (this.activeSpeechChunksCount / this.totalChunksInTurn) : 0;
+        const avgTurnRms = NexaTurnDetector.computeRms(totalPcm);
 
         this.resetTurn();
 
-        // Aceita se tiver duração suficiente de fala e densidade mínima razoável
-        if (effectiveSpeechMs >= this.minSpeechMs && (activeRatio >= 0.12 || effectiveSpeechMs >= 600)) {
+        // Aceita se tiver duração suficiente de fala, densidade mínima e energia de fala real
+        if (effectiveSpeechMs >= this.minSpeechMs && (activeRatio >= 0.15 || effectiveSpeechMs >= 600) && avgTurnRms >= 40) {
           this.emit("turn-complete", {
             pcmBuffer: totalPcm,
             durationMs: effectiveSpeechMs,
+            avgRms: avgTurnRms,
             sampleRate: SAMPLE_RATE,
             channels: 1,
             bitDepth: 16
           });
         } else {
           this.emit("turn-discarded", {
-            reason: `Duração/densidade insuficiente: ${effectiveSpeechMs}ms (ratio: ${(activeRatio * 100).toFixed(0)}%)`
+            reason: `Duração/energia insuficiente: ${effectiveSpeechMs}ms (ratio: ${(activeRatio * 100).toFixed(0)}%, RMS: ${Math.round(avgTurnRms)})`
           });
         }
       }

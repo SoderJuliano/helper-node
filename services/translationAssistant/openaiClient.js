@@ -13,7 +13,7 @@ const { buildTranscriptionPrompt } = require('../techGlossary');
  * Transcreve um arquivo de audio usando gpt-4o-mini-transcribe.
  * Detecção automática de idioma para entrevistas multilíngues.
  */
-async function transcribeAudio(audioPath, apiKey) {
+async function transcribeAudio(audioPath, apiKey, options = {}) {
   // Lê o arquivo em Buffer e cria um Blob (Web API, disponível no Node 18+).
   // Necessário porque global fetch não aceita streams do Node — aceita Blob/Buffer.
   const fileBuffer = fs.readFileSync(audioPath);
@@ -25,8 +25,13 @@ async function transcribeAudio(audioPath, apiKey) {
   form.append('file', blob, fileName);
   form.append('model', 'whisper-1');
 
-  // Vocabulário técnico: enviesa o decoder pros termos da entrevista (SOLID,
-  // Spring, Kafka...). Cacheado — não adiciona rede nem latência perceptível.
+  // Suporte total a áudio bilíngue (Português + Inglês / termos de código misturados)
+  if (options.language && options.language !== 'auto') {
+    form.append('language', options.language);
+  }
+  form.append('temperature', '0');
+
+  // Vocabulário técnico: enviesa o decoder pros termos do projeto (helper-node, Nexa, SOLID, Spring, Kafka...)
   try {
     const ta = configService.getTranslationAssistantConfig
       ? configService.getTranslationAssistantConfig() : {};

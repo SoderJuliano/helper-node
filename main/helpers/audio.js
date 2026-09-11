@@ -79,7 +79,9 @@ helpers.transcribeDictation = async function(wavPath) {
   }
   const token = configService.getOpenIaToken();
   if (!token) throw new Error('Configure a chave da OpenAI (Configuracoes) para transcrever o audio.');
-  return await cloudTranscribeAudio(wavPath, token);
+  const savedLang = configService.getLanguage ? configService.getLanguage() : 'pt-br';
+  const whisperLang = savedLang === 'us-en' ? 'en' : 'pt';
+  return await cloudTranscribeAudio(wavPath, token, { language: whisperLang });
 }
 
 helpers.stopDictationAndTranscribe = async function() {
@@ -235,9 +237,9 @@ helpers.transcribeAudio = async function(filePath, options = {}) {
     const modelPathMedium = path.join(ROOT_DIR, "whisper/models/ggml-medium.bin");
     const modelPathTiny = path.join(ROOT_DIR, "whisper/models/ggml-tiny.bin");
 
-    // Determinar idioma do whisper com base na configuração do app
-    const savedLang = configService.getLanguage();
-    const whisperLang = savedLang === 'us-en' ? 'en' : 'pt';
+    // Determinar idioma do whisper: 'auto' permite transcrever PT-BR e Inglês misturados naturalmente
+    const savedLang = configService.getLanguage ? configService.getLanguage() : 'pt-br';
+    const whisperLang = savedLang === 'us-en' ? 'en' : 'auto';
 
     // Escolher modelo disponível
     let modelPath;
@@ -273,7 +275,7 @@ helpers.transcribeAudio = async function(filePath, options = {}) {
 
     console.log("Executing whisper:", command);
     return new Promise((resolve, reject) => {
-      exec(command, async (error, stdout, stderr) => {
+      exec(command, { maxBuffer: 10 * 1024 * 1024 }, async (error, stdout, stderr) => {
         if (error) {
           console.error("Whisper error:", stderr);
           if (token && typeof cloudTranscribeAudio === 'function') {

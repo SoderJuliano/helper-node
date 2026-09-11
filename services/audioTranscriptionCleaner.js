@@ -21,9 +21,10 @@ const HALLUCINATION_PATTERNS = [
   /^(?:(?:thank\s+you\s+for\s+watching|please\s+subscribe|thanks\s+for\s+watching|like\s+and\s+subscribe|and\s+)[\s.,!?:;]*)+$/i,
   /^(?:(?:https?:\/\/|www\.)[^\s]+\s*)+$/i,
   /^[a-z0-9\-._]+\.(?:com|org|net|io|tv|br|edu|gov|co|app|dev|me)(?:\/[^\s]*)?$/i,
-  /^(?:[a-z0-9\-._]+\.(?:com|org|net|br)\/[^\s]*\s*)+$/i,
   /^(?:chiado|estalos?|fritura|borbulha|sizzl(?:ing|e)|panela)[\s.,!?:;]*$/i,
   /^(?:steve\s+vozze[,\s]+whisper|whisper\s+transcription|whisper\s+ai|whisper)[\s.,!?:;]*$/i,
+  /^(?:(?:bing[\s.,!?:;]+)?doisberg[\s.,!?:;\-]*sclarkey|doisberg|sclarkey)[\s.,!?:;]*$/i,
+  /\b(?:doisberg|sclarkey)\b/i,
   /^(?:[.\-_*~=+\s,!?:;·…]+)$/,
   /^\[blank_audio\]$/i,
   /^\(sem\s+fala\)$/i,
@@ -72,18 +73,20 @@ function isGlossaryOrPromptEcho(text, glossaryPrompt = '') {
   if (!text || typeof text !== 'string') return false;
   const t = text.trim();
 
-  // 1. Prefixo de contexto/glossário explícito
-  if (/^(?:context|contexto|glossary|glossario|vocabul[aá]rio|keywords?|prompt)\s*[:\-]/i.test(t)) {
-    const afterPrefix = t.replace(/^(?:context|contexto|glossary|glossario|vocabul[aá]rio|keywords?|prompt)\s*[:\-]\s*/i, '').trim();
-    // Se o que vem após o prefixo for vazio ou uma sequência de termos técnicos
-    if (!afterPrefix || isGlossaryOrPromptEcho(afterPrefix, glossaryPrompt)) {
-      return true;
-    }
+  // 1. Prefixo de contexto/glossário explícito (ex: "Vocabulário técnico: ...")
+  if (/^(?:context|contexto|glossary|glossario|vocabul[aá]rio\s+t[ée]cnico|keywords?|prompt)\s*[:\-]/i.test(t)) {
+    return true;
   }
 
-  // 2. Se for uma lista de termos separados por vírgula/ponto-e-vírgula/quebra de linha sem estrutura de oração
+  // 2. Se a frase tiver verbos ou conectores gramaticais, é uma fala real do usuário e NÃO um eco
+  const hasConversationalWords = /\b(?:eu|voc[eê]|cria|criar|faz|fazer|mostra|mostrar|olha|olhar|ajuda|ajudar|como|quando|onde|porque|por\s*que|qual|quais|no|na|do|da|com|em|um|uma|tipo|para|pra|pro|tem|est[aá]|is|the|with|for|to|make|create|build|run|test|open|close|give|get|set)\b/i.test(t);
+  if (hasConversationalWords) {
+    return false;
+  }
+
+  // 3. Se for uma lista crua de termos separados por vírgula/ponto-e-vírgula sem nenhuma estrutura gramatical
   const items = t.split(/[,;\n\r]+/).map((s) => s.trim()).filter(Boolean);
-  if (items.length >= 3) {
+  if (items.length >= 4) {
     let techHits = 0;
     for (const item of items) {
       const lower = item.toLowerCase();
@@ -91,19 +94,9 @@ function isGlossaryOrPromptEcho(text, glossaryPrompt = '') {
         techHits++;
       }
     }
-    // Se a grande maioria dos itens forem palavras-chave isoladas do glossário
-    if (techHits >= 3 && (techHits / items.length) >= 0.5) {
+    // Se praticamente todos os itens forem palavras-chave isoladas do glossário sem verbo
+    if (techHits >= 4 && (techHits / items.length) >= 0.8) {
       return true;
-    }
-  }
-
-  // 3. Comparação direta com o prompt usado na transcrição
-  if (glossaryPrompt && typeof glossaryPrompt === 'string') {
-    const normText = t.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
-    const normPrompt = glossaryPrompt.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
-    if (normText && normPrompt) {
-      if (normPrompt.includes(normText) && normText.length > 20) return true;
-      if (normText.includes(normPrompt) && normPrompt.length > 20) return true;
     }
   }
 
@@ -112,9 +105,10 @@ function isGlossaryOrPromptEcho(text, glossaryPrompt = '') {
 
 /**
  * Normaliza distorções fonéticas comuns geradas pelo Whisper ou STT
- * ao transcrever jargão e termos de desenvolvimento falados em PT-BR.
+ * ao transcrever jargão e termos de desenvolvimento falados em PT-BR e Inglês.
  *
  * Exemplos:
+ *  - "helper node", "elper node", "help node", "helper note" -> "helper-node"
  *  - "Geet", "guite" -> "Git"
  *  - "comit" -> "commit"
  *  - "nessa brente", "a brent", "na brenti" -> "nessa branch", "a branch", "na branch"
@@ -128,31 +122,37 @@ function normalizeDevPhonetics(text) {
 
   let res = text;
 
-  // 1. Variações fonéticas de Nexa ("né xa", "né, xa", "nèxa", "néxa")
+  // 1. Variações fonéticas de helper-node e website-helper-node
+  res = res.replace(/\b(?:website\s*helper\s*node|site\s*helper\s*node|website-helper-node)\b/gi, 'website-helper-node');
+  res = res.replace(/\b(?:helper\s*node|helper\s*nodi|help\s*node|helper\s*note|elper\s*node|elper\s*nodi|helpenode|ajudador\s*node)\b/gi, 'helper-node');
+
+  // 2. Variações de Ctrl+D
+  res = res.replace(/\b(?:control\s*d|controle\s*d|control\s*de|ctrl\s*d)\b/gi, 'Ctrl+D');
+
+  // 3. Variações fonéticas de Nexa ("né xa", "né, xa", "nèxa", "néxa")
   res = res.replace(/\b(?:n[eé],\s*xa|n[eé]\s+xa)\b/gi, 'Nexa');
   res = res.replace(/\b(?:n[eè]xa|n[eé]xa)\b/gi, 'Nexa');
 
-  // 2. Variações fonéticas de Git ("Geet", "guite")
+  // 4. Variações fonéticas de Git ("Geet", "guite")
   res = res.replace(/\b(?:geet|guite)\b/gi, 'Git');
 
-  // 3. Variações fonéticas de Commit ("comit" com 1 m isolado)
+  // 5. Variações fonéticas de Commit ("comit" com 1 m isolado)
   res = res.replace(/\bcomit\b/gi, 'commit');
   res = res.replace(/\bcomitando\b/gi, 'commitando');
 
-  // 4. Variações fonéticas de Branch ("brente", "brenti", "brench", "brent", "brain" em contexto git)
-  // Exemplos: "comita nessa brente", "muda pra brente", "a brent", "nessa brain", "comita nessa brain"
+  // 6. Variações fonéticas de Branch ("brente", "brenti", "brench", "brent", "brain" em contexto git)
   res = res.replace(/\b(comita|comitar|comite|commit|checkout|switch|merge|cria|criar|muda|mudar|entra|entrar|vai pra|vai para|nessa|nesta|na|da|a|uma|nova|sua)\s+(?:a\s+)?(?:brent[ei]?|brain)\b/gi, '$1 branch');
   res = res.replace(/\b(brent[ei]?|brain)\s+(main|master|develop|feature|bugfix|release|hotfix)\b/gi, 'branch $2');
   res = res.replace(/\b(traduzindo para a|mudando para a|criando a)\s+(?:brent|brain)\b/gi, '$1 branch');
   res = res.replace(/\bbrench\b/gi, 'branch');
 
-  // 5. Variações fonéticas de Whisper ("isper", "uísper", "expert" em contexto de transcrição/áudio)
+  // 7. Variações fonéticas de Whisper ("isper", "uísper", "expert" em contexto de transcrição/áudio)
   res = res.replace(/\b(no|do|o|pro|para o|pelo)\s+isper\b/gi, '$1 Whisper');
   res = res.replace(/\b(?:u[íi]sper|isper)\b/gi, 'Whisper');
   res = res.replace(/\b(no|do|o|pro|para o|pelo)\s+expert(?=\s+(?:para|entender|transcrever|capturar|reconhecer|ouvir|gravar|traduzir|processar))\b/gi, '$1 Whisper');
   res = res.replace(/\bexpert\s+(?:n[ãa]o\s+est[áa]\s+conseguindo\s+entender)\b/gi, 'Whisper não está conseguindo entender');
 
-  // 6. Pull request / Code review
+  // 8. Pull request / Code review
   res = res.replace(/\bpuli\s+request\b/gi, 'pull request');
   res = res.replace(/\bcode\s+revi[eê]u\b/gi, 'code review');
 

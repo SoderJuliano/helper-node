@@ -45,7 +45,21 @@ console.log('=== Testando Filtragem de Alucinacoes e RMS de Audio ===\n');
   }
   console.log('  ok   Frases reais e perguntas validas preservadas com precisao');
 
-  // 3. Testes de RMS
+  // 3. Testes de normalização fonética bilíngue e nomes de projeto (helper-node, website-helper-node, Ctrl+D)
+  const devPhrases = [
+    { input: 'ajuste o código no helper node', expected: 'helper-node' },
+    { input: 'troquei de volta pro website helper node', expected: 'website-helper-node' },
+    { input: 'gravei o audio com control d', expected: 'Ctrl+D' },
+    { input: 'faz um pull request e um commit na branch main', expected: 'pull request' },
+  ];
+
+  for (const dp of devPhrases) {
+    const clean = await helpers.limparTranscricao(dp.input);
+    assert.ok(clean.includes(dp.expected), `Frase \"${clean}\" deve conter \"${dp.expected}\"`);
+  }
+  console.log('  ok   Normalização fonética de helper-node, website-helper-node e Ctrl+D funcionando');
+
+  // 4. Testes de RMS
   const silenceBuf = Buffer.alloc(16000); // 0 amplitude
   const rmsSilence = helpers._computeRMS(silenceBuf);
   assert.equal(rmsSilence, 0, 'RMS de silencio deve ser 0');

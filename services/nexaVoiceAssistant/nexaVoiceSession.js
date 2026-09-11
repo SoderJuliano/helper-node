@@ -46,6 +46,12 @@ class NexaVoiceSession extends EventEmitter {
       // Dispara aquecimento preventivo do Whisper em background (0% de impacto na thread de áudio)
       warmupWhisper().catch(() => {});
 
+      // Se a Nexa estava falando ou processando e o usuário começou a falar (Barge-In instantâneo de 0ms)
+      if (this.isSpeakingTts || this.isProcessing) {
+        console.log("[NexaVoiceSession] Interrupção instantânea (Barge-In no speech-start): parando fala da Nexa imediatamente.");
+        this.stopTtsPlayback();
+      }
+
       // Se estava em follow-up e o usuário começou a falar, cancela o timer para não expirar durante a fala
       if (this.followUpTimer) {
         clearTimeout(this.followUpTimer);
@@ -54,8 +60,13 @@ class NexaVoiceSession extends EventEmitter {
       this.emit("state-changed", { state: "listening", followUpActive: this.followUpActive });
     });
 
+    this.turnDetector.on("barge-in", () => {
+      console.log("[NexaVoiceSession] Barge-in disparado pelo detector: interrompendo TTS.");
+      this.stopTtsPlayback();
+    });
+
     this.turnDetector.on("voice-decay", (decayInfo) => {
-      // Decaimento de voz detectado: garante que o Whisper já esteja aquecido antes do fim dos 800ms
+      // Decaimento de voz detectado: garante que o Whisper já esteja aquecido antes do fim dos 1100ms
       warmupWhisper().catch(() => {});
       this.emit("voice-decay", decayInfo);
     });
@@ -114,6 +125,7 @@ class NexaVoiceSession extends EventEmitter {
   handleTtsStarted() {
     this.isSpeakingTts = true;
     this.isProcessing = false;
+    this.turnDetector.setTtsActive(true);
     this.emit("state-changed", { state: "speaking", followUpActive: false });
   }
 
@@ -123,6 +135,7 @@ class NexaVoiceSession extends EventEmitter {
   stopTtsPlayback() {
     this.isSpeakingTts = false;
     this.isProcessing = false;
+    this.turnDetector.setTtsActive(false);
     if (this.processingTimeout) {
       clearTimeout(this.processingTimeout);
       this.processingTimeout = null;
@@ -147,13 +160,22 @@ class NexaVoiceSession extends EventEmitter {
   /**
    * Processa o áudio capturado ao final de um turno de fala.
    */
-  async _handleTurnComplete({ pcmBuffer, sampleRate, channels, bitDepth }) {
+  async _handleTurnComplete({ pcmBuffer, durationMs, avgRms, sampleRate, channels, bitDepth }) {
     if (!this.active) return;
 
     const { helpers, state } = require("../../main/globals");
     let wavPath = null;
 
     try {
+      // 0. Validação de energia de áudio antes de acionar Whisper (evita alucinações em ruído/silêncio)
+      const rms = avgRms !== undefined ? avgRms : (helpers._computeRMS ? helpers._computeRMS(pcmBuffer) : NexaTurnDetector.computeRms(pcmBuffer));
+      if (rms < 40 || (durationMs && durationMs < 300)) {
+        console.log(`[NexaVoiceSession] Áudio descartado antes do Whisper por baixa energia/duração (RMS: ${Math.round(rms)}, duração: ${durationMs}ms)`);
+        if (!this.isSpeakingTts && !this.isProcessing) {
+          this._endProcessingAndResume();
+        }
+        return;
+      }
       // 1. Grava o PCM em arquivo WAV temporário para transcrição
       const tmpDir = (state && state.AUDIO_TMP_DIR) || path.join(require("os").tmpdir(), "helper-node-audio");
       fs.mkdirSync(tmpDir, { recursive: true });
@@ -392,6 +414,7 @@ class NexaVoiceSession extends EventEmitter {
 
   handleTtsEnded() {
     this.isSpeakingTts = false;
+    this.turnDetector.setTtsActive(false);
     if (this.processingTimeout) {
       clearTimeout(this.processingTimeout);
       this.processingTimeout = null;

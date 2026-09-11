@@ -24,11 +24,11 @@
 // quando ditos com sotaque brasileiro no meio de uma frase em português.
 // ---------------------------------------------------------------------------
 const CORE = [
-  'Nexa', 'Git', 'GitHub', 'commit', 'branch', 'push', 'pull request', 'merge', 'rebase', 'Whisper',
+  'helper-node', 'website-helper-node', 'Nexa', 'Ctrl+D', 'Git', 'GitHub', 'commit', 'branch', 'push', 'pull request', 'merge', 'rebase', 'Whisper',
   'SOLID', 'Clean Architecture', 'design patterns', 'code review',
-  'Java', 'Spring Boot', 'JavaScript', 'TypeScript', 'Node.js', 'React', 'Python',
-  'REST', 'API', 'microserviços', 'Kafka', 'Docker', 'Kubernetes', 'AWS',
-  'SQL', 'PostgreSQL', 'CI/CD', 'deploy', 'backend', 'frontend',
+  'Java', 'Spring Boot', 'Kotlin', 'NestJS', 'Node.js', 'JavaScript', 'TypeScript', 'React', 'Angular', 'Vue.js', 'Python', 'Go', '.NET',
+  'REST', 'API', 'endpoint', 'controller', 'service', 'repository', 'microservices', 'microserviços', 'Kafka', 'Docker', 'Kubernetes', 'AWS',
+  'SQL', 'PostgreSQL', 'MongoDB', 'Oracle', 'CI/CD', 'deploy', 'backend', 'frontend',
   'idempotência', 'escalabilidade', 'observabilidade', 'latência', 'throughput',
 ];
 

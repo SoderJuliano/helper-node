@@ -53,7 +53,7 @@ const STOP_COMMAND_PATTERNS = [
 
 // Padrões de conectores e finais incompletos de frases (para não cortar no meio da fala)
 const INCOMPLETE_SENTENCE_CONNECTORS = [
-  /\b(?:e|ou|mas|que|se|como|para|pra|quando|onde|porque|por\s*que|no|na|do|da|com|em|um|uma|tipo|de)\s*[.,!?]*$/i,
+  /\b(?:e|ou|mas|que|se|como|para|pra|pro|quando|onde|porque|por\s*que|no|na|do|da|com|em|um|uma|tipo|de|dos|das|nos|nas|pelo|pela|ao|aos|ent[aã]o|a[ií]|qual|quais)\s*[.,!?]*$/i,
 ];
 
 // Padrões de áudio de mídia, vídeos do YouTube, podcasts, tutoriais ou monólogos contínuos

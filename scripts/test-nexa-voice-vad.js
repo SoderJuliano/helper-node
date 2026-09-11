@@ -68,11 +68,11 @@ console.log("🧪 Iniciando testes de Nexa Turn Detector e VAD...\n");
   console.log("✅ Caso 3: Simulação de ciclo de fala e fechamento por silêncio (turn-complete)");
 }
 
-// 3. Verificação do limiar padrão de 800ms
+// 3. Verificação do limiar padrão de 1100ms (ritmo de conversa natural sem corte prematuro)
 {
   const defaultDetector = new NexaTurnDetector();
-  assert.strictEqual(defaultDetector.silenceThresholdMs, 800, "Limiar padrão de silêncio deve ser 800ms");
-  console.log("✅ Caso 4: Limiar padrão de silêncio configurado para 800ms");
+  assert.strictEqual(defaultDetector.silenceThresholdMs, 1100, "Limiar padrão de silêncio deve ser 1100ms");
+  console.log("✅ Caso 4: Limiar padrão de silêncio configurado para 1100ms");
 }
 
 // 4. Teste de detecção de decaimento de voz (Voice Decay)
@@ -109,6 +109,43 @@ console.log("🧪 Iniciando testes de Nexa Turn Detector e VAD...\n");
 
   assert.strictEqual(decayDetected, true, "Deve detectar decaimento de voz ao final da fala");
   console.log("✅ Caso 5: Detecção de decaimento de voz (Voice Decay) disparada com sucesso");
+}
+
+// 5. Teste de supressão de eco do alto-falante (TTS Active) e Barge-in instantâneo
+{
+  const ttsDetector = new NexaTurnDetector({
+    speechThresholdRms: 60,
+    bargeInThresholdRms: 120,
+    silenceThresholdMs: 200,
+    minSpeechMs: 100
+  });
+  ttsDetector.active = true;
+  ttsDetector.setTtsActive(true);
+
+  let speechStartedDuringTts = false;
+  let bargeInFired = false;
+  ttsDetector.on("speech-start", () => { speechStartedDuringTts = true; });
+  ttsDetector.on("barge-in", () => { bargeInFired = true; });
+
+  // Simula áudio vindo do alto-falante (RMS ~70, abaixo do limiar de barge-in de 120)
+  const speakerBleedChunk = Buffer.alloc(1600);
+  for (let i = 0; i < 800; i++) {
+    speakerBleedChunk.writeInt16LE(Math.round(Math.sin(i / 3) * 100), i * 2);
+  }
+  ttsDetector._handlePcmChunk(speakerBleedChunk);
+  assert.strictEqual(speechStartedDuringTts, false, "Eco de alto-falante não deve disparar fala");
+  assert.strictEqual(bargeInFired, false, "Eco de alto-falante não deve disparar barge-in");
+  console.log("✅ Caso 6: Supressão de eco do alto-falante durante reprodução TTS");
+
+  // Simula usuário falando forte para interromper (RMS > 1500)
+  const userInterruptionChunk = Buffer.alloc(1600);
+  for (let i = 0; i < 800; i++) {
+    userInterruptionChunk.writeInt16LE(Math.round(Math.sin(i / 3) * 3000), i * 2);
+  }
+  ttsDetector._handlePcmChunk(userInterruptionChunk);
+  assert.strictEqual(speechStartedDuringTts, true, "Voz direta do usuário deve disparar speech-start");
+  assert.strictEqual(bargeInFired, true, "Voz direta do usuário deve disparar barge-in instantâneo");
+  console.log("✅ Caso 7: Barge-in instantâneo disparado com voz do usuário");
 }
 
 console.log("\n🎉 Todos os testes de VAD passaram com sucesso!");
