@@ -89,7 +89,7 @@ async function handleSendToGemini(event, text, sessionId) {
 
     if (aiModel === 'openIa' || aiModel === 'openIaCodex') {
       const token = configService.getOpenIaToken();
-      const instruction = configService.getPromptInstruction();
+      const instruction = helpers.withUserContext(configService.getPromptInstruction());
       if (!token) {
         if (appConfig.notificationsEnabled && Notification.isSupported()) {
           new Notification({
@@ -147,7 +147,7 @@ async function handleSendToGemini(event, text, sessionId) {
     } else if (aiModel === 'ollamaLocal') {
       console.log("IPC: Usando Ollama Local Service...");
       const OllamaLocalService = require('../../services/ollamaLocalService');
-      const instructionO = configService.getPromptInstruction();
+      const instructionO = helpers.withUserContext(configService.getPromptInstruction());
       const _wsTxt = await helpers.prependWorkspaceContextIfNeeded(text, 'ollama');
       const _kbL = await helpers.knowledgeBlockForOllama(text);
       if (_kbL) usedKnowledge = true;
@@ -161,7 +161,7 @@ async function handleSendToGemini(event, text, sessionId) {
     }
 
     console.log("IPC: Usando Backend Service...");
-    const instructionO2 = configService.getPromptInstruction();
+    const instructionO2 = helpers.withUserContext(configService.getPromptInstruction());
     const _wsTxtO2 = await helpers.prependWorkspaceContextIfNeeded(text, 'ollama');
     const _kbO2 = await helpers.knowledgeBlockForOllama(text);
     if (_kbO2) usedKnowledge = true;
@@ -244,7 +244,7 @@ async function handleSendToGeminiVision(event, { text, image }) {
       return;
     } else if (aiModel !== 'openIa' && aiModel !== 'openIaCodex') {
       const ocr = await TesseractService.getTextFromImage(image).catch(() => '');
-      const instructionO = configService.getPromptInstruction();
+      const instructionO = helpers.withUserContext(configService.getPromptInstruction());
       const baseTxt = (text && text.trim() ? `${text}\n\n` : '')
         + (ocr && ocr.trim() ? `Conteúdo extraído da imagem:\n${ocr}` : '');
       const _wsTxt = await helpers.prependWorkspaceContextIfNeeded(baseTxt, 'ollama');
@@ -256,7 +256,7 @@ async function handleSendToGeminiVision(event, { text, image }) {
     }
 
     const token = configService.getOpenIaToken();
-    const instruction = configService.getPromptInstruction();
+    const instruction = helpers.withUserContext(configService.getPromptInstruction());
     if (!token) {
       event.sender.send("transcription-error", "Token da OpenAI não configurado.");
       return;

@@ -9,7 +9,7 @@ async function handleSendToGeminiStream(event, text, sessionId) {
     if (aiModel === 'ollamaLocal') {
       console.log("IPC: Usando Ollama Local Stream Service...");
       const OllamaLocalService = require('../../services/ollamaLocalService');
-      const instructionO = configService.getPromptInstruction();
+      const instructionO = helpers.withUserContext(configService.getPromptInstruction());
       const _wsTxt = await helpers.prependWorkspaceContextIfNeeded(text, 'ollama');
       const _kbL = await helpers.knowledgeBlockForOllama(text);
       const _augTextL = _kbL ? _kbL + "\n\n---\n\n" + _wsTxt : _wsTxt;
@@ -39,7 +39,7 @@ async function handleSendToGeminiStream(event, text, sessionId) {
     }
 
     console.log("IPC: Usando Backend Stream Service...");
-    const instructionO2 = configService.getPromptInstruction();
+    const instructionO2 = helpers.withUserContext(configService.getPromptInstruction());
     const _wsTxtO2 = await helpers.prependWorkspaceContextIfNeeded(text, 'ollama');
     const _kbO2 = await helpers.knowledgeBlockForOllama(text);
     const _augTxtO2 = _kbO2 ? _kbO2 + "\n\n---\n\n" + _wsTxtO2 : _wsTxtO2;
@@ -111,7 +111,7 @@ async function handleSendToGeminiImageStream(event, { text, image, sessionId }) 
     const aiModel = helpers.getEffectiveAiModel();
     if (aiModel === 'ollamaLocal') {
       const OllamaLocalService = require('../../services/ollamaLocalService');
-      const instructionO = configService.getPromptInstruction();
+      const instructionO = helpers.withUserContext(configService.getPromptInstruction());
       const _wsTxt = await helpers.prependWorkspaceContextIfNeeded(text, 'ollama');
       const _kbL = await helpers.knowledgeBlockForOllama(text);
       const _augTextL = _kbL ? _kbL + "\n\n---\n\n" + _wsTxt : _wsTxt;
@@ -134,7 +134,7 @@ async function handleSendToGeminiImageStream(event, { text, image, sessionId }) 
       return;
     }
 
-    const instruction = configService.getPromptInstruction();
+    const instruction = helpers.withUserContext(configService.getPromptInstruction());
     const _wsTxt = await helpers.prependWorkspaceContextIfNeeded(text, 'ollama');
     const _kb = await helpers.knowledgeBlockForOllama(text);
     const _augTxt = _kb ? _kb + "\n\n---\n\n" + _wsTxt : _wsTxt;

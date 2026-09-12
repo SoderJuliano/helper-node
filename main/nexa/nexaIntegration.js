@@ -197,13 +197,24 @@ function hookWebContents(webContents) {
     // 3. Respostas textuais e ações da Nexa
     if (channel === "gemini-response" || channel === "openai-final-response" || channel === "claude-response") {
       const payload = args[0];
-      if (payload && typeof payload.resposta === "string" && (payload.resposta.includes('"response"') || payload.resposta.trim().startsWith("{"))) {
-        const result = parseNexaResponse(payload.resposta);
-        if (result && result.response) {
-          if (isNexaOn) {
-            handleNexaActions(result);
+      if (payload && typeof payload.resposta === "string") {
+        if (payload.resposta.includes('"response"') || payload.resposta.trim().startsWith("{")) {
+          const result = parseNexaResponse(payload.resposta);
+          if (result && result.response) {
+            if (isNexaOn) {
+              handleNexaActions(result);
+            }
+            payload.resposta = helpers.formatToHTML(result.response);
           }
-          payload.resposta = helpers.formatToHTML(result.response);
+        } else if (isNexaOn) {
+          const NexaResponseFilter = require("../../services/nexaVoiceAssistant/nexaResponseFilter.js");
+          const filterResult = NexaResponseFilter.processResponse(payload.resposta);
+          if (filterResult && filterResult.animation && filterResult.animation !== "speaking") {
+            handleNexaActions({ animation: filterResult.animation });
+          }
+          if (filterResult && filterResult.displayText && filterResult.displayText !== payload.resposta) {
+            payload.resposta = helpers.formatToHTML ? helpers.formatToHTML(filterResult.displayText) : filterResult.displayText;
+          }
         }
       }
       if (activeFileTools === 0 && nexaState.getState() === "WORKING") {

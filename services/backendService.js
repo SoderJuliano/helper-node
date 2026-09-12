@@ -124,7 +124,9 @@ class BackendService {
         effectiveEndpoint = `/chat?model=${encodeURIComponent(backendModel)}`;
       }
 
-      let promptInstruction = customInstruction || configService.getPromptInstruction();
+      const { helpers } = require('../main/globals');
+      let rawInstruction = customInstruction || configService.getPromptInstruction();
+      let promptInstruction = (helpers && helpers.withUserContext) ? helpers.withUserContext(rawInstruction) : rawInstruction;
 
       let promptWithContext = conversationContext
         ? `${promptInstruction}\n\nConversation context:\n${conversationContext}\nPlease respond to the latest human message.`
@@ -236,8 +238,8 @@ class BackendService {
 
       let tools = opts.tools;
       let onToolCall = opts.onToolCall;
-      let effectiveTools = tools;
-      let promptInstruction = customInstruction || configService.getPromptInstruction();
+      let rawInstruction = customInstruction || configService.getPromptInstruction();
+      let promptInstruction = (helpers && helpers.withUserContext) ? helpers.withUserContext(rawInstruction) : rawInstruction;
 
       if (effectiveTools && onToolCall) {
         if (customInstruction) {

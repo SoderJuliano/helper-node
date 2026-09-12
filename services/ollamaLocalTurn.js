@@ -148,7 +148,9 @@ async function prepareTurn({ host, model, texto, opts = {}, sessions }) {
       ? `${cabecalho}${opts.instruction}`
       : `${cabecalho}${opts.instruction}\n\n${buildOllamaToolsAddon(effectiveTools, wsPaths)}`;
   } else {
-    systemPrompt = opts.instruction || configService.getPromptInstruction() || 'You are a helpful assistant.';
+    const { helpers } = require('../main/globals');
+    const rawPrompt = opts.instruction || configService.getPromptInstruction() || 'You are a helpful assistant.';
+    systemPrompt = (helpers && helpers.withUserContext) ? helpers.withUserContext(rawPrompt) : rawPrompt;
   }
 
   if (!sessions[sessionId]) {

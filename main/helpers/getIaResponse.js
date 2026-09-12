@@ -43,7 +43,7 @@ helpers.getIaResponse = async function(text) {
 
     if (aiModel === 'openIa') {
         const token = configService.getOpenIaToken();
-        const instruction = configService.getPromptInstruction();
+        const instruction = helpers.withUserContext(configService.getPromptInstruction());
         if (!token) {
             if (appConfig.notificationsEnabled && Notification.isSupported()) {
                 new Notification({
@@ -155,7 +155,7 @@ helpers.getIaResponse = async function(text) {
 
         const htEnabled = configService.getHelperToolsEnabled && configService.getHelperToolsEnabled();
         if (htEnabled) {
-          const instructionO = configService.getPromptInstruction();
+          const instructionO = helpers.withUserContext(configService.getPromptInstruction());
           const _wsTxtO = await helpers.prependWorkspaceContextIfNeeded(_augTextL, 'ollama');
           const _htO = helpers.buildHelperToolsOpenAIOpts(_wsTxtO, instructionO, configService.getOpenAiModel());
           // Modo de voz: a diretiva <voice_summary> precisa ir no prompt, senão
@@ -168,7 +168,7 @@ helpers.getIaResponse = async function(text) {
         // Ollama/Backend e' o unico provider nao-OpenAI suportado.
         // Helper tools agora funcionam tambem no Ollama (via structured prompt + parser).
         try {
-          const instructionO = configService.getPromptInstruction();
+          const instructionO = helpers.withUserContext(configService.getPromptInstruction());
           const useAgentic = helpers.shouldUseAgentic(text);
           if (useAgentic) { try { workspace.resetContextSent(); } catch (_) {} }
           const _wsTxtO = await helpers.prependWorkspaceContextIfNeeded(text, 'ollama');

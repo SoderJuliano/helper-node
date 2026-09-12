@@ -47,11 +47,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     "renderer/nexa/assets/layers",
     "/home/soder/Documents/nexa-workspace/see-through/workspace/layerdiff_output/Nexa_front_cutout"
   ];
-
   for (const lp of candidateLayerPaths) {
     try {
-      const ok = await character.loadAssets(lp);
-      if (ok) {
+      if (await character.loadAssets(lp)) {
         psdLayersLoaded = true;
         console.log(`[NexaRenderer] Camadas PNG/PSD carregadas com sucesso de: ${lp}`);
         break;
@@ -60,12 +58,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.warn(`[NexaRenderer] Tentativa de carregar camadas de ${lp} falhou:`, e);
     }
   }
+  if (!psdLayersLoaded) console.warn("[NexaRenderer] Modo fallback Lottie ativo para fala.");
 
-  if (!psdLayersLoaded) {
-    console.warn("[NexaRenderer] Camadas PSD não disponíveis. Modo fallback Lottie ativo para fala.");
-  }
-
-  // Helper para instanciar animações Lottie
   const createLottieAnim = (dir, loop = false) =>
     typeof NexaLottieAnimation !== "undefined"
       ? new NexaLottieAnimation({ animationPath: `renderer/nexa/assets/lottie/${dir}/animations/main.json`, loop })
@@ -100,110 +94,52 @@ document.addEventListener("DOMContentLoaded", async () => {
   function isIdleMovementAnimation(anim) {
     if (!anim || !anim.isPlaying || anim.isFinished()) return false;
     return (
-      anim === idleBoringAnimation ||
-      anim === idleGlassesAnimation ||
-      anim === idleStretchingAnimation ||
-      anim === idleSquattingAnimation ||
-      anim === idleSleepingAnimation ||
-      anim === idleReadingAnimation ||
+      anim === idleBoringAnimation || anim === idleGlassesAnimation ||
+      anim === idleStretchingAnimation || anim === idleSquattingAnimation ||
+      anim === idleSleepingAnimation || anim === idleReadingAnimation ||
       (anim.animationPath && (
-        anim.animationPath.includes("idle_lottie") ||
-        anim.animationPath.includes("adjust_glasses") ||
-        anim.animationPath.includes("stretching") ||
-        anim.animationPath.includes("squatting") ||
-        anim.animationPath.includes("sleeping") ||
-        anim.animationPath.includes("reading")
+        anim.animationPath.includes("idle_lottie") || anim.animationPath.includes("adjust_glasses") ||
+        anim.animationPath.includes("stretching") || anim.animationPath.includes("squatting") ||
+        anim.animationPath.includes("sleeping") || anim.animationPath.includes("reading")
       ))
     );
   }
 
   function applyStateAnimation(stateToApply) {
-    if (pendingTransitionTimeout) {
-      clearTimeout(pendingTransitionTimeout);
-      pendingTransitionTimeout = null;
-    }
+    if (pendingTransitionTimeout) { clearTimeout(pendingTransitionTimeout); pendingTransitionTimeout = null; }
     pendingStateTransition = null;
     animController.setState(stateToApply);
 
     if (stateToApply === "LISTENING") {
       activeWorkingAnimation = null;
-      if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== listeningAnimation) {
-        currentVideoAnimation.stop();
-      }
-      if (listeningAnimation) {
-        console.log("[NexaRenderer] Transicionando para LISTENING. Iniciando animação de escuta.");
-        listeningAnimation.play();
-        currentVideoAnimation = listeningAnimation;
-      }
+      if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== listeningAnimation) currentVideoAnimation.stop();
+      if (listeningAnimation) { listeningAnimation.play(); currentVideoAnimation = listeningAnimation; }
     } else if (stateToApply === "THINKING") {
-      if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== thinkingAnimation) {
-        currentVideoAnimation.stop();
-      }
-      if (thinkingAnimation) {
-        console.log("[NexaRenderer] Transicionando para THINKING. Iniciando animação de pensamento.");
-        thinkingAnimation.play();
-        currentVideoAnimation = thinkingAnimation;
-      }
+      if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== thinkingAnimation) currentVideoAnimation.stop();
+      if (thinkingAnimation) { thinkingAnimation.play(); currentVideoAnimation = thinkingAnimation; }
     } else if (stateToApply === "SPEAKING") {
       activeWorkingAnimation = null;
       if (psdLayersLoaded) {
-        // Fala procedural com camadas PSD e sincronização labial via Web Audio
-        if (currentVideoAnimation && currentVideoAnimation.isPlaying) {
-          currentVideoAnimation.stop();
-          currentVideoAnimation = null;
-        }
-        console.log("[NexaRenderer] Transicionando para SPEAKING. Sincronização labial PSD em tempo real ativada.");
+        if (currentVideoAnimation && currentVideoAnimation.isPlaying) { currentVideoAnimation.stop(); currentVideoAnimation = null; }
       } else {
-        // Fallback para animação Lottie genérica se camadas PSD não estiverem disponíveis
-        if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== speakingAnimation) {
-          currentVideoAnimation.stop();
-        }
-        if (speakingAnimation) {
-          console.log("[NexaRenderer] Transicionando para SPEAKING. Iniciando animação Lottie genérica de fala (fallback).");
-          speakingAnimation.play();
-          currentVideoAnimation = speakingAnimation;
-        }
+        if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== speakingAnimation) currentVideoAnimation.stop();
+        if (speakingAnimation) { speakingAnimation.play(); currentVideoAnimation = speakingAnimation; }
       }
     } else if (stateToApply === "WORKING") {
-      // Escolhe 50% Tesseract (código como cubo digital) / 50% Terminal (digitação) e mantém consistente durante a mesma tarefa
       if (!activeWorkingAnimation) {
         activeWorkingAnimation = Math.random() < 0.5 ? tesseractAnimation : writingAnimation;
-        console.log(`[NexaRenderer] Selecionada animação para tarefa de código (WORKING): ${activeWorkingAnimation === tesseractAnimation ? "Tesseract / Cubo Digital (50%)" : "Terminal / Teclado (50%)"}`);
       }
       const animToUse = activeWorkingAnimation || writingAnimation;
-      if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== animToUse) {
-        currentVideoAnimation.stop();
-      }
-      if (animToUse) {
-        console.log("[NexaRenderer] Transicionando para WORKING. Iniciando animação:", animToUse === tesseractAnimation ? "tesseract" : "terminal");
-        animToUse.play();
-        currentVideoAnimation = animToUse;
-      }
+      if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== animToUse) currentVideoAnimation.stop();
+      if (animToUse) { animToUse.play(); currentVideoAnimation = animToUse; }
     } else if (stateToApply === "SEARCHING") {
-      if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== globeAnimation) {
-        currentVideoAnimation.stop();
-      }
-      if (globeAnimation) {
-        console.log("[NexaRenderer] Transicionando para SEARCHING. Iniciando animação do globo holográfico (pesquisa na web).");
-        globeAnimation.play();
-        currentVideoAnimation = globeAnimation;
-      }
+      if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== globeAnimation) currentVideoAnimation.stop();
+      if (globeAnimation) { globeAnimation.play(); currentVideoAnimation = globeAnimation; }
     } else {
-      // Estado IDLE ou outros
       activeWorkingAnimation = null;
       if (currentVideoAnimation && currentVideoAnimation.isPlaying) {
         const pathStr = currentVideoAnimation.videoPath || currentVideoAnimation.animationPath || "";
-        if (
-          pathStr.includes("thinking") ||
-          pathStr.includes("listening") ||
-          pathStr.includes("speaking") ||
-          pathStr.includes("writing") ||
-          pathStr.includes("typing") ||
-          pathStr.includes("tesseract") ||
-          pathStr.includes("cube") ||
-          pathStr.includes("globe")
-        ) {
-          console.log("[NexaRenderer] Parando animação ativa por retorno a IDLE.");
+        if (/thinking|listening|speaking|writing|typing|tesseract|cube|globe/.test(pathStr)) {
           currentVideoAnimation.stop();
           currentVideoAnimation = null;
         }
@@ -470,11 +406,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!rendered) {
       animController.update(deltaTime);
 
-      // Renderiza camadas PSD sincronizadas quando em fala ativa e com camadas carregadas
-      if (currentState === "SPEAKING" && psdLayersLoaded) {
+      // Renderiza personagem procedural PSD (standby com respiração e piscar) ou fala labial sincronizada
+      if (psdLayersLoaded) {
         animController.render(ctx, canvas.width, canvas.height);
       } else if (baseIdleAnimation) {
-        // Em repouso (IDLE) sem fala ativa, usa o baseIdleAnimation (Lottie)
+        // Fallback Lottie caso as camadas PSD não estejam carregadas
         if (!baseIdleAnimation.isPlaying) baseIdleAnimation.play();
         baseIdleAnimation.render(ctx, canvas.width, canvas.height);
       } else {

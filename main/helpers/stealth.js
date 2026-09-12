@@ -173,12 +173,24 @@ helpers.handleScreenSharing = function() {
 }
 
 helpers.withUserContext = function(instruction) {
+  let res = instruction || "";
   try {
     const ctx = configService.getUserContextBlock ? configService.getUserContextBlock() : '';
-    if (ctx && ctx.trim()) return `${ctx}\n\n${instruction}`;
+    if (ctx && ctx.trim()) res = `${ctx}\n\n${res}`;
   } catch (_) {}
-  return instruction;
-}
+  try {
+    const { applyNexaPersonaIfNeeded } = require("../nexa/nexaPersona.js");
+    const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : null;
+    let isNexaVoiceActive = false;
+    try {
+      const nexaVoiceAssistant = require("../../services/nexaVoiceAssistant");
+      isNexaVoiceActive = nexaVoiceAssistant && typeof nexaVoiceAssistant.isActive === "function" && nexaVoiceAssistant.isActive();
+    } catch (_) {}
+    const isNexaOn = !!(nexaCfg && nexaCfg.enabled) || isNexaVoiceActive;
+    res = applyNexaPersonaIfNeeded(res, isNexaOn);
+  } catch (_) {}
+  return res;
+};
 
 helpers.processOsQuestion = async function(text, image = null, opts = {}) {
   // opts.forceVision = true  →  pula o roteador, manda imagem sempre.

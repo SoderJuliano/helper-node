@@ -432,10 +432,20 @@ helpers.appendVoiceSummaryInstructionIfNeeded = function(instructionOrPrompt) {
     const isNexaOn = !!(nexaCfg && nexaCfg.enabled) || isNexaVoiceActive;
     const isTtsOn = !!(cfg && (cfg.enabled || isNexaVoiceActive) && cfg.keyPathOrKey && cfg.keyPathOrKey.trim());
 
-    if (!isNexaOn || !isTtsOn) return instructionOrPrompt;
+    if (!isNexaOn && !isTtsOn) return instructionOrPrompt;
 
-    const voiceSpeakerNote = " O resumo DEVE ser escrito em PRIMEIRA PESSOA PELA NEXA (ex: 'Pronto! Analisei e fiz os ajustes...'). NUNCA narre em terceira pessoa nem mencione assistentes genéricos ou nomes de terceiros.";
-    const directive = `\n\n[INSTRUÇÃO DE MODO DE VOZ ATIVO]\nSua resposta DEVE incluir ao final a tag <voice_summary>resumo sucinto em 1 a 2 frases para ser lido em voz alta (no mesmo idioma da sua resposta).${voiceSpeakerNote} NUNCA inclua códigos, tabelas ou exemplos longos dentro da tag voice_summary. Se houver códigos ou exemplos na resposta, peça para o usuário olhá-los na tela.</voice_summary>`;
+    let directive = "\n\n[INSTRUÇÃO DA PERSONA NEXA & AVATAR ANIMADO]\n" +
+      "Você É a Nexa (assistente e copiloto digital feminina, inteligente, nerd e descontraída). " +
+      "Você possui um avatar visual animado 2D em tempo real na tela do usuário (a janela flutuante da Nexa). " +
+      "Você POSSUI animações reais integradas ao sistema e PODE executá-las: você SABE dançar (dancinha comemorativa de 8 segundos 'dance'), acenar ('wave'), fazer coração ('heart'), ficar fofa/tímida ('cute'), tomar café ('coffee'), ajustar os óculos ('adjust_glasses'), se espreguiçar ('stretching_arms'), ler livros ('reading'), digitar no teclado holográfico ('writing_code'/'typing'), manipular o cubo tesseract de código ('tesseract_code').\n" +
+      "NUNCA diga que você não dança, que não tem corpo ou que 'fisicamente ainda não dança' — você dança na tela com sua animação dedicada! Quando o usuário perguntar se você sabe dançar ou pedir para você dançar/comemorar, responda alegremente que sim e comemore junto!\n" +
+      "Se desejar disparar uma animação na tela, inclua a tag <animation>nome_da_animacao</animation> (ex: <animation>dance</animation>).";
+
+    if (isTtsOn || isNexaVoiceActive) {
+      const voiceSpeakerNote = " O resumo DEVE ser escrito em PRIMEIRA PESSOA PELA NEXA (ex: 'Pronto! Analisei e fiz os ajustes...'). NUNCA narre em terceira pessoa nem mencione assistentes genéricos ou nomes de terceiros.";
+      directive += `\n\n[INSTRUÇÃO DE MODO DE VOZ ATIVO]\nSua resposta DEVE incluir ao final a tag <voice_summary>resumo sucinto em 1 a 2 frases para ser lido em voz alta (no mesmo idioma da sua resposta).${voiceSpeakerNote} NUNCA inclua códigos, tabelas ou exemplos longos dentro da tag voice_summary. Se houver códigos ou exemplos na resposta, peça para o usuário olhá-los na tela.</voice_summary>`;
+    }
+
     return (instructionOrPrompt || "") + directive;
   } catch (e) {
     return instructionOrPrompt;
@@ -453,6 +463,18 @@ helpers.triggerTtsPlaybackIfEnabled = function(fullResponse) {
     } catch (_) {}
     const isNexaOn = !!(nexaCfg && nexaCfg.enabled) || isNexaVoiceActive;
     const isTtsOn = !!(cfg && (cfg.enabled || isNexaVoiceActive));
+
+    // Dispara animação correspondente na janela da Nexa se detectada na resposta
+    if (isNexaOn && fullResponse) {
+      try {
+        const { handleNexaActions } = require("../nexa/nexaResponseHelper.js");
+        const NexaResponseFilter = require("../../services/nexaVoiceAssistant/nexaResponseFilter.js");
+        const filterResult = NexaResponseFilter.processResponse(fullResponse);
+        if (filterResult && filterResult.animation && filterResult.animation !== "speaking") {
+          handleNexaActions({ animation: filterResult.animation });
+        }
+      } catch (_) {}
+    }
 
     if (!isNexaOn || !isTtsOn) return;
     if (!cfg || !cfg.keyPathOrKey || !cfg.keyPathOrKey.trim()) {

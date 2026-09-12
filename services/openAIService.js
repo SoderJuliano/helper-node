@@ -23,13 +23,16 @@ class OpenAIService {
     }
 
     async responder(text, opts = {}) {
+        const { helpers } = require('../main/globals');
         const token = configService.getOpenIaToken();
         const model = opts.model || configService.getOpenAiModel();
-        const instruction = opts.instruction || configService.getPromptInstruction();
+        const rawInstruction = opts.instruction || configService.getPromptInstruction();
+        const instruction = (helpers && helpers.withUserContext) ? helpers.withUserContext(rawInstruction) : rawInstruction;
         return await this.makeOpenAIRequest(text, token, instruction, model, opts.imageBase64, opts);
     }
 
     async makeOpenAIRequest(prompt, token, instruction, model, imageBase64, opts = {}) {
+        const { helpers } = require('../main/globals');
         // opts.stateless = true  →  não usa nem grava histórico de sessão.
         //   Use pra capturas de tela / paste image: cada uma é independente,
         //   não faz sentido carregar a imagem anterior junto. Economiza tokens
@@ -45,7 +48,8 @@ class OpenAIService {
             console.log(`OpenAI session ${sessionId} expired and was cleared.`);
         }
 
-        let effectiveInstruction = instruction || configService.getPromptInstruction();
+        let rawInstruction = instruction || configService.getPromptInstruction();
+        let effectiveInstruction = (helpers && helpers.withUserContext) ? helpers.withUserContext(rawInstruction) : rawInstruction;
 
         // Create a new session or update system prompt in the existing session
         if (!this.sessions[sessionId]) {

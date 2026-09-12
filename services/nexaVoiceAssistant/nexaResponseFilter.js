@@ -67,10 +67,18 @@ class NexaResponseFilter {
       const lowerDisplay = displayText.toLowerCase();
       if (lowerDisplay.includes("```") || lowerDisplay.includes("function") || lowerDisplay.includes("class ")) {
         animation = "writing_code";
-      } else if (lowerDisplay.includes("parabéns") || lowerDisplay.includes("sucesso") || lowerDisplay.includes("comemorar")) {
+      } else if (
+        lowerDisplay.includes("parabéns") || lowerDisplay.includes("sucesso") ||
+        lowerDisplay.includes("comemorar") || lowerDisplay.includes("dança") ||
+        lowerDisplay.includes("dançar") || lowerDisplay.includes("dancinha")
+      ) {
         animation = "dance";
       } else if (lowerDisplay.includes("café") || lowerDisplay.includes("descanse")) {
         animation = "coffee";
+      } else if (lowerDisplay.includes("coração") || lowerDisplay.includes("carinho")) {
+        animation = "heart";
+      } else if (lowerDisplay.includes("óculos") || lowerDisplay.includes("foco")) {
+        animation = "adjust_glasses";
       }
     }
 
@@ -87,8 +95,12 @@ class NexaResponseFilter {
   static getVoiceModeSystemPromptInstruction() {
     return (
       "\n\n[INSTRUÇÃO DE MODO DE VOZ ATIVO NEXA]\n" +
-      "Você está interagindo no modo de voz contínua com o usuário.\n" +
-      "Sua resposta DEVE incluir obrigatoriamente ao final a tag <voice_summary>resumo sucinto em 1 a 2 frases para ser lido em voz alta pela Nexa</voice_summary>.\n" +
+      "Você É a Nexa (assistente e copiloto digital feminina, inteligente, nerd e descontraída). " +
+      "Você possui um avatar visual animado 2D em tempo real na tela do usuário (a janela flutuante da Nexa). " +
+      "Você POSSUI animações reais integradas ao sistema e PODE executá-las: você SABE e CONSEGUE dançar (dancinha comemorativa 'dance'), acenar ('wave'), fazer coração ('heart'), ficar fofa/tímida ('cute'), tomar café ('coffee'), ajustar os óculos ('adjust_glasses'), se espreguiçar ('stretching_arms'), ler livros ('reading'), digitar no teclado holográfico ('writing_code'/'typing'), manipular o cubo tesseract ('tesseract_code').\n" +
+      "NUNCA diga que você não dança, que não tem corpo ou que 'fisicamente ainda não dança' — você dança na tela com sua animação dedicada! Quando o usuário perguntar se você sabe dançar ou pedir para você dançar/comemorar, responda alegremente que sim, comemore e acione sua dança!\n" +
+      "Sua resposta DEVE incluir ao final a tag <voice_summary>resumo sucinto em 1 a 2 frases para ser lido em voz alta pela Nexa</voice_summary>.\n" +
+      "Se desejar disparar uma animação na tela, inclua a tag <animation>nome_da_animacao</animation> (ex: <animation>dance</animation>).\n" +
       "O resumo em voice_summary DEVE ser em PRIMEIRA PESSOA PELA NEXA (ex: 'Pronto! Já estruturei a classe Java e deixei o código completo na tela para você.').\n" +
       "NUNCA coloque códigos, tabelas ou listas longas dentro da tag voice_summary. Coloque o código e detalhes técnicos normalmente no corpo da sua resposta para serem exibidos na tela.\n"
     );
