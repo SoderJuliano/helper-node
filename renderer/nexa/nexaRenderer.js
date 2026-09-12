@@ -39,16 +39,31 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Inicializa o personagem e controladores procedurais
   const character = new NexaCharacter();
   const animController = new NexaAnimationController(character);
+  let psdLayersLoaded = false;
 
-  // Caminho absoluto das camadas PNG geradas (PSD ainda não baixado nesta máquina).
-  // Comentado de propósito: o personagem procedural baseado em PSD fica em espera
-  // aqui pra ser reativado depois, quando as camadas chegarem. Enquanto isso, o
-  // baseIdleAnimation (Lottie) assume o repouso e o speakingAnimation assume a fala.
-  // const assetsPath = "/home/soder/Documents/nexa-workspace/see-through/workspace/layerdiff_output/Nexa_front_cutout";
-  // const loaded = await character.loadAssets(assetsPath);
-  // if (!loaded) {
-  //   console.error("[NexaRenderer] Erro crítico ao carregar camadas PNG.");
-  // }
+  // Carrega as camadas PNG do personagem para sincronização labial e animação procedural PSD
+  const candidateLayerPaths = [
+    "assets/layers",
+    "renderer/nexa/assets/layers",
+    "/home/soder/Documents/nexa-workspace/see-through/workspace/layerdiff_output/Nexa_front_cutout"
+  ];
+
+  for (const lp of candidateLayerPaths) {
+    try {
+      const ok = await character.loadAssets(lp);
+      if (ok) {
+        psdLayersLoaded = true;
+        console.log(`[NexaRenderer] Camadas PNG/PSD carregadas com sucesso de: ${lp}`);
+        break;
+      }
+    } catch (e) {
+      console.warn(`[NexaRenderer] Tentativa de carregar camadas de ${lp} falhou:`, e);
+    }
+  }
+
+  if (!psdLayersLoaded) {
+    console.warn("[NexaRenderer] Camadas PSD não disponíveis. Modo fallback Lottie ativo para fala.");
+  }
 
   // Helper para instanciar animações Lottie
   const createLottieAnim = (dir, loop = false) =>
@@ -131,13 +146,23 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     } else if (stateToApply === "SPEAKING") {
       activeWorkingAnimation = null;
-      if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== speakingAnimation) {
-        currentVideoAnimation.stop();
-      }
-      if (speakingAnimation) {
-        console.log("[NexaRenderer] Transicionando para SPEAKING. Iniciando animação de fala em loop.");
-        speakingAnimation.play();
-        currentVideoAnimation = speakingAnimation;
+      if (psdLayersLoaded) {
+        // Fala procedural com camadas PSD e sincronização labial via Web Audio
+        if (currentVideoAnimation && currentVideoAnimation.isPlaying) {
+          currentVideoAnimation.stop();
+          currentVideoAnimation = null;
+        }
+        console.log("[NexaRenderer] Transicionando para SPEAKING. Sincronização labial PSD em tempo real ativada.");
+      } else {
+        // Fallback para animação Lottie genérica se camadas PSD não estiverem disponíveis
+        if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== speakingAnimation) {
+          currentVideoAnimation.stop();
+        }
+        if (speakingAnimation) {
+          console.log("[NexaRenderer] Transicionando para SPEAKING. Iniciando animação Lottie genérica de fala (fallback).");
+          speakingAnimation.play();
+          currentVideoAnimation = speakingAnimation;
+        }
       }
     } else if (stateToApply === "WORKING") {
       // Escolhe 50% Tesseract (código como cubo digital) / 50% Terminal (digitação) e mantém consistente durante a mesma tarefa
@@ -316,15 +341,24 @@ document.addEventListener("DOMContentLoaded", async () => {
       currentAudio = new Audio(audioUrl);
       currentAudio.volume = 1.0;
 
-      // Dispara a animação visual de fala em loop
-      if (speakingAnimation) {
+      // Conecta o elemento de áudio ao analisador espectral do NexaTalking antes de iniciar
+      animController.connectAudioElement(currentAudio);
+      animController.setState("SPEAKING");
+
+      if (psdLayersLoaded) {
+        console.log("[NexaRenderer] Reproduzindo fala com sincronização labial PSD em tempo real.");
+        if (currentVideoAnimation && currentVideoAnimation.isPlaying) {
+          currentVideoAnimation.stop();
+          currentVideoAnimation = null;
+        }
+      } else if (speakingAnimation) {
+        console.log("[NexaRenderer] Camadas PSD ausentes. Usando animação Lottie genérica de fala como fallback.");
         if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== speakingAnimation) {
           currentVideoAnimation.stop();
         }
         speakingAnimation.play();
         currentVideoAnimation = speakingAnimation;
       }
-      animController.setState("SPEAKING");
 
       currentAudio.onplay = () => {
         animController.setState("SPEAKING");
@@ -381,6 +415,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         currentVideoAnimation = null;
       }
     }
+    if (animController) {
+      animController.setState("IDLE");
+    }
   }
 
   // 3. Loop Principal de Renderização 60FPS (requestAnimationFrame)
@@ -433,12 +470,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!rendered) {
       animController.update(deltaTime);
 
-      // O idle base entra aqui, no lugar do animController.render (personagem PSD).
-      // O play() é preguiçoso de propósito: init() faz innerHTML="" no
-      // #lottieContainer compartilhado, e chamá-lo cedo derrubaria o canvas da
-      // intro. Nunca vira currentVideoAnimation, senão `rendered` ficaria true e
-      // o sorteio das idles aleatórias abaixo nunca rodaria.
-      if (baseIdleAnimation) {
+      // Renderiza camadas PSD sincronizadas quando em fala ativa e com camadas carregadas
+      if (currentState === "SPEAKING" && psdLayersLoaded) {
+        animController.render(ctx, canvas.width, canvas.height);
+      } else if (baseIdleAnimation) {
+        // Em repouso (IDLE) sem fala ativa, usa o baseIdleAnimation (Lottie)
         if (!baseIdleAnimation.isPlaying) baseIdleAnimation.play();
         baseIdleAnimation.render(ctx, canvas.width, canvas.height);
       } else {
