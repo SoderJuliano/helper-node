@@ -58,29 +58,42 @@ esac
 if [[ "${HELPER_SKIP_DEPS:-0}" == "1" ]]; then
   warn "HELPER_SKIP_DEPS=1 — pulando pacotes de sistema."
 else
-  step "Instalando pacotes de sistema (vai pedir sua senha do sudo)..."
-  sudo pacman -S --needed --noconfirm \
-    git curl nodejs npm ffmpeg \
-    gtk3 libnotify nss libxss libxtst at-spi2-core alsa-lib \
-    xdg-utils xorg-xprop wl-clipboard \
-    pipewire pipewire-pulse libpulse \
-    imagemagick \
-    || fatal "Falha instalando pacotes via pacman. Dica: se houver conflito de versões de bibliotecas (ex: ffmpeg), atualize seu sistema com: sudo pacman -Syu"
+  step "Verificando pacotes de sistema necessários..."
+  PKGS=(
+    git curl nodejs npm ffmpeg
+    gtk3 libnotify nss libxss libxtst at-spi2-core alsa-lib
+    xdg-utils xorg-xprop wl-clipboard
+    pipewire pipewire-pulse libpulse
+    imagemagick
+  )
 
-  # Ferramentas de captura dependem do compositor. COSMIC NÃO funciona com grim
-  # — precisa do cosmic-screenshot (que costuma estar só no AUR); a lógica é a
-  # mesma do install-deps.sh que já existe no repo.
+  # Ferramentas de captura dependem do compositor.
   if [[ "${XDG_CURRENT_DESKTOP:-}" == *"COSMIC"* ]]; then
-    step "Desktop COSMIC detectado — tentando cosmic-screenshot..."
-    sudo pacman -S --needed --noconfirm cosmic-screenshot 2>/dev/null \
-      || warn "cosmic-screenshot não está nos repos oficiais. Instale do AUR (yay -S cosmic-screenshot) ou o app cai no portal do Electron."
+    if ! pacman -Q cosmic-screenshot >/dev/null 2>&1; then
+      warn "Desktop COSMIC detectado — cosmic-screenshot não está instalado (instale do AUR com 'yay -S cosmic-screenshot' ou o app usará o portal do Electron)."
+    fi
   elif [[ "${XDG_SESSION_TYPE:-}" == "wayland" ]]; then
-    step "Sessão Wayland detectada — instalando grim/slurp..."
-    sudo pacman -S --needed --noconfirm grim slurp || warn "Falha instalando grim/slurp."
+    PKGS+=(grim slurp)
   else
-    sudo pacman -S --needed --noconfirm gnome-screenshot 2>/dev/null || true
+    PKGS+=(gnome-screenshot)
   fi
-  ok "Pacotes de sistema instalados"
+
+  # Filtra apenas pacotes que NÃO estão instalados para evitar erros de partial upgrade com pacman
+  MISSING_PKGS=()
+  for pkg in "${PKGS[@]}"; do
+    if ! pacman -Q "$pkg" >/dev/null 2>&1; then
+      MISSING_PKGS+=("$pkg")
+    fi
+  done
+
+  if [[ ${#MISSING_PKGS[@]} -gt 0 ]]; then
+    step "Instalando pacotes ausentes via pacman: ${MISSING_PKGS[*]} (vai pedir sua senha do sudo)..."
+    sudo pacman -S --needed --noconfirm "${MISSING_PKGS[@]}" \
+      || fatal "Falha instalando pacotes via pacman. Dica: no Arch Linux, atualize seu sistema com: sudo pacman -Syu, ou execute com HELPER_SKIP_DEPS=1."
+  else
+    ok "Todos os pacotes de sistema necessários já estão instalados."
+  fi
+  ok "Pacotes de sistema prontos"
 fi
 
 # --- 2) Node.js >= 18 --------------------------------------------------------

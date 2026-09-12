@@ -47,18 +47,38 @@ detect_distro() {
 }
 
 install_packages_arch() {
-  warn "Installing packages via pacman (sudo required)"
-  
-  # Base packages including Wayland screenshot tools (work on both X11 and Wayland)
-  sudo pacman -S --needed git nodejs npm make gcc curl ffmpeg cmake gnome-screenshot grim slurp imagemagick python python-pip pipewire pipewire-pulse libpulse xorg-xprop wl-clipboard || {
-    err "pacman install failed"; exit 1;
-  }
+  warn "Verifying Arch Linux packages via pacman..."
+  local pkgs=(
+    git nodejs npm make gcc curl ffmpeg cmake imagemagick
+    python python-pip pipewire pipewire-pulse libpulse xorg-xprop wl-clipboard
+  )
+  if [[ "${XDG_SESSION_TYPE:-}" == "wayland" ]]; then
+    pkgs+=(grim slurp)
+  else
+    pkgs+=(gnome-screenshot)
+  fi
+
+  local missing=()
+  for pkg in "${pkgs[@]}"; do
+    if ! pacman -Q "$pkg" >/dev/null 2>&1; then
+      missing+=("$pkg")
+    fi
+  done
+
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    warn "Installing missing packages: ${missing[*]} (sudo required)"
+    sudo pacman -S --needed --noconfirm "${missing[@]}" || {
+      err "pacman install failed. Run 'sudo pacman -Syu' to resolve library dependencies."; exit 1;
+    }
+  else
+    info "All required system packages are already installed."
+  fi
 
   # COSMIC native screenshot tool (in AUR or extra repo on some distros)
   if [[ "${XDG_CURRENT_DESKTOP:-}" == *"COSMIC"* ]]; then
-    warn "Detected COSMIC desktop — trying to install cosmic-screenshot"
-    sudo pacman -S --needed cosmic-screenshot 2>/dev/null \
-      || warn "cosmic-screenshot not in official repos. Try AUR (yay -S cosmic-screenshot) or rely on Electron Portal."
+    if ! pacman -Q cosmic-screenshot >/dev/null 2>&1; then
+      warn "Detected COSMIC desktop — cosmic-screenshot not installed. Try AUR (yay -S cosmic-screenshot) or rely on Electron Portal."
+    fi
   fi
 }
 

@@ -118,7 +118,13 @@ const NEXA_ANIMATIONS = {
   },
   dance: {
     name: "dance",
-    description: "Nexa faz uma dança/dancinha comemorativa de 8 segundos (usada exclusivamente quando o usuário pedir para ela dançar ou comemorar algo).",
+    description: "Nexa faz uma dança/dancinha fofa comemorativa de 8 segundos (usada quando o usuário pedir para a Nexa dançar, comemorar conquistas, vitórias, festa ou demonstração de alegria).",
+    category: "action",
+    lottiePath: path.join(__dirname, "../../renderer/nexa/assets/lottie/dance_lottie/animations/main.json")
+  },
+  dancing: {
+    name: "dance",
+    description: "Alias para a animação de dança da Nexa.",
     category: "action",
     lottiePath: path.join(__dirname, "../../renderer/nexa/assets/lottie/dance_lottie/animations/main.json")
   },

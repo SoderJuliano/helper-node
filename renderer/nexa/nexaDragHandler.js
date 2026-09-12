@@ -39,7 +39,8 @@ class NexaDragHandler {
         animPath.includes('cube') ||
         animPath.includes('speaking') ||
         animPath.includes('listening') ||
-        animPath.includes('globe')
+        animPath.includes('globe') ||
+        animPath.includes('dance')
       ) {
         return true;
       }
