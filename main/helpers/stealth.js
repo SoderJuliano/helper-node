@@ -172,7 +172,7 @@ helpers.handleScreenSharing = function() {
   }
 }
 
-helpers.withUserContext = function(instruction) {
+helpers.withUserContext = function(instruction, opts = {}) {
   let res = instruction || "";
   try {
     const ctx = configService.getUserContextBlock ? configService.getUserContextBlock() : '';
@@ -187,7 +187,7 @@ helpers.withUserContext = function(instruction) {
       isNexaVoiceActive = nexaVoiceAssistant && typeof nexaVoiceAssistant.isActive === "function" && nexaVoiceAssistant.isActive();
     } catch (_) {}
     const isNexaOn = !!(nexaCfg && nexaCfg.enabled) || isNexaVoiceActive;
-    res = applyNexaPersonaIfNeeded(res, isNexaOn);
+    res = applyNexaPersonaIfNeeded(res, isNexaOn, opts);
   } catch (_) {}
   return res;
 };

@@ -44,12 +44,18 @@ const NEXA_ONLY_SYSTEM_PROMPT = [
   "Fale de forma leve e descontraída (ex: 'Oi! Tudo certo?', 'Fala aí!', 'Tô te ouvindo perfeitamente!', 'De boa por aqui, e com você?').",
 ].join("\n");
 
-function applyNexaPersonaIfNeeded(basePrompt, isNexaEnabled) {
+function applyNexaPersonaIfNeeded(basePrompt, isNexaEnabled, opts = {}) {
   if (!isNexaEnabled) return basePrompt;
 
-  const { configService } = require("../globals.js");
+  const { configService, helpers } = require("../globals.js");
   const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : null;
   if (!nexaCfg || !nexaCfg.enabled) return basePrompt;
+
+  // Desativa a persona pesada e saída em JSON quando o modelo ativo for Ollama Local (ou offline)
+  const currentModel = opts.aiModel || (helpers && typeof helpers.getEffectiveAiModel === "function" ? helpers.getEffectiveAiModel() : (configService.getAiModel ? configService.getAiModel() : ""));
+  if (currentModel === "ollamaLocal" || currentModel === "ollama") {
+    return basePrompt;
+  }
 
   const isOnlyNexa = !!(nexaCfg && nexaCfg.onlyNexa);
 

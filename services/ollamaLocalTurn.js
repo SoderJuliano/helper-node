@@ -150,7 +150,7 @@ async function prepareTurn({ host, model, texto, opts = {}, sessions }) {
   } else {
     const { helpers } = require('../main/globals');
     const rawPrompt = opts.instruction || configService.getPromptInstruction() || 'You are a helpful assistant.';
-    systemPrompt = (helpers && helpers.withUserContext) ? helpers.withUserContext(rawPrompt) : rawPrompt;
+    systemPrompt = (helpers && helpers.withUserContext) ? helpers.withUserContext(rawPrompt, { aiModel: 'ollamaLocal' }) : rawPrompt;
   }
 
   if (!sessions[sessionId]) {

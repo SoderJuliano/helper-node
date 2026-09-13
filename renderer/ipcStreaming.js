@@ -260,7 +260,23 @@ function autoScrollSeNoFim(el) {
                 // classe is-processing do bloco.
                 if (typeof window.stopProcessing === 'function') window.stopProcessing();
 
-                const finalStreamText = streamingText;
+                let finalStreamText = streamingText;
+
+                // Safety unwrapper: se a resposta for um JSON bruto (ex: {"response": "..."}), extrai o texto puro
+                if (finalStreamText && (finalStreamText.trim().startsWith('{') || finalStreamText.includes('"response"'))) {
+                    try {
+                        let clean = finalStreamText.trim();
+                        if (clean.startsWith('```')) {
+                            clean = clean.replace(/^```(json)?/i, '').replace(/```$/, '').trim();
+                        }
+                        const parsed = JSON.parse(clean);
+                        if (parsed && typeof parsed === 'object' && parsed.response !== undefined) {
+                            finalStreamText = parsed.response;
+                            streamingText = parsed.response;
+                        }
+                    } catch (_) {}
+                }
+
                 if (window.historySession && finalStreamText) {
                     window.historySession.addMessageToCurrentSession('assistant', finalStreamText);
                 }

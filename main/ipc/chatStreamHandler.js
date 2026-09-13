@@ -9,7 +9,7 @@ async function handleSendToGeminiStream(event, text, sessionId) {
     if (aiModel === 'ollamaLocal') {
       console.log("IPC: Usando Ollama Local Stream Service...");
       const OllamaLocalService = require('../../services/ollamaLocalService');
-      const instructionO = helpers.withUserContext(configService.getPromptInstruction());
+      const instructionO = helpers.withUserContext(configService.getPromptInstruction(), { aiModel: 'ollamaLocal' });
       const _wsTxt = await helpers.prependWorkspaceContextIfNeeded(text, 'ollama');
       const _kbL = await helpers.knowledgeBlockForOllama(text);
       const _augTextL = _kbL ? _kbL + "\n\n---\n\n" + _wsTxt : _wsTxt;

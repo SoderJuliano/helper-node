@@ -147,7 +147,7 @@ async function handleSendToGemini(event, text, sessionId) {
     } else if (aiModel === 'ollamaLocal') {
       console.log("IPC: Usando Ollama Local Service...");
       const OllamaLocalService = require('../../services/ollamaLocalService');
-      const instructionO = helpers.withUserContext(configService.getPromptInstruction());
+      const instructionO = helpers.withUserContext(configService.getPromptInstruction(), { aiModel: 'ollamaLocal' });
       const _wsTxt = await helpers.prependWorkspaceContextIfNeeded(text, 'ollama');
       const _kbL = await helpers.knowledgeBlockForOllama(text);
       if (_kbL) usedKnowledge = true;
@@ -155,6 +155,13 @@ async function handleSendToGemini(event, text, sessionId) {
       const _ht = helpers.buildHelperToolsOpenAIOpts(_augTextL, instructionO, configService.getOpenAiModel());
 
       resposta = await OllamaLocalService.responder(_augTextL, { ..._ht.opts, sessionId });
+      if (typeof resposta === 'string' && (resposta.trim().startsWith('{') || resposta.includes('"response"'))) {
+        try {
+          const { parseNexaResponse } = require('../nexa/nexaResponseHelper.js');
+          const parsed = parseNexaResponse(resposta);
+          if (parsed && parsed.response) resposta = parsed.response;
+        } catch (_) {}
+      }
       event.sender.send("gemini-response", { resposta, usedKnowledge });
       helpers.triggerTtsPlaybackIfEnabled(resposta);
       return;
