@@ -35,6 +35,8 @@ class NexaVoiceSession extends EventEmitter {
     this.isSpeakingTts = false;
     this.followUpTimer = null;
     this.followUpActive = false;
+    this.pendingIncompleteText = null;
+    this.incompleteTimer = null;
 
     this._bindEvents();
   }
@@ -99,6 +101,9 @@ class NexaVoiceSession extends EventEmitter {
     this.followUpActive = false;
     if (this.followUpTimer) clearTimeout(this.followUpTimer);
     this.followUpTimer = null;
+    if (this.incompleteTimer) clearTimeout(this.incompleteTimer);
+    this.incompleteTimer = null;
+    this.pendingIncompleteText = null;
 
     // Pré-aquece o Whisper em background logo ao iniciar o modo de voz
     warmupWhisper().catch(() => {});
@@ -121,6 +126,9 @@ class NexaVoiceSession extends EventEmitter {
     this.followUpActive = false;
     if (this.followUpTimer) clearTimeout(this.followUpTimer);
     this.followUpTimer = null;
+    if (this.incompleteTimer) clearTimeout(this.incompleteTimer);
+    this.incompleteTimer = null;
+    this.pendingIncompleteText = null;
     this.context.clear();
 
     this.stopTtsAudioOnly();
@@ -167,6 +175,11 @@ class NexaVoiceSession extends EventEmitter {
     this.isProcessing = false;
     this.isQueryExecuting = false;
     this.isTranscribing = false;
+    if (this.incompleteTimer) {
+      clearTimeout(this.incompleteTimer);
+      this.incompleteTimer = null;
+    }
+    this.pendingIncompleteText = null;
     if (this.processingTimeout) {
       clearTimeout(this.processingTimeout);
       this.processingTimeout = null;
@@ -241,14 +254,25 @@ class NexaVoiceSession extends EventEmitter {
         return;
       }
 
-      // 4. Classifica a intenção
-      const classification = NexaIntentClassifier.classify(cleanedText, {
+      // 4. Se havia uma frase incompleta anterior aguardando complemento, combina com a atual
+      let textToClassify = cleanedText;
+      if (this.pendingIncompleteText) {
+        if (this.incompleteTimer) {
+          clearTimeout(this.incompleteTimer);
+          this.incompleteTimer = null;
+        }
+        textToClassify = `${this.pendingIncompleteText} ${cleanedText}`.trim();
+        this.pendingIncompleteText = null;
+      }
+
+      // Classifica a intenção
+      const classification = NexaIntentClassifier.classify(textToClassify, {
         followUpActive: this.followUpActive
       });
 
-      console.log("[NexaVoiceSession] Transcrição:", cleanedText, "-> Ação:", classification.action, "(", classification.reason, ")");
+      console.log("[NexaVoiceSession] Transcrição:", textToClassify, "-> Ação:", classification.action, "(", classification.reason, ")");
 
-      const hasWakeWord = NexaIntentClassifier.hasValidWakeWord(cleanedText);
+      const hasWakeWord = NexaIntentClassifier.hasValidWakeWord(textToClassify);
 
       // A) BARGE-IN: Se a Nexa estava falando (TTS) ou a IA estava processando quando o usuário falou
       const isInterruptingPrior = this.isSpeakingTts || this.isQueryExecuting;
@@ -323,9 +347,20 @@ class NexaVoiceSession extends EventEmitter {
       }
 
       // E) Ação RESPONDER POR ÁUDIO E CHAT
-      // Verifica se a frase parece cortada no meio (ex: termina em vírgula ou conector)
+      // Verifica se a frase parece cortada no meio (ex: termina em vírgula ou reticências)
       if (NexaIntentClassifier.isSentenceIncomplete(classification.cleanedQuery)) {
         console.log("[NexaVoiceSession] Frase incompleta detectada ('" + classification.cleanedQuery + "'), aguardando complemento...");
+        this.pendingIncompleteText = classification.cleanedQuery;
+        if (this.incompleteTimer) clearTimeout(this.incompleteTimer);
+        this.incompleteTimer = setTimeout(() => {
+          if (this.pendingIncompleteText && this.active && !this.isQueryExecuting) {
+            const fallbackQuery = this.pendingIncompleteText;
+            this.pendingIncompleteText = null;
+            this.incompleteTimer = null;
+            console.log("[NexaVoiceSession] Timeout de complemento atingido: executando frase acumulada:", fallbackQuery);
+            this._executeAssistantQuery(fallbackQuery, "thinking");
+          }
+        }, 3500);
         this._endProcessingAndResume();
         return;
       }

@@ -21,7 +21,7 @@ const BYTES_PER_MS = (SAMPLE_RATE * BYTES_PER_SAMPLE) / 1000; // 32 bytes/ms
 class NexaTurnDetector extends EventEmitter {
   constructor(options = {}) {
     super();
-    this.speechThresholdRms = options.speechThresholdRms || 35;  // Limiar calibrado para captação de voz natural no Windows/Linux/Mac (35 RMS)
+    this.speechThresholdRms = options.speechThresholdRms || 40;  // Limiar calibrado para captação de voz natural (40 RMS)
     this.silenceThresholdMs = options.silenceThresholdMs || 800; // Duração de silêncio para fechar o turno (800ms: resposta ágil e natural)
     this.minSpeechMs = options.minSpeechMs || 200;               // Duração mínima de fala real para considerar válida (200ms)
     this.maxTurnDurationMs = options.maxTurnDurationMs || 120000; // Limite amplo de segurança para turnos longos de fala (120s / 2 min)
@@ -37,6 +37,16 @@ class NexaTurnDetector extends EventEmitter {
     this.speechDurationMs = 0;
     this.activeSpeechChunksCount = 0;
     this.totalChunksInTurn = 0;
+
+    // Rastreamento de onset sustentado de fala (filtra cliques de digitação isolados de 1 chunk)
+    this.onsetCandidateChunks = [];
+    this.onsetCandidateBytes = 0;
+    this.onsetCandidateMs = 0;
+
+    // Rastreamento de consecutividade de voz (distingue voz contínua de toques espaçados de teclado)
+    this.currentConsecutiveSpeech = 0;
+    this.maxConsecutiveSpeechChunks = 0;
+    this.sustainedSpeechSegments = 0;
 
     // Rastreamento de decaimento de voz (Voice Energy Decay)
     this.peakTurnRms = 0;
@@ -116,6 +126,12 @@ class NexaTurnDetector extends EventEmitter {
     this.peakTurnRms = 0;
     this.rmsHistory = [];
     this.isDecaying = false;
+    this.onsetCandidateChunks = [];
+    this.onsetCandidateBytes = 0;
+    this.onsetCandidateMs = 0;
+    this.currentConsecutiveSpeech = 0;
+    this.maxConsecutiveSpeechChunks = 0;
+    this.sustainedSpeechSegments = 0;
   }
 
   /**
@@ -180,21 +196,48 @@ class NexaTurnDetector extends EventEmitter {
     if (!this.isSpeaking) {
       // Estamos aguardando o início de uma fala
       if (hasVoiceEnergy) {
-        // Início de fala detectado! Promove o pre-roll buffer para o início da fala
-        this.isSpeaking = true;
-        this.peakTurnRms = rms;
-        this.rmsHistory = [rms];
-        this.isDecaying = false;
-        this.speechChunks = [...this.preRollChunks, buf];
-        this.speechBytes = this.preRollBytes + buf.length;
-        this.speechDurationMs = Math.round(this.speechBytes / BYTES_PER_MS);
-        this.silenceAccumMs = 0;
-        this.activeSpeechChunksCount = 1;
-        this.totalChunksInTurn = 1;
-        this.preRollChunks = [];
-        this.preRollBytes = 0;
-        this.emit("speech-start");
+        this.onsetCandidateChunks.push(buf);
+        this.onsetCandidateBytes += buf.length;
+        this.onsetCandidateMs += chunkMs;
+
+        // Fala humana real sustenta energia por >= 100ms ou >= 2 chunks consecutivos de áudio.
+        // Ruídos mecânicos de teclado/mouse geram apenas 1 chunk de pico transitório (<20ms).
+        const hasSustainedOnset = this.onsetCandidateMs >= 100 || this.onsetCandidateChunks.length >= 2;
+
+        if (hasSustainedOnset) {
+          // Início de fala real confirmado!
+          this.isSpeaking = true;
+          this.peakTurnRms = Math.max(rms, ...this.onsetCandidateChunks.map(c => NexaTurnDetector.computeRms(c)));
+          this.rmsHistory = [rms];
+          this.isDecaying = false;
+          this.speechChunks = [...this.preRollChunks, ...this.onsetCandidateChunks];
+          this.speechBytes = this.preRollBytes + this.onsetCandidateBytes;
+          this.speechDurationMs = Math.round(this.speechBytes / BYTES_PER_MS);
+          this.silenceAccumMs = 0;
+          this.activeSpeechChunksCount = this.onsetCandidateChunks.length;
+          this.totalChunksInTurn = this.onsetCandidateChunks.length;
+          this.currentConsecutiveSpeech = this.onsetCandidateChunks.length;
+          this.maxConsecutiveSpeechChunks = this.onsetCandidateChunks.length;
+          this.sustainedSpeechSegments = 1;
+          this.preRollChunks = [];
+          this.preRollBytes = 0;
+          this.onsetCandidateChunks = [];
+          this.onsetCandidateBytes = 0;
+          this.onsetCandidateMs = 0;
+          this.emit("speech-start");
+        }
       } else {
+        // Se tínhamos um candidato isolado (ex: 1 clique de tecla), descarta e joga pro pre-roll
+        if (this.onsetCandidateChunks.length > 0) {
+          for (const c of this.onsetCandidateChunks) {
+            this.preRollChunks.push(c);
+            this.preRollBytes += c.length;
+          }
+          this.onsetCandidateChunks = [];
+          this.onsetCandidateBytes = 0;
+          this.onsetCandidateMs = 0;
+        }
+
         // Mantém o pre-roll buffer circular atualizado
         this.preRollChunks.push(buf);
         this.preRollBytes += buf.length;
@@ -220,6 +263,13 @@ class NexaTurnDetector extends EventEmitter {
         if (rms > this.peakTurnRms) {
           this.peakTurnRms = rms;
         }
+        this.currentConsecutiveSpeech++;
+        if (this.currentConsecutiveSpeech > this.maxConsecutiveSpeechChunks) {
+          this.maxConsecutiveSpeechChunks = this.currentConsecutiveSpeech;
+        }
+        if (this.currentConsecutiveSpeech === 2) {
+          this.sustainedSpeechSegments++;
+        }
         // Se a energia voltar forte, desmarca decaimento (o usuário retomou a fala)
         if (rms >= dynamicThreshold * 1.3 && avgRecentRms >= this.peakTurnRms * 0.6) {
           this.isDecaying = false;
@@ -227,6 +277,7 @@ class NexaTurnDetector extends EventEmitter {
         this.silenceAccumMs = 0; // Zera o silêncio acumulado
         this.activeSpeechChunksCount++;
       } else {
+        this.currentConsecutiveSpeech = 0;
         // Acumula tempo de silêncio após a fala
         this.silenceAccumMs += chunkMs;
       }
@@ -259,8 +310,20 @@ class NexaTurnDetector extends EventEmitter {
         const avgTurnRms = NexaTurnDetector.computeRms(totalPcm);
         const peakRms = this.peakTurnRms;
         const activeChunks = this.activeSpeechChunksCount;
+        const sustainedSegments = this.sustainedSpeechSegments;
+        const maxConsecutive = this.maxConsecutiveSpeechChunks;
 
         this.resetTurn();
+
+        // Rejeita ruído mecânico de digitação de teclado / cliques isolados:
+        const isMechanicalImpulse = (maxConsecutive < 2 && sustainedSegments === 0);
+        const isSparseTypingNoise = (effectiveSpeechMs >= 600 && sustainedSegments < 2 && activeRatio < 0.20);
+        if (isMechanicalImpulse || isSparseTypingNoise) {
+          this.emit("turn-discarded", {
+            reason: `Ruído de digitação/clique descartado (consecutive: ${maxConsecutive}, sustained: ${sustainedSegments}, ratio: ${(activeRatio * 100).toFixed(0)}%)`
+          });
+          return;
+        }
 
         // Aceita se tiver duração suficiente de fala, densidade mínima e energia de fala real
         const hasEnoughSpeech = effectiveSpeechMs >= this.minSpeechMs && activeChunks >= 1;

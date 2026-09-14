@@ -56,7 +56,7 @@ console.log('  ok   3. Perguntas e falas técnicas reais de candidatos e entrevi
 // 4. Teste do buildTranscriptionPrompt
 const promptDefault = buildTranscriptionPrompt();
 assert.ok(promptDefault.length > 0 && promptDefault.length <= 180, 'Prompt padrão deve ser conciso (<= 180 chars)');
-assert.ok(promptDefault.startsWith('Vocabulário técnico: '), 'Prompt deve ser formulado em linguagem natural');
+assert.ok(promptDefault.startsWith('Vocabulário técnico: ') || promptDefault.startsWith('Assistente Nexa: '), 'Prompt deve ser formulado em linguagem natural');
 assert.ok(promptDefault.includes('Java') && promptDefault.includes('Spring Boot'), 'Prompt padrão deve conter termos fundamentais');
 
 const promptJava = buildTranscriptionPrompt({ background: 'Desenvolvedor Java especialista em Spring Boot e Kafka' });

@@ -331,4 +331,13 @@ console.log("🧪 Iniciando testes de Intent Classifier da Nexa...\n");
   console.log("✅ Caso 43: Comando longo com tarefas e menção a 'dancinha' -> RESPOND_AUDIO_AND_CHAT");
 }
 
+{
+  const text = "Perfeito, Nexa. Pode executar o seu plano e começar a implementação na tela de configurações para separar toda a parte de configurações da Nexa.";
+  const res = NexaIntentClassifier.classify(text);
+  assert.strictEqual(res.action, "RESPOND_AUDIO_AND_CHAT", "Comando com 'da Nexa' no final não deve ser mutilado nem considerado incompleto");
+  assert.strictEqual(res.cleanedQuery, "Pode executar o seu plano e começar a implementação na tela de configurações para separar toda a parte de configurações da Nexa.");
+  assert.strictEqual(NexaIntentClassifier.isSentenceIncomplete(res.cleanedQuery), false, "Frase completa não deve ser considerada incompleta");
+  console.log("✅ Caso 44: 'Perfeito, Nexa... configurações da Nexa.' -> RESPOND_AUDIO_AND_CHAT e isSentenceIncomplete = false");
+}
+
 console.log("\n🎉 Todos os testes do Intent Classifier passaram com sucesso!");

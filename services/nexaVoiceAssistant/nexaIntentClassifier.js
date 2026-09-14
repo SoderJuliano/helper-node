@@ -157,10 +157,15 @@ class NexaIntentClassifier {
   /**
    * Verifica se a frase parece estar cortada no meio (termina em conector ou vírgula).
    */
+  /**
+   * Verifica se a frase parece estar cortada no meio (termina em conector ou vírgula).
+   */
   static isSentenceIncomplete(text) {
     if (!text || typeof text !== "string") return false;
     const t = text.trim();
-    if (t.endsWith(",")) return true;
+    if (t.endsWith("...") || t.endsWith(",")) return true;
+    // Se termina em pontuação de fim de frase (. ! ?) e possui pelo menos 3 palavras, é completa
+    if (/[.!?]$/.test(t) && t.split(/\s+/).length >= 3) return false;
     const norm = stripAccents(t).toLowerCase();
     return INCOMPLETE_SENTENCE_CONNECTORS.some((p) => p.test(norm));
   }
@@ -273,10 +278,20 @@ class NexaIntentClassifier {
     // 4. Limpa a palavra-chave de invocação para obter a consulta/comando
     let cleanedQuery = text;
     if (hasWakeWord) {
-      cleanedQuery = text
-        .replace(/^(?:ei|oi|olá|ola|e\s+aí|e\s+ai|opa|fala|alô|alo|bom\s+dia|boa\s+tarde|boa\s+noite)?\s*(?:nexa|néxa|nèxa|nexá|naxa|nessa|dessa|dexa|deixa|neza|neksa|nexxa|decsa)[,\s:!\-]*/i, "")
-        .replace(/[,\s\-]*(?:nexa|néxa|nèxa|nexá|naxa|nessa|dessa|dexa|deixa|neza|neksa|nexxa|decsa)[,\s:!?.]*$/i, "")
-        .trim();
+      // Remove vocativo inicial: "Nexa, ...", "Ei Nexa, ...", "Oi Nexa, ...", "Perfeito Nexa, ..."
+      cleanedQuery = cleanedQuery
+        .replace(/^(?:(?:ei|oi|ol[aá]|opa|fala|al[oô]|e\s+a[ií]|bom\s+dia|boa\s+tarde|boa\s+noite|por\s+favor|perfeito|beleza|ok)\s*[,:]*\s*)?(?:nexa|n[eéè]xa|nexxa|neksa|naxa|neza|nessa|dessa|dexa|deixa|decsa)\s*[,:!\-.]*\s*/i, "");
+
+      // Remove vocativo final SOMENTE se for vocativo isolado (ex: "o que acha, Nexa?"), NUNCA se for preposição ou parte do objeto (ex: "configurações da Nexa", "sobre a Nexa", "com a Nexa")
+      cleanedQuery = cleanedQuery.replace(/(,\s*|\s+)(nexa|n[eéè]xa|nexxa|neksa|naxa|neza|nessa|dessa|dexa|deixa|decsa)[!?.]*$/i, (match, prefix, _name, offset, fullStr) => {
+        const before = fullStr.slice(0, offset).trim().toLowerCase();
+        const lastWord = before.split(/\s+/).pop();
+        const prepositions = ["da", "de", "do", "das", "dos", "com", "sobre", "para", "pra", "pro", "em", "na", "no", "nas", "nos", "pela", "pelo", "pelas", "pelos", "a", "o", "as", "os", "uma", "um", "minha", "nossa", "sua", "esta", "essa", "chama", "chamada"];
+        if (prepositions.includes(lastWord)) {
+          return match; // Mantém a palavra intacta pois é objeto da oração!
+        }
+        return "";
+      }).trim();
     }
 
     const cleanNorm = stripAccents(cleanedQuery).toLowerCase().replace(/[.,!?;:]+$/g, "").trim();

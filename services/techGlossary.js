@@ -175,7 +175,7 @@ function buildTranscriptionPrompt({ background = '', context = '' } = {}) {
   const relevant = pickRelevantTerms(`${background} ${context}`, budget);
 
   // Termos essenciais padrão para preencher o budget se o contexto for vazio/curto
-  const defaultCore = ['Nexa', 'helper-node', 'website-helper-node', 'Git', 'GitHub', 'commit', 'branch', 'master', 'main', 'pull request', 'merge', 'multithread', 'Whisper', 'Java', 'Spring Boot', 'SQL', 'Docker', 'Kubernetes', 'Kafka', 'AWS', 'REST', 'TypeScript', 'Node.js', 'SOLID'];
+  const defaultCore = ['Java', 'Spring Boot', 'Git', 'GitHub', 'commit', 'branch', 'master', 'main', 'Whisper', 'multithread', 'pull request', 'merge', 'SQL', 'Docker', 'Kubernetes', 'Kafka', 'AWS', 'REST', 'TypeScript', 'Node.js', 'SOLID'];
   const terms = [...relevant];
   let used = terms.reduce((acc, t) => acc + t.length + 2, 0);
 

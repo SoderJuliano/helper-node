@@ -148,4 +148,35 @@ console.log("🧪 Iniciando testes de Nexa Turn Detector e VAD...\n");
   console.log("✅ Caso 7: Barge-in instantâneo disparado com voz do usuário");
 }
 
+// 6. Teste de rejeição de ruído mecânico de digitação de teclado (cliques isolados)
+{
+  const typingDetector = new NexaTurnDetector({
+    speechThresholdRms: 50,
+    silenceThresholdMs: 200,
+    minSpeechMs: 100
+  });
+  typingDetector.active = true;
+
+  let speechTurnCompleted = false;
+  typingDetector.on("turn-complete", () => { speechTurnCompleted = true; });
+
+  const clickChunk = Buffer.alloc(1600); // 50ms com pico de clique
+  for (let i = 0; i < 800; i++) {
+    clickChunk.writeInt16LE(i < 50 ? 4000 : 0, i * 2);
+  }
+  const quietChunk = Buffer.alloc(1600); // 50ms silêncio
+
+  // Simula o usuário digitando no teclado (clique isolado de 50ms seguido de 200ms de silêncio, repetido 5 vezes)
+  for (let k = 0; k < 5; k++) {
+    typingDetector._handlePcmChunk(clickChunk);
+    typingDetector._handlePcmChunk(quietChunk);
+    typingDetector._handlePcmChunk(quietChunk);
+    typingDetector._handlePcmChunk(quietChunk);
+    typingDetector._handlePcmChunk(quietChunk);
+  }
+
+  assert.strictEqual(speechTurnCompleted, false, "Barulho de digitação isolado no teclado NÃO deve fechar turno de fala nem acionar Whisper");
+  console.log("✅ Caso 8: Barulho de digitação de teclado rejeitado com sucesso sem acionar transcrição");
+}
+
 console.log("\n🎉 Todos os testes de VAD passaram com sucesso!");
