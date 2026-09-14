@@ -348,37 +348,37 @@ if (nexaToggle) {
 }
 
 saveButton.addEventListener("click", async () => {
-  const isExclusiveFeatureOn = (osIntegrationToggle && osIntegrationToggle.checked) ||
-                               (realtimeAssistantToggle && realtimeAssistantToggle.checked) ||
-                               (document.getElementById('translation-enabled') && document.getElementById('translation-enabled').checked);
-  const isNexaOn = !isExclusiveFeatureOn && (nexaToggle ? nexaToggle.checked : false);
-  const ttsKey = googleTtsKey ? googleTtsKey.value.trim() : "";
-
-  if (isNexaOn && !ttsKey) {
-    const toast = document.getElementById("nexa-error-toast");
-    if (toast) {
-      toast.textContent = "Para usar a Nexa, adicione as credenciais do Google Text-to-Speech.";
-      toast.style.display = "block";
-      toast.scrollIntoView({ behavior: "smooth" });
-    } else {
-      alert("Para usar a Nexa, adicione as credenciais do Google Text-to-Speech.");
-    }
-    return;
-  }
-
   if (nexaToggle) {
+    const isExclusiveFeatureOn = (osIntegrationToggle && osIntegrationToggle.checked) ||
+                                 (realtimeAssistantToggle && realtimeAssistantToggle.checked) ||
+                                 (document.getElementById('translation-enabled') && document.getElementById('translation-enabled').checked);
+    const isNexaOn = !isExclusiveFeatureOn && (nexaToggle ? nexaToggle.checked : false);
+    const ttsKey = googleTtsKey ? googleTtsKey.value.trim() : "";
+
+    if (isNexaOn && !ttsKey) {
+      const toast = document.getElementById("nexa-error-toast");
+      if (toast) {
+        toast.textContent = "Para usar a Nexa, adicione as credenciais do Google Text-to-Speech.";
+        toast.style.display = "block";
+        toast.scrollIntoView({ behavior: "smooth" });
+      } else {
+        alert("Para usar a Nexa, adicione as credenciais do Google Text-to-Speech.");
+      }
+      return;
+    }
+
     if (isExclusiveFeatureOn) {
       nexaToggle.checked = false;
       window.ConfigToggles.updateNexaStatus(false);
     }
     ipcRenderer.send("nexa:save-config", { enabled: isNexaOn, onlyNexa: false });
-  }
 
-  ipcRenderer.send("save-google-tts-config", {
-    enabled: isNexaOn,
-    keyPathOrKey: ttsKey,
-    voiceName: "pt-BR-Neural2-C"
-  });
+    ipcRenderer.send("save-google-tts-config", {
+      enabled: isNexaOn,
+      keyPathOrKey: ttsKey,
+      voiceName: "pt-BR-Neural2-C"
+    });
+  }
 
   ipcRenderer.send("save-prompt-instruction", instructionTextarea.value);
   ipcRenderer.send("save-debug-mode-status", debugModeToggle.checked);
@@ -453,6 +453,11 @@ document.getElementById("clear-backend-api-key")?.addEventListener("click", () =
 const openPreferencesBtn = document.getElementById('open-preferences-btn');
 if (openPreferencesBtn) {
   openPreferencesBtn.addEventListener('click', () => ipcRenderer.send('open-preferences-ui'));
+}
+
+const openNexaConfigBtn = document.getElementById('open-nexa-config-btn');
+if (openNexaConfigBtn) {
+  openNexaConfigBtn.addEventListener('click', () => ipcRenderer.send('open-nexa-config-ui'));
 }
 
 const promptEditToggle = document.getElementById('prompt-edit-toggle');

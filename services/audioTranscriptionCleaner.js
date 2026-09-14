@@ -129,32 +129,36 @@ function normalizeDevPhonetics(text) {
   // 2. Variações de Ctrl+D
   res = res.replace(/\b(?:control\s*d|controle\s*d|control\s*de|ctrl\s*d)\b/gi, 'Ctrl+D');
 
-  // 3. Variações fonéticas de Nexa ("né xa", "né, xa", "nèxa", "néxa", "dexa", "deixa", "dessa")
-  // A) Saudações seguidas de distorção fonética (ex: "Fala dexa", "Oi dexa", "Ei dexa", "Opa dexa", "E aí dexa", "Olá dexa")
-  res = res.replace(/\b(ei|oi|ol[aá]|fala|opa|al[oô]|e\s+a[ií]|bom\s+dia|boa\s+tarde|boa\s+noite)\s+(?:dexa|deixa|dessa|nessa|nexxa|neksa|naxa|neza|decsa|meca|lexa)\b/gi, '$1 Nexa');
+  // 3. Variações fonéticas de Nexa ("nanax", "nanaxa", "nanex", "nanexa", "nanac", "nanak", "naxa", "neksa", "nexxa", "neza", "dexa", "deixa", "dessa", "nessa", "neca", "neka", "nex", "nax", "mexa", "messa", "anexa")
+  // A) Saudações / confirmações seguidas de distorção fonética (ex: "Perfeito nanax", "Beleza dexa", "Fala dexa", "Oi dexa", "Olá nanax")
+  res = res.replace(/\b(ei|oi|ol[aá]|fala|opa|al[oô]|e\s+a[ií]|bom\s+dia|boa\s+tarde|boa\s+noite|perfeito|beleza|show|pronto|certo|ent[aã]o|ok)\s+(?:dexa|deixa|dessa|nessa|nexxa|neksa|naxa|neza|decsa|meca|lexa|nanax|nanaxa|nanex|nanexa|nanac|nanak|neca|neka|nex|nax|nexia|messa|mexa|anexa)\b/gi, '$1 Nexa');
 
-  // B) Início de frase com vocativo e pontuação (ex: "Dexa,", "Deixa,", "Dessa,", "Nessa,")
-  res = res.replace(/^(?:dexa|deixa|dessa|nessa|nexxa|neksa|naxa|neza|decsa)\s*([,:!\-]+)/gi, 'Nexa$1');
+  // B) Início de frase com vocativo e pontuação (ex: "Dexa,", "Nanax,", "Deixa,", "Dessa,", "Nessa,")
+  res = res.replace(/^(?:dexa|deixa|dessa|nessa|nexxa|neksa|naxa|neza|decsa|nanax|nanaxa|nanex|nanexa|nanac|nanak|neca|neka|nex|nax|nexia|messa|mexa|anexa)\s*([,:!\-]+)/gi, 'Nexa$1');
 
-  // C) Início de frase seguido de comandos verbais ou pronomes (ex: "Dexa eu quero", "Deixa eu quero que você", "Dexa faz", "Dexa cria", "Dexa você")
-  res = res.replace(/^(?:dexa|deixa|dessa|nessa|nexxa|neksa|naxa|neza|decsa)\s+(?=(?:eu\s+quero|voc[eê]|vc|faz|fa[çc]a|cria|ajuda|mostra|olha|me\s+ajuda|me\s+diz|me\s+explica|como|quando|onde|por\s*que|porque|o\s+que|qual|pode|consegue|est[aá]|t[aá]|escuta|ouve|tira|coloca|altera|muda|abre|fecha)\b)/gi, 'Nexa, ');
+  // C) Início de frase seguido de comandos verbais ou pronomes (ex: "Nanax pode", "Dexa eu quero", "Dexa faz", "Dexa cria", "Dexa você")
+  res = res.replace(/^(?:dexa|deixa|dessa|nessa|nexxa|neksa|naxa|neza|decsa|nanax|nanaxa|nanex|nanexa|nanac|nanak|neca|neka|nex|nax|nexia|messa|mexa|anexa)\s+(?=(?:eu\s+quero|voc[eê]|vc|faz|fa[çc]a|cria|ajuda|mostra|olha|me\s+ajuda|me\s+diz|me\s+explica|como|quando|onde|por\s*que|porque|o\s+que|qual|pode|consegue|est[aá]|t[aá]|escuta|ouve|tira|coloca|altera|muda|abre|fecha|comita|commita|como\s+imitar|dar\s+push)\b)/gi, 'Nexa, ');
 
-  // D) Fim de frase com vocativo (ex: "o que você acha, dexa?", "me ajuda, dexa")
-  res = res.replace(/([,\s]+)(?:dexa|deixa|nessa|dessa|neksa|nexxa|neza)\s*([!?.]*)$/gi, '$1Nexa$2');
+  // D) Fim de frase com vocativo (ex: "o que você acha, dexa?", "me ajuda, nanax", "comita, dexa")
+  res = res.replace(/([,\s]+)(?:dexa|deixa|nessa|dessa|neksa|nexxa|neza|nanax|nanaxa|nanex|nanexa|nanac|nanak|neca|neka|nex|nax|nexia|messa|mexa)\s*([!?.]*)$/gi, '$1Nexa$2');
 
-  // E) Variações acentuadas, separadas por espaço ou com k/s
+  // E) Variações isoladas de grafia corrompida
+  res = res.replace(/\b(?:nanax|nanaxa|nanex|nanexa|nanac|nanak|nexxa|neksa)\b/gi, 'Nexa');
   res = res.replace(/\b(?:n[eé],\s*xa|n[eé]\s+xa)\b/gi, 'Nexa');
-  res = res.replace(/\b(?:n[eè]xa|n[eé]xa|nexxa|neksa|decsa)\b/gi, 'Nexa');
+  res = res.replace(/\b(?:n[eè]xa|n[eé]xa|decsa)\b/gi, 'Nexa');
 
   // 4. Variações fonéticas de Git ("Geet", "guite")
   res = res.replace(/\b(?:geet|guite)\b/gi, 'Git');
 
-  // 5. Variações fonéticas de Commit e Push ("comit", "comemitar", "dar a puxa", "dar puxa")
+  // 5. Variações fonéticas de Commit e Push ("como imitar", "com imitar", "comit", "comemitar", "dar a puxa", "dar puxa")
+  res = res.replace(/\b(?:como\s+imitar\s+e\s+dar\s+push|comitar\s+e\s+dar\s+push|commitar\s+e\s+dar\s+push|comita\s+e\s+da\s+push|commita\s+e\s+da\s+push)\b/gi, 'commitar e dar push');
+  res = res.replace(/\b(?:como\s+imitar|com\s+imitar|como\s+imita|com\s+imita)\b/gi, 'commitar');
+  res = res.replace(/\b(?:como\s+imito|com\s+imito)\b/gi, 'commito');
   res = res.replace(/\b(?:comemitar|comitar)\b/gi, 'commitar');
   res = res.replace(/\b(?:comemitando|comitando)\b/gi, 'commitando');
   res = res.replace(/\b(?:comemitei|comitei)\b/gi, 'commitei');
   res = res.replace(/\b(?:comemitou|comitou)\b/gi, 'commitou');
-  res = res.replace(/\b(?:comemite|comite)\b/gi, 'commite');
+  res = res.replace(/\b(?:comemite|comite|comita|cometa|comete)\b/gi, 'commita');
   res = res.replace(/\bcomit\b/gi, 'commit');
   res = res.replace(/\b(dar|faz|fazer|da|deu|manda|mandar|fazendo|dando)\s+(?:a\s+|o\s+|um\s+|uma\s+)?(?:puxa|puxada|pux|pushe)\b/gi, '$1 push');
   res = res.replace(/\b(?:dar\s+a\s+puxa|dar\s+puxa|da\s+a\s+puxa)\b/gi, 'dar push');

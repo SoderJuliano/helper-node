@@ -88,6 +88,7 @@ module.exports = function registerIpc() {
   ipcMain.handle("get-edition", () => edition.getEdition());
   ipcMain.on("open-config-ui", () => helpers.createConfigWindow());
   ipcMain.on("open-preferences-ui", () => helpers.createPreferencesWindow());
+  ipcMain.on("open-nexa-config-ui", () => helpers.createNexaConfigWindow());
 
   ipcMain.on("set-ai-model", (event, aiModel) => {
     const anterior = configService.getAiModel();

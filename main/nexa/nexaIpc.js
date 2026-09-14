@@ -93,6 +93,33 @@ function registerNexaIpc() {
   ipcMain.on("nexa:log-to-main", (event, { level, msg }) => {
     console.log(`[Renderer ${level.toUpperCase()}] ${msg}`);
   });
+
+  ipcMain.on("nexa:play-animation", (event, payload) => {
+    const { state } = require("../globals.js");
+    const name = payload && typeof payload === "object" ? payload.name : payload;
+    if (state.nexaWindow && !state.nexaWindow.isDestroyed()) {
+      try {
+        state.nexaWindow.webContents.send("nexa:play-animation", { name });
+      } catch (_) {}
+    } else {
+      // Abre a janela se estiver fechada e toca
+      createNexaWindow();
+      setTimeout(() => {
+        if (state.nexaWindow && !state.nexaWindow.isDestroyed()) {
+          try {
+            state.nexaWindow.webContents.send("nexa:play-animation", { name });
+          } catch (_) {}
+        }
+      }, 500);
+    }
+  });
+
+  ipcMain.on("nexa:open-config-ui", () => {
+    const { helpers } = require("../globals.js");
+    if (helpers.createNexaConfigWindow) {
+      helpers.createNexaConfigWindow();
+    }
+  });
 }
 
 module.exports = {

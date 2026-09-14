@@ -109,6 +109,7 @@ const state = {
   backendIsOnline: false,
   configWindow: null,
   preferencesWindow: null,
+  nexaConfigWindow: null,
   shortcutsRegistered: false,
   currentDisplayId: null,
   sharingActive: false,

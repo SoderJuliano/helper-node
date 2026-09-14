@@ -15,12 +15,12 @@ function stripAccents(str) {
 }
 
 // Padrões de ativação por Wake Word estritos e variações fonéticas válidas
-// Rejeita categoricamente falsos positivos como "nessa casa", "nessa branch", "nesse apartamento", "neca", "nexus"
-const WAKE_WORD_EXACT = /\b(nexa|n[eéè]xa|nexxa|neksa|naxa|neza|dexa|decsa)\b/i;
-const WAKE_WORD_WITH_GREETING = /\b(?:ei|oi|ol[aá]|fala|opa|bom\s+dia|boa\s+tarde|boa\s+noite|al[oô]|e\s+a[ií])\s+(?:nexa|n[eéè]xa|nexxa|neksa|naxa|neza|nessa|dessa|dexa|deixa|decsa)\b/i;
-const WAKE_WORD_WITH_VOCATIVE = /\b(?:nexa|n[eéè]xa|nexxa|neksa|naxa|neza|nessa|dessa|dexa|deixa|decsa)\s*[,:!?\-]+\s*(?:voc[eê]|vc|eu|tudo|como|o\s+que|qual|quando|onde|por\s*que|porque|me|pode|faz|fa[çc]a|d[aá]|ajuda|t[aá]|est[aá]|est[aá]s|tas|a[ií]|escuta|ouve|olha|fala|\?)/i;
-const WAKE_WORD_PHONETIC_DIRECT = /^(?:nessa|dessa|dexa|deixa|decsa|nexa|n[eéè]xa)\s+(?:voc[eê]|vc)?\s*(?:est[aá]|t[aá]|est[aá]s|tas)?\s*(?:a[ií]|me\s+ouvindo|me\s+escutando|me\s+ouve|me\s+escuta|ouvindo|ouviu|escutou)/i;
-const WAKE_WORD_AT_END = /[,\s]+(?:nexa|n[eéè]xa|nexxa|naxa|neza|dexa|deixa|decsa)\s*[!?.]*$/i;
+// Rejeita categoricamente falsos positivos como "nessa casa", "nessa branch", "nesse apartamento", "nexus"
+const WAKE_WORD_EXACT = /\b(nexa|n[eéè]xa|nexxa|neksa|naxa|neza|dexa|decsa|nanax|nanaxa|nanex|nanexa|nanac|nanak|neca|neka|nex|nax|nexia|anexa|messa|mexa)\b/i;
+const WAKE_WORD_WITH_GREETING = /\b(?:ei|oi|ol[aá]|fala|opa|bom\s+dia|boa\s+tarde|boa\s+noite|al[oô]|e\s+a[ií]|perfeito|beleza|show|pronto|certo|ent[aã]o|ok|por\s+favor)\s+(?:nexa|n[eéè]xa|nexxa|neksa|naxa|neza|nessa|dessa|dexa|deixa|decsa|nanax|nanaxa|nanex|nanexa|nanac|nanak|neca|neka|nex|nax|nexia|anexa|messa|mexa)\b/i;
+const WAKE_WORD_WITH_VOCATIVE = /\b(?:nexa|n[eéè]xa|nexxa|neksa|naxa|neza|nessa|dessa|dexa|deixa|decsa|nanax|nanaxa|nanex|nanexa|nanac|nanak|neca|neka|nex|nax|nexia|anexa|messa|mexa)\s*[,:!?\-]+\s*(?:voc[eê]|vc|eu|tudo|como|o\s+que|qual|quando|onde|por\s*que|porque|me|pode|faz|fa[çc]a|d[aá]|ajuda|t[aá]|est[aá]|est[aá]s|tas|a[ií]|escuta|ouve|olha|fala|se|comita|commita|como\s+imitar|dar|push|\?)/i;
+const WAKE_WORD_PHONETIC_DIRECT = /^(?:nessa|dessa|dexa|deixa|decsa|nexa|n[eéè]xa|nanax|nanaxa|nanex|nanexa|nanac|nanak)\s+(?:voc[eê]|vc)?\s*(?:est[aá]|t[aá]|est[aá]s|tas)?\s*(?:a[ií]|me\s+ouvindo|me\s+escutando|me\s+ouve|me\s+escuta|ouvindo|ouviu|escutou)/i;
+const WAKE_WORD_AT_END = /[,\s]+(?:nexa|n[eéè]xa|nexxa|naxa|neza|dexa|deixa|decsa|nanax|nanaxa|nanex|nanexa|nanac|nanak)\s*[!?.]*$/i;
 
 // Padrões de links/alucinações ou ruídos que devem ser descartados imediatamente
 const URL_OR_NOISE_PATTERNS = [
@@ -246,13 +246,17 @@ class NexaIntentClassifier {
       }
     }
 
-    // Se o nome Nexa não foi falado e não estamos em janela de follow-up ativa, descarta silenciosamente
-    if (!hasWakeWord && !followUpActive) {
+    // Comandos explícitos de desenvolvimento e workspace (ex: "pode comitar e dar push", "faz commit", "cria branch", "roda os testes")
+    const DIRECT_DEV_COMMAND = /\b(?:(?:pode|consegue|favor|por\s+favor)?\s*(?:comitar|commitar|comita|commita|como\s+imitar|fazer\s+commit|dar\s+push|fazer\s+push|criar\s+branch|abrir\s+arquivo|rodar\s+teste|corrigir\s+bug|aplicar\s+altera[çc][õo]es|salvar\s+arquivo))\b/i;
+    const isDirectDevCommand = DIRECT_DEV_COMMAND.test(normalizedText) || DIRECT_DEV_COMMAND.test(text);
+
+    // Se o nome Nexa não foi falado, não estamos em follow-up ativo E não é um comando direto inequívoco de desenvolvimento
+    if (!hasWakeWord && !followUpActive && !isDirectDevCommand) {
       return { action: "IGNORE", expireFollowUp: false, reason: "Wake word ausente e sem follow-up ativo" };
     }
 
     // Se está em follow-up sem wake word: validação rigorosa contra áudios de vídeo/música/monólogos de fundo
-    if (!hasWakeWord && followUpActive) {
+    if (!hasWakeWord && followUpActive && !isDirectDevCommand) {
       // 1. Descarta ruídos curtos, interjeições isoladas
       if (text.length < 5 || /^(?:ok|hmm|ah|eh|opa|hum|e|uh)[\s.,!?]*$/i.test(text)) {
         return { action: "IGNORE", expireFollowUp: true, reason: "Ruído curto ou interjeição isolada em follow-up" };
@@ -280,10 +284,10 @@ class NexaIntentClassifier {
     if (hasWakeWord) {
       // Remove vocativo inicial: "Nexa, ...", "Ei Nexa, ...", "Oi Nexa, ...", "Perfeito Nexa, ..."
       cleanedQuery = cleanedQuery
-        .replace(/^(?:(?:ei|oi|ol[aá]|opa|fala|al[oô]|e\s+a[ií]|bom\s+dia|boa\s+tarde|boa\s+noite|por\s+favor|perfeito|beleza|ok)\s*[,:]*\s*)?(?:nexa|n[eéè]xa|nexxa|neksa|naxa|neza|nessa|dessa|dexa|deixa|decsa)\s*[,:!\-.]*\s*/i, "");
+        .replace(/^(?:(?:ei|oi|ol[aá]|opa|fala|al[oô]|e\s+a[ií]|bom\s+dia|boa\s+tarde|boa\s+noite|por\s+favor|perfeito|beleza|show|pronto|certo|ent[aã]o|ok)\s*[,:]*\s*)?(?:nexa|n[eéè]xa|nexxa|neksa|naxa|neza|nessa|dessa|dexa|deixa|decsa|nanax|nanaxa|nanex|nanexa|nanac|nanak|neca|neka|nex|nax|nexia|anexa|messa|mexa)\s*[,:!\-.]*\s*/i, "");
 
       // Remove vocativo final SOMENTE se for vocativo isolado (ex: "o que acha, Nexa?"), NUNCA se for preposição ou parte do objeto (ex: "configurações da Nexa", "sobre a Nexa", "com a Nexa")
-      cleanedQuery = cleanedQuery.replace(/(,\s*|\s+)(nexa|n[eéè]xa|nexxa|neksa|naxa|neza|nessa|dessa|dexa|deixa|decsa)[!?.]*$/i, (match, prefix, _name, offset, fullStr) => {
+      cleanedQuery = cleanedQuery.replace(/(,\s*|\s+)(nexa|n[eéè]xa|nexxa|neksa|naxa|neza|nessa|dessa|dexa|deixa|decsa|nanax|nanaxa|nanex|nanexa|nanac|nanak|neca|neka|nex|nax|nexia|anexa|messa|mexa)[!?.]*$/i, (match, prefix, _name, offset, fullStr) => {
         const before = fullStr.slice(0, offset).trim().toLowerCase();
         const lastWord = before.split(/\s+/).pop();
         const prepositions = ["da", "de", "do", "das", "dos", "com", "sobre", "para", "pra", "pro", "em", "na", "no", "nas", "nos", "pela", "pelo", "pelas", "pelos", "a", "o", "as", "os", "uma", "um", "minha", "nossa", "sua", "esta", "essa", "chama", "chamada"];

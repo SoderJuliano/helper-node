@@ -340,4 +340,24 @@ console.log("🧪 Iniciando testes de Intent Classifier da Nexa...\n");
   console.log("✅ Caso 44: 'Perfeito, Nexa... configurações da Nexa.' -> RESPOND_AUDIO_AND_CHAT e isSentenceIncomplete = false");
 }
 
+{
+  const { cleanTranscription } = require("../services/audioTranscriptionCleaner");
+  const raw = "Perfeito, Nanax, se você ouvir as alterações, pode como imitar e dar push.";
+  const cleaned = cleanTranscription(raw);
+  assert.ok(cleaned.includes("Nexa"), "Deve normalizar 'Nanax' para 'Nexa'");
+  assert.ok(cleaned.includes("commitar e dar push") || cleaned.includes("commitar"), "Deve normalizar 'como imitar' para 'commitar'");
+
+  const res = NexaIntentClassifier.classify(cleaned);
+  assert.strictEqual(res.action, "RESPOND_AUDIO_AND_CHAT", "Deve responder e executar o comando de commit e push");
+  assert.strictEqual(NexaIntentClassifier.isSentenceIncomplete(res.cleanedQuery), false, "Frase com ponto final deve ser completa");
+  console.log("✅ Caso 45: 'Perfeito, Nanax... pode como imitar e dar push' -> Normalizado e classificado como RESPOND_AUDIO_AND_CHAT");
+}
+
+{
+  const text = "pode comitar e dar push";
+  const res = NexaIntentClassifier.classify(text);
+  assert.strictEqual(res.action, "RESPOND_AUDIO_AND_CHAT", "Comando direto de commit e push deve ser aceito");
+  console.log("✅ Caso 46: 'pode comitar e dar push' -> RESPOND_AUDIO_AND_CHAT");
+}
+
 console.log("\n🎉 Todos os testes do Intent Classifier passaram com sucesso!");

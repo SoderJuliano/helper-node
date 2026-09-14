@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configurações da Nexa</title>
+    <link rel="stylesheet" href="styles/config.css">
+    <style>
+        :root {
+            --nexa-purple: #a855f7;
+            --nexa-pink: #ec4899;
+            --nexa-cyan: #06b6d4;
+            --nexa-gradient: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
+        }
+        body {
+            background-color: rgba(22, 24, 29, 0.98);
+        }
+        .nexa-header-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 10px;
+            background: rgba(168, 85, 247, 0.15);
+            border: 1px solid rgba(168, 85, 247, 0.35);
+            border-radius: 99px;
+            font-size: 11px;
+            color: #d8b4fe;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            font-weight: 600;
+        }
+        .section-box {
+            margin-bottom: 14px;
+            padding: 14px;
+            background-color: rgba(0, 0, 0, 0.32);
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: 8px;
+            -webkit-app-region: no-drag;
+        }
+        .section-title {
+            font-size: 13.5px;
+            font-weight: 700;
+            color: #e2e8f0;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .section-title svg {
+            width: 16px;
+            height: 16px;
+            color: var(--nexa-purple);
+        }
+        .anim-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .anim-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 8px 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            color: #f1f5f9;
+            font-size: 12px;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            -webkit-app-region: no-drag;
+        }
+        .anim-btn:hover {
+            background: rgba(168, 85, 247, 0.22);
+            border-color: rgba(168, 85, 247, 0.5);
+            transform: translateY(-1px);
+        }
+        .info-card {
+            background: rgba(6, 182, 212, 0.08);
+            border: 1px solid rgba(6, 182, 212, 0.25);
+            border-radius: 6px;
+            padding: 10px 12px;
+            font-size: 12px;
+            color: #cbd5e1;
+            line-height: 1.4;
+            margin-top: 10px;
+        }
+        .info-card ul {
+            margin: 6px 0 0 0;
+            padding-left: 18px;
+        }
+        .info-card li {
+            margin-bottom: 3px;
+        }
+        .range-slider-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            width: 100%;
+        }
+        .range-slider-group input[type="range"] {
+            flex: 1;
+            accent-color: var(--nexa-purple);
+            cursor: pointer;
+        }
+        .range-value {
+            font-family: inherit;
+            font-size: 12px;
+            color: #a855f7;
+            font-weight: 600;
+            min-width: 40px;
+            text-align: right;
+        }
+    </style>
+</head>
+<body>
+    <div style="position:fixed; top:8px; right:10px; z-index:2000; display:flex; gap:6px; -webkit-app-region:no-drag;">
+        <button id="win-maximize-btn" title="Tela cheia / restaurar" style="width:28px; height:28px; padding:0; margin:0; border:none; border-radius:6px; background:rgba(255,255,255,0.12); color:#fff; cursor:pointer; font-size:14px; line-height:28px; text-align:center; -webkit-app-region:no-drag;">⛶</button>
+        <button id="win-close-btn" title="Fechar" style="width:28px; height:28px; padding:0; margin:0; border:none; border-radius:6px; background:rgba(255,70,70,0.35); color:#fff; cursor:pointer; font-size:16px; line-height:28px; text-align:center; -webkit-app-region:no-drag;">✕</button>
+    </div>
+
+    <div style="text-align:center; margin-bottom: 12px; -webkit-app-region: drag;">
+        <div class="nexa-header-badge">✨ Copiloto & Avatar Digital</div>
+        <h1 style="color: #ec4899; margin-bottom: 4px; text-shadow: 0 0 16px rgba(236,72,153,0.35);">Configurações da Nexa</h1>
+        <p style="font-size: 12px; color: #94a3b8; margin: 0; -webkit-app-region: no-drag;">Gerencie a identidade, voz neural com Google Cloud TTS, microfone e animações da Nexa.</p>
+    </div>
+
+    <div class="container">
+        <!-- 1. Estado e Identidade -->
+        <div class="section-box">
+            <div class="section-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                <span>Identidade e Avatar Flutuante</span>
+            </div>
+
+            <div class="setting-item" style="margin-bottom: 8px;" title="Habilita a persona Nexa e o avatar 2D animado em tempo real.">
+                <label for="nexa-toggle">Habilitar Nexa AI Assistant</label>
+                <div class="setting-actions">
+                    <span id="nexa-status" class="status-badge">OFF</span>
+                    <label class="switch">
+                        <input type="checkbox" id="nexa-toggle" hidden>
+                        <div class="switch__wrapper">
+                            <div class="switch__toggle"></div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px;">
+                <span style="font-size: 12px; color: #94a3b8;">Janela flutuante (360x360 transparente no canto da tela):</span>
+                <button type="button" id="nexa-open-window-btn" style="padding: 6px 14px; font-size: 12px; background: rgba(168, 85, 247, 0.25); border: 1px solid rgba(168, 85, 247, 0.5); color: #e9d5ff;">Abrir / Focar Avatar</button>
+            </div>
+        </div>
+
+        <!-- 2. Síntese de Voz (Google Cloud TTS) -->
+        <div class="section-box">
+            <div class="section-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                <span>Voz Neural (Google Cloud Text-to-Speech)</span>
+            </div>
+
+            <div style="margin-bottom: 12px;">
+                <label for="google-tts-key" style="font-size: 12.5px; color: #00aaff; display: block; margin-bottom: 6px; font-weight: 600;">Credenciais Google TTS (Arquivo JSON ou API Key):</label>
+                <div class="setting-control input-group" style="width: 100%;">
+                    <input type="text" id="google-tts-key" class="custom-input" placeholder="Ex: C:\caminho\chave-service-account.json ou AIzaSy...">
+                    <button type="button" id="clear-google-tts-key" class="clear-btn" title="Limpar credencial">Limpar</button>
+                </div>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px;">
+                <button type="button" id="google-tts-test-btn" style="padding: 7px 14px; font-size: 12.5px; background-color: #10b981; color: #fff;">Testar Conexão / Quota</button>
+                <span id="google-tts-test-result" style="font-size: 12px; font-family: monospace;"></span>
+            </div>
+
+            <div class="setting-item" style="margin-bottom: 10px;" title="Voz neural em português utilizada pela Nexa">
+                <label for="google-tts-voice">Voz Neural da Nexa</label>
+                <div class="setting-control">
+                    <select id="google-tts-voice" class="custom-select" style="min-width: 240px;">
+                        <option value="pt-BR-Neural2-C" selected>pt-BR-Neural2-C (Feminina Neural - Padrão)</option>
+                        <option value="pt-BR-Neural2-A">pt-BR-Neural2-A (Feminina Neural Alternativa)</option>
+                        <option value="pt-BR-Wavenet-A">pt-BR-Wavenet-A (Feminina WaveNet)</option>
+                        <option value="pt-BR-Wavenet-C">pt-BR-Wavenet-C (Feminina WaveNet Suave)</option>
+                        <option value="pt-BR-Standard-A">pt-BR-Standard-A (Feminina Standard)</option>
+                        <option value="pt-BR-Neural2-B">pt-BR-Neural2-B (Masculina Neural)</option>
+                        <option value="pt-BR-Wavenet-B">pt-BR-Wavenet-B (Masculina WaveNet)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; margin-bottom: 12px;">
+                <button type="button" id="google-tts-preview-btn" style="padding: 6px 12px; font-size: 12px; background: rgba(0, 170, 255, 0.2); border: 1px solid rgba(0, 170, 255, 0.4); color: #7dd3fc;">🔊 Ouvir Demonstração da Voz</button>
+            </div>
+
+            <!-- Velocidade da Fala -->
+            <div class="setting-item" style="margin-bottom: 10px;" title="Velocidade com que a Nexa fala (padrão 1.0x)">
+                <label for="google-tts-rate">Velocidade da Fala</label>
+                <div class="setting-control" style="width: 220px;">
+                    <div class="range-slider-group">
+                        <input type="range" id="google-tts-rate" min="0.8" max="1.4" step="0.05" value="1.0">
+                        <span id="google-tts-rate-val" class="range-value">1.00x</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tom da Voz (Pitch) -->
+            <div class="setting-item" style="margin-bottom: 0;" title="Ajuste fino do tom vocal (pitch)">
+                <label for="google-tts-pitch">Tom da Voz (Pitch)</label>
+                <div class="setting-control" style="width: 220px;">
+                    <div class="range-slider-group">
+                        <input type="range" id="google-tts-pitch" min="-4.0" max="4.0" step="0.5" value="0.0">
+                        <span id="google-tts-pitch-val" class="range-value">0.0 st</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. Microfone & Modo de Escuta Contínua -->
+        <div class="section-box">
+            <div class="section-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                <span>Microfone e Interação por Voz</span>
+            </div>
+
+            <div class="setting-item" style="margin-bottom: 10px;" title="Selecione o microfone utilizado pela Nexa para escuta contínua e comandos de voz.">
+                <label for="nexa-mic-select">Microfone de Entrada</label>
+                <div class="setting-control cli-control-group">
+                    <select id="nexa-mic-select" class="custom-select" style="min-width: 220px;">
+                        <option value="">Padrão do Sistema</option>
+                    </select>
+                    <div class="cli-actions">
+                        <button type="button" id="nexa-mic-refresh" class="action-btn" style="background:#1e293b; color:#94a3b8; border:1px solid #475569;" title="Recarregar microfones">Atualizar</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="info-card">
+                <strong>🛡️ Proteções Ativas da Nexa:</strong>
+                <ul>
+                    <li><b>Filtro Antiruído de Teclado (VAD):</b> Ignora ruídos mecânicos e cliques de digitação.</li>
+                    <li><b>Preservação de Contexto:</b> Mantém integridade das perguntas direcionadas e preposições (ex: <i>"da Nexa"</i>).</li>
+                    <li><b>Síntese Sucinta:</b> Leituras em primeira pessoa focadas no resumo executivo sem poluir a fala.</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- 4. Teste de Expressões e Animações -->
+        <div class="section-box">
+            <div class="section-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                <span>Expressões e Animações da Nexa</span>
+            </div>
+            <p style="font-size: 12px; color: #94a3b8; margin: 0 0 8px 0;">Clique para testar cada animação em tempo real na janela flutuante:</p>
+
+            <div class="anim-grid">
+                <button type="button" class="anim-btn" data-anim="dance">💃 Dançar</button>
+                <button type="button" class="anim-btn" data-anim="wave">👋 Acenar</button>
+                <button type="button" class="anim-btn" data-anim="heart">💖 Coração</button>
+                <button type="button" class="anim-btn" data-anim="coffee">☕ Café</button>
+                <button type="button" class="anim-btn" data-anim="adjust_glasses">👓 Ajustar Óculos</button>
+                <button type="button" class="anim-btn" data-anim="writing_code">💻 Escrever Código</button>
+                <button type="button" class="anim-btn" data-anim="reading">📖 Ler Livro</button>
+                <button type="button" class="anim-btn" data-anim="tesseract_code">🧊 Tesseract</button>
+                <button type="button" class="anim-btn" data-anim="cute">🥺 Fofa</button>
+                <button type="button" class="anim-btn" data-anim="stretching_arms">🙆‍♀️ Espreguiçar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="nexa-toast" style="display:none; margin-bottom:10px; padding:10px 14px; background:rgba(239, 68, 68, 0.9); color:#fff; border-radius:6px; font-size:12.5px; font-weight:600; text-align:center; -webkit-app-region:no-drag;"></div>
+
+    <div class="config-footer-actions">
+        <button id="save-btn" style="background: var(--nexa-gradient); border-color: rgba(255,255,255,0.2);">Salvar e Fechar</button>
+        <button id="open-config-btn" type="button" style="background: #2b3038; border-color: rgba(255,255,255,0.12);">Configurações Gerais</button>
+    </div>
+
+    <script src="nexaConfig.js"></script>
+</body>
+</html>

@@ -168,14 +168,14 @@ function buildTranscriptionPrompt({ background = '', context = '' } = {}) {
   const key = `${background}||${context}`;
   if (key === _cacheKey) return _cacheValue;
 
-  const prefix = 'Assistente Nexa: Nexa, helper-node, website-helper-node, ';
+  const prefix = 'Assistente Nexa: Nexa, comitar, commitar, dar push, commit, push, branch, Git, GitHub, helper-node, ';
   const budget = MAX_PROMPT_CHARS - prefix.length - 2;
 
   // Seleciona termos relevantes ao contexto/background
   const relevant = pickRelevantTerms(`${background} ${context}`, budget);
 
   // Termos essenciais padrão para preencher o budget se o contexto for vazio/curto
-  const defaultCore = ['Java', 'Spring Boot', 'Git', 'GitHub', 'commit', 'branch', 'master', 'main', 'Whisper', 'multithread', 'pull request', 'merge', 'SQL', 'Docker', 'Kubernetes', 'Kafka', 'AWS', 'REST', 'TypeScript', 'Node.js', 'SOLID'];
+  const defaultCore = ['comitar', 'commitar', 'dar push', 'fazer commit', 'Java', 'Spring Boot', 'Git', 'GitHub', 'commit', 'branch', 'master', 'main', 'Whisper', 'multithread', 'pull request', 'merge', 'SQL', 'Docker', 'Kubernetes', 'Kafka', 'AWS', 'REST', 'TypeScript', 'Node.js', 'SOLID'];
   const terms = [...relevant];
   let used = terms.reduce((acc, t) => acc + t.length + 2, 0);
 
@@ -186,7 +186,7 @@ function buildTranscriptionPrompt({ background = '', context = '' } = {}) {
     }
   }
 
-  const prompt = terms.length ? `${prefix}${terms.join(', ')}.` : 'Assistente Nexa: Nexa, helper-node, Git, GitHub, commit, branch.';
+  const prompt = terms.length ? `${prefix}${terms.join(', ')}.` : 'Assistente Nexa: Nexa, comitar, commitar, dar push, Git, GitHub, commit, branch.';
 
   _cacheKey = key;
   _cacheValue = prompt;

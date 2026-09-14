@@ -141,33 +141,6 @@
             </div>
         </div>
 
-        <!-- Nexa AI Assistant -->
-        <div class="setting-item" title="Habilita a identidade Nexa e sua persona no modo janela.">
-            <label for="nexa-toggle">Nexa AI Assistant</label>
-            <div class="setting-actions">
-                <span id="nexa-status" class="status-badge">OFF</span>
-                <label class="switch">
-                    <input type="checkbox" id="nexa-toggle" hidden>
-                    <div class="switch__wrapper">
-                        <div class="switch__toggle"></div>
-                    </div>
-                </label>
-            </div>
-        </div>
-
-        <!-- Opções de Voz / Google Text-to-Speech (Vinculadas à Nexa) -->
-        <div id="google-tts-container" style="display: none; margin-bottom: 12px; padding: 12px; background-color: rgba(0,0,0,0.3); border-radius: 6px; border: 1px solid #444; -webkit-app-region: no-drag;">
-            <div style="margin-bottom: 10px;">
-                <label for="google-tts-key" style="font-size: 13px; color: #00aaff; display: block; margin-bottom: 4px;">Credenciais Google TTS da Nexa (JSON ou API Key):</label>
-                <input type="text" id="google-tts-key" class="custom-input" placeholder="Ex: C:\Users\nome\Documentos\chave.json ou AIzaSy...">
-            </div>
-
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px;">
-                <button id="google-tts-test-btn" style="margin-top:0; padding:6px 14px; font-size:13px; background-color:#28a745;">Testar Conexão / Quota</button>
-                <span id="google-tts-test-result" style="font-size: 12px; margin-left: 10px;"></span>
-            </div>
-        </div>
-
         <div class="setting-item" title="Selecione o provedor e ferramenta de IA desejada (OpenAI, Ollama ou CLI nativo).">
             <label for="ai-model">Modo / Ferramenta de IA</label>
             <div class="setting-control">
@@ -468,7 +441,8 @@
     <div id="nexa-error-toast" style="display:none; margin-bottom:10px; padding:10px 14px; background:rgba(255, 77, 77, 0.9); color:#fff; border-radius:6px; font-size:13px; font-weight:bold; text-align:center; -webkit-app-region:no-drag; border:1px solid #ff6b6b;"></div>
     <div class="config-footer-actions">
         <button id="save-btn">Salvar e Fechar</button>
-        <button id="open-preferences-btn">Preferências do Usuário</button>
+        <button id="open-nexa-config-btn" type="button" class="nexa-footer-btn" title="Abrir configurações dedicadas da assistente Nexa, voz neural e avatar">Configurações da Nexa</button>
+        <button id="open-preferences-btn" type="button" title="Abrir dados pessoais e preferências de contexto">Preferências do Usuário</button>
     </div>
     <div class="config-footer-info">
         <p id="backend-url">

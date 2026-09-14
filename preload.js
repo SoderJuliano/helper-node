@@ -111,6 +111,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   setBackendModel: (model) => ipcRenderer.send("set-backend-model", model),
   getEdition: () => ipcRenderer.invoke("get-edition"),
   openConfig: () => ipcRenderer.send("open-config-ui"),
+  openPreferences: () => ipcRenderer.send("open-preferences-ui"),
+  openNexaConfig: () => ipcRenderer.send("open-nexa-config-ui"),
   stopNotifications: () => ipcRenderer.send("stop-notifications"),
   startNotifications: () => ipcRenderer.send("start-notifications"),
   cancelIaRequest: () => ipcRenderer.send("cancel-ia-request"),

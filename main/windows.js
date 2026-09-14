@@ -101,6 +101,49 @@ helpers.createPreferencesWindow = function() {
   });
 }
 
+helpers.createNexaConfigWindow = function() {
+  if (state.nexaConfigWindow && !state.nexaConfigWindow.isDestroyed()) {
+    if (state.nexaConfigWindow.isMinimized()) state.nexaConfigWindow.restore();
+    state.nexaConfigWindow.setAlwaysOnTop(true, "screen-saver");
+    state.nexaConfigWindow.show();
+    state.nexaConfigWindow.focus();
+    state.nexaConfigWindow.moveTop();
+    return;
+  }
+
+  const isStealth = configService.getStealthModeStatus();
+
+  state.nexaConfigWindow = new BrowserWindow({
+    width: 640,
+    height: 740,
+    minWidth: 480,
+    minHeight: 460,
+    title: "Configurações da Nexa",
+    backgroundColor: "#1a1a1a",
+    transparent: false,
+    frame: false,
+    thickFrame: false,
+    hasShadow: true,
+    alwaysOnTop: true,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+    },
+    skipTaskbar: isStealth,
+    icon: APP_ICON,
+  });
+
+  state.nexaConfigWindow.loadFile("nexaConfig.html");
+  state.nexaConfigWindow.setAlwaysOnTop(true, "screen-saver");
+  state.nexaConfigWindow.show();
+  state.nexaConfigWindow.focus();
+  state.nexaConfigWindow.moveTop();
+
+  state.nexaConfigWindow.on("closed", () => {
+    state.nexaConfigWindow = null;
+  });
+}
+
 helpers.createOsInputWindow = function() {
   if (state.osInputWindow && !state.osInputWindow.isDestroyed()) {
     state.osInputWindow.focus();
@@ -321,6 +364,18 @@ helpers.setupTray = function() {
         label: "Configurações",
         click: () => {
           helpers.createConfigWindow();
+        }
+      },
+      {
+        label: "Configurações da Nexa",
+        click: () => {
+          helpers.createNexaConfigWindow();
+        }
+      },
+      {
+        label: "Preferências do Usuário",
+        click: () => {
+          helpers.createPreferencesWindow();
         }
       },
       {
