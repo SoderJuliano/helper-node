@@ -214,12 +214,12 @@ class NexaLottieAnimation {
     const isLandscape = isSleeping || (!isDance && (this.canvas.width > this.canvas.height));
 
     if (isDance) {
-      // Animação de dança (720x405 16:9): o personagem fica em pé no centro ocupando toda a altura vertical.
-      // Ajustamos a escala pela altura total do canvas (360px), alinhando a proporção exata
-      // e altura visual de Nexa com todas as outras animações de pé (wave, idle, coffee, etc.).
+      // Animação de dança (720x405 16:9): o personagem fica em pé no centro ocupando a área principal.
+      // Aplicamos o multiplicador de escala (1.32x) para compensar as margens widescreen e alinhar
+      // a altura do corpo e proporção visual da Nexa exatamente com as demais animações em pé (wave, idle, coffee, PSD, etc.).
       const animRatio = this.canvas.width / this.canvas.height;
-      const drawH = canvasHeight;
-      const drawW = canvasHeight * animRatio;
+      const drawH = canvasHeight * 1.32;
+      const drawW = drawH * animRatio;
       const x = (canvasWidth - drawW) / 2;
       const y = (canvasHeight - drawH) / 2;
 

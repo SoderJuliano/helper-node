@@ -270,21 +270,7 @@ class NexaIntentClassifier {
       }
     }
 
-    // 4. Checagem de comandos diretos de gesto/animação (ex: "Nexa, faz um coraçãozinho", "Nexa dança")
-    for (const gesture of GESTURE_ANIMATION_MAPPINGS) {
-      for (const p of gesture.patterns) {
-        if (p.test(normalizedText)) {
-          return {
-            action: "REACT_ANIMATION_ONLY",
-            animation: gesture.animation,
-            reason: "Pedido direto de gesto (" + gesture.animation + ")"
-          };
-        }
-      }
-    }
-
-    // 3. Pergunta ou comando direto endereçado à Nexa
-    // Limpa a palavra-chave de invocação para enviar uma pergunta limpa à IA
+    // 4. Limpa a palavra-chave de invocação para obter a consulta/comando
     let cleanedQuery = text;
     if (hasWakeWord) {
       cleanedQuery = text
@@ -294,6 +280,27 @@ class NexaIntentClassifier {
     }
 
     const cleanNorm = stripAccents(cleanedQuery).toLowerCase().replace(/[.,!?;:]+$/g, "").trim();
+    const queryWords = cleanNorm.split(/\s+/).filter(Boolean);
+
+    // Palavras-chave de tarefas, instruções técnicas ou questionamentos complexos
+    const COMPLEX_TASK_PATTERNS = /\b(?:remove|remova|remover|tira|apaga|apagar|deleta|deletar|corrige|corrigir|arruma|arrumar|conserta|consertar|verifica|verificar|checa|checar|cria|criar|faz\s+(?:um\s+)?(?:script|codigo|arquivo|funcao|teste)|continua|continuar|de\s+onde\s+parou|projeto|arquivo|codigo|pasta|branch|commit|git|porque|por\s*que|pq|como|qual|quais|onde|quando|quanto|erro|bug|problema)\b/i;
+    const isComplexOrTaskQuery = queryWords.length > 7 || COMPLEX_TASK_PATTERNS.test(cleanNorm) || text.includes("?");
+
+    // 5. Checagem de comandos diretos de gesto/animação (ex: "Nexa, faz um coraçãozinho", "Nexa dança")
+    // Só é REACT_ANIMATION_ONLY se for um pedido EXCLUSIVO e direto de gesto (sem outras perguntas/tarefas na frase)
+    if (!isComplexOrTaskQuery) {
+      for (const gesture of GESTURE_ANIMATION_MAPPINGS) {
+        for (const p of gesture.patterns) {
+          if (p.test(normalizedText) || p.test(cleanNorm)) {
+            return {
+              action: "REACT_ANIMATION_ONLY",
+              animation: gesture.animation,
+              reason: "Pedido direto de gesto (" + gesture.animation + ")"
+            };
+          }
+        }
+      }
+    }
 
     // Checagem de conectividade / presença / "Você me ouviu?" / "Tá me ouvindo?"
     const PRESENCE_PATTERNS = [

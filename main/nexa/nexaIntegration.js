@@ -60,15 +60,13 @@ function isFileOrDevTool(toolName, toolLabel) {
 }
 
 // Segura o WORKING e SEARCHING por um instante depois da última tool para transição suave
-const WORKING_EXIT_DELAY_MS = 1200;
-const SEARCH_EXIT_DELAY_MS = 1000;
+const WORKING_EXIT_DELAY_MS = 2000;
+const SEARCH_EXIT_DELAY_MS = 1500;
 
 let activeFileTools = 0;
-let stateBeforeWorking = null;
 let workingExitTimer = null;
 
 let activeSearchTools = 0;
-let stateBeforeSearch = null;
 let searchExitTimer = null;
 
 function onSearchToolStart({ name, label } = {}) {
@@ -82,7 +80,6 @@ function onSearchToolStart({ name, label } = {}) {
 
   const current = nexaState.getState();
   if (current !== "SEARCHING" && current !== "SPEAKING") {
-    stateBeforeSearch = current;
     nexaState.setState("SEARCHING");
   }
 }
@@ -97,9 +94,7 @@ function onSearchToolEnd({ name, label } = {}) {
     if (activeSearchTools > 0) return;
     if (nexaState.getState() !== "SEARCHING") return;
 
-    const back = stateBeforeSearch && stateBeforeSearch !== "SEARCHING" ? stateBeforeSearch : "IDLE";
-    stateBeforeSearch = null;
-    nexaState.setState(back);
+    nexaState.setState("IDLE");
   }, SEARCH_EXIT_DELAY_MS);
 }
 
@@ -117,7 +112,6 @@ function onFileToolStart({ name, label } = {}) {
 
   const current = nexaState.getState();
   if (current !== "WORKING" && current !== "SPEAKING") {
-    stateBeforeWorking = current;
     nexaState.setState("WORKING");
   }
 }
@@ -135,9 +129,7 @@ function onFileToolEnd({ name, label } = {}) {
     if (activeFileTools > 0) return;
     if (nexaState.getState() !== "WORKING") return;
 
-    const back = stateBeforeWorking && stateBeforeWorking !== "WORKING" ? stateBeforeWorking : "IDLE";
-    stateBeforeWorking = null;
-    nexaState.setState(back);
+    nexaState.setState("IDLE");
   }, WORKING_EXIT_DELAY_MS);
 }
 

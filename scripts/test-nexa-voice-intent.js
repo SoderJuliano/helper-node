@@ -323,4 +323,12 @@ console.log("🧪 Iniciando testes de Intent Classifier da Nexa...\n");
   console.log("✅ Caso 42: Transcrição Whisper 'Dexa... RELPernode' -> Normalizada e classificada como RESPOND_AUDIO_AND_CHAT");
 }
 
-console.log("\n🎉 Todos os 42 testes do Intent Classifier passaram com sucesso!");
+{
+  const text = "Nexa, você ouviu um áudio de fundo aqui, não era pra você ter ouvido, pode continuar o trabalho de onde você parou. Remove aquela bolinha vermelha lá com 'x', que eu não sei pra que que serve, não pedi pra colocar, e verifica porque sua animação de dancinha, de dança, é pequeninha em comparação às outras.";
+  const res = NexaIntentClassifier.classify(text);
+  assert.strictEqual(res.action, "RESPOND_AUDIO_AND_CHAT", "Comando complexo com instruções e menção a dança deve ser enviado ao chat/IA");
+  assert.ok(res.cleanedQuery.includes("Remove aquela bolinha"), "Deve conter a pergunta limpa");
+  console.log("✅ Caso 43: Comando longo com tarefas e menção a 'dancinha' -> RESPOND_AUDIO_AND_CHAT");
+}
+
+console.log("\n🎉 Todos os testes do Intent Classifier passaram com sucesso!");

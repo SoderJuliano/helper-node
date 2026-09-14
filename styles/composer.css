@@ -283,8 +283,7 @@
             padding: 0 2px;
             width: 100%;
         }
-        .composer-image-preview-wrap.show,
-        .composer-image-preview-wrap:has(#screenshot-preview:not([style*="display: none"]):not([style*="display:none"])) {
+        .composer-image-preview-wrap.show {
             display: flex !important;
         }
         .composer-image-preview-card {
