@@ -101,12 +101,13 @@ class GeminiCliSession extends EventEmitter {
     this._transition('busy');
 
     const history = opts.history || [];
-    let isContinue = this._hasStarted && (history.length === this._lastHistoryLength);
+    const hasAgyConv = !!this._agyConvId;
+    let isContinue = (this._hasStarted && hasAgyConv) || (this._hasStarted && history.length === this._lastHistoryLength);
     
     let finalPrompt = prompt;
-    if (!isContinue && history.length > 0) {
+    if (!isContinue && !hasAgyConv && history.length > 0) {
       if (this._hasStarted) {
-        console.log(`[gemini-cli] histórico divergiu ou modelo foi alternado. Reiniciando sessão agy com reidratação do contexto.`);
+        console.log(`[gemini-cli] reiniciando sessão agy com reidratação do contexto.`);
         this._hasStarted = false;
         this._agyConvId = null;
       }
@@ -135,7 +136,8 @@ class GeminiCliSession extends EventEmitter {
             completed = true;
 
             this._hasStarted = true;
-            if (parser._agyConvId) this._agyConvId = parser._agyConvId;
+            const capturedConvId = parser.agyConvId || parser._agyConvId;
+            if (capturedConvId) this._agyConvId = capturedConvId;
             this._lastHistoryLength = history.length + 2;
             if (this._sessionId) {
               const sessions = loadSessions();
@@ -158,9 +160,10 @@ class GeminiCliSession extends EventEmitter {
 
             if (retriesLeft > 0 && !this._aborted) {
               console.warn(`[gemini-cli] Process error: ${err.message}. Retrying...`);
-              if (parser._agyConvId) {
+              const capturedConvId = parser.agyConvId || parser._agyConvId;
+              if (capturedConvId) {
                 this._hasStarted = true;
-                this._agyConvId = parser._agyConvId;
+                this._agyConvId = capturedConvId;
               }
               parser.reset();
               if (opts.onThinking) {
@@ -191,13 +194,8 @@ class GeminiCliSession extends EventEmitter {
           stderrChunks.push(chunk);
           parser.feedStderr(chunk);
         });
-        proc.onStdoutEnd(() => {
-          console.log('[gemini-cli] stdout end - flushing parser');
-          parser.flush();
-        });
         proc.onError((msg) => { console.warn('[gemini-cli] proc error:', msg); });
         proc.onClose((code, signal) => {
-          parser.flush();
           this._activeProc = null;
           if (this._aborted) {
             if (completed) return;
@@ -228,9 +226,10 @@ class GeminiCliSession extends EventEmitter {
               console.warn(`[gemini-cli] Processo encerrou com código ${code}. Tentativas restantes: ${retriesLeft}. Retentando...`);
               completed = true;
 
-              if (parser._agyConvId) {
+              const capturedConvId = parser.agyConvId || parser._agyConvId;
+              if (capturedConvId) {
                 this._hasStarted = true;
-                this._agyConvId = parser._agyConvId;
+                this._agyConvId = capturedConvId;
               }
               parser.reset();
 
@@ -253,27 +252,7 @@ class GeminiCliSession extends EventEmitter {
               reject(err);
             }
           } else {
-            if (completed) return;
-            completed = true;
-
-            // Process exited successfully
-            this._hasStarted = true;
-            if (parser._agyConvId) this._agyConvId = parser._agyConvId;
-            if (this._sessionId) {
-              const sessions = loadSessions();
-              sessions[this._projectPath] = {
-                sessionId: this._sessionId,
-                agyConvId: this._agyConvId,
-                lastUsed: Date.now()
-              };
-              saveSessions(sessions);
-            }
-
-            this._transition('waiting');
-            const text = parser._responseLines.join('\n').trim();
-            const thinking = parser._thinkingLines.join('\n').trim();
-            opts.onDone && opts.onDone({ text, thinking });
-            resolve({ text, thinking });
+            parser.flush();
           }
         });
 

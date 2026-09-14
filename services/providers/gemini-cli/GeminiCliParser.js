@@ -24,8 +24,13 @@ class GeminiCliParser {
     this._stepCount = 0;
     this._doneTimeout = null;
     this._pendingFileEdits = [];
+    this._agyConvId = null;
 
     this._poller = new GeminiCliTranscriptPoller((event, ...args) => this._emit(event, ...args));
+  }
+
+  get agyConvId() {
+    return this._agyConvId || (this._poller && this._poller.agyConvId) || null;
   }
 
   _exitInitPhase() {
@@ -191,6 +196,7 @@ class GeminiCliParser {
     this._stepCount = 0;
     this._doneTimeout = null;
     this._pendingFileEdits = [];
+    this._agyConvId = null;
   }
 
   feedStderr(chunk) {
@@ -207,6 +213,7 @@ class GeminiCliParser {
     const convMatch = line.match(/(?:conversation[ =]|update stream for |Created conversation )([a-f0-9-]{36})/i);
     if (convMatch) {
       const agyConvId = convMatch[1];
+      this._agyConvId = agyConvId;
       if (this._poller.agyConvId !== agyConvId) {
         this._poller.agyConvId = agyConvId;
         this._poller.start();

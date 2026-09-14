@@ -11,14 +11,16 @@ const CANDIDATE_COMMANDS = ['agy', 'gemini', 'gemini-cli'];
 // restante (Linux/macOS) é `which`. Retornamos o caminho completo resolvido
 // para que o spawn saiba se está lidando com um .exe ou um shim .cmd/.bat.
 async function resolveBinary() {
-  const locator = process.platform === 'win32' ? 'where' : 'which';
+  const locator = process.platform === 'win32' ? 'where.exe' : 'which';
   for (const cmd of CANDIDATE_COMMANDS) {
     try {
       const fullPath = await new Promise((resolve, reject) => {
         execFile(locator, [cmd], (err, stdout) => {
-          const first = stdout && stdout.split(/\r?\n/).map(s => s.trim()).find(Boolean);
-          if (err || !first) return reject(err || new Error('not found'));
-          resolve(first);
+          if (err || !stdout) return reject(err || new Error('not found'));
+          const lines = stdout.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+          // Prefer native .exe over .cmd/.bat shims on Windows
+          const exePath = lines.find(s => /\.exe$/i.test(s));
+          resolve(exePath || lines[0]);
         });
       });
       return fullPath; // found
