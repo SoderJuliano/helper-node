@@ -322,6 +322,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   batchSend: () => ipcRenderer.send("batch-send"),
   batchClear: () => ipcRenderer.send("batch-clear"),
   batchClose: () => ipcRenderer.send("batch-close"),
+  batchAddPastedImage: (base64) => ipcRenderer.send("batch-add-pasted-image", base64),
+  batchPasteFromClipboard: () => ipcRenderer.invoke("batch-paste-from-clipboard"),
   getBatchScreenshots: () => ipcRenderer.invoke("get-batch-screenshots"),
   platform: process.platform,
   // Drag manual de janelas frameless (Windows/macOS): o app-region:drag é

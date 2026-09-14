@@ -19,68 +19,76 @@ helpers.calculateImageHash = function(imageBuffer) {
   return crypto.createHash('md5').update(imageBuffer).digest('hex');
 }
 
-helpers.initializeClipboardBaseline = async function() {
+helpers.readSystemClipboardImage = async function() {
   try {
-    console.log('📋 Tentando inicializar baseline do clipboard...');
-    let hasImage = false;
-    let imageData = null;
-
     if (process.platform === 'win32' || process.platform === 'darwin') {
       try {
         const nativeImg = clipboard.readImage();
         if (!nativeImg.isEmpty()) {
           const pngBuf = nativeImg.toPNG();
           if (pngBuf && pngBuf.length > 0) {
-            hasImage = true;
-            imageData = 'data:image/png;base64,' + pngBuf.toString('base64');
+            return 'data:image/png;base64,' + pngBuf.toString('base64');
           }
         }
       } catch (e) {
-        console.log('📋 Clipboard nativo erro:', e.message);
+        console.warn('[clipboard] leitura nativa falhou:', e.message);
       }
     } else {
+      // Linux (Arch / Garuda / Ubuntu / Debian / Fedora)
+      try {
+        const nativeImg = clipboard.readImage();
+        if (!nativeImg.isEmpty()) {
+          const pngBuf = nativeImg.toPNG();
+          if (pngBuf && pngBuf.length > 0) {
+            return 'data:image/png;base64,' + pngBuf.toString('base64');
+          }
+        }
+      } catch (_) {}
+
       const isWayland = process.env.XDG_SESSION_TYPE === "wayland";
       if (isWayland) {
         try {
           const wlResult = await execPromise('timeout 2 wl-paste --list-types 2>/dev/null || echo ""');
           const types = (wlResult && wlResult.stdout || '').toLowerCase();
-          const mime = helpers.pickImageMime(types);
+          const mime = helpers.pickImageMime ? helpers.pickImageMime(types) : null;
           if (mime) {
             const imageResult = await execPromise(`timeout 3 wl-paste --type ${mime} | base64 -w 0 2>/dev/null || echo ""`);
-            if (imageResult && imageResult.stdout.trim()) {
-              hasImage = true;
-              imageData = `data:${mime};base64,` + imageResult.stdout.trim();
+            if (imageResult && imageResult.stdout && imageResult.stdout.trim()) {
+              return `data:${mime};base64,` + imageResult.stdout.trim();
             }
-          } else if (types.trim()) {
-            console.log('📋 [baseline] clipboard tipos disponíveis (sem imagem):', types.split('\n').filter(Boolean).join(', '));
           }
         } catch (e) {
-          console.log('📋 Wayland clipboard não disponível, tentando X11...');
+          console.warn('[clipboard] wl-paste falhou:', e.message);
         }
       }
-      
-      if (!hasImage) {
-        try {
-          const xclipResult = await execPromise('timeout 2 xclip -selection clipboard -t TARGETS -o 2>/dev/null || echo ""');
-          const types = (xclipResult && xclipResult.stdout || '').toLowerCase();
-          const mime = helpers.pickImageMime(types);
-          if (mime) {
-            const imageResult = await execPromise(`timeout 3 xclip -selection clipboard -t ${mime} -o | base64 -w 0 2>/dev/null || echo ""`);
-            if (imageResult && imageResult.stdout.trim()) {
-              hasImage = true;
-              imageData = `data:${mime};base64,` + imageResult.stdout.trim();
-            }
-          } else if (types.trim()) {
-            console.log('📋 [baseline] X11 clipboard tipos (sem imagem):', types.split('\n').filter(Boolean).join(', '));
+
+      try {
+        const xclipResult = await execPromise('timeout 2 xclip -selection clipboard -t TARGETS -o 2>/dev/null || echo ""');
+        const types = (xclipResult && xclipResult.stdout || '').toLowerCase();
+        const mime = helpers.pickImageMime ? helpers.pickImageMime(types) : null;
+        if (mime) {
+          const imageResult = await execPromise(`timeout 3 xclip -selection clipboard -t ${mime} -o | base64 -w 0 2>/dev/null || echo ""`);
+          if (imageResult && imageResult.stdout && imageResult.stdout.trim()) {
+            return `data:${mime};base64,` + imageResult.stdout.trim();
           }
-        } catch (e) {
-          console.log('📋 X11 clipboard não disponível');
         }
+      } catch (e) {
+        console.warn('[clipboard] xclip falhou:', e.message);
       }
     }
+  } catch (error) {
+    console.warn('[clipboard] erro ao ler clipboard do sistema:', error.message);
+  }
+  return null;
+};
+
+helpers.initializeClipboardBaseline = async function() {
+  try {
+    console.log('📋 Tentando inicializar baseline do clipboard...');
+    const imageData = await helpers.readSystemClipboardImage();
     
-    if (hasImage && imageData) {
-      const base64Data = imageData.replace(/^data:image\/png;base64,/, '');
+    if (imageData) {
+      const base64Data = imageData.replace(/^data:image\/[a-z0-9.+-]+;base64,/, '');
       const currentHash = helpers.calculateImageHash(Buffer.from(base64Data, 'base64'));
       state.lastClipboardImageHash = currentHash;
       // CRITICAL: marca a imagem que ja estava no clipboard como "recem-processada"
@@ -138,71 +146,11 @@ helpers.startClipboardMonitoring = function() {
       const isPrintModeEnabled = configService.getPrintModeStatus();
       if (!isPrintModeEnabled) return;
       
-      let hasImage = false;
-      let imageData = null;
-      let currentHash = null;
-      
-      if (process.platform === 'win32' || process.platform === 'darwin') {
-        try {
-          const nativeImg = clipboard.readImage();
-          if (!nativeImg.isEmpty()) {
-            const pngBuf = nativeImg.toPNG();
-            if (pngBuf && pngBuf.length > 0) {
-              hasImage = true;
-              imageData = 'data:image/png;base64,' + pngBuf.toString('base64');
-              currentHash = helpers.calculateImageHash(pngBuf);
-            }
-          }
-        } catch (e) {
-          // Native clipboard read failed
-        }
-      } else {
-        const isWayland = process.env.XDG_SESSION_TYPE === "wayland";
-        if (isWayland) {
-          // Try Wayland first
-          try {
-            const wlResult = await execPromise('wl-paste --list-types 2>/dev/null').catch(() => null);
-            const types = (wlResult && wlResult.stdout || '').toLowerCase();
-            const mime = helpers.pickImageMime(types);
-            if (mime) {
-              try {
-                const imageResult = await execPromise(`wl-paste --type ${mime} | base64 -w 0`);
-                if (imageResult && imageResult.stdout && imageResult.stdout.trim()) {
-                  hasImage = true;
-                  imageData = `data:${mime};base64,` + imageResult.stdout.trim();
-                  const base64Data = imageResult.stdout.trim();
-                  currentHash = helpers.calculateImageHash(Buffer.from(base64Data, 'base64'));
-                }
-              } catch (extractError) {
-                // Silent error handling for Wayland
-              }
-            }
-          } catch (e) {
-            // Silent error handling
-            // Fallback to X11 if Wayland fails
-          }
-        }
-        
-        // Try X11 if not Wayland or if Wayland failed
-        if (!hasImage) {
-          try {
-            const xclipResult = await execPromise('xclip -selection clipboard -t TARGETS -o 2>/dev/null').catch(() => null);
-            const types = (xclipResult && xclipResult.stdout || '').toLowerCase();
-            const mime = helpers.pickImageMime(types);
-            if (mime) {
-              const imageResult = await execPromise(`xclip -selection clipboard -t ${mime} -o | base64 -w 0`).catch(() => null);
-              if (imageResult && imageResult.stdout) {
-                hasImage = true;
-                imageData = `data:${mime};base64,` + imageResult.stdout.trim();
-                const base64Data = imageResult.stdout.trim();
-                currentHash = helpers.calculateImageHash(Buffer.from(base64Data, 'base64'));
-              }
-            }
-          } catch (e) {
-            // Silent error handling
-          }
-        }
-      }
+      const imageData = await helpers.readSystemClipboardImage();
+      const hasImage = !!imageData;
+      const currentHash = imageData
+        ? helpers.calculateImageHash(Buffer.from(imageData.replace(/^data:image\/[a-z0-9.+-]+;base64,/, ''), 'base64'))
+        : null;
       
       if (hasImage && imageData && currentHash) {
         // Check if this is the same image as before

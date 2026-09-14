@@ -29,4 +29,30 @@ module.exports = function registerIpc() {
   ipcMain.handle("get-batch-screenshots", () => {
     return state.batchScreenshots || [];
   });
+
+  ipcMain.on("batch-add-pasted-image", async (_event, base64Data) => {
+    if (!base64Data && helpers.readSystemClipboardImage) {
+      base64Data = await helpers.readSystemClipboardImage();
+    }
+    if (base64Data && helpers.addScreenshotToBatch) {
+      await helpers.addScreenshotToBatch(base64Data);
+    }
+  });
+
+  ipcMain.handle("batch-paste-from-clipboard", async () => {
+    try {
+      let dataUrl = null;
+      if (helpers.readSystemClipboardImage) {
+        dataUrl = await helpers.readSystemClipboardImage();
+      }
+      if (dataUrl && helpers.addScreenshotToBatch) {
+        await helpers.addScreenshotToBatch(dataUrl);
+        return { success: true };
+      }
+      return { success: false, reason: "Nenhuma imagem no clipboard" };
+    } catch (e) {
+      console.warn("[batch-screenshot] falha ao colar do clipboard:", e.message);
+      return { success: false, error: e.message };
+    }
+  });
 };

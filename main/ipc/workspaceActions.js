@@ -81,9 +81,12 @@ ipcMain.on("process-pasted-image", (event, base64Image) => {
 
 ipcMain.handle("is-ide-project-mode", () => helpers.isIdeProjectMode());
 
-// Ctrl+V na tela hero: nada está focado, então o evento `paste` do Chromium não
+// Ctrl+V na tela hero ou overlay: nada está focado, então o evento `paste` do Chromium não
 // dispara e o renderer não tem como ler o clipboard. Aqui ele pede pro main.
-ipcMain.handle("read-clipboard-image", () => {
+ipcMain.handle("read-clipboard-image", async () => {
+  if (helpers.readSystemClipboardImage) {
+    return await helpers.readSystemClipboardImage();
+  }
   try {
     const { clipboard } = require('electron');
     const img = clipboard.readImage();

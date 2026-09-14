@@ -55,4 +55,14 @@ assert.strictEqual(typeof helpers.toggleBatchScreenshot, 'function');
 assert.strictEqual(typeof helpers.processBatchScreenshots, 'function');
 assert.strictEqual(typeof helpers.processBatchOsQuestion, 'function');
 
+// Test 6: Cross-platform clipboard reader and paste integration
+console.log('Test 6: Validar helpers.readSystemClipboardImage e paste');
+require('../main/helpers/clipboard.js');
+assert.strictEqual(typeof helpers.readSystemClipboardImage, 'function', 'helpers.readSystemClipboardImage deve existir');
+
+// Simular colagem de imagem no batch
+helpers.addScreenshotToBatch(fakeBase64_1);
+assert.strictEqual(state.batchScreenshots.length, 1, 'Deveria ter 1 print colado na fila');
+helpers.clearBatchScreenshots();
+
 console.log('✅ Todos os testes do Batch Screenshot Collector passaram com sucesso!');

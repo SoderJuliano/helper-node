@@ -119,17 +119,111 @@
     }
   }
 
+  let lastPastedTimestamp = 0;
+  function handlePastedBase64(base64Image) {
+    if (!base64Image) return;
+    const now = Date.now();
+    if (now - lastPastedTimestamp < 250) return;
+    lastPastedTimestamp = now;
+
+    if (api.batchAddPastedImage) {
+      api.batchAddPastedImage(base64Image);
+    } else {
+      addScreenshot({ base64Image });
+    }
+  }
+
+  // Foco automático ao passar o mouse para receber atalhos de teclado (Ctrl+V, Alt+S, Esc)
+  window.addEventListener('mouseenter', () => {
+    try { window.focus(); } catch (_) {}
+  });
+
   if (btnSend) btnSend.addEventListener('click', sendAll);
   if (btnClear) btnClear.addEventListener('click', clearAll);
   if (btnClose) btnClose.addEventListener('click', closeOverlay);
 
-  document.addEventListener('keydown', (e) => {
+  // Caminho 1: Evento paste padrão do DOM (quando a janela tem foco)
+  document.addEventListener('paste', (e) => {
+    const items = (e.clipboardData || window.clipboardData)?.items;
+    if (items && items.length > 0) {
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type && items[i].type.indexOf('image') !== -1) {
+          e.preventDefault();
+          const blob = items[i].getAsFile();
+          if (blob) {
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+              if (evt.target && evt.target.result) {
+                handlePastedBase64(evt.target.result);
+              }
+            };
+            reader.readAsDataURL(blob);
+            return;
+          }
+        }
+      }
+    }
+  });
+
+  // Atalhos de teclado: Esc (fechar), Alt+S (enviar), Ctrl+V/Cmd+V (colar imagem do clipboard nativo)
+  document.addEventListener('keydown', async (e) => {
     if (e.key === 'Escape') {
       e.preventDefault();
       closeOverlay();
     } else if (e.altKey && (e.key === 's' || e.key === 'S')) {
       e.preventDefault();
       sendAll();
+    } else if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
+      e.preventDefault();
+      if (api.batchPasteFromClipboard) {
+        try {
+          await api.batchPasteFromClipboard();
+        } catch (_) {}
+      } else if (api.readClipboardImage) {
+        try {
+          const dataUrl = await api.readClipboardImage();
+          if (dataUrl) handlePastedBase64(dataUrl);
+        } catch (_) {}
+      }
+    }
+  });
+
+  // Caminho 3: Arrastar e soltar arquivos de imagem (Drag & Drop)
+  const container = document.getElementById('batch-container') || document.body;
+  
+  window.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (container) container.classList.add('drag-over');
+  });
+
+  window.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.clientX <= 0 || e.clientY <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight) {
+      if (container) container.classList.remove('drag-over');
+    }
+  });
+
+  window.addEventListener('drop', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (container) container.classList.remove('drag-over');
+
+    const files = e.dataTransfer && e.dataTransfer.files;
+    if (files && files.length > 0) {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (file.type && file.type.startsWith('image/')) {
+          const reader = new FileReader();
+          reader.onload = (evt) => {
+            if (evt.target && evt.target.result) {
+              handlePastedBase64(evt.target.result);
+            }
+          };
+          reader.readAsDataURL(file);
+        }
+      }
     }
   });
 
