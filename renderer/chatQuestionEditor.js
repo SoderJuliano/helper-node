@@ -162,9 +162,14 @@
     window.isEditingQuestion = false;
     _removeEditEscHandler();
 
-    if (typeof window.cancelIaAndFreezeStream === 'function') {
-      window.cancelIaAndFreezeStream();
-    }
+    try {
+      if (typeof typingCursor !== 'undefined' && typingCursor && typingCursor.parentNode) {
+        typingCursor.remove();
+      }
+    } catch (_) {}
+    if (typeof streamingElement !== 'undefined') streamingElement = null;
+    if (typeof streamingText !== 'undefined') streamingText = '';
+    if (typeof typingCursor !== 'undefined') typingCursor = null;
 
     const transcriptionElement = document.getElementById('transcription');
     if (transcriptionElement) {

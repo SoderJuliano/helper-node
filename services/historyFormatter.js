@@ -50,7 +50,7 @@ function cleanMessageContent(content) {
  */
 function buildPromptWithHistory(currentPrompt, pastMessages = [], opts = {}) {
   const text = (currentPrompt || '').trim();
-  if (!Array.isArray(pastMessages) || pastMessages.length === 0) {
+  if (!Array.isArray(pastMessages) || pastMessages.length === 0 || text.includes('=== HISTÓRICO DA CONVERSA')) {
     return text;
   }
 

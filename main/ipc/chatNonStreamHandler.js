@@ -26,18 +26,19 @@ async function handleSendToGemini(event, text, sessionId) {
     }
 
     const visualCtx = await helpers.prepareVisualPromptContext(text, aiModel);
+    let promptCurrentWithVisual = text;
     let promptWithVisualContext = promptWithHistory;
     if (visualCtx.screenshotPath) {
       const visualHeader = `[CAPTURA DE TELA EM TEMPO REAL: Janela/Tela "${visualCtx.sourceName}"]\nArquivo: ${visualCtx.screenshotPath}\nTexto capturado da tela por OCR:\n"""\n${visualCtx.ocrText || "(Visual gráfico da janela)"}\n"""\nDIRETIVA VISUAL: Você tem acesso visual direto à tela/janela do usuário capturada acima. Responda DIRETAMENTE sobre o conteúdo visual e textual da tela. NUNCA diga que não consegue ver a tela.\n\n---\n\n`;
-      promptWithVisualContext = visualHeader + promptWithVisualContext;
+      promptCurrentWithVisual = visualHeader + text;
+      promptWithVisualContext = visualHeader + promptWithHistory;
     }
 
     if (aiModel === 'geminiCli') {
       const projectPath = workspace.getProjectPath();
       const geminiModel = configService.getGeminiCliModel();
       GeminiCliProvider.setModel(geminiModel);
-      const textToDeliver = visualCtx.screenshotPath ? promptWithVisualContext : promptWithHistory;
-      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(textToDeliver));
+      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(promptCurrentWithVisual));
       try {
         const result = await GeminiCliProvider.send(finalPrompt, projectPath, event.sender, sessionId, pastMessages);
         if (result && result.text) {
@@ -54,8 +55,7 @@ async function handleSendToGemini(event, text, sessionId) {
       const projectPath = workspace.getProjectPath();
       const claudeModel = configService.getClaudeCliModel();
       ClaudeCliProvider.setModel(claudeModel);
-      const textToDeliver = visualCtx.screenshotPath ? promptWithVisualContext : promptWithHistory;
-      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(textToDeliver));
+      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(promptCurrentWithVisual));
       try {
         const result = await ClaudeCliProvider.send(finalPrompt, projectPath, event.sender, sessionId, pastMessages);
         if (result && result.text) {

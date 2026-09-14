@@ -162,6 +162,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onNexaVoiceSpeechPreview: (cb) => ipcRenderer.on("nexa-voice:speech-preview", (event, data) => cb(data)),
   onNexaVoiceSubmitQuestion: (cb) => ipcRenderer.on("nexa-voice:submit-question", (event, data) => cb(data)),
   onNexaVoiceQuickReply: (cb) => ipcRenderer.on("nexa-voice:quick-reply", (event, data) => cb(data)),
+  sendNexaVoiceProcessingStarted: () => ipcRenderer.send("nexa-voice:processing-started"),
   sendNexaVoiceProcessingFinished: () => ipcRenderer.send("nexa-voice:processing-finished"),
   processPastedImage: (base64Image) =>
     ipcRenderer.send("process-pasted-image", base64Image),

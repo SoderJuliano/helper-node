@@ -346,6 +346,9 @@ var isEditingQuestion = false;
         }
 
         window.electronAPI.startNotifications();
+        if (window.electronAPI && window.electronAPI.sendNexaVoiceProcessingStarted) {
+            window.electronAPI.sendNexaVoiceProcessingStarted();
+        }
     }
 
     if (window.electronAPI && window.electronAPI.onNexaVoiceSubmitQuestion) {

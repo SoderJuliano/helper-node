@@ -107,6 +107,13 @@ function registerIpc() {
     }
   });
 
+  // Quando o processamento da IA começa no chat
+  ipcMain.on("nexa-voice:processing-started", () => {
+    if (session.isActive()) {
+      session.isQueryExecuting = true;
+    }
+  });
+
   // Quando o processamento da IA termina no chat sem áudio TTS
   ipcMain.on("nexa-voice:processing-finished", () => {
     if (session.isActive() && !session.isSpeakingTts) {

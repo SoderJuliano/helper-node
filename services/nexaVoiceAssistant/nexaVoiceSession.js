@@ -48,10 +48,10 @@ class NexaVoiceSession extends EventEmitter {
       // Dispara aquecimento preventivo do Whisper em background (0% de impacto na thread de áudio)
       warmupWhisper().catch(() => {});
 
-      // Se a Nexa estava falando ou executando query anterior e o usuário começou a falar (Barge-In instantâneo)
-      if (this.isSpeakingTts || this.isQueryExecuting) {
-        console.log("[NexaVoiceSession] Interrupção instantânea (Barge-In no speech-start): parando fala da Nexa imediatamente.");
-        this.stopTtsPlayback();
+      // Se a Nexa estava falando via TTS (alto-falante), silencia imediatamente o áudio falado (Barge-In de voz)
+      if (this.isSpeakingTts) {
+        console.log("[NexaVoiceSession] Interrupção instantânea (Barge-In no speech-start): silenciando áudio TTS da Nexa.");
+        this.stopTtsAudioOnly();
       }
 
       // Se estava em follow-up e o usuário começou a falar, cancela o timer para não expirar durante a fala
@@ -59,12 +59,16 @@ class NexaVoiceSession extends EventEmitter {
         clearTimeout(this.followUpTimer);
         this.followUpTimer = null;
       }
-      this.emit("state-changed", { state: "listening", followUpActive: this.followUpActive });
+
+      // Se a IA NÃO estiver executando uma query ativamente em background, sinaliza estado listening
+      if (!this.isQueryExecuting) {
+        this.emit("state-changed", { state: "listening", followUpActive: this.followUpActive });
+      }
     });
 
     this.turnDetector.on("barge-in", () => {
-      console.log("[NexaVoiceSession] Barge-in disparado pelo detector: interrompendo TTS.");
-      this.stopTtsPlayback();
+      console.log("[NexaVoiceSession] Barge-in disparado pelo detector: silenciando áudio TTS.");
+      this.stopTtsAudioOnly();
     });
 
     this.turnDetector.on("voice-decay", (decayInfo) => {
@@ -119,7 +123,7 @@ class NexaVoiceSession extends EventEmitter {
     this.followUpTimer = null;
     this.context.clear();
 
-    this.stopTtsPlayback();
+    this.stopTtsAudioOnly();
     this.turnDetector.stop();
     this.emit("status-changed", { active: false, state: "idle", followUpActive: false });
   }
@@ -137,19 +141,12 @@ class NexaVoiceSession extends EventEmitter {
   }
 
   /**
-   * Interrompe imediatamente a reprodução de áudio TTS da Nexa (Barge-In).
+   * Silencia apenas o áudio TTS da Nexa sem cancelar a IA ou matar processos.
    */
-  stopTtsPlayback() {
+  stopTtsAudioOnly() {
     this.isSpeakingTts = false;
-    this.isProcessing = false;
-    this.isQueryExecuting = false;
-    this.isTranscribing = false;
     this.turnDetector.setTtsActive(false);
-    if (this.processingTimeout) {
-      clearTimeout(this.processingTimeout);
-      this.processingTimeout = null;
-    }
-    const { state, helpers } = require("../../main/globals");
+    const { state } = require("../../main/globals");
     if (state.nexaWindow && !state.nexaWindow.isDestroyed()) {
       try {
         state.nexaWindow.webContents.send("stop-tts-audio");
@@ -158,6 +155,25 @@ class NexaVoiceSession extends EventEmitter {
     if (state.mainWindow && !state.mainWindow.isDestroyed()) {
       try {
         state.mainWindow.webContents.send("stop-tts-audio");
+      } catch (_) {}
+    }
+  }
+
+  /**
+   * Cancela a reprodução de TTS e interrompe a execução atual da IA se solicitado expressamente.
+   */
+  cancelAiExecution() {
+    this.stopTtsAudioOnly();
+    this.isProcessing = false;
+    this.isQueryExecuting = false;
+    this.isTranscribing = false;
+    if (this.processingTimeout) {
+      clearTimeout(this.processingTimeout);
+      this.processingTimeout = null;
+    }
+    const { state, helpers } = require("../../main/globals");
+    if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+      try {
         state.mainWindow.webContents.send("ide-audio-transcribing", { isTranscribing: false });
       } catch (_) {}
     }
@@ -165,6 +181,13 @@ class NexaVoiceSession extends EventEmitter {
       try { helpers.cancelIaAndFreezeStream(); } catch (_) {}
     }
     this.emit("barge-in");
+  }
+
+  /**
+   * Interrompe imediatamente a reprodução de áudio TTS da Nexa.
+   */
+  stopTtsPlayback() {
+    this.stopTtsAudioOnly();
   }
 
   /**
@@ -227,12 +250,12 @@ class NexaVoiceSession extends EventEmitter {
 
       const hasWakeWord = NexaIntentClassifier.hasValidWakeWord(cleanedText);
 
-      // A) BARGE-IN: Se a Nexa estava falando (TTS) ou processando query de IA no momento em que o usuário falou
+      // A) BARGE-IN: Se a Nexa estava falando (TTS) ou a IA estava processando quando o usuário falou
       const isInterruptingPrior = this.isSpeakingTts || this.isQueryExecuting;
       if (isInterruptingPrior) {
         if (classification.action === "STOP_AND_LISTEN" || hasWakeWord) {
-          console.log("[NexaVoiceSession] Barge-in: usuário interveio durante fala/processamento da Nexa.");
-          this.stopTtsPlayback();
+          console.log("[NexaVoiceSession] Intervenção intencional do usuário durante execução/fala anterior.");
+          this.cancelAiExecution();
 
           // Se a intervenção foi apenas para chamar a Nexa ou mandar parar (sem uma pergunta complexa anexada)
           if (classification.action === "STOP_AND_LISTEN" || !classification.cleanedQuery || classification.isCasualGreeting) {
@@ -243,8 +266,14 @@ class NexaVoiceSession extends EventEmitter {
           }
           // Caso contrário (ex: "Nexa, cria um script pra mim"), prossegue abaixo para responder à nova pergunta
         } else {
-          // Ruído ambiente ou fala não direcionada à Nexa durante a execução -> ignora e mantém fluxo
-          this._endProcessingAndResume();
+          // Ruído ambiente ou fala não direcionada à Nexa durante a execução -> ignora e mantém fluxo da IA ativo!
+          console.log("[NexaVoiceSession] Áudio de fundo/ruído descartado durante processamento ativo. Mantendo fluxo da IA.");
+          this.isTranscribing = false;
+          if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+            try {
+              state.mainWindow.webContents.send("ide-audio-transcribing", { isTranscribing: false });
+            } catch (_) {}
+          }
           return;
         }
       }
@@ -252,7 +281,7 @@ class NexaVoiceSession extends EventEmitter {
       // B) Comando de parada explícito fora de fala
       if (classification.action === "STOP_AND_LISTEN") {
         console.log("[NexaVoiceSession] Comando de parada recebido em idle.");
-        this.stopTtsPlayback();
+        this.cancelAiExecution();
         this.followUpActive = false;
         if (this.followUpTimer) {
           clearTimeout(this.followUpTimer);
@@ -262,7 +291,7 @@ class NexaVoiceSession extends EventEmitter {
         return;
       }
 
-      // C) Ação IGNORAR (ruído, conversa paralela com filho/terceiros, monólogo)
+      // C) Ação IGNORAR (ruído, áudio do monitor, conversa paralela, monólogo)
       if (classification.action === "IGNORE") {
         if (classification.expireFollowUp || this.followUpActive) {
           this.followUpActive = false;
@@ -270,6 +299,15 @@ class NexaVoiceSession extends EventEmitter {
             clearTimeout(this.followUpTimer);
             this.followUpTimer = null;
           }
+        }
+        if (this.isQueryExecuting) {
+          this.isTranscribing = false;
+          if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+            try {
+              state.mainWindow.webContents.send("ide-audio-transcribing", { isTranscribing: false });
+            } catch (_) {}
+          }
+          return;
         }
         this._endProcessingAndResume();
         return;
