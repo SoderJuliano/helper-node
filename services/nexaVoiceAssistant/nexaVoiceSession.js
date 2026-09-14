@@ -177,9 +177,9 @@ class NexaVoiceSession extends EventEmitter {
     let wavPath = null;
 
     try {
-      // 0. Validação de energia de áudio antes de acionar Whisper (evita alucinações em ruído/silêncio)
+      // 0. Validação de energia de áudio antes de acionar Whisper (evita alucinações em silêncio absoluto)
       const rms = avgRms !== undefined ? avgRms : (helpers._computeRMS ? helpers._computeRMS(pcmBuffer) : NexaTurnDetector.computeRms(pcmBuffer));
-      if (rms < 45 || (durationMs && durationMs < 350)) {
+      if (rms < 20 || (durationMs && durationMs < 180)) {
         console.log(`[NexaVoiceSession] Áudio descartado antes do Whisper por baixa energia/duração (RMS: ${Math.round(rms)}, duração: ${durationMs}ms)`);
         if (!this.isSpeakingTts && !this.isQueryExecuting) {
           this._endProcessingAndResume();
