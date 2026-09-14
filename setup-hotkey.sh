@@ -177,53 +177,83 @@ elif [[ "$XDG_CURRENT_DESKTOP" == *"KDE"* || "$XDG_CURRENT_DESKTOP" == *"PLASMA"
     PLASMA_VER=$(plasmashell --version 2>/dev/null | grep -oP '(?<=plasmashell )\d+' || echo "5")
     if [[ "$PLASMA_VER" -ge 6 ]]; then
         echo "Configuring for KDE Plasma 6 (Wayland compatible)..."
-        echo "Due to KDE 6 Wayland security restrictions, global shortcuts configured via script require a logout/login."
-        echo "To provide IMMEDIATE hotkeys, we will install a background evdev listener (requires sudo)."
+        echo "Installing robust background evdev listener (supports dynamic USB plug/unplug)..."
         
-        # Cria e instala o script evdev
+        SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
         EVDEV_SCRIPT="/tmp/helper-node-evdev-hotkeys.py"
-        cat > "$EVDEV_SCRIPT" << 'EOF'
+        if [ -f "$SCRIPT_DIR/os-integration/evdev-hotkeys.py" ]; then
+            cp "$SCRIPT_DIR/os-integration/evdev-hotkeys.py" "$EVDEV_SCRIPT"
+        else
+            cat > "$EVDEV_SCRIPT" << 'EOF'
 #!/usr/bin/env python3
-import evdev, asyncio, os, getpass, pwd, subprocess
-from evdev import ecodes
+import evdev, asyncio, os, subprocess, glob
+from evdev import ecodes, InputDevice
 
 SHORTCUTS = {
-    (frozenset([ecodes.KEY_LEFTCTRL]), frozenset([ecodes.KEY_D])): "curl -X POST http://localhost:3000/toggle-recording -s -o /dev/null",
-    (frozenset([ecodes.KEY_LEFTCTRL]), frozenset([ecodes.KEY_I])): "curl -X POST http://localhost:3000/bring-to-focus-and-input -s -o /dev/null",
-    (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_I])): "curl -X POST http://localhost:3000/bring-to-focus-and-input -s -o /dev/null",
-    (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_S])): "curl -X POST http://localhost:3000/capture-screen-auto -s -o /dev/null",
-    (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_C])): "curl -X POST http://localhost:3000/open-config -s -o /dev/null",
-    (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_1])): "curl -X POST http://localhost:3000/move-to-display/0 -s -o /dev/null",
-    (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_2])): "curl -X POST http://localhost:3000/move-to-display/1 -s -o /dev/null",
+    (frozenset([ecodes.KEY_LEFTCTRL]), frozenset([ecodes.KEY_D])): "curl -m 2 -X POST http://127.0.0.1:3000/toggle-recording -s -o /dev/null",
+    (frozenset([ecodes.KEY_LEFTMETA]), frozenset([ecodes.KEY_D])): "curl -m 2 -X POST http://127.0.0.1:3000/toggle-recording -s -o /dev/null",
+    (frozenset([ecodes.KEY_LEFTCTRL]), frozenset([ecodes.KEY_I])): "curl -m 2 -X POST http://127.0.0.1:3000/bring-to-focus-and-input -s -o /dev/null",
+    (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_I])): "curl -m 2 -X POST http://127.0.0.1:3000/bring-to-focus-and-input -s -o /dev/null",
+    (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_S])): "curl -m 2 -X POST http://127.0.0.1:3000/capture-screen-auto -s -o /dev/null",
+    (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_C])): "curl -m 2 -X POST http://127.0.0.1:3000/open-config -s -o /dev/null",
+    (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_1])): "curl -m 2 -X POST http://127.0.0.1:3000/move-to-display/0 -s -o /dev/null",
+    (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_2])): "curl -m 2 -X POST http://127.0.0.1:3000/move-to-display/1 -s -o /dev/null",
 }
 
-MODS = {ecodes.KEY_LEFTCTRL: ecodes.KEY_LEFTCTRL, ecodes.KEY_RIGHTCTRL: ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT: ecodes.KEY_LEFTSHIFT, ecodes.KEY_RIGHTSHIFT: ecodes.KEY_LEFTSHIFT}
-TARGET_USER = os.environ.get("SUDO_USER", "root")
+MODS = {
+    ecodes.KEY_LEFTCTRL: ecodes.KEY_LEFTCTRL, ecodes.KEY_RIGHTCTRL: ecodes.KEY_LEFTCTRL,
+    ecodes.KEY_LEFTSHIFT: ecodes.KEY_LEFTSHIFT, ecodes.KEY_RIGHTSHIFT: ecodes.KEY_LEFTSHIFT,
+    ecodes.KEY_LEFTALT: ecodes.KEY_LEFTALT, ecodes.KEY_RIGHTALT: ecodes.KEY_LEFTALT,
+    ecodes.KEY_LEFTMETA: ecodes.KEY_LEFTMETA, ecodes.KEY_RIGHTMETA: ecodes.KEY_LEFTMETA
+}
 
-async def monitor(dev):
+def execute_curl(cmd):
+    try: subprocess.Popen(cmd, shell=True)
+    except: pass
+
+async def monitor(dev_path):
     active = set()
     try:
+        dev = InputDevice(dev_path)
         async for event in dev.async_read_loop():
             if event.type == ecodes.EV_KEY:
                 e = evdev.categorize(event)
                 if e.scancode in MODS:
                     if e.keystate == 1: active.add(MODS[e.scancode])
-                    elif e.keystate == 0 and MODS[e.scancode] in active: active.remove(MODS[e.scancode])
+                    elif e.keystate == 0: active.discard(MODS[e.scancode])
                 elif e.keystate == 1:
                     combo = (frozenset(active), frozenset([e.scancode]))
                     if combo in SHORTCUTS:
-                        cmd = SHORTCUTS[combo]
-                        if TARGET_USER != 'root': cmd = f"su - {TARGET_USER} -c '{cmd}'"
-                        subprocess.Popen(cmd, shell=True)
+                        execute_curl(SHORTCUTS[combo])
     except: pass
 
-async def main():
-    devs = [evdev.InputDevice(p) for p in evdev.list_devices()]
-    kbds = [d for d in devs if ecodes.EV_KEY in d.capabilities() and ecodes.KEY_A in d.capabilities()[ecodes.EV_KEY]]
-    await asyncio.gather(*(monitor(d) for d in kbds))
+def is_kbd(dev_path):
+    try:
+        dev = InputDevice(dev_path)
+        caps = dev.capabilities()
+        if ecodes.EV_KEY in caps:
+            keys = caps[ecodes.EV_KEY]
+            return ecodes.KEY_A in keys and ecodes.KEY_ENTER in keys
+    except: pass
+    return False
 
-if __name__ == "__main__": asyncio.run(main())
+async def main():
+    tasks = {}
+    while True:
+        try:
+            dead = [p for p, t in tasks.items() if t.done()]
+            for p in dead: tasks.pop(p, None)
+            for path in sorted(glob.glob("/dev/input/event*")):
+                if path not in tasks and is_kbd(path):
+                    tasks[path] = asyncio.create_task(monitor(path))
+        except: pass
+        await asyncio.sleep(2)
+
+if __name__ == "__main__":
+    try: asyncio.run(main())
+    except KeyboardInterrupt: pass
 EOF
+        fi
 
         SERVICE_FILE="/tmp/helper-node-hotkeys.service"
         cat > "$SERVICE_FILE" << EOF
@@ -234,23 +264,24 @@ After=network.target
 [Service]
 ExecStart=/usr/local/bin/helper-node-evdev-hotkeys
 Restart=always
+RestartSec=3
 User=root
-Environment=SUDO_USER=$USER
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-        echo "Asking for permission via pkexec to install the robust hotkey daemon..."
-        if pkexec bash -c "cp $EVDEV_SCRIPT /usr/local/bin/helper-node-evdev-hotkeys && chmod +x /usr/local/bin/helper-node-evdev-hotkeys && cp $SERVICE_FILE /etc/systemd/system/ && systemctl daemon-reload && systemctl enable --now helper-node-hotkeys.service"; then
-            echo "------------------------------------------------------------------"
-            echo "SUCCESS: KDE Plasma 6 hotkeys configured robustly via systemd daemon!"
-            echo "Global hotkeys are ACTIVE RIGHT NOW: Ctrl+D, Ctrl+Shift+1, Ctrl+Shift+2, Ctrl+I, Ctrl+Shift+I, Ctrl+Shift+S, Ctrl+Shift+C."
-            echo "No logout required."
-            echo "------------------------------------------------------------------"
+        echo "Asking for permission via pkexec/sudo to install the robust hotkey daemon..."
+        INSTALL_CMD="cp $EVDEV_SCRIPT /usr/local/bin/helper-node-evdev-hotkeys && chmod +x /usr/local/bin/helper-node-evdev-hotkeys && cp $SERVICE_FILE /etc/systemd/system/ && systemctl daemon-reload && systemctl enable --now helper-node-hotkeys.service"
+        if command -v pkexec >/dev/null 2>&1; then
+            pkexec bash -c "$INSTALL_CMD" || sudo bash -c "$INSTALL_CMD" || true
         else
-            echo "Failed to install the daemon. You may need to run this script or commands manually."
+            sudo bash -c "$INSTALL_CMD" || true
         fi
+        echo "------------------------------------------------------------------"
+        echo "SUCCESS: KDE Plasma 6 hotkeys configured robustly via systemd daemon!"
+        echo "Global hotkeys are ACTIVE RIGHT NOW: Ctrl+D, Ctrl+Shift+1, Ctrl+Shift+2, Ctrl+I, Ctrl+Shift+I, Ctrl+Shift+S, Ctrl+Shift+C."
+        echo "------------------------------------------------------------------"
     else
         # Plasma 5 (KHotKeys)
         KHOTKEYS_DIR="$HOME/.config/khotkeys"

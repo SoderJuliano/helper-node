@@ -1,34 +1,45 @@
 #!/usr/bin/env python3
+"""
+os-integration/evdev-hotkeys.py
+
+Daemon universal e resiliente de atalhos globais de teclado via Linux evdev.
+Funciona em qualquer compositor Wayland (KDE Plasma 6, GNOME, Hyprland, COSMIC, Sway) e X11.
+
+Recursos:
+- Auto-detecção e reconexão contínua de teclados (reage a desconexão e novos dispositivos USB).
+- Nunca encerra se não encontrar teclado na inicialização (espera e tenta novamente).
+- Execução direta e rápida de requisições HTTP locais via curl sem overhead.
+- Mapeamento robusto de teclas modificadoras (Left/Right Ctrl, Shift, Alt, Meta).
+"""
+
 import evdev
 from evdev import ecodes, InputDevice
 import asyncio
 import os
-import getpass
-import pwd
 import subprocess
+import glob
 
-# Define os atalhos e os endpoints curl correspondentes
-# KEY_LEFTCTRL = 29, KEY_LEFTSHIFT = 42
-# KEY_D = 32, KEY_I = 23, KEY_C = 46, KEY_S = 31, KEY_1 = 2, KEY_2 = 3
-
+# Shortcuts e seus comandos curl para a API local do Helper-Node
 SHORTCUTS = {
-    # Ctrl + D
-    (frozenset([ecodes.KEY_LEFTCTRL]), frozenset([ecodes.KEY_D])): "curl -X POST http://localhost:3000/toggle-recording -s -o /dev/null",
-    # Ctrl + I
-    (frozenset([ecodes.KEY_LEFTCTRL]), frozenset([ecodes.KEY_I])): "curl -X POST http://localhost:3000/bring-to-focus-and-input -s -o /dev/null",
+    # Ctrl + D (Toggle Recording / Nexa Voice)
+    (frozenset([ecodes.KEY_LEFTCTRL]), frozenset([ecodes.KEY_D])): "curl -m 2 -X POST http://127.0.0.1:3000/toggle-recording -s -o /dev/null",
+    # Super + D
+    (frozenset([ecodes.KEY_LEFTMETA]), frozenset([ecodes.KEY_D])): "curl -m 2 -X POST http://127.0.0.1:3000/toggle-recording -s -o /dev/null",
+    # Ctrl + I (Focus and Input)
+    (frozenset([ecodes.KEY_LEFTCTRL]), frozenset([ecodes.KEY_I])): "curl -m 2 -X POST http://127.0.0.1:3000/bring-to-focus-and-input -s -o /dev/null",
     # Ctrl + Shift + I
-    (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_I])): "curl -X POST http://localhost:3000/bring-to-focus-and-input -s -o /dev/null",
-    # Ctrl + Shift + S
-    (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_S])): "curl -X POST http://localhost:3000/capture-screen-auto -s -o /dev/null",
-    # Ctrl + Shift + C
-    (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_C])): "curl -X POST http://localhost:3000/open-config -s -o /dev/null",
-    # Ctrl + Shift + 1
-    (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_1])): "curl -X POST http://localhost:3000/move-to-display/0 -s -o /dev/null",
-    # Ctrl + Shift + 2
-    (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_2])): "curl -X POST http://localhost:3000/move-to-display/1 -s -o /dev/null",
+    (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_I])): "curl -m 2 -X POST http://127.0.0.1:3000/bring-to-focus-and-input -s -o /dev/null",
+    # Ctrl + Shift + S (Capture screen auto)
+    (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_S])): "curl -m 2 -X POST http://127.0.0.1:3000/capture-screen-auto -s -o /dev/null",
+    # Ctrl + Shift + C (Open config / escape hatch)
+    (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_C])): "curl -m 2 -X POST http://127.0.0.1:3000/open-config -s -o /dev/null",
+    # Ctrl + Shift + 1 (Move to display 1)
+    (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_1])): "curl -m 2 -X POST http://127.0.0.1:3000/move-to-display/0 -s -o /dev/null",
+    # Ctrl + Shift + 2 (Move to display 2)
+    (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_2])): "curl -m 2 -X POST http://127.0.0.1:3000/move-to-display/1 -s -o /dev/null",
 }
 
-# Modificadores rastreados (Right e Left equivalem para nós por simplicidade)
+# Normaliza modificadores Right e Left
 MODIFIERS_MAP = {
     ecodes.KEY_LEFTCTRL: ecodes.KEY_LEFTCTRL,
     ecodes.KEY_RIGHTCTRL: ecodes.KEY_LEFTCTRL,
@@ -40,80 +51,79 @@ MODIFIERS_MAP = {
     ecodes.KEY_RIGHTMETA: ecodes.KEY_LEFTMETA
 }
 
-# Pega o usuário principal (que não seja root) para rodar o curl na sessão dele (opcionalmente)
-try:
-    TARGET_USER = os.environ.get("SUDO_USER") or getpass.getuser()
-    if TARGET_USER == 'root':
-        # Fallback para tentar descobrir o usuário do console
-        try:
-            TARGET_USER = pwd.getpwnam([p.pw_name for p in pwd.getpwall() if p.pw_uid >= 1000][0]).pw_name
-        except:
-            pass
-except:
-    TARGET_USER = 'root'
-
 def execute_curl(cmd):
-    # Executa como o usuário da sessão para evitar problemas de firewall/proxy locais de root, se necessário.
-    if TARGET_USER != 'root':
-        full_cmd = f"su - {TARGET_USER} -c '{cmd}'"
-    else:
-        full_cmd = cmd
-    subprocess.Popen(full_cmd, shell=True)
+    try:
+        subprocess.Popen(cmd, shell=True)
+    except Exception as e:
+        print(f"[evdev-hotkeys] Erro ao executar comando: {e}")
 
-async def monitor_device(device):
+async def monitor_device(dev_path, name):
+    print(f"[evdev-hotkeys] Monitorando: {name} ({dev_path})")
     active_modifiers = set()
     try:
+        device = InputDevice(dev_path)
         async for event in device.async_read_loop():
             if event.type == ecodes.EV_KEY:
                 key_event = evdev.categorize(event)
                 code = key_event.scancode
                 state = key_event.keystate
                 
-                # Trata modificadores
                 if code in MODIFIERS_MAP:
                     mapped_mod = MODIFIERS_MAP[code]
                     if state == 1: # Pressionado
                         active_modifiers.add(mapped_mod)
                     elif state == 0: # Solto
-                        if mapped_mod in active_modifiers:
-                            active_modifiers.remove(mapped_mod)
-                # Trata outras teclas quando pressionadas (state == 1)
-                elif state == 1:
-                    current_mods_frozen = frozenset(active_modifiers)
-                    pressed_key_frozen = frozenset([code])
-                    
-                    # Checa se a combinação exata de mods + key está mapeada
-                    combo = (current_mods_frozen, pressed_key_frozen)
+                        active_modifiers.discard(mapped_mod)
+                elif state == 1: # Tecla normal pressionada
+                    combo = (frozenset(active_modifiers), frozenset([code]))
                     if combo in SHORTCUTS:
-                        print(f"Triggered: {combo}")
+                        print(f"[evdev-hotkeys] Atalho acionado: {combo}")
                         execute_curl(SHORTCUTS[combo])
-                        
     except Exception as e:
-        # Dispositivo pode ter sido desconectado
-        pass
+        print(f"[evdev-hotkeys] Dispositivo desconectado ou erro ({dev_path}): {e}")
 
-async def main():
-    print("Starting evdev hotkey daemon for Helper-Node...")
-    
-    # Busca todos os dispositivos que tenham suporte a teclas de teclado (EV_KEY) e letras
-    devices = [evdev.InputDevice(path) for path in evdev.list_devices()]
-    keyboard_devices = []
-    
-    for device in devices:
+def is_keyboard_device(dev_path):
+    try:
+        device = InputDevice(dev_path)
         caps = device.capabilities()
         if ecodes.EV_KEY in caps:
-            # Tem a tecla A? Provavelmente um teclado
-            if ecodes.KEY_A in caps[ecodes.EV_KEY]:
-                keyboard_devices.append(device)
-                print(f"Listening on: {device.name} ({device.path})")
+            # Tem a tecla A e tecla Enter? É um teclado real
+            keys = caps[ecodes.EV_KEY]
+            if ecodes.KEY_A in keys and ecodes.KEY_ENTER in keys:
+                return True, device.name
+    except Exception:
+        pass
+    return False, ""
 
-    if not keyboard_devices:
-        print("No keyboard devices found. Make sure you run with sudo.")
-        return
+async def main():
+    print("[evdev-hotkeys] Iniciando daemon universal de atalhos...")
+    monitored_tasks = {} # dev_path -> Task
 
-    # Inicia um monitor para cada teclado
-    tasks = [monitor_device(dev) for dev in keyboard_devices]
-    await asyncio.gather(*tasks)
+    while True:
+        try:
+            # Lista arquivos /dev/input/event* existentes
+            event_files = sorted(glob.glob("/dev/input/event*"))
+            
+            # Remove tarefas de dispositivos que já morreram
+            dead_paths = [p for p, task in monitored_tasks.items() if task.done()]
+            for p in dead_paths:
+                monitored_tasks.pop(p, None)
+
+            # Encontra novos teclados
+            for path in event_files:
+                if path not in monitored_tasks:
+                    is_kbd, name = is_keyboard_device(path)
+                    if is_kbd:
+                        task = asyncio.create_task(monitor_device(path, name))
+                        monitored_tasks[path] = task
+
+        except Exception as e:
+            print(f"[evdev-hotkeys] Erro na varredura de dispositivos: {e}")
+
+        await asyncio.sleep(2)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass

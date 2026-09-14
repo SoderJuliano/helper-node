@@ -178,14 +178,28 @@ async function startSource(source, deviceId = '') {
   try {
     let stream;
     if (source === 'mic') {
+      let resolvedDeviceId = '';
+      if (reqDevId && reqDevId !== 'default') {
+        try {
+          const allDevs = await navigator.mediaDevices.enumerateDevices();
+          const audioInputs = allDevs.filter(d => d.kind === 'audioinput');
+          const exactMatch = audioInputs.find(d => d.deviceId === reqDevId);
+          const labelMatch = audioInputs.find(d => d.label && (d.label.toLowerCase().includes(reqDevId.toLowerCase()) || reqDevId.toLowerCase().includes(d.label.toLowerCase())));
+          const matched = exactMatch || labelMatch;
+          if (matched && matched.deviceId) {
+            resolvedDeviceId = matched.deviceId;
+          }
+        } catch (_) {}
+      }
+
       const audioConstraints = {
         channelCount: 1,
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
       };
-      if (reqDevId && reqDevId !== 'default') {
-        audioConstraints.deviceId = { exact: reqDevId };
+      if (resolvedDeviceId) {
+        audioConstraints.deviceId = { ideal: resolvedDeviceId };
       }
 
       try {
@@ -194,25 +208,15 @@ async function startSource(source, deviceId = '') {
           video: false,
         });
       } catch (advancedErr) {
-        log(`mic: getUserMedia avançado falhou (${advancedErr.message}), tentando fallback com deviceId ideal ou padrão...`);
+        log(`mic: getUserMedia avançado falhou (${advancedErr.message}), tentando fallback padrão...`);
         try {
-          const fallbackConstraints = (reqDevId && reqDevId !== 'default')
-            ? { deviceId: { ideal: reqDevId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-            : { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
           stream = await navigator.mediaDevices.getUserMedia({
-            audio: fallbackConstraints,
+            audio: { echoCancellation: true, noiseSuppression: true },
             video: false,
           });
         } catch (_) {
-          try {
-            stream = await navigator.mediaDevices.getUserMedia({
-              audio: { echoCancellation: true, noiseSuppression: true },
-              video: false,
-            });
-          } catch (_) {
-            // Último recurso: audio básico
-            stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-          }
+          // Último recurso: audio básico
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
         }
       }
     } else {

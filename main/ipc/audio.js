@@ -83,6 +83,13 @@ ipcMain.handle("get-mic-device", () => {
 
 ipcMain.handle("get-audio-input-devices", async () => {
   try {
+    const nativeAudio = require('../../services/platform/nativeAudio');
+    if (nativeAudio && typeof nativeAudio.listInputDevices === 'function') {
+      const nativeDevs = await nativeAudio.listInputDevices();
+      if (nativeDevs && nativeDevs.length > 0) {
+        return nativeDevs;
+      }
+    }
     if (process.platform === 'linux') {
       const { stdout } = await execPromise("LANG=C pactl list sources");
       const devices = [];
@@ -101,10 +108,6 @@ ipcMain.handle("get-audio-input-devices", async () => {
         }
       }
       return devices;
-    }
-    const nativeAudio = require('../../services/platform/nativeAudio');
-    if (nativeAudio && typeof nativeAudio.listInputDevices === 'function') {
-      return await nativeAudio.listInputDevices();
     }
     return [];
   } catch (e) {

@@ -37,6 +37,7 @@ async function registerGlobalShortcuts() {
 
   const fallbackShortcuts = isLinux
     ? [
+        { combo: "CommandOrControl+D", action: "toggle-recording" },
         { combo: "CommandOrControl+I", action: "manual-input" },
         { combo: "CommandOrControl+Shift+X", action: "capture-screen" },
         { combo: "CommandOrControl+Shift+1", action: "move-to-display-0" },

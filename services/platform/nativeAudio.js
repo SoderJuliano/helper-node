@@ -54,6 +54,9 @@ async function ensureWindow() {
       session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
         callback(true);
       });
+      if (typeof session.defaultSession.setDevicePermissionHandler === 'function') {
+        session.defaultSession.setDevicePermissionHandler(() => true);
+      }
       session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
         desktopCapturer.getSources({ types: ['screen'] })
           .then((sources) => {
@@ -188,7 +191,6 @@ async function restart(source, options = {}) {
 
 // Lista dispositivos de áudio disponíveis via Chromium
 async function listInputDevices() {
-  if (process.platform === 'linux') return [];
   try {
     const w = await ensureWindow();
     if (!w || w.isDestroyed()) return [];
@@ -222,7 +224,6 @@ async function listInputDevices() {
 
 // Pré-aquece a janela oculta de áudio na inicialização do app (0ms de atraso no primeiro Ctrl+D)
 async function prewarm() {
-  if (process.platform === 'linux') return;
   try {
     await ensureWindow();
   } catch (e) {

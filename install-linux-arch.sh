@@ -60,7 +60,7 @@ if [[ "${HELPER_SKIP_DEPS:-0}" == "1" ]]; then
 else
   step "Verificando pacotes de sistema necessários..."
   PKGS=(
-    git curl nodejs npm ffmpeg
+    git curl nodejs npm ffmpeg python python-evdev
     gtk3 libnotify nss libxss libxtst at-spi2-core alsa-lib
     xdg-utils xorg-xprop wl-clipboard
     pipewire pipewire-pulse libpulse

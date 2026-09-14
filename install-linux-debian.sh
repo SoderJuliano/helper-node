@@ -72,6 +72,7 @@ else
   # Essenciais: sem isso o app não builda nem roda.
   sudo apt-get install -y \
     git curl ca-certificates ffmpeg \
+    python3 python3-evdev \
     xdg-utils x11-utils wl-clipboard \
     || fatal "Falha instalando pacotes essenciais via apt."
 
