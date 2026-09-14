@@ -36,6 +36,42 @@ var promptHistoryDraft = '';
         if (sendBtn) sendBtn.style.display = '';
     }
 
+    function showComposerImagePreview(src) {
+        const preview = document.getElementById('screenshot-preview');
+        const wrap = document.getElementById('composer-image-preview-wrap');
+        if (preview) {
+            if (src) preview.src = src;
+            preview.style.display = 'block';
+        }
+        if (wrap) {
+            wrap.style.display = 'flex';
+            wrap.classList.add('show');
+        }
+    }
+
+    function hideComposerImagePreview() {
+        const preview = document.getElementById('screenshot-preview');
+        const wrap = document.getElementById('composer-image-preview-wrap');
+        if (preview) {
+            preview.style.display = 'none';
+            preview.src = '';
+        }
+        if (wrap) {
+            wrap.style.display = 'none';
+            wrap.classList.remove('show');
+        }
+    }
+
+    const removeImgBtn = document.getElementById('composer-image-preview-remove');
+    if (removeImgBtn) {
+        removeImgBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            pastedImageForManualInput = null;
+            window.pendingChatImage = null;
+            hideComposerImagePreview();
+        });
+    }
+
     function openManualInput(initialText = '') {
         if (manualInputActive || window.isEditingQuestion) {
             const existingInput = document.querySelector('.manual-input-container .terminal-input');
@@ -54,8 +90,7 @@ var promptHistoryDraft = '';
 
         manualInputActive = true;
         pastedImageForManualInput = null;
-        const sp = document.getElementById('screenshot-preview');
-        if (sp) sp.style.display = 'none';
+        hideComposerImagePreview();
         
         if (typeof removeManualInputContainer === 'function') removeManualInputContainer();
         
@@ -171,8 +206,7 @@ var promptHistoryDraft = '';
                 container.remove();
                 undockComposer();
                 pastedImageForManualInput = null;
-                const prev = document.getElementById('screenshot-preview');
-                if (prev) prev.style.display = 'none';
+                hideComposerImagePreview();
             } else if (e.key === 'Enter' && e.shiftKey) {
                 e.preventDefault();
                 const question = inputField.value.trim();
@@ -290,8 +324,7 @@ var promptHistoryDraft = '';
             }
             pastedImageForManualInput = null;
             window.pendingChatImage = null;
-            const sp = document.getElementById('screenshot-preview');
-            if (sp) sp.style.display = 'none';
+            hideComposerImagePreview();
         } else {
             if (typeof window.sentToAI === 'function') window.sentToAI(text);
         }
@@ -305,4 +338,6 @@ var promptHistoryDraft = '';
     window.submitManualQuestion = submitManualQuestion;
     window.dockComposer = dockComposer;
     window.undockComposer = undockComposer;
+    window.showComposerImagePreview = showComposerImagePreview;
+    window.hideComposerImagePreview = hideComposerImagePreview;
 })();

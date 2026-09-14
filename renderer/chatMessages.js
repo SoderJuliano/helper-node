@@ -179,8 +179,12 @@ var isEditingQuestion = false;
             if (typeof removeManualInputContainer === 'function') removeManualInputContainer();
             if (typeof undockComposer === 'function') undockComposer();
             if (typeof pastedImageForManualInput !== 'undefined') pastedImageForManualInput = null;
-            const sp = document.getElementById('screenshot-preview');
-            if (sp) sp.style.display = 'none';
+            if (typeof window.hideComposerImagePreview === 'function') {
+                window.hideComposerImagePreview();
+            } else {
+                const sp = document.getElementById('screenshot-preview');
+                if (sp) sp.style.display = 'none';
+            }
             e.stopPropagation();
             e.preventDefault();
         } else if (typeof isDirectTypingKey === 'function' && isDirectTypingKey(e) && (typeof manualInputActive === 'undefined' || !manualInputActive) && !isEditingQuestion) {

@@ -331,6 +331,13 @@
                                 </span>
                                 <button class="ctx-pill ws-git-conflict-badge" id="ctx-git-conflict-badge" type="button" style="display:none;" title="Conflitos de merge detectados — Clique para abrir o resolvedor"></button>
                             </div>
+                            <!-- Preview de imagem colada / anexo visual posicionado acima da caixa de digitação -->
+                            <div class="composer-image-preview-wrap" id="composer-image-preview-wrap" style="display:none;">
+                                <div class="composer-image-preview-card">
+                                    <img id="screenshot-preview" alt="Preview da imagem colada" />
+                                    <button type="button" class="composer-image-preview-remove" id="composer-image-preview-remove" title="Remover imagem" aria-label="Remover imagem">×</button>
+                                </div>
+                            </div>
                             <!-- Indicador "ouvindo áudio" — só aparece no modo IDE (pasta/arquivo
                                  anexado) enquanto o Ctrl+D está gravando. Nesse modo a
                                  transcrição vai pro composer, não direto pra IA. -->
@@ -407,7 +414,6 @@
     <div id="animation-container"></div>
     <img src="./assets/robot.gif" id="robot" class="icon" alt="" />
     <div id="copy-toast" class="copy-toast"></div>
-    <img id="screenshot-preview" alt="" />
     <div id="conversation-viewer">
         <button class="conversation-download-btn" id="conversation-download-btn" title="Baixar como .txt" aria-label="Baixar conversa">
             <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M8 2 L8 11 M4.5 7.5 L8 11 L11.5 7.5 M3 13 L13 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>

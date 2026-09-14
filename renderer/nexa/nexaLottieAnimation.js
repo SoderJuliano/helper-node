@@ -208,10 +208,23 @@ class NexaLottieAnimation {
 
     ctx.save();
 
-    // Detecta se a animação é horizontal (ex: deitada de lado)
-    const isLandscape = this.animationPath.includes("sleeping") || (this.canvas.width > this.canvas.height);
+    // Detecta se a animação é de dança, deitada (sleeping) ou landscape genérico
+    const isDance = (this.animationPath || "").includes("dance");
+    const isSleeping = (this.animationPath || "").includes("sleeping");
+    const isLandscape = isSleeping || (!isDance && (this.canvas.width > this.canvas.height));
 
-    if (isLandscape) {
+    if (isDance) {
+      // Animação de dança (720x405 16:9): o personagem fica em pé no centro ocupando toda a altura vertical.
+      // Ajustamos a escala pela altura total do canvas (360px), alinhando a proporção exata
+      // e altura visual de Nexa com todas as outras animações de pé (wave, idle, coffee, etc.).
+      const animRatio = this.canvas.width / this.canvas.height;
+      const drawH = canvasHeight;
+      const drawW = canvasHeight * animRatio;
+      const x = (canvasWidth - drawW) / 2;
+      const y = (canvasHeight - drawH) / 2;
+
+      ctx.drawImage(this.canvas, x, y, drawW, drawH);
+    } else if (isLandscape) {
       // Redimensionamento responsivo preservando o aspect-ratio horizontal (Object Fit: Contain)
       const animRatio = this.canvas.width / this.canvas.height;
       const canvasRatio = canvasWidth / canvasHeight;
@@ -226,7 +239,7 @@ class NexaLottieAnimation {
       }
 
       // Aumenta a animação deitada/dormindo em 30% para equilibrar a proporção visual com o personagem em pé
-      if (this.animationPath.includes("sleeping")) {
+      if (isSleeping) {
         drawW *= 1.30;
         drawH *= 1.30;
       }

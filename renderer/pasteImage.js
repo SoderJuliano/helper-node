@@ -46,9 +46,12 @@
 
         if (manualInputActive) {
             pastedImageForManualInput = base64Image;
-            const preview = document.getElementById('screenshot-preview');
-            preview.src = base64Image;
-            preview.style.display = 'block';
+            if (typeof window.showComposerImagePreview === 'function') {
+                window.showComposerImagePreview(base64Image);
+            } else {
+                const preview = document.getElementById('screenshot-preview');
+                if (preview) { preview.src = base64Image; preview.style.display = 'block'; }
+            }
             window.electronAPI.processPastedImage(base64Image);
         } else {
             const robot = document.getElementById('robot');

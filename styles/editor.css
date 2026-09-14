@@ -95,12 +95,7 @@
            um nó oculto no body para não quebrar a referência. */
         #greeting { display: none !important; }
 
-        /* Screenshot preview (OCR/captura) */
-        #screenshot-preview {
-            position: fixed; bottom: 90px; right: 22px; width: 120px; height: auto;
-            border: 2px solid var(--border-strong); border-radius: 10px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.55); display: none; z-index: 2000;
-        }
+        /* Screenshot preview (OCR/captura) gerenciado no composer.css */
 
         /* Toast de "copiado" (código) */
         .copy-toast { position: fixed; bottom: 96px; right: 24px; background: var(--accent); color: #06210a; padding: 10px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; font-family: var(--font-ui); box-shadow: 0 6px 18px rgba(0,0,0,0.4); z-index: 10000; opacity: 0; transform: translateY(16px); transition: opacity .3s var(--ease), transform .3s var(--ease); pointer-events: none; }

@@ -37,16 +37,19 @@
                     return;
                 }
 
-                // Mostra a miniatura (use base64 if provided)
+                // Mostra a miniatura no card de preview acima do composer
+                const imgSrc = base64Image || (screenshotPath ? `file://${screenshotPath}` : '');
                 if (base64Image) {
-                    // Captura (Ctrl+Shift+S) traz o base64 aqui; paste já setou antes.
-                    // Só sobrescreve quando vier base64 real (não apaga o do paste).
                     window.pendingChatImage = base64Image;
-                    if (preview) preview.src = base64Image;
-                } else if (screenshotPath) {
-                    if (preview) preview.src = `file://${screenshotPath}`;
                 }
-                if (preview) preview.style.display = 'block';
+                if (imgSrc) {
+                    if (typeof window.showComposerImagePreview === 'function') {
+                        window.showComposerImagePreview(imgSrc);
+                    } else if (preview) {
+                        preview.src = imgSrc;
+                        preview.style.display = 'block';
+                    }
+                }
 
                 // Se input manual está ativo, não envia nada ainda; apenas guarda e mostra
                 if (manualInputActive) {
@@ -99,7 +102,8 @@
                     }
 
                     setTimeout(() => {
-                        if (preview) preview.style.display = 'none';
+                        if (typeof window.hideComposerImagePreview === 'function') window.hideComposerImagePreview();
+                        else if (preview) preview.style.display = 'none';
                     }, 8000);
 
                     return;
@@ -118,7 +122,10 @@
                         window.sentImageToAI(text || '', window.pendingChatImage);
                     }
                     window.pendingChatImage = null;
-                    setTimeout(() => { if (preview) preview.style.display = 'none'; }, 8000);
+                    setTimeout(() => {
+                        if (typeof window.hideComposerImagePreview === 'function') window.hideComposerImagePreview();
+                        else if (preview) preview.style.display = 'none';
+                    }, 8000);
                     return;
                 }
 
@@ -169,7 +176,8 @@
                 }
 
                 setTimeout(() => {
-                    if (preview) preview.style.display = 'none';
+                    if (typeof window.hideComposerImagePreview === 'function') window.hideComposerImagePreview();
+                    else if (preview) preview.style.display = 'none';
                 }, 8000);
             });
 })();
