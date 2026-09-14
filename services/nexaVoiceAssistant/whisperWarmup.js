@@ -18,25 +18,37 @@ const WARMUP_TTL_MS = 5 * 60 * 1000; // 5 minutos de cache quente
 function getWhisperPaths() {
   const rootDir = path.resolve(__dirname, "..", "..");
   const exeName = process.platform === "win32" ? "whisper-cli.exe" : "whisper-cli";
-  const binPath = path.join(rootDir, "whisper", "build", "bin", exeName);
-  
-  const modelPaths = [
-    path.join(rootDir, "whisper", "models", "ggml-medium.bin"),
-    path.join(rootDir, "whisper", "models", "ggml-small.bin"),
-    path.join(rootDir, "whisper", "models", "ggml-base.bin"),
-    path.join(rootDir, "whisper", "models", "ggml-tiny.bin")
+  const binCandidates = [
+    path.join(rootDir, "whisper", "build", "bin", exeName),
+    path.join(os.homedir(), ".local", "share", "helper-node", "whisper", "build", "bin", exeName),
+    path.join(os.homedir(), "Documents", "helper-node", "whisper", "build", "bin", exeName),
+    "/usr/local/bin/" + exeName,
+    "/usr/bin/" + exeName
   ];
-  
+  const validBin = binCandidates.find((p) => fs.existsSync(p)) || null;
+
+  const modelNames = ["ggml-medium.bin", "ggml-small.bin", "ggml-base.bin", "ggml-tiny.bin"];
+  const searchDirs = [
+    path.join(rootDir, "whisper", "models"),
+    path.join(os.homedir(), ".local", "share", "helper-node", "whisper", "models"),
+    path.join(os.homedir(), "Documents", "helper-node", "whisper", "models"),
+    path.join(os.homedir(), ".cache", "whisper")
+  ];
+
   let validModel = null;
-  for (const mp of modelPaths) {
-    if (fs.existsSync(mp)) {
-      validModel = mp;
-      break;
+  for (const mName of modelNames) {
+    for (const dir of searchDirs) {
+      const p = path.join(dir, mName);
+      if (fs.existsSync(p)) {
+        validModel = p;
+        break;
+      }
     }
+    if (validModel) break;
   }
 
   return {
-    binPath: fs.existsSync(binPath) ? binPath : null,
+    binPath: validBin,
     modelPath: validModel
   };
 }

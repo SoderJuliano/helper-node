@@ -67,18 +67,53 @@ helpers.cancelDictation = function() {
   return true;
 }
 
+helpers.getWhisperBinaryPath = function() {
+  const binName = process.platform === 'win32' ? 'whisper-cli.exe' : 'whisper-cli';
+  const candidates = [
+    path.join(ROOT_DIR, 'whisper', 'build', 'bin', binName),
+    path.join(os.homedir(), '.local', 'share', 'helper-node', 'whisper', 'build', 'bin', binName),
+    path.join(os.homedir(), 'Documents', 'helper-node', 'whisper', 'build', 'bin', binName),
+    '/usr/local/bin/' + binName,
+    '/usr/bin/' + binName,
+  ];
+  for (const c of candidates) {
+    if (fs2.existsSync(c)) return c;
+  }
+  return null;
+};
+
+helpers.getWhisperModelPath = function() {
+  const modelNames = ['ggml-medium.bin', 'ggml-small.bin', 'ggml-base.bin', 'ggml-tiny.bin'];
+  const searchDirs = [
+    path.join(ROOT_DIR, 'whisper', 'models'),
+    path.join(os.homedir(), '.local', 'share', 'helper-node', 'whisper', 'models'),
+    path.join(os.homedir(), 'Documents', 'helper-node', 'whisper', 'models'),
+    path.join(os.homedir(), '.cache', 'whisper'),
+  ];
+  for (const mName of modelNames) {
+    for (const dir of searchDirs) {
+      const p = path.join(dir, mName);
+      if (fs2.existsSync(p)) return p;
+    }
+  }
+  return null;
+};
+
 // Transcricao do press-to-talk: Whisper LOCAL na edicao Full (quando o binario
 // existe de fato), OpenAI na Lite ou quando o Whisper local nao esta disponivel.
 helpers.transcribeDictation = async function(wavPath) {
-  const whisperBin = path.join(
-    ROOT_DIR, 'whisper', 'build', 'bin',
-    process.platform === 'win32' ? 'whisper-cli.exe' : 'whisper-cli'
-  );
-  if (!edition.isLite() && fs2.existsSync(whisperBin)) {
+  const whisperBin = helpers.getWhisperBinaryPath();
+  const whisperModel = helpers.getWhisperModelPath();
+  if (!edition.isLite() && whisperBin && whisperModel) {
     return await helpers.transcribeAudio(wavPath, { emitRenderer: false, emitNotifications: false });
   }
   const token = configService.getOpenIaToken();
-  if (!token) throw new Error('Configure a chave da OpenAI (Configuracoes) para transcrever o audio.');
+  if (!token) {
+    if (!whisperBin || !whisperModel) {
+      throw new Error('Whisper local não encontrado (whisper-cli ou modelos ausentes) e nenhuma chave da OpenAI configurada como fallback.');
+    }
+    throw new Error('Configure a chave da OpenAI (Configuracoes) para transcrever o audio via nuvem ou instale o Whisper local.');
+  }
   const savedLang = configService.getLanguage ? configService.getLanguage() : 'pt-br';
   const whisperLang = savedLang === 'us-en' ? 'en' : 'pt';
   return await cloudTranscribeAudio(wavPath, token, { language: whisperLang });
@@ -228,23 +263,13 @@ helpers.transcribeAudio = async function(filePath, options = {}) {
     // Obter a duração do áudio
     const duration = await helpers.getAudioDuration(filePath);
 
-    const whisperPath = path.join(
-      ROOT_DIR, "whisper", "build", "bin",
-      process.platform === "win32" ? "whisper-cli.exe" : "whisper-cli"
-    );
-    const modelPathBase = path.join(ROOT_DIR, "whisper/models/ggml-base.bin");
-    const modelPathSmall = path.join(ROOT_DIR, "whisper/models/ggml-small.bin");
-    const modelPathMedium = path.join(ROOT_DIR, "whisper/models/ggml-medium.bin");
-    const modelPathTiny = path.join(ROOT_DIR, "whisper/models/ggml-tiny.bin");
+    const whisperPath = helpers.getWhisperBinaryPath();
+    const modelPath = helpers.getWhisperModelPath();
 
     // Determinar idioma do whisper: 'pt' direto para PT-BR evita confusão de autodeteção
     const savedLang = configService.getLanguage ? configService.getLanguage() : 'pt-br';
     const whisperLang = savedLang === 'us-en' ? 'en' : 'pt';
 
-    // Priorizar modelos de maior precisão (medium -> small -> base -> tiny)
-    // ggml-small (244M) e medium são infinitamente superiores ao ggml-base (74M) em português
-    const modelCandidates = [modelPathMedium, modelPathSmall, modelPathBase, modelPathTiny];
-    const modelPath = modelCandidates.find(p => fs2.existsSync(p)) || null;
     console.log(`Usando modelo ${modelPath ? path.basename(modelPath) : 'nenhum encontrado'}`);
 
     const token = configService.getOpenIaToken();
