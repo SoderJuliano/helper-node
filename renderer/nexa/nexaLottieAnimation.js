@@ -44,6 +44,12 @@ class NexaLottieAnimation {
             // Limpa qualquer canvas anterior do container para evitar vazamento
             container.innerHTML = "";
 
+            // Define as dimensões do container para corresponder à resolução nativa da animação antes do load
+            const animNativeW = animationData.w || 270;
+            const animNativeH = animationData.h || 480;
+            container.style.width = animNativeW + "px";
+            container.style.height = animNativeH + "px";
+
             // Extrai a pasta de assets (diretório pai do arquivo JSON de animação)
             // Ex: /path/to/lottie/idle_lottie/animations/main.json -> file:///path/to/lottie/idle_lottie/images/
             let animPath = (this.animationPath || "").replace(/\\/g, "/");
@@ -214,14 +220,20 @@ class NexaLottieAnimation {
     const isLandscape = isSleeping || (!isDance && (this.canvas.width > this.canvas.height));
 
     if (isDance) {
-      // Animação de dança (720x405 16:9): o personagem fica em pé no centro ocupando a área principal.
-      // Aplicamos o multiplicador de escala (1.32x) para compensar as margens widescreen e alinhar
-      // a altura do corpo e proporção visual da Nexa exatamente com as demais animações em pé (wave, idle, coffee, PSD, etc.).
-      const animRatio = this.canvas.width / this.canvas.height;
-      const drawH = canvasHeight * 1.32;
-      const drawW = drawH * animRatio;
-      const x = (canvasWidth - drawW) / 2;
-      const y = (canvasHeight - drawH) / 2;
+      // Animação de dança (720x405 16:9):
+      // O frame nativo tem 720x405 onde a personagem possui 383px de altura (centrada em X=361, Y=12).
+      // Nas animações de referência em pé (wave, idle, coffee, heart), a Nexa ocupa ~342px de altura no canvas 360x360.
+      // Aplicamos a escala e translação exatas para que a Nexa dance no tamanho padrão (342px de altura, Y=9px, centro X=180px).
+      const danceCharH = 383;
+      const danceCharCenterX = 361;
+      const danceCharTopY = 12;
+
+      const targetCharHeight = (458 / 482) * canvasHeight;
+      const danceScale = targetCharHeight / danceCharH;
+      const drawW = (this.canvas.width || 720) * danceScale;
+      const drawH = (this.canvas.height || 405) * danceScale;
+      const x = (canvasWidth / 2) - (danceCharCenterX * danceScale);
+      const y = (12 * (canvasHeight / 482)) - (danceCharTopY * danceScale);
 
       ctx.drawImage(this.canvas, x, y, drawW, drawH);
     } else if (isLandscape) {

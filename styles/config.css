@@ -483,15 +483,15 @@ textarea[readonly] { opacity: 0.65; cursor: default; }
 }
 
 #open-nexa-config-btn {
-    background: linear-gradient(135deg, #7928ca 0%, #ff0080 100%);
-    color: #ffffff;
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    background-color: #2b3038;
+    color: #f1f5f9;
+    border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 #open-nexa-config-btn:hover {
-    filter: brightness(1.15);
-    border-color: rgba(255, 255, 255, 0.35);
+    background-color: #383e49;
+    border-color: rgba(255, 255, 255, 0.25);
+    color: #ffffff;
 }
 
 .config-footer-info {

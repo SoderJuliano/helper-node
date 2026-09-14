@@ -54,4 +54,32 @@ const handler = new NexaDragHandler({
 assert.strictEqual(handler.isBusyWorkingState(), true, "Animação de dança deve ser reconhecida como estado ativo ocupado");
 console.log("  [OK] Teste 3: Proteção contra interrupção de dança durante arraste validada.");
 
+// 4. Validação da matemática de escala e enquadramento visual da dança
+const { NexaLottieAnimation } = require("../renderer/nexa/nexaLottieAnimation.js");
+const lottieDance = new NexaLottieAnimation({ animationPath: "renderer/nexa/assets/lottie/dance_lottie/animations/main.json" });
+lottieDance.anim = { isPlaying: true };
+lottieDance.canvas = { width: 720, height: 405 };
+lottieDance.isPlaying = true;
+lottieDance.finished = false;
+
+let drawnArgs = null;
+const fakeCtx = {
+  clearRect: () => {},
+  save: () => {},
+  restore: () => {},
+  drawImage: (...args) => { drawnArgs = args; }
+};
+
+lottieDance.render(fakeCtx, 360, 360);
+assert.ok(drawnArgs, "drawImage deve ter sido chamado");
+const [img, x, y, drawW, drawH] = drawnArgs;
+
+// Altura do personagem na dança = 383px * (drawH / 405)
+const danceCharHeightOnScreen = 383 * (drawH / 405);
+// Altura de referência (wave/idle) = 458px * (360 / 482) = ~342.07px
+const refStandingHeight = (458 / 482) * 360;
+
+assert.ok(Math.abs(danceCharHeightOnScreen - refStandingHeight) < 1.0, `Altura da dança (${danceCharHeightOnScreen}px) deve ser proporcional à altura em pé (${refStandingHeight}px)`);
+console.log(`  [OK] Teste 4: Proporção visual e escala da dança validadas (Altura renderizada: ${danceCharHeightOnScreen.toFixed(1)}px vs Referência: ${refStandingHeight.toFixed(1)}px).`);
+
 console.log("\n🎉 TODOS OS TESTES DA ANIMAÇÃO DE DANÇA PASSARAM COM SUCESSO! 💃✨");

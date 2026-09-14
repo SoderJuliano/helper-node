@@ -1,5 +1,5 @@
 // nexaConfig.js
-// Controlador para a janela dedicada de Configurações da Nexa
+// Controlador para a janela de Configurações da Nexa
 const { ipcRenderer } = require("electron");
 
 // Botões de controle da janela frameless
@@ -21,12 +21,6 @@ const googleTtsKey = document.getElementById("google-tts-key");
 const clearGoogleTtsKeyBtn = document.getElementById("clear-google-tts-key");
 const googleTtsTestBtn = document.getElementById("google-tts-test-btn");
 const googleTtsTestResult = document.getElementById("google-tts-test-result");
-const googleTtsVoiceSelect = document.getElementById("google-tts-voice");
-const googleTtsPreviewBtn = document.getElementById("google-tts-preview-btn");
-const googleTtsRateInput = document.getElementById("google-tts-rate");
-const googleTtsRateVal = document.getElementById("google-tts-rate-val");
-const googleTtsPitchInput = document.getElementById("google-tts-pitch");
-const googleTtsPitchVal = document.getElementById("google-tts-pitch-val");
 const nexaMicSelect = document.getElementById("nexa-mic-select");
 const nexaMicRefreshBtn = document.getElementById("nexa-mic-refresh");
 const saveBtn = document.getElementById("save-btn");
@@ -64,22 +58,7 @@ if (clearGoogleTtsKeyBtn && googleTtsKey) {
   });
 }
 
-// Sliders de taxa e tom
-if (googleTtsRateInput && googleTtsRateVal) {
-  googleTtsRateInput.addEventListener("input", () => {
-    const val = parseFloat(googleTtsRateInput.value).toFixed(2);
-    googleTtsRateVal.textContent = `${val}x`;
-  });
-}
-
-if (googleTtsPitchInput && googleTtsPitchVal) {
-  googleTtsPitchInput.addEventListener("input", () => {
-    const val = parseFloat(googleTtsPitchInput.value).toFixed(1);
-    googleTtsPitchVal.textContent = `${val > 0 ? '+' : ''}${val} st`;
-  });
-}
-
-// Abrir avatar flutuante
+// Abrir / Focar avatar flutuante
 if (nexaOpenWindowBtn) {
   nexaOpenWindowBtn.addEventListener("click", () => {
     ipcRenderer.invoke("nexa:open").catch(() => {});
@@ -114,7 +93,7 @@ if (nexaMicRefreshBtn) {
   });
 }
 
-// Testar conexão TTS
+// Testar conexão Google TTS
 if (googleTtsTestBtn) {
   googleTtsTestBtn.addEventListener("click", async () => {
     const keyVal = googleTtsKey ? googleTtsKey.value.trim() : "";
@@ -156,67 +135,15 @@ if (googleTtsTestBtn) {
   });
 }
 
-// Ouvir demonstração da voz
-let currentAudio = null;
-if (googleTtsPreviewBtn) {
-  googleTtsPreviewBtn.addEventListener("click", async () => {
-    const keyVal = googleTtsKey ? googleTtsKey.value.trim() : "";
-    const voiceVal = googleTtsVoiceSelect ? googleTtsVoiceSelect.value : "pt-BR-Neural2-C";
-
-    if (currentAudio) {
-      currentAudio.pause();
-      currentAudio = null;
-    }
-
-    googleTtsPreviewBtn.disabled = true;
-    const origText = googleTtsPreviewBtn.textContent;
-    googleTtsPreviewBtn.textContent = "Sintetizando...";
-
-    try {
-      // Salva temporariamente a chave se preenchida
-      if (keyVal) {
-        ipcRenderer.send("save-google-tts-config", {
-          enabled: true,
-          keyPathOrKey: keyVal,
-          voiceName: voiceVal,
-          speakingRate: googleTtsRateInput ? parseFloat(googleTtsRateInput.value) : 1.0,
-          pitch: googleTtsPitchInput ? parseFloat(googleTtsPitchInput.value) : 0.0
-        });
-      }
-
-      const phrase = "Olá, Juliano! Eu sou a Nexa, sua assistente e copiloto de inteligência artificial.";
-      const res = await ipcRenderer.invoke("google-tts-synthesize", phrase, voiceVal);
-
-      if (res && res.audioBase64) {
-        currentAudio = new Audio(`data:audio/mp3;base64,${res.audioBase64}`);
-        currentAudio.play();
-        currentAudio.onended = () => {
-          googleTtsPreviewBtn.textContent = origText;
-          googleTtsPreviewBtn.disabled = false;
-        };
-      } else {
-        showToast((res && res.error) || "Falha ao gerar demonstração de áudio.");
-        googleTtsPreviewBtn.textContent = origText;
-        googleTtsPreviewBtn.disabled = false;
-      }
-    } catch (err) {
-      showToast(`Erro na reprodução: ${err.message}`);
-      googleTtsPreviewBtn.textContent = origText;
-      googleTtsPreviewBtn.disabled = false;
-    }
-  });
-}
-
-// Disparo de animações
+// Disparo de animações de teste
 document.querySelectorAll(".anim-btn").forEach(btn => {
   btn.addEventListener("click", () => {
     const animName = btn.getAttribute("data-anim");
     if (animName) {
       ipcRenderer.send("nexa:play-animation", { name: animName });
-      // Feedback visual momentâneo no botão
-      const prevBg = btn.style.background;
-      btn.style.background = "rgba(236, 72, 153, 0.4)";
-      setTimeout(() => { btn.style.background = prevBg; }, 300);
+      const prevBg = btn.style.backgroundColor;
+      btn.style.backgroundColor = "#3b82f6";
+      setTimeout(() => { btn.style.backgroundColor = prevBg; }, 250);
     }
   });
 });
@@ -233,9 +160,6 @@ if (saveBtn) {
   saveBtn.addEventListener("click", async () => {
     const isNexaOn = nexaToggle ? nexaToggle.checked : false;
     const ttsKey = googleTtsKey ? googleTtsKey.value.trim() : "";
-    const voiceName = googleTtsVoiceSelect ? googleTtsVoiceSelect.value : "pt-BR-Neural2-C";
-    const speakingRate = googleTtsRateInput ? parseFloat(googleTtsRateInput.value) : 1.0;
-    const pitch = googleTtsPitchInput ? parseFloat(googleTtsPitchInput.value) : 0.0;
     const micId = nexaMicSelect ? nexaMicSelect.value : "";
 
     if (isNexaOn && !ttsKey) {
@@ -246,10 +170,7 @@ if (saveBtn) {
     // Salva configurações de TTS
     ipcRenderer.send("save-google-tts-config", {
       enabled: isNexaOn,
-      keyPathOrKey: ttsKey,
-      voiceName,
-      speakingRate,
-      pitch
+      keyPathOrKey: ttsKey
     });
 
     // Salva configuração de identidade Nexa
@@ -283,18 +204,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       updateNexaStatus(false);
     }
 
-    if (ttsCfg) {
-      if (googleTtsKey) googleTtsKey.value = ttsCfg.keyPathOrKey || "";
-      if (googleTtsVoiceSelect && ttsCfg.voiceName) googleTtsVoiceSelect.value = ttsCfg.voiceName;
-      if (googleTtsRateInput && ttsCfg.speakingRate !== undefined) {
-        googleTtsRateInput.value = ttsCfg.speakingRate;
-        if (googleTtsRateVal) googleTtsRateVal.textContent = `${parseFloat(ttsCfg.speakingRate).toFixed(2)}x`;
-      }
-      if (googleTtsPitchInput && ttsCfg.pitch !== undefined) {
-        googleTtsPitchInput.value = ttsCfg.pitch;
-        const p = parseFloat(ttsCfg.pitch);
-        if (googleTtsPitchVal) googleTtsPitchVal.textContent = `${p > 0 ? '+' : ''}${p.toFixed(1)} st`;
-      }
+    if (ttsCfg && googleTtsKey) {
+      googleTtsKey.value = ttsCfg.keyPathOrKey || "";
     }
 
     await populateMicrophones(micDevice);
