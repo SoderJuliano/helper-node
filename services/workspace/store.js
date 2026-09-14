@@ -79,18 +79,28 @@ function load() {
     // contextSent NUNCA persiste: cada restart/sessao re-injeta contexto 1x.
     state.contextSent = false;
 
-    // Resolve any virtual portal paths loaded from persistence
+    // Remove arquivos inexistentes e limpa capturas de tela efêmeras de sessões anteriores
     if (state.attachments && state.attachments.length > 0) {
       let changed = false;
-      state.attachments = state.attachments.map(a => {
-        const resolved = path.resolve(resolvePortalPath(a.path));
-        if (resolved !== a.path) {
-          changed = true;
-          return { ...a, path: resolved };
-        }
-        return a;
-      });
-      if (changed) {
+      const initialCount = state.attachments.length;
+      state.attachments = state.attachments
+        .filter(a => {
+          if (!a || !a.path) return false;
+          // Capturas de tela efêmeras não devem sobreviver a reinicializações
+          if (a.origin === 'screen-capture') return false;
+          // Arquivos que não existem mais no disco são removidos
+          if (!fs.existsSync(a.path)) return false;
+          return true;
+        })
+        .map(a => {
+          const resolved = path.resolve(resolvePortalPath(a.path));
+          if (resolved !== a.path) {
+            changed = true;
+            return { ...a, path: resolved };
+          }
+          return a;
+        });
+      if (changed || state.attachments.length !== initialCount) {
         save();
       }
     }
@@ -107,6 +117,21 @@ function save() {
     fs.writeFileSync(STORE_PATH, JSON.stringify(persisted, null, 2), "utf8");
   } catch (e) {
     console.warn("[workspace] save falhou:", e.message);
+  }
+}
+
+function purgeEphemeralCaptures() {
+  const toDelete = state.attachments.filter(a => a.origin === 'screen-capture');
+  if (toDelete.length > 0) {
+    for (const item of toDelete) {
+      try {
+        if (item.path && fs.existsSync(item.path)) {
+          fs.unlinkSync(item.path);
+        }
+      } catch (_) {}
+    }
+    state.attachments = state.attachments.filter(a => a.origin !== 'screen-capture');
+    save();
   }
 }
 
@@ -138,6 +163,16 @@ function remove(id) {
 }
 
 function clear() {
+  // Se houver imagens coladas/capturadas temporárias gerenciadas, apaga do disco
+  try {
+    const imageAttachments = require("../imageAttachments");
+    for (const a of state.attachments) {
+      if (a.path && (a.origin === 'screen-capture' || a.origin === 'paste') && imageAttachments.isManagedPath(a.path)) {
+        if (fs.existsSync(a.path)) fs.unlinkSync(a.path);
+      }
+    }
+  } catch (_) {}
+
   state.attachments = [];
   state.contextSent = false;
   state.summaries = [];
@@ -211,6 +246,7 @@ module.exports = {
   getSummaries, appendSummary,
   getMsgCountAtLastSummary, setMsgCountAtLastSummary,
   isPathAllowed,
+  purgeEphemeralCaptures,
   STORE_PATH,
   resolvePortalPath,
 };

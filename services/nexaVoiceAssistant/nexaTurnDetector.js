@@ -22,7 +22,7 @@ class NexaTurnDetector extends EventEmitter {
   constructor(options = {}) {
     super();
     this.speechThresholdRms = options.speechThresholdRms || 55;  // Limiar calibrado para captação de voz natural no Windows/Mac
-    this.silenceThresholdMs = options.silenceThresholdMs || 1100; // Duração de silêncio para fechar o turno (1100ms: ritmo conversacional natural)
+    this.silenceThresholdMs = options.silenceThresholdMs || 800; // Duração de silêncio para fechar o turno (800ms: resposta ágil e natural)
     this.minSpeechMs = options.minSpeechMs || 300;               // Duração mínima de fala real para considerar válida (300ms)
     this.maxTurnDurationMs = options.maxTurnDurationMs || 120000; // Limite amplo de segurança para turnos longos de fala (120s / 2 min)
     this.preRollMs = options.preRollMs || 350;                   // Buffer circular de pre-roll (350ms)
@@ -246,8 +246,10 @@ class NexaTurnDetector extends EventEmitter {
       }
 
       // Condição 1: Silêncio contínuo após a fala atingiu o limiar
+      // Condição 1b: Se a energia da voz já decaiu claramente (fim de frase), fecha com 600ms de silêncio
       // Condição 2: Duração máxima de segurança atingida
-      const isSilenceTimeout = this.silenceAccumMs >= this.silenceThresholdMs;
+      const isDecayingSilence = this.isDecaying && this.silenceAccumMs >= 600;
+      const isSilenceTimeout = (this.silenceAccumMs >= this.silenceThresholdMs) || isDecayingSilence;
       const isMaxDurationReached = this.speechDurationMs >= this.maxTurnDurationMs;
 
       if (isSilenceTimeout || isMaxDurationReached) {

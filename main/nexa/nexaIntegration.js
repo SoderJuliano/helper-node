@@ -308,16 +308,22 @@ function handleCoreEventForNexa(channel, args) {
     channel === "send-to-gemini" ||
     channel === "send-to-gemini-stream" ||
     channel === "send-to-gemini-stream-auto" ||
-    channel === "send-to-gemini-vision"
+    channel === "send-to-gemini-vision" ||
+    channel === "send-to-gemini-image-stream" ||
+    channel === "nexa-voice:submit-question"
   ) {
     if (nexaState.getState() !== "SPEAKING" && nexaState.getState() !== "WORKING") {
       nexaState.setState("THINKING");
     }
   }
 
-  // 4. Recebimento de Áudio do Google TTS
+  // 4. Recebimento / Interrupção de Áudio do Google TTS
   if (channel === "play-tts-audio") {
     nexaState.setState("SPEAKING");
+  } else if (channel === "stop-tts-audio") {
+    if (nexaState.getState() === "SPEAKING") {
+      nexaState.setState("IDLE");
+    }
   }
 
   // 6. Eventos de pesquisa na web / consulta externa

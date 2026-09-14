@@ -130,7 +130,11 @@ function fileIconHtml(name) {
                 hr2.style.cssText = 'height:1px; background:var(--border, #2d2d38); margin:4px 0;';
                 menu.appendChild(hr2);
                 menu.appendChild(mkItem(SVGI_CLOSE, 'Fechar projeto(s)', async () => {
-                    if (projectId != null && projectId !== '' && window.electronAPI.workspaceRemove) {
+                    if (window.electronAPI && window.electronAPI.workspaceClear) {
+                        const updated = await window.electronAPI.workspaceClear();
+                        if (typeof renderWorkspacePanel === 'function') renderWorkspacePanel(updated);
+                        await refreshProjectContext();
+                    } else if (projectId != null && projectId !== '' && window.electronAPI.workspaceRemove) {
                         const updated = await window.electronAPI.workspaceRemove(projectId);
                         if (typeof renderWorkspacePanel === 'function') renderWorkspacePanel(updated);
                         await refreshProjectContext();

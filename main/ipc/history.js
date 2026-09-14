@@ -136,6 +136,7 @@ ipcMain.handle('new-chat', async () => {
     const session = await historyService.createNewSession('Nova conversa');
     // Nova sessao = re-injeta contexto do workspace na proxima pergunta.
     try { workspace.resetContextSent && workspace.resetContextSent(); } catch (_) {}
+    try { workspace.purgeEphemeralCaptures && workspace.purgeEphemeralCaptures(); } catch (_) {}
     // Garante que a nova conversa comece 100% limpa sem --continue / --resume
     try { GeminiCliProvider.shutdown().catch(() => {}); } catch (_) {}
     try { ClaudeCliProvider.shutdown().catch(() => {}); } catch (_) {}

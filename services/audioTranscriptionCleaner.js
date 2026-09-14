@@ -149,9 +149,15 @@ function normalizeDevPhonetics(text) {
   // 4. Variações fonéticas de Git ("Geet", "guite")
   res = res.replace(/\b(?:geet|guite)\b/gi, 'Git');
 
-  // 5. Variações fonéticas de Commit ("comit" com 1 m isolado)
+  // 5. Variações fonéticas de Commit e Push ("comit", "comemitar", "dar a puxa", "dar puxa")
+  res = res.replace(/\b(?:comemitar|comitar)\b/gi, 'commitar');
+  res = res.replace(/\b(?:comemitando|comitando)\b/gi, 'commitando');
+  res = res.replace(/\b(?:comemitei|comitei)\b/gi, 'commitei');
+  res = res.replace(/\b(?:comemitou|comitou)\b/gi, 'commitou');
+  res = res.replace(/\b(?:comemite|comite)\b/gi, 'commite');
   res = res.replace(/\bcomit\b/gi, 'commit');
-  res = res.replace(/\bcomitando\b/gi, 'commitando');
+  res = res.replace(/\b(dar|faz|fazer|da|deu|manda|mandar|fazendo|dando)\s+(?:a\s+|o\s+|um\s+|uma\s+)?(?:puxa|puxada|pux|pushe)\b/gi, '$1 push');
+  res = res.replace(/\b(?:dar\s+a\s+puxa|dar\s+puxa|da\s+a\s+puxa)\b/gi, 'dar push');
 
   // 6. Variações fonéticas de Branch e Master ("massa", "mastro" em contexto git)
   res = res.replace(/\b(comita|comitar|comite|commit|checkout|switch|merge|cria|criar|muda|mudar|entra|entrar|vai pra|vai para|subir pra|mandar pra|jogar pra|nessa|nesta|na|da|a|uma|nova|sua)\s+(?:a\s+)?(?:brent[ei]?|brain)\b/gi, '$1 branch');

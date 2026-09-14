@@ -24,7 +24,7 @@
 // quando ditos com sotaque brasileiro no meio de uma frase em português.
 // ---------------------------------------------------------------------------
 const CORE = [
-  'helper-node', 'website-helper-node', 'Nexa', 'Ctrl+D', 'Git', 'GitHub', 'commit', 'branch', 'push', 'pull request', 'merge', 'rebase', 'master', 'main', 'checkout', 'multithread', 'Whisper',
+  'helper-node', 'website-helper-node', 'Nexa', 'Ctrl+D', 'Git', 'GitHub', 'commit', 'commitar', 'commitei', 'commitando', 'branch', 'push', 'dar push', 'pull request', 'merge', 'rebase', 'master', 'main', 'checkout', 'multithread', 'Whisper',
   'SOLID', 'Clean Architecture', 'design patterns', 'code review',
   'Java', 'Spring Boot', 'Kotlin', 'NestJS', 'Node.js', 'JavaScript', 'TypeScript', 'React', 'Angular', 'Vue.js', 'Python', 'Go', '.NET',
   'REST', 'API', 'endpoint', 'controller', 'service', 'repository', 'microservices', 'microserviços', 'Kafka', 'Docker', 'Kubernetes', 'AWS',

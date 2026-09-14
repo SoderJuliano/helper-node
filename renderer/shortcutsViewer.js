@@ -44,6 +44,7 @@
                 cat.items.forEach((item) => {
                     const itemDiv = document.createElement('div');
                     itemDiv.className = 'command-item';
+                    itemDiv.title = `${item.action} — ${item.keys}${item.altKeys ? ' / ' + item.altKeys : ''} (${item.where})`;
 
                     const leftDiv = document.createElement('div');
                     leftDiv.className = 'command-item-left';
@@ -51,10 +52,12 @@
                     const kbdSpan = document.createElement('span');
                     kbdSpan.className = 'sc-kbd';
                     kbdSpan.textContent = item.keys + (item.altKeys ? ` / ${item.altKeys}` : '');
+                    kbdSpan.title = item.keys + (item.altKeys ? ` / ${item.altKeys}` : '');
 
                     const actionSpan = document.createElement('span');
                     actionSpan.className = 'sc-action';
                     actionSpan.textContent = item.action;
+                    actionSpan.title = item.action;
 
                     leftDiv.appendChild(kbdSpan);
                     leftDiv.appendChild(actionSpan);
@@ -62,6 +65,7 @@
                     const whereSpan = document.createElement('span');
                     whereSpan.className = 'sc-where';
                     whereSpan.textContent = item.where;
+                    whereSpan.title = item.where;
 
                     itemDiv.appendChild(leftDiv);
                     itemDiv.appendChild(whereSpan);

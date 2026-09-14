@@ -585,6 +585,9 @@ helpers.prepareVisualPromptContext = async function(text, aiModel) {
       }
 
       try {
+        if (workspace.purgeEphemeralCaptures) {
+          workspace.purgeEphemeralCaptures();
+        }
         await workspace.addPath(screenshotPath, 'file', {
           trustAgy: true,
           meta: { origin: 'screen-capture', ocrText: ocrText.trim() },

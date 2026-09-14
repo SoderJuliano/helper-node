@@ -147,6 +147,7 @@ module.exports = {
   addPath, removePath, list, clear, isPathAllowed, tree, openProject, attachProject,
   buildContextIfNeeded, markContextSent, resetContextSent,
   compactHistoryIfNeeded, getProjectPath, getProjectPaths,
+  purgeEphemeralCaptures: () => store.purgeEphemeralCaptures(),
   budgetFor,
   resolvePortalPath: (p) => store.resolvePortalPath(p),
 };

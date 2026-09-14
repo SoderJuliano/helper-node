@@ -106,6 +106,7 @@
         .commands-toggle svg { width: 12px; height: 12px; display: block; pointer-events: none; }
         .panel:not(.collapsed) .commands-toggle { transform: rotate(180deg); }
 
+        #shortcut-panel { max-height: none; }
         #shortcut-content {
             max-height: 48vh;
             overflow-y: auto;
@@ -113,6 +114,7 @@
             scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
             padding-right: 3px;
         }
+        #shortcut-panel.collapsed #shortcut-content { max-height: 0; overflow: hidden; }
         #shortcut-content::-webkit-scrollbar {
             width: 6px;
             height: 6px;
@@ -143,10 +145,25 @@
             align-items: center;
             justify-content: space-between;
             gap: 6px;
-            margin: 4px 0;
+            margin: 2px 0;
+            padding: 3px 5px;
+            border-radius: 4px;
             font-size: 11px;
             color: var(--text-2);
             line-height: 1.4;
+            transition: background .12s var(--ease), color .12s var(--ease);
+            cursor: default;
+        }
+        .command-item:hover {
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text);
+        }
+        .command-item:hover .sc-action {
+            color: var(--text);
+        }
+        .command-item:hover .sc-kbd {
+            border-color: rgba(255, 255, 255, 0.25);
+            background: rgba(255, 255, 255, 0.12);
         }
         .command-item-left {
             display: flex;

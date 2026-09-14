@@ -59,6 +59,21 @@ function registerIpc() {
 
   session.on("state-changed", (payload) => {
     const { state } = require("../../main/globals");
+    try {
+      const { nexaState } = require("../../main/nexa/nexaState.js");
+      if (payload && payload.state) {
+        const stateMap = {
+          "listening": "LISTENING",
+          "transcribing": "THINKING",
+          "thinking": "THINKING",
+          "speaking": "SPEAKING",
+          "idle": "IDLE"
+        };
+        const targetState = stateMap[String(payload.state).toLowerCase()] || "IDLE";
+        nexaState.setState(targetState);
+      }
+    } catch (_) {}
+
     if (state.mainWindow && !state.mainWindow.isDestroyed()) {
       try {
         state.mainWindow.webContents.send("nexa-voice:state-changed", payload);

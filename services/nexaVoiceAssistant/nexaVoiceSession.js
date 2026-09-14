@@ -176,7 +176,17 @@ class NexaVoiceSession extends EventEmitter {
         }
         return;
       }
-      // 1. Grava o PCM em arquivo WAV temporário para transcrição
+      // 1. Emite feedback visual IMEDIATO ao detectar fim de fala (loading/leitura/transcrição ativa)
+      this.isProcessing = true;
+      this.emit("state-changed", { state: "transcribing", followUpActive: this.followUpActive });
+      this.emit("animation-trigger", { animation: "reading" });
+      if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+        try {
+          state.mainWindow.webContents.send("ide-audio-transcribing", { isTranscribing: true });
+        } catch (_) {}
+      }
+
+      // 2. Grava o PCM em arquivo WAV temporário para transcrição
       const tmpDir = (state && state.AUDIO_TMP_DIR) || path.join(require("os").tmpdir(), "helper-node-audio");
       fs.mkdirSync(tmpDir, { recursive: true });
       wavPath = path.join(tmpDir, `nexa_voice_${Date.now()}.wav`);
@@ -187,13 +197,13 @@ class NexaVoiceSession extends EventEmitter {
 
       fs.writeFileSync(wavPath, wavHeader);
 
-      // 2. Transcreve o áudio via Whisper e aplica limpeza rigorosa de ruídos/alucinações
+      // 3. Transcreve o áudio via Whisper e aplica limpeza rigorosa de ruídos/alucinações
       const rawTranscript = await helpers.transcribeDictation(wavPath);
       const { cleanTranscription } = require("../audioTranscriptionCleaner");
       const cleanedText = cleanTranscription(rawTranscript);
 
       if (!cleanedText || cleanedText === "[BLANK_AUDIO]") {
-        if (!this.isSpeakingTts && !this.isProcessing) {
+        if (!this.isSpeakingTts) {
           this._endProcessingAndResume();
         }
         return;
@@ -450,6 +460,12 @@ class NexaVoiceSession extends EventEmitter {
 
   _endProcessingAndResume() {
     this.isProcessing = false;
+    const { state } = require("../../main/globals");
+    if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+      try {
+        state.mainWindow.webContents.send("ide-audio-transcribing", { isTranscribing: false });
+      } catch (_) {}
+    }
     if (this.active) {
       this.emit("state-changed", {
         state: "listening",
