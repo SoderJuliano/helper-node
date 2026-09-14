@@ -30,6 +30,8 @@ class NexaVoiceSession extends EventEmitter {
 
     this.active = false;
     this.isProcessing = false;
+    this.isQueryExecuting = false;
+    this.isTranscribing = false;
     this.isSpeakingTts = false;
     this.followUpTimer = null;
     this.followUpActive = false;
@@ -46,8 +48,8 @@ class NexaVoiceSession extends EventEmitter {
       // Dispara aquecimento preventivo do Whisper em background (0% de impacto na thread de áudio)
       warmupWhisper().catch(() => {});
 
-      // Se a Nexa estava falando ou processando e o usuário começou a falar (Barge-In instantâneo de 0ms)
-      if (this.isSpeakingTts || this.isProcessing) {
+      // Se a Nexa estava falando ou executando query anterior e o usuário começou a falar (Barge-In instantâneo)
+      if (this.isSpeakingTts || this.isQueryExecuting) {
         console.log("[NexaVoiceSession] Interrupção instantânea (Barge-In no speech-start): parando fala da Nexa imediatamente.");
         this.stopTtsPlayback();
       }
@@ -87,6 +89,8 @@ class NexaVoiceSession extends EventEmitter {
     if (this.active) return;
     this.active = true;
     this.isProcessing = false;
+    this.isQueryExecuting = false;
+    this.isTranscribing = false;
     this.isSpeakingTts = false;
     this.followUpActive = false;
     if (this.followUpTimer) clearTimeout(this.followUpTimer);
@@ -107,6 +111,8 @@ class NexaVoiceSession extends EventEmitter {
     if (!this.active) return;
     this.active = false;
     this.isProcessing = false;
+    this.isQueryExecuting = false;
+    this.isTranscribing = false;
     this.isSpeakingTts = false;
     this.followUpActive = false;
     if (this.followUpTimer) clearTimeout(this.followUpTimer);
@@ -125,6 +131,7 @@ class NexaVoiceSession extends EventEmitter {
   handleTtsStarted() {
     this.isSpeakingTts = true;
     this.isProcessing = false;
+    this.isQueryExecuting = false;
     this.turnDetector.setTtsActive(true);
     this.emit("state-changed", { state: "speaking", followUpActive: false });
   }
@@ -135,6 +142,8 @@ class NexaVoiceSession extends EventEmitter {
   stopTtsPlayback() {
     this.isSpeakingTts = false;
     this.isProcessing = false;
+    this.isQueryExecuting = false;
+    this.isTranscribing = false;
     this.turnDetector.setTtsActive(false);
     if (this.processingTimeout) {
       clearTimeout(this.processingTimeout);
@@ -149,6 +158,7 @@ class NexaVoiceSession extends EventEmitter {
     if (state.mainWindow && !state.mainWindow.isDestroyed()) {
       try {
         state.mainWindow.webContents.send("stop-tts-audio");
+        state.mainWindow.webContents.send("ide-audio-transcribing", { isTranscribing: false });
       } catch (_) {}
     }
     if (helpers && typeof helpers.cancelIaAndFreezeStream === "function") {
@@ -169,17 +179,16 @@ class NexaVoiceSession extends EventEmitter {
     try {
       // 0. Validação de energia de áudio antes de acionar Whisper (evita alucinações em ruído/silêncio)
       const rms = avgRms !== undefined ? avgRms : (helpers._computeRMS ? helpers._computeRMS(pcmBuffer) : NexaTurnDetector.computeRms(pcmBuffer));
-      if (rms < 40 || (durationMs && durationMs < 300)) {
+      if (rms < 45 || (durationMs && durationMs < 350)) {
         console.log(`[NexaVoiceSession] Áudio descartado antes do Whisper por baixa energia/duração (RMS: ${Math.round(rms)}, duração: ${durationMs}ms)`);
-        if (!this.isSpeakingTts && !this.isProcessing) {
+        if (!this.isSpeakingTts && !this.isQueryExecuting) {
           this._endProcessingAndResume();
         }
         return;
       }
-      // 1. Emite feedback visual IMEDIATO ao detectar fim de fala (loading/leitura/transcrição ativa)
-      this.isProcessing = true;
+      // 1. Emite feedback visual de transcrição ativa (sem forçar animação de leitura 'reading')
+      this.isTranscribing = true;
       this.emit("state-changed", { state: "transcribing", followUpActive: this.followUpActive });
-      this.emit("animation-trigger", { animation: "reading" });
       if (state.mainWindow && !state.mainWindow.isDestroyed()) {
         try {
           state.mainWindow.webContents.send("ide-audio-transcribing", { isTranscribing: true });
@@ -203,13 +212,13 @@ class NexaVoiceSession extends EventEmitter {
       const cleanedText = cleanTranscription(rawTranscript);
 
       if (!cleanedText || cleanedText === "[BLANK_AUDIO]") {
-        if (!this.isSpeakingTts) {
+        if (!this.isSpeakingTts && !this.isQueryExecuting) {
           this._endProcessingAndResume();
         }
         return;
       }
 
-      // 3. Classifica a intenção
+      // 4. Classifica a intenção
       const classification = NexaIntentClassifier.classify(cleanedText, {
         followUpActive: this.followUpActive
       });
@@ -218,8 +227,9 @@ class NexaVoiceSession extends EventEmitter {
 
       const hasWakeWord = NexaIntentClassifier.hasValidWakeWord(cleanedText);
 
-      // A) BARGE-IN: Se a Nexa estava falando ou processando e o usuário fala para interromper ou chama a wake word
-      if (this.isSpeakingTts || this.isProcessing) {
+      // A) BARGE-IN: Se a Nexa estava falando (TTS) ou processando query de IA no momento em que o usuário falou
+      const isInterruptingPrior = this.isSpeakingTts || this.isQueryExecuting;
+      if (isInterruptingPrior) {
         if (classification.action === "STOP_AND_LISTEN" || hasWakeWord) {
           console.log("[NexaVoiceSession] Barge-in: usuário interveio durante fala/processamento da Nexa.");
           this.stopTtsPlayback();
@@ -233,7 +243,8 @@ class NexaVoiceSession extends EventEmitter {
           }
           // Caso contrário (ex: "Nexa, cria um script pra mim"), prossegue abaixo para responder à nova pergunta
         } else {
-          // Ruído ambiente ou fala não direcionada à Nexa durante a execução -> ignora
+          // Ruído ambiente ou fala não direcionada à Nexa durante a execução -> ignora e mantém fluxo
+          this._endProcessingAndResume();
           return;
         }
       }
@@ -283,7 +294,8 @@ class NexaVoiceSession extends EventEmitter {
 
       // Se for resposta direta/presença/saudação casual sem necessidade de execução de ferramentas da IDE
       if (classification.directVoiceResponse) {
-        this.isProcessing = true;
+        this.isQueryExecuting = true;
+        this.isTranscribing = false;
         this.emit("speech-preview", { text: cleanedText });
         this.emit("state-changed", { state: "speaking", followUpActive: this.followUpActive });
         this.emit("animation-trigger", { animation: classification.animationHint || "wave" });
@@ -320,7 +332,7 @@ class NexaVoiceSession extends EventEmitter {
                 const audioPayload = { audioBase64: base64Audio, text: replyText };
                 const { ipcMain } = require("electron");
                 this.isSpeakingTts = true;
-                this.isProcessing = false;
+                this.isQueryExecuting = false;
                 ipcMain.emit("play-tts-audio", null, audioPayload);
 
                 const { isNexaWindowOpen } = require("../../main/nexa/nexaWindow.js");
@@ -338,13 +350,15 @@ class NexaVoiceSession extends EventEmitter {
         }
 
         if (!audioPlayed) {
+          this.isQueryExecuting = false;
           this._endProcessingAndResume();
           this._startFollowUpTimer();
         }
         return;
       }
 
-      this.isProcessing = true;
+      this.isQueryExecuting = true;
+      this.isTranscribing = false;
       this.emit("speech-preview", { text: cleanedText });
       this.emit("state-changed", { state: "thinking", followUpActive: this.followUpActive });
       this.emit("animation-trigger", { animation: classification.animationHint || "thinking" });
@@ -434,6 +448,8 @@ class NexaVoiceSession extends EventEmitter {
   }
 
   handleAiProcessingFinished() {
+    this.isQueryExecuting = false;
+    this.isTranscribing = false;
     if (this.processingTimeout) {
       clearTimeout(this.processingTimeout);
       this.processingTimeout = null;
@@ -460,6 +476,8 @@ class NexaVoiceSession extends EventEmitter {
 
   _endProcessingAndResume() {
     this.isProcessing = false;
+    this.isTranscribing = false;
+    this.isQueryExecuting = false;
     const { state } = require("../../main/globals");
     if (state.mainWindow && !state.mainWindow.isDestroyed()) {
       try {

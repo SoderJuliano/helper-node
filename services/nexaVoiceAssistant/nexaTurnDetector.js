@@ -261,7 +261,9 @@ class NexaTurnDetector extends EventEmitter {
         this.resetTurn();
 
         // Aceita se tiver duração suficiente de fala, densidade mínima e energia de fala real
-        if (effectiveSpeechMs >= this.minSpeechMs && (activeRatio >= 0.15 || effectiveSpeechMs >= 600) && avgTurnRms >= 40) {
+        const hasEnoughActiveSpeech = this.activeSpeechChunksCount >= 2 && effectiveSpeechMs >= 350;
+        const hasRealEnergy = avgTurnRms >= 45 && this.peakTurnRms >= 55;
+        if (hasEnoughActiveSpeech && (activeRatio >= 0.18 || effectiveSpeechMs >= 600) && hasRealEnergy) {
           this.emit("turn-complete", {
             pcmBuffer: totalPcm,
             durationMs: effectiveSpeechMs,
@@ -272,7 +274,7 @@ class NexaTurnDetector extends EventEmitter {
           });
         } else {
           this.emit("turn-discarded", {
-            reason: `Duração/energia insuficiente: ${effectiveSpeechMs}ms (ratio: ${(activeRatio * 100).toFixed(0)}%, RMS: ${Math.round(avgTurnRms)})`
+            reason: `Duração/energia insuficiente: ${effectiveSpeechMs}ms (ratio: ${(activeRatio * 100).toFixed(0)}%, RMS: ${Math.round(avgTurnRms)}, peak: ${Math.round(this.peakTurnRms)})`
           });
         }
       }
