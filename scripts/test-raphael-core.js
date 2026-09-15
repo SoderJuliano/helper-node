@@ -26,16 +26,25 @@ const lerped = RaphaelMath.lerpColor({ r: 0, g: 0, b: 0 }, { r: 100, g: 200, b: 
 assert.strictEqual(lerped.r, 50, "Lerp R deve ser 50");
 assert.strictEqual(lerped.g, 100, "Lerp G deve ser 100");
 assert.strictEqual(lerped.b, 25, "Lerp B deve ser 25");
-console.log("  [OK] Teste 1: RaphaelMath validado com sucesso.");
+
+const fibPoints = RaphaelMath.fibonacciSphere(100, 48);
+assert.strictEqual(fibPoints.length, 100, "Distribuição de Fibonacci deve gerar exatamente 100 nós");
+assert.ok(typeof fibPoints[0].x === "number" && typeof fibPoints[0].y === "number" && typeof fibPoints[0].z === "number", "Coordenadas dos nós 3D devem ser numéricas");
+
+const normal = RaphaelMath.sphereNormal(0, 48, 0, 48);
+assert.strictEqual(normal.ny, 1.0, "Normal no polo norte deve ter ny = 1.0");
+console.log("  [OK] Teste 1: RaphaelMath validado com sucesso (Rotação 3D, Projeção, Lerp e Fibonacci Sphere).");
 
 // 2. Validação dos Temas e Estados
 const expectedStates = ["IDLE", "LISTENING", "THINKING", "SPEAKING", "WORKING", "SEARCHING", "SLEEPING"];
 expectedStates.forEach((state) => {
   assert.ok(RAPHAEL_THEMES[state], `Tema ${state} deve estar definido no catálogo`);
   assert.ok(RAPHAEL_THEMES[state].coreColorPrimary, `Tema ${state} deve possuir coreColorPrimary`);
+  assert.ok(RAPHAEL_THEMES[state].rimColor, `Tema ${state} deve possuir rimColor`);
+  assert.ok(RAPHAEL_THEMES[state].specularColor, `Tema ${state} deve possuir specularColor`);
   assert.ok(RAPHAEL_THEMES[state].particleColors.length > 0, `Tema ${state} deve possuir paleta de partículas`);
 });
-console.log("  [OK] Teste 2: Todos os 7 estados e paletas cromáticas validados.");
+console.log("  [OK] Teste 2: Todos os 7 estados, paletas cromáticas e parâmetros 3D validados.");
 
 // 3. Validação do RaphaelRings
 const rings = new RaphaelRings();
@@ -57,9 +66,10 @@ assert.ok(typeof metrics.bass === "number", "Métrica bass deve ser numérica");
 assert.ok(typeof metrics.amplitude === "number", "Métrica amplitude deve ser numérica");
 console.log("  [OK] Teste 4: Analisador de áudio espectral e métricas FFT validados.");
 
-// 5. Validação do RaphaelCore e Renderização Canvas
+// 5. Validação do RaphaelCore e Renderização Canvas 3D
 const core = new RaphaelCore();
 assert.strictEqual(core.getCurrentState(), "IDLE", "Estado inicial deve ser IDLE");
+assert.ok(core.sphereNodes.length >= 100, "Esfera 3D deve conter malha de nós de superfície");
 
 core.setState("THINKING");
 assert.strictEqual(core.getCurrentState(), "THINKING", "Estado deve transicionar para THINKING");
@@ -67,20 +77,29 @@ assert.ok(core.shockwaves.length > 0, "Mudança de estado deve emitir onda de ch
 
 core.update(0.016);
 
-let drawCallCount = 0;
+let drawArcCount = 0;
+let drawLineCount = 0;
 const mockCtx = {
   clearRect: () => {},
   save: () => {},
   restore: () => {},
+  translate: () => {},
+  rotate: () => {},
+  ellipse: () => { drawArcCount++; },
   beginPath: () => {},
-  arc: () => { drawCallCount++; },
+  arc: () => { drawArcCount++; },
+  moveTo: () => {},
+  lineTo: () => { drawLineCount++; },
   fill: () => {},
   stroke: () => {},
   createRadialGradient: () => ({ addColorStop: () => {} })
 };
 
 core.render(mockCtx, 360, 360);
-assert.ok(drawCallCount > 50, "Renderizador deve desenhar partículas, corona, núcleo e anéis");
+assert.ok(drawArcCount > 50, "Renderizador deve desenhar partículas, corona, esfera volumétrica 3D e nós");
+assert.ok(drawLineCount > 20, "Renderizador deve desenhar arcos 3D de latitude/longitude e conexões neurais");
+console.log("  [OK] Teste 5: Renderização volumétrica 3D, sombreamento esférico e camadas Z validadas.");
+
 // 6. Validação de Carregamento em Ambiente de Scripts de Navegador (sem conflito de escopo)
 const vm = require("vm");
 const fs = require("fs");

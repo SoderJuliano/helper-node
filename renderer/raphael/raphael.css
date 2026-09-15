@@ -16,30 +16,30 @@
 }
 
 .raphael-canvas-glow {
-  filter: drop-shadow(0 0 16px rgba(0, 240, 255, 0.45));
-  transition: filter 0.4s ease;
+  filter: drop-shadow(0 0 14px rgba(0, 240, 255, 0.40)) drop-shadow(0 0 28px rgba(74, 0, 224, 0.25));
+  transition: filter 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .raphael-canvas-glow.thinking {
-  filter: drop-shadow(0 0 22px rgba(157, 0, 255, 0.65));
+  filter: drop-shadow(0 0 18px rgba(255, 0, 140, 0.60)) drop-shadow(0 0 32px rgba(185, 30, 255, 0.45));
 }
 
 .raphael-canvas-glow.speaking {
-  filter: drop-shadow(0 0 25px rgba(0, 229, 255, 0.75));
+  filter: drop-shadow(0 0 20px rgba(0, 235, 255, 0.70)) drop-shadow(0 0 36px rgba(0, 110, 255, 0.50));
 }
 
 .raphael-canvas-glow.working {
-  filter: drop-shadow(0 0 20px rgba(0, 255, 136, 0.60));
+  filter: drop-shadow(0 0 16px rgba(0, 255, 136, 0.55)) drop-shadow(0 0 30px rgba(5, 200, 140, 0.35));
 }
 
 .raphael-canvas-glow.searching {
-  filter: drop-shadow(0 0 22px rgba(0, 120, 255, 0.65));
+  filter: drop-shadow(0 0 18px rgba(0, 130, 255, 0.60)) drop-shadow(0 0 32px rgba(0, 210, 255, 0.40));
 }
 
 .raphael-canvas-glow.listening {
-  filter: drop-shadow(0 0 22px rgba(255, 190, 0, 0.65));
+  filter: drop-shadow(0 0 18px rgba(255, 190, 0, 0.65)) drop-shadow(0 0 32px rgba(255, 90, 0, 0.40));
 }
 
 .raphael-canvas-glow.sleeping {
-  filter: drop-shadow(0 0 8px rgba(35, 45, 75, 0.35));
+  filter: drop-shadow(0 0 8px rgba(40, 50, 85, 0.30));
 }

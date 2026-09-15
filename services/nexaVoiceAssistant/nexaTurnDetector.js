@@ -21,12 +21,12 @@ const BYTES_PER_MS = (SAMPLE_RATE * BYTES_PER_SAMPLE) / 1000; // 32 bytes/ms
 class NexaTurnDetector extends EventEmitter {
   constructor(options = {}) {
     super();
-    this.speechThresholdRms = options.speechThresholdRms || 40;  // Limiar calibrado para captação de voz natural (40 RMS)
+    this.speechThresholdRms = options.speechThresholdRms || 65;  // Limiar calibrado para captação de voz natural sem ruído ambiente (65 RMS)
     this.silenceThresholdMs = options.silenceThresholdMs || 800; // Duração de silêncio para fechar o turno (800ms: resposta ágil e natural)
-    this.minSpeechMs = options.minSpeechMs || 200;               // Duração mínima de fala real para considerar válida (200ms)
+    this.minSpeechMs = options.minSpeechMs || 220;               // Duração mínima de fala real para considerar válida (220ms)
     this.maxTurnDurationMs = options.maxTurnDurationMs || 120000; // Limite amplo de segurança para turnos longos de fala (120s / 2 min)
     this.preRollMs = options.preRollMs || 350;                   // Buffer circular de pre-roll (350ms)
-    this.bargeInThresholdRms = options.bargeInThresholdRms || 115; // Limiar elevado para interrupção de fala durante reprodução TTS
+    this.bargeInThresholdRms = options.bargeInThresholdRms || 125; // Limiar elevado para interrupção de fala durante reprodução TTS
 
     this.active = false;
     this.ttsActive = false;
@@ -161,7 +161,7 @@ class NexaTurnDetector extends EventEmitter {
 
     // Se a Nexa estiver falando via alto-falantes (TTS ativo):
     if (this.ttsActive) {
-      const bargeInThreshold = Math.max(this.bargeInThresholdRms, this.speechThresholdRms * 2.0, this.noiseFloorRms * 2.2 + 35);
+      const bargeInThreshold = Math.max(this.bargeInThresholdRms, this.speechThresholdRms * 1.8, this.noiseFloorRms * 2.2 + 35);
       if (rms >= bargeInThreshold) {
         // O usuário falou alto para interromper a Nexa!
         this.ttsActive = false;
@@ -190,7 +190,7 @@ class NexaTurnDetector extends EventEmitter {
     }
 
     // Limiar dinâmico: garante que fala seja detectada com facilidade sem ser bloqueada por ruído moderado
-    const dynamicThreshold = Math.max(this.speechThresholdRms, this.noiseFloorRms * 1.25 + 15);
+    const dynamicThreshold = Math.max(this.speechThresholdRms, this.noiseFloorRms * 1.35 + 20);
     const hasVoiceEnergy = rms >= dynamicThreshold;
 
     if (!this.isSpeaking) {
@@ -201,7 +201,7 @@ class NexaTurnDetector extends EventEmitter {
         this.onsetCandidateMs += chunkMs;
 
         // Fala humana real sustenta energia por >= 100ms ou >= 2 chunks consecutivos de áudio.
-        // Ruídos mecânicos de teclado/mouse geram apenas 1 chunk de pico transitório (<20ms).
+        // Ruídos mecânicos de teclado/mouse geram apenas 1 chunk de pico transitório curto (<30ms).
         const hasSustainedOnset = this.onsetCandidateMs >= 100 || this.onsetCandidateChunks.length >= 2;
 
         if (hasSustainedOnset) {
@@ -315,20 +315,21 @@ class NexaTurnDetector extends EventEmitter {
 
         this.resetTurn();
 
-        // Rejeita ruído mecânico de digitação de teclado / cliques isolados:
+        // Rejeita ruído mecânico de digitação de teclado / cliques isolados e sopros:
         const isMechanicalImpulse = (maxConsecutive < 2 && sustainedSegments === 0);
-        const isSparseTypingNoise = (effectiveSpeechMs >= 600 && sustainedSegments < 2 && activeRatio < 0.20);
-        if (isMechanicalImpulse || isSparseTypingNoise) {
+        const isSparseTypingNoise = (effectiveSpeechMs >= 500 && sustainedSegments < 2 && activeRatio < 0.22);
+        const isBreathingPuff = (effectiveSpeechMs < 350 && maxConsecutive < 2 && peakRms < 75);
+        if (isMechanicalImpulse || isSparseTypingNoise || isBreathingPuff) {
           this.emit("turn-discarded", {
-            reason: `Ruído de digitação/clique descartado (consecutive: ${maxConsecutive}, sustained: ${sustainedSegments}, ratio: ${(activeRatio * 100).toFixed(0)}%)`
+            reason: `Ruído de digitação/sopro descartado (consecutive: ${maxConsecutive}, sustained: ${sustainedSegments}, ratio: ${(activeRatio * 100).toFixed(0)}%)`
           });
           return;
         }
 
         // Aceita se tiver duração suficiente de fala, densidade mínima e energia de fala real
         const hasEnoughSpeech = effectiveSpeechMs >= this.minSpeechMs && activeChunks >= 1;
-        const hasRealEnergy = avgTurnRms >= 25 || peakRms >= 35;
-        const hasGoodDensity = (activeRatio >= 0.12 || effectiveSpeechMs >= 450);
+        const hasRealEnergy = avgTurnRms >= 30 || peakRms >= 45;
+        const hasGoodDensity = (activeRatio >= 0.15 || effectiveSpeechMs >= 450);
         if (hasEnoughSpeech && hasRealEnergy && hasGoodDensity) {
           this.emit("turn-complete", {
             pcmBuffer: totalPcm,

@@ -89,6 +89,54 @@
     }
 
     /**
+     * Limita um valor entre um mínimo e um máximo.
+     */
+    static clamp(val, min, max) {
+      return Math.max(min, Math.min(max, val));
+    }
+
+    /**
+     * Gera uma distribuição esférica perfeitamente uniforme de pontos (Fibonacci Spiral / Golden Sphere).
+     * @param {number} samples - Quantidade de pontos na superfície
+     * @param {number} radius - Raio da esfera
+     * @returns {Array<{x: number, y: number, z: number, u: number, v: number}>}
+     */
+    static fibonacciSphere(samples, radius = 1.0) {
+      const points = [];
+      const phi = Math.PI * (3 - Math.sqrt(5)); // ~2.3999632 rad (Ângulo áureo)
+      for (let i = 0; i < samples; i++) {
+        const y = 1 - (i / (samples - 1)) * 2; // de 1 a -1
+        const rAtY = Math.sqrt(Math.max(0, 1 - y * y));
+        const theta = phi * i;
+        const x = Math.cos(theta) * rAtY;
+        const z = Math.sin(theta) * rAtY;
+        points.push({
+          x: x * radius,
+          y: y * radius,
+          z: z * radius,
+          baseX: x * radius,
+          baseY: y * radius,
+          baseZ: z * radius,
+          u: theta / (Math.PI * 2),
+          v: (y + 1) / 2
+        });
+      }
+      return points;
+    }
+
+    /**
+     * Calcula o vetor normal normalizado de um ponto na superfície de uma esfera.
+     */
+    static sphereNormal(x, y, z, radius) {
+      const r = radius || Math.sqrt(x * x + y * y + z * z) || 1;
+      return {
+        nx: x / r,
+        ny: y / r,
+        nz: z / r
+      };
+    }
+
+    /**
      * Converte HSL para RGB.
      */
     static hslToRgb(h, s, l) {

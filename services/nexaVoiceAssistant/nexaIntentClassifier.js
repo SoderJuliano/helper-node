@@ -57,7 +57,7 @@ const INCOMPLETE_SENTENCE_CONNECTORS = [
   /\b(?:e|ou|mas|que|se|como|para|pra|pro|quando|onde|porque|por\s*que|no|na|do|da|com|em|um|uma|tipo|de|dos|das|nos|nas|pelo|pela|ao|aos|ent[aã]o|a[ií]|qual|quais)\s*[.,!?]*$/i,
 ];
 
-// Padrões de áudio de mídia, vídeos do YouTube, podcasts, tutoriais ou monólogos contínuos
+// Padrões de áudio de mídia, vídeos do YouTube, TV, notícias, podcasts, tutoriais ou monólogos contínuos
 const AMBIENT_MEDIA_OR_MONOLOGUE_PATTERNS = [
   /\b(?:nesse|neste|no\s+nosso|no\s+meu)\s+(?:v[ií]deo|canal|podcast|epis[oó]dio|tutorial|vlog|reels?|shorts?|stories|curso|artigo|post)\b/i,
   /\b(?:vou\s+te\s+mostrar|vou\s+mostrar\s+pra\s+voc[eê]s?|hoje\s+eu\s+vou|hoje\s+vamos\s+falar|hoje\s+vamos\s+ver|nesse\s+conte[uú]do)\b/i,
@@ -66,6 +66,8 @@ const AMBIENT_MEDIA_OR_MONOLOGUE_PATTERNS = [
   /\b(?:inscreva-se|se\s+inscreva|deixe\s+seu\s+like|ative\s+o\s+sininho|compartilhe\s+com\s+os\s+amigos)\b/i,
   /\b(?:o\s+gasto\s+que\s+mais|eu\s+descobri\s+esse\s+valor|eu\s+pago\s+\d+|esse\s+dinheiro\s+foi|apartamento\s+que\s+tem)\b/i,
   /\b(?:quando\s+eu\s+era|quando\s+eu\s+tinha|na\s+minha\s+opini[ãa]o|minha\s+experi[êe]ncia)\b/i,
+  /\b(?:escala\s+(?:6\s*(?:x|por)\s*1|6x1)|pec\s+(?:da\s+)?escala|jornal\s+nacional|not[ií]cia|reportagem|minist[eé]rio|deputad[oa]|senador|c[aâ]mara|governo|infla[çc][ãa]o|mercado\s+financeiro|entrevista|ao\s+vivo|plant[ãa]o)\b/i,
+  /\b(?:respira[çc][ãa]o|suspiro|tosse|limpando\s+a\s+garganta)\b/i,
   /\b(?:steve\s+vozze|whisper)\b/i,
 ];
 

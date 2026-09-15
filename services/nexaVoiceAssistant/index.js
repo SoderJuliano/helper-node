@@ -36,6 +36,14 @@ function registerIpc() {
       await session.start(micDevice);
     } else {
       session.stop();
+      const { configService } = require("../../main/globals");
+      const nexaCfg = configService && typeof configService.getNexaConfig === "function" ? configService.getNexaConfig() : null;
+      if (!nexaCfg || !nexaCfg.enabled) {
+        try {
+          const { closeNexaWindow } = require("../../main/nexa/nexaWindow.js");
+          closeNexaWindow();
+        } catch (_) {}
+      }
     }
     return { active: session.isActive() };
   });
@@ -49,7 +57,16 @@ function registerIpc() {
 
   // Reencaminha eventos da sessão para a janela principal do Electron
   session.on("status-changed", (payload) => {
-    const { state } = require("../../main/globals");
+    const { state, configService } = require("../../main/globals");
+    if (payload && payload.active === false) {
+      const nexaCfg = configService && typeof configService.getNexaConfig === "function" ? configService.getNexaConfig() : null;
+      if (!nexaCfg || !nexaCfg.enabled) {
+        try {
+          const { closeNexaWindow } = require("../../main/nexa/nexaWindow.js");
+          closeNexaWindow();
+        } catch (_) {}
+      }
+    }
     if (state.mainWindow && !state.mainWindow.isDestroyed()) {
       try {
         state.mainWindow.webContents.send("nexa-voice:status-changed", payload);
@@ -130,10 +147,57 @@ function registerIpc() {
 }
 
 module.exports = {
-  start: (micDevice) => getSession().start(micDevice),
-  stop: () => getSession().stop(),
+  start: async (micDevice) => {
+    const session = getSession();
+    try {
+      const { createNexaWindow, isNexaWindowOpen } = require("../../main/nexa/nexaWindow.js");
+      if (!isNexaWindowOpen()) {
+        createNexaWindow();
+      }
+    } catch (_) {}
+    return session.start(micDevice);
+  },
+  stop: () => {
+    const session = getSession();
+    session.stop();
+    const { configService } = require("../../main/globals");
+    const nexaCfg = configService && typeof configService.getNexaConfig === "function" ? configService.getNexaConfig() : null;
+    if (!nexaCfg || !nexaCfg.enabled) {
+      try {
+        const { closeNexaWindow } = require("../../main/nexa/nexaWindow.js");
+        closeNexaWindow();
+      } catch (_) {}
+    }
+  },
   isActive: () => getSession().isActive(),
-  toggle: () => getSession().isActive() ? getSession().stop() : getSession().start(),
+  toggle: async (forcedState) => {
+    const session = getSession();
+    const shouldBeActive = typeof forcedState === "boolean" ? forcedState : !session.isActive();
+    if (shouldBeActive) {
+      const { configService } = require("../../main/globals");
+      try {
+        const { createNexaWindow, isNexaWindowOpen } = require("../../main/nexa/nexaWindow.js");
+        if (!isNexaWindowOpen()) {
+          createNexaWindow();
+        }
+      } catch (_) {}
+      const micDevice = configService && typeof configService.getMicDevice === "function"
+        ? configService.getMicDevice()
+        : "";
+      await session.start(micDevice);
+    } else {
+      session.stop();
+      const { configService } = require("../../main/globals");
+      const nexaCfg = configService && typeof configService.getNexaConfig === "function" ? configService.getNexaConfig() : null;
+      if (!nexaCfg || !nexaCfg.enabled) {
+        try {
+          const { closeNexaWindow } = require("../../main/nexa/nexaWindow.js");
+          closeNexaWindow();
+        } catch (_) {}
+      }
+    }
+    return { active: session.isActive() };
+  },
   registerIpc,
   getSession
 };

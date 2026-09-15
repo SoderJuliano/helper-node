@@ -20,7 +20,7 @@ const NexaConversationContext = require("./nexaConversationContext");
 const NexaResponseFilter = require("./nexaResponseFilter");
 const { warmupWhisper } = require("./whisperWarmup");
 
-const FOLLOW_UP_DURATION_MS = 6000; // Janela de 6 segundos para conversa contínua após resposta
+const FOLLOW_UP_DURATION_MS = 4000; // Janela calibrada de 4 segundos para conversa contínua após resposta
 
 class NexaVoiceSession extends EventEmitter {
   constructor(options = {}) {

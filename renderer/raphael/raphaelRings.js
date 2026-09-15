@@ -79,8 +79,11 @@
           const baseAngle = (i / ring.particleCount) * Math.PI * 2;
           const radiusNoise = (Math.random() - 0.5) * ring.thickness;
           const yNoise = (Math.random() - 0.5) * (ring.thickness * 0.85);
-          const baseSize = Math.random() * 2.2 + 1.1;
+          const baseSize = Math.random() * 2.2 + 1.2;
           const sparkRate = Math.random() * 0.05 + 0.02;
+
+          // Gradiente HSL multi-espectral inspirado no código Three.js de referência
+          const hueFraction = (ringIdx / this.ringDefinitions.length) * 0.6 + (i / ring.particleCount) * 0.4;
 
           this.particles.push({
             ringIdx,
@@ -91,7 +94,8 @@
             baseSize,
             sparkRate,
             sparkPhase: Math.random() * Math.PI * 2,
-            colorIdx: i % 3
+            hueFraction,
+            colorIdx: i % 5
           });
         }
       });
@@ -99,21 +103,22 @@
 
     initSphericalParticles() {
       this.sphericalParticles = [];
-      const count = 120;
+      const count = 130;
       for (let i = 0; i < count; i++) {
         const theta = Math.random() * Math.PI * 2;
         const phi = Math.acos(Math.random() * 2 - 1);
-        const baseRadius = 55 + Math.random() * 65;
+        const baseRadius = 52 + Math.random() * 75;
         this.sphericalParticles.push({
           theta,
           phi,
           baseRadius,
-          rotSpeedTheta: (Math.random() - 0.5) * 0.6,
-          rotSpeedPhi: (Math.random() - 0.5) * 0.4,
-          size: Math.random() * 1.8 + 0.8,
+          rotSpeedTheta: (Math.random() - 0.5) * 0.65,
+          rotSpeedPhi: (Math.random() - 0.5) * 0.45,
+          size: Math.random() * 1.8 + 0.9,
           sparkPhase: Math.random() * Math.PI * 2,
           sparkRate: Math.random() * 0.06 + 0.02,
-          colorIdx: i % 3
+          hueFraction: Math.random(),
+          colorIdx: i % 5
         });
       }
     }
@@ -145,7 +150,7 @@
         p.sparkPhase += p.sparkRate * (1.0 + audioMetrics.treble * 3.0);
 
         // Movimento angular individual ao longo do anel
-        p.angle = (p.baseAngle + time * 0.18 * (p.ringIdx % 2 === 0 ? 1 : -1)) % (Math.PI * 2);
+        p.angle = (p.baseAngle + time * 0.20 * (p.ringIdx % 2 === 0 ? 1 : -1)) % (Math.PI * 2);
 
         // Ondulação harmônica senoidal
         const wave = Math.sin(p.angle * waveFreq + time * 3.5) * waveAmp;
@@ -184,19 +189,26 @@
 
     /**
      * Renderiza as partículas projetadas em profundidade no Canvas 2D.
+     * Suporta filtragem por camada ("back", "front", "all") para permitir que a Esfera 3D
+     * seja desenhada perfeitamente no meio volumétrico das auréolas.
+     * 
      * @param {CanvasRenderingContext2D} ctx 
      * @param {number} centerX 
      * @param {number} centerY 
      * @param {object} theme 
      * @param {object} audioMetrics 
+     * @param {string} layerFilter - "all" | "back" (z < 0) | "front" (z >= 0)
      */
-    render(ctx, centerX, centerY, theme, audioMetrics) {
+    render(ctx, centerX, centerY, theme, audioMetrics, layerFilter = "all") {
       const allParticles = [];
 
       // Partículas dos anéis
       for (let i = 0; i < this.particles.length; i++) {
         const p = this.particles[i];
-        const proj = _RaphaelMath.project3D(p.worldX, p.worldY, p.worldZ, centerX, centerY, 300);
+        if (layerFilter === "back" && p.worldZ >= 0) continue;
+        if (layerFilter === "front" && p.worldZ < 0) continue;
+
+        const proj = _RaphaelMath.project3D(p.worldX, p.worldY, p.worldZ, centerX, centerY, 320);
         allParticles.push({
           ...proj,
           particle: p,
@@ -207,13 +219,18 @@
       // Partículas da nuvem esférica
       for (let i = 0; i < this.sphericalParticles.length; i++) {
         const sp = this.sphericalParticles[i];
-        const proj = _RaphaelMath.project3D(sp.worldX, sp.worldY, sp.worldZ, centerX, centerY, 300);
+        if (layerFilter === "back" && sp.worldZ >= 0) continue;
+        if (layerFilter === "front" && sp.worldZ < 0) continue;
+
+        const proj = _RaphaelMath.project3D(sp.worldX, sp.worldY, sp.worldZ, centerX, centerY, 320);
         allParticles.push({
           ...proj,
           particle: sp,
           size: sp.size
         });
       }
+
+      if (allParticles.length === 0) return;
 
       // Z-Sorting (do mais distante para o mais próximo no eixo Z)
       allParticles.sort((a, b) => a.z - b.z);
@@ -241,15 +258,15 @@
         // Gradiente radial para cada partícula (efeito de pontinho estelar brilhante)
         const grad = ctx.createRadialGradient(
           item.x, item.y, 0,
-          item.x, item.y, finalSize * 2.2
+          item.x, item.y, finalSize * 2.4
         );
         grad.addColorStop(0, `rgba(255, 255, 255, ${finalAlpha})`);
-        grad.addColorStop(0.35, `rgba(${color.r}, ${color.g}, ${color.b}, ${finalAlpha * 0.85})`);
+        grad.addColorStop(0.35, `rgba(${color.r}, ${color.g}, ${color.b}, ${finalAlpha * 0.9})`);
         grad.addColorStop(1, `rgba(${color.r}, ${color.g}, ${color.b}, 0)`);
 
         ctx.fillStyle = grad;
         ctx.beginPath();
-        ctx.arc(item.x, item.y, finalSize * 2.2, 0, Math.PI * 2);
+        ctx.arc(item.x, item.y, finalSize * 2.4, 0, Math.PI * 2);
         ctx.fill();
       }
 

@@ -171,6 +171,9 @@
                 return hold(`<div class="voice-summary-card"><span class="voice-icon">🔊</span><div class="voice-content"><strong>Resumo em Áudio:</strong> ${clean}</div></div>`);
             });
 
+            // Remove tags <animation> e <animation_hint> para não vazarem texto bruto de animação na tela
+            out = out.replace(/<animation(?:_hint)?>[\s\S]*?<\/animation(?:_hint)?>/gi, '').trim();
+
             // 1. Protege blocos ``` ... ```
             out = (() => {
                 const linhas = out.split('\n');

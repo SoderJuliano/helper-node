@@ -14,7 +14,8 @@ const ALL_TECH_TERMS = new Set([
 // Padrões clássicos de alucinação do Whisper
 const HALLUCINATION_PATTERNS = [
   /^(?:m[úu]sica(?:\s+de\s+fundo|\s+instrumental|\s+ambiente|\s+suave|\s+ao\s+fundo|\s+relaxante|\s+tema|\s+animada|\s+alegre|\s+triste|\s+cl[áa]ssica|\s+eletr[ôo]nica|\s+dram[áa]tica)?[\s.,!?:;]*)+$/i,
-  /^(?:som\s+ambiente|ru[íi]do(?:\s+de\s+fundo)?|barulho(?:\s+de\s+fundo)?|sil[êe]ncio|aplausos|risos|palmas|vozes(?:\s+ao\s+fundo)?|tosse|suspiro)[\s.,!?:;]*$/i,
+  /^(?:som\s+ambiente|ru[íi]do(?:\s+de\s+fundo)?|barulho(?:\s+de\s+fundo)?|sil[êe]ncio|aplausos|risos|palmas|vozes(?:\s+ao\s+fundo)?|tosse|suspiro|respira[çc][ãa]o|arfar|bufar|sopro)[\s.,!?:;]*$/i,
+  /^(?:respira[çc][ãa]o(?:\s+funda|\s+pesada)?|som\s+de\s+respira[çc][ãa]o|barulho\s+de\s+teclado)[\s.,!?:;]*$/i,
   /^(?:legendas(?:\s+pela\s+comunidade\s+amara\.org|\s+por\s+amara\.org)?|subtitles\s+by(?:\s+the\s+amara\.org\s+community)?|subt[íi]tulos\s+por)[\s.,!?:;]*$/i,
   /^(?:(?:obrigad[oa]\s+por\s+assistir|inscreva-se(?:\s+no\s+canal)?|se\s+inscreva(?:\s+no\s+canal)?|curta\s+e\s+compartilhe|deixe\s+seu\s+like|ative\s+o\s+sininho|at[ée]\s+a\s+pr[óo]xima|at[ée]\s+o\s+pr[óo]ximo\s+v[íi]deo|e\s+|valeu)[\s.,!?:;]*)+$/i,
   /^(?:transmiss[ãa]o(?:\s+encerrada)?|todos\s+os\s+direitos\s+reservados|copyright)[\s.,!?:;]*$/i,

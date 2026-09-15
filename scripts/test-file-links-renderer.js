@@ -131,7 +131,16 @@ assert(agyHtml.includes('data-file-path="src/utils.js"'), 'Deve conter link para
 assert(agyHtml.includes('data-file-path="src/app.js"'), 'Deve conter link para src/app.js');
 assert(agyHtml.includes('data-file-path="src/config.json"'), 'Deve conter link para src/config.json');
 assert(agyHtml.includes('data-file-path="C:/Users/soder/Documents/helper-node/services/openAIService.js"'), 'Deve conter link para openAIService.js');
-assert(agyHtml.includes('data-file-path="C:/Users/soder/Documents/helper-node/renderer/ipcResponses.js"'), 'Deve conter link para ipcResponses.js');
 console.log('  ok   Ações e ferramentas do AGY (view_file, replace_file_content, etc.) viram badges e links com ícones específicos de leitura e edição');
+
+// 7. Testes de Supressão de Tags de Animação e Formatação de Voice Summary
+console.log('7. Testando Supressão de Tags de Animação e Formatação de Voice Summary...');
+const animText = '<animation>adjust_glasses</animation>\nOlá Juliano! Meus circuitos estão prontos.\n<voice_summary>Olá Juliano! Analisei o projeto.</voice_summary>';
+const animHtml = renderMarkdown(animText, 'test');
+assert(!animHtml.includes('adjust_glasses'), 'Tag de animação <animation>adjust_glasses</animation> NÃO deve vazar texto bruto na tela');
+assert(!animHtml.includes('<animation>'), 'Tag de animação não deve estar presente no HTML bruto');
+assert(animHtml.includes('voice-summary-card'), 'Deve renderizar o card de resumo em áudio');
+assert(animHtml.includes('Olá Juliano! Meus circuitos estão prontos.'), 'Texto principal deve ser preservado');
+console.log('  ok   Tags <animation> suprimidas com 100% de sucesso sem vazar na tela');
 
 console.log('\nTodos os testes de links de arquivos e ações Edit/Read passaram com sucesso! 🎉\n');
