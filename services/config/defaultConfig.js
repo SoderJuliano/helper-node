@@ -62,6 +62,7 @@ const defaultConfig = {
   nexa: {
     enabled: true,
     onlyNexa: false,
+    avatarMode: "raphael", // "raphael" (Padrão: Raphael / Particle Core) ou "lottie" (Legado: Lottie Anime 2D)
   },
 };
 

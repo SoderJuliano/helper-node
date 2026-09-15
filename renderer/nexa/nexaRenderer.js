@@ -25,26 +25,29 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Busca a configuração da Nexa e o trim da animação
   let introTrimEndMs = 100;
+  let avatarMode = "raphael"; // Padrão
   try {
     if (window.electronAPI && window.electronAPI.getNexaConfig) {
       const nexaCfg = await window.electronAPI.getNexaConfig();
-      if (nexaCfg && nexaCfg.introTrimEndMs !== undefined) {
-        introTrimEndMs = nexaCfg.introTrimEndMs;
+      if (nexaCfg) {
+        if (nexaCfg.avatarMode) avatarMode = nexaCfg.avatarMode;
+        if (nexaCfg.introTrimEndMs !== undefined) introTrimEndMs = nexaCfg.introTrimEndMs;
       }
     }
   } catch (err) {
     console.warn("[NexaRenderer] Erro ao buscar configuração da Nexa:", err);
   }
 
-  // Inicializa o personagem e controladores procedurais
+  // Inicializa o motor Raphael Core (Alma & Núcleo da Nexa)
+  const raphaelCore = typeof RaphaelCore !== "undefined" ? new RaphaelCore() : null;
+
+  // Inicializa o personagem e controladores procedurais (Legado/Lottie)
   const character = new NexaCharacter();
   const animController = new NexaAnimationController(character);
   let psdLayersLoaded = false;
 
-  // Carrega as camadas PNG do personagem para sincronização labial e animação procedural PSD
   const candidateLayerPaths = [
-    "assets/layers",
-    "renderer/nexa/assets/layers",
+    "assets/layers", "renderer/nexa/assets/layers",
     "/home/soder/Documents/nexa-workspace/see-through/workspace/layerdiff_output/Nexa_front_cutout"
   ];
   for (const lp of candidateLayerPaths) {
@@ -66,7 +69,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       : null;
 
   const introAnimation = createLottieAnim("wave_lottie");
-  if (introAnimation) introAnimation.play();
+  if (introAnimation && avatarMode === "lottie") introAnimation.play();
 
   const idleBoringAnimation = createLottieAnim("idle_lottie");
   const idleGlassesAnimation = createLottieAnim("adjust_glasses_lottie");
@@ -97,11 +100,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       anim === idleBoringAnimation || anim === idleGlassesAnimation ||
       anim === idleStretchingAnimation || anim === idleSquattingAnimation ||
       anim === idleSleepingAnimation || anim === idleReadingAnimation ||
-      (anim.animationPath && (
-        anim.animationPath.includes("idle_lottie") || anim.animationPath.includes("adjust_glasses") ||
-        anim.animationPath.includes("stretching") || anim.animationPath.includes("squatting") ||
-        anim.animationPath.includes("sleeping") || anim.animationPath.includes("reading")
-      ))
+      (anim.animationPath && /idle_lottie|adjust_glasses|stretching|squatting|sleeping|reading/.test(anim.animationPath))
     );
   }
 
@@ -110,31 +109,28 @@ document.addEventListener("DOMContentLoaded", async () => {
     pendingStateTransition = null;
     animController.setState(stateToApply);
 
+    const switchAnim = (target) => {
+      if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== target) currentVideoAnimation.stop();
+      if (target) { target.play(); currentVideoAnimation = target; }
+    };
+
     if (stateToApply === "LISTENING") {
       activeWorkingAnimation = null;
-      if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== listeningAnimation) currentVideoAnimation.stop();
-      if (listeningAnimation) { listeningAnimation.play(); currentVideoAnimation = listeningAnimation; }
+      switchAnim(listeningAnimation);
     } else if (stateToApply === "THINKING") {
-      if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== thinkingAnimation) currentVideoAnimation.stop();
-      if (thinkingAnimation) { thinkingAnimation.play(); currentVideoAnimation = thinkingAnimation; }
+      switchAnim(thinkingAnimation);
     } else if (stateToApply === "SPEAKING") {
       activeWorkingAnimation = null;
       if (psdLayersLoaded) {
         if (currentVideoAnimation && currentVideoAnimation.isPlaying) { currentVideoAnimation.stop(); currentVideoAnimation = null; }
       } else {
-        if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== speakingAnimation) currentVideoAnimation.stop();
-        if (speakingAnimation) { speakingAnimation.play(); currentVideoAnimation = speakingAnimation; }
+        switchAnim(speakingAnimation);
       }
     } else if (stateToApply === "WORKING") {
-      if (!activeWorkingAnimation) {
-        activeWorkingAnimation = Math.random() < 0.5 ? tesseractAnimation : writingAnimation;
-      }
-      const animToUse = activeWorkingAnimation || writingAnimation;
-      if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== animToUse) currentVideoAnimation.stop();
-      if (animToUse) { animToUse.play(); currentVideoAnimation = animToUse; }
+      if (!activeWorkingAnimation) activeWorkingAnimation = Math.random() < 0.5 ? tesseractAnimation : writingAnimation;
+      switchAnim(activeWorkingAnimation || writingAnimation);
     } else if (stateToApply === "SEARCHING") {
-      if (currentVideoAnimation && currentVideoAnimation.isPlaying && currentVideoAnimation !== globeAnimation) currentVideoAnimation.stop();
-      if (globeAnimation) { globeAnimation.play(); currentVideoAnimation = globeAnimation; }
+      switchAnim(globeAnimation);
     } else {
       activeWorkingAnimation = null;
       if (currentVideoAnimation && currentVideoAnimation.isPlaying) {
@@ -162,6 +158,30 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (window.electronAPI && window.electronAPI.onPlayAnimation) {
     window.electronAPI.onPlayAnimation(({ name }) => {
       console.log("[NexaRenderer] Evento de animação recebido:", name);
+
+      if (avatarMode === "raphael" && raphaelCore) {
+        if (name === "dance" || name === "dancing") {
+          raphaelCore.setState("SPEAKING");
+          raphaelCore.triggerShockwave(1.4);
+          setTimeout(() => raphaelCore.triggerShockwave(1.1), 300);
+          setTimeout(() => raphaelCore.triggerShockwave(0.9), 600);
+        } else if (name === "writing_code" || name === "typing" || name === "tesseract_code" || name === "tesseract") {
+          raphaelCore.setState("WORKING");
+          raphaelCore.triggerShockwave(0.9);
+        } else if (name === "globe_search") {
+          raphaelCore.setState("SEARCHING");
+          raphaelCore.triggerShockwave(0.9);
+        } else if (name === "thinking" || name === "adjust_glasses") {
+          raphaelCore.setState("THINKING");
+          raphaelCore.triggerShockwave(0.8);
+        } else if (name === "sleeping") {
+          raphaelCore.setState("SLEEPING");
+        } else {
+          raphaelCore.triggerShockwave(1.0);
+        }
+        return;
+      }
+
       const animDef = animationsCatalog[name];
       if (!animDef) {
         console.warn("[NexaRenderer] Animação ausente no catálogo local:", name);
@@ -193,6 +213,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (window.electronAPI && window.electronAPI.onNexaStateChange) {
     window.electronAPI.onNexaStateChange(({ state: newState }) => {
       console.log("[NexaRenderer] Novo estado recebido via IPC:", newState);
+      if (avatarMode === "raphael" && raphaelCore) {
+        raphaelCore.setState(newState);
+      }
 
       // Transição suave: se uma animação de movimento IDLE estiver em curso (espreguiçar, óculos, agachar, idle)
       // e o novo estado for THINKING, WORKING ou SEARCHING (pesquisa web), primeiro finaliza o ciclo atual
@@ -247,6 +270,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     stopSpeakingAnimation();
     animController.setState("IDLE");
+    if (avatarMode === "raphael" && raphaelCore) {
+      raphaelCore.setState("IDLE");
+    }
   }
 
   if (window.electronAPI && window.electronAPI.onStopTtsAudio) {
@@ -277,7 +303,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       currentAudio = new Audio(audioUrl);
       currentAudio.volume = 1.0;
 
-      // Conecta o elemento de áudio ao analisador espectral do NexaTalking antes de iniciar
+      // Conecta o elemento de áudio ao motor Raphael e/ou NexaTalking
+      if (avatarMode === "raphael" && raphaelCore) {
+        raphaelCore.connectAudioElement(currentAudio);
+        raphaelCore.setState("SPEAKING");
+      }
       animController.connectAudioElement(currentAudio);
       animController.setState("SPEAKING");
 
@@ -305,6 +335,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         currentAudio = null;
         stopSpeakingAnimation();
         animController.setState("IDLE");
+        if (avatarMode === "raphael" && raphaelCore) raphaelCore.setState("IDLE");
         if (window.electronAPI && window.electronAPI.sendNexaTtsEnded) {
           window.electronAPI.sendNexaTtsEnded();
         }
@@ -315,6 +346,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         currentAudio = null;
         stopSpeakingAnimation();
         animController.setState("IDLE");
+        if (avatarMode === "raphael" && raphaelCore) raphaelCore.setState("IDLE");
         if (window.electronAPI && window.electronAPI.sendNexaTtsEnded) {
           window.electronAPI.sendNexaTtsEnded();
         }
@@ -328,6 +360,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           console.error("[NexaRenderer] Falha na reprodução de áudio:", err);
           stopSpeakingAnimation();
           animController.setState("IDLE");
+          if (avatarMode === "raphael" && raphaelCore) raphaelCore.setState("IDLE");
           if (window.electronAPI && window.electronAPI.sendNexaTtsEnded) {
             window.electronAPI.sendNexaTtsEnded();
           }
@@ -337,6 +370,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.error("[NexaRenderer] Exceção ao tocar TTS:", e);
       stopSpeakingAnimation();
       animController.setState("IDLE");
+      if (avatarMode === "raphael" && raphaelCore) raphaelCore.setState("IDLE");
       if (window.electronAPI && window.electronAPI.sendNexaTtsEnded) {
         window.electronAPI.sendNexaTtsEnded();
       }
@@ -360,6 +394,29 @@ document.addEventListener("DOMContentLoaded", async () => {
   function renderLoop(currentTime) {
     const deltaTime = Math.min(0.1, (currentTime - lastTime) / 1000.0);
     lastTime = currentTime;
+
+    // Modo Raphael Core (Novo Padrão)
+    if (avatarMode === "raphael" && raphaelCore) {
+      const currentState = raphaelCore.getCurrentState();
+
+      if (currentState === "IDLE") {
+        sleepingTime += deltaTime;
+        if (sleepingTime >= SLEEP_TIMEOUT) {
+          if (!isSleeping) {
+            isSleeping = true;
+            raphaelCore.setState("SLEEPING");
+          }
+        }
+      } else {
+        if (isSleeping) isSleeping = false;
+        sleepingTime = 0;
+      }
+
+      raphaelCore.update(deltaTime);
+      raphaelCore.render(ctx, canvas.width, canvas.height);
+      requestAnimationFrame(renderLoop);
+      return;
+    }
 
     const currentState = animController ? animController.getCurrentState() : "IDLE";
 

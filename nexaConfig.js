@@ -167,6 +167,9 @@ if (saveBtn) {
       return;
     }
 
+    const modeRaphaelRadio = document.getElementById("mode-raphael");
+    const avatarMode = (modeRaphaelRadio && modeRaphaelRadio.checked) ? "raphael" : "lottie";
+
     // Salva configurações de TTS
     ipcRenderer.send("save-google-tts-config", {
       enabled: isNexaOn,
@@ -176,7 +179,8 @@ if (saveBtn) {
     // Salva configuração de identidade Nexa
     ipcRenderer.send("nexa:save-config", {
       enabled: isNexaOn,
-      onlyNexa: false
+      onlyNexa: false,
+      avatarMode: avatarMode
     });
 
     // Salva microfone
@@ -197,9 +201,18 @@ document.addEventListener("DOMContentLoaded", async () => {
       ipcRenderer.invoke("get-mic-device").catch(() => "")
     ]);
 
-    if (nexaToggle && nexaCfg) {
-      nexaToggle.checked = !!nexaCfg.enabled;
-      updateNexaStatus(!!nexaCfg.enabled);
+    if (nexaCfg) {
+      if (nexaToggle) {
+        nexaToggle.checked = !!nexaCfg.enabled;
+        updateNexaStatus(!!nexaCfg.enabled);
+      }
+      if (nexaCfg.avatarMode === "lottie") {
+        const modeLottie = document.getElementById("mode-lottie");
+        if (modeLottie) modeLottie.checked = true;
+      } else {
+        const modeRaphael = document.getElementById("mode-raphael");
+        if (modeRaphael) modeRaphael.checked = true;
+      }
     } else {
       updateNexaStatus(false);
     }
