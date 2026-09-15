@@ -39,12 +39,14 @@ console.log("  [OK] Teste 2: Todos os 7 estados e paletas cromáticas validados.
 
 // 3. Validação do RaphaelRings
 const rings = new RaphaelRings();
-assert.strictEqual(rings.ringDefinitions.length, 3, "Devem existir 3 auréolas orbitais concêntricas");
+assert.ok(rings.ringDefinitions.length >= 3, "Devem existir ao menos 3 auréolas orbitais concêntricas");
 assert.ok(rings.particles.length > 200, "Devem existir mais de 200 partículas tridimensionais nas auréolas");
+assert.ok(rings.sphericalParticles.length > 50, "Deve existir nuvem esférica de partículas cósmicas");
 
 rings.update(0.016, RAPHAEL_THEMES.IDLE, { bass: 0.5, mid: 0.3, treble: 0.2, amplitude: 0.4 }, 1.0);
 assert.ok(typeof rings.particles[0].worldX === "number", "Posição worldX deve ser numérica");
 assert.ok(typeof rings.particles[0].worldZ === "number", "Posição worldZ deve ser numérica");
+assert.ok(typeof rings.sphericalParticles[0].worldX === "number", "Posição esférica worldX deve ser numérica");
 console.log("  [OK] Teste 3: Rotação giroscópica e física 3D dos anéis validadas.");
 
 // 4. Validação do RaphaelAudioVisualizer

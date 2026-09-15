@@ -61,7 +61,7 @@ function registerNexaIpc() {
   });
 
   ipcMain.on("nexa:save-config", (event, cfg) => {
-    const { configService } = require("../globals.js");
+    const { configService, state } = require("../globals.js");
     configService.setNexaConfig(cfg);
     console.log("[NexaIPC] Configuração da Nexa salva:", cfg);
     // Idempotente de propósito: antes isso só reagia à TRANSIÇÃO OFF->ON, então
@@ -69,11 +69,26 @@ function registerNexaIpc() {
     // ela ficava invisível para sempre. createNexaWindow() já reusa a janela viva.
     if (cfg && cfg.enabled) {
       createNexaWindow();
+      if (state.nexaWindow && !state.nexaWindow.isDestroyed()) {
+        try {
+          state.nexaWindow.webContents.send("nexa:config-changed", cfg);
+          state.nexaWindow.reload();
+        } catch (_) {}
+      }
     } else {
       closeNexaWindow();
       try {
         const nexaVoiceAssistant = require("../../services/nexaVoiceAssistant");
         nexaVoiceAssistant.stop();
+      } catch (_) {}
+    }
+  });
+
+  ipcMain.on("nexa:reload-window", () => {
+    const { state } = require("../globals.js");
+    if (state.nexaWindow && !state.nexaWindow.isDestroyed()) {
+      try {
+        state.nexaWindow.reload();
       } catch (_) {}
     }
   });

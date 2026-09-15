@@ -354,6 +354,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   isNexaOpen: () => ipcRenderer.invoke("nexa:is-open"),
   sendNexaTtsEnded: () => ipcRenderer.send("nexa:tts-ended"),
   onNexaStateChange: (cb) => ipcRenderer.on("nexa:state-change", (event, data) => cb(data)),
+  onNexaConfigChange: (cb) => ipcRenderer.on("nexa:config-changed", (event, data) => cb(data)),
+  reloadNexaWindow: () => ipcRenderer.send("nexa:reload-window"),
   onPlayTtsAudio: (cb) => ipcRenderer.on("play-tts-audio", (event, data) => cb(data)),
   onStopTtsAudio: (cb) => ipcRenderer.on("stop-tts-audio", (event, data) => cb(data)),
   onPlayAnimation: (cb) => ipcRenderer.on("nexa:play-animation", (event, data) => cb(data)),

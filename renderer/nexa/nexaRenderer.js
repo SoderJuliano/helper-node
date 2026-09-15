@@ -38,6 +38,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     console.warn("[NexaRenderer] Erro ao buscar configuração da Nexa:", err);
   }
 
+  if (window.electronAPI && window.electronAPI.onNexaConfigChange) {
+    window.electronAPI.onNexaConfigChange((newCfg) => {
+      console.log("[NexaRenderer] Configuração atualizada via IPC:", newCfg);
+      if (newCfg && newCfg.avatarMode) {
+        avatarMode = newCfg.avatarMode;
+        if (avatarMode === "lottie" && introAnimation && !introAnimation.isPlaying) {
+          introAnimation.play();
+        }
+      }
+    });
+  }
+
   // Inicializa o motor Raphael Core (Alma & Núcleo da Nexa)
   const raphaelCore = typeof RaphaelCore !== "undefined" ? new RaphaelCore() : null;
 

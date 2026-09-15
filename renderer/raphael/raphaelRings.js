@@ -5,56 +5,70 @@ class RaphaelRings {
     this.ringDefinitions = [
       {
         id: "inner",
-        radius: 65,
-        thickness: 7,
-        particleCount: 75,
+        radius: 62,
+        thickness: 8,
+        particleCount: 85,
         rx: 0.45,
         ry: 0.20,
         rz: 0.0,
-        rotSpeedX: 0.2,
-        rotSpeedY: 0.5,
-        rotSpeedZ: 0.3,
+        rotSpeedX: 0.25,
+        rotSpeedY: 0.55,
+        rotSpeedZ: 0.35,
         currentRotX: 0.2,
         currentRotY: 0.1,
-        currentRotZ: 0.0,
-        hueOffset: 0.0
+        currentRotZ: 0.0
       },
       {
-        id: "middle",
-        radius: 88,
-        thickness: 9,
-        particleCount: 95,
-        rx: -0.35,
+        id: "middle-inner",
+        radius: 84,
+        thickness: 10,
+        particleCount: 105,
+        rx: -0.40,
         ry: 0.85,
-        rz: 0.15,
-        rotSpeedX: -0.3,
-        rotSpeedY: -0.4,
-        rotSpeedZ: 0.5,
+        rz: 0.20,
+        rotSpeedX: -0.35,
+        rotSpeedY: -0.45,
+        rotSpeedZ: 0.55,
         currentRotX: -0.2,
         currentRotY: 0.5,
-        currentRotZ: 0.1,
-        hueOffset: 0.33
+        currentRotZ: 0.1
+      },
+      {
+        id: "middle-outer",
+        radius: 106,
+        thickness: 12,
+        particleCount: 120,
+        rx: 0.75,
+        ry: -0.55,
+        rz: 0.65,
+        rotSpeedX: 0.45,
+        rotSpeedY: 0.35,
+        rotSpeedZ: -0.45,
+        currentRotX: 0.4,
+        currentRotY: -0.3,
+        currentRotZ: 0.2
       },
       {
         id: "outer",
-        radius: 112,
-        thickness: 11,
-        particleCount: 110,
-        rx: 0.70,
-        ry: -0.50,
-        rz: 0.60,
-        rotSpeedX: 0.4,
-        rotSpeedY: 0.3,
-        rotSpeedZ: -0.4,
-        currentRotX: 0.4,
-        currentRotY: -0.3,
-        currentRotZ: 0.2,
-        hueOffset: 0.66
+        radius: 128,
+        thickness: 14,
+        particleCount: 130,
+        rx: -0.60,
+        ry: -0.80,
+        rz: 0.40,
+        rotSpeedX: -0.20,
+        rotSpeedY: 0.60,
+        rotSpeedZ: 0.30,
+        currentRotX: 0.1,
+        currentRotY: -0.5,
+        currentRotZ: 0.4
       }
     ];
 
     this.particles = [];
+    this.sphericalParticles = [];
     this.initParticles();
+    this.initSphericalParticles();
   }
 
   initParticles() {
@@ -63,8 +77,8 @@ class RaphaelRings {
       for (let i = 0; i < ring.particleCount; i++) {
         const baseAngle = (i / ring.particleCount) * Math.PI * 2;
         const radiusNoise = (Math.random() - 0.5) * ring.thickness;
-        const yNoise = (Math.random() - 0.5) * (ring.thickness * 0.8);
-        const baseSize = Math.random() * 2.2 + 1.2;
+        const yNoise = (Math.random() - 0.5) * (ring.thickness * 0.85);
+        const baseSize = Math.random() * 2.2 + 1.1;
         const sparkRate = Math.random() * 0.05 + 0.02;
 
         this.particles.push({
@@ -80,6 +94,27 @@ class RaphaelRings {
         });
       }
     });
+  }
+
+  initSphericalParticles() {
+    this.sphericalParticles = [];
+    const count = 120;
+    for (let i = 0; i < count; i++) {
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(Math.random() * 2 - 1);
+      const baseRadius = 55 + Math.random() * 65;
+      this.sphericalParticles.push({
+        theta,
+        phi,
+        baseRadius,
+        rotSpeedTheta: (Math.random() - 0.5) * 0.6,
+        rotSpeedPhi: (Math.random() - 0.5) * 0.4,
+        size: Math.random() * 1.8 + 0.8,
+        sparkPhase: Math.random() * Math.PI * 2,
+        sparkRate: Math.random() * 0.06 + 0.02,
+        colorIdx: i % 3
+      });
+    }
   }
 
   /**
@@ -100,7 +135,7 @@ class RaphaelRings {
       ring.currentRotZ += ring.rotSpeedZ * rotSpeedMultiplier * deltaTime;
     });
 
-    // Atualiza partículas
+    // Atualiza partículas dos anéis orbitais
     const waveFreq = 6;
     const waveAmp = (theme.shockwaveIntensity || 0.3) * 8 + audioMetrics.mid * 12;
 
@@ -109,7 +144,7 @@ class RaphaelRings {
       p.sparkPhase += p.sparkRate * (1.0 + audioMetrics.treble * 3.0);
 
       // Movimento angular individual ao longo do anel
-      p.angle = (p.baseAngle + time * 0.15 * (p.ringIdx % 2 === 0 ? 1 : -1)) % (Math.PI * 2);
+      p.angle = (p.baseAngle + time * 0.18 * (p.ringIdx % 2 === 0 ? 1 : -1)) % (Math.PI * 2);
 
       // Ondulação harmônica senoidal
       const wave = Math.sin(p.angle * waveFreq + time * 3.5) * waveAmp;
@@ -132,6 +167,18 @@ class RaphaelRings {
       p.worldY = rot.y;
       p.worldZ = rot.z;
     });
+
+    // Atualiza partículas da nuvem esférica
+    this.sphericalParticles.forEach((sp) => {
+      sp.theta += sp.rotSpeedTheta * rotSpeedMultiplier * deltaTime;
+      sp.phi += sp.rotSpeedPhi * rotSpeedMultiplier * deltaTime;
+      sp.sparkPhase += sp.sparkRate * (1.0 + audioMetrics.treble * 2.5);
+
+      const r = sp.baseRadius + audioExpansion * 0.6;
+      sp.worldX = r * Math.sin(sp.phi) * Math.cos(sp.theta);
+      sp.worldY = r * Math.sin(sp.phi) * Math.sin(sp.theta);
+      sp.worldZ = r * Math.cos(sp.phi);
+    });
   }
 
   /**
@@ -143,17 +190,32 @@ class RaphaelRings {
    * @param {object} audioMetrics 
    */
   render(ctx, centerX, centerY, theme, audioMetrics) {
-    // Projeta e ordena por profundidade Z para renderização volumétrica correta
-    const projectedParticles = this.particles.map((p) => {
-      const proj = _RaphaelMath.project3D(p.worldX, p.worldY, p.worldZ, centerX, centerY, 300);
-      return {
-        ...proj,
-        particle: p
-      };
-    });
+    const allParticles = [];
 
-    // Z-Sorting (do mais distante para o mais próximo)
-    projectedParticles.sort((a, b) => a.z - b.z);
+    // Partículas dos anéis
+    for (let i = 0; i < this.particles.length; i++) {
+      const p = this.particles[i];
+      const proj = _RaphaelMath.project3D(p.worldX, p.worldY, p.worldZ, centerX, centerY, 300);
+      allParticles.push({
+        ...proj,
+        particle: p,
+        size: p.baseSize
+      });
+    }
+
+    // Partículas da nuvem esférica
+    for (let i = 0; i < this.sphericalParticles.length; i++) {
+      const sp = this.sphericalParticles[i];
+      const proj = _RaphaelMath.project3D(sp.worldX, sp.worldY, sp.worldZ, centerX, centerY, 300);
+      allParticles.push({
+        ...proj,
+        particle: sp,
+        size: sp.size
+      });
+    }
+
+    // Z-Sorting (do mais distante para o mais próximo no eixo Z)
+    allParticles.sort((a, b) => a.z - b.z);
 
     const palette = theme.particleColors || [
       { r: 0, g: 240, b: 255 },
@@ -165,15 +227,15 @@ class RaphaelRings {
     // Modo aditivo para brilho celestial intenso
     ctx.globalCompositeOperation = "lighter";
 
-    for (let i = 0; i < projectedParticles.length; i++) {
-      const item = projectedParticles[i];
+    for (let i = 0; i < allParticles.length; i++) {
+      const item = allParticles[i];
       const p = item.particle;
       const color = palette[p.colorIdx % palette.length];
 
       const spark = 0.7 + 0.3 * Math.sin(p.sparkPhase);
       const audioGlow = 1.0 + audioMetrics.treble * 1.5;
       const finalAlpha = Math.min(1.0, item.alpha * spark * audioGlow);
-      const finalSize = Math.max(0.8, p.baseSize * item.scale * (1.0 + audioMetrics.amplitude * 0.8));
+      const finalSize = Math.max(0.8, item.size * item.scale * (1.0 + audioMetrics.amplitude * 0.8));
 
       // Gradiente radial para cada partícula (efeito de pontinho estelar brilhante)
       const grad = ctx.createRadialGradient(
