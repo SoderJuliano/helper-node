@@ -250,11 +250,10 @@ class NexaLottieAnimation {
         drawH = canvasWidth / animRatio;
       }
 
-      // Aumenta a animação deitada/dormindo em 30% para equilibrar a proporção visual com o personagem em pé
-      if (isSleeping) {
-        drawW *= 1.30;
-        drawH *= 1.30;
-      }
+      // Garante que a animação deitada/dormindo caiba 100% dentro dos limites da janela (sem cortes nas laterais)
+      // Aplica uma margem sutil de 95% para enquadramento perfeito
+      drawW *= 0.95;
+      drawH *= 0.95;
 
       const x = (canvasWidth - drawW) / 2;
       const y = (canvasHeight - drawH) / 2;
