@@ -61,11 +61,16 @@ class RealtimeRag {
   // caso normal com streaming). Senao busca na hora, ainda com o teto de tempo.
   async blockFor(transcript, token) {
     try {
-      if (!this.enabled().any) return '';
+      const { kbOn, any } = this.enabled();
+      if (!any) return '';
       const cached = this._ragCache || { key: '', block: '' };
       if (cached.key && transcript.startsWith(cached.key)) return cached.block;
       const block = await raceWithTimeout(this.build(transcript, token), RAG_TIMEOUT_MS, null);
-      return block || '';
+      if (block) return block;
+      if (kbOn) {
+        return await knowledgeBase.augment(transcript, { topK: 5 });
+      }
+      return '';
     } catch (_) { return ''; }
   }
 

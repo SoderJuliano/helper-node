@@ -35,8 +35,44 @@ function getSource() {
 
 function getSourcePath() { return srcPath(); }
 
+let _cachedIndex = null;
+
 function loadIndex() {
-  try { return JSON.parse(fs.readFileSync(idxPath(), "utf8")); } catch (_) { return { chunks: [], updatedAt: 0 }; }
+  if (_cachedIndex) return _cachedIndex;
+  try {
+    _cachedIndex = JSON.parse(fs.readFileSync(idxPath(), "utf8"));
+    return _cachedIndex;
+  } catch (_) {
+    _cachedIndex = { chunks: [], updatedAt: 0 };
+    return _cachedIndex;
+  }
+}
+
+const MAX_EMBED_CACHE = 500;
+const _embedCache = new Map();
+
+function normalizeKey(str) {
+  return String(str || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function getCachedEmbedding(key) {
+  const k = normalizeKey(key);
+  if (!_embedCache.has(k)) return null;
+  const val = _embedCache.get(k);
+  _embedCache.delete(k);
+  _embedCache.set(k, val);
+  return val;
+}
+
+function setCachedEmbedding(key, embedding) {
+  if (!embedding || !Array.isArray(embedding)) return;
+  const k = normalizeKey(key);
+  if (_embedCache.has(k)) _embedCache.delete(k);
+  else if (_embedCache.size >= MAX_EMBED_CACHE) {
+    const oldestKey = _embedCache.keys().next().value;
+    _embedCache.delete(oldestKey);
+  }
+  _embedCache.set(k, embedding);
 }
 
 function chunkCount() { return (loadIndex().chunks || []).length; }
@@ -147,7 +183,9 @@ async function save(text, { aiRewrite = true, token, backendResponder } = {}) {
       chunks.forEach((c, i) => { c.embedding = embs[i]; });
     } catch (e) { console.warn("[knowledgeBase] embeddings falharam, usando keyword:", e.message); }
   }
-  fs.writeFileSync(idxPath(), JSON.stringify({ chunks, updatedAt: Date.now() }), "utf8");
+  const idxData = { chunks, updatedAt: Date.now() };
+  _cachedIndex = idxData;
+  fs.writeFileSync(idxPath(), JSON.stringify(idxData), "utf8");
   console.log(`[knowledgeBase] base salva: ${chunks.length} chunk(s), embeddings=${token && chunks[0] && chunks[0].embedding ? "sim" : "não (keyword)"}`);
   return { chunks: chunks.length, text: finalText, rewritten, shrunk, codeSkipped };
 }
@@ -204,6 +242,7 @@ async function appendSource(newText, { aiRewrite = true, token, backendResponder
   const idx = loadIndex();
   idx.chunks = [...(idx.chunks || []), ...newChunks];
   idx.updatedAt = Date.now();
+  _cachedIndex = idx;
   fs.writeFileSync(idxPath(), JSON.stringify(idx), "utf8");
 
   console.log(`[knowledgeBase] append: +${newChunks.length} chunk(s) novo(s) (total ${idx.chunks.length})`);
@@ -330,9 +369,15 @@ function buildContextBlock(chunks) {
 // Embeda uma query (texto único). Devolve o vetor ou null em falha. Exposto pra que
 // o caller embede UMA vez e compartilhe entre KB e banco de respostas (0-latência).
 async function embed(query, token) {
-  if (!query || !token) return null;
+  if (!query) return null;
+  const cached = getCachedEmbedding(query);
+  if (cached) return cached;
+  if (!token) return null;
   try {
     const [e] = await embedOpenAI([query], token);
+    if (e && Array.isArray(e)) {
+      setCachedEmbedding(query, e);
+    }
     return e || null;
   } catch (e) {
     console.warn("[knowledgeBase] embed falhou:", e.message);

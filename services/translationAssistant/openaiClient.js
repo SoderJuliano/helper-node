@@ -153,7 +153,13 @@ async function getTranslationAndSuggestion(transcript, { userName, userBackgroun
         return { kb, bank };
       })();
       const result = await raceWithTimeout(ragWork, RAG_TIMEOUT_MS, null);
-      if (result) { kbBlock = result.kb; bankHint = result.bank; }
+      if (result) {
+        kbBlock = result.kb;
+        bankHint = result.bank;
+      } else if (kbOn) {
+        // Fallback instantâneo (<1ms): se o embedding remoto exceder o timeout, faz busca léxica local em memória
+        kbBlock = await knowledgeBase.augment(transcript, { topK: 5 });
+      }
     }
   } catch (_) {}
   const ragBlock = [bankHint, kbBlock].filter(Boolean).join('\n\n');
