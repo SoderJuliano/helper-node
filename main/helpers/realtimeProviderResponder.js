@@ -5,6 +5,7 @@ const {
   BackendService,
   OpenAIService,
   state,
+  workspace,
 } = require('../globals.js');
 
 async function realtimeProviderResponder(transcript, image, onDelta, contextMessages = [], helpers = {}) {
@@ -33,11 +34,23 @@ async function realtimeProviderResponder(transcript, image, onDelta, contextMess
     opts.imageBase64 = image;
   }
 
+  const getProjectPathSafe = () => {
+    try {
+      if (workspace && typeof workspace.getProjectPath === 'function') {
+        return workspace.getProjectPath();
+      }
+      const ws = require('../../services/workspace');
+      if (ws && typeof ws.getProjectPath === 'function') {
+        return ws.getProjectPath();
+      }
+    } catch (_) {}
+    return null;
+  };
+
   if (aiModel === "geminiCli") {
     try {
       const GeminiCliProvider = require('../../services/providers/gemini-cli/GeminiCliProvider');
-      const workspace = require('./workspace');
-      const projectPath = workspace.getProjectPath();
+      const projectPath = getProjectPathSafe();
       let acc = '';
       let lastEmit = 0;
       const streamSender = {
@@ -68,8 +81,7 @@ async function realtimeProviderResponder(transcript, image, onDelta, contextMess
   if (aiModel === "claudeCli") {
     try {
       const ClaudeCliProvider = require('../../services/providers/claude-cli/ClaudeCliProvider');
-      const workspace = require('./workspace');
-      const projectPath = workspace.getProjectPath();
+      const projectPath = getProjectPathSafe();
       let acc = '';
       let lastEmit = 0;
       const streamSender = {
@@ -100,8 +112,7 @@ async function realtimeProviderResponder(transcript, image, onDelta, contextMess
   if (aiModel === "copilotCli") {
     try {
       const CopilotCliProvider = require('../../services/providers/copilot-cli/CopilotCliProvider');
-      const workspace = require('./workspace');
-      const projectPath = workspace.getProjectPath();
+      const projectPath = getProjectPathSafe();
       let acc = '';
       let lastEmit = 0;
       const streamSender = {
