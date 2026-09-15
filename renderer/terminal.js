@@ -181,10 +181,12 @@ var isTerminalInitialized = false;
                 });
             }
 
-            // Cada tecla vai crua pro PTY. É o que faltava pro vim do `git pull`:
-            // antes o <input> só mandava a linha inteira no Enter, então dentro do
-            // editor era chute.
+            // Cada tecla vai crua pro PTY. Se desconectado, reconecta automaticamente no próximo toque.
             term.onData((data) => {
+                if (!isTerminalInitialized) {
+                    initTerminalProcess();
+                    return;
+                }
                 window.electronAPI.terminalInput(data);
                 // Depois de um Enter, o painel de git/árvore pode ter mudado.
                 if (data.includes('\r')) agendarRefreshGit();
