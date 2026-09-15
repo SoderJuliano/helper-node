@@ -51,7 +51,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   // Inicializa o motor Raphael Core (Alma & Núcleo da Nexa)
-  const raphaelCore = typeof RaphaelCore !== "undefined" ? new RaphaelCore() : null;
+  const raphaelCore = (typeof RaphaelCore !== "undefined")
+    ? new RaphaelCore()
+    : ((typeof window !== "undefined" && window.RaphaelCore) ? new window.RaphaelCore() : null);
+
+  console.log(`[NexaRenderer] Inicializado modo avatar: "${avatarMode}" | RaphaelCore disponível: ${!!raphaelCore}`);
+  if (avatarMode === "raphael") {
+    canvas.className = "raphael-canvas-glow idle";
+  }
 
   // Inicializa o personagem e controladores procedurais (Legado/Lottie)
   const character = new NexaCharacter();
@@ -227,6 +234,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.log("[NexaRenderer] Novo estado recebido via IPC:", newState);
       if (avatarMode === "raphael" && raphaelCore) {
         raphaelCore.setState(newState);
+        canvas.className = `raphael-canvas-glow ${(newState || "idle").toLowerCase()}`;
       }
 
       // Transição suave: se uma animação de movimento IDLE estiver em curso (espreguiçar, óculos, agachar, idle)

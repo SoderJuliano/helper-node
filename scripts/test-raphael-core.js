@@ -81,6 +81,43 @@ const mockCtx = {
 
 core.render(mockCtx, 360, 360);
 assert.ok(drawCallCount > 50, "Renderizador deve desenhar partículas, corona, núcleo e anéis");
-console.log(`  [OK] Teste 5: Renderização completa executada com sucesso (${drawCallCount} primitivas visuais desenhadas).`);
+// 6. Validação de Carregamento em Ambiente de Scripts de Navegador (sem conflito de escopo)
+const vm = require("vm");
+const fs = require("fs");
+const path = require("path");
+
+const browserCtx = vm.createContext({
+  console,
+  window: {},
+  document: {},
+  Image: function() {},
+  AudioContext: function() {
+    return {
+      createAnalyser: () => ({ fftSize: 512, frequencyBinCount: 256, smoothingTimeConstant: 0.8 }),
+      createMediaElementSource: () => ({ connect: () => {} }),
+      destination: {}
+    };
+  }
+});
+browserCtx.window = browserCtx;
+browserCtx.globalThis = browserCtx;
+
+const scriptsToLoad = [
+  "renderer/raphael/raphaelMath.js",
+  "renderer/raphael/raphaelThemes.js",
+  "renderer/raphael/raphaelAudioVisualizer.js",
+  "renderer/raphael/raphaelRings.js",
+  "renderer/raphael/raphaelCore.js"
+];
+
+scriptsToLoad.forEach((rel) => {
+  const code = fs.readFileSync(path.join(__dirname, "..", rel), "utf8");
+  vm.runInContext(code, browserCtx);
+});
+
+assert.ok(typeof browserCtx.RaphaelCore === "function", "RaphaelCore deve estar instanciável no escopo global do navegador");
+const browserInstance = new browserCtx.RaphaelCore();
+assert.strictEqual(browserInstance.getCurrentState(), "IDLE", "RaphaelCore instanciado no browser deve iniciar em IDLE");
+console.log("  [OK] Teste 6: Carregamento sequencial em ambiente de navegador (HTML <script>) 100% sem erros de escopo.");
 
 console.log("\n🎉 TODOS OS TESTES DO RAPHAEL CORE PASSARAM COM SUCESSO! 🔮✨");
