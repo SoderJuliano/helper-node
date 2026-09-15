@@ -40,7 +40,15 @@ ${userCtx ? userCtx + '\n\n' : ''}=== PASSO 1 — IDENTIFICAR E TRANSCREVER O CO
 === PASSO 2 — DETECTAR O IDIOMA E FORMULAR A RESPOSTA ===
 - A sugestão de resposta deve sair NO MESMO IDIOMA da pergunta na tela (se em inglês → resposta em inglês; se em português → resposta em português).
 - PROBLEMA DE CÓDIGO (LeetCode, HackerRank, editor de código): detecte a linguagem pelo código/stub na tela. Forneça o código completo da solução e explique a complexidade de tempo/espaço.
-- PERGUNTA DE ENTREVISTA / TESTE (técnica, comportamental ou situacional): entregue uma SUGESTÃO DE RESPOSTA pronta em 1ª pessoa ("Eu...", "Na minha experiência...") com um exemplo prático.
+- TESTES COMPORTAMENTAIS / FIT CULTURAL / PSICOTÉCNICOS (Gupy, Mindsight, Kenoby, Big Five/OCEAN, DISC, ordenação 1 a 3, mais/menos):
+  * CALIBRAÇÃO CRÍTICA PARA ENGENHEIRO DE SOFTWARE / DESENVOLVEDOR:
+    1. AUTODISCIPLINA E FOCO ANALÍTICO (Conscienciosidade Máxima = Prioridade 1): priorize foco sustentado, persistência em tarefas complexas ("não perco o interesse com facilidade"), prudência analítica ("aguardo ter todas as informações antes de tomar uma decisão", "peso prós e contras") e decisões racionais. NUNCA priorize impulsividade ou decisões precipitadas/no calor do momento.
+    2. ESTABILIDADE EMOCIONAL ALTA (Baixo Neuroticismo): calma e segurança ("satisfeito comigo mesmo"). Traços de insegurança ou vulnerabilidade ("desconfortável com alguém observando meu trabalho", "decisões no calor do momento") SEMPRE ficam em ÚLTIMO (3 - menos importante / menos me descreve).
+    3. ABERTURA TECNOLÓGICA: curiosidade intelectual e gosto por aprender novas tecnologias ("fascinado por novas tecnologias", "descobrir como usar novas tecnologias").
+    4. EXTROVERSÃO EQUILIBRADA (NÃO HIPERATIVA/AGITADA): colaboração técnica em equipe sem passar perfil comercial/agitado. Priorize capacidade analítica, persistência e foco técnico em home-office sobre agitação social constante.
+  * Se for ORDENAÇÃO DE ITENS (ex: 1 muito importante a 3 menos importante): entregue a lista numerada exata 1, 2, 3 com o texto original de cada item e termine com a instrução: "Ordene os itens conforme acima e clique em 'Próximo passo' (ou 'Finalizar')."
+  * Se for MAIS / MENOS: formate como **MAIS:** [Opção X] / **MENOS:** [Opção Y] + 1 linha de justificativa.
+- PERGUNTA DE ENTREVISTA (técnica, comportamental ou situacional): entregue uma SUGESTÃO DE RESPOSTA pronta em 1ª pessoa ("Eu...", "Na minha experiência...") com um exemplo prático.
 - TELA DE ORIENTAÇÃO / INFORMATIVA (sem pergunta ativa): explique resumidamente o que a tela indica e esclareça que é uma tela de orientação/etapa sem necessidade de resposta verbal no momento.
 
 === FORMATO DE SAÍDA OBRIGATÓRIO ===

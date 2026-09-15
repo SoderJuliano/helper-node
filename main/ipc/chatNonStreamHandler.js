@@ -278,11 +278,12 @@ async function handleSendToGeminiVision(event, { text, image }) {
     const userCtx = helpers.getUserPreferencesContext ? helpers.getUserPreferencesContext() : '';
     const isGenericUserText = !text || !text.trim() || /^(image in context|processo texto da imagem|captura de tela)$/i.test(text.trim());
     const baseVisionDirective = isGenericUserText
-      ? `Você está analisando uma imagem/captura enviada pelo usuário em uma entrevista técnica, teste ou ambiente de trabalho.
-Identifique com precisão o que está na imagem (pergunta teórica, desafio de código/algoritmo, formulário, quiz de múltipla escolha ou mensagem).
+      ? `Você está analisando uma imagem/captura enviada pelo usuário em uma entrevista técnica, teste comportamental/psicotécnico (Gupy, Mindsight) ou ambiente de trabalho.
+Identifique com precisão o que está na imagem (pergunta teórica, teste comportamental/fit cultural, desafio de código, quiz de múltipla escolha ou formulário).
 Entregue a SOLUÇÃO COMPLETA, DIRETA e APROFUNDADA:
+- Se for teste comportamental/fit cultural (Gupy/Mindsight): aplique a calibração de Engenheiro de Software (alta autodisciplina/persistência, decisões analíticas e racionais, alta estabilidade emocional, extroversão equilibrada e colaborativa; ordene 1 a 3 com texto exato ou Mais/Menos).
 - Se for desafio de código: escreva a solução funcional ideal e explique a complexidade de tempo/espaço.
-- Se for pergunta técnica/comportamental: responda em primeira pessoa com autoridade técnica e exemplo prático pronto para responder ao recrutador.
+- Se for pergunta técnica/entrevista: responda em primeira pessoa com autoridade técnica e exemplo prático.
 - Se for múltipla escolha: indique a alternativa correta em destaque e a justificativa técnica.
 NUNCA faça descrições vagas ou respostas genéricas.`
       : `Analise a IMAGEM com atenção e responda diretamente ao pedido do usuário com profundidade e precisão técnica.`;

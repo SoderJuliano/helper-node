@@ -238,7 +238,7 @@ helpers.processOsQuestion = async function(text, image = null, opts = {}) {
         // PROMPT LIMPO no modo visão OpenAI: a imagem vai pelo canal de visão da API
         const isGenericText = !text || !text.trim();
         const baseDirective = isGenericText
-          ? `Você é um copiloto em tempo real. Identifique o enunciado, código ou pergunta na tela e entregue a SOLUÇÃO COMPLETA, DIRETA e PRONTA para o usuário responder com excelência técnica (código funcional ideal se programação, resposta em 1ª pessoa se entrevista, alternativa em destaque se teste/múltipla escolha). NUNCA descreva a tela de forma genérica.`
+          ? `Você é um copiloto em tempo real. Identifique o que está na tela (código, teste comportamental/Gupy/Mindsight, pergunta técnica/entrevista, múltipla escolha) e entregue a SOLUÇÃO COMPLETA, DIRETA e PRONTA para o usuário responder com excelência técnica (se teste comportamental, ordene 1 a 3 ou Mais/Menos calibrado para Engenharia de Software com alta autodisciplina/persistência e estabilidade emocional; se código, solução funcional; se entrevista, resposta em 1ª pessoa). NUNCA descreva a tela de forma genérica.`
           : `Analise a IMAGEM com atenção e responda com profundidade técnica às regras do sistema.`;
 
         text = (text && text.trim() ? `${text}\n\n` : '')

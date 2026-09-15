@@ -43,7 +43,8 @@ function loadConfig() {
         LEGACY_DEFAULTS.includes(loadedConfig.promptInstruction.trim()) ||
         !loadedConfig.promptInstruction.includes('LaTeX') ||
         (!loadedConfig.promptInstruction.includes('PROPONHA') && !loadedConfig.promptInstruction.includes('PROPOSE')) ||
-        (!loadedConfig.promptInstruction.includes('MESMO IDIOMA') && !loadedConfig.promptInstruction.includes('SAME LANGUAGE'));
+        (!loadedConfig.promptInstruction.includes('MESMO IDIOMA') && !loadedConfig.promptInstruction.includes('SAME LANGUAGE')) ||
+        (!loadedConfig.promptInstruction.includes('AUTODISCIPLINA') && !loadedConfig.promptInstruction.includes('CONSCIENTIOUSNESS'));
 
       if (isLegacy) {
         loadedConfig.promptInstruction = getDefaultPromptInstruction(lang);
