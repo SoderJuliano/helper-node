@@ -174,7 +174,7 @@ async function realtimeProviderResponder(transcript, image, onDelta, contextMess
     }
   }
 
-  if (aiModel === "chatGpt") {
+  if (aiModel === "openIa" || aiModel === "openIaCodex" || aiModel === "chatGpt") {
     return await OpenAIService.responder(promptText, opts);
   }
 
