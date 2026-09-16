@@ -244,22 +244,34 @@ class NexaIntentClassifier {
 
     const normalizedText = stripAccents(text);
     const followUpActive = !!options.followUpActive;
+    const assistantName = options.assistantName || options.name || "Nexa";
+    const wakePattern = getWakeWordPattern(assistantName);
 
     // 1. Comandos imediatos de parada/interrupção de áudio (Barge-In)
-    for (const pattern of STOP_COMMAND_PATTERNS) {
-      if (pattern.test(normalizedText)) {
-        return {
-          action: "STOP_AND_LISTEN",
-          reason: "Comando de parada / silêncio detectado (barge-in)",
-          expireFollowUp: false
-        };
-      }
+    const stopRegex1 = new RegExp(`^(?:(?:ei|oi|ok|ol[aá])\\s+)?(?:${wakePattern}|nessa|dessa|dexa|deixa|decsa)?[,\\s]*(?:para|pare|cancela|cancelar|cala\\s+a\\s+boca|quiet[ao]|sil[êe]ncio|chega|stop|interrompe|interromper|pausa|pausar)[,\\s]*(?:${wakePattern}|nessa|dessa|dexa|deixa|decsa)?[!\\s.,]*$`, "i");
+    const stopRegex2 = new RegExp(`^(?:para|pare|cancela|cancelar|cala\\s+a\\s+boca|sil[êe]ncio|chega|stop)[,\\s]*(?:${wakePattern}|nessa|dessa|dexa|deixa|decsa)?[!\\s.,]*$`, "i");
+    if (stopRegex1.test(normalizedText) || stopRegex2.test(normalizedText)) {
+      return {
+        action: "STOP_AND_LISTEN",
+        reason: "Comando de parada / silêncio detectado (barge-in)",
+        expireFollowUp: false
+      };
     }
 
-    // 2. Checagem de apresentação em 3ª pessoa (ex: "Pessoal, essa aqui é a Nexa, minha assistente")
-    for (const pattern of THIRD_PERSON_PRESENTATION_PATTERNS) {
+    // 2. Checagem de apresentação em 3ª pessoa (ex: "Pessoal, essa aqui é a Rafael, minha assistente")
+    const thirdPersonPatterns = [
+      new RegExp(`\\b(?:essa|esta|aqui)\\s+(?:e|eh)\\s+(?:a\\s+|o\\s+)?(?:${wakePattern})\\b`, "i"),
+      new RegExp(`\\b(?:apresento|apresentando|mostrando)\\s+(?:a\\s+|o\\s+)?(?:${wakePattern})\\b`, "i"),
+      new RegExp(`\\b(?:conhecam|vejam)\\s+(?:a\\s+|o\\s+)?(?:${wakePattern})\\b`, "i"),
+      new RegExp(`\\b(?:a\\s+|o\\s+)?(?:${wakePattern})\\s+(?:e|eh)\\s+(?:uma|um|minha|meu|nossa|nosso)\\s+(?:ia|assistente|ferramenta|aplicacao|software|copiloto)\\b`, "i"),
+      new RegExp(`\\b(?:gravei|estou gravando|gravando video|pro youtube|video)\\s+.*(?:${wakePattern})\\b`, "i"),
+      new RegExp(`\\b(?:falei d[ao]|falei sobre [ao]|comentando d[ao]|conversando com [ao]|falando com [ao])\\s+(?:${wakePattern})\\b`, "i"),
+      new RegExp(`\\b(?:o nome del[ae]|o nome do assistente|o nome da assistente)\\s+(?:e|eh)\\s+(?:${wakePattern})\\b`, "i"),
+    ];
+
+    for (const pattern of thirdPersonPatterns) {
       if (pattern.test(normalizedText)) {
-        // Se a frase também pedir explicitamente uma saudação (ex: "Essa é a Nexa, dá um tchauzinho")
+        // Se a frase também pedir explicitamente uma saudação (ex: "Essa é a Rafael, dá um tchauzinho")
         for (const gesture of GESTURE_ANIMATION_MAPPINGS) {
           for (const p of gesture.patterns) {
             if (p.test(normalizedText)) {
@@ -273,7 +285,7 @@ class NexaIntentClassifier {
         }
 
         // Caso seja apenas apresentação em 3ª pessoa sem pergunta:
-        // Nexa reage com aceno amigável 'wave' silenciosamente (sem emitir áudio para não interromper a apresentação do usuário).
+        // Reage com aceno amigável 'wave' silenciosamente (sem emitir áudio para não interromper a apresentação do usuário).
         return {
           action: "REACT_ANIMATION_ONLY",
           animation: "wave",
@@ -282,7 +294,6 @@ class NexaIntentClassifier {
       }
     }
 
-    const assistantName = options.assistantName || options.name || "Nexa";
     const hasWakeWord = NexaIntentClassifier.hasValidWakeWord(normalizedText, assistantName);
 
     // 3. Descarta conversas paralelas com outras pessoas no cômodo (filhos, cônjuge, família, colegas)

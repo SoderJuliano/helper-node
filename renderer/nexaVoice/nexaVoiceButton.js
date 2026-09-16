@@ -37,15 +37,29 @@
         micBtn._nexaVoiceInitialized = true;
 
         let isVoiceActive = false;
+        let assistantName = 'Nexa';
+
+        async function fetchAssistantName() {
+            if (window.electronAPI && window.electronAPI.getNexaConfig) {
+                try {
+                    const cfg = await window.electronAPI.getNexaConfig();
+                    if (cfg && cfg.name && cfg.name.trim()) {
+                        assistantName = cfg.name.trim();
+                    }
+                } catch (_) {}
+            }
+        }
+        fetchAssistantName().then(() => updateButtonState(isVoiceActive, false));
 
         async function toggleVoiceMode() {
             if (!(window.electronAPI && window.electronAPI.nexaVoiceToggle)) return;
             try {
+                await fetchAssistantName();
                 const res = await window.electronAPI.nexaVoiceToggle();
                 isVoiceActive = res && res.active;
                 updateButtonState(isVoiceActive, false);
                 if (typeof window.showToast === 'function') {
-                    window.showToast(isVoiceActive ? 'Modo de Voz Nexa ativado!' : 'Modo de Voz Nexa desativado.');
+                    window.showToast(isVoiceActive ? `Modo de Voz ${assistantName} ativado!` : `Modo de Voz ${assistantName} desativado.`);
                 }
             } catch (e) {
                 console.warn('[nexaVoiceButton] Erro ao alternar modo de voz:', e);
@@ -59,14 +73,14 @@
                 micBtn.classList.add('active');
                 if (followUp) {
                     micBtn.classList.add('follow-up');
-                    micBtn.title = 'Nexa ouvindo... (Pode falar diretamente sem dizer Nexa)';
+                    micBtn.title = `${assistantName} ouvindo... (Pode falar diretamente sem dizer ${assistantName})`;
                 } else {
                     micBtn.classList.remove('follow-up');
-                    micBtn.title = 'Modo Voz Ativo (Diga "Nexa..." para perguntar)';
+                    micBtn.title = `Modo Voz Ativo (Diga "${assistantName}..." para perguntar)`;
                 }
             } else {
                 micBtn.classList.remove('active', 'follow-up', 'speaking-detected');
-                micBtn.title = 'Modo Voz Ativo Nexa (clique para ligar)';
+                micBtn.title = `Modo Voz Ativo ${assistantName} (clique para ligar)`;
             }
         }
 
@@ -89,6 +103,15 @@
                     updateButtonState(true, !!data.followUpActive);
                 } else if (data.state === 'thinking' || data.state === 'speaking') {
                     if (micBtn) micBtn.classList.add('speaking-detected');
+                }
+            });
+        }
+
+        if (window.electronAPI && window.electronAPI.onNexaConfigChange) {
+            window.electronAPI.onNexaConfigChange((cfg) => {
+                if (cfg && cfg.name && cfg.name.trim()) {
+                    assistantName = cfg.name.trim();
+                    updateButtonState(isVoiceActive, false);
                 }
             });
         }

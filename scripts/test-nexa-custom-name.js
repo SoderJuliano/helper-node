@@ -23,7 +23,7 @@ const NexaIntentClassifier = require("../services/nexaVoiceAssistant/nexaIntentC
 console.log("🧪 Iniciando testes de Nome Customizado da Nexa...");
 
 // 1. Padrão inicial deve ser "Nexa"
-configService.setNexaConfig({ enabled: true });
+configService.setNexaConfig({ name: "Nexa", enabled: true });
 let cfg = configService.getNexaConfig();
 assert.strictEqual(cfg.name, "Nexa", "O nome padrão deve ser 'Nexa'");
 console.log("  ✅ Teste 1: Nome padrão é 'Nexa'");
@@ -44,7 +44,8 @@ console.log("  ✅ Teste 3: Nome atualizado para 'Rafael'");
 prompt = applyNexaPersonaIfNeeded("Pergunta de teste", true);
 assert.ok(prompt.includes("SEU ÚNICO NOME E IDENTIDADE É RAFAEL"), "Prompt deve conter 'SEU ÚNICO NOME E IDENTIDADE É RAFAEL'");
 assert.ok(prompt.includes("Você É a Rafael"), "Prompt deve conter 'Você É a Rafael'");
-assert.ok(prompt.includes("responda EXCLUSIVAMENTE que você é a Rafael"), "Prompt deve orientar responder como Rafael");
+assert.ok(prompt.includes("responda que você é a Rafael"), "Prompt deve orientar responder como Rafael");
+assert.ok(prompt.includes("tanto pelo seu nome ativo (Rafael) quanto pelo seu nome original"), "Prompt deve aceitar ambos os nomes");
 console.log("  ✅ Teste 4: Prompt reflete a persona 'Rafael'");
 
 // 5. Intent Classifier com Wake Word "Rafael"
@@ -66,6 +67,23 @@ configService.setNexaConfig({ name: "   ", enabled: true });
 cfg = configService.getNexaConfig();
 assert.strictEqual(cfg.name, "Nexa", "Nome em branco deve cair de volta para o fallback 'Nexa'");
 console.log("  ✅ Teste 7: Fallback para 'Nexa' ao passar string em branco");
+
+// 8. Background Story com nome dinâmico
+const { getBackgroundStory } = require("../main/nexa/nexaBackground.js");
+const story = getBackgroundStory("Rafael");
+assert.ok(story.includes("Rafael é uma assistente e copiloto digital"), "História de fundo deve conter 'Rafael é uma assistente'");
+console.log("  ✅ Teste 8: História de fundo (background story) reflete 'Rafael'");
+
+// 9. Detecção de apresentação em 3ª pessoa com nome customizado
+const presClassification = NexaIntentClassifier.classify("Pessoal, esse aqui é o Rafael, meu copiloto", { assistantName: "Rafael" });
+assert.strictEqual(presClassification.action, "REACT_ANIMATION_ONLY", "Deve reagir com animação à apresentação em 3ª pessoa de Rafael");
+assert.strictEqual(presClassification.animation, "wave", "Deve acenar na apresentação");
+console.log("  ✅ Teste 9: Apresentação em 3ª pessoa detecta 'Rafael' e reage com 'wave'");
+
+// 10. Barge-in / Comando de parada com nome customizado
+const stopClassification = NexaIntentClassifier.classify("Para Rafael!", { assistantName: "Rafael" });
+assert.strictEqual(stopClassification.action, "STOP_AND_LISTEN", "Deve interromper áudio com comando de parada direcionado a Rafael");
+console.log("  ✅ Teste 10: Barge-in / Comando de parada aciona com 'Para Rafael'");
 
 // Restaura estado limpo
 configService.setNexaConfig({ name: "Nexa", enabled: false });
