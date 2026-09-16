@@ -360,4 +360,22 @@ console.log("🧪 Iniciando testes de Intent Classifier da Nexa...\n");
   console.log("✅ Caso 46: 'pode comitar e dar push' -> RESPOND_AUDIO_AND_CHAT");
 }
 
+{
+  const raw = "se eu to aqui no play console, e eu to pensando, eu tenho ali o pessoal já baixou uma versão do.";
+  assert.strictEqual(NexaIntentClassifier.isSentenceIncomplete(raw), true, "Frase terminando em 'do.' deve ser identificada como incompleta mesmo com ponto final");
+  console.log("✅ Caso 47: '...uma versão do.' -> isSentenceIncomplete = true");
+}
+
+{
+  const raw = "Não, Nexa, eu tenho no Close-In-Test Alpha, que já a versão 11 é...";
+  assert.strictEqual(NexaIntentClassifier.isSentenceIncomplete(raw), true, "Frase terminando em 'é...' deve ser identificada como incompleta");
+  console.log("✅ Caso 48: '...versão 11 é...' -> isSentenceIncomplete = true");
+}
+
+{
+  const raw = "Não, Nexa, eu tenho no Close-In-Test Alpha, que já a versão 11 é.";
+  assert.strictEqual(NexaIntentClassifier.isSentenceIncomplete(raw), true, "Frase terminando em 'é.' deve ser identificada como incompleta mesmo com ponto final");
+  console.log("✅ Caso 49: '...versão 11 é.' -> isSentenceIncomplete = true");
+}
+
 console.log("\n🎉 Todos os testes do Intent Classifier passaram com sucesso!");

@@ -20,7 +20,7 @@ const NexaConversationContext = require("./nexaConversationContext");
 const NexaResponseFilter = require("./nexaResponseFilter");
 const { warmupWhisper } = require("./whisperWarmup");
 
-const FOLLOW_UP_DURATION_MS = 4000; // Janela calibrada de 4 segundos para conversa contínua após resposta
+const FOLLOW_UP_DURATION_MS = 7000; // Janela confortável de 7 segundos para conversa contínua após resposta
 
 class NexaVoiceSession extends EventEmitter {
   constructor(options = {}) {
@@ -54,6 +54,12 @@ class NexaVoiceSession extends EventEmitter {
       if (this.isSpeakingTts) {
         console.log("[NexaVoiceSession] Interrupção instantânea (Barge-In no speech-start): silenciando áudio TTS da Nexa.");
         this.stopTtsAudioOnly();
+      }
+
+      // Se havia uma frase incompleta aguardando complemento, cancela o timer para não disparar no meio da nova fala
+      if (this.incompleteTimer) {
+        clearTimeout(this.incompleteTimer);
+        this.incompleteTimer = null;
       }
 
       // Se estava em follow-up e o usuário começou a falar, cancela o timer para não expirar durante a fala
@@ -347,10 +353,10 @@ class NexaVoiceSession extends EventEmitter {
       }
 
       // E) Ação RESPONDER POR ÁUDIO E CHAT
-      // Verifica se a frase parece cortada no meio (ex: termina em vírgula ou reticências)
+      // Verifica se a frase parece cortada no meio (ex: termina em vírgula, reticências ou preposição/conector)
       if (NexaIntentClassifier.isSentenceIncomplete(classification.cleanedQuery)) {
         console.log("[NexaVoiceSession] Frase incompleta detectada ('" + classification.cleanedQuery + "'), aguardando complemento...");
-        this.pendingIncompleteText = classification.cleanedQuery;
+        this.pendingIncompleteText = textToClassify;
         if (this.incompleteTimer) clearTimeout(this.incompleteTimer);
         this.incompleteTimer = setTimeout(() => {
           if (this.pendingIncompleteText && this.active && !this.isQueryExecuting) {
@@ -358,9 +364,11 @@ class NexaVoiceSession extends EventEmitter {
             this.pendingIncompleteText = null;
             this.incompleteTimer = null;
             console.log("[NexaVoiceSession] Timeout de complemento atingido: executando frase acumulada:", fallbackQuery);
-            this._executeAssistantQuery(fallbackQuery, "thinking");
+            const fallbackClassification = NexaIntentClassifier.classify(fallbackQuery, { followUpActive: true });
+            const queryToExec = fallbackClassification.cleanedQuery || fallbackQuery;
+            this._executeAssistantQuery(queryToExec, "thinking");
           }
-        }, 3500);
+        }, 5000);
         this._endProcessingAndResume();
         return;
       }

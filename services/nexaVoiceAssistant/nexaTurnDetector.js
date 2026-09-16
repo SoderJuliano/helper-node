@@ -22,10 +22,10 @@ class NexaTurnDetector extends EventEmitter {
   constructor(options = {}) {
     super();
     this.speechThresholdRms = options.speechThresholdRms || 65;  // Limiar calibrado para captação de voz natural sem ruído ambiente (65 RMS)
-    this.silenceThresholdMs = options.silenceThresholdMs || 800; // Duração de silêncio para fechar o turno (800ms: resposta ágil e natural)
+    this.silenceThresholdMs = options.silenceThresholdMs || 1400; // Duração de silêncio para fechar o turno (1400ms: ritmo de fala natural com pausas)
     this.minSpeechMs = options.minSpeechMs || 220;               // Duração mínima de fala real para considerar válida (220ms)
     this.maxTurnDurationMs = options.maxTurnDurationMs || 120000; // Limite amplo de segurança para turnos longos de fala (120s / 2 min)
-    this.preRollMs = options.preRollMs || 350;                   // Buffer circular de pre-roll (350ms)
+    this.preRollMs = options.preRollMs || 400;                   // Buffer circular de pre-roll (400ms)
     this.bargeInThresholdRms = options.bargeInThresholdRms || 125; // Limiar elevado para interrupção de fala durante reprodução TTS
 
     this.active = false;
@@ -283,9 +283,9 @@ class NexaTurnDetector extends EventEmitter {
       }
 
       // Verifica decaimento de energia (Voice Energy Decay)
-      // Se a fala já dura mais de 200ms e a energia recente caiu substancialmente em relação ao pico do turno
-      if (this.speechDurationMs >= 200 && this.activeSpeechChunksCount >= 4 && this.peakTurnRms > 0) {
-        if ((!hasVoiceEnergy || avgRecentRms < this.peakTurnRms * 0.40) && !this.isDecaying) {
+      // Se a fala já dura mais de 300ms e a energia recente caiu substancialmente em relação ao pico do turno
+      if (this.speechDurationMs >= 300 && this.activeSpeechChunksCount >= 4 && this.peakTurnRms > 0) {
+        if ((!hasVoiceEnergy || avgRecentRms < this.peakTurnRms * 0.35) && !this.isDecaying) {
           this.isDecaying = true;
           this.emit("voice-decay", {
             rms,
@@ -296,10 +296,10 @@ class NexaTurnDetector extends EventEmitter {
         }
       }
 
-      // Condição 1: Silêncio contínuo após a fala atingiu o limiar
-      // Condição 1b: Se a energia da voz já decaiu claramente (fim de frase), fecha com 600ms de silêncio
+      // Condição 1: Silêncio contínuo após a fala atingiu o limiar (1400ms)
+      // Condição 1b: Se a energia da voz já decaiu claramente (fim de frase), fecha com 1100ms de silêncio
       // Condição 2: Duração máxima de segurança atingida
-      const isDecayingSilence = this.isDecaying && this.silenceAccumMs >= 600;
+      const isDecayingSilence = this.isDecaying && this.silenceAccumMs >= 1100;
       const isSilenceTimeout = (this.silenceAccumMs >= this.silenceThresholdMs) || isDecayingSilence;
       const isMaxDurationReached = this.speechDurationMs >= this.maxTurnDurationMs;
 

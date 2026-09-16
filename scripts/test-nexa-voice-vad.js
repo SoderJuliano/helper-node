@@ -68,11 +68,11 @@ console.log("🧪 Iniciando testes de Nexa Turn Detector e VAD...\n");
   console.log("✅ Caso 3: Simulação de ciclo de fala e fechamento por silêncio (turn-complete)");
 }
 
-// 3. Verificação do limiar padrão de 800ms (ritmo de conversa ágil sem corte prematuro)
+// 3. Verificação do limiar padrão de 1400ms (ritmo de conversa natural sem corte prematuro)
 {
   const defaultDetector = new NexaTurnDetector();
-  assert.strictEqual(defaultDetector.silenceThresholdMs, 800, "Limiar padrão de silêncio deve ser 800ms");
-  console.log("✅ Caso 4: Limiar padrão de silêncio configurado para 800ms");
+  assert.strictEqual(defaultDetector.silenceThresholdMs, 1400, "Limiar padrão de silêncio deve ser 1400ms");
+  console.log("✅ Caso 4: Limiar padrão de silêncio configurado para 1400ms");
 }
 
 // 4. Teste de detecção de decaimento de voz (Voice Decay)

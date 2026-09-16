@@ -52,9 +52,9 @@ const STOP_COMMAND_PATTERNS = [
   /^(?:para|pare|cancela|cancelar|cala\s+a\s+boca|sil[êe]ncio|chega|stop)[,\s]*(?:nexa|n[eéè]xa)?[!\s.,]*$/i,
 ];
 
-// Padrões de conectores e finais incompletos de frases (para não cortar no meio da fala)
+// Padrões de conectores, preposições, verbos auxiliares e finais incompletos de frases (para não cortar no meio da fala)
 const INCOMPLETE_SENTENCE_CONNECTORS = [
-  /\b(?:e|ou|mas|que|se|como|para|pra|pro|quando|onde|porque|por\s*que|no|na|do|da|com|em|um|uma|tipo|de|dos|das|nos|nas|pelo|pela|ao|aos|ent[aã]o|a[ií]|qual|quais)\s*[.,!?]*$/i,
+  /\b(?:e|ou|mas|que|se|como|para|pra|pro|pras|pros|quando|onde|porque|por\s*que|pq|pois|no|na|nos|nas|do|da|dos|das|com|sem|em|um|uma|uns|umas|tipo|tipo\s+assim|de|pelo|pela|pelos|pelas|ao|aos|ent[aã]o|a[ií]|qual|quais|o|a|os|as|meu|minha|meus|minhas|seu|sua|seus|suas|esse|essa|esses|essas|este|esta|estes|estas|aquele|aquela|aqueles|aquelas|[eé]|eh|era|foi|ser|estar|est[aá]|t[aá]|vai|vou|ia|tem|tinha|faz|fazia|fica|ficou|deu|d[aá]|ou\s+seja|por[eé]m|contudo|todavia|entretanto|ali|l[aá])\s*$/i,
 ];
 
 // Padrões de áudio de mídia, vídeos do YouTube, TV, notícias, podcasts, tutoriais ou monólogos contínuos
@@ -136,9 +136,10 @@ const GESTURE_ANIMATION_MAPPINGS = [
 
 // Padrões que indicam intenção conversacional ativa em janela de follow-up
 const CONVERSATIONAL_FOLLOW_UP_PATTERNS = [
-  /\b(?:e\s+como|e\s+se|e\s+no|e\s+na|qual|quais|como|quando|onde|por\s*que|porque|quem|quanto|quantos|o\s+que|que|\?)\b/i,
-  /\b(?:pode|consegue|mostra|v[eê]|explica|faz|troca|muda|cria|adiciona|remove|comita|atualiza|continua|tem\s+como|ajuda|executa|roda|testa|abre|fecha|salva)\b/i,
-  /\b(?:sim|n[aã]o|pode\s+ser|com\s+certeza|isso|exato|exatamente|perfeito|valeu|obrigad[oa]|entendi|beleza|otimo|ótimo)\b/i,
+  /\b(?:e\s+como|e\s+se|e\s+no|e\s+na|e\s+o|e\s+a|qual|quais|como|quando|onde|por\s*que|porque|pq|quem|quanto|quantos|o\s+que|que|ser[aá]\s+que|d[aá]\s+pra|tem\s+como|\?)\b/i,
+  /\b(?:pode|consegue|mostra|v[eê]|explica|faz|troca|muda|cria|adiciona|remove|comita|commita|atualiza|continua|ajuda|executa|roda|testa|abre|fecha|salva|arruma|conserta|corrige|gera|escreve|compila|builda|deploy|subir|publicar|ver)\b/i,
+  /\b(?:c[oó]digo|classe|fun[çc][ãa]o|m[eé]todo|arquivo|branch|commit|push|pull|merge|projeto|pasta|bug|erro|exception|stacktrace|terminal|console|play\s+console|vers[ãa]o|release|app|gradle|maven|docker|spring|java|quarkus|kotlin|node|nestjs|angular|react|vue)\b/i,
+  /\b(?:sim|n[aã]o|pode\s+ser|com\s+certeza|isso|exato|exatamente|perfeito|valeu|obrigad[oa]|entendi|beleza|otimo|[oó]timo|certo|fechou|manda\s+ver|continua|prossiga)\b/i,
 ];
 
 class NexaIntentClassifier {
@@ -157,19 +158,34 @@ class NexaIntentClassifier {
   }
 
   /**
-   * Verifica se a frase parece estar cortada no meio (termina em conector ou vírgula).
-   */
-  /**
-   * Verifica se a frase parece estar cortada no meio (termina em conector ou vírgula).
+   * Verifica se a frase parece estar cortada no meio (termina em conector, preposição, vírgula ou reticências).
    */
   static isSentenceIncomplete(text) {
     if (!text || typeof text !== "string") return false;
     const t = text.trim();
+    if (!t) return false;
+
+    // Se termina expressamente em reticências ou vírgula
     if (t.endsWith("...") || t.endsWith(",")) return true;
-    // Se termina em pontuação de fim de frase (. ! ?) e possui pelo menos 3 palavras, é completa
-    if (/[.!?]$/.test(t) && t.split(/\s+/).length >= 3) return false;
-    const norm = stripAccents(t).toLowerCase();
-    return INCOMPLETE_SENTENCE_CONNECTORS.some((p) => p.test(norm));
+
+    // Remove pontuação final comum (. ! ? , ...) para inspecionar a última palavra real da frase
+    const cleanTrailing = t.replace(/[.,!?:;…]+$/g, "").trim();
+    if (!cleanTrailing) return false;
+
+    const norm = stripAccents(cleanTrailing).toLowerCase();
+
+    // Se a última palavra da frase for um conector/preposição/verbo de ligação incompleto
+    const isConnectorAtEnd = INCOMPLETE_SENTENCE_CONNECTORS.some((p) => p.test(norm));
+    if (isConnectorAtEnd) {
+      return true;
+    }
+
+    // Se terminou com ponto/exclamação/interrogação e tem pelo menos 3 palavras
+    if (/[.!?]$/.test(t) && t.split(/\s+/).length >= 3) {
+      return false;
+    }
+
+    return false;
   }
 
   /**
