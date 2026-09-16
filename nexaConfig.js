@@ -16,6 +16,8 @@ document.getElementById('win-close-btn')?.addEventListener('click', (e) => {
 // Elementos DOM
 const nexaToggle = document.getElementById("nexa-toggle");
 const nexaStatus = document.getElementById("nexa-status");
+const nexaNameInput = document.getElementById("nexa-name-input");
+const resetNexaNameBtn = document.getElementById("reset-nexa-name-btn");
 const nexaOpenWindowBtn = document.getElementById("nexa-open-window-btn");
 const googleTtsKey = document.getElementById("google-tts-key");
 const clearGoogleTtsKeyBtn = document.getElementById("clear-google-tts-key");
@@ -26,6 +28,12 @@ const nexaMicRefreshBtn = document.getElementById("nexa-mic-refresh");
 const saveBtn = document.getElementById("save-btn");
 const openConfigBtn = document.getElementById("open-config-btn");
 const nexaToast = document.getElementById("nexa-toast");
+
+if (resetNexaNameBtn && nexaNameInput) {
+  resetNexaNameBtn.addEventListener("click", () => {
+    nexaNameInput.value = "Nexa";
+  });
+}
 
 function showToast(msg, isError = true) {
   if (!nexaToast) return;
@@ -169,6 +177,7 @@ if (saveBtn) {
 
     const modeRaphaelRadio = document.getElementById("mode-raphael");
     const avatarMode = (modeRaphaelRadio && modeRaphaelRadio.checked) ? "raphael" : "lottie";
+    const assistantName = (nexaNameInput && nexaNameInput.value.trim()) ? nexaNameInput.value.trim() : "Nexa";
 
     // Salva configurações de TTS
     ipcRenderer.send("save-google-tts-config", {
@@ -179,6 +188,7 @@ if (saveBtn) {
     // Salva configuração de identidade Nexa
     ipcRenderer.send("nexa:save-config", {
       enabled: isNexaOn,
+      name: assistantName,
       onlyNexa: false,
       avatarMode: avatarMode
     });
@@ -202,6 +212,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     ]);
 
     if (nexaCfg) {
+      if (nexaNameInput) {
+        nexaNameInput.value = (nexaCfg.name && nexaCfg.name.trim()) ? nexaCfg.name.trim() : "Nexa";
+      }
       if (nexaToggle) {
         nexaToggle.checked = !!nexaCfg.enabled;
         updateNexaStatus(!!nexaCfg.enabled);
@@ -214,6 +227,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (modeRaphael) modeRaphael.checked = true;
       }
     } else {
+      if (nexaNameInput) {
+        nexaNameInput.value = "Nexa";
+      }
       updateNexaStatus(false);
     }
 

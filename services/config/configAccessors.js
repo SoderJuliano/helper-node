@@ -13,12 +13,16 @@ function createAccessors(ctx) {
   return {
     getNexaConfig() {
       const cfg = get();
-      return { ...defaultConfig.nexa, ...(cfg.nexa || {}) };
+      const nexaCfg = { ...defaultConfig.nexa, ...(cfg.nexa || {}) };
+      if (!nexaCfg.name || !nexaCfg.name.trim()) {
+        nexaCfg.name = "Nexa";
+      }
+      return nexaCfg;
     },
 
     setNexaConfig(nexaCfg) {
       const cfg = get();
-      if (nexaCfg.enabled) {
+      if (nexaCfg && nexaCfg.enabled) {
         const googleTtsCfg = cfg.googleTts || {};
         const ttsKey = googleTtsCfg.keyPathOrKey || "";
         if (!ttsKey || ttsKey.trim() === "") {
@@ -28,7 +32,14 @@ function createAccessors(ctx) {
           }
         }
       }
-      cfg.nexa = { ...this.getNexaConfig(), ...nexaCfg };
+      const existing = this.getNexaConfig();
+      const updated = { ...existing, ...(nexaCfg || {}) };
+      if (!updated.name || !updated.name.trim()) {
+        updated.name = "Nexa";
+      } else {
+        updated.name = updated.name.trim();
+      }
+      cfg.nexa = updated;
       save();
     },
 

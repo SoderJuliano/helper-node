@@ -14,13 +14,31 @@ function stripAccents(str) {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
+function escapeRegex(str) {
+  return String(str || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 // Padrões de ativação por Wake Word estritos e variações fonéticas válidas
-// Rejeita categoricamente falsos positivos como "nessa casa", "nessa branch", "nesse apartamento", "nexus"
-const WAKE_WORD_EXACT = /\b(nexa|n[eéè]xa|nexxa|neksa|naxa|neza|dexa|decsa|nanax|nanaxa|nanex|nanexa|nanac|nanak|neca|neka|nex|nax|nexia|anexa|messa|mexa)\b/i;
-const WAKE_WORD_WITH_GREETING = /\b(?:ei|oi|ol[aá]|fala|opa|bom\s+dia|boa\s+tarde|boa\s+noite|al[oô]|e\s+a[ií]|perfeito|beleza|show|pronto|certo|ent[aã]o|ok|por\s+favor)\s+(?:nexa|n[eéè]xa|nexxa|neksa|naxa|neza|nessa|dessa|dexa|deixa|decsa|nanax|nanaxa|nanex|nanexa|nanac|nanak|neca|neka|nex|nax|nexia|anexa|messa|mexa)\b/i;
-const WAKE_WORD_WITH_VOCATIVE = /\b(?:nexa|n[eéè]xa|nexxa|neksa|naxa|neza|nessa|dessa|dexa|deixa|decsa|nanax|nanaxa|nanex|nanexa|nanac|nanak|neca|neka|nex|nax|nexia|anexa|messa|mexa)\s*[,:!?\-]+\s*(?:voc[eê]|vc|eu|tudo|como|o\s+que|qual|quando|onde|por\s*que|porque|me|pode|faz|fa[çc]a|d[aá]|ajuda|t[aá]|est[aá]|est[aá]s|tas|a[ií]|escuta|ouve|olha|fala|se|comita|commita|como\s+imitar|dar|push|\?)/i;
-const WAKE_WORD_PHONETIC_DIRECT = /^(?:nessa|dessa|dexa|deixa|decsa|nexa|n[eéè]xa|nanax|nanaxa|nanex|nanexa|nanac|nanak)\s+(?:voc[eê]|vc)?\s*(?:est[aá]|t[aá]|est[aá]s|tas)?\s*(?:a[ií]|me\s+ouvindo|me\s+escutando|me\s+ouve|me\s+escuta|ouvindo|ouviu|escutou)/i;
-const WAKE_WORD_AT_END = /[,\s]+(?:nexa|n[eéè]xa|nexxa|naxa|neza|dexa|deixa|decsa|nanax|nanaxa|nanex|nanexa|nanac|nanak)\s*[!?.]*$/i;
+const BASE_WAKE_WORDS = "nexa|n[eéè]xa|nexxa|neksa|naxa|neza|dexa|decsa|nanax|nanaxa|nanex|nanexa|nanac|nanak|neca|neka|nex|nax|nexia|anexa|messa|mexa";
+
+function getWakeWordPattern(customName) {
+  if (!customName || String(customName).trim().toLowerCase() === "nexa") {
+    return BASE_WAKE_WORDS;
+  }
+  const clean = stripAccents(String(customName).trim());
+  const esc = escapeRegex(clean);
+  let variations = esc;
+  if (/^raph?ael$/i.test(clean)) {
+    variations = "rafael|raphael|rafa|rafinha";
+  }
+  return `${BASE_WAKE_WORDS}|${variations}`;
+}
+
+const WAKE_WORD_EXACT = new RegExp(`\\b(${BASE_WAKE_WORDS})\\b`, "i");
+const WAKE_WORD_WITH_GREETING = new RegExp(`\\b(?:ei|oi|ol[aá]|fala|opa|bom\\s+dia|boa\\s+tarde|boa\\s+noite|al[oô]|e\\s+a[ií]|perfeito|beleza|show|pronto|certo|ent[aã]o|ok|por\\s+favor)\\s+(?:${BASE_WAKE_WORDS}|nessa|dessa|dexa|deixa|decsa)\\b`, "i");
+const WAKE_WORD_WITH_VOCATIVE = new RegExp(`\\b(?:${BASE_WAKE_WORDS}|nessa|dessa|dexa|deixa|decsa)\\s*[,:!?\\-]+\\s*(?:voc[eê]|vc|eu|tudo|como|o\\s+que|qual|quando|onde|por\\s*que|porque|me|pode|faz|fa[çc]a|d[aá]|ajuda|t[aá]|est[aá]|est[aá]s|tas|a[ií]|escuta|ouve|olha|fala|se|comita|commita|como\\s+imitar|dar|push|\\?)`, "i");
+const WAKE_WORD_PHONETIC_DIRECT = new RegExp(`^(?:nessa|dessa|dexa|deixa|decsa|${BASE_WAKE_WORDS})\\s+(?:voc[eê]|vc)?\\s*(?:est[aá]|t[aá]|est[aá]s|tas)?\\s*(?:a[ií]|me\\s+ouvindo|me\\s+escutando|me\\s+ouve|me\\s+escuta|ouvindo|ouviu|escutou)`, "i");
+const WAKE_WORD_AT_END = new RegExp(`[,\\s]+(?:${BASE_WAKE_WORDS}|dexa|deixa|decsa)\\s*[!?.]*$`, "i");
 
 // Padrões de links/alucinações ou ruídos que devem ser descartados imediatamente
 const URL_OR_NOISE_PATTERNS = [
@@ -146,14 +164,30 @@ class NexaIntentClassifier {
   /**
    * Verifica se a string contém uma invocação válida por Wake Word.
    */
-  static hasValidWakeWord(normalizedText) {
+  static hasValidWakeWord(normalizedText, assistantName = "Nexa") {
     if (!normalizedText) return false;
+    if (!assistantName || String(assistantName).trim().toLowerCase() === "nexa") {
+      return (
+        WAKE_WORD_EXACT.test(normalizedText) ||
+        WAKE_WORD_WITH_GREETING.test(normalizedText) ||
+        WAKE_WORD_WITH_VOCATIVE.test(normalizedText) ||
+        WAKE_WORD_PHONETIC_DIRECT.test(normalizedText) ||
+        WAKE_WORD_AT_END.test(normalizedText)
+      );
+    }
+    const wakePattern = getWakeWordPattern(assistantName);
+    const exactRegex = new RegExp(`\\b(${wakePattern})\\b`, "i");
+    const greetingRegex = new RegExp(`\\b(?:ei|oi|ol[aá]|fala|opa|bom\\s+dia|boa\\s+tarde|boa\\s+noite|al[oô]|e\\s+a[ií]|perfeito|beleza|show|pronto|certo|ent[aã]o|ok|por\\s+favor)\\s+(?:${wakePattern}|nessa|dessa|dexa|deixa|decsa)\\b`, "i");
+    const vocativeRegex = new RegExp(`\\b(?:${wakePattern}|nessa|dessa|dexa|deixa|decsa)\\s*[,:!?\\-]+\\s*(?:voc[eê]|vc|eu|tudo|como|o\\s+que|qual|quando|onde|por\\s*que|porque|me|pode|faz|fa[çc]a|d[aá]|ajuda|t[aá]|est[aá]|est[aá]s|tas|a[ií]|escuta|ouve|olha|fala|se|comita|commita|como\\s+imitar|dar|push|\\?)`, "i");
+    const phoneticDirectRegex = new RegExp(`^(?:nessa|dessa|dexa|deixa|decsa|${wakePattern})\\s+(?:voc[eê]|vc)?\\s*(?:est[aá]|t[aá]|est[aá]s|tas)?\\s*(?:a[ií]|me\\s+ouvindo|me\\s+escutando|me\\s+ouve|me\\s+escuta|ouvindo|ouviu|escutou)`, "i");
+    const endRegex = new RegExp(`[,\\s]+(?:${wakePattern}|dexa|deixa|decsa)\\s*[!?.]*$`, "i");
+
     return (
-      WAKE_WORD_EXACT.test(normalizedText) ||
-      WAKE_WORD_WITH_GREETING.test(normalizedText) ||
-      WAKE_WORD_WITH_VOCATIVE.test(normalizedText) ||
-      WAKE_WORD_PHONETIC_DIRECT.test(normalizedText) ||
-      WAKE_WORD_AT_END.test(normalizedText)
+      exactRegex.test(normalizedText) ||
+      greetingRegex.test(normalizedText) ||
+      vocativeRegex.test(normalizedText) ||
+      phoneticDirectRegex.test(normalizedText) ||
+      endRegex.test(normalizedText)
     );
   }
 
@@ -248,7 +282,8 @@ class NexaIntentClassifier {
       }
     }
 
-    const hasWakeWord = NexaIntentClassifier.hasValidWakeWord(normalizedText);
+    const assistantName = options.assistantName || options.name || "Nexa";
+    const hasWakeWord = NexaIntentClassifier.hasValidWakeWord(normalizedText, assistantName);
 
     // 3. Descarta conversas paralelas com outras pessoas no cômodo (filhos, cônjuge, família, colegas)
     // Se a frase tem Wake Word ou foi explicitamente direcionada à Nexa, ela NÃO é conversa de terceiros
@@ -300,12 +335,14 @@ class NexaIntentClassifier {
     // 4. Limpa a palavra-chave de invocação para obter a consulta/comando
     let cleanedQuery = text;
     if (hasWakeWord) {
+      const wakePattern = getWakeWordPattern(assistantName);
       // Remove vocativo inicial: "Nexa, ...", "Ei Nexa, ...", "Oi Nexa, ...", "Perfeito Nexa, ..."
-      cleanedQuery = cleanedQuery
-        .replace(/^(?:(?:ei|oi|ol[aá]|opa|fala|al[oô]|e\s+a[ií]|bom\s+dia|boa\s+tarde|boa\s+noite|por\s+favor|perfeito|beleza|show|pronto|certo|ent[aã]o|ok)\s*[,:]*\s*)?(?:nexa|n[eéè]xa|nexxa|neksa|naxa|neza|nessa|dessa|dexa|deixa|decsa|nanax|nanaxa|nanex|nanexa|nanac|nanak|neca|neka|nex|nax|nexia|anexa|messa|mexa)\s*[,:!\-.]*\s*/i, "");
+      const initialVocative = new RegExp(`^(?:(?:ei|oi|ol[aá]|opa|fala|al[oô]|e\\s+a[ií]|bom\\s+dia|boa\\s+tarde|boa\\s+noite|por\\s+favor|perfeito|beleza|show|pronto|certo|ent[aã]o|ok)\\s*[,:]*\\s*)?(?:${wakePattern}|nessa|dessa|dexa|deixa|decsa)\\s*[,:!\\-.]*\\s*`, "i");
+      cleanedQuery = cleanedQuery.replace(initialVocative, "");
 
       // Remove vocativo final SOMENTE se for vocativo isolado (ex: "o que acha, Nexa?"), NUNCA se for preposição ou parte do objeto (ex: "configurações da Nexa", "sobre a Nexa", "com a Nexa")
-      cleanedQuery = cleanedQuery.replace(/(,\s*|\s+)(nexa|n[eéè]xa|nexxa|neksa|naxa|neza|nessa|dessa|dexa|deixa|decsa|nanax|nanaxa|nanex|nanexa|nanac|nanak|neca|neka|nex|nax|nexia|anexa|messa|mexa)[!?.]*$/i, (match, prefix, _name, offset, fullStr) => {
+      const finalVocative = new RegExp(`(,\\s*|\\s+)(${wakePattern}|nessa|dessa|dexa|deixa|decsa)[!?.]*$`, "i");
+      cleanedQuery = cleanedQuery.replace(finalVocative, (match, prefix, _name, offset, fullStr) => {
         const before = fullStr.slice(0, offset).trim().toLowerCase();
         const lastWord = before.split(/\s+/).pop();
         const prepositions = ["da", "de", "do", "das", "dos", "com", "sobre", "para", "pra", "pro", "em", "na", "no", "nas", "nos", "pela", "pelo", "pelas", "pelos", "a", "o", "as", "os", "uma", "um", "minha", "nossa", "sua", "esta", "essa", "chama", "chamada"];

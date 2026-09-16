@@ -271,14 +271,23 @@ class NexaVoiceSession extends EventEmitter {
         this.pendingIncompleteText = null;
       }
 
+      // Obtém nome configurado do assistente
+      let assistantName = "Nexa";
+      try {
+        const { configService } = require("../../main/globals");
+        const nexaCfg = configService && typeof configService.getNexaConfig === "function" ? configService.getNexaConfig() : null;
+        if (nexaCfg && nexaCfg.name) assistantName = nexaCfg.name;
+      } catch (_) {}
+
       // Classifica a intenção
       const classification = NexaIntentClassifier.classify(textToClassify, {
-        followUpActive: this.followUpActive
+        followUpActive: this.followUpActive,
+        assistantName: assistantName
       });
 
       console.log("[NexaVoiceSession] Transcrição:", textToClassify, "-> Ação:", classification.action, "(", classification.reason, ")");
 
-      const hasWakeWord = NexaIntentClassifier.hasValidWakeWord(textToClassify);
+      const hasWakeWord = NexaIntentClassifier.hasValidWakeWord(textToClassify, assistantName);
 
       // A) BARGE-IN: Se a Nexa estava falando (TTS) ou a IA estava processando quando o usuário falou
       const isInterruptingPrior = this.isSpeakingTts || this.isQueryExecuting;
@@ -364,7 +373,10 @@ class NexaVoiceSession extends EventEmitter {
             this.pendingIncompleteText = null;
             this.incompleteTimer = null;
             console.log("[NexaVoiceSession] Timeout de complemento atingido: executando frase acumulada:", fallbackQuery);
-            const fallbackClassification = NexaIntentClassifier.classify(fallbackQuery, { followUpActive: true });
+            const fallbackClassification = NexaIntentClassifier.classify(fallbackQuery, {
+              followUpActive: true,
+              assistantName: assistantName
+            });
             const queryToExec = fallbackClassification.cleanedQuery || fallbackQuery;
             this._executeAssistantQuery(queryToExec, "thinking");
           }
