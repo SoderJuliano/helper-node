@@ -39,13 +39,13 @@
       const count = 40;
       for (let i = 0; i < count; i++) {
         this.ambientSparks.push({
-          x: (Math.random() - 0.5) * 280,
-          y: (Math.random() - 0.5) * 280,
-          z: (Math.random() - 0.5) * 280,
+          x: (Math.random() - 0.5) * 196,
+          y: (Math.random() - 0.5) * 196,
+          z: (Math.random() - 0.5) * 196,
           vx: (Math.random() - 0.5) * 8,
           vy: (Math.random() - 0.5) * 8,
           vz: (Math.random() - 0.5) * 8,
-          size: Math.random() * 1.8 + 0.8,
+          size: Math.random() * 1.25 + 0.55,
           alpha: Math.random() * 0.5 + 0.2
         });
       }
@@ -84,11 +84,11 @@
      */
     triggerShockwave(intensity = 1.0) {
       this.shockwaves.push({
-        radius: 12,
-        maxRadius: 145,
-        speed: 190 + intensity * 90,
+        radius: 8,
+        maxRadius: 102,
+        speed: 135 + intensity * 65,
         alpha: 0.85 * intensity,
-        thickness: 3.5
+        thickness: 2.5
       });
     }
 
@@ -159,9 +159,9 @@
         s.y += s.vy * deltaTime;
         s.z += s.vz * deltaTime;
 
-        if (Math.abs(s.x) > 140) s.vx *= -1;
-        if (Math.abs(s.y) > 140) s.vy *= -1;
-        if (Math.abs(s.z) > 140) s.vz *= -1;
+        if (Math.abs(s.x) > 98) s.vx *= -1;
+        if (Math.abs(s.y) > 98) s.vy *= -1;
+        if (Math.abs(s.z) > 98) s.vz *= -1;
       });
     }
 
@@ -206,7 +206,7 @@
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
 
-      const coronaRadius = baseRadius * 2.5 + audio.bass * 20;
+      const coronaRadius = baseRadius * 2.5 + audio.bass * 14;
       const coronaGrad = ctx.createRadialGradient(cx, cy, baseRadius * 0.4, cx, cy, coronaRadius);
       coronaGrad.addColorStop(0, _RaphaelMath.toRgbaString(theme.coronaColor, 0.75));
       coronaGrad.addColorStop(0.45, _RaphaelMath.toRgbaString(theme.coreColorSecondary, 0.40));
@@ -412,8 +412,8 @@
         const pn = projectedNodes[i];
         const normalFacing = Math.max(0, pn.normalZ);
         const size = isFront
-          ? Math.max(0.8, (1.2 + normalFacing * 1.2) * (1.0 + audio.treble * 0.8))
-          : 0.8;
+          ? Math.max(0.6, (0.85 + normalFacing * 0.85) * (1.0 + audio.treble * 0.8))
+          : 0.6;
         const alpha = isFront
           ? Math.min(1.0, (0.4 + normalFacing * 0.6) * (1.0 + audio.treble * 0.5))
           : 0.15;
@@ -496,8 +496,8 @@
 
       // Modulação de pulsação e voz
       const pulseFactor = Math.sin(this.time * theme.pulseSpeed) * 0.07;
-      const voiceExpansion = audio.bass * 20 + audio.amplitude * 8;
-      const baseRadius = Math.max(16, theme.coreRadius * (1.0 + pulseFactor) + voiceExpansion);
+      const voiceExpansion = audio.bass * 14 + audio.amplitude * 5.6;
+      const baseRadius = Math.max(12, theme.coreRadius * (1.0 + pulseFactor) + voiceExpansion);
 
       // Camada 1: Faíscas cósmicas de fundo
       this.renderAmbientSparks(ctx, cx, cy, theme, audio);

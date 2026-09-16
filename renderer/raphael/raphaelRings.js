@@ -6,8 +6,8 @@
       this.ringDefinitions = [
         {
           id: "inner",
-          radius: 62,
-          thickness: 8,
+          radius: 43,
+          thickness: 6,
           particleCount: 85,
           rx: 0.45,
           ry: 0.20,
@@ -21,8 +21,8 @@
         },
         {
           id: "middle-inner",
-          radius: 84,
-          thickness: 10,
+          radius: 59,
+          thickness: 7,
           particleCount: 105,
           rx: -0.40,
           ry: 0.85,
@@ -36,8 +36,8 @@
         },
         {
           id: "middle-outer",
-          radius: 106,
-          thickness: 12,
+          radius: 74,
+          thickness: 8,
           particleCount: 120,
           rx: 0.75,
           ry: -0.55,
@@ -51,8 +51,8 @@
         },
         {
           id: "outer",
-          radius: 128,
-          thickness: 14,
+          radius: 90,
+          thickness: 10,
           particleCount: 130,
           rx: -0.60,
           ry: -0.80,
@@ -79,7 +79,7 @@
           const baseAngle = (i / ring.particleCount) * Math.PI * 2;
           const radiusNoise = (Math.random() - 0.5) * ring.thickness;
           const yNoise = (Math.random() - 0.5) * (ring.thickness * 0.85);
-          const baseSize = Math.random() * 2.2 + 1.2;
+          const baseSize = Math.random() * 1.5 + 0.85;
           const sparkRate = Math.random() * 0.05 + 0.02;
 
           // Gradiente HSL multi-espectral inspirado no código Three.js de referência
@@ -107,14 +107,14 @@
       for (let i = 0; i < count; i++) {
         const theta = Math.random() * Math.PI * 2;
         const phi = Math.acos(Math.random() * 2 - 1);
-        const baseRadius = 52 + Math.random() * 75;
+        const baseRadius = 36 + Math.random() * 52;
         this.sphericalParticles.push({
           theta,
           phi,
           baseRadius,
           rotSpeedTheta: (Math.random() - 0.5) * 0.65,
           rotSpeedPhi: (Math.random() - 0.5) * 0.45,
-          size: Math.random() * 1.8 + 0.9,
+          size: Math.random() * 1.25 + 0.65,
           sparkPhase: Math.random() * Math.PI * 2,
           sparkRate: Math.random() * 0.06 + 0.02,
           hueFraction: Math.random(),
@@ -132,7 +132,7 @@
      */
     update(deltaTime, theme, audioMetrics, time) {
       const rotSpeedMultiplier = (theme.ringRotationSpeed || 1.0) * (1.0 + audioMetrics.mid * 1.8);
-      const audioExpansion = audioMetrics.bass * 25;
+      const audioExpansion = audioMetrics.bass * 17.5;
 
       // Atualiza matrizes de rotação dos anéis
       this.ringDefinitions.forEach((ring) => {
@@ -143,7 +143,7 @@
 
       // Atualiza partículas dos anéis orbitais
       const waveFreq = 6;
-      const waveAmp = (theme.shockwaveIntensity || 0.3) * 8 + audioMetrics.mid * 12;
+      const waveAmp = (theme.shockwaveIntensity || 0.3) * 5.6 + audioMetrics.mid * 8.4;
 
       this.particles.forEach((p) => {
         const ring = this.ringDefinitions[p.ringIdx];

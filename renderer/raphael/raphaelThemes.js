@@ -24,7 +24,7 @@
       ],
       ringRotationSpeed: 0.85,
       pulseSpeed: 1.6,
-      coreRadius: 48,
+      coreRadius: 34,
       particleCount: 220,
       shockwaveIntensity: 0.25
     },
@@ -48,7 +48,7 @@
       ],
       ringRotationSpeed: 1.5,
       pulseSpeed: 3.2,
-      coreRadius: 50,
+      coreRadius: 35,
       particleCount: 240,
       shockwaveIntensity: 0.45
     },
@@ -72,7 +72,7 @@
       ],
       ringRotationSpeed: 3.0,
       pulseSpeed: 4.8,
-      coreRadius: 52,
+      coreRadius: 36,
       particleCount: 280,
       shockwaveIntensity: 0.75
     },
@@ -96,7 +96,7 @@
       ],
       ringRotationSpeed: 2.2,
       pulseSpeed: 5.2,
-      coreRadius: 54,
+      coreRadius: 38,
       particleCount: 290,
       shockwaveIntensity: 0.95
     },
@@ -120,7 +120,7 @@
       ],
       ringRotationSpeed: 2.4,
       pulseSpeed: 3.8,
-      coreRadius: 48,
+      coreRadius: 34,
       particleCount: 250,
       shockwaveIntensity: 0.65
     },
@@ -144,7 +144,7 @@
       ],
       ringRotationSpeed: 2.1,
       pulseSpeed: 3.2,
-      coreRadius: 50,
+      coreRadius: 35,
       particleCount: 260,
       shockwaveIntensity: 0.55
     },
@@ -166,7 +166,7 @@
       ],
       ringRotationSpeed: 0.35,
       pulseSpeed: 0.7,
-      coreRadius: 36,
+      coreRadius: 25,
       particleCount: 90,
       shockwaveIntensity: 0.08
     }
