@@ -199,6 +199,14 @@ function normalizeDevPhonetics(text) {
   res = res.replace(/\b(?:haxi\s*map|haximap|haximep|hasmap)\b/gi, 'HashMap');
   res = res.replace(/\b(?:haxitable|hasitable|haxi\s*table|has\s*table)\b/gi, 'Hashtable');
 
+  // 11. Variações fonéticas de Banco de Dados, ORM e N+1 queries ("animais onívoros", "animal onívoro", "n mais um", etc.)
+  res = res.replace(/\b(?:animais\s+on[íi]voros?|animal\s+on[íi]voro|animais\s+univoros?|animal\s+univoro)\b/gi, 'N+1 queries');
+  res = res.replace(/\b(?:n\s*mais\s*um\s*queries|n\s*mais\s*1\s*queries|ene\s*mais\s*um\s*queries|n\s*plus\s*one\s*queries|en\s*plus\s*one\s*queries)\b/gi, 'N+1 queries');
+  res = res.replace(/\b(evitar|resolver|problema|consultas?|queries?|query|selects?|do|de|o|das?|dos?)\s+(?:n\s*mais\s*um|n\s*mais\s*1|ene\s*mais\s*um|ene\s*mais\s*1)\b/gi, '$1 N+1');
+  res = res.replace(/\b(?:n\s*mais\s*um|ene\s*mais\s*um)(?=\s+(?:queries|query|consultas?|selects?|no\s+hibernate|no\s+jpa|no\s+spring|em\s+banco))\b/gi, 'N+1');
+  res = res.replace(/\b(?:join\s*feti?ch|join\s*feti)\b/gi, 'JOIN FETCH');
+  res = res.replace(/\b(?:entity\s*grafi?|entite\s*grafi?)\b/gi, 'EntityGraph');
+
   return res;
 }
 

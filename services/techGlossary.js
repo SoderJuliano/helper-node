@@ -31,6 +31,7 @@ const CORE = [
   'REST', 'API', 'endpoint', 'controller', 'service', 'repository', 'microservices', 'microserviços', 'Kafka', 'Docker', 'Kubernetes', 'AWS',
   'SQL', 'PostgreSQL', 'MongoDB', 'Oracle', 'CI/CD', 'deploy', 'backend', 'frontend',
   'idempotência', 'escalabilidade', 'observabilidade', 'latência', 'throughput',
+  'N+1 queries', 'N+1', 'queries', 'ORM', 'Hibernate', 'JPA', 'JOIN FETCH', 'EntityGraph', 'BatchSize',
 ];
 
 // ---------------------------------------------------------------------------
@@ -58,8 +59,9 @@ const CATALOG = {
   ],
   dadosBanco: [
     'MySQL', 'MongoDB', 'Redis', 'Elasticsearch', 'Cassandra', 'DynamoDB',
-    'ORM', 'query', 'índice', 'sharding', 'replicação', 'transação', 'ACID',
-    'deadlock', 'N+1', 'migration', 'normalização', 'data lake', 'ETL',
+    'ORM', 'query', 'queries', 'índice', 'sharding', 'replicação', 'transação', 'ACID',
+    'deadlock', 'N+1', 'N+1 queries', 'Hibernate', 'JPA', 'JOIN FETCH', 'EntityGraph', 'BatchSize',
+    'migration', 'normalização', 'data lake', 'ETL',
     'Snowflake', 'Databricks', 'Airflow', 'dbt', 'OLAP', 'OLTP',
   ],
   infraCloud: [
@@ -169,14 +171,14 @@ function buildTranscriptionPrompt({ background = '', context = '' } = {}) {
   const key = `${background}||${context}`;
   if (key === _cacheKey) return _cacheValue;
 
-  const prefix = 'Assistente Nexa: Nexa, comitar, commitar, dar push, commit, push, branch, Git, GitHub, helper-node, ';
+  const prefix = 'Assistente Nexa: Git, commit, push, branch, ';
   const budget = MAX_PROMPT_CHARS - prefix.length - 2;
 
   // Seleciona termos relevantes ao contexto/background
   const relevant = pickRelevantTerms(`${background} ${context}`, budget);
 
   // Termos essenciais padrão para preencher o budget se o contexto for vazio/curto
-  const defaultCore = ['comitar', 'commitar', 'dar push', 'fazer commit', 'Java', 'Spring Boot', 'Optional', 'Streams', 'Lambdas', 'Git', 'GitHub', 'commit', 'branch', 'master', 'main', 'Whisper', 'multithread', 'pull request', 'merge', 'SQL', 'Docker', 'Kubernetes', 'Kafka', 'AWS', 'REST', 'TypeScript', 'Node.js', 'SOLID'];
+  const defaultCore = ['Java', 'Spring Boot', 'N+1 queries', 'Hibernate', 'JPA', 'ORM', 'SQL', 'Optional', 'Streams', 'Lambdas', 'comitar', 'commitar', 'dar push', 'Git', 'GitHub', 'commit', 'branch', 'master', 'main', 'Whisper', 'multithread', 'pull request', 'merge', 'Docker', 'Kubernetes', 'Kafka', 'AWS', 'REST', 'TypeScript', 'Node.js', 'SOLID'];
   const terms = [...relevant];
   let used = terms.reduce((acc, t) => acc + t.length + 2, 0);
 
@@ -187,7 +189,7 @@ function buildTranscriptionPrompt({ background = '', context = '' } = {}) {
     }
   }
 
-  const prompt = terms.length ? `${prefix}${terms.join(', ')}.` : 'Assistente Nexa: Nexa, comitar, commitar, dar push, Git, GitHub, commit, branch.';
+  const prompt = terms.length ? `${prefix}${terms.join(', ')}.` : 'Assistente Nexa: Git, commit, push, branch.';
 
   _cacheKey = key;
   _cacheValue = prompt;

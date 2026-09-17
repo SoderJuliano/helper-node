@@ -28,7 +28,7 @@ assert.strictEqual(cleanTranscription('Assistente Nexa:'), '', 'Deve descartar e
 assert.strictEqual(cleanTranscription('Assistente'), '', 'Deve descartar eco isolado');
 console.log('  ok   2. Filtro de ruídos, hesitações e ecos isolados funcionando perfeitamente');
 
-// 3. Normalizações fonéticas de termos Java / Backend
+// 3. Normalizações fonéticas de termos Java / Backend e Banco de Dados
 const { normalizeDevPhonetics, mergeContinuationText } = require('../services/audioTranscriptionCleaner');
 assert.strictEqual(normalizeDevPhonetics('Strings e lambdas.'), 'Streams e Lambdas.');
 assert.strictEqual(normalizeDevPhonetics('string e lambda'), 'Streams e Lambdas');
@@ -36,7 +36,11 @@ assert.strictEqual(normalizeDevPhonetics('O que são opcional?'), 'O que são Op
 assert.strictEqual(normalizeDevPhonetics('quando evitar opcional'), 'quando evitar Optional');
 assert.strictEqual(normalizeDevPhonetics('haximap vs haxitable'), 'HashMap vs Hashtable');
 assert.strictEqual(normalizeDevPhonetics('concurrent hasmap'), 'ConcurrentHashMap');
-console.log('  ok   3. Normalizações fonéticas para Streams, Lambdas, Optional e HashMaps funcionando');
+assert.strictEqual(normalizeDevPhonetics('Como evitar animais onívoros?'), 'Como evitar N+1 queries?');
+assert.strictEqual(normalizeDevPhonetics('como resolver animal onivoro'), 'como resolver N+1 queries');
+assert.strictEqual(normalizeDevPhonetics('como resolver n mais um queries'), 'como resolver N+1 queries');
+assert.strictEqual(normalizeDevPhonetics('evitar problema do n mais um'), 'evitar problema do N+1');
+console.log('  ok   3. Normalizações fonéticas para Streams, Lambdas, Optional, HashMaps e N+1 queries funcionando');
 
 // 4. Mesclagem inteligente de fala contínua (mergeContinuationText)
 const merged1 = mergeContinuationText('Quando você evitaria usar cada', 'Quando você evitaria usar cada um?');

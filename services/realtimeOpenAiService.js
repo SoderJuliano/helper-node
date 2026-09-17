@@ -309,7 +309,7 @@ class RealtimeOpenAiService {
       (userContext ? userContext + '\n\n---\n\n' : '') +
       (ragBlock ? ragBlock + '\n\n---\n\n' : '') +
       `TRANSCRIÇÃO do áudio captado:\n"${transcript}"\n\n` +
-      `Responda de forma ultra-curta com termos técnicos essenciais em **negrito** e com sugestão de resposta em 1 linha, conforme o system prompt. Se for estritamente ruído/saudação sem nenhuma pergunta ou intenção técnica, responda '(trecho sem conteúdo relevante)'.`;
+      `Responda de forma ultra-curta com termos técnicos essenciais em **negrito** e com sugestão de resposta em 1 linha, conforme o system prompt. Se for estritamente ruído/saudação sem nenhuma pergunta ou intenção técnica, responda '(trecho sem conteúdo relevante)'. Se contiver distorções fonéticas de termos técnicos (ex: 'animais onívoros' -> 'N+1 queries'), deduza o conceito real de computação e responda a ele.`;
 
     const stream = typeof onDelta === 'function';
     const payload = {
