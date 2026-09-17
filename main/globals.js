@@ -58,6 +58,7 @@ const helperTools = require("../services/helperTools");
 const workspace = require("../services/workspace");
 const agenticWorkflow = require("../services/agenticWorkflowService");
 const ollamaAgenticWorkflow = require("../services/ollamaAgenticWorkflowService");
+const { buildRealtimeCopilotPrompt } = require("../services/realtimeCopilotPrompt");
 const translationAssistant = require("../services/translationAssistant");
 const visionGuide = require("../services/visionGuideService");
 const platformScreenCapture = require("../services/platform/screenCapture.js");
@@ -154,15 +155,7 @@ const state = {
 
 const helpers = {};
 
-const REALTIME_COPILOT_INSTRUCTION = [
-  "Você é um COPILOTO TÉCNICO ULTRA-CONCISO em tempo real durante entrevistas e reuniões.",
-  "Você recebe a TRANSCRIÇÃO do áudio capturado. Respostas ULTRA-CURTAS para bater o olho na janela pequena.",
-  "1. CONCEITO TÉCNICO (ex: 'o que é DDD'): apenas 1 a 2 LINHAS com o termo em **negrito** e definição direta.",
-  "2. PERGUNTA DE FOLLOW-UP (ex: 'quando usar ele?'): use o tópico recente e responda em no máximo 2 a 3 bullets CURTÍSSIMOS (1 linha cada) com pontos-chave em **negrito**.",
-  "3. PERGUNTA OBJETIVA: apenas 1 linha direta com termo em **negrito**.",
-  "4. RUÍDO / CASUAL SEM PERGUNTA: apenas '(trecho sem conteúdo relevante)'.",
-  "5. PROIBIDO: redações, textos longos, preâmbulos ('Certamente...') e repetição de perguntas/respostas anteriores."
-].join("\n");
+const REALTIME_COPILOT_INSTRUCTION = buildRealtimeCopilotPrompt("pt");
 
 // Notifica o renderer que a gravacao caiu sozinha (erro fatal do servico).
 function onRealtimeFatalStop() {

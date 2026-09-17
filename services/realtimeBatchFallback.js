@@ -126,50 +126,75 @@ async function handleBatchSegment(svc, audioPath, source) {
       return;
     }
 
-    // Texto definitivo (UI mostra "transcrito" + "pensando…"). noSuggestion=true
-    // quando é a sua fala em modo both → a UI esconde a bolha do assistente.
-    svc.emitUpdate({ type: 'segment_whisper_correction', id, iteration, text: transcript, audioSource: source, source: 'openai', noSuggestion: !respondToSegment, timestamp: new Date().toISOString() });
+    // Continuacao de fala: se o ultimo segmento DESSA MESMA fonte fechou ha pouco
+    // tempo (pausa pra respirar, pensar "humm...", nao fim de pergunta), junta os textos
+    // e atualiza a bolha existente em vez de criar novas bolhas.
+    const prevClosed = svc.lastClosedBySource[source];
+    const continuationWindowMs = source === 'mic' ? 7000 : 3500;
+    const isContinuation = !!(prevClosed && (Date.now() - prevClosed.closedAt) <= continuationWindowMs);
+
+    if (isContinuation && prevClosed) {
+      const askText = `${prevClosed.text} ${transcript}`.trim();
+      svc.lastClosedBySource[source] = { id: prevClosed.id, iteration: prevClosed.iteration, text: askText, closedAt: Date.now() };
+
+      svc.emitUpdate({
+        type: 'segment_whisper_correction',
+        id: prevClosed.id,
+        iteration: prevClosed.iteration,
+        text: askText,
+        audioSource: source,
+        source: 'openai',
+        noSuggestion: !respondToSegment,
+        timestamp: new Date().toISOString(),
+      });
+
+      // Descarta o placeholder temporário criado no segment_start
+      svc.emitUpdate({ type: 'segment_discard', id, iteration, audioSource: source, timestamp: new Date().toISOString() });
+
+      if (source === 'mic') {
+        if (svc._lastInterviewerQuestion) {
+          svc._scoreAndStore(svc._lastInterviewerQuestion, askText, token);
+        }
+      }
+
+      if (!respondToSegment) return;
+
+      const response = await svc._askAI(askText, token, (partial) => {
+        svc.emitUpdate({ type: 'segment_response', id: prevClosed.id, iteration: prevClosed.iteration, response: partial, audioSource: source, source: 'openai', timestamp: new Date().toISOString() });
+      });
+      svc.emitUpdate({ type: 'segment_response', id: prevClosed.id, iteration: prevClosed.iteration, response, audioSource: source, source: 'openai', timestamp: new Date().toISOString() });
+      await svc._writeHistory(askText, response);
+      return;
+    }
+
+    // Novo turno / Primeira fala
+    const askText = transcript;
+    svc.lastClosedBySource[source] = { id, iteration, text: askText, closedAt: Date.now() };
+
+    svc.emitUpdate({ type: 'segment_whisper_correction', id, iteration, text: askText, audioSource: source, source: 'openai', noSuggestion: !respondToSegment, timestamp: new Date().toISOString() });
 
     // Banco de respostas: rastreia a pergunta do interlocutor (sys) e, quando VOCÊ
     // (mic) responde, avalia/guarda o par em background (não trava o pipeline).
     if (source === 'mic') {
       if (svc._lastInterviewerQuestion) {
-        svc._scoreAndStore(svc._lastInterviewerQuestion, transcript, token);
+        svc._scoreAndStore(svc._lastInterviewerQuestion, askText, token);
         svc._lastInterviewerQuestion = '';
       }
     } else {
-      svc._lastInterviewerQuestion = transcript;
+      svc._lastInterviewerQuestion = askText;
     }
 
     // Sua fala em modo both: já transcreveu e alimentou o banco — não gera sugestão.
     if (!respondToSegment) return;
-
-    const effectiveTranscript = transcript;
-
-    // Continuacao de fala: se o ultimo segmento DESSA MESMA fonte fechou ha pouco
-    // tempo (pausa pra respirar, nao fim de pergunta), junta os textos e reprocessa
-    // a pergunta INTEIRA — em vez de responder so o pedaco novo fragmentado.
-    const prevClosed = svc.lastClosedBySource[source];
-    const isContinuation = !!(prevClosed && (Date.now() - prevClosed.closedAt) <= CONTINUATION_WINDOW_MS);
-    const askText = isContinuation ? `${prevClosed.text} ${effectiveTranscript}`.trim() : effectiveTranscript;
-    if (isContinuation) {
-      // Mostra a pergunta completa (com o trecho anterior) na bolha de transcricao.
-      svc.emitUpdate({ type: 'segment_whisper_correction', id, iteration, text: askText, audioSource: source, source: 'openai', timestamp: new Date().toISOString() });
-    }
 
     // Streaming: emite segment_response parcial com o MESMO id; a UI atualiza a
     // bolha no lugar (rtSegments.get(payload.id)). Throttle já é feito no _askAI.
     const response = await svc._askAI(askText, token, (partial) => {
       svc.emitUpdate({ type: 'segment_response', id, iteration, response: partial, audioSource: source, source: 'openai', timestamp: new Date().toISOString() });
     });
-    if (isContinuation) {
-      // Marca a resposta do trecho anterior como superada — a pergunta continuava.
-      svc.emitUpdate({ type: 'segment_response', id: prevClosed.id, response: '↳ pergunta continuou no trecho seguinte — veja a resposta completa abaixo.', audioSource: source, timestamp: new Date().toISOString() });
-    }
     // Emite o texto final completo (garante o conteúdo inteiro mesmo se o último delta foi throttled).
     svc.emitUpdate({ type: 'segment_response', id, iteration, response, audioSource: source, source: 'openai', timestamp: new Date().toISOString() });
     await svc._writeHistory(askText, response);
-    svc.lastClosedBySource[source] = { id, text: askText, closedAt: Date.now() };
   } catch (err) {
     svc._handleError(err, id, iteration);
   } finally {

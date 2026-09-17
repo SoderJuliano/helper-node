@@ -25,8 +25,9 @@ const HALLUCINATION_PATTERNS = [
   /^(?:chiado|estalos?|fritura|borbulha|sizzl(?:ing|e)|panela)[\s.,!?:;]*$/i,
   /^(?:steve\s+vozze[,\s]+whisper|whisper\s+transcription|whisper\s+ai|whisper)[\s.,!?:;]*$/i,
   /^(?:(?:bing[\s.,!?:;]+)?doisberg[\s.,!?:;\-]*sclarkey|doisberg|sclarkey)[\s.,!?:;]*$/i,
-  /\b(?:doisberg|sclarkey)\b/i,
-  /^(?:[.\-_*~=+\s,!?:;·…]+)$/,
+  /^(?:[.\-_*~=+\s,!?:;·…#]+)$/,
+  /^(?:hum+|humm+|hmmm+|eh+|ehm+|aham+|uhm+|uh+|ah+|ãh+|õh+)[\s.,!?:;]*$/i,
+  /^(?:(?:assistente|nexa)[\s.,!?:;]*)+$/i,
   /^\[blank_audio\]$/i,
   /^\(sem\s+fala\)$/i,
 ];

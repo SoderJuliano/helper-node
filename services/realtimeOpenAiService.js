@@ -324,11 +324,13 @@ class RealtimeOpenAiService {
     const model = applyRealtimeOverride(chosen);
 
     const ragBlock = await this._rag.blockFor(transcript, token);
+    const userContext = this.configService.getUserContextBlock ? this.configService.getUserContextBlock() : '';
 
     const userPrompt =
+      (userContext ? userContext + '\n\n---\n\n' : '') +
       (ragBlock ? ragBlock + '\n\n---\n\n' : '') +
       `TRANSCRIÇÃO do áudio captado:\n"${transcript}"\n\n` +
-      `Responda de forma ultra-curta com termos técnicos essenciais em **negrito**, conforme o system prompt. Se for estritamente ruído/saudação sem nenhuma pergunta ou intenção técnica, responda '(trecho sem conteúdo relevante)'.`;
+      `Responda de forma ultra-curta com termos técnicos essenciais em **negrito** e com sugestão de resposta em 1 linha, conforme o system prompt. Se for estritamente ruído/saudação sem nenhuma pergunta ou intenção técnica, responda '(trecho sem conteúdo relevante)'.`;
 
     const stream = typeof onDelta === 'function';
     const payload = {

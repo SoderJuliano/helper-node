@@ -250,11 +250,65 @@ class RealtimeAssistantService {
       }
 
       // Continuacao de fala: se o ultimo segmento DESSA MESMA fonte fechou ha
-      // pouco tempo (pausa pra respirar, nao fim de pergunta), junta os textos e
-      // reprocessa a pergunta INTEIRA — em vez de responder so o pedaco novo.
+      // pouco tempo (pausa pra respirar, pensar "humm...", nao fim de pergunta),
+      // junta os textos e atualiza a bolha existente em vez de criar novas bolhas.
       const prevClosed = this.lastClosedBySource[source];
-      const isContinuation = !!(prevClosed && (Date.now() - prevClosed.closedAt) <= CONTINUATION_WINDOW_MS);
-      const askText = isContinuation ? `${prevClosed.text} ${text}`.trim() : text;
+      const continuationWindowMs = source === 'mic' ? 7000 : 3500;
+      const isContinuation = !!(prevClosed && (Date.now() - prevClosed.closedAt) <= continuationWindowMs);
+
+      if (isContinuation && prevClosed) {
+        const askText = `${prevClosed.text} ${text}`.trim();
+        this.lastClosedBySource[source] = { id: prevClosed.id, iteration: prevClosed.iteration, text: askText, closedAt: Date.now() };
+
+        this.emitUpdate({
+          type: "segment_whisper_correction",
+          id: prevClosed.id,
+          iteration: prevClosed.iteration,
+          text: askText,
+          audioSource: source,
+          source: "whisper",
+          noSuggestion: !respondToSegment,
+          timestamp: new Date().toISOString(),
+        });
+
+        // Descarta o placeholder temporário criado no segment_start
+        this.emitUpdate({ type: "segment_discard", id, iteration, audioSource: source, timestamp: new Date().toISOString() });
+
+        if (!respondToSegment) return;
+
+        let image = null;
+        try {
+          console.log(`[realtime] Fala concatenada aprovada para resposta! Texto: "${askText}"`);
+          const resp = await this._askAI(askText, image, (partial) => {
+            this.emitUpdate({
+              type: "segment_response",
+              id: prevClosed.id,
+              iteration: prevClosed.iteration,
+              response: partial,
+              audioSource: source,
+              timestamp: new Date().toISOString(),
+            });
+          });
+          console.log(`[realtime] Resposta da IA obtida para trecho concatenado: "${resp}"`);
+          this.emitUpdate({
+            type: "segment_response",
+            id: prevClosed.id,
+            iteration: prevClosed.iteration,
+            response: resp,
+            audioSource: source,
+            timestamp: new Date().toISOString(),
+          });
+          await this._writeHistory(askText, resp);
+        } catch (err) {
+          console.error(`[realtime] Erro ao obter resposta da IA para "${askText}":`, err);
+          this._handleAIError(err, prevClosed.id, prevClosed.iteration);
+        }
+        return;
+      }
+
+      // Novo turno / Primeira fala
+      const askText = text;
+      this.lastClosedBySource[source] = { id, iteration, text: askText, closedAt: Date.now() };
 
       this.emitUpdate({
         type: "segment_whisper_correction",
@@ -265,8 +319,6 @@ class RealtimeAssistantService {
         noSuggestion: !respondToSegment,
         timestamp: new Date().toISOString(),
       });
-
-      this.lastClosedBySource[source] = { id, text: askText, closedAt: Date.now() };
 
       // Sua fala em modo both: ja transcreveu — nao gera sugestao.
       if (!respondToSegment) return;
@@ -285,16 +337,6 @@ class RealtimeAssistantService {
           });
         });
         console.log(`[realtime] Resposta da IA obtida: "${resp}"`);
-        if (isContinuation) {
-          // Marca a resposta do trecho anterior como superada — a pergunta continuava.
-          this.emitUpdate({
-            type: "segment_response",
-            id: prevClosed.id,
-            response: "↳ pergunta continuou no trecho seguinte — veja a resposta completa abaixo.",
-            audioSource: source,
-            timestamp: new Date().toISOString(),
-          });
-        }
         this.emitUpdate({ type: "segment_response", id, iteration, response: resp, audioSource: source, timestamp: new Date().toISOString() });
         await this._writeHistory(askText, resp);
       } catch (err) {

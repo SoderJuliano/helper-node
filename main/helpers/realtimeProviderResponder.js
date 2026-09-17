@@ -24,7 +24,8 @@ async function realtimeProviderResponder(transcript, image, onDelta, contextMess
     }
   }
 
-  const promptText = `${contextBlock}${kb ? `${kb}\n\n---\n\n` : ''}Fala capturada: "${transcript}"`;
+  const userContext = (configService.getUserContextBlock && configService.getUserContextBlock()) || '';
+  const promptText = `${userContext ? `${userContext}\n\n---\n\n` : ''}${contextBlock}${kb ? `${kb}\n\n---\n\n` : ''}Fala capturada: "${transcript}"`;
 
   const opts = {
     sessionId: "realtime-assistant",

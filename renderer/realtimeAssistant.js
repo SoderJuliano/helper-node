@@ -202,6 +202,7 @@ var rtSegments = {};
                 case 'segment_response': {
                     if (isListeningState) updateRealtimeStatus('listening');
                     const seg = rtSegments.get(payload.id) || ensureSegmentBubbles(payload.id, payload.iteration);
+                    if (seg.assistantBubble) seg.assistantBubble.style.display = 'block';
                     if (typeof formatOpenAIResponse === 'function') {
                         seg.assistantText.innerHTML = formatOpenAIResponse(payload.response || '');
                     } else {
@@ -216,6 +217,7 @@ var rtSegments = {};
                 case 'segment_response_corrected': {
                     const seg = rtSegments.get(payload.id);
                     if (!seg) return;
+                    if (seg.assistantBubble) seg.assistantBubble.style.display = 'block';
                     if (typeof formatOpenAIResponse === 'function') {
                         seg.assistantText.innerHTML = formatOpenAIResponse(payload.response || '');
                     } else {

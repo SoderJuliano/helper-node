@@ -83,15 +83,18 @@
   }
 
   function getOrCreateRealtimeFeed() {
-    let feed = document.getElementById('rt-assistant-feed');
-    if (!feed && transcriptionElement) {
-      feed = document.createElement('div');
-      feed.id = 'rt-assistant-feed';
-      feed.className = 'rt-assistant-feed';
-      transcriptionElement.appendChild(feed);
-      const hero = document.getElementById('welcome-hero');
-      if (hero) hero.classList.add('hidden');
+    if (!transcriptionElement) return null;
+    const hero = document.getElementById('welcome-hero');
+    if (hero) hero.classList.add('hidden');
+
+    const last = transcriptionElement.lastElementChild;
+    if (last && last.classList && last.classList.contains('rt-assistant-feed')) {
+      return last;
     }
+
+    const feed = document.createElement('div');
+    feed.className = 'rt-assistant-feed';
+    transcriptionElement.appendChild(feed);
     return feed;
   }
 

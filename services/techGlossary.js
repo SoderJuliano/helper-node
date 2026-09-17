@@ -105,7 +105,7 @@ const CATALOG = {
   ],
 };
 
-const ALL_CATALOG_TERMS = Object.values(CATALOG).flat();
+const ALL_CATALOG_TERMS = Array.from(new Set([...CORE, ...Object.values(CATALOG).flat()]));
 
 // Teto seguro de caracteres para o prompt do Whisper (~160-200 chars).
 // Whisper opera melhor com dicas de estilo concisas em linguagem natural
