@@ -54,8 +54,9 @@ ipcMain.handle("get-available-shortcuts", () => {
       name: "Interface & Chat (Navegação)",
       items: [
         { id: "toggle-sidebar", keys: `${mod}+B`, action: "Mostrar / Ocultar barra lateral", where: "No App", icon: "📁" },
-        { id: "zoom-tree", keys: `${mod}+SCROLL`, action: "Aumentar/diminuir zoom da árvore", where: "Na Sidebar", icon: "🔎" },
-        { id: "zoom-terminal", keys: `${mod}+SCROLL`, action: "Aumentar/diminuir zoom do terminal", where: "No Terminal", icon: "🔎" },
+        { id: "zoom-app", keys: `${mod} + / - / 0`, altKeys: `${mod}+SCROLL`, action: "Aumentar/diminuir zoom (App & Overlays)", where: "No App / Overlays", icon: "🔎" },
+        { id: "zoom-tree", keys: `${mod} + / - / 0`, altKeys: `${mod}+SCROLL`, action: "Aumentar/diminuir zoom da árvore", where: "Na Sidebar", icon: "🔎" },
+        { id: "zoom-terminal", keys: `${mod} + / - / 0`, altKeys: `${mod}+SCROLL`, action: "Aumentar/diminuir zoom do terminal", where: "No Terminal", icon: "🔎" },
         { id: "toggle-chat", keys: `${mod}+I`, action: "Mostrar Chat / Dividir tela", where: "No App / IDE", icon: "💬" },
         { id: "send-chat", keys: "SHIFT+ENTER", action: "Enviar pergunta para a IA", where: "No Chat", icon: "🚀" },
         { id: "newline-chat", keys: "ENTER", action: "Quebrar linha na mensagem", where: "No Chat", icon: "↵" },
@@ -71,7 +72,7 @@ ipcMain.handle("get-available-shortcuts", () => {
         { id: "autocomplete", keys: `${mod}+ESPAÇO`, action: "Forçar autocomplete (IntelliSense)", where: "No Editor", icon: "💡" },
         { id: "accept-tutor", keys: "TAB", action: "Aceitar sugestão do Tutor (Ghost)", where: "No Editor", icon: "➔" },
         { id: "dismiss-tutor", keys: "ESC", action: "Limpar sugestão / Fechar busca", where: "No Editor", icon: "❌" },
-        { id: "zoom-editor", keys: `${mod}+SCROLL`, action: "Aumentar/diminuir zoom do texto", where: "No Editor", icon: "🔎" },
+        { id: "zoom-editor", keys: `${mod} + / - / 0`, altKeys: `${mod}+SCROLL`, action: "Aumentar/diminuir zoom do texto", where: "No Editor", icon: "🔎" },
         { id: "goto-def", keys: "CTRL+Clique", action: "Ir para a definição do símbolo", where: "No Editor", icon: "🔗" },
         { id: "context-menu", keys: "Botão Direito", action: "Menu contextual (Renomear / Usos)", where: "No Editor", icon: "🖱️" }
       ]

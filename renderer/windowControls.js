@@ -233,8 +233,54 @@
             });
         })();
 
-        // Ctrl+F / Ctrl+Shift+F / Ctrl+B global — capture-phase no document
+        // Atalhos globais de Zoom da Janela (Ctrl + '+', '-', '0') quando não estiver dentro do Terminal/Editor/Sidebar
+        const ZOOM_MAIN_KEY = 'helper_main_zoom_factor';
+        function applyMainZoom(factor, notify = true) {
+            const clamped = Math.min(2.5, Math.max(0.6, Math.round(factor * 10) / 10));
+            try {
+                if (window.electronAPI && window.electronAPI.setZoomFactor) {
+                    window.electronAPI.setZoomFactor(clamped);
+                }
+                localStorage.setItem(ZOOM_MAIN_KEY, clamped.toString());
+            } catch (_) {}
+            if (notify && typeof window.showZoomToast === 'function') {
+                window.showZoomToast(`🔍 Zoom do App: ${Math.round(clamped * 100)}%`);
+            }
+        }
+
+        try {
+            const savedMainZoom = parseFloat(localStorage.getItem(ZOOM_MAIN_KEY));
+            if (!isNaN(savedMainZoom) && savedMainZoom >= 0.6 && savedMainZoom <= 2.5 && savedMainZoom !== 1.0) {
+                if (window.electronAPI && window.electronAPI.setZoomFactor) {
+                    window.electronAPI.setZoomFactor(savedMainZoom);
+                }
+            }
+        } catch (_) {}
+
+        // Ctrl+F / Ctrl+Shift+F / Ctrl+B / Zoom global — capture-phase no document
         document.addEventListener('keydown', (e) => {
+            // Zoom global quando fora de componentes com zoom dedicado (Terminal / Editor / Sidebar)
+            if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+                const active = document.activeElement;
+                const isTerm = active && active.closest && active.closest('.terminal, .xterm');
+                const isCm = active && active.closest && active.closest('.CodeMirror');
+                const isSidebar = active && active.closest && active.closest('#sidebar');
+
+                const isPlus = e.key === '+' || e.key === '=' || e.code === 'Equal' || e.code === 'NumpadAdd';
+                const isMinus = e.key === '-' || e.key === '_' || e.code === 'Minus' || e.code === 'NumpadSubtract';
+                const isZero = e.key === '0' || e.code === 'Digit0' || e.code === 'Numpad0';
+
+                if ((isPlus || isMinus || isZero) && !isTerm && !isCm && !isSidebar) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const cur = (window.electronAPI && window.electronAPI.getZoomFactor) ? window.electronAPI.getZoomFactor() : (parseFloat(localStorage.getItem(ZOOM_MAIN_KEY)) || 1.0);
+                    if (isPlus) applyMainZoom(cur + 0.1, true);
+                    else if (isMinus) applyMainZoom(cur - 0.1, true);
+                    else applyMainZoom(1.0, true);
+                    return;
+                }
+            }
+
             // Ctrl+B: alterna a sidebar — funciona igual no chat e no editor.
             if (e.key.toLowerCase() === 'b' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
                 e.preventDefault(); e.stopPropagation();

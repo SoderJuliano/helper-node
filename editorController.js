@@ -61,19 +61,23 @@
       setTimeout(() => cm.refresh(), 0);
     }
 
+    function changeEditorFontSize(delta, reset = false) {
+      let currentSize = parseFloat(wrapperEl.style.fontSize) || 13;
+      let newSize = reset ? 13 : Math.min(40, Math.max(8, currentSize + delta));
+      wrapperEl.style.fontSize = newSize + 'px';
+      localStorage.setItem('editor_font_size', newSize);
+      cm.refresh();
+      if (typeof window.showZoomToast === 'function') {
+        window.showZoomToast(`🔍 Zoom do Editor: ${newSize}px`);
+      }
+    }
+
     const handleEditorWheel = (e) => {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         e.stopPropagation();
         const delta = e.deltaY < 0 ? 1 : -1;
-        let currentSize = parseFloat(wrapperEl.style.fontSize) || 13;
-        let newSize = Math.min(40, Math.max(8, currentSize + delta));
-        wrapperEl.style.fontSize = newSize + 'px';
-        localStorage.setItem('editor_font_size', newSize);
-        cm.refresh();
-        if (typeof window.showZoomToast === 'function') {
-          window.showZoomToast(`🔍 Zoom do Editor: ${newSize}px`);
-        }
+        changeEditorFontSize(delta);
       }
     };
 
@@ -81,6 +85,33 @@
       wrapperEl._hasWheelZoom = true;
       wrapperEl.addEventListener('wheel', handleEditorWheel, { passive: false });
     }
+
+    cm.on('keydown', (editor, e) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+        const isPlus = e.key === '+' || e.key === '=' || e.code === 'Equal' || e.code === 'NumpadAdd';
+        const isMinus = e.key === '-' || e.key === '_' || e.code === 'Minus' || e.code === 'NumpadSubtract';
+        const isZero = e.key === '0' || e.code === 'Digit0' || e.code === 'Numpad0';
+
+        if (isPlus) {
+          e.preventDefault();
+          e.stopPropagation();
+          changeEditorFontSize(1);
+          return;
+        }
+        if (isMinus) {
+          e.preventDefault();
+          e.stopPropagation();
+          changeEditorFontSize(-1);
+          return;
+        }
+        if (isZero) {
+          e.preventDefault();
+          e.stopPropagation();
+          changeEditorFontSize(0, true);
+          return;
+        }
+      }
+    });
 
     cm.on('inputRead', (editor, change) => {
       if (change.origin === '+input') {

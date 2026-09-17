@@ -122,25 +122,52 @@
       if (wsTreeEl) wsTreeEl.style.fontSize = `${savedTreeFontSize}px`;
     }
 
+    function changeTreeFontSize(delta, reset = false) {
+      const wsTreeEl = document.getElementById('ws-tree');
+      if (!wsTreeEl) return;
+      let currentSize = parseFloat(getComputedStyle(wsTreeEl).fontSize) || parseFloat(wsTreeEl.style.fontSize) || 12.5;
+      let newSize = reset ? 12.5 : Math.min(28, Math.max(8, Math.round((currentSize + delta) * 10) / 10));
+      document.documentElement.style.setProperty('--ws-tree-font-size', `${newSize}px`);
+      wsTreeEl.style.fontSize = `${newSize}px`;
+      localStorage.setItem('ws_tree_font_size', newSize);
+      showZoomToast(`Fonte da Árvore: ${newSize}px`);
+    }
+
     sidebar.addEventListener('wheel', (e) => {
       if (e.ctrlKey || e.metaKey) {
-        const wsTreeEl = document.getElementById('ws-tree');
-        if (!wsTreeEl) return;
-
         e.preventDefault();
         e.stopPropagation();
-
         const delta = e.deltaY < 0 ? 0.8 : -0.8;
-        let currentSize = parseFloat(getComputedStyle(wsTreeEl).fontSize) || parseFloat(wsTreeEl.style.fontSize) || 12.5;
-        let newSize = Math.min(28, Math.max(8, Math.round((currentSize + delta) * 10) / 10));
-
-        document.documentElement.style.setProperty('--ws-tree-font-size', `${newSize}px`);
-        wsTreeEl.style.fontSize = `${newSize}px`;
-        localStorage.setItem('ws_tree_font_size', newSize);
-
-        showZoomToast(`Fonte da Árvore: ${newSize}px`);
+        changeTreeFontSize(delta);
       }
     }, { passive: false });
+
+    sidebar.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+        const isPlus = e.key === '+' || e.key === '=' || e.code === 'Equal' || e.code === 'NumpadAdd';
+        const isMinus = e.key === '-' || e.key === '_' || e.code === 'Minus' || e.code === 'NumpadSubtract';
+        const isZero = e.key === '0' || e.code === 'Digit0' || e.code === 'Numpad0';
+
+        if (isPlus) {
+          e.preventDefault();
+          e.stopPropagation();
+          changeTreeFontSize(1);
+          return;
+        }
+        if (isMinus) {
+          e.preventDefault();
+          e.stopPropagation();
+          changeTreeFontSize(-1);
+          return;
+        }
+        if (isZero) {
+          e.preventDefault();
+          e.stopPropagation();
+          changeTreeFontSize(0, true);
+          return;
+        }
+      }
+    });
   }
 
   if (document.readyState === 'loading') {

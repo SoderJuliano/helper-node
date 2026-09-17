@@ -178,7 +178,97 @@
     }
   });
 
+  // === ZOOM / TAMANHO DA FONTE (Ctrl + '+', '-', '0', MouseWheel) ===
+  const ZOOM_STORAGE_KEY = 'helper_vision_guide_zoom_factor';
+  const MIN_ZOOM = 0.6;
+  const MAX_ZOOM = 2.5;
+  const ZOOM_STEP = 0.1;
+  let zoomToastTimeout = null;
+
+  function showZoomToast(text) {
+    let toast = document.getElementById('zoom-toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'zoom-toast';
+      toast.className = 'zoom-toast';
+      document.body.appendChild(toast);
+    }
+    toast.textContent = text;
+    toast.classList.add('show');
+    clearTimeout(zoomToastTimeout);
+    zoomToastTimeout = setTimeout(() => {
+      toast.classList.remove('show');
+    }, 1200);
+  }
+
+  function getSavedZoomFactor() {
+    try {
+      const saved = localStorage.getItem(ZOOM_STORAGE_KEY);
+      if (saved) {
+        const val = parseFloat(saved);
+        if (!isNaN(val) && val >= MIN_ZOOM && val <= MAX_ZOOM) return val;
+      }
+    } catch (_) {}
+    return 1.0;
+  }
+
+  function applyZoom(factor, notify = true) {
+    const clamped = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(factor * 10) / 10));
+    try {
+      if (api.setZoomFactor) {
+        api.setZoomFactor(clamped);
+      } else if (window.electron && window.electron.webFrame) {
+        window.electron.webFrame.setZoomFactor(clamped);
+      } else {
+        document.documentElement.style.zoom = `${clamped}`;
+      }
+      localStorage.setItem(ZOOM_STORAGE_KEY, clamped.toString());
+    } catch (e) {
+      console.warn('Erro ao aplicar zoom:', e);
+    }
+    if (notify) {
+      const percent = Math.round(clamped * 100);
+      showZoomToast(`🔍 Zoom: ${percent}%`);
+    }
+    return clamped;
+  }
+
+  function initZoom() {
+    const saved = getSavedZoomFactor();
+    if (saved !== 1.0) {
+      applyZoom(saved, false);
+    }
+  }
+
   document.addEventListener('keydown', async (e) => {
+    // Atalhos de Zoom: Ctrl + '+' / '-' / '0'
+    if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+      const isPlus = e.key === '+' || e.key === '=' || e.code === 'Equal' || e.code === 'NumpadAdd';
+      const isMinus = e.key === '-' || e.key === '_' || e.code === 'Minus' || e.code === 'NumpadSubtract';
+      const isZero = e.key === '0' || e.code === 'Digit0' || e.code === 'Numpad0';
+
+      if (isPlus) {
+        e.preventDefault();
+        e.stopPropagation();
+        const cur = api.getZoomFactor ? api.getZoomFactor() : getSavedZoomFactor();
+        applyZoom(cur + ZOOM_STEP, true);
+        return;
+      }
+      if (isMinus) {
+        e.preventDefault();
+        e.stopPropagation();
+        const cur = api.getZoomFactor ? api.getZoomFactor() : getSavedZoomFactor();
+        applyZoom(cur - ZOOM_STEP, true);
+        return;
+      }
+      if (isZero) {
+        e.preventDefault();
+        e.stopPropagation();
+        applyZoom(1.0, true);
+        return;
+      }
+    }
+
     if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
       const sel = window.getSelection()?.toString();
       if (sel && sel.trim().length > 0) {
@@ -189,6 +279,16 @@
       }
     }
   });
+
+  window.addEventListener('wheel', (e) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      const delta = e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP;
+      const cur = api.getZoomFactor ? api.getZoomFactor() : getSavedZoomFactor();
+      applyZoom(cur + delta, true);
+    }
+  }, { passive: false });
 
   document.addEventListener('copy', (e) => {
     const sel = window.getSelection()?.toString();
@@ -220,5 +320,7 @@
     });
   }
 
+  initZoom();
   updateStatus('watching');
 })();
+

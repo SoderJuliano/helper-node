@@ -214,3 +214,29 @@ html.manual-drag #pos-header { -webkit-app-region: no-drag !important; }
   padding: 24px;
   line-height: 1.6;
 }
+
+/* ---------- ZOOM TOAST ---------- */
+.zoom-toast {
+  position: fixed;
+  top: 32px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-8px);
+  background: rgba(15, 23, 42, 0.94);
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  color: #fbbf24;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  z-index: 9999;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+.zoom-toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+

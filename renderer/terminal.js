@@ -223,19 +223,19 @@ var isTerminalInitialized = false;
 
                 // Atalhos de Zoom no Terminal: Ctrl + '+' / '-' / '0'
                 if ((e.ctrlKey || e.metaKey) && !e.altKey) {
-                    if (k === '+' || k === '=' || e.code === 'NumpadAdd' || e.key === '+') {
+                    if (k === '+' || k === '=' || e.key === '+' || e.key === '=' || e.code === 'Equal' || e.code === 'NumpadAdd') {
                         e.preventDefault();
                         const cur = (term && term.options && term.options.fontSize) || DEFAULT_FONT_SIZE;
                         setTerminalFontSize(cur + 1);
                         return false;
                     }
-                    if (k === '-' || e.code === 'NumpadSubtract' || e.key === '-') {
+                    if (k === '-' || k === '_' || e.key === '-' || e.key === '_' || e.code === 'Minus' || e.code === 'NumpadSubtract') {
                         e.preventDefault();
                         const cur = (term && term.options && term.options.fontSize) || DEFAULT_FONT_SIZE;
                         setTerminalFontSize(cur - 1);
                         return false;
                     }
-                    if (k === '0' || e.code === 'Numpad0') {
+                    if (k === '0' || e.key === '0' || e.code === 'Digit0' || e.code === 'Numpad0') {
                         e.preventDefault();
                         setTerminalFontSize(DEFAULT_FONT_SIZE);
                         return false;

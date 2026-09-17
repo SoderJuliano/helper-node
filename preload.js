@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webFrame } = require("electron");
 
 contextBridge.exposeInMainWorld("electronAPI", {
   onToggleRecording: (callback) => ipcRenderer.on("toggle-recording", callback),
@@ -337,6 +337,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   minimizeWindow: () => ipcRenderer.send("window-minimize"),
   maximizeWindow: () => ipcRenderer.send("window-toggle-maximize"),
   closeWindow: () => ipcRenderer.send("window-close"),
+  setZoomFactor: (factor) => webFrame.setZoomFactor(factor),
+  getZoomFactor: () => webFrame.getZoomFactor(),
+  setZoomLevel: (level) => webFrame.setZoomLevel(level),
+  getZoomLevel: () => webFrame.getZoomLevel(),
+  resetZoom: () => webFrame.setZoomFactor(1.0),
 
   // === Terminal Connection ===
   terminalInit: (dim) => ipcRenderer.invoke("terminal:init", dim),
