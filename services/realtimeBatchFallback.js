@@ -15,28 +15,9 @@
 const fs = require('fs');
 const path = require('path');
 const { buildTranscriptionPrompt } = require('./techGlossary');
-const { cleanTranscription, mergeContinuationText } = require('./audioTranscriptionCleaner');
+const { cleanTranscription, mergeContinuationText, isAcousticEcho } = require('./audioTranscriptionCleaner');
 
 const TRANSCRIBE_MODEL = 'gpt-4o-transcribe';
-// Se o proximo segmento (mesma fonte: mic ou sys) fechar dentro desta janela apos
-// o anterior, tratamos como continuacao da MESMA pergunta (pausa pra respirar) —
-// juntamos os textos e reprocessamos a pergunta inteira.
-const CONTINUATION_WINDOW_MS = 3000;
-
-function isAcousticEcho(text, otherClosed) {
-  if (!text || !otherClosed || !otherClosed.text) return false;
-  if (Date.now() - otherClosed.closedAt > 5000) return false;
-  const cleanA = text.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/g, ' ').trim();
-  const cleanB = otherClosed.text.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/g, ' ').trim();
-  if (!cleanA || !cleanB) return false;
-  if (cleanA === cleanB) return true;
-  if (cleanA.includes(cleanB) || cleanB.includes(cleanA)) {
-    const minLen = Math.min(cleanA.length, cleanB.length);
-    const maxLen = Math.max(cleanA.length, cleanB.length);
-    if (minLen >= 8 && (minLen / maxLen) > 0.7) return true;
-  }
-  return false;
-}
 
 // Transcrição própria (NÃO importa nada do Assistente de Tradução — totalmente
 // independente). Envia o WAV pro endpoint de transcrição da OpenAI.
@@ -99,21 +80,18 @@ async function handleBatchSegment(svc, audioPath, source) {
   }
 
   const token = svc.configService.getOpenIaToken();
-  const id = 'seg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
-  svc.iterationCount += 1;
-  const iteration = svc.iterationCount;
-  svc.emitUpdate({ type: 'segment_start', id, iteration, audioSource: source, timestamp: new Date().toISOString() });
+  if (!token) {
+    try { if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath); } catch (_) {}
+    return;
+  }
 
   try {
-    if (!token) throw new Error('Token da OpenAI não configurado.');
-
     const glossaryPrompt = svc._glossaryPrompt ? svc._glossaryPrompt() : '';
     const rawTranscript = await transcribeAudio(audioPath, token, TRANSCRIBE_MODEL, glossaryPrompt);
     const transcript = cleanTranscription(rawTranscript, glossaryPrompt);
 
     if (!transcript || transcript.length < 3) {
-      // Ruído/silêncio/alucinação de glossário: descarta o segmento sem poluir a tela.
-      svc.emitUpdate({ type: 'segment_discard', id, iteration, audioSource: source, timestamp: new Date().toISOString() });
+      // Ruído/silêncio/alucinação de glossário: descarta sem criar bolha fantasma
       return;
     }
 
@@ -122,7 +100,6 @@ async function handleBatchSegment(svc, audioPath, source) {
     const otherClosed = svc.lastClosedBySource[otherSource];
     if (isAcousticEcho(transcript, otherClosed)) {
       console.log(`[realtime-batch] Eco acústico detectado em ${source} duplicando ${otherSource}: "${transcript}" - descartando`);
-      svc.emitUpdate({ type: 'segment_discard', id, iteration, audioSource: source, timestamp: new Date().toISOString() });
       return;
     }
 
@@ -135,6 +112,11 @@ async function handleBatchSegment(svc, audioPath, source) {
 
     if (isContinuation && prevClosed) {
       const askText = mergeContinuationText(prevClosed.text, transcript);
+      if (askText === prevClosed.text) {
+        console.log(`[realtime-batch] Texto idêntico já processado no Trecho #${prevClosed.iteration}, ignorando duplicata`);
+        return;
+      }
+      console.log(`[realtime-batch] Continuação de fala detectada: "${prevClosed.text}" + "${transcript}" -> "${askText}" (atualizando Trecho #${prevClosed.iteration})`);
       svc.lastClosedBySource[source] = { id: prevClosed.id, iteration: prevClosed.iteration, text: askText, closedAt: Date.now() };
 
       svc.emitUpdate({
@@ -147,9 +129,6 @@ async function handleBatchSegment(svc, audioPath, source) {
         noSuggestion: !respondToSegment,
         timestamp: new Date().toISOString(),
       });
-
-      // Descarta o placeholder temporário criado no segment_start
-      svc.emitUpdate({ type: 'segment_discard', id, iteration, audioSource: source, timestamp: new Date().toISOString() });
 
       if (source === 'mic') {
         if (svc._lastInterviewerQuestion) {
@@ -168,9 +147,13 @@ async function handleBatchSegment(svc, audioPath, source) {
     }
 
     // Novo turno / Primeira fala
+    const id = 'seg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    svc.iterationCount += 1;
+    const iteration = svc.iterationCount;
     const askText = transcript;
     svc.lastClosedBySource[source] = { id, iteration, text: askText, closedAt: Date.now() };
 
+    svc.emitUpdate({ type: 'segment_start', id, iteration, audioSource: source, timestamp: new Date().toISOString() });
     svc.emitUpdate({ type: 'segment_whisper_correction', id, iteration, text: askText, audioSource: source, source: 'openai', noSuggestion: !respondToSegment, timestamp: new Date().toISOString() });
 
     // Banco de respostas: rastreia a pergunta do interlocutor (sys) e, quando VOCÊ
@@ -196,11 +179,11 @@ async function handleBatchSegment(svc, audioPath, source) {
     svc.emitUpdate({ type: 'segment_response', id, iteration, response, audioSource: source, source: 'openai', timestamp: new Date().toISOString() });
     await svc._writeHistory(askText, response);
   } catch (err) {
-    svc._handleError(err, id, iteration);
+    const errorId = 'seg_err_' + Date.now();
+    svc._handleError(err, errorId, svc.iterationCount);
   } finally {
     try { if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath); } catch (_) {}
   }
 }
-
 
 module.exports = { handleBatchSegment, TRANSCRIBE_MODEL };

@@ -242,6 +242,37 @@ function mergeContinuationText(prevText, newText) {
 }
 
 /**
+ * Detecta se o texto transcrito em uma fonte é eco acústico vazado da outra fonte.
+ * @param {string} text
+ * @param {{ text?: string, closedAt?: number } | null} otherClosed
+ * @returns {boolean}
+ */
+function isAcousticEcho(text, otherClosed) {
+  if (!text || !otherClosed || !otherClosed.text) return false;
+  if (Date.now() - otherClosed.closedAt > 5000) return false;
+  const cleanA = text.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/g, ' ').trim();
+  const cleanB = otherClosed.text.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/g, ' ').trim();
+  if (!cleanA || !cleanB) return false;
+  if (cleanA === cleanB) return true;
+  if (cleanA.includes(cleanB) || cleanB.includes(cleanA)) {
+    const minLen = Math.min(cleanA.length, cleanB.length);
+    const maxLen = Math.max(cleanA.length, cleanB.length);
+    if (minLen >= 8 && (minLen / maxLen) > 0.6) return true;
+  }
+
+  // Word-level overlap para variações de pequenas preposições entre mic e sys
+  const wordsA = cleanA.split(' ').filter((w) => w.length >= 3);
+  const wordsB = new Set(cleanB.split(' ').filter((w) => w.length >= 3));
+  if (wordsA.length >= 3 && wordsB.size >= 3) {
+    const common = wordsA.filter((w) => wordsB.has(w)).length;
+    const ratio = common / Math.max(wordsA.length, wordsB.size);
+    if (ratio >= 0.6) return true;
+  }
+
+  return false;
+}
+
+/**
  * Limpa e valida o texto transcrito.
  * Retorna o texto higienizado, ou '' se for ruído, silêncio ou alucinação.
  *
@@ -289,6 +320,7 @@ module.exports = {
   cleanTranscription,
   normalizeDevPhonetics,
   mergeContinuationText,
+  isAcousticEcho,
   isGlossaryOrPromptEcho,
   isRepetitiveHallucination,
   HALLUCINATION_PATTERNS,

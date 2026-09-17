@@ -217,26 +217,21 @@ class RealtimeAssistantService {
     // Senao, quando voce LE a sugestao em voz alta, o mic re-dispara a IA (loop).
     const respondToSegment = (source === 'sys') || (mode === 'mic');
 
-    const id = "seg_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
-    this.iterationCount += 1;
-    const iteration = this.iterationCount;
-    this.emitUpdate({ type: "segment_start", id, iteration, audioSource: source, timestamp: new Date().toISOString() });
-
     // Enfileira tudo (Whisper -> IA -> historico) — IA so chama UMA vez no fim.
     this._enqueueWhisper(async () => {
-      const { cleanTranscription, mergeContinuationText } = require('./audioTranscriptionCleaner');
+      const { cleanTranscription, mergeContinuationText, isAcousticEcho } = require('./audioTranscriptionCleaner');
       let rawText = "";
+      const tempId = "whisper_" + Date.now();
       try {
-        rawText = await this._runWhisperAdaptive(id, wavPath);
+        rawText = await this._runWhisperAdaptive(tempId, wavPath);
       } catch (e) {
-        console.warn(`[realtime] whisper falhou em ${id}: ${e.message}`);
+        console.warn(`[realtime] whisper falhou: ${e.message}`);
       } finally {
         try { await fsp.unlink(wavPath); } catch (_) {}
       }
 
       const text = cleanTranscription(rawText);
       if (!text || text.length < 3) {
-        this.emitUpdate({ type: "segment_discard", id, iteration, audioSource: source, timestamp: new Date().toISOString() });
         return;
       }
 
@@ -245,7 +240,6 @@ class RealtimeAssistantService {
       const otherClosed = this.lastClosedBySource[otherSource];
       if (isAcousticEcho(text, otherClosed)) {
         console.log(`[realtime] Eco acústico detectado em ${source} duplicando ${otherSource}: "${text}" - descartando`);
-        this.emitUpdate({ type: "segment_discard", id, iteration, audioSource: source, timestamp: new Date().toISOString() });
         return;
       }
 
@@ -258,6 +252,11 @@ class RealtimeAssistantService {
 
       if (isContinuation && prevClosed) {
         const askText = mergeContinuationText(prevClosed.text, text);
+        if (askText === prevClosed.text) {
+          console.log(`[realtime] Texto idêntico já processado no Trecho #${prevClosed.iteration}, ignorando duplicata`);
+          return;
+        }
+        console.log(`[realtime] Continuação de fala detectada: "${prevClosed.text}" + "${text}" -> "${askText}" (atualizando Trecho #${prevClosed.iteration})`);
         this.lastClosedBySource[source] = { id: prevClosed.id, iteration: prevClosed.iteration, text: askText, closedAt: Date.now() };
 
         this.emitUpdate({
@@ -270,9 +269,6 @@ class RealtimeAssistantService {
           noSuggestion: !respondToSegment,
           timestamp: new Date().toISOString(),
         });
-
-        // Descarta o placeholder temporário criado no segment_start
-        this.emitUpdate({ type: "segment_discard", id, iteration, audioSource: source, timestamp: new Date().toISOString() });
 
         if (!respondToSegment) return;
 
@@ -307,9 +303,13 @@ class RealtimeAssistantService {
       }
 
       // Novo turno / Primeira fala
+      const id = "seg_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
+      this.iterationCount += 1;
+      const iteration = this.iterationCount;
       const askText = text;
       this.lastClosedBySource[source] = { id, iteration, text: askText, closedAt: Date.now() };
 
+      this.emitUpdate({ type: "segment_start", id, iteration, audioSource: source, timestamp: new Date().toISOString() });
       this.emitUpdate({
         type: "segment_whisper_correction",
         id, iteration,
