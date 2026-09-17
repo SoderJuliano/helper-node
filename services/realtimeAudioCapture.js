@@ -25,7 +25,7 @@ const SILENCE_RMS = 150;                                 // abaixo disso = silê
 // ms aqui é latência pura antes da resposta, então fica curto. A fusão por
 // continuação (CONTINUATION_WINDOW_MS, realtimeOpenAiService.js) recola frase
 // picotada por pausa curta.
-const SILENCE_DURATION = { mic: 1000, sys: 400 };
+const SILENCE_DURATION = { mic: 1000, sys: 650 };
 const MIN_SPEECH_MS = 350;                               // fala mínima válida
 // Teto de duração por fonte. 'sys' (entrevistador/vídeo) precisa ser curto:
 // áudio comprimido/normalizado de vídeo/podcast pode nunca cair abaixo do

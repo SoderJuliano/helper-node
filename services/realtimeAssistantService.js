@@ -224,7 +224,7 @@ class RealtimeAssistantService {
 
     // Enfileira tudo (Whisper -> IA -> historico) — IA so chama UMA vez no fim.
     this._enqueueWhisper(async () => {
-      const { cleanTranscription } = require('./audioTranscriptionCleaner');
+      const { cleanTranscription, mergeContinuationText } = require('./audioTranscriptionCleaner');
       let rawText = "";
       try {
         rawText = await this._runWhisperAdaptive(id, wavPath);
@@ -253,11 +253,11 @@ class RealtimeAssistantService {
       // pouco tempo (pausa pra respirar, pensar "humm...", nao fim de pergunta),
       // junta os textos e atualiza a bolha existente em vez de criar novas bolhas.
       const prevClosed = this.lastClosedBySource[source];
-      const continuationWindowMs = source === 'mic' ? 7000 : 3500;
+      const continuationWindowMs = source === 'mic' ? 8000 : 5000;
       const isContinuation = !!(prevClosed && (Date.now() - prevClosed.closedAt) <= continuationWindowMs);
 
       if (isContinuation && prevClosed) {
-        const askText = `${prevClosed.text} ${text}`.trim();
+        const askText = mergeContinuationText(prevClosed.text, text);
         this.lastClosedBySource[source] = { id: prevClosed.id, iteration: prevClosed.iteration, text: askText, closedAt: Date.now() };
 
         this.emitUpdate({

@@ -15,12 +15,29 @@ async function realtimeProviderResponder(transcript, image, onDelta, contextMess
 
   let contextBlock = "";
   if (Array.isArray(contextMessages) && contextMessages.length > 0) {
-    const recentQuestions = contextMessages
-      .filter(m => m.role === 'user' && m.content && m.content.trim())
-      .slice(-3)
-      .map(m => `• "${m.content.trim()}"`);
-    if (recentQuestions.length > 0) {
-      contextBlock = `[Tópicos/Perguntas recentes da conversa]:\n${recentQuestions.join('\n')}\n\n`;
+    const validMessages = contextMessages.filter(m => m && m.content && m.content.trim());
+    if (validMessages.length > 0) {
+      const turns = [];
+      let currentTurn = null;
+      for (const msg of validMessages.slice(-6)) {
+        if (msg.role === 'user') {
+          if (currentTurn) turns.push(currentTurn);
+          currentTurn = { user: msg.content.trim(), assistant: '' };
+        } else if (msg.role === 'assistant' && currentTurn) {
+          const firstLine = msg.content.split('\n').map(l => l.trim()).filter(Boolean)[0] || '';
+          currentTurn.assistant = firstLine.slice(0, 140);
+        }
+      }
+      if (currentTurn) turns.push(currentTurn);
+
+      if (turns.length > 0) {
+        const lines = turns.map((t, idx) => {
+          const isImmediatePrev = idx === turns.length - 1;
+          const label = isImmediatePrev ? '• Tópico Imediatamente Anterior' : '• Tópico Anterior';
+          return `${label}: "${t.user}"${t.assistant ? ` (Resposta dada: ${t.assistant})` : ''}`;
+        });
+        contextBlock = `[HISTÓRICO RECENTE DA CONVERSA - Ordem Cronológica]:\n${lines.join('\n')}\n*(Se a fala atual for um follow-up ou usar termos como "cada um", "isso", "eles", "vantagens", resolva SEMPRE com base no(s) Tópico(s) Imediatamente Anterior(es))*\n\n`;
+      }
     }
   }
 

@@ -191,7 +191,54 @@ function normalizeDevPhonetics(text) {
   res = res.replace(/\bpuli\s+request\b/gi, 'pull request');
   res = res.replace(/\bcode\s+revi[eê]u\b/gi, 'code review');
 
+  // 10. Variações fonéticas de Java / Backend: Streams, Lambdas, Optional, HashMaps
+  res = res.replace(/\b(?:strings|string|istrings|istring|istrims|istrim|estrims|estrim)\s+e\s+(?:lambdas?|lamdas?)\b/gi, 'Streams e Lambdas');
+  res = res.replace(/\b(?:streams|stream|strings|string|istrings|istring|istrims|istrim)\s+api\b/gi, 'Stream API');
+  res = res.replace(/\b(o\s+que\s+[ée]\s+|o\s+que\s+s[ãa]o\s+|quando\s+usar\s+|quando\s+evitar\s+|usar\s+|evitar\s+|classe\s+|wrapper\s+|retorno\s+|retornar\s+)opcional\b/gi, '$1Optional');
+  res = res.replace(/\b(?:concorrente|concurrent|concorrent)\s+(?:hash\s*map|hasmap|haximap|haximep|hashmap)\b/gi, 'ConcurrentHashMap');
+  res = res.replace(/\b(?:haxi\s*map|haximap|haximep|hasmap)\b/gi, 'HashMap');
+  res = res.replace(/\b(?:haxitable|hasitable|haxi\s*table|has\s*table)\b/gi, 'Hashtable');
+
   return res;
+}
+
+/**
+ * Mescla dois trechos contínuos de fala de forma inteligente, evitando duplicação
+ * de palavras ou sobreposição de frases quando o VAD ou STT entrega a frase completa no 2º trecho.
+ *
+ * @param {string} prevText
+ * @param {string} newText
+ * @returns {string}
+ */
+function mergeContinuationText(prevText, newText) {
+  if (!prevText) return newText || '';
+  if (!newText) return prevText || '';
+  const p = prevText.trim();
+  const n = newText.trim();
+  const pLow = p.toLowerCase();
+  const nLow = n.toLowerCase();
+
+  // Se o novo texto já contém o texto anterior por completo (ex: Whisper transcreveu a frase toda de novo)
+  if (nLow.startsWith(pLow) || nLow.includes(pLow)) {
+    return n;
+  }
+  // Se o texto anterior já contém o novo texto
+  if (pLow.startsWith(nLow) || pLow.includes(nLow)) {
+    return p;
+  }
+  // Se houver sobreposição no final de prevText e início de newText (overlap de palavras)
+  const prevWords = p.split(/\s+/);
+  const newWords = n.split(/\s+/);
+  const maxOverlap = Math.min(prevWords.length, newWords.length, 8);
+  for (let len = maxOverlap; len >= 1; len--) {
+    const prevTail = prevWords.slice(-len).join(' ').toLowerCase();
+    const newHead = newWords.slice(0, len).join(' ').toLowerCase();
+    if (prevTail === newHead) {
+      return `${p} ${newWords.slice(len).join(' ')}`.trim();
+    }
+  }
+
+  return `${p} ${n}`.trim();
 }
 
 /**
@@ -241,6 +288,7 @@ function cleanTranscription(rawText, glossaryPrompt = '') {
 module.exports = {
   cleanTranscription,
   normalizeDevPhonetics,
+  mergeContinuationText,
   isGlossaryOrPromptEcho,
   isRepetitiveHallucination,
   HALLUCINATION_PATTERNS,

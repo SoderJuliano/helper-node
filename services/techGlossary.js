@@ -27,6 +27,7 @@ const CORE = [
   'helper-node', 'website-helper-node', 'Nexa', 'Ctrl+D', 'Git', 'GitHub', 'commit', 'commitar', 'commitei', 'commitando', 'branch', 'push', 'dar push', 'pull request', 'merge', 'rebase', 'master', 'main', 'checkout', 'multithread', 'Whisper',
   'SOLID', 'Clean Architecture', 'design patterns', 'code review',
   'Java', 'Spring Boot', 'Kotlin', 'NestJS', 'Node.js', 'JavaScript', 'TypeScript', 'React', 'Angular', 'Vue.js', 'Python', 'Go', '.NET',
+  'Optional', 'Streams', 'Stream API', 'Lambdas', 'HashMap', 'ConcurrentHashMap', 'Hashtable', 'Collections',
   'REST', 'API', 'endpoint', 'controller', 'service', 'repository', 'microservices', 'microserviços', 'Kafka', 'Docker', 'Kubernetes', 'AWS',
   'SQL', 'PostgreSQL', 'MongoDB', 'Oracle', 'CI/CD', 'deploy', 'backend', 'frontend',
   'idempotência', 'escalabilidade', 'observabilidade', 'latência', 'throughput',
@@ -175,7 +176,7 @@ function buildTranscriptionPrompt({ background = '', context = '' } = {}) {
   const relevant = pickRelevantTerms(`${background} ${context}`, budget);
 
   // Termos essenciais padrão para preencher o budget se o contexto for vazio/curto
-  const defaultCore = ['comitar', 'commitar', 'dar push', 'fazer commit', 'Java', 'Spring Boot', 'Git', 'GitHub', 'commit', 'branch', 'master', 'main', 'Whisper', 'multithread', 'pull request', 'merge', 'SQL', 'Docker', 'Kubernetes', 'Kafka', 'AWS', 'REST', 'TypeScript', 'Node.js', 'SOLID'];
+  const defaultCore = ['comitar', 'commitar', 'dar push', 'fazer commit', 'Java', 'Spring Boot', 'Optional', 'Streams', 'Lambdas', 'Git', 'GitHub', 'commit', 'branch', 'master', 'main', 'Whisper', 'multithread', 'pull request', 'merge', 'SQL', 'Docker', 'Kubernetes', 'Kafka', 'AWS', 'REST', 'TypeScript', 'Node.js', 'SOLID'];
   const terms = [...relevant];
   let used = terms.reduce((acc, t) => acc + t.length + 2, 0);
 

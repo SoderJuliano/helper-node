@@ -15,7 +15,7 @@
 const fs = require('fs');
 const path = require('path');
 const { buildTranscriptionPrompt } = require('./techGlossary');
-const { cleanTranscription } = require('./audioTranscriptionCleaner');
+const { cleanTranscription, mergeContinuationText } = require('./audioTranscriptionCleaner');
 
 const TRANSCRIBE_MODEL = 'gpt-4o-transcribe';
 // Se o proximo segmento (mesma fonte: mic ou sys) fechar dentro desta janela apos
@@ -130,11 +130,11 @@ async function handleBatchSegment(svc, audioPath, source) {
     // tempo (pausa pra respirar, pensar "humm...", nao fim de pergunta), junta os textos
     // e atualiza a bolha existente em vez de criar novas bolhas.
     const prevClosed = svc.lastClosedBySource[source];
-    const continuationWindowMs = source === 'mic' ? 7000 : 3500;
+    const continuationWindowMs = source === 'mic' ? 8000 : 5000;
     const isContinuation = !!(prevClosed && (Date.now() - prevClosed.closedAt) <= continuationWindowMs);
 
     if (isContinuation && prevClosed) {
-      const askText = `${prevClosed.text} ${transcript}`.trim();
+      const askText = mergeContinuationText(prevClosed.text, transcript);
       svc.lastClosedBySource[source] = { id: prevClosed.id, iteration: prevClosed.iteration, text: askText, closedAt: Date.now() };
 
       svc.emitUpdate({
