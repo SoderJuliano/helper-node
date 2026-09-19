@@ -75,6 +75,13 @@ module.exports = function registerIpc() {
         ollamaAgenticWorkflow.stopAll();
       }
     } catch (_) {}
+    try {
+      const nexaVoiceAssistant = require('../../services/nexaVoiceAssistant');
+      const session = nexaVoiceAssistant.getSession ? nexaVoiceAssistant.getSession() : null;
+      if (session) {
+        session.cancelAiExecution();
+      }
+    } catch (_) {}
     console.log("IA request cancelled");
   });
 

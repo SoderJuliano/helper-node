@@ -98,7 +98,10 @@ class NexaVoiceSession extends EventEmitter {
    * Inicia o assistente de voz contínuo.
    */
   async start(deviceId = "") {
-    if (this.active) return;
+    if (this.active) {
+      this.cancelAiExecution();
+      return;
+    }
     this.active = true;
     this.isProcessing = false;
     this.isQueryExecuting = false;
@@ -110,11 +113,16 @@ class NexaVoiceSession extends EventEmitter {
     if (this.incompleteTimer) clearTimeout(this.incompleteTimer);
     this.incompleteTimer = null;
     this.pendingIncompleteText = null;
+    if (this.processingTimeout) {
+      clearTimeout(this.processingTimeout);
+      this.processingTimeout = null;
+    }
 
     // Pré-aquece o Whisper em background logo ao iniciar o modo de voz
     warmupWhisper().catch(() => {});
 
     await this.turnDetector.start(deviceId);
+    this.emit("state-changed", { state: "listening", followUpActive: false });
     this.emit("status-changed", { active: true, state: "listening", followUpActive: false });
     this.emit("animation-trigger", { animation: "wave" });
   }
@@ -123,7 +131,6 @@ class NexaVoiceSession extends EventEmitter {
    * Para o assistente de voz contínuo.
    */
   stop() {
-    if (!this.active) return;
     this.active = false;
     this.isProcessing = false;
     this.isQueryExecuting = false;
@@ -135,10 +142,15 @@ class NexaVoiceSession extends EventEmitter {
     if (this.incompleteTimer) clearTimeout(this.incompleteTimer);
     this.incompleteTimer = null;
     this.pendingIncompleteText = null;
+    if (this.processingTimeout) {
+      clearTimeout(this.processingTimeout);
+      this.processingTimeout = null;
+    }
     this.context.clear();
 
     this.stopTtsAudioOnly();
     this.turnDetector.stop();
+    this.emit("state-changed", { state: "idle", followUpActive: false });
     this.emit("status-changed", { active: false, state: "idle", followUpActive: false });
   }
 
@@ -200,6 +212,7 @@ class NexaVoiceSession extends EventEmitter {
       try { helpers.cancelIaAndFreezeStream(); } catch (_) {}
     }
     this.emit("barge-in");
+    this.emit("state-changed", { state: this.active ? "listening" : "idle", followUpActive: this.followUpActive });
   }
 
   /**

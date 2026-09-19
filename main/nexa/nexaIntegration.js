@@ -309,6 +309,32 @@ function handleCoreEventForNexa(channel, args) {
     }
   }
 
+  // 3b. Conclusão, Cancelamento ou Erro da IA (Retorna ao estado IDLE)
+  if (
+    channel === "stream-complete" ||
+    channel === "stream-error" ||
+    channel === "stream-end" ||
+    channel === "cancel-ia-request" ||
+    channel === "nexa-voice:processing-finished" ||
+    channel === "ia-error" ||
+    channel === "gemini-response" ||
+    channel === "gemini-response-vision" ||
+    channel === "ollama-response"
+  ) {
+    if (nexaState.getState() === "THINKING" || nexaState.getState() === "WORKING" || nexaState.getState() === "SEARCHING") {
+      nexaState.setState("IDLE");
+    }
+  }
+
+  if (channel === "agentic-phase-update") {
+    const payload = args[1];
+    if (payload && (payload.phase === "completed" || payload.phase === "error")) {
+      if (nexaState.getState() === "THINKING" || nexaState.getState() === "WORKING") {
+        nexaState.setState("IDLE");
+      }
+    }
+  }
+
   // 4. Recebimento / Interrupção de Áudio do Google TTS
   if (channel === "play-tts-audio") {
     nexaState.setState("SPEAKING");
