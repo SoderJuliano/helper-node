@@ -471,6 +471,20 @@ helpers.createWindow = async function() {
       state.currentDisplayId = screen.getDisplayNearestPoint(
         state.mainWindow.getBounds()
       ).id;
+
+      if (!state._displayListenersSetup) {
+        state._displayListenersSetup = true;
+        const onDisplayChange = () => {
+          console.log("[screen] Mudanca de display/monitores detectada. Reajustando janelas ativas...");
+          if (typeof helpers.clampAllActiveWindows === "function") {
+            helpers.clampAllActiveWindows();
+          }
+        };
+        screen.on("display-removed", onDisplayChange);
+        screen.on("display-added", onDisplayChange);
+        screen.on("display-metrics-changed", onDisplayChange);
+      }
+
       // Re-registra atalhos quando a janela ganha foco
       helpers.registerGlobalShortcuts();
     });

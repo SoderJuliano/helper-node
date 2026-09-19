@@ -70,6 +70,58 @@ function injectImport(content, fqnToImport) {
   return `${newImportText}\n\n${content}`;
 }
 
+/**
+ * Agrupa/colapsa multiplos imports individuais do mesmo pacote em um unico wildcard (ex: import java.util.*;)
+ */
+function collapsePackageImports(content, targetPackage) {
+  if (!content || !targetPackage) return content || '';
+  const pkg = targetPackage.trim();
+
+  const lines = content.split('\n');
+  const importLines = [];
+  let firstImportLineIdx = -1;
+  let lastImportLineIdx = -1;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    const impMatch = trimmed.match(/^import(?:\s+static)?\s+([a-zA-Z0-9_.]+)(\.\*)?\s*;/);
+    if (impMatch) {
+      if (firstImportLineIdx === -1) firstImportLineIdx = i;
+      lastImportLineIdx = i;
+      importLines.push({ lineIdx: i, text: trimmed, fqn: impMatch[1], isWildcard: !!impMatch[2], isStatic: trimmed.startsWith('import static') });
+    }
+  }
+
+  if (firstImportLineIdx === -1) return content;
+
+  // Filtra imports que pertencem ao targetPackage (nao estaticos)
+  const remainingImports = [];
+  for (const item of importLines) {
+    if (!item.isStatic && (item.fqn.startsWith(pkg + '.') || item.fqn === pkg)) {
+      // substituido pelo wildcard
+    } else {
+      remainingImports.push(item.text);
+    }
+  }
+
+  remainingImports.push(`import ${pkg}.*;`);
+
+  remainingImports.sort((a, b) => {
+    const aIsStatic = a.startsWith('import static');
+    const bIsStatic = b.startsWith('import static');
+    if (aIsStatic !== bIsStatic) return aIsStatic ? 1 : -1;
+    return a.localeCompare(b);
+  });
+
+  const uniqueImports = Array.from(new Set(remainingImports));
+  const before = lines.slice(0, firstImportLineIdx);
+  const after = lines.slice(lastImportLineIdx + 1);
+
+  return [...before, ...uniqueImports, ...after].join('\n');
+}
+
 module.exports = {
   injectImport,
+  collapsePackageImports,
 };

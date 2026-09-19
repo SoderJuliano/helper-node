@@ -7,11 +7,16 @@
     <link rel="stylesheet" href="styles/config.css">
 </head>
 <body>
-    <div style="position:fixed; top:8px; right:10px; z-index:2000; display:flex; gap:6px; -webkit-app-region:no-drag;">
-        <button id="win-maximize-btn" title="Tela cheia / restaurar" style="width:28px; height:28px; padding:0; margin:0; border:none; border-radius:6px; background:rgba(255,255,255,0.12); color:#fff; cursor:pointer; font-size:14px; line-height:28px; text-align:center; -webkit-app-region:no-drag;">⛶</button>
-        <button id="win-close-btn" title="Fechar" style="width:28px; height:28px; padding:0; margin:0; border:none; border-radius:6px; background:rgba(255,70,70,0.35); color:#fff; cursor:pointer; font-size:16px; line-height:28px; text-align:center; -webkit-app-region:no-drag;">✕</button>
+    <div class="config-titlebar">
+        <div class="config-titlebar-left">
+            <span class="drag-handle-dots" title="Clique e arraste a janela">⋮⋮</span>
+            <span class="config-app-title">CONFIGURAÇÕES // HELPER NODE</span>
+        </div>
+        <div class="config-titlebar-right">
+            <button id="win-maximize-btn" title="Tela cheia / restaurar" style="width:28px; height:28px; padding:0; margin:0; border:none; border-radius:6px; background:rgba(255,255,255,0.12); color:#fff; cursor:pointer; font-size:14px; line-height:28px; text-align:center; -webkit-app-region:no-drag;">⛶</button>
+            <button id="win-close-btn" title="Fechar" style="width:28px; height:28px; padding:0; margin:0; border:none; border-radius:6px; background:rgba(255,70,70,0.35); color:#fff; cursor:pointer; font-size:16px; line-height:28px; text-align:center; -webkit-app-region:no-drag;">✕</button>
+        </div>
     </div>
-    <h1>Configurações</h1>
     <div class="container">
         <div class="setting-item" id="prompt-instruction-header">
             <label for="prompt-instruction">Instrução para IA:</label>
@@ -294,6 +299,27 @@
                     <span id="copilot-cli-status-result" style="font-size: 12px;"></span>
                     <span id="copilot-reset-blocked-result" style="font-size: 11px; color: #9ef0a8;"></span>
                 </div>
+            </div>
+        </div>
+
+        <!-- Login Corporativo / GitHub Copilot (com migracao de VSCode & IntelliJ) -->
+        <div id="copilot-auth-container" style="display: none; margin-top: 6px; padding: 12px 14px; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(0, 240, 255, 0.15); border-radius: 6px; -webkit-app-region: no-drag;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span style="font-size: 13px; font-weight: bold; color: #00f0ff;">Autenticação GitHub / Copilot</span>
+                <span id="copilot-auth-badge" class="status-badge">Desconectado</span>
+            </div>
+            <div id="copilot-auth-user-info" style="font-size: 12px; color: #94a3b8; margin-bottom: 8px; display: none;"></div>
+            <div id="copilot-detected-alert" style="display: none; font-size: 11.5px; color: #9ef0a8; background: rgba(74, 222, 128, 0.1); border: 1px solid rgba(74, 222, 128, 0.25); padding: 6px 10px; border-radius: 4px; margin-bottom: 8px;">
+                <span id="copilot-detected-msg">Sessão encontrada no VSCode!</span>
+                <button type="button" id="copilot-import-detected-btn" class="action-btn" style="margin-left: 8px; padding: 3px 8px; font-size: 11px; background: #16a34a; color: #fff; cursor: pointer;">Importar Agora (1-Clique)</button>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <button type="button" id="copilot-login-web-btn" class="action-btn" style="background: #2563eb; color: #fff; cursor: pointer;">Conectar Conta GitHub</button>
+                <button type="button" id="copilot-logout-btn" class="action-btn" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); display: none; cursor: pointer;">Desconectar</button>
+                <span id="copilot-login-status" style="font-size: 11px; color: #888;"></span>
+            </div>
+            <div id="copilot-device-code-box" style="display: none; margin-top: 10px; padding: 8px 12px; background: #0f172a; border-radius: 4px; border: 1px dashed #38bdf8; font-size: 12px;">
+                Cole o código no navegador: <strong id="copilot-user-code" style="color: #38bdf8; font-size: 14px; letter-spacing: 2px;"></strong>
             </div>
         </div>
 

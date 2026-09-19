@@ -360,6 +360,130 @@
     });
   }
 
+  const copilotAuthBadge = document.getElementById("copilot-auth-badge");
+  const copilotAuthUserInfo = document.getElementById("copilot-auth-user-info");
+  const copilotDetectedAlert = document.getElementById("copilot-detected-alert");
+  const copilotDetectedMsg = document.getElementById("copilot-detected-msg");
+  const copilotImportDetectedBtn = document.getElementById("copilot-import-detected-btn");
+  const copilotLoginWebBtn = document.getElementById("copilot-login-web-btn");
+  const copilotLogoutBtn = document.getElementById("copilot-logout-btn");
+  const copilotLoginStatus = document.getElementById("copilot-login-status");
+  const copilotDeviceCodeBox = document.getElementById("copilot-device-code-box");
+  const copilotUserCode = document.getElementById("copilot-user-code");
+
+  let copilotPollTimer = null;
+
+  async function refreshCopilotAuthStatus() {
+    if (!copilotAuthBadge) return;
+    try {
+      const status = await ipcRenderer.invoke('github-auth-get-status');
+      if (status && status.authenticated) {
+        copilotAuthBadge.textContent = 'Conectado';
+        copilotAuthBadge.style.backgroundColor = 'rgba(74, 222, 128, 0.2)';
+        copilotAuthBadge.style.color = '#9ef0a8';
+        if (copilotAuthUserInfo) {
+          copilotAuthUserInfo.style.display = 'block';
+          copilotAuthUserInfo.innerHTML = `Logado como: <strong style="color:#fff;">${status.user}</strong> (Fonte: ${status.source})`;
+        }
+        if (copilotDetectedAlert) copilotDetectedAlert.style.display = 'none';
+        if (copilotLoginWebBtn) copilotLoginWebBtn.style.display = 'none';
+        if (copilotLogoutBtn) copilotLogoutBtn.style.display = 'inline-block';
+        if (copilotDeviceCodeBox) copilotDeviceCodeBox.style.display = 'none';
+      } else {
+        copilotAuthBadge.textContent = 'Desconectado';
+        copilotAuthBadge.style.backgroundColor = 'rgba(239, 68, 68, 0.2)';
+        copilotAuthBadge.style.color = '#f87171';
+        if (copilotAuthUserInfo) copilotAuthUserInfo.style.display = 'none';
+        if (copilotLogoutBtn) copilotLogoutBtn.style.display = 'none';
+        if (copilotLoginWebBtn) copilotLoginWebBtn.style.display = 'inline-block';
+
+        if (status && status.detectedAvailable) {
+          if (copilotDetectedAlert) {
+            copilotDetectedAlert.style.display = 'block';
+            if (copilotDetectedMsg) {
+              copilotDetectedMsg.textContent = `Sessão ativa encontrada no ${status.detectedSource} (${status.detectedUser})!`;
+            }
+          }
+        } else {
+          if (copilotDetectedAlert) copilotDetectedAlert.style.display = 'none';
+        }
+      }
+    } catch (_) {}
+  }
+
+  if (copilotImportDetectedBtn) {
+    copilotImportDetectedBtn.addEventListener('click', async () => {
+      copilotImportDetectedBtn.textContent = 'Importando...';
+      copilotImportDetectedBtn.disabled = true;
+      try {
+        const res = await ipcRenderer.invoke('github-auth-auto-import');
+        if (res && res.success) {
+          await refreshCopilotAuthStatus();
+          await populateCopilotCliModels(null, true);
+        } else {
+          alert(res.error || 'Não foi possível importar credenciais.');
+        }
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        copilotImportDetectedBtn.textContent = 'Importar Agora (1-Clique)';
+        copilotImportDetectedBtn.disabled = false;
+      }
+    });
+  }
+
+  if (copilotLoginWebBtn) {
+    copilotLoginWebBtn.addEventListener('click', async () => {
+      copilotLoginStatus.textContent = 'Iniciando autenticação...';
+      copilotLoginStatus.style.color = '#38bdf8';
+      try {
+        const flow = await ipcRenderer.invoke('github-auth-start-device-flow');
+        if (!flow.success || !flow.data) {
+          throw new Error(flow.error || 'Falha ao iniciar Device Flow');
+        }
+
+        const data = flow.data;
+        if (copilotUserCode) copilotUserCode.textContent = data.user_code;
+        if (copilotDeviceCodeBox) copilotDeviceCodeBox.style.display = 'block';
+        copilotLoginStatus.textContent = 'Aguardando autorização no navegador...';
+
+        if (copilotPollTimer) clearInterval(copilotPollTimer);
+        const intervalMs = ((data.interval || 5) + 1) * 1000;
+
+        copilotPollTimer = setInterval(async () => {
+          try {
+            const poll = await ipcRenderer.invoke('github-auth-poll-device-flow', { deviceCode: data.device_code });
+            if (poll.status === 'success') {
+              clearInterval(copilotPollTimer);
+              copilotPollTimer = null;
+              copilotLoginStatus.textContent = '✓ Login concluído com sucesso!';
+              copilotLoginStatus.style.color = '#9ef0a8';
+              await refreshCopilotAuthStatus();
+              await populateCopilotCliModels(null, true);
+            } else if (poll.status === 'expired' || poll.status === 'error') {
+              clearInterval(copilotPollTimer);
+              copilotPollTimer = null;
+              copilotLoginStatus.textContent = poll.error || 'Autorização expirada.';
+              copilotLoginStatus.style.color = '#f87171';
+            }
+          } catch (_) {}
+        }, intervalMs);
+      } catch (err) {
+        copilotLoginStatus.textContent = err.message;
+        copilotLoginStatus.style.color = '#f87171';
+      }
+    });
+  }
+
+  if (copilotLogoutBtn) {
+    copilotLogoutBtn.addEventListener('click', async () => {
+      await ipcRenderer.invoke('github-auth-logout');
+      if (copilotDeviceCodeBox) copilotDeviceCodeBox.style.display = 'none';
+      if (copilotLoginStatus) copilotLoginStatus.textContent = '';
+      await refreshCopilotAuthStatus();
+    });
+  }
+
   window.ConfigProviders = {
     populateOpenAiModels,
     populateOpenAiVisionModels,
@@ -368,5 +492,6 @@
     populateGeminiCliModels,
     populateClaudeCliModels,
     populateCopilotCliModels,
+    refreshCopilotAuthStatus,
   };
 })();

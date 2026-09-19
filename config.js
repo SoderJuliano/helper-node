@@ -192,7 +192,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   } else if (currentProvider === 'copilotCli') {
     if (copilotCliModelContainer) copilotCliModelContainer.style.display = 'flex';
     if (copilotCliReasoningEffortContainer) copilotCliReasoningEffortContainer.style.display = 'flex';
+    const copilotAuthContainer = document.getElementById('copilot-auth-container');
+    if (copilotAuthContainer) copilotAuthContainer.style.display = 'block';
     window.ConfigProviders.populateCopilotCliModels(savedCopilotCliModel);
+    if (window.ConfigProviders.refreshCopilotAuthStatus) window.ConfigProviders.refreshCopilotAuthStatus();
   } else if (currentProvider === 'llama' || currentProvider === 'llama-stream') {
     const backendModelContainerEl = document.getElementById('backend-model-container');
     if (backendModelContainerEl) backendModelContainerEl.style.display = 'flex';
@@ -260,6 +263,8 @@ if (aiModelSelect) {
     if (claudeCliModelContainer) claudeCliModelContainer.style.display = (v === 'claudeCli') ? 'flex' : 'none';
     if (copilotCliModelContainer) copilotCliModelContainer.style.display = (v === 'copilotCli') ? 'flex' : 'none';
     if (copilotCliReasoningEffortContainer) copilotCliReasoningEffortContainer.style.display = (v === 'copilotCli') ? 'flex' : 'none';
+    const copilotAuthContainer = document.getElementById('copilot-auth-container');
+    if (copilotAuthContainer) copilotAuthContainer.style.display = (v === 'copilotCli') ? 'block' : 'none';
     const backendApiKeyContainer = document.getElementById('backend-api-key-container');
     if (backendApiKeyContainer) backendApiKeyContainer.style.display = isOllama ? 'flex' : 'none';
     const backendModelContainerEl = document.getElementById('backend-model-container');
@@ -285,6 +290,7 @@ if (aiModelSelect) {
         window.ConfigProviders.populateClaudeCliModels();
       } else if (v === 'copilotCli') {
         window.ConfigProviders.populateCopilotCliModels();
+        if (window.ConfigProviders.refreshCopilotAuthStatus) window.ConfigProviders.refreshCopilotAuthStatus();
       } else if (v === 'openIa' || v === 'openIaCodex') {
         window.ConfigProviders.populateOpenAiModels();
       } else if (v === 'llama' || v === 'llama-stream') {

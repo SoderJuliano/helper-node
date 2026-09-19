@@ -151,6 +151,56 @@
     }
   }
 
+  function collapseJavaPackage(cm, targetPackage) {
+    if (!cm || !targetPackage) return;
+    const doc = cm.getDoc();
+    const content = doc.getValue();
+    const lines = content.split('\n');
+    const importLines = [];
+    let firstImportLineIdx = -1;
+    let lastImportLineIdx = -1;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+      const impMatch = trimmed.match(/^import(?:\s+static)?\s+([a-zA-Z0-9_.]+)(\.\*)?\s*;/);
+      if (impMatch) {
+        if (firstImportLineIdx === -1) firstImportLineIdx = i;
+        lastImportLineIdx = i;
+        importLines.push({ lineIdx: i, text: trimmed, fqn: impMatch[1], isWildcard: !!impMatch[2], isStatic: trimmed.startsWith('import static') });
+      }
+    }
+
+    if (firstImportLineIdx === -1) return;
+
+    const remainingImports = [];
+    for (const item of importLines) {
+      if (!item.isStatic && (item.fqn.startsWith(targetPackage + '.') || item.fqn === targetPackage)) {
+        // agrupado no wildcard
+      } else {
+        remainingImports.push(item.text);
+      }
+    }
+
+    remainingImports.push(`import ${targetPackage}.*;`);
+
+    remainingImports.sort((a, b) => {
+      const aIsStatic = a.startsWith('import static');
+      const bIsStatic = b.startsWith('import static');
+      if (aIsStatic !== bIsStatic) return aIsStatic ? 1 : -1;
+      return a.localeCompare(b);
+    });
+
+    const uniqueImports = Array.from(new Set(remainingImports));
+    const from = { line: firstImportLineIdx, ch: 0 };
+    const to = { line: lastImportLineIdx, ch: doc.getLine(lastImportLineIdx).length };
+    doc.replaceRange(uniqueImports.join('\n'), from, to);
+
+    if (currentFilePath) {
+      scheduleCheck(cm, currentFilePath);
+    }
+  }
+
   function applyTsFix(cm, filePath, fix) {
     const sameFile = fix.changes.filter((c) => c.fileName && c.fileName.replace(/\\/g, '/').toLowerCase() === filePath.replace(/\\/g, '/').toLowerCase());
     if (sameFile.length === 0) return;
@@ -187,24 +237,36 @@
       const actionsDiv = document.createElement('div');
       actionsDiv.className = 'import-check-popup-actions';
 
-      const topCandidates = diag.suggestions.slice(0, 3);
-      topCandidates.forEach((fqn, idx) => {
+      if (diag.isPackageCollapse && diag.targetPackage) {
         const btn = document.createElement('button');
-        btn.className = 'import-check-popup-btn' + (idx === 0 ? ' primary' : '');
-        btn.innerHTML = `<span class="btn-icon">⚡</span> Importar <strong>${fqn}</strong>`;
+        btn.className = 'import-check-popup-btn primary';
+        btn.innerHTML = `<span class="btn-icon">📦</span> Agrupar em <strong>import ${diag.targetPackage}.*;</strong>`;
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           removeHoverPopup();
-          insertJavaImport(cm, fqn);
+          collapseJavaPackage(cm, diag.targetPackage);
         });
         actionsDiv.appendChild(btn);
-      });
+      } else {
+        const topCandidates = diag.suggestions.slice(0, 3);
+        topCandidates.forEach((fqn, idx) => {
+          const btn = document.createElement('button');
+          btn.className = 'import-check-popup-btn' + (idx === 0 ? ' primary' : '');
+          btn.innerHTML = `<span class="btn-icon">⚡</span> Importar <strong>${fqn}</strong>`;
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            removeHoverPopup();
+            insertJavaImport(cm, fqn);
+          });
+          actionsDiv.appendChild(btn);
+        });
 
-      if (diag.suggestions.length > 3) {
-        const moreHint = document.createElement('div');
-        moreHint.className = 'import-check-popup-more';
-        moreHint.textContent = `+${diag.suggestions.length - 3} opções (clique direito ou Alt+Enter)`;
-        actionsDiv.appendChild(moreHint);
+        if (diag.suggestions.length > 3) {
+          const moreHint = document.createElement('div');
+          moreHint.className = 'import-check-popup-more';
+          moreHint.textContent = `+${diag.suggestions.length - 3} opções (clique direito ou Alt+Enter)`;
+          actionsDiv.appendChild(moreHint);
+        }
       }
 
       popup.appendChild(actionsDiv);

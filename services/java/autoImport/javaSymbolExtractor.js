@@ -222,6 +222,11 @@ const { JDK_FQN_MAP } = require('../javaJdkConstants.js');
 function isSymbolResolvedByWildcard(name, wildcardPackages, packageName, projectIndex) {
   if (wildcardPackages && wildcardPackages.size > 0) {
     for (const wp of wildcardPackages) {
+      // 0. Caso wildcard de classe ou static (ex: import java.StringUtils.* ou import static org.apache.commons.lang3.StringUtils.*)
+      if (wp === name || wp.endsWith('.' + name) || wp.endsWith(name)) {
+        return true;
+      }
+
       const fullCandidate = `${wp}.${name}`;
 
       // 1. projectIndex.allClasses

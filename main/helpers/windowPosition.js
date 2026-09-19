@@ -138,33 +138,77 @@ helpers.getSharingDisplay = function() {
   return screen.getPrimaryDisplay();
 }
 
-helpers.ensureWindowVisible = function(win) {
-  const windowBounds = win.getBounds();
-  const displays = screen.getAllDisplays();
-  const visible = displays.some((display) => {
-    const { x, y, width, height } = display.bounds;
-    return (
-      windowBounds.x >= x &&
-      windowBounds.x < x + width &&
-      windowBounds.y >= y &&
-      windowBounds.y < y + height
-    );
-  });
+helpers.clampWindowToDisplay = function(win) {
+  if (!win || win.isDestroyed()) return;
+  try {
+    const displays = screen.getAllDisplays();
+    if (!displays || displays.length === 0) return;
 
-  if (!visible) {
-    const primaryDisplay = screen.getPrimaryDisplay();
-    const { x, y, width, height } = primaryDisplay.workArea;
-    const newX = x + Math.round((width - windowBounds.width) / 2);
-    const newY = y + Math.round((height - windowBounds.height) / 2);
-    console.log("Janela fora da tela. Reposicionando para:", newX, newY);
+    const b = win.getBounds();
+    const center = { x: b.x + Math.round(b.width / 2), y: b.y + Math.round(b.height / 2) };
+
+    // Encontra display mais proximo ou cai no display primario
+    let display = screen.getDisplayNearestPoint(center);
+    if (!display) display = screen.getPrimaryDisplay();
+    const wa = display.workArea || display.bounds;
+
+    if (win.isMaximized()) {
+      // Se estava maximizada ao trocar de tela, ajusta bounds seguros e reaplica maximize no display ativo
+      win.unmaximize();
+      const targetW = Math.min(b.width, Math.max(480, wa.width - 20));
+      const targetH = Math.min(b.height, Math.max(360, wa.height - 20));
+      const targetX = wa.x + Math.max(0, Math.round((wa.width - targetW) / 2));
+      const targetY = wa.y + Math.max(0, Math.round((wa.height - targetH) / 2));
+      win.setBounds({ x: targetX, y: targetY, width: targetW, height: targetH });
+      win.maximize();
+      return;
+    }
+
+    // Clamping de dimensoes para telas menores (ex: notebook pos-desconexao de monitor externo)
+    const maxAllowedWidth = Math.max(320, wa.width - 20);
+    const maxAllowedHeight = Math.max(240, wa.height - 20);
+    const newWidth = Math.min(b.width, maxAllowedWidth);
+    const newHeight = Math.min(b.height, maxAllowedHeight);
+
+    let newX = b.x;
+    let newY = b.y;
+
+    if (newX < wa.x) newX = wa.x + 10;
+    if (newX + newWidth > wa.x + wa.width) newX = Math.max(wa.x, wa.x + wa.width - newWidth - 10);
+
+    if (newY < wa.y) newY = wa.y + 10;
+    if (newY + newHeight > wa.y + wa.height) newY = Math.max(wa.y, wa.y + wa.height - newHeight - 10);
+
     win.setBounds({
-      x: newX,
-      y: newY,
-      width: windowBounds.width,
-      height: windowBounds.height,
+      x: Math.round(newX),
+      y: Math.round(newY),
+      width: Math.round(newWidth),
+      height: Math.round(newHeight)
     });
+  } catch (err) {
+    console.error("[windowPosition] Erro ao ajustar limites da janela:", err.message);
   }
-}
+};
+
+helpers.clampAllActiveWindows = function() {
+  const candidates = [
+    state.mainWindow,
+    state.configWindow,
+    state.preferencesWindow,
+    state.nexaConfigWindow
+  ];
+
+  candidates.forEach(win => {
+    if (win && !win.isDestroyed() && win.isVisible()) {
+      helpers.clampWindowToDisplay(win);
+    }
+  });
+};
+
+helpers.ensureWindowVisible = function(win) {
+  if (!win || win.isDestroyed()) return;
+  helpers.clampWindowToDisplay(win);
+};
 
 helpers.moveToDisplay = function(targetIndex) {
   if (!state.mainWindow || state.mainWindow.isDestroyed()) return;

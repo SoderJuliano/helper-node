@@ -126,9 +126,17 @@ function getEnrichedEnv() {
   if (!existingNodeOpts.includes('--max-old-space-size')) {
     env.NODE_OPTIONS = (existingNodeOpts + ' --max-old-space-size=8192').trim();
   }
-  env.FORCE_COLOR = '0';
-  env.NO_COLOR = '1';
-  env.CI = '1';
+  // Injeta token corporativo/autenticado do usuario se disponivel (zero admin, 100% user-space)
+  try {
+    const GithubAuthService = require('../../auth/githubAuthService');
+    const saved = GithubAuthService.getSavedToken();
+    if (saved && saved.oauth_token) {
+      env.GITHUB_TOKEN = saved.oauth_token;
+      env.GH_TOKEN = saved.oauth_token;
+      env.COPILOT_TOKEN = saved.oauth_token;
+      env.GITHUB_COPILOT_TOKEN = saved.oauth_token;
+    }
+  } catch (_) {}
 
   return env;
 }

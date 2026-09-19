@@ -3,7 +3,7 @@
 
 const { extractUnresolvedSymbols } = require('./javaSymbolExtractor.js');
 const { rankCandidates } = require('./javaRanker.js');
-const { injectImport } = require('./javaImportInjector.js');
+const { injectImport, collapsePackageImports } = require('./javaImportInjector.js');
 const { findJavaProjectRoot } = require('../javaProjectRoot.js');
 const { getOrBuildProjectIndex } = require('../javaProjectCache.js');
 
@@ -53,6 +53,46 @@ class JavaAutoImportService {
       });
     }
 
+    // Otimizacao/Colapso: Detecta 2 ou mais imports individuais do mesmo pacote
+    const lines = content.split('\n');
+    const packageCount = new Map();
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      const m = line.match(/^import\s+([a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)+)\s*;/);
+      if (m && !line.startsWith('import static') && !line.includes('*')) {
+        const fqn = m[1];
+        const lastDot = fqn.lastIndexOf('.');
+        if (lastDot > 0) {
+          const pkg = fqn.substring(0, lastDot);
+          if (!packageCount.has(pkg)) {
+            packageCount.set(pkg, { count: 0, lineIdx: i + 1, imports: [] });
+          }
+          const entry = packageCount.get(pkg);
+          entry.count++;
+          entry.imports.push(fqn);
+        }
+      }
+    }
+
+    for (const [pkg, info] of packageCount.entries()) {
+      if (info.count >= 2) {
+        diagnostics.push({
+          line: info.lineIdx,
+          col: 1,
+          endLine: info.lineIdx,
+          endCol: lines[info.lineIdx - 1] ? lines[info.lineIdx - 1].length + 1 : 20,
+          symbolName: pkg,
+          message: `Otimizar imports: ${info.count} imports do pacote '${pkg}'. Sugestao: substituir por 'import ${pkg}.*;'`,
+          suggestions: [`import ${pkg}.*;`],
+          isPackageCollapse: true,
+          targetPackage: pkg,
+          recommendedFqn: `${pkg}.*`,
+          severity: 'info'
+        });
+      }
+    }
+
     return diagnostics;
   }
 
@@ -64,6 +104,16 @@ class JavaAutoImportService {
    */
   static applyImport(content, fqn) {
     return injectImport(content, fqn);
+  }
+
+  /**
+   * Agrupa imports de um pacote em um unico wildcard.
+   * @param {string} content Conteudo original
+   * @param {string} targetPackage Pacote a ser colapsado
+   * @returns {string} Novo conteudo
+   */
+  static applyCollapse(content, targetPackage) {
+    return collapsePackageImports(content, targetPackage);
   }
 }
 

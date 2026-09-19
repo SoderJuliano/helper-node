@@ -55,6 +55,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     ? new RaphaelCore()
     : ((typeof window !== "undefined" && window.RaphaelCore) ? new window.RaphaelCore() : null);
 
+  const raphaelSubtitles = (typeof RaphaelSubtitles !== "undefined")
+    ? new RaphaelSubtitles()
+    : ((typeof window !== "undefined" && window.RaphaelSubtitles) ? new window.RaphaelSubtitles() : null);
+
   console.log(`[NexaRenderer] Inicializado modo avatar: "${avatarMode}" | RaphaelCore disponível: ${!!raphaelCore}`);
   if (avatarMode === "raphael") {
     canvas.className = "raphael-canvas-glow idle";
@@ -273,10 +277,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   let currentAudio = null;
 
   if (window.electronAPI && window.electronAPI.onPlayTtsAudio) {
-    window.electronAPI.onPlayTtsAudio(({ audioBase64 }) => {
+    window.electronAPI.onPlayTtsAudio((payload) => {
       console.log("[NexaRenderer] Recebido áudio TTS -> iniciando reprodução e sincronização...");
-      
-      playTtsAudio(audioBase64);
+      playTtsAudio(payload);
     });
   }
 
@@ -287,6 +290,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         currentAudio.currentTime = 0;
       } catch (_) {}
       currentAudio = null;
+    }
+    if (raphaelSubtitles) {
+      raphaelSubtitles.hide();
     }
     stopSpeakingAnimation();
     animController.setState("IDLE");
@@ -305,7 +311,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   let lastAudioBase64 = null;
   let lastAudioPlayTime = 0;
 
-  function playTtsAudio(base64Data) {
+  function playTtsAudio(payload) {
+    let base64Data = payload;
+    let spokenText = null;
+
+    if (payload && typeof payload === "object") {
+      base64Data = payload.audioBase64 || payload.audio;
+      spokenText = payload.text || payload.response || payload.displayText || null;
+    }
+
     if (!base64Data) return;
     const now = Date.now();
     // Previne repetição acidental do áudio no início por eventos de IPC duplicados
@@ -327,6 +341,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (avatarMode === "raphael" && raphaelCore) {
         raphaelCore.connectAudioElement(currentAudio);
         raphaelCore.setState("SPEAKING");
+        if (raphaelSubtitles && spokenText) {
+          raphaelSubtitles.show(spokenText, 6000);
+        }
       }
       animController.connectAudioElement(currentAudio);
       animController.setState("SPEAKING");
@@ -353,6 +370,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       currentAudio.onended = () => {
         console.log("[NexaRenderer] Áudio TTS concluído com sucesso.");
         currentAudio = null;
+        if (raphaelSubtitles) raphaelSubtitles.hide();
         stopSpeakingAnimation();
         animController.setState("IDLE");
         if (avatarMode === "raphael" && raphaelCore) raphaelCore.setState("IDLE");
@@ -364,6 +382,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       currentAudio.onerror = (err) => {
         console.error("[NexaRenderer] Erro no áudio TTS:", err);
         currentAudio = null;
+        if (raphaelSubtitles) raphaelSubtitles.hide();
         stopSpeakingAnimation();
         animController.setState("IDLE");
         if (avatarMode === "raphael" && raphaelCore) raphaelCore.setState("IDLE");
