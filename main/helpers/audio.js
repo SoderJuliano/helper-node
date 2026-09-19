@@ -291,7 +291,7 @@ helpers.transcribeAudio = async function(filePath, options = {}) {
     const promptArg = promptText ? ` --prompt "${promptText.replace(/"/g, '\\"')}"` : '';
 
     const threads = Math.min(8, (os.cpus() && os.cpus().length) || 4);
-    const command = `"${whisperPath}" -m "${modelPath}" -f "${filePath}" -l ${whisperLang} -np --threads ${threads} --no-timestamps --temperature 0.0${promptArg}`;
+    const command = `"${whisperPath}" -m "${modelPath}" -f "${filePath}" -l ${whisperLang} -np -sns -nth 0.65 --threads ${threads} --no-timestamps --temperature 0.0${promptArg}`;
 
     console.log("Executing whisper:", command);
     return new Promise((resolve, reject) => {

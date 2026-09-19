@@ -87,6 +87,8 @@ const AMBIENT_MEDIA_OR_MONOLOGUE_PATTERNS = [
   /\b(?:escala\s+(?:6\s*(?:x|por)\s*1|6x1)|pec\s+(?:da\s+)?escala|jornal\s+nacional|not[ií]cia|reportagem|minist[eé]rio|deputad[oa]|senador|c[aâ]mara|governo|infla[çc][ãa]o|mercado\s+financeiro|entrevista|ao\s+vivo|plant[ãa]o)\b/i,
   /\b(?:respira[çc][ãa]o|suspiro|tosse|limpando\s+a\s+garganta)\b/i,
   /\b(?:steve\s+vozze|whisper)\b/i,
+  /\b(?:doutor|doutora|dr\.|dra\.|mary\s+ann|conselho\s+da\s+faculdade|faculdade|universidade|certificad[oa]|opressionista|legisla[çc][ãa]o|tribunal|secretaria|protocolo)\b/i,
+  /\b(?:apresenta[çc][ãa]o|palestra|webinar|confer[êe]ncia|document[aá]rio)\b/i,
 ];
 
 // Expressões de apresentação em 3ª pessoa (NÃO deve responder por áudio)
@@ -154,10 +156,10 @@ const GESTURE_ANIMATION_MAPPINGS = [
 
 // Padrões que indicam intenção conversacional ativa em janela de follow-up
 const CONVERSATIONAL_FOLLOW_UP_PATTERNS = [
-  /\b(?:e\s+como|e\s+se|e\s+no|e\s+na|e\s+o|e\s+a|qual|quais|como|quando|onde|por\s*que|porque|pq|quem|quanto|quantos|o\s+que|que|ser[aá]\s+que|d[aá]\s+pra|tem\s+como|\?)\b/i,
+  /\b(?:e\s+como|e\s+se|e\s+no|e\s+na|e\s+o|e\s+a|qual|quais|como\s+assim|como\s+que|quando|onde|por\s+que|pq|quem|quanto|quantos|o\s+que|que\s+que|ser[aá]\s+que|d[aá]\s+pra|tem\s+como|\?)\b/i,
   /\b(?:pode|consegue|mostra|v[eê]|explica|faz|troca|muda|cria|adiciona|remove|comita|commita|atualiza|continua|ajuda|executa|roda|testa|abre|fecha|salva|arruma|conserta|corrige|gera|escreve|compila|builda|deploy|subir|publicar|ver)\b/i,
   /\b(?:c[oó]digo|classe|fun[çc][ãa]o|m[eé]todo|arquivo|branch|commit|push|pull|merge|projeto|pasta|bug|erro|exception|stacktrace|terminal|console|play\s+console|vers[ãa]o|release|app|gradle|maven|docker|spring|java|quarkus|kotlin|node|nestjs|angular|react|vue)\b/i,
-  /\b(?:sim|n[aã]o|pode\s+ser|com\s+certeza|isso|exato|exatamente|perfeito|valeu|obrigad[oa]|entendi|beleza|otimo|[oó]timo|certo|fechou|manda\s+ver|continua|prossiga)\b/i,
+  /\b(?:sim|n[aã]o|pode\s+ser|com\s+certeza|isso|exato|exatamente|perfeito|valeu|obrigad[oa]|entendi|beleza|otimo|[oó]timo|certo|fechou|manda\s+ver|continua|prossiga|ouviu|escutou|ouvindo|escutando|ouve|escuta)\b/i,
 ];
 
 class NexaIntentClassifier {
@@ -319,27 +321,31 @@ class NexaIntentClassifier {
       return { action: "IGNORE", expireFollowUp: false, reason: "Wake word ausente e sem follow-up ativo" };
     }
 
-    // Se está em follow-up sem wake word: validação rigorosa contra áudios de vídeo/música/monólogos de fundo
+    // Se está em follow-up sem wake word: validação rigorosa contra áudios de vídeo/música/monólogos de fundo e ruídos
     if (!hasWakeWord && followUpActive && !isDirectDevCommand) {
-      // 1. Descarta ruídos curtos, interjeições isoladas
-      if (text.length < 5 || /^(?:ok|hmm|ah|eh|opa|hum|e|uh)[\s.,!?]*$/i.test(text)) {
+      // 1. Descarta ruídos curtos, interjeições isoladas e frases sem substância
+      if (text.length < 4 || /^(?:ok|hmm|ah|eh|opa|hum|e|uh|vem\s+l[aá]|vem|olha|ali|aqui)[\s.,!?]*$/i.test(text)) {
         return { action: "IGNORE", expireFollowUp: true, reason: "Ruído curto ou interjeição isolada em follow-up" };
       }
 
-      // 2. Descarta narração de vídeos do YouTube, podcasts ou histórias de terceiros
+      // 2. Descarta narração de vídeos do YouTube, podcasts, notícias, palestras ou histórias de terceiros
       for (const pattern of AMBIENT_MEDIA_OR_MONOLOGUE_PATTERNS) {
         if (pattern.test(normalizedText)) {
           return { action: "IGNORE", expireFollowUp: true, reason: "Áudio de mídia ou narração de vídeo descartado em follow-up" };
         }
       }
 
-      // 3. Verifica se possui estrutura de conversa/pergunta
-      const words = normalizedText.split(/\s+/).filter(Boolean);
+      // 3. Em follow-up ativo sem wake word, a fala DEVE ser genuinamente conversacional, conter pergunta (?) ou comando de dev
       const isConversational = CONVERSATIONAL_FOLLOW_UP_PATTERNS.some((p) => p.test(normalizedText));
-      
-      // Se for uma fala longa (> 8 palavras) sem nenhuma estrutura conversacional ou pergunta, é som de fundo/vídeo
-      if (words.length > 8 && !isConversational && !text.includes("?")) {
-        return { action: "IGNORE", expireFollowUp: true, reason: "Monólogo ou conversa de terceiros sem intenção conversacional" };
+      const hasQuestion = text.includes("?");
+      const isDevOrTask = /\b(?:c[oó]digo|arquivo|branch|commit|push|pull|merge|erro|bug|fun[çc][ãa]o|classe|test|build|projeto|execut|rod|explic|mostr|ajud|faz|arrum|consert)\b/i.test(normalizedText);
+
+      if (!isConversational && !hasQuestion && !isDevOrTask) {
+        return {
+          action: "IGNORE",
+          expireFollowUp: true,
+          reason: "Fala sem intenção conversacional, pergunta ou comando em follow-up (ruído/alucinação ignorada)"
+        };
       }
     }
 

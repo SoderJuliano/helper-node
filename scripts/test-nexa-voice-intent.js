@@ -378,4 +378,35 @@ console.log("🧪 Iniciando testes de Intent Classifier da Nexa...\n");
   console.log("✅ Caso 49: '...versão 11 é.' -> isSentenceIncomplete = true");
 }
 
+{
+  const raw = "Dr. Mary Ann Bird, e que são opressionistas para que permaneça certificada pelo Conselho da Faculdade.";
+  const res = NexaIntentClassifier.classify(raw, { followUpActive: true });
+  assert.strictEqual(res.action, "IGNORE", "Texto acadêmico / palestra vazada sem intenção conversacional deve ser ignorado em follow-up");
+  console.log("✅ Caso 50: 'Dr. Mary Ann Bird...' em follow-up -> IGNORE");
+}
+
+{
+  const raw = "Se você é um homem ou uma mulher, você tem que ter na mesa que gostar em tudo, porque eu poderia passar a ido da ela.";
+  const res = NexaIntentClassifier.classify(raw, { followUpActive: true });
+  assert.strictEqual(res.action, "IGNORE", "Áudio de monólogo/TV sem wake word ou comando deve ser ignorado em follow-up");
+  console.log("✅ Caso 51: Monólogo de fundo sem wake word em follow-up -> IGNORE");
+}
+
+{
+  const raw = "Vem lá.";
+  const res = NexaIntentClassifier.classify(raw, { followUpActive: true });
+  assert.strictEqual(res.action, "IGNORE", "Ruído curto / fala solta sem wake word deve ser ignorado em follow-up");
+  console.log("✅ Caso 52: 'Vem lá.' em follow-up -> IGNORE");
+}
+
+{
+  const raw = "Sexta salão";
+  const { cleanTranscription } = require("../services/audioTranscriptionCleaner");
+  const cleaned = cleanTranscription(raw);
+  assert.strictEqual(cleaned, "", "Sexta salão deve ser descartado pelo cleaner");
+  const res = NexaIntentClassifier.classify(cleaned || raw, { followUpActive: true });
+  assert.strictEqual(res.action, "IGNORE", "Sexta salão deve ser ignorado");
+  console.log("✅ Caso 53: 'Sexta salão' -> IGNORE");
+}
+
 console.log("\n🎉 Todos os testes do Intent Classifier passaram com sucesso!");

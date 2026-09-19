@@ -21,12 +21,12 @@ const BYTES_PER_MS = (SAMPLE_RATE * BYTES_PER_SAMPLE) / 1000; // 32 bytes/ms
 class NexaTurnDetector extends EventEmitter {
   constructor(options = {}) {
     super();
-    this.speechThresholdRms = options.speechThresholdRms || 65;  // Limiar calibrado para captação de voz natural sem ruído ambiente (65 RMS)
+    this.speechThresholdRms = options.speechThresholdRms || 80;  // Limiar calibrado para captação de voz intencional sem ruído ambiente (80 RMS)
     this.silenceThresholdMs = options.silenceThresholdMs || 1400; // Duração de silêncio para fechar o turno (1400ms: ritmo de fala natural com pausas)
-    this.minSpeechMs = options.minSpeechMs || 220;               // Duração mínima de fala real para considerar válida (220ms)
+    this.minSpeechMs = options.minSpeechMs || 300;               // Duração mínima de fala real para considerar válida (300ms)
     this.maxTurnDurationMs = options.maxTurnDurationMs || 120000; // Limite amplo de segurança para turnos longos de fala (120s / 2 min)
     this.preRollMs = options.preRollMs || 400;                   // Buffer circular de pre-roll (400ms)
-    this.bargeInThresholdRms = options.bargeInThresholdRms || 125; // Limiar elevado para interrupção de fala durante reprodução TTS
+    this.bargeInThresholdRms = options.bargeInThresholdRms || 135; // Limiar elevado para interrupção de fala durante reprodução TTS
 
     this.active = false;
     this.ttsActive = false;
@@ -149,6 +149,26 @@ class NexaTurnDetector extends EventEmitter {
   }
 
   /**
+   * Calcula a taxa de cruzamento por zero (Zero Crossing Rate) do PCM s16le.
+   * Voz humana sonante (vogais) possui ZCR moderado (0.03 a 0.25).
+   * Ruídos de fricção, arraste de móveis e chiados possuem ZCR muito elevado (> 0.38).
+   */
+  static computeZcr(buf) {
+    if (!buf || buf.length < 4) return 0;
+    let crossings = 0;
+    const samples = Math.floor(buf.length / 2);
+    let prev = buf.readInt16LE(0);
+    for (let i = 1; i < samples; i++) {
+      const cur = buf.readInt16LE(i * 2);
+      if ((prev >= 0 && cur < 0) || (prev < 0 && cur >= 0)) {
+        crossings++;
+      }
+      prev = cur;
+    }
+    return samples > 1 ? crossings / (samples - 1) : 0;
+  }
+
+  /**
    * Processa cada chunk de PCM recebido do stream nativo.
    */
   _handlePcmChunk(buf) {
@@ -184,13 +204,13 @@ class NexaTurnDetector extends EventEmitter {
       return;
     }
 
-    // Atualiza suavemente o piso de ruído quando não estiver falando (com teto em 50)
+    // Atualiza suavemente o piso de ruído quando não estiver falando (com teto em 60)
     if (!this.isSpeaking) {
-      this.noiseFloorRms = Math.min(50, this.noiseFloorRms * 0.90 + rms * 0.10);
+      this.noiseFloorRms = Math.min(60, this.noiseFloorRms * 0.90 + rms * 0.10);
     }
 
-    // Limiar dinâmico: garante que fala seja detectada com facilidade sem ser bloqueada por ruído moderado
-    const dynamicThreshold = Math.max(this.speechThresholdRms, this.noiseFloorRms * 1.35 + 20);
+    // Limiar dinâmico: garante que fala real se sobreponha claramente ao piso de ruído ambiente
+    const dynamicThreshold = Math.max(this.speechThresholdRms, this.noiseFloorRms * 1.5 + 25);
     const hasVoiceEnergy = rms >= dynamicThreshold;
 
     if (!this.isSpeaking) {
@@ -201,7 +221,7 @@ class NexaTurnDetector extends EventEmitter {
         this.onsetCandidateMs += chunkMs;
 
         // Fala humana real sustenta energia por >= 100ms ou >= 2 chunks consecutivos de áudio.
-        // Ruídos mecânicos de teclado/mouse geram apenas 1 chunk de pico transitório curto (<30ms).
+        // Ruídos mecânicos transitórios (clique isolado de mouse/tecla) geram apenas 1 chunk curto (<40ms).
         const hasSustainedOnset = this.onsetCandidateMs >= 100 || this.onsetCandidateChunks.length >= 2;
 
         if (hasSustainedOnset) {
@@ -315,7 +335,7 @@ class NexaTurnDetector extends EventEmitter {
 
         this.resetTurn();
 
-        // Rejeita ruído mecânico de digitação de teclado / cliques isolados e sopros:
+        // 1. Rejeita ruído mecânico de digitação de teclado / cliques isolados e sopros:
         const isMechanicalImpulse = (maxConsecutive < 2 && sustainedSegments === 0);
         const isSparseTypingNoise = (effectiveSpeechMs >= 500 && sustainedSegments < 2 && activeRatio < 0.22);
         const isBreathingPuff = (effectiveSpeechMs < 350 && maxConsecutive < 2 && peakRms < 75);
@@ -326,10 +346,21 @@ class NexaTurnDetector extends EventEmitter {
           return;
         }
 
-        // Aceita se tiver duração suficiente de fala, densidade mínima e energia de fala real
+        // 2. Rejeita arraste mecânico de cadeira, atrito de móveis ou chiado contínuo via ZCR
+        const avgZcr = NexaTurnDetector.computeZcr(totalPcm);
+        const isFrictionScrape = (effectiveSpeechMs < 900 && (avgZcr > 0.38 || avgZcr < 0.015));
+        const isTransientBump = (effectiveSpeechMs < 450 && maxConsecutive < 3 && peakRms < 90);
+        if (isFrictionScrape || isTransientBump) {
+          this.emit("turn-discarded", {
+            reason: `Ruído mecânico/fricção descartado (ZCR: ${avgZcr.toFixed(3)}, consecutive: ${maxConsecutive}, peak: ${Math.round(peakRms)})`
+          });
+          return;
+        }
+
+        // 3. Aceita se tiver duração suficiente de fala, densidade mínima e energia de voz real
         const hasEnoughSpeech = effectiveSpeechMs >= this.minSpeechMs && activeChunks >= 1;
-        const hasRealEnergy = avgTurnRms >= 30 || peakRms >= 45;
-        const hasGoodDensity = (activeRatio >= 0.15 || effectiveSpeechMs >= 450);
+        const hasRealEnergy = avgTurnRms >= 35 || peakRms >= 60;
+        const hasGoodDensity = (activeRatio >= 0.18 || effectiveSpeechMs >= 500);
         if (hasEnoughSpeech && hasRealEnergy && hasGoodDensity) {
           this.emit("turn-complete", {
             pcmBuffer: totalPcm,

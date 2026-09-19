@@ -24,6 +24,13 @@ console.log('=== Testando Filtragem de Alucinacoes e RMS de Audio ===\n');
     'Inscreva-se no canal',
     '[BLANK_AUDIO]',
     '[00:00:00.000 --> 00:00:02.000] [Música]',
+    'Sexta salão',
+    'sexta-salão.',
+    'salão',
+    'arraste de cadeira',
+    'cadeira',
+    'Muito obrigado a todos.',
+    'Tchau tchau!',
   ];
 
   for (const h of hallucinations) {
