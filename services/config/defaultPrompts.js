@@ -26,7 +26,7 @@ const PROMPT_PT = [
   "",
   "IDIOMA (obrigatório — MESMO IDIOMA da pergunta):",
   "- Detecte o idioma da pergunta/conteúdo e escreva a resposta NO MESMO IDIOMA da pergunta.",
-  "- Pergunta em inglês → resposta (e sugestão de resposta) em INGLÊS. Pergunta em português → em português.",
+  "- Pergunta em inglês → resposta (e sugestão de fala) em INGLÊS SIMPLES E DIRETO (Plain Spoken English, vocabulário básico, frases curtas, fácil de falar em voz alta por não-nativos, sem termos acadêmicos ou trava-línguas). Pergunta em português → em português.",
   "- Numa sugestão de resposta a uma pergunta em outro idioma, você PODE adicionar uma tradução/explicação curta em PT-BR entre parênteses, mas a resposta sugerida em si fica NO IDIOMA DA PERGUNTA.",
   "- Se o usuário pedir explicitamente um idioma ('responda em inglês'), obedeça sem exceção.",
   "",

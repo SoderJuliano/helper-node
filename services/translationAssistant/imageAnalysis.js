@@ -48,7 +48,7 @@ ${userCtx ? userCtx + '\n\n' : ''}=== PASSO 1 — IDENTIFICAR E TRANSCREVER O CO
     4. EXTROVERSÃO EQUILIBRADA (NÃO HIPERATIVA/AGITADA): colaboração técnica em equipe sem passar perfil comercial/agitado. Priorize capacidade analítica, persistência e foco técnico em home-office sobre agitação social constante.
   * Se for ORDENAÇÃO DE ITENS (ex: 1 muito importante a 3 menos importante): entregue a lista numerada exata 1, 2, 3 com o texto original de cada item e termine com a instrução: "Ordene os itens conforme acima e clique em 'Próximo passo' (ou 'Finalizar')."
   * Se for MAIS / MENOS: formate como **MAIS:** [Opção X] / **MENOS:** [Opção Y] + 1 linha de justificativa.
-- PERGUNTA DE ENTREVISTA (técnica, comportamental ou situacional): entregue uma SUGESTÃO DE RESPOSTA pronta em 1ª pessoa ("Eu...", "Na minha experiência...") com um exemplo prático.
+- PERGUNTA DE ENTREVISTA (técnica, comportamental ou situacional): entregue uma SUGESTÃO DE RESPOSTA pronta em 1ª pessoa ("I...", "In my experience...", "Eu..."). Se for em inglês, use INGLÊS ULTRA-SIMPLES E DIRETO (Plain English, palavras básicas fáceis de pronunciar, frases curtas, sem termos acadêmicos difíceis). Destaque termos-chave em **negrito**.
 - TELA DE ORIENTAÇÃO / INFORMATIVA (sem pergunta ativa): explique resumidamente o que a tela indica e esclareça que é uma tela de orientação/etapa sem necessidade de resposta verbal no momento.
 
 === FORMATO DE SAÍDA OBRIGATÓRIO ===
