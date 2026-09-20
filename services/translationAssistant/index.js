@@ -3,6 +3,7 @@
 
 const { startVAD, stopVAD } = require('./vadEngine');
 const { transcribeAudio, getTranslationAndSuggestion, evaluateUserResponse } = require('./openaiClient');
+const { cleanTranscription } = require('../audioTranscriptionCleaner');
 const configService = require('../configService');
 const answerBank = require('../answerBank');
 const fs = require('fs');
@@ -103,7 +104,8 @@ async function start(cfg) {
         // MIC = você: transcreve e MOSTRA na tela (feedback do que você falou),
         // mas NÃO traduz/sugere — tradução é só pro entrevistador (design).
         if (source === 'mic') {
-          const myText = await transcribeAudio(audioPath, config.apiKey);
+          const rawMic = await transcribeAudio(audioPath, config.apiKey);
+          const myText = cleanTranscription(rawMic || '');
           if (myText && myText.trim().length >= 3) {
             if (resultCallback) resultCallback({ transcript: myText, response: '', mode: 'candidate' });
             // Banco de respostas: pareia a SUA resposta com a última pergunta do
@@ -117,10 +119,11 @@ async function start(cfg) {
         }
 
         const rawTranscript = await transcribeAudio(audioPath, config.apiKey);
+        const cleanedSys = cleanTranscription(rawTranscript || '');
 
-        // Ignora transcrições vazias ou ruído
-        if (!rawTranscript || rawTranscript.trim().length < 3) return;
-        const trimmed = rawTranscript.trim();
+        // Ignora transcrições vazias, ruído ou alucinações ("Thank you for watching", etc.)
+        if (!cleanedSys || cleanedSys.trim().length < 3) return;
+        const trimmed = cleanedSys.trim();
         lastInterviewerQuestion = trimmed;
 
         // Continuacao de fala: se o ultimo trecho do entrevistador fechou ha pouco

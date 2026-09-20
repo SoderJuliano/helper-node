@@ -27,7 +27,8 @@ const CORE = [
   'helper-node', 'website-helper-node', 'Nexa', 'Ctrl+D', 'Git', 'GitHub', 'commit', 'commitar', 'commitei', 'commitando', 'branch', 'push', 'dar push', 'pull request', 'merge', 'rebase', 'master', 'main', 'checkout', 'multithread', 'Whisper',
   'SOLID', 'Clean Architecture', 'design patterns', 'code review',
   'Java', 'Spring Boot', 'Kotlin', 'NestJS', 'Node.js', 'JavaScript', 'TypeScript', 'React', 'Angular', 'Vue.js', 'Python', 'Go', '.NET',
-  'Optional', 'Streams', 'Stream API', 'Lambdas', 'HashMap', 'ConcurrentHashMap', 'Hashtable', 'Collections',
+  'ArrayList', 'LinkedList', 'List', 'Array', 'Vector', 'Stack', 'Queue', 'Deque', 'PriorityQueue', 'TreeSet', 'HashSet', 'LinkedHashSet', 'TreeMap', 'LinkedHashMap', 'Set', 'Map', 'Collection', 'Collections', 'Binary Tree', 'Graph',
+  'Optional', 'Streams', 'Stream API', 'Lambdas', 'HashMap', 'ConcurrentHashMap', 'Hashtable',
   'REST', 'API', 'endpoint', 'controller', 'service', 'repository', 'microservices', 'microserviços', 'Kafka', 'Docker', 'Kubernetes', 'AWS',
   'SQL', 'PostgreSQL', 'MongoDB', 'Oracle', 'CI/CD', 'deploy', 'backend', 'frontend',
   'idempotência', 'escalabilidade', 'observabilidade', 'latência', 'throughput',
@@ -41,11 +42,21 @@ const CORE = [
 // pintar numa entrevista (negócio, RH, finanças).
 // ---------------------------------------------------------------------------
 const CATALOG = {
+  dataStructures: [
+    'ArrayList', 'LinkedList', 'doubly linked list', 'singly linked list', 'dynamic array',
+    'HashMap', 'HashSet', 'TreeMap', 'TreeSet', 'LinkedHashMap', 'LinkedHashSet',
+    'Stack', 'Queue', 'Deque', 'PriorityQueue', 'Heap', 'Binary Tree', 'BST', 'AVL Tree',
+    'Graph', 'Trie', 'Matrix', 'Big-O', 'Time Complexity', 'Space Complexity',
+    'Recursion', 'Binary Search', 'Sorting', 'Two Pointers', 'Sliding Window',
+    'Dynamic Programming', 'LeetCode', 'System Design', 'Collections',
+  ],
   javaSpring: [
     'Jakarta EE', 'Javax', 'Spring Security', 'Spring Data JPA', 'Spring Cloud',
     'Hibernate', 'Maven', 'Gradle', 'JUnit', 'Mockito', 'Lombok', 'JVM',
     'garbage collector', 'Virtual Threads', 'Project Loom', 'GraalVM', 'Quarkus',
     'record', 'stream API', 'Optional', 'JPA', 'Flyway', 'Liquibase',
+    'ArrayList', 'LinkedList', 'Vector', 'ConcurrentHashMap', 'CopyOnWriteArrayList',
+    'CompletableFuture', 'ExecutorService',
   ],
   jsWeb: [
     'Next.js', 'Vue', 'Angular', 'Svelte', 'Vite', 'Webpack', 'ESLint', 'Prettier',
@@ -110,10 +121,9 @@ const CATALOG = {
 
 const ALL_CATALOG_TERMS = Array.from(new Set([...CORE, ...Object.values(CATALOG).flat()]));
 
-// Teto seguro de caracteres para o prompt do Whisper (~160-200 chars).
-// Whisper opera melhor com dicas de estilo concisas em linguagem natural
-// do que com despejo de dezenas de palavras soltas.
-const MAX_PROMPT_CHARS = 180;
+// Teto seguro de caracteres para o prompt do Whisper (~400-500 chars / ~100-120 tokens).
+// Whisper opera melhor com termos técnicos concisos e relevantes.
+const MAX_PROMPT_CHARS = 450;
 
 // Normaliza pra comparação: minúsculas, sem acento, sem pontuação.
 function norm(s) {
@@ -165,20 +175,26 @@ let _cacheValue = null;
  * @param {object} opts
  * @param {string} [opts.background] - background/currículo do usuário (Configurações).
  * @param {string} [opts.context]    - texto recente da sessão (últimas falas), opcional.
+ * @param {string} [opts.prefix]     - prefixo opcional do prompt.
  * @returns {string} prompt pronto pro campo `prompt` do endpoint de áudio.
  */
-function buildTranscriptionPrompt({ background = '', context = '' } = {}) {
-  const key = `${background}||${context}`;
+function buildTranscriptionPrompt({ background = '', context = '', prefix = '' } = {}) {
+  const key = `${background}||${context}||${prefix}`;
   if (key === _cacheKey) return _cacheValue;
 
-  const prefix = 'Assistente Nexa: Git, commit, push, branch, ';
-  const budget = MAX_PROMPT_CHARS - prefix.length - 2;
+  const effectivePrefix = prefix !== undefined && prefix !== '' ? prefix : 'Technical interview vocabulary: ';
+  const budget = MAX_PROMPT_CHARS - effectivePrefix.length - 2;
 
   // Seleciona termos relevantes ao contexto/background
   const relevant = pickRelevantTerms(`${background} ${context}`, budget);
 
   // Termos essenciais padrão para preencher o budget se o contexto for vazio/curto
-  const defaultCore = ['Java', 'Spring Boot', 'N+1 queries', 'Hibernate', 'JPA', 'ORM', 'SQL', 'Optional', 'Streams', 'Lambdas', 'comitar', 'commitar', 'dar push', 'Git', 'GitHub', 'commit', 'branch', 'master', 'main', 'Whisper', 'multithread', 'pull request', 'merge', 'Docker', 'Kubernetes', 'Kafka', 'AWS', 'REST', 'TypeScript', 'Node.js', 'SOLID'];
+  const defaultCore = [
+    'ArrayList', 'LinkedList', 'HashMap', 'HashSet', 'Data Structures', 'Java', 'Spring Boot',
+    'SOLID', 'Clean Architecture', 'REST API', 'Kafka', 'Docker', 'Kubernetes', 'SQL',
+    'Hibernate', 'JPA', 'Streams', 'Lambdas', 'Optional', 'N+1 queries', 'Git', 'commit',
+    'branch', 'TypeScript', 'Node.js', 'microservices', 'multithread', 'Big-O'
+  ];
   const terms = [...relevant];
   let used = terms.reduce((acc, t) => acc + t.length + 2, 0);
 
@@ -189,7 +205,7 @@ function buildTranscriptionPrompt({ background = '', context = '' } = {}) {
     }
   }
 
-  const prompt = terms.length ? `${prefix}${terms.join(', ')}.` : 'Assistente Nexa: Git, commit, push, branch.';
+  const prompt = terms.length ? `${effectivePrefix}${terms.join(', ')}.` : `${effectivePrefix}Java, Spring Boot, ArrayList, LinkedList, Git, REST API.`;
 
   _cacheKey = key;
   _cacheValue = prompt;

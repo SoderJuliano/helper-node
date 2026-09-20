@@ -212,6 +212,11 @@ function normalizeDevPhonetics(text) {
   res = res.replace(/\b(?:join\s*feti?ch|join\s*feti)\b/gi, 'JOIN FETCH');
   res = res.replace(/\b(?:entity\s*grafi?|entite\s*grafi?)\b/gi, 'EntityGraph');
 
+  // 12. Variações fonéticas de Estruturas de Dados e Coleções (ArrayList, LinkedList, etc.)
+  res = res.replace(/\b(?:a\s+)?rail\s+list\b/gi, 'ArrayList');
+  res = res.replace(/\b(?:array\s+list|arraylist|arreylist|arei\s+list)\b/gi, 'ArrayList');
+  res = res.replace(/\b(?:link\s+list|linkede\s+list|linkid\s+list|linked\s+list|linkedlist)\b/gi, 'LinkedList');
+
   return res;
 }
 

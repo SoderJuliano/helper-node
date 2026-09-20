@@ -262,26 +262,27 @@ function destroySource(source) {
 }
 
 // Listener de alteração de dispositivos de hardware no SO (fone plugado/desplugado, bluetooth ligado/desligado)
+let deviceChangeDebounce = null;
 if (navigator.mediaDevices && typeof navigator.mediaDevices.addEventListener === 'function') {
   navigator.mediaDevices.addEventListener('devicechange', async () => {
     log('Evento devicechange do sistema detectado (dispositivo de áudio conectado/desconectado)');
     try { ipcRenderer.send('native-audio-device-change'); } catch (_) {}
 
-    for (const source of ['mic', 'sys']) {
-      const a = active[source];
-      if (!a) continue;
+    if (deviceChangeDebounce) clearTimeout(deviceChangeDebounce);
+    deviceChangeDebounce = setTimeout(async () => {
+      for (const source of ['mic', 'sys']) {
+        const a = active[source];
+        if (!a) continue;
 
-      // Se o stream ativo morreu com a mudança de dispositivo, reconecta
-      if (!isStreamHealthy(source)) {
-        log(`${source}: stream tornou-se inválido após devicechange -> reiniciando...`);
         const wasStreaming = a.streaming;
         const curDevId = a.deviceId;
+        log(`${source}: reiniciando captura após troca de dispositivo (fone conectado/desconectado)...`);
         destroySource(source);
         if (wasStreaming) {
-          setTimeout(() => startSource(source, curDevId), 400);
+          startSource(source, curDevId);
         }
       }
-    }
+    }, 500);
   });
 }
 
