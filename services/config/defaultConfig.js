@@ -33,6 +33,8 @@ const defaultConfig = {
     enabled: false,
     userName: "",
     userBackground: "",
+    userTechExperiences: "",
+    userBehavioral: "",
     targetLanguage: "pt-br",
     testMode: false,
     micDevice: "",

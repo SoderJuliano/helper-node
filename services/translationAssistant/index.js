@@ -34,7 +34,12 @@ async function scoreAndStore(question, answer) {
     if (!abCfg.enabled || !question || !answer) return;
     const evalText = await evaluateUserResponse(
       question, answer,
-      { userName: config.userName, userBackground: config.userBackground },
+      {
+        userName: config.userName,
+        userBackground: config.userBackground,
+        userTechExperiences: config.userTechExperiences,
+        userBehavioral: config.userBehavioral,
+      },
       config.apiKey
     );
     const m = String(evalText).match(/(\d)\s*\/\s*5/) || String(evalText).match(/⭐\s*(\d)/);
@@ -153,6 +158,7 @@ async function start(cfg) {
             {
               userName: config.userName,
               userBackground: config.userBackground,
+              userTechExperiences: config.userTechExperiences,
               userBehavioral: config.userBehavioral,
               targetLanguage: config.targetLanguage,
             },

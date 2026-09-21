@@ -280,6 +280,8 @@ app.whenReady().then(async () => {
             apiKey: cfg.openIaToken,
             userName: ta.userName || '',
             userBackground: ta.userBackground || '',
+            userTechExperiences: ta.userTechExperiences || '',
+            userBehavioral: ta.userBehavioral || '',
             targetLanguage: ta.targetLanguage || 'pt-br',
             micDevice: ta.micDevice || '',
           }).then(() => {

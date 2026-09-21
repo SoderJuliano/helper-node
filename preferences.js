@@ -14,9 +14,10 @@ document.getElementById('win-close-btn')?.addEventListener('click', (e) => {
 
 
 
-// === Dados pessoais (nome/background/comportamental) ===
+// === Dados pessoais (nome/cv/experiências/comportamental) ===
 const usernameInput = document.getElementById('pref-username');
 const backgroundInput = document.getElementById('pref-background');
+const techInput = document.getElementById('pref-tech-details');
 const behavioralInput = document.getElementById('pref-behavioral');
 
 (async () => {
@@ -25,6 +26,7 @@ const behavioralInput = document.getElementById('pref-behavioral');
     if (!ta) return;
     if (usernameInput) usernameInput.value = ta.userName || '';
     if (backgroundInput) backgroundInput.value = ta.userBackground || '';
+    if (techInput) techInput.value = ta.userTechExperiences || '';
     if (behavioralInput) behavioralInput.value = ta.userBehavioral || '';
   } catch (e) {
     console.warn('[preferences] load user info failed:', e.message);
@@ -96,6 +98,7 @@ document.getElementById('save-btn').addEventListener('click', async () => {
   ipcRenderer.send('set-translation-assistant-config', {
     userName: usernameInput ? usernameInput.value : '',
     userBackground: backgroundInput ? backgroundInput.value : '',
+    userTechExperiences: techInput ? techInput.value : '',
     userBehavioral: behavioralInput ? behavioralInput.value : '',
   });
 

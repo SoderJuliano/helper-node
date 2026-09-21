@@ -57,7 +57,7 @@ function playAudio(filePath) {
  *   'error'      → { index, error }          — erro no processamento
  *   'complete'   → { message }               — fim de todas as perguntas
  */
-async function runTestMode({ apiKey, userName, userBackground, targetLanguage, onResult, onDone }) {
+async function runTestMode({ apiKey, userName, userBackground, userTechExperiences, userBehavioral, targetLanguage, onResult, onDone }) {
   const baseDir = path.join(__dirname, '..', '..', 'test-audios');
 
   for (let i = 0; i < TEST_AUDIOS.length; i++) {
@@ -81,7 +81,7 @@ async function runTestMode({ apiKey, userName, userBackground, targetLanguage, o
       // 3. Traduz e sugere resposta
       const response = await getTranslationAndSuggestion(
         transcript,
-        { userName, userBackground, targetLanguage },
+        { userName, userBackground, userTechExperiences, userBehavioral, targetLanguage },
         apiKey
       );
 
@@ -115,7 +115,7 @@ async function runTestMode({ apiKey, userName, userBackground, targetLanguage, o
       const evaluation = await evaluateUserResponse(
         transcript,
         userTranscript,
-        { userName, userBackground },
+        { userName, userBackground, userTechExperiences, userBehavioral },
         apiKey
       );
 

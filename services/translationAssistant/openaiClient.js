@@ -35,7 +35,8 @@ async function transcribeAudio(audioPath, apiKey, options = {}) {
   try {
     const ta = configService.getTranslationAssistantConfig
       ? configService.getTranslationAssistantConfig() : {};
-    form.append('prompt', buildTranscriptionPrompt({ background: ta.userBackground || '' }));
+    const bgCombined = [ta.userBackground, ta.userTechExperiences].filter(Boolean).join(' ');
+    form.append('prompt', buildTranscriptionPrompt({ background: bgCombined }));
   } catch (_) {}
 
   const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
@@ -143,7 +144,7 @@ async function callGPT(systemPrompt, userContent, model, apiKey, onDelta = null,
   return content;
 }
 
-async function getTranslationAndSuggestion(transcript, { userName, userBackground, userBehavioral, targetLanguage }, apiKey, opts = {}) {
+async function getTranslationAndSuggestion(transcript, { userName, userBackground, userTechExperiences, userBehavioral, targetLanguage }, apiKey, opts = {}) {
   const isCodeRequest = CODE_REQUEST_RE.test(transcript);
 
   // RAG: base de conhecimento (fatos atuais) + banco de respostas (suas respostas boas).
@@ -173,18 +174,23 @@ async function getTranslationAndSuggestion(transcript, { userName, userBackgroun
   
   const model = opts.forceModel || (isCodeRequest ? 'gpt-4.1' : 'gpt-4o-mini');
 
-  const defaultBackground = 'Senior Software Engineer com experiência sólida em microsserviços escaláveis, Java (8, 11, 17, 21, 26, Spring Boot, Quarkus), Kotlin, .NET (SDK 5-8), Node.js/NestJS, Python, Go, Angular, React, Vue.js, Apache Kafka, Oracle, MongoDB, AWS, Docker, Kubernetes, CI/CD e observabilidade (Dynatrace, Kibana). Experiência prática em e-commerce e varejo de grande porte (Grupo Casas Bahia).';
+  const defaultCv = 'Senior Software Engineer com sólida experiência em desenvolvimento back-end e front-end, focado em soluções escaláveis, performance e entrega contínua. Stacks principais: Java (Spring Boot, Quarkus), Kotlin, .NET, Node.js, NestJS, Python, Go, Angular, React, Vue.js, Kafka, Docker, Kubernetes, CI/CD, Oracle, MongoDB.';
 
-  const defaultBehavioral = 'Em problemas de produção ou bugs críticos: mantenho a calma, aviso o time, uso logs e métricas (Dynatrace/Kibana) para isolar a causa-raiz, aplico a correção com segurança e crio testes para evitar regressão. Em conflitos ou divergências técnicas: converso diretamente com o colega, avalio os prós e contras técnicos com foco na simplicidade, entrega e valor para o negócio. Em prazos apertados: priorizo o essencial com o time/PO, quebro entregas em etapas menores e mantenho comunicação transparente sobre impedimentos.';
+  const defaultTech = 'Atuação no Grupo Casas Bahia com microsserviços de alto throughput em Java 17/21 e Spring Boot, mensageria com Apache Kafka (particionamento, DLQ, retries e idempotência), bancos Oracle e MongoDB, observabilidade com Dynatrace e Kibana. Desenvolvimento de projetos pessoais como Helper Node (Electron, IA, VAD Whisper, OCR), Pikachu (arquitetura hexagonal), Ask-Chat (web streaming ChatGPT) e 3D Game com Three.js.';
+
+  const defaultBehavioral = 'Em problemas de produção ou bugs críticos: mantenho a calma, aviso o time, utilizo logs e métricas (Dynatrace/Kibana) para isolar a causa-raiz, aplico a correção com testes automatizados para evitar regressão e gero post-mortem. Em divergências técnicas: dialogo diretamente com o colega, analiso prós e contras objetivos com foco em simplicidade e valor para o negócio. Em prazos apertados: alinho prioridades com o PO, quebro entregas em etapas menores e mantenho comunicação clara e transparente.';
 
   const suggestionPrompt = `Você é um COPILOTO DE ENTREVISTAS DE EMPREGO (TÉCNICAS E COMPORTAMENTAIS) PARA ENGENHARIA DE SOFTWARE.
 Candidato: ${userName || 'Juliano Soder'}
 
 DADOS DE CONTEXTO DO CANDIDATO (podem estar em português ou inglês):
-1. EXPERIÊNCIAS TÉCNICAS E PROJETOS (HARD SKILLS):
-${userBackground || defaultBackground}
+1. PERFIL GERAL & CURRÍCULO (CV / RESUMO):
+${userBackground || defaultCv}
 
-2. RESPOSTAS E ATITUDES COMPORTAMENTAIS (SOFT SKILLS / SITUAÇÕES / STAR):
+2. EXPERIÊNCIAS TÉCNICAS E PROJETOS EM DETALHES (HARD SKILLS / ARQUITETURA):
+${userTechExperiences || defaultTech}
+
+3. RESPOSTAS E ATITUDES COMPORTAMENTAIS (SOFT SKILLS / SITUAÇÕES / STAR):
 ${userBehavioral || defaultBehavioral}
 
 SUA MISSÃO:
@@ -199,9 +205,9 @@ REGRAS OBRIGATÓRIAS DE ESTILO E INGLÊS (CRÍTICO PARA PRONÚNCIA):
 
 2. CLASSIFICAÇÃO AUTOMÁTICA DE PERGUNTA (TÉCNICA vs COMPORTAMENTAL):
    - Se a pergunta for TÉCNICA (sobre tecnologias, arquitetura, Kafka, Java, Spring, bancos, APIs):
-     * Use o contexto 1 (Experiências Técnicas) e cite ferramentas reais (ex: "In my daily work with Spring Boot and Kafka at Casas Bahia, I...").
+     * Combine o Perfil Geral com as Experiências Técnicas detalhadas (contextos 1 e 2) e cite ferramentas reais (ex: "In my daily work with Spring Boot and Kafka at Casas Bahia, I...").
    - Se a pergunta for COMPORTAMENTAL / SITUACIONAL ("Imagine this...", "Tell me about a time you had a challenge/bug/conflict...", "How do you handle deadlines?"):
-     * Use o contexto 2 (Histórias Comportamentais) e responda exatamente com a atitude do candidato, estruturada em STAR simples (Situação -> O que eu faço/fiz -> Resultado seguro).
+     * Use o contexto 3 (Histórias Comportamentais) e responda exatamente com a atitude do candidato, estruturada em STAR simples (Situação -> O que eu faço/fiz -> Resultado seguro).
 
 3. TAMANHO DA RESPOSTA:
    - Resposta falável em 10 a 15 segundos (máximo 2 a 3 frases curtas e conectadas).
@@ -280,7 +286,7 @@ Regras para a tradução:
     }
     if (model !== 'gpt-4o-mini') {
       console.warn(`[TranslationAssistant] ${model} indisponível, fallback para gpt-4o-mini (parallel)`);
-      return getTranslationAndSuggestion(transcript, { userName, userBackground, userBehavioral, targetLanguage }, apiKey, { ...opts, forceModel: 'gpt-4o-mini' });
+      return getTranslationAndSuggestion(transcript, { userName, userBackground, userTechExperiences, userBehavioral, targetLanguage }, apiKey, { ...opts, forceModel: 'gpt-4o-mini' });
     }
     throw err;
   }
@@ -289,10 +295,12 @@ Regras para a tradução:
 /**
  * Avalia a resposta do candidato em PT-BR, com nota de 1-5 estrelas.
  */
-async function evaluateUserResponse(question, userAnswer, { userName, userBackground }, apiKey) {
+async function evaluateUserResponse(question, userAnswer, { userName, userBackground, userTechExperiences, userBehavioral } = {}, apiKey) {
   const systemPrompt = `Você é um coach especialista em entrevistas de emprego técnicas.
 Candidato: ${userName || 'candidato'}
-Background: ${userBackground || 'não informado'}
+CV/Perfil: ${userBackground || 'não informado'}
+Experiência Técnica: ${userTechExperiences || 'não informado'}
+Perfil Comportamental: ${userBehavioral || 'não informado'}
 
 Avalie a resposta do candidato à pergunta abaixo.
 Responda SEMPRE em português (PT-BR). Seja direto: no máximo 3 frases curtas.

@@ -73,7 +73,8 @@ class RealtimeOpenAiService {
       const ta = this.configService.getTranslationAssistantConfig
         ? this.configService.getTranslationAssistantConfig() : {};
       const recent = this.contextMessages.slice(-4).map(m => m.content).join(' ');
-      return buildTranscriptionPrompt({ background: ta.userBackground || '', context: recent });
+      const bgCombined = [ta.userBackground, ta.userTechExperiences].filter(Boolean).join(' ');
+      return buildTranscriptionPrompt({ background: bgCombined, context: recent });
     } catch (_) {
       return buildTranscriptionPrompt({});
     }
@@ -285,7 +286,12 @@ class RealtimeOpenAiService {
       const ta = this.configService.getTranslationAssistantConfig ? this.configService.getTranslationAssistantConfig() : {};
       const evalText = await evaluateUserResponse(
         question, answer,
-        { userName: ta.userName, userBackground: ta.userBackground },
+        {
+          userName: ta.userName,
+          userBackground: ta.userBackground,
+          userTechExperiences: ta.userTechExperiences,
+          userBehavioral: ta.userBehavioral,
+        },
         token
       );
       const m = String(evalText).match(/(\d)\s*\/\s*5/) || String(evalText).match(/⭐\s*(\d)/);

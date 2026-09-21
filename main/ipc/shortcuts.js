@@ -254,6 +254,8 @@ ipcMain.on("save-os-integration-status", (event, status) => {
             apiKey: cfg.openIaToken,
             userName: taCfg.userName || '',
             userBackground: taCfg.userBackground || '',
+            userTechExperiences: taCfg.userTechExperiences || '',
+            userBehavioral: taCfg.userBehavioral || '',
             targetLanguage: taCfg.targetLanguage || 'pt-br',
             micDevice: taCfg.micDevice || '',
           }).catch((e) => console.error('[TranslationAssistant] start falhou:', e.message));
@@ -394,6 +396,8 @@ ipcMain.on("set-translation-assistant-config", (event, partial) => {
         apiKey: cfg.openIaToken,
         userName: ta.userName || '',
         userBackground: ta.userBackground || '',
+        userTechExperiences: ta.userTechExperiences || '',
+        userBehavioral: ta.userBehavioral || '',
         targetLanguage: ta.targetLanguage || 'pt-br',
         micDevice: ta.micDevice || '',
       });
@@ -418,6 +422,8 @@ ipcMain.on("set-translation-assistant-config", (event, partial) => {
           apiKey: cfg.openIaToken,
           userName: ta.userName || '',
           userBackground: ta.userBackground || '',
+          userTechExperiences: ta.userTechExperiences || '',
+          userBehavioral: ta.userBehavioral || '',
           targetLanguage: ta.targetLanguage || 'pt-br',
           micDevice: ta.micDevice || '',
         }).then(() => {
@@ -500,6 +506,8 @@ ipcMain.on("set-translation-test-mode", (event, enabled) => {
     apiKey: cfg.openIaToken,
     userName: ta.userName || '',
     userBackground: ta.userBackground || '',
+    userTechExperiences: ta.userTechExperiences || '',
+    userBehavioral: ta.userBehavioral || '',
     targetLanguage: ta.targetLanguage || 'pt-br',
     onResult: (data) => deliver(data),
     onDone: () => {
