@@ -153,6 +153,7 @@ async function start(cfg) {
             {
               userName: config.userName,
               userBackground: config.userBackground,
+              userBehavioral: config.userBehavioral,
               targetLanguage: config.targetLanguage,
             },
             config.apiKey,

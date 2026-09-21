@@ -128,6 +128,7 @@ ipcMain.handle("translation-start", async () => {
     apiKey: cfg.openIaToken,
     userName: ta.userName || '',
     userBackground: ta.userBackground || '',
+    userBehavioral: ta.userBehavioral || '',
     targetLanguage: ta.targetLanguage || 'pt-br',
     micDevice: ta.micDevice || '',
   });

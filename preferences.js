@@ -14,9 +14,10 @@ document.getElementById('win-close-btn')?.addEventListener('click', (e) => {
 
 
 
-// === Dados pessoais (nome/background) ===
+// === Dados pessoais (nome/background/comportamental) ===
 const usernameInput = document.getElementById('pref-username');
 const backgroundInput = document.getElementById('pref-background');
+const behavioralInput = document.getElementById('pref-behavioral');
 
 (async () => {
   try {
@@ -24,6 +25,7 @@ const backgroundInput = document.getElementById('pref-background');
     if (!ta) return;
     if (usernameInput) usernameInput.value = ta.userName || '';
     if (backgroundInput) backgroundInput.value = ta.userBackground || '';
+    if (behavioralInput) behavioralInput.value = ta.userBehavioral || '';
   } catch (e) {
     console.warn('[preferences] load user info failed:', e.message);
   }
@@ -94,6 +96,7 @@ document.getElementById('save-btn').addEventListener('click', async () => {
   ipcRenderer.send('set-translation-assistant-config', {
     userName: usernameInput ? usernameInput.value : '',
     userBackground: backgroundInput ? backgroundInput.value : '',
+    userBehavioral: behavioralInput ? behavioralInput.value : '',
   });
 
   // Anexa SÓ o que o usuário digitou agora (o campo não carrega mais a base

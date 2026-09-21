@@ -382,10 +382,12 @@ function createAccessors(ctx) {
       const ta = this.getTranslationAssistantConfig();
       const name = (ta.userName || '').trim();
       const bg = (ta.userBackground || '').trim();
-      if (!name && !bg) return '';
+      const beh = (ta.userBehavioral || '').trim();
+      if (!name && !bg && !beh) return '';
       const lines = ['[CONTEXTO DO USUÁRIO — use para personalizar a resposta/sugestão]'];
       if (name) lines.push(`Nome: ${name}`);
-      if (bg) lines.push(`Background: ${bg}`);
+      if (bg) lines.push(`Experiência Técnica & Projetos: ${bg}`);
+      if (beh) lines.push(`Histórias Comportamentais & Soft Skills (STAR): ${beh}`);
       return lines.join('\n');
     },
 

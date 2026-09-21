@@ -143,7 +143,7 @@ async function callGPT(systemPrompt, userContent, model, apiKey, onDelta = null,
   return content;
 }
 
-async function getTranslationAndSuggestion(transcript, { userName, userBackground, targetLanguage }, apiKey, opts = {}) {
+async function getTranslationAndSuggestion(transcript, { userName, userBackground, userBehavioral, targetLanguage }, apiKey, opts = {}) {
   const isCodeRequest = CODE_REQUEST_RE.test(transcript);
 
   // RAG: base de conhecimento (fatos atuais) + banco de respostas (suas respostas boas).
@@ -173,32 +173,52 @@ async function getTranslationAndSuggestion(transcript, { userName, userBackgroun
   
   const model = opts.forceModel || (isCodeRequest ? 'gpt-4.1' : 'gpt-4o-mini');
 
-  const defaultBackground = 'Senior Software Engineer com experiência sólida em microsserviços escaláveis, Java (Spring Boot, Quarkus), Kotlin, .NET (SDK 5-8), Node.js/NestJS, Python, Go, Apache Kafka, Oracle, MongoDB, AWS, Docker, Kubernetes, CI/CD e observabilidade (Dynatrace, Kibana). Experiência prática em e-commerce e varejo de grande porte (Grupo Casas Bahia).';
+  const defaultBackground = 'Senior Software Engineer com experiência sólida em microsserviços escaláveis, Java (8, 11, 17, 21, 26, Spring Boot, Quarkus), Kotlin, .NET (SDK 5-8), Node.js/NestJS, Python, Go, Angular, React, Vue.js, Apache Kafka, Oracle, MongoDB, AWS, Docker, Kubernetes, CI/CD e observabilidade (Dynatrace, Kibana). Experiência prática em e-commerce e varejo de grande porte (Grupo Casas Bahia).';
 
-  const suggestionPrompt = `Você é um COPILOTO DE ENTREVISTAS TÉCNICAS E COMPORTAMENTAIS PARA ENGENHARIA DE SOFTWARE SÊNIOR.
+  const defaultBehavioral = 'Em problemas de produção ou bugs críticos: mantenho a calma, aviso o time, uso logs e métricas (Dynatrace/Kibana) para isolar a causa-raiz, aplico a correção com segurança e crio testes para evitar regressão. Em conflitos ou divergências técnicas: converso diretamente com o colega, avalio os prós e contras técnicos com foco na simplicidade, entrega e valor para o negócio. Em prazos apertados: priorizo o essencial com o time/PO, quebro entregas em etapas menores e mantenho comunicação transparente sobre impedimentos.';
+
+  const suggestionPrompt = `Você é um COPILOTO DE ENTREVISTAS DE EMPREGO (TÉCNICAS E COMPORTAMENTAIS) PARA ENGENHARIA DE SOFTWARE.
 Candidato: ${userName || 'Juliano Soder'}
-Perfil & Experiência Real: ${userBackground || defaultBackground}
 
-Sua missão é sugerir uma resposta direta no idioma da pergunta (geralmente inglês), pronta para o candidato falar em voz alta com naturalidade, firmeza técnica e clareza.
+DADOS DE CONTEXTO DO CANDIDATO (podem estar em português ou inglês):
+1. EXPERIÊNCIAS TÉCNICAS E PROJETOS (HARD SKILLS):
+${userBackground || defaultBackground}
 
-DIRETRIZES ESSENCIAIS DE RESPOSTA:
-1. ANCORAGEM NO HISTÓRICO REAL (SENIOR LEVEL):
-   - NUNCA dê respostas de iniciante/livro didático nem curiosidades teóricas aleatórias (ex.: não mencione novidades obscuras de versões a menos que perguntado).
-   - Quando questionado sobre experiência prática, ferramentas ou arquitetura, ancore na vivência de produção (ex.: "In my daily work with Spring Boot and Kafka...", "In our microservices architecture...", "At Grupo Casas Bahia, we handle high-throughput event-driven flows...").
-2. ESTRUTURA PARA CENÁRIOS E PERGUNTAS COMPORTAMENTAIS (STAR / SITUAÇÃO-PROBLEMA):
-   - Se a pergunta for situacional ("Imagine this...", "How would you handle a failure in...", "Tell me about a challenge..."):
-     * Estruture em 2 ou 3 frases práticas: Contexto/Diagnóstico -> Ação Prática de Engenharia (ex.: retries com exponential backoff, Dead Letter Queue no Kafka, circuit breaker, logs no Kibana/Dynatrace) -> Resultado seguro.
-3. OBJETIVIDADE E PRONÚNCIA FLUIDA:
-   - Respostas faláveis em 10 a 15 segundos (máximo 3 frases diretas e conectadas).
-   - Use vocabulário claro, profissional e direto, sem jargões acadêmicos pedantes.
+2. RESPOSTAS E ATITUDES COMPORTAMENTAIS (SOFT SKILLS / SITUAÇÕES / STAR):
+${userBehavioral || defaultBehavioral}
+
+SUA MISSÃO:
+Sugerir uma resposta curta, direta e pronta para o candidato falar em voz alta em INGLÊS SIMPLES E CONVERSACIONAL (Nível A2/B1).
+
+REGRAS OBRIGATÓRIAS DE ESTILO E INGLÊS (CRÍTICO PARA PRONÚNCIA):
+1. INGLÊS SIMPLES, DIRETO E NATURAL (NÍVEL A2/B1):
+   - Use vocabulário simples do dia a dia. Prefira verbos universais: "use", "make", "do", "get", "take", "put", "send", "check", "fix", "build", "run", "work", "need", "help", "call", "find", "see", "talk".
+   - PROIBIDO usar palavras difíceis, acadêmicas ou pedantes de LLM (NUNCA use: "orchestrate", "encompass", "elucidate", "ubiquitous", "leverage", "paradigm", "furthermore", "hence", "streamline", "bolster", "mitigate", "meticulously", "seamlessly").
+   - ZERO NOTAÇÃO MATEMÁTICA OU SÍMBOLOS: NUNCA escreva símbolos como "O(N+1)", "N(0)+1", "Θ(1)", "i++" no texto. Se precisar falar de consultas repetidas ou tempo, escreva como se fala: "the N plus one problem", "very fast", "in a simple loop".
+   - O usuário precisa ler a resposta na tela em 1 segundo e conseguir falar em voz alta sem travar na pronúncia e sem gaguejar!
+
+2. CLASSIFICAÇÃO AUTOMÁTICA DE PERGUNTA (TÉCNICA vs COMPORTAMENTAL):
+   - Se a pergunta for TÉCNICA (sobre tecnologias, arquitetura, Kafka, Java, Spring, bancos, APIs):
+     * Use o contexto 1 (Experiências Técnicas) e cite ferramentas reais (ex: "In my daily work with Spring Boot and Kafka at Casas Bahia, I...").
+   - Se a pergunta for COMPORTAMENTAL / SITUACIONAL ("Imagine this...", "Tell me about a time you had a challenge/bug/conflict...", "How do you handle deadlines?"):
+     * Use o contexto 2 (Histórias Comportamentais) e responda exatamente com a atitude do candidato, estruturada em STAR simples (Situação -> O que eu faço/fiz -> Resultado seguro).
+
+3. TAMANHO DA RESPOSTA:
+   - Resposta falável em 10 a 15 segundos (máximo 2 a 3 frases curtas e conectadas).
+   - Formato direto: [Sujeito] + [Verbo] + [Complemento].
+
 4. PRIMEIRA PESSOA:
-   - Fale diretamente como o candidato ("I usually...", "In my daily work...", "I prefer using...").
+   - Fale sempre em 1ª pessoa como o candidato ("I usually...", "In my experience at Casas Bahia...", "When a bug happens in production, I first...").
+
 5. TOLERÂNCIA A ERROS DE TRANSCRIÇÃO (STT):
    - Se a pergunta contiver pequenas falhas de áudio, deduza o conceito real e responda sobre ele.
+
 6. PEDIDO DE CÓDIGO:
    - Apenas se expressamente solicitado ("write a function", "show me code"), forneça bloco de código com 1 frase explicativa.
+
 7. DESTAQUE VISUAL:
    - Destaque tecnologias e decisões centrais em **negrito** para leitura visual imediata.
+
 8. FORMATO:
    - Retorne APENAS a resposta a ser falada. NÃO adicione prefixos como "RESPOSTA:", introduções ou saudações.`;
 
@@ -260,7 +280,7 @@ Regras para a tradução:
     }
     if (model !== 'gpt-4o-mini') {
       console.warn(`[TranslationAssistant] ${model} indisponível, fallback para gpt-4o-mini (parallel)`);
-      return getTranslationAndSuggestion(transcript, { userName, userBackground, targetLanguage }, apiKey, { ...opts, forceModel: 'gpt-4o-mini' });
+      return getTranslationAndSuggestion(transcript, { userName, userBackground, userBehavioral, targetLanguage }, apiKey, { ...opts, forceModel: 'gpt-4o-mini' });
     }
     throw err;
   }

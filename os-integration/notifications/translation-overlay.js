@@ -88,8 +88,24 @@
     }
   }
 
+  let resizeTimer = null;
+  function requestSmoothResize(immediate = false) {
+    if (!api.requestTranslationResize) return;
+    if (immediate) {
+      if (resizeTimer) { clearTimeout(resizeTimer); resizeTimer = null; }
+      requestAnimationFrame(() => api.requestTranslationResize());
+      return;
+    }
+    if (!resizeTimer) {
+      resizeTimer = setTimeout(() => {
+        resizeTimer = null;
+        requestAnimationFrame(() => api.requestTranslationResize());
+      }, 200);
+    }
+  }
+
   function addMessage(data) {
-    const { transcript, response, mode, type, id } = data || {};
+    const { transcript, response, mode, type, id, streaming } = data || {};
     if (!transcript && !response) return;
 
     const empty = document.getElementById('empty');
@@ -106,7 +122,7 @@
         `<div class="image-response">${formatImageResponse(content)}</div>`;
       container.appendChild(block);
       scrollToBottomIfNeeded();
-      requestAnimationFrame(() => { if (api.requestTranslationResize) api.requestTranslationResize(); });
+      requestSmoothResize(true);
       return;
     }
 
@@ -139,39 +155,53 @@
           t.className = 'transcript';
           block.appendChild(t);
         }
-        t.textContent = transcript;
+        if (t.textContent !== transcript) {
+          t.textContent = transcript;
+        }
       }
     }
 
     if (response) {
-      block.querySelectorAll('.translation, .response-label, .response').forEach(n => n.remove());
       const traduMatch = response.match(/TRADU[ÇC][ÃA]O:\s*([\s\S]*?)(?=\n*RESPOSTA:|$)/i);
       const respMatch  = response.match(/RESPOSTA:\s*([\s\S]*)$/i);
       const trad = traduMatch ? traduMatch[1].trim() : '';
       const resp = respMatch  ? respMatch[1].trim()  : (traduMatch ? '' : response);
 
       if (trad) {
-        const td = document.createElement('div');
-        td.className = 'translation';
-        td.textContent = trad;
-        block.appendChild(td);
+        let td = block.querySelector('.translation');
+        if (!td) {
+          td = document.createElement('div');
+          td.className = 'translation';
+          block.appendChild(td);
+        }
+        if (td.textContent !== trad) td.textContent = trad;
       }
+
       if (resp) {
-        const rl = document.createElement('div');
-        rl.className = 'response-label';
-        rl.textContent = mode === 'candidate' ? 'Avaliação' : 'Sugestão';
-        block.appendChild(rl);
-        const rd = document.createElement('div');
-        rd.className = 'response';
-        rd.innerHTML = renderResponseHtml(resp);
-        block.appendChild(rd);
+        let rl = block.querySelector('.response-label');
+        if (!rl) {
+          rl = document.createElement('div');
+          rl.className = 'response-label';
+          block.appendChild(rl);
+        }
+        const labelText = mode === 'candidate' ? 'Avaliação' : 'Sugestão';
+        if (rl.textContent !== labelText) rl.textContent = labelText;
+
+        let rd = block.querySelector('.response');
+        if (!rd) {
+          rd = document.createElement('div');
+          rd.className = 'response';
+          block.appendChild(rd);
+        }
+        const renderedHtml = renderResponseHtml(resp);
+        if (rd.innerHTML !== renderedHtml) {
+          rd.innerHTML = renderedHtml;
+        }
       }
     }
 
     scrollToBottomIfNeeded();
-    requestAnimationFrame(() => {
-      if (api.requestTranslationResize) api.requestTranslationResize();
-    });
+    requestSmoothResize(streaming === false);
   }
 
   function clearMessages() {
