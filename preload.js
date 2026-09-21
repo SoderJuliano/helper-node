@@ -372,6 +372,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // === App Runner (Java / Spring Boot / Gradle / Maven / JUnit) ===
   appRunnerDetectJdks: (preferredPath) => ipcRenderer.invoke("app-runner-detect-jdks", preferredPath),
+  appRunnerDetectJdksAsync: (preferredPath) => ipcRenderer.invoke("app-runner-detect-jdks-async", preferredPath),
+  appRunnerPickJdkDir: () => ipcRenderer.invoke("app-runner-pick-jdk-dir"),
+  appRunnerAddCustomJdk: (dirPath) => ipcRenderer.invoke("app-runner-add-custom-jdk", dirPath),
   appRunnerDetectProject: (projectDir) => ipcRenderer.invoke("app-runner-detect-project", projectDir),
   appRunnerParseJava: (payload) => ipcRenderer.invoke("app-runner-parse-java", payload),
   appRunnerRun: (payload) => ipcRenderer.invoke("app-runner-run", payload),

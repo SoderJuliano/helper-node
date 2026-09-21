@@ -20,12 +20,31 @@ class AppRunnerService {
    * Detecta todas as JDKs disponíveis na máquina do usuário.
    */
   static detectJdks(preferredPath) {
-    const all = JdkDetector.detectAll();
+    const all = JdkDetector.detectAll(preferredPath);
     const best = JdkDetector.getBestJdk(preferredPath);
     return {
       all,
       best,
     };
+  }
+
+  /**
+   * Detecta todas as JDKs disponíveis na máquina do usuário de forma assíncrona.
+   */
+  static async detectJdksAsync(preferredPath) {
+    const all = await JdkDetector.detectAllAsync(preferredPath);
+    const best = JdkDetector.getBestJdk(preferredPath);
+    return {
+      all,
+      best,
+    };
+  }
+
+  /**
+   * Adiciona e valida uma JDK a partir do disco.
+   */
+  static addCustomJdk(dirPath) {
+    return JdkDetector.addCustomJdk(dirPath);
   }
 
   /**
@@ -73,7 +92,7 @@ class AppRunnerService {
   /**
    * Inicia a execução do alvo informado no projeto.
    * @param {string} projectDir Diretório do projeto
-   * @param {Object} target Alvo de execução { kind, mainClass, testClass, testMethod, isSpringBoot }
+   * @param {Object} target Alvo de execução { kind, mainClass, testClass, testMethod, isSpringBoot, isIsolatedMain, filePath }
    * @param {string} [preferredJdkPath] Caminho de JDK preferencial
    */
   static runTarget(projectDir, target = {}, preferredJdkPath = null) {
@@ -83,8 +102,9 @@ class AppRunnerService {
 
     const buildInfo = BuildToolDetector.detect(projectDir);
     const projectConfig = IntelliJConfigExtractor.getEffectiveConfig(projectDir);
-    const commandInfo = BuildToolDetector.buildCommand(buildInfo, target, projectConfig);
-    const jdk = JdkDetector.getBestJdk(preferredJdkPath);
+    const effectiveJdkPath = preferredJdkPath || projectConfig.selectedJdkPath || projectConfig.selectedJdkHome;
+    const jdk = JdkDetector.getBestJdk(effectiveJdkPath);
+    const commandInfo = BuildToolDetector.buildCommand(buildInfo, target, projectConfig, jdk);
     const customEnv = projectConfig.effectiveEnvs || {};
 
     return activeRunner.start({
@@ -99,6 +119,7 @@ class AppRunnerService {
         fullCommand: commandInfo.fullCommand,
         buildType: buildInfo.type,
         activeProfiles: projectConfig.activeProfiles || '',
+        selectedJdk: jdk ? jdk.displayName : '',
       },
     });
   }

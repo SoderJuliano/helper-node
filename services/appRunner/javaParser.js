@@ -1,6 +1,6 @@
 // services/appRunner/javaParser.js
 // Analisador leve e rápido de arquivos Java para detecção de métodos main(),
-// classes Spring Boot e testes JUnit 4/5 com números de linha para a calha (gutter).
+// classes Spring Boot, testes JUnit 4/5 e métodos isolados 'void main()' (Java 21/25+ Unnamed Classes).
 
 class JavaParser {
   /**
@@ -17,6 +17,7 @@ class JavaParser {
         fullClassName: '',
         isSpringBoot: false,
         isTestClass: false,
+        isUnnamedClass: false,
         mainMethods: [],
         testMethods: [],
         classLine: 1,
@@ -27,6 +28,7 @@ class JavaParser {
     let packageName = '';
     let className = '';
     let classLine = 1;
+    let hasExplicitClass = false;
     let isSpringBoot = false;
     let isTestClass = false;
     const mainMethods = [];
@@ -42,17 +44,22 @@ class JavaParser {
     const classMatch = source.match(/(?:public\s+|abstract\s+|final\s+)*class\s+([a-zA-Z0-9_]+)/);
     if (classMatch) {
       className = classMatch[1].trim();
+      hasExplicitClass = true;
     } else if (filePath) {
       const base = filePath.split(/[/\\]/).pop();
       className = base.replace(/\.java$/i, '');
     }
 
-    // Verifica se o arquivo tem @SpringBootApplication
-    if (/@SpringBootApplication\b/.test(source)) {
+    // 3. Detecção precisa de Spring Boot
+    if (
+      /@SpringBootApplication\b/.test(source) ||
+      /\bSpringApplication\.run\s*\(/.test(source) ||
+      /@EnableAutoConfiguration\b/.test(source)
+    ) {
       isSpringBoot = true;
     }
 
-    // Verifica se é uma classe de teste
+    // 4. Detecção de classe de teste JUnit 4/5
     if (
       /@SpringBootTest\b/.test(source) ||
       /@ExtendWith\b/.test(source) ||
@@ -65,7 +72,7 @@ class JavaParser {
       isTestClass = true;
     }
 
-    // 3. Varredura por linha para identificar métodos e números de linha
+    // 5. Varredura por linha para identificar métodos e números de linha
     let pendingTestAnnotation = false;
     let pendingTestLine = -1;
 
@@ -86,19 +93,24 @@ class JavaParser {
 
       // Identifica main()
       // Padrões aceitos:
-      // public static void main(String[] args)
-      // public static void main(String... args)
-      // public static void main(String args[])
-      // static public void main(String[] args)
-      // Java 21+: void main()
-      const isMain = /(?:public\s+static|static\s+public)\s+void\s+main\s*\([^)]*\)/.test(line) ||
-                     /void\s+main\s*\(\s*\)/.test(line);
+      // 1. Clássico: public static void main(String[] args) / static public void main(...)
+      // 2. Moderno (Java 21/25+ JEP 445/463/477/495): void main(), void main(String[] args), int main()
+      const isClassicMain = /(?:public\s+static|static\s+public)\s+(?:void|int)\s+main\s*\([^)]*\)/.test(line);
+      const isInstanceMain = /(?:^|\s)(?:void|int)\s+main\s*\(\s*(?:String\s*\[\s*\]\s*[a-zA-Z0-9_]+|String\.\.\.\s*[a-zA-Z0-9_]+)?\s*\)/.test(line);
 
-      if (isMain) {
+      if (isClassicMain || isInstanceMain) {
+        const methodIsSpringBoot = isSpringBoot && (
+          source.includes('@SpringBootApplication') ||
+          source.includes('SpringApplication.run')
+        );
+        const isIsolated = !methodIsSpringBoot;
+
         mainMethods.push({
           name: 'main',
           line: lineNum,
-          isSpringBoot,
+          isSpringBoot: methodIsSpringBoot,
+          isInstanceMain: isInstanceMain && !isClassicMain,
+          isIsolatedMain: isIsolated,
           className,
           fullClassName: packageName ? `${packageName}.${className}` : className,
           signature: line,
@@ -121,7 +133,6 @@ class JavaParser {
           pendingTestAnnotation = false;
           pendingTestLine = -1;
         } else if (line && !line.startsWith('@') && !line.startsWith('//') && !line.startsWith('/*') && !line.startsWith('*')) {
-          // Se a linha tem código mas não é método nem anotação, limpa
           pendingTestAnnotation = false;
         }
       }
@@ -135,6 +146,7 @@ class JavaParser {
       fullClassName,
       isSpringBoot,
       isTestClass,
+      isUnnamedClass: !hasExplicitClass && mainMethods.length > 0,
       mainMethods,
       testMethods,
       classLine: classLine || 1,

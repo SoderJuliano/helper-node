@@ -93,10 +93,11 @@ class MultiRunnerService extends EventEmitter {
     const runId = explicitRunId || this.getRunId(projectDir, target);
     const buildInfo = BuildToolDetector.detect(projectDir);
     const projectConfig = IntelliJConfigExtractor.getEffectiveConfig(projectDir);
+    const effectiveJdkPath = preferredJdkPath || projectConfig.selectedJdkPath || projectConfig.selectedJdkHome;
+    const jdk = JdkDetector.getBestJdk(effectiveJdkPath);
     const commandInfo = target.executable
       ? { executable: target.executable, args: target.args || [], displayName: target.displayName || 'App', fullCommand: `${target.executable} ${(target.args || []).join(' ')}` }
-      : BuildToolDetector.buildCommand(buildInfo, target, projectConfig);
-    const jdk = JdkDetector.getBestJdk(preferredJdkPath);
+      : BuildToolDetector.buildCommand(buildInfo, target, projectConfig, jdk);
     const customEnv = projectConfig.effectiveEnvs || {};
 
     let runner = this._runners.get(runId);
@@ -129,6 +130,7 @@ class MultiRunnerService extends EventEmitter {
         fullCommand: commandInfo.fullCommand,
         buildType: buildInfo.type,
         activeProfiles: projectConfig.activeProfiles || '',
+        selectedJdk: jdk ? jdk.displayName : '',
       },
     });
 

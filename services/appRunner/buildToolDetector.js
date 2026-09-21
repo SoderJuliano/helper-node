@@ -1,6 +1,6 @@
 // services/appRunner/buildToolDetector.js
 // Identifica ferramenta de build (Gradle / Maven / Standalone Java)
-// e gera os comandos de execução apropriados para Spring Boot, Main e JUnit.
+// e gera os comandos de execução apropriados para Spring Boot, Main isolado e JUnit.
 
 const fs = require('fs');
 const path = require('path');
@@ -92,29 +92,76 @@ class BuildToolDetector {
   /**
    * Constrói o comando de execução para o alvo desejado.
    * target: {
-   *   kind: 'app' | 'test-all' | 'test-class' | 'test-method',
+   *   kind: 'app' | 'isolated-main' | 'test-all' | 'test-class' | 'test-method',
    *   mainClass?: string,     // ex: 'com.example.DemoApplication'
    *   testClass?: string,     // ex: 'com.example.DemoApplicationTests'
    *   testMethod?: string,    // ex: 'contextLoads'
+   *   filePath?: string,      // caminho do arquivo .java
    *   isSpringBoot?: boolean,
+   *   isIsolatedMain?: boolean,
+   *   isInstanceMain?: boolean,
    *   args?: string[],
    *   extraArgs?: string[]
    * }
    * projectConfig?: {
    *   activeProfiles?: string,
    *   vmOptions?: string,
-   *   programArgs?: string
+   *   programArgs?: string,
+   *   selectedJdkPath?: string
    * }
+   * jdkInfo?: { javaPath, majorVersion, isPreviewSupported }
    */
-  static buildCommand(buildInfo, target = {}, projectConfig = {}) {
+  static buildCommand(buildInfo, target = {}, projectConfig = {}, jdkInfo = null) {
     const isWin = process.platform === 'win32';
-    const cmd = buildInfo.hasWrapper ? buildInfo.wrapperCmd : buildInfo.fallbackCmd;
     const kind = target.kind || 'app';
 
     const activeProfiles = (projectConfig && projectConfig.activeProfiles) ? String(projectConfig.activeProfiles).trim() : '';
     const vmOptions = (projectConfig && projectConfig.vmOptions) ? String(projectConfig.vmOptions).trim() : '';
     const programArgs = (projectConfig && projectConfig.programArgs) ? String(projectConfig.programArgs).trim() : '';
 
+    // 1. Execução de Main Isolado / Teste Local Single-File (Java 21/25+ instance main ou main isolado sem Spring)
+    if (kind === 'isolated-main' || (target.isIsolatedMain && (target.filePath || target.mainClass))) {
+      const javaExe = (jdkInfo && jdkInfo.javaPath) ? jdkInfo.javaPath : 'java';
+      const args = [];
+
+      // Passa --enable-preview se Java 21+ ou se método for instance main (void main())
+      const isPreview = (jdkInfo && jdkInfo.majorVersion >= 21) || target.isInstanceMain || (jdkInfo && jdkInfo.isPreviewSupported);
+      if (isPreview) {
+        args.push('--enable-preview');
+      }
+
+      if (vmOptions) {
+        args.push(...vmOptions.split(/\s+/).filter(Boolean));
+      }
+      if (activeProfiles) {
+        args.push(`-Dspring.profiles.active=${activeProfiles}`);
+      }
+
+      const fileOrClass = target.filePath || target.mainClass;
+      args.push(fileOrClass);
+
+      if (programArgs) {
+        args.push(...programArgs.split(/\s+/).filter(Boolean));
+      }
+
+      if (target.extraArgs && target.extraArgs.length) {
+        args.push(...target.extraArgs);
+      }
+
+      const displayCmd = `java ${args.map(a => (a.includes(' ') ? `"${a}"` : a)).join(' ')}`;
+      const baseName = path.basename(fileOrClass, '.java');
+
+      return {
+        executable: javaExe,
+        args,
+        fullCommand: displayCmd,
+        displayName: `${baseName}.main() (Local)`,
+      };
+    }
+
+    const cmd = buildInfo.hasWrapper ? buildInfo.wrapperCmd : buildInfo.fallbackCmd;
+
+    // 2. Execução via Gradle
     if (buildInfo.type === 'gradle') {
       let args = [];
       if (kind === 'app') {
@@ -133,7 +180,6 @@ class BuildToolDetector {
             args.push(`--args=${programArgs}`);
           }
 
-          // Injeta VM options como system properties ou jvmargs no Gradle se definidos
           if (vmOptions) {
             const vmParts = vmOptions.split(/\s+/).filter(Boolean);
             vmParts.forEach(vp => {
@@ -205,6 +251,7 @@ class BuildToolDetector {
       };
     }
 
+    // 3. Execução via Maven
     if (buildInfo.type === 'maven') {
       let args = ['-B'];
       if (kind === 'app') {
@@ -278,30 +325,34 @@ class BuildToolDetector {
       };
     }
 
-    // Java standalone (sem Maven/Gradle)
-    if (target.mainClass) {
+    // 4. Java standalone (sem Maven/Gradle)
+    const javaExe = (jdkInfo && jdkInfo.javaPath) ? jdkInfo.javaPath : 'java';
+    if (target.mainClass || target.filePath) {
       const standaloneArgs = [];
+      if (jdkInfo && jdkInfo.majorVersion >= 21) {
+        standaloneArgs.push('--enable-preview');
+      }
       if (vmOptions) {
         standaloneArgs.push(...vmOptions.split(/\s+/).filter(Boolean));
       }
       if (activeProfiles) {
         standaloneArgs.push(`-Dspring.profiles.active=${activeProfiles}`);
       }
-      standaloneArgs.push(target.mainClass);
+      standaloneArgs.push(target.filePath || target.mainClass);
       if (programArgs) {
         standaloneArgs.push(...programArgs.split(/\s+/).filter(Boolean));
       }
 
       return {
-        executable: 'java',
+        executable: javaExe,
         args: standaloneArgs,
         fullCommand: `java ${standaloneArgs.join(' ')}`,
-        displayName: `Java ${target.mainClass}`,
+        displayName: `Java ${path.basename(target.filePath || target.mainClass, '.java')}`,
       };
     }
 
     return {
-      executable: 'java',
+      executable: javaExe,
       args: ['-version'],
       fullCommand: 'java -version',
       displayName: 'Java App',
@@ -309,6 +360,10 @@ class BuildToolDetector {
   }
 
   static getDisplayName(buildInfo, target) {
+    if (target.kind === 'isolated-main') {
+      const name = path.basename(target.filePath || target.mainClass || 'Main', '.java');
+      return `${name}.main() (Local)`;
+    }
     const toolLabel = buildInfo.type === 'gradle' ? 'Gradle' : (buildInfo.type === 'maven' ? 'Maven' : 'Java');
     if (target.kind === 'test-method') {
       return `${toolLabel}: ${target.testMethod || 'Test'}`;

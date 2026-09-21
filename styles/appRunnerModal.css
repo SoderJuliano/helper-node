@@ -192,6 +192,40 @@
     box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
 }
 
+.app-runner-sdk-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.app-runner-config-select {
+    flex: 1;
+    min-width: 0;
+    padding: 8px 12px;
+    background: #0d0f14;
+    border: 1px solid #2d3240;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 12.5px;
+    font-family: var(--font-mono, monospace);
+    box-sizing: border-box;
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    outline: none;
+}
+
+.app-runner-config-select:focus {
+    border-color: #38bdf8;
+    box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+}
+
+.app-runner-config-select option {
+    background: #14161d;
+    color: #e2e8f0;
+    padding: 6px 10px;
+}
+
 .app-runner-config-textarea {
     width: 100%;
     min-height: 110px;

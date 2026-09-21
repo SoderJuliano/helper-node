@@ -1,6 +1,6 @@
 // renderer/appRunner/appRunnerGutter.js
-// Desenha os ícones de Play (▶) na calha do CodeMirror para métodos main(),
-// Spring Boot e testes JUnit, permitindo executar com um único clique.
+// Desenha os marcadores de Play na calha do CodeMirror para métodos main(),
+// Spring Boot e testes JUnit, permitindo executar com um único clique (sem emojis).
 
 (function() {
   const PLAY_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
@@ -109,25 +109,34 @@
 
       if (!parseRes) return;
 
-      // 1. Marca métodos main() / Spring Boot
+      // 1. Marca métodos main() / Spring Boot / Main Isolado
       if (parseRes.mainMethods && parseRes.mainMethods.length) {
         parseRes.mainMethods.forEach(main => {
           const lineIdx = main.line - 1;
           if (lineIdx < 0 || lineIdx >= cm.lineCount()) return;
 
+          const isSpring = main.isSpringBoot || parseRes.isSpringBoot;
+          const isIsolated = !isSpring || main.isIsolatedMain;
           const marker = document.createElement('div');
           marker.className = 'app-runner-gutter-marker';
-          marker.title = `Executar '${main.className}.main()'`;
+          marker.title = isIsolated
+            ? `Executar '${main.className || 'App'}.main()' (Local Isolado)`
+            : `Executar '${main.className}.main()' (Spring Boot)`;
           marker.innerHTML = PLAY_ICON_SVG;
 
           marker.onclick = (e) => {
             e.stopPropagation();
             const projectDir = getProjectDir(filePath);
             const target = {
-              kind: 'app',
+              kind: isIsolated ? 'isolated-main' : 'app',
               mainClass: main.fullClassName || main.className,
-              isSpringBoot: main.isSpringBoot || parseRes.isSpringBoot,
-              displayName: `${main.className}.main()`,
+              filePath: filePath,
+              isSpringBoot: isSpring,
+              isIsolatedMain: isIsolated,
+              isInstanceMain: !!main.isInstanceMain,
+              displayName: isIsolated
+                ? `${main.className || 'Main'}.main() (Local)`
+                : `${main.className}.main()`,
             };
             if (window.appRunner) {
               window.appRunner.run(projectDir, target);
@@ -156,6 +165,7 @@
               kind: 'test-method',
               testClass: test.fullClassName || test.className,
               testMethod: test.name,
+              filePath: filePath,
               displayName: `${test.className}.${test.name}()`,
             };
             if (window.appRunner) {
@@ -181,6 +191,7 @@
               const target = {
                 kind: 'test-class',
                 testClass: parseRes.fullClassName || parseRes.className,
+                filePath: filePath,
                 displayName: `Tests in ${parseRes.className}`,
               };
               if (window.appRunner) {

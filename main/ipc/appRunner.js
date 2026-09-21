@@ -98,6 +98,42 @@ module.exports = function registerAppRunnerIpc() {
     }
   });
 
+  ipcMain.handle('app-runner-detect-jdks-async', async (event, preferredPath) => {
+    try {
+      const data = await AppRunnerService.detectJdksAsync(preferredPath);
+      return { ok: true, data };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('app-runner-pick-jdk-dir', async () => {
+    const { dialog } = require('electron');
+    try {
+      const res = await dialog.showOpenDialog(state.mainWindow, {
+        title: 'Selecionar pasta da JDK (Java Development Kit)',
+        properties: ['openDirectory'],
+      });
+      if (res.canceled || !res.filePaths.length) {
+        return { ok: false, canceled: true };
+      }
+      const selectedPath = res.filePaths[0];
+      const addedJdk = AppRunnerService.addCustomJdk(selectedPath);
+      return { ok: true, data: addedJdk };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('app-runner-add-custom-jdk', async (event, dirPath) => {
+    try {
+      const addedJdk = AppRunnerService.addCustomJdk(dirPath);
+      return { ok: true, data: addedJdk };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
+
   ipcMain.handle('app-runner-detect-project', async (event, projectDir) => {
     try {
       return { ok: true, data: AppRunnerService.detectProject(projectDir) };

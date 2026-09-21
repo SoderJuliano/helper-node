@@ -7,6 +7,7 @@
   let currentConfig = null;
   let currentBuildInfo = null;
   let currentMode = 'table';
+  let cachedDetectedJdks = [];
 
   function initAppRunnerModalDom() {
     modalContainer = window.AppRunnerConfigModalDom.buildAppRunnerConfigModalDom();
@@ -21,6 +22,9 @@
     const btnReimport = modal.querySelector('#app-runner-cfg-btn-reimport');
     const btnReset = modal.querySelector('#app-runner-cfg-btn-reset');
     const btnAddEnv = modal.querySelector('#app-runner-cfg-btn-add-env');
+    const btnAddJdk = modal.querySelector('#app-runner-cfg-btn-add-jdk');
+    const sdkSelect = modal.querySelector('#app-runner-cfg-sdk-select');
+    const sdkHint = modal.querySelector('#app-runner-cfg-sdk-hint');
     const btnModeTable = modal.querySelector('#app-runner-cfg-btn-mode-table');
     const btnModeRaw = modal.querySelector('#app-runner-cfg-btn-mode-raw');
     const chipsContainer = modal.querySelector('#app-runner-cfg-chips');
@@ -32,6 +36,42 @@
       await saveModalConfig();
       closeAppRunnerConfigModal();
     };
+
+    if (btnAddJdk) {
+      btnAddJdk.onclick = async () => {
+        if (!window.electronAPI || !window.electronAPI.appRunnerPickJdkDir) return;
+        try {
+          const res = await window.electronAPI.appRunnerPickJdkDir();
+          if (res && res.ok && res.data) {
+            const added = res.data;
+            await populateJdkDropdown(added.homePath);
+            if (typeof showToast === 'function') {
+              showToast(`JDK adicionado: ${added.displayName || added.name}`);
+            }
+          }
+        } catch (err) {
+          alert('Erro ao adicionar JDK do disco: ' + err.message);
+        }
+      };
+    }
+
+    if (sdkSelect) {
+      sdkSelect.onchange = () => {
+        const selectedVal = sdkSelect.value;
+        const selectedOpt = sdkSelect.selectedOptions ? sdkSelect.selectedOptions[0] : null;
+        const jdkBadge = modal.querySelector('#app-runner-cfg-jdk-badge');
+        if (selectedVal) {
+          const optText = selectedOpt ? selectedOpt.textContent : '';
+          const match = optText.match(/(?:java|openjdk|temurin|corretto|zulu)[-_]?\s*(\d+)/i) || optText.match(/(\d+)/);
+          const verLabel = match ? `Java ${match[1]}` : 'Java';
+          if (jdkBadge) jdkBadge.textContent = verLabel;
+          if (sdkHint) sdkHint.textContent = selectedOpt ? selectedOpt.textContent : selectedVal;
+        } else {
+          if (jdkBadge) jdkBadge.textContent = 'Java (Auto)';
+          if (sdkHint) sdkHint.textContent = 'Auto (JAVA_HOME)';
+        }
+      };
+    }
 
     btnReimport.onclick = async () => {
       if (!currentProjectDir || !window.electronAPI) return;
@@ -95,6 +135,73 @@
         closeAppRunnerConfigModal();
       }
     });
+  }
+
+  async function populateJdkDropdown(selectedPath = '') {
+    const modal = document.getElementById('app-runner-config-modal');
+    if (!modal) return;
+    const sdkSelect = modal.querySelector('#app-runner-cfg-sdk-select');
+    const sdkHint = modal.querySelector('#app-runner-cfg-sdk-hint');
+    const jdkBadge = modal.querySelector('#app-runner-cfg-jdk-badge');
+    if (!sdkSelect) return;
+
+    sdkSelect.innerHTML = '<option value="">Carregando JDKs instalados...</option>';
+
+    let jdks = [];
+    try {
+      if (window.electronAPI && window.electronAPI.appRunnerDetectJdksAsync) {
+        const res = await window.electronAPI.appRunnerDetectJdksAsync(selectedPath);
+        if (res && res.ok && res.data && Array.isArray(res.data.all)) {
+          jdks = res.data.all;
+        }
+      } else if (window.electronAPI && window.electronAPI.appRunnerDetectJdks) {
+        const res = await window.electronAPI.appRunnerDetectJdks(selectedPath);
+        if (res && res.ok && res.data && Array.isArray(res.data.all)) {
+          jdks = res.data.all;
+        }
+      }
+    } catch (_) {}
+
+    cachedDetectedJdks = jdks;
+    sdkSelect.innerHTML = '';
+
+    const defaultOpt = document.createElement('option');
+    defaultOpt.value = '';
+    defaultOpt.textContent = '<Default SDK (Automático / JAVA_HOME)>';
+    sdkSelect.appendChild(defaultOpt);
+
+    let foundSelected = false;
+    const normTarget = String(selectedPath || '').trim().replace(/\\/g, '/').toLowerCase();
+
+    for (const jdk of jdks) {
+      const opt = document.createElement('option');
+      opt.value = jdk.homePath;
+      opt.textContent = `${jdk.displayName} [${jdk.source}]`;
+      const normHome = String(jdk.homePath || '').replace(/\\/g, '/').toLowerCase();
+      if (normTarget && normHome === normTarget) {
+        opt.selected = true;
+        foundSelected = true;
+      }
+      sdkSelect.appendChild(opt);
+    }
+
+    if (selectedPath && !foundSelected) {
+      const customOpt = document.createElement('option');
+      customOpt.value = selectedPath;
+      customOpt.textContent = `${selectedPath} [Custom]`;
+      customOpt.selected = true;
+      sdkSelect.appendChild(customOpt);
+    }
+
+    // Atualiza hint e badge
+    const curOpt = sdkSelect.selectedOptions ? sdkSelect.selectedOptions[0] : null;
+    if (sdkSelect.value && curOpt) {
+      if (sdkHint) sdkHint.textContent = curOpt.textContent;
+      const match = curOpt.textContent.match(/(\d+)/);
+      if (jdkBadge && match) jdkBadge.textContent = `Java ${match[1]}`;
+    } else {
+      if (sdkHint) sdkHint.textContent = 'Auto (JAVA_HOME)';
+    }
   }
 
   function switchMode(newMode) {
@@ -175,6 +282,9 @@
     const disabledEnvs = config.disabledEnvs || config.disabledKeys || [];
     populateEnvTable(envMap, disabledEnvs);
 
+    // Popula o dropdown de SDKs de forma assíncrona
+    populateJdkDropdown(config.selectedJdkPath || '');
+
     const detailsEl = modal.querySelector('#app-runner-cfg-sync-details');
     const syncTime = config.lastSync || config.lastModified || (config.extractedFromIntelliJ && config.extractedFromIntelliJ.extractedAt);
     if (syncTime) {
@@ -228,11 +338,17 @@
       disabledEnvs = parsed.disabledEnvs;
     }
 
+    const sdkSelect = modal.querySelector('#app-runner-cfg-sdk-select');
+    const selectedJdkPath = (sdkSelect?.value || '').trim();
+    const selectedJdkName = sdkSelect?.selectedOptions ? (sdkSelect.selectedOptions[0]?.textContent || '') : '';
+
     const payload = {
       activeProfiles: (modal.querySelector('#app-runner-cfg-profiles')?.value || '').trim(),
       vmOptions: (modal.querySelector('#app-runner-cfg-vm-options')?.value || '').trim(),
       programArgs: (modal.querySelector('#app-runner-cfg-prog-args')?.value || '').trim(),
       programArguments: (modal.querySelector('#app-runner-cfg-prog-args')?.value || '').trim(),
+      selectedJdkPath,
+      selectedJdkName,
       useIntelliJFallback: modal.querySelector('#app-runner-cfg-intellij-fallback')?.checked !== false,
       envVars: env,
       env: env,

@@ -205,15 +205,19 @@ class RunnerProcess extends EventEmitter {
 
       const envKeys = Object.keys(customEnv);
       const envInfo = envKeys.length > 0
-        ? `\x1b[90m⚙ Variáveis (${envKeys.length}):\x1b[0m ${envKeys.join(', ')}\n`
+        ? `\x1b[90m[ENV] Variaveis (${envKeys.length}):\x1b[0m ${envKeys.join(', ')}\n`
         : '';
       const profilesInfo = (runMeta && runMeta.activeProfiles)
-        ? `\x1b[90m🌱 Perfis Ativos:\x1b[0m \x1b[32m${runMeta.activeProfiles}\x1b[0m\n`
+        ? `\x1b[90m[PROFILES] Perfis Ativos:\x1b[0m \x1b[32m${runMeta.activeProfiles}\x1b[0m\n`
+        : '';
+      const sdkInfo = (runMeta && runMeta.selectedJdk)
+        ? `\x1b[90m[SDK] JDK Utilizada:\x1b[0m \x1b[33m${runMeta.selectedJdk}\x1b[0m\n`
         : '';
 
-      const initHeader = `\x1b[90m▶ Executando:\x1b[0m \x1b[36m${displayCmd}\x1b[0m\n` +
-                         `\x1b[90m📁 Diretório:\x1b[0m ${cwd}\n` +
-                         (env.JAVA_HOME ? `\x1b[90m☕ JAVA_HOME:\x1b[0m ${env.JAVA_HOME}\n` : '') +
+      const initHeader = `\x1b[90m[RUN] Executando:\x1b[0m \x1b[36m${displayCmd}\x1b[0m\n` +
+                         `\x1b[90m[DIR] Diretorio:\x1b[0m ${cwd}\n` +
+                         (env.JAVA_HOME ? `\x1b[90m[JDK] JAVA_HOME:\x1b[0m ${env.JAVA_HOME}\n` : '') +
+                         sdkInfo +
                          profilesInfo +
                          envInfo +
                          `\x1b[90m────────────────────────────────────────────────────────────\x1b[0m\n`;
@@ -254,8 +258,8 @@ class RunnerProcess extends EventEmitter {
 
         const footer = `\n\x1b[90m────────────────────────────────────────────────────────────\x1b[0m\n` +
                        (code === 0
-                         ? `\x1b[32m✔ Processo concluído com código 0\x1b[0m\n`
-                         : `\x1b[31m✖ Processo finalizado com código ${code}\x1b[0m\n`);
+                         ? `\x1b[32m[OK] Processo concluido com codigo 0\x1b[0m\n`
+                         : `\x1b[31m[ERR] Processo finalizado com codigo ${code}\x1b[0m\n`);
         this._emitChunk(footer);
         this.emit('status', this.getStatus());
         this.emit('exit', { code, status: this._status });

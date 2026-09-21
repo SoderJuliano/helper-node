@@ -36,6 +36,24 @@
           </div>
 
           <div class="app-runner-config-section">
+            <div class="app-runner-config-section-header">
+              <label class="app-runner-config-label" for="app-runner-cfg-sdk-select" title="Selecione o SDK (Java Development Kit) para execução deste projeto">
+                <span>SDK (Java Development Kit)</span>
+              </label>
+              <span class="app-runner-config-hint" id="app-runner-cfg-sdk-hint">Auto (JAVA_HOME)</span>
+            </div>
+            <div class="app-runner-sdk-row">
+              <select id="app-runner-cfg-sdk-select" class="app-runner-config-select">
+                <option value="">&lt;Default SDK (JAVA_HOME)&gt;</option>
+              </select>
+              <button type="button" class="app-runner-btn-secondary" id="app-runner-cfg-btn-add-jdk" title="Adicionar JDK a partir de um diretório no disco local">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+                <span>Adicionar do Disco...</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="app-runner-config-section">
             <label class="app-runner-config-label" for="app-runner-cfg-profiles" title="Define a propriedade --spring.profiles.active na inicialização">
               <span>Perfis Ativos (Spring Profiles)</span>
             </label>

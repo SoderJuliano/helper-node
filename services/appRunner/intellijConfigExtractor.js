@@ -542,6 +542,8 @@ class IntelliJConfigExtractor {
           vmOptions,
           programArgs,
           programArguments: programArgs,
+          selectedJdkPath: data.selectedJdkPath || data.selectedJdkHome || '',
+          selectedJdkName: data.selectedJdkName || data.selectedJdk || '',
           envVars,
           env: envVars,
           disabledEnvs,
@@ -658,12 +660,17 @@ class IntelliJConfigExtractor {
       ? partialConfig.disabledEnvs.filter(k => typeof k === 'string')
       : (Array.isArray(current.disabledEnvs) ? current.disabledEnvs : []);
 
+    const selectedJdkPath = partialConfig.selectedJdkPath !== undefined ? String(partialConfig.selectedJdkPath).trim() : (current.selectedJdkPath || '');
+    const selectedJdkName = partialConfig.selectedJdkName !== undefined ? String(partialConfig.selectedJdkName).trim() : (current.selectedJdkName || '');
+
     const updatedConfig = {
       ...current,
       activeProfiles,
       vmOptions,
       programArgs,
       programArguments: programArgs,
+      selectedJdkPath,
+      selectedJdkName,
       envVars: updatedEnvVars,
       env: updatedEnvVars,
       disabledEnvs,
