@@ -9,11 +9,14 @@ const answerBank = require('../answerBank');
 const fs = require('fs');
 
 let running = false;
+let isStarting = false;
+let isStopping = false;
 let resultCallback = null;
 let levelCallback = null;
 let loadingCallback = null;
 let inFlight = 0;
 let config = {};
+let currentAbortController = null;
 // Última pergunta do entrevistador (sys), pra parear com a SUA resposta (mic) e
 // alimentar o banco de respostas em background.
 let lastInterviewerQuestion = '';
@@ -21,7 +24,7 @@ let lastInterviewerQuestion = '';
 let lastClosedSys = null; // { turnId, text, closedAt }
 // Se o proximo segmento sys fechar dentro desta janela apos o anterior, tratamos
 // como continuacao da MESMA pergunta (pausa pra respirar) em vez de fala nova.
-const CONTINUATION_WINDOW_MS = 3000;
+const CONTINUATION_WINDOW_MS = 3500;
 
 // Avalia a SUA resposta em background (sem travar a sessão) e, se a nota for boa,
 // guarda o par pergunta→resposta no banco. Silencioso: nada vai pra tela.
@@ -70,126 +73,139 @@ function onLoading(cb) {
 }
 
 /**
- * Inicia o assistente de tradução.
+ * Atualiza a configuração em tempo de execução sem reiniciar o áudio.
+ * @param {object} newCfg
+ */
+function updateConfig(newCfg = {}) {
+  config = { ...config, ...newCfg };
+  console.log('[TranslationAssistant] configuração atualizada em tempo de execução.');
+}
+
+/**
+ * Inicia o assistente de tradução com proteção contra concorrência.
  * @param {object} cfg
- * @param {string} cfg.apiKey
- * @param {string} cfg.userName
- * @param {string} cfg.userBackground
- * @param {string} cfg.targetLanguage
  */
 async function start(cfg) {
-  if (running) {
-    console.log('[TranslationAssistant] já está rodando, ignorando start().');
+  if (running || isStarting) {
+    console.log('[TranslationAssistant] já está rodando ou iniciando, atualizando configurações.');
+    updateConfig(cfg);
     return;
   }
-  config = cfg;
-  running = true;
+  isStarting = true;
+  config = { ...config, ...cfg };
   lastClosedSys = null;
 
   console.log('[TranslationAssistant] iniciando...');
 
-  await startVAD({
-    // Mic escolhido pelo usuário nas Configurações (vazio = auto). O sys (áudio
-    // do sistema) continua automático (sink ativo).
-    micTarget: config.micDevice || undefined,
-    // Nível de áudio em tempo real → barra de volume na UI.
-    onLevel: (source, rms) => { if (levelCallback) levelCallback(source, rms); },
-    // source: 'mic' = microfone do candidato, 'sys' = monitor do sistema (entrevistador)
-    onSpeechEnd: async (audioPath, source, metadata = {}) => {
-      // "Processando" = tem requisição em voo (transcrição/tradução na OpenAI).
-      // Liga o loading na UI enquanto a resposta daquele trecho não chega.
-      inFlight++;
-      if (loadingCallback) loadingCallback(inFlight > 0);
-      try {
-        // MIC = você: transcreve e MOSTRA na tela (feedback do que você falou),
-        // mas NÃO traduz/sugere — tradução é só pro entrevistador (design).
-        if (source === 'mic') {
-          const rawMic = await transcribeAudio(audioPath, config.apiKey);
-          const myText = cleanTranscription(rawMic || '');
-          if (myText && myText.trim().length >= 3) {
-            if (resultCallback) resultCallback({ transcript: myText, response: '', mode: 'candidate' });
-            // Banco de respostas: pareia a SUA resposta com a última pergunta do
-            // entrevistador e avalia/guarda em background (fire-and-forget, não trava).
-            if (lastInterviewerQuestion) {
-              scoreAndStore(lastInterviewerQuestion, myText.trim());
-              lastInterviewerQuestion = '';
-            }
-          }
-          return;
-        }
-
-        const rawTranscript = await transcribeAudio(audioPath, config.apiKey);
-        const cleanedSys = cleanTranscription(rawTranscript || '');
-
-        // Ignora transcrições vazias, ruído ou alucinações ("Thank you for watching", etc.)
-        if (!cleanedSys || cleanedSys.trim().length < 3) return;
-        const trimmed = cleanedSys.trim();
-        lastInterviewerQuestion = trimmed;
-
-        // Continuacao de fala: se o ultimo trecho do entrevistador fechou ha pouco
-        // tempo (pausa pra respirar, nao fim de pergunta) ou se o trecho anterior foi
-        // forçado por limite de tempo, junta os textos e reprocessa a pergunta INTEIRA.
-        const prevClosed = lastClosedSys;
-        const isContinuation = !!(
-          prevClosed &&
-          (metadata.forceCut || prevClosed.forceCut || (Date.now() - prevClosed.closedAt) <= CONTINUATION_WINDOW_MS)
-        );
-        const transcript = isContinuation ? `${prevClosed.text} ${trimmed}`.trim() : trimmed;
-
-        console.log(`[TranslationAssistant] sys (entrevistador): ${transcript.substring(0, 80)}...`);
-
-        // id estável do turno: reutiliza o id anterior se for uma continuação,
-        // permitindo que os renderizadores atualizem a transcrição e resposta inline.
-        const turnId = isContinuation && prevClosed ? prevClosed.turnId : `ta-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-
-        // Manda o transcrito IMEDIATAMENTE após terminar a transcrição (Prioridade 3 na UI).
-        // Isso faz com que a pergunta apareça em <1.5s, mesmo antes do GPT gerar a resposta.
-        if (resultCallback) {
-          resultCallback({ id: turnId, transcript, response: '', mode: 'interviewer', streaming: true });
-        }
-
-        const response = await getTranslationAndSuggestion(
-          transcript,
-          {
-            userName: config.userName,
-            userBackground: config.userBackground,
-            targetLanguage: config.targetLanguage,
-          },
-          config.apiKey,
-          {
-            // Streaming: emite o texto acumulado a cada pedaço.
-            onDelta: (partial) => {
-              if (resultCallback) resultCallback({ id: turnId, transcript, response: partial, mode: 'interviewer', streaming: true });
-            },
-          }
-        );
-
-        // response === null → filler já descartado no openaiClient (nada renderizado).
-        // Senão, manda o resultado FINAL (streaming:false) pra fechar o bloco.
-        if (response && resultCallback) {
-          resultCallback({ id: turnId, transcript, response, mode: 'interviewer', streaming: false });
-        }
-        lastClosedSys = { turnId, text: transcript, closedAt: Date.now(), forceCut: !!metadata.forceCut };
-      } catch (err) {
-        console.error('[TranslationAssistant] erro no processamento:', err.message);
-      } finally {
-        inFlight = Math.max(0, inFlight - 1);
+  try {
+    await startVAD({
+      micTarget: config.micDevice || undefined,
+      onLevel: (source, rms) => { if (levelCallback) levelCallback(source, rms); },
+      onSpeechEnd: async (audioPath, source, metadata = {}) => {
+        inFlight++;
         if (loadingCallback) loadingCallback(inFlight > 0);
-        // Limpa o WAV temporário criado pelo VAD
-        try { if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath); } catch (_) {}
-      }
-    },
-  });
+        try {
+          if (source === 'mic') {
+            const rawMic = await transcribeAudio(audioPath, config.apiKey);
+            const myText = cleanTranscription(rawMic || '');
+            if (myText && myText.trim().length >= 3) {
+              if (resultCallback) resultCallback({ transcript: myText, response: '', mode: 'candidate' });
+              if (lastInterviewerQuestion) {
+                scoreAndStore(lastInterviewerQuestion, myText.trim());
+                lastInterviewerQuestion = '';
+              }
+            }
+            return;
+          }
+
+          const rawTranscript = await transcribeAudio(audioPath, config.apiKey);
+          const cleanedSys = cleanTranscription(rawTranscript || '');
+
+          if (!cleanedSys || cleanedSys.trim().length < 3) return;
+          const trimmed = cleanedSys.trim();
+          lastInterviewerQuestion = trimmed;
+
+          const prevClosed = lastClosedSys;
+          const isContinuation = !!(
+            prevClosed &&
+            (metadata.forceCut || prevClosed.forceCut || (Date.now() - prevClosed.closedAt) <= CONTINUATION_WINDOW_MS)
+          );
+          const transcript = isContinuation ? `${prevClosed.text} ${trimmed}`.trim() : trimmed;
+
+          console.log(`[TranslationAssistant] sys (entrevistador): ${transcript.substring(0, 80)}...`);
+
+          const turnId = isContinuation && prevClosed ? prevClosed.turnId : `ta-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+          // Cancela qualquer streaming do GPT em voo anterior para evitar sobreposição de deltas na tela
+          if (currentAbortController) {
+            try { currentAbortController.abort(); } catch (_) {}
+          }
+          currentAbortController = new AbortController();
+          const signal = currentAbortController.signal;
+
+          // Emite o transcrito imediatamente
+          if (resultCallback) {
+            resultCallback({ id: turnId, transcript, response: '', mode: 'interviewer', streaming: true });
+          }
+
+          const response = await getTranslationAndSuggestion(
+            transcript,
+            {
+              userName: config.userName,
+              userBackground: config.userBackground,
+              targetLanguage: config.targetLanguage,
+            },
+            config.apiKey,
+            {
+              signal,
+              onDelta: (partial) => {
+                if (!signal.aborted && resultCallback) {
+                  resultCallback({ id: turnId, transcript, response: partial, mode: 'interviewer', streaming: true });
+                }
+              },
+            }
+          );
+
+          if (response && !signal.aborted && resultCallback) {
+            resultCallback({ id: turnId, transcript, response, mode: 'interviewer', streaming: false });
+          }
+          lastClosedSys = { turnId, text: transcript, closedAt: Date.now(), forceCut: !!metadata.forceCut };
+        } catch (err) {
+          if (!err.name || err.name !== 'AbortError') {
+            console.error('[TranslationAssistant] erro no processamento:', err.message);
+          }
+        } finally {
+          inFlight = Math.max(0, inFlight - 1);
+          if (loadingCallback) loadingCallback(inFlight > 0);
+          try { if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath); } catch (_) {}
+        }
+      },
+    });
+    running = true;
+  } finally {
+    isStarting = false;
+  }
 }
 
 /**
- * Para o assistente e libera recursos.
+ * Para o assistente e libera recursos de forma segura.
  */
 async function stop() {
+  if (!running && !isStarting) return;
+  if (isStopping) return;
+  isStopping = true;
   running = false;
   inFlight = 0;
+  if (currentAbortController) {
+    try { currentAbortController.abort(); } catch (_) {}
+    currentAbortController = null;
+  }
   if (loadingCallback) loadingCallback(false);
-  await stopVAD();
+  try {
+    await stopVAD();
+  } finally {
+    isStopping = false;
+  }
   console.log('[TranslationAssistant] parado.');
 }
 
@@ -197,4 +213,4 @@ function isActive() {
   return running;
 }
 
-module.exports = { start, stop, onResult, onLevel, onLoading, isActive };
+module.exports = { start, stop, updateConfig, onResult, onLevel, onLoading, isActive };

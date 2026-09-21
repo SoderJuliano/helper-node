@@ -384,10 +384,24 @@ ipcMain.handle("get-translation-assistant-config", () => {
 
 ipcMain.on("set-translation-assistant-config", (event, partial) => {
   configService.setTranslationAssistantConfig(partial || {});
+  const cfg = configService.getConfig();
+  const ta = cfg.translationAssistant || {};
+
+  // Se o assistente já está rodando, atualiza os parâmetros dinamicamente sem reiniciar o áudio
+  if (translationAssistant.isActive && translationAssistant.isActive()) {
+    if (typeof translationAssistant.updateConfig === 'function') {
+      translationAssistant.updateConfig({
+        apiKey: cfg.openIaToken,
+        userName: ta.userName || '',
+        userBackground: ta.userBackground || '',
+        targetLanguage: ta.targetLanguage || 'pt-br',
+        micDevice: ta.micDevice || '',
+      });
+    }
+  }
 
   // Auto-inicia ou para o assistente ao vivo conforme o toggle de habilitação
   if (typeof partial.enabled === 'boolean') {
-    const cfg = configService.getConfig();
     if (partial.enabled) {
       try { require("../nexa/index.js").closeNexaWindow(); configService.setNexaConfig({ enabled: false, onlyNexa: false }); } catch (_) {}
       if (!cfg.openIaToken) {
@@ -400,7 +414,6 @@ ipcMain.on("set-translation-assistant-config", (event, partial) => {
         return;
       }
       if (!translationAssistant.isActive()) {
-        const ta = cfg.translationAssistant || {};
         translationAssistant.start({
           apiKey: cfg.openIaToken,
           userName: ta.userName || '',

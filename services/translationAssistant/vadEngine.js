@@ -62,13 +62,15 @@ const SILENCE_RMS = 300;
 
 // Silêncio contínuo necessário para fechar o segmento (ms)
 // 'mic' = microfone do candidato, 'sys' = áudio do sistema (entrevistador)
-const SILENCE_DURATION = { mic: 1500, sys: 500 };
+// sys aumentado para 1300ms para acomodar pausas naturais de raciocínio do recrutador
+const SILENCE_DURATION = { mic: 1500, sys: 1300 };
 
 // Fala mínima para considerar o segmento válido (evita enviar só ruído)
 const MIN_SPEECH_MS = 400;
 
-// Limite máximo de duração de um segmento
-const MAX_SEGMENT_DURATION = { mic: 60000, sys: 12000 };
+// Limite máximo de duração de um segmento (ms)
+// sys aumentado para 45s para acomodar perguntas situacionais longas ("Imagine this...")
+const MAX_SEGMENT_DURATION = { mic: 60000, sys: 45000 };
 
 const pwProcs = { mic: null, sys: null };
 let active = false;

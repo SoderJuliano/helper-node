@@ -72,6 +72,70 @@
       return d;
     };
 
+    let _rafId = null;
+    const _pendingUpdates = new Map();
+
+    const _flushPendingUpdates = () => {
+      _rafId = null;
+      const el = document.getElementById('transcription');
+      if (!el) return;
+
+      const isNearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 140;
+
+      for (const [id, data] of _pendingUpdates.entries()) {
+        let block = id ? el.querySelector(`[data-ta-id="${id}"]`) : null;
+        if (!block) {
+          block = document.createElement('div');
+          block.className = 'interaction-block';
+          if (id) block.dataset.taId = id;
+          el.appendChild(block);
+        }
+
+        if (data.transcript && data.transcript.trim()) {
+          let orig = block.querySelector('.ta-original');
+          if (!orig) {
+            orig = document.createElement('div');
+            orig.className = 'ta-original';
+            block.insertBefore(orig, block.firstChild);
+          }
+          const who = data.mode === 'candidate' ? '👤 Você: ' : '🎧 Entrevistador: ';
+          const fullWho = who + data.transcript;
+          if (orig.textContent !== fullWho) {
+            orig.textContent = fullWho;
+          }
+        }
+
+        if (data.response && data.response.trim()) {
+          let resp = block.querySelector('.ia-response');
+          if (!resp) {
+            resp = document.createElement('div');
+            resp.className = 'ia-response';
+            resp.style.cssText = 'white-space: pre-wrap;';
+            block.appendChild(resp);
+          }
+          const formatted = typeof window.formatOpenAIResponse === 'function'
+            ? window.formatOpenAIResponse(data.response)
+            : data.response;
+          if (resp.innerHTML !== formatted) {
+            resp.innerHTML = formatted;
+          }
+        }
+      }
+      _pendingUpdates.clear();
+
+      // Smart Scroll: só rola automaticamente se o usuário já estiver colado no final
+      if (isNearBottom && typeof window.scrollTranscriptionToBottom === 'function') {
+        window.scrollTranscriptionToBottom('auto');
+      }
+    };
+
+    const _scheduleUpdate = (id, data) => {
+      _pendingUpdates.set(id || 'default', data);
+      if (!_rafId) {
+        _rafId = requestAnimationFrame(_flushPendingUpdates);
+      }
+    };
+
     window.electronAPI.onTranslationResult((data) => {
       const el = document.getElementById('transcription');
       if (!el) return;
@@ -84,48 +148,9 @@
         el.appendChild(_taMeta(`— Pergunta ${data.index} de ${data.total} —`));
       } else if (status === 'done' || !status) {
         _taShow(`🎤 Fale agora — até 40s`, false);
-        let block = data.id ? el.querySelector(`[data-ta-id="${data.id}"]`) : null;
-        if (!block) {
-          block = document.createElement('div');
-          block.className = 'interaction-block';
-          if (data.id) block.dataset.taId = data.id;
-          if (data.transcript && data.transcript.trim()) {
-            const orig = document.createElement('div');
-            orig.className = 'ta-original';
-            const who = data.mode === 'candidate' ? '👤 Você: ' : '🎧 Entrevistador: ';
-            orig.textContent = who + data.transcript;
-            block.appendChild(orig);
-          }
-          el.appendChild(block);
-        } else {
-          if (data.transcript && data.transcript.trim()) {
-            let orig = block.querySelector('.ta-original');
-            if (!orig) {
-              orig = document.createElement('div');
-              orig.className = 'ta-original';
-              block.insertBefore(orig, block.firstChild);
-            }
-            const who = data.mode === 'candidate' ? '👤 Você: ' : '🎧 Entrevistador: ';
-            orig.textContent = who + data.transcript;
-          }
-        }
-        if (data.response && data.response.trim()) {
-          let resp = block.querySelector('.ia-response');
-          if (!resp) {
-            resp = document.createElement('div');
-            resp.className = 'ia-response';
-            resp.style.cssText = 'white-space: pre-wrap;';
-            block.appendChild(resp);
-          }
-          resp.innerHTML = typeof window.formatOpenAIResponse === 'function'
-            ? window.formatOpenAIResponse(data.response)
-            : data.response;
-        }
+        _scheduleUpdate(data.id, data);
       } else if (status === 'listening') {
         _taShow('🎤 Fale agora — até 40s', false);
-      }
-      if (typeof window.scrollTranscriptionToBottom === 'function') {
-        window.scrollTranscriptionToBottom('auto');
       }
     });
   }

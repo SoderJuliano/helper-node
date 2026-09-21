@@ -64,7 +64,7 @@ async function transcribeAudio(audioPath, apiKey, options = {}) {
 // Mencionar tecnologia (Java, React) sozinho NÃO ativa o modo código.
 const CODE_REQUEST_RE = /\b(write (a |an |the )?(function|method|class|snippet|code|example|program|query|component|test|loop|algorithm)|escreva (uma |um |o )?(fun[çc][ãa]o|m[ée]todo|classe|c[oó]digo|exemplo|programa|consulta|componente|teste|loop|algoritmo)|implement (a |an |the )?|implementa (uma |um )?|give (me )?(a |an )?(code|example|snippet|implementation)|me d[êe] (um |o )?(exemplo|c[oó]digo|trecho)|show me (a |an |the |some )?(code|example|snippet|implementation)|me mostre? (um |o |a )?(c[oó]digo|exemplo|trecho)|como (escrever|implementar|fazer) (uma? |um )?(fun[çc][ãa]o|c[oó]digo|m[ée]todo|classe|algoritmo)|how (would|do|to) (you |i )?(write|implement|code|build|create)|c[oó]digo (de|para|que)|exemplo de c[oó]digo|code example|coding (challenge|question|exercise)|leetcode|live coding)\b/i;
 
-async function callGPT(systemPrompt, userContent, model, apiKey, onDelta = null) {
+async function callGPT(systemPrompt, userContent, model, apiKey, onDelta = null, signal = null) {
   const chatPayload = {
     model,
     messages: [
@@ -83,6 +83,7 @@ async function callGPT(systemPrompt, userContent, model, apiKey, onDelta = null)
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(chatPayload),
+    signal,
   });
 
   if (!res.ok) {
@@ -96,6 +97,7 @@ async function callGPT(systemPrompt, userContent, model, apiKey, onDelta = null)
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(chatPayload),
+        signal,
       });
     }
     if (!res.ok) {
@@ -115,6 +117,10 @@ async function callGPT(systemPrompt, userContent, model, apiKey, onDelta = null)
   let content = '';
 
   while (true) {
+    if (signal && signal.aborted) {
+      try { reader.cancel(); } catch (_) {}
+      break;
+    }
     const { done, value } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
@@ -167,48 +173,52 @@ async function getTranslationAndSuggestion(transcript, { userName, userBackgroun
   
   const model = opts.forceModel || (isCodeRequest ? 'gpt-4.1' : 'gpt-4o-mini');
 
-  const suggestionPrompt = `Você é um ASSISTENTE DE ENTREVISTAS DE EMPREGO TÉCNICAS E PROGRAMAÇÃO.
-Usuário: ${userName || 'o candidato'}
-Background: ${userBackground || 'não informado'}
+  const defaultBackground = 'Senior Software Engineer com experiência sólida em microsserviços escaláveis, Java (Spring Boot, Quarkus), Kotlin, .NET (SDK 5-8), Node.js/NestJS, Python, Go, Apache Kafka, Oracle, MongoDB, AWS, Docker, Kubernetes, CI/CD e observabilidade (Dynatrace, Kibana). Experiência prática em e-commerce e varejo de grande porte (Grupo Casas Bahia).';
 
-Sua tarefa é sugerir uma resposta direta no idioma da pergunta (geralmente inglês), pronta para o candidato falar em voz alta de forma muito simples, natural e tranquila.
+  const suggestionPrompt = `Você é um COPILOTO DE ENTREVISTAS TÉCNICAS E COMPORTAMENTAIS PARA ENGENHARIA DE SOFTWARE SÊNIOR.
+Candidato: ${userName || 'Juliano Soder'}
+Perfil & Experiência Real: ${userBackground || defaultBackground}
 
-DIRETRIZES CRÍTICAS DE IDIOMA E SIMPLICIDADE:
-- INGLÊS ULTRA-SIMPLES E DIRETO ("PLAIN SPOKEN ENGLISH" / NÍVEL BÁSICO A2/B1):
-  * Quem está usando este copiloto NÃO é nativo e precisa ler em voz alta em 3 segundos sem gaguejar.
-  * Use APENAS palavras curtas, básicas e fáceis de pronunciar por brasileiros (ex: "fast", "slow", "easy", "better", "use", "need", "simple", "in my daily work", "I prefer").
-  * Use frases muito curtas (estrutura direta: Sujeito + Verbo + Objeto).
-  * NUNCA use palavras difíceis, pomposas ou acadêmicas (PROIBIDO: "backed by", "amortized", "resizable", "doubly linked nodes", "decoupled", "alleviate", "under the hood", "time complexity", etc.).
-- RESPOSTA CURTA (1 A 2 FRASES NO MÁXIMO):
-  * Diga apenas a diferença principal e o que você usa no dia a dia.
-  * Exemplo ("What is the difference between LinkedList and ArrayList?"):
-    "**ArrayList** is much faster to search and get items by index. **LinkedList** is better to add or remove items, but slower to search. In my projects, I use **ArrayList** most of the time."
-  * Exemplo ("What is SOLID?"):
-    "**SOLID** is five simple rules to write clean code and avoid bugs. I use it every day to keep my services small and easy to test."
-  * Exemplo ("How do you build APIs in Java?"):
-    "I use **Java** with **Spring Boot** to build REST APIs, **PostgreSQL** or **MongoDB** for database, and **Docker** to run the services."
-- PRIMEIRA PESSOA: Fale como o próprio candidato ("I use...", "In my experience...", "Basically, ArrayList is...").
-- TOLERÂNCIA A ERROS DE TRANSCRIÇÃO (STT): Se a pergunta vier com erros de áudio (ex: "a RAIL list" -> "ArrayList", "doctor" -> "Docker", "coube netes" -> "Kubernetes", "post gres" -> "PostgreSQL", "spring put" -> "Spring Boot"), deduza o termo técnico real e responda sobre ele.
-- PEDIDO DE CÓDIGO: Apenas se o entrevistador pedir expressamente ("write a function", "show me the code"), forneça o código em bloco \`\`\`<linguagem>\n<código>\n\`\`\` acompanhado de 1 frase simples.
-- DESTAQUE VISUAL: Destaque os termos técnicos em **negrito** para leitura rápida.
-- Responda APENAS com a sugestão direta. NÃO inclua saudações, introduções ("Certainly!", "Sure!") nem prefixos como "RESPOSTA:".`;
+Sua missão é sugerir uma resposta direta no idioma da pergunta (geralmente inglês), pronta para o candidato falar em voz alta com naturalidade, firmeza técnica e clareza.
+
+DIRETRIZES ESSENCIAIS DE RESPOSTA:
+1. ANCORAGEM NO HISTÓRICO REAL (SENIOR LEVEL):
+   - NUNCA dê respostas de iniciante/livro didático nem curiosidades teóricas aleatórias (ex.: não mencione novidades obscuras de versões a menos que perguntado).
+   - Quando questionado sobre experiência prática, ferramentas ou arquitetura, ancore na vivência de produção (ex.: "In my daily work with Spring Boot and Kafka...", "In our microservices architecture...", "At Grupo Casas Bahia, we handle high-throughput event-driven flows...").
+2. ESTRUTURA PARA CENÁRIOS E PERGUNTAS COMPORTAMENTAIS (STAR / SITUAÇÃO-PROBLEMA):
+   - Se a pergunta for situacional ("Imagine this...", "How would you handle a failure in...", "Tell me about a challenge..."):
+     * Estruture em 2 ou 3 frases práticas: Contexto/Diagnóstico -> Ação Prática de Engenharia (ex.: retries com exponential backoff, Dead Letter Queue no Kafka, circuit breaker, logs no Kibana/Dynatrace) -> Resultado seguro.
+3. OBJETIVIDADE E PRONÚNCIA FLUIDA:
+   - Respostas faláveis em 10 a 15 segundos (máximo 3 frases diretas e conectadas).
+   - Use vocabulário claro, profissional e direto, sem jargões acadêmicos pedantes.
+4. PRIMEIRA PESSOA:
+   - Fale diretamente como o candidato ("I usually...", "In my daily work...", "I prefer using...").
+5. TOLERÂNCIA A ERROS DE TRANSCRIÇÃO (STT):
+   - Se a pergunta contiver pequenas falhas de áudio, deduza o conceito real e responda sobre ele.
+6. PEDIDO DE CÓDIGO:
+   - Apenas se expressamente solicitado ("write a function", "show me code"), forneça bloco de código com 1 frase explicativa.
+7. DESTAQUE VISUAL:
+   - Destaque tecnologias e decisões centrais em **negrito** para leitura visual imediata.
+8. FORMATO:
+   - Retorne APENAS a resposta a ser falada. NÃO adicione prefixos como "RESPOSTA:", introduções ou saudações.`;
 
   const translationPrompt = `Você é um tradutor especialista em entrevistas técnicas de TI e engenharia de software.
 Sua tarefa é traduzir a fala do entrevistador para o idioma-alvo: ${targetLanguage}.
 
 Regras para a tradução:
 - Traduza o texto de forma clara, natural, precisa e direta no jargão técnico de desenvolvimento.
-- TOLERÂNCIA A ERROS DE TRANSCRIÇÃO (STT): Se a fala original em áudio tiver pequenas distorções fonéticas de termos técnicos (ex: "a RAIL list" ou "rail list" em vez de "ArrayList", "doctor" em vez de "Docker", "coube netes" em vez de "Kubernetes"), deduza o termo técnico real pretendido e traduza corretamente para o conceito correto (ex: "Qual é a diferença entre LinkedList e ArrayList?").
+- TOLERÂNCIA A ERROS DE TRANSCRIÇÃO (STT): Se a fala original em áudio tiver pequenas distorções fonéticas de termos técnicos (ex: "a RAIL list" -> "ArrayList", "doctor" -> "Docker", "coube netes" -> "Kubernetes"), deduza o termo técnico real pretendido e traduza corretamente para o conceito pretendido.
 - Responda APENAS com o texto traduzido para ${targetLanguage}. NÃO adicione nenhum prefixo como "TRADUÇÃO:", introduções, explicações ou notas de rodapé.`;
 
   const onDelta = typeof opts.onDelta === 'function' ? opts.onDelta : null;
+  const signal = opts.signal || null;
 
   try {
     if (!onDelta) {
       // Modo não-streaming (Promise.all simples)
       const [suggestionText, translationText] = await Promise.all([
-        callGPT(suggestionPrompt, userContent, model, apiKey),
-        callGPT(translationPrompt, transcript, model, apiKey),
+        callGPT(suggestionPrompt, userContent, model, apiKey, null, signal),
+        callGPT(translationPrompt, transcript, model, apiKey, null, signal),
       ]);
       console.log(`[TranslationAssistant] modelo usado: ${model} (codeRequest=${isCodeRequest}, stream=off, parallel=on)`);
       return `TRADUÇÃO: ${translationText.trim()}\n\nRESPOSTA: ${suggestionText.trim()}`;
@@ -220,6 +230,7 @@ Regras para a tradução:
     let lastEmit = 0;
 
     const emit = (force = false) => {
+      if (signal && signal.aborted) return;
       const now = Date.now();
       if (force || now - lastEmit > 60) {
         lastEmit = now;
@@ -232,17 +243,21 @@ Regras para a tradução:
       callGPT(suggestionPrompt, userContent, model, apiKey, (delta) => {
         currentResponse = delta;
         emit();
-      }),
+      }, signal),
       callGPT(translationPrompt, transcript, model, apiKey, (delta) => {
         currentTranslation = delta;
         emit();
-      }),
+      }, signal),
     ]);
 
     emit(true); // flush final
     console.log(`[TranslationAssistant] modelo usado: ${model} (codeRequest=${isCodeRequest}, stream=on, parallel=on)`);
     return `TRADUÇÃO: ${currentTranslation}\n\nRESPOSTA: ${currentResponse}`;
   } catch (err) {
+    if (signal && signal.aborted) {
+      console.log('[TranslationAssistant] request abortado por novo turno.');
+      return null;
+    }
     if (model !== 'gpt-4o-mini') {
       console.warn(`[TranslationAssistant] ${model} indisponível, fallback para gpt-4o-mini (parallel)`);
       return getTranslationAndSuggestion(transcript, { userName, userBackground, targetLanguage }, apiKey, { ...opts, forceModel: 'gpt-4o-mini' });
