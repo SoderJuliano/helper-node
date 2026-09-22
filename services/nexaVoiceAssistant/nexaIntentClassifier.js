@@ -20,25 +20,36 @@ function escapeRegex(str) {
 
 // Padrões de ativação por Wake Word estritos e variações fonéticas válidas
 const BASE_WAKE_WORDS = "nexa|n[eéè]xa|nexxa|neksa|naxa|neza|dexa|decsa|nanax|nanaxa|nanex|nanexa|nanac|nanak|neca|neka|nex|nax|nexia|anexa|messa|mexa";
+const RAPHAEL_WAKE_WORDS = "rafael|raphael|rafaela|raphaela|rafaele|raphaele|rafaeli|rafaely|rafaelly|rafa|rapha|rafinha|raffa|raffael|raffaela|raffaele|rafe|rafi|raf|raff|java-?file|ja-?file|j-?file|grafael|hafael|hafa|rachel|raquel|da\\s+fael|a\\s+fael|pra\\s+fael|pro\\s+fael";
 
 function getWakeWordPattern(customName) {
-  if (!customName || String(customName).trim().toLowerCase() === "nexa") {
-    return BASE_WAKE_WORDS;
+  const parts = new Set();
+
+  for (const w of BASE_WAKE_WORDS.split("|")) parts.add(w);
+  for (const w of RAPHAEL_WAKE_WORDS.split("|")) parts.add(w);
+
+  if (customName && typeof customName === "string") {
+    const clean = stripAccents(customName.trim()).toLowerCase();
+    if (clean && clean !== "nexa" && clean !== "raphael" && clean !== "rafael") {
+      const esc = escapeRegex(clean);
+      parts.add(esc);
+      if (clean.includes("ph")) parts.add(escapeRegex(clean.replace(/ph/g, "f")));
+      if (clean.includes("f")) parts.add(escapeRegex(clean.replace(/f/g, "ph")));
+      parts.add(`${esc}inha`);
+      parts.add(`${esc}inho`);
+      parts.add(`${esc}a`);
+      parts.add(`${esc}e`);
+    }
   }
-  const clean = stripAccents(String(customName).trim());
-  const esc = escapeRegex(clean);
-  let variations = esc;
-  if (/^raph?ael$/i.test(clean)) {
-    variations = "rafael|raphael|rafa|rafinha";
-  }
-  return `${BASE_WAKE_WORDS}|${variations}`;
+
+  return Array.from(parts).join("|");
 }
 
-const WAKE_WORD_EXACT = new RegExp(`\\b(${BASE_WAKE_WORDS})\\b`, "i");
-const WAKE_WORD_WITH_GREETING = new RegExp(`\\b(?:ei|oi|ol[aá]|fala|opa|bom\\s+dia|boa\\s+tarde|boa\\s+noite|al[oô]|e\\s+a[ií]|perfeito|beleza|show|pronto|certo|ent[aã]o|ok|por\\s+favor)\\s+(?:${BASE_WAKE_WORDS}|nessa|dessa|dexa|deixa|decsa)\\b`, "i");
-const WAKE_WORD_WITH_VOCATIVE = new RegExp(`\\b(?:${BASE_WAKE_WORDS}|nessa|dessa|dexa|deixa|decsa)\\s*[,:!?\\-]+\\s*(?:voc[eê]|vc|eu|tudo|como|o\\s+que|qual|quando|onde|por\\s*que|porque|me|pode|faz|fa[çc]a|d[aá]|ajuda|t[aá]|est[aá]|est[aá]s|tas|a[ií]|escuta|ouve|olha|fala|se|comita|commita|como\\s+imitar|dar|push|\\?)`, "i");
-const WAKE_WORD_PHONETIC_DIRECT = new RegExp(`^(?:nessa|dessa|dexa|deixa|decsa|${BASE_WAKE_WORDS})\\s+(?:voc[eê]|vc)?\\s*(?:est[aá]|t[aá]|est[aá]s|tas)?\\s*(?:a[ií]|me\\s+ouvindo|me\\s+escutando|me\\s+ouve|me\\s+escuta|ouvindo|ouviu|escutou)`, "i");
-const WAKE_WORD_AT_END = new RegExp(`[,\\s]+(?:${BASE_WAKE_WORDS}|dexa|deixa|decsa)\\s*[!?.]*$`, "i");
+const WAKE_WORD_EXACT = new RegExp(`\\b(${BASE_WAKE_WORDS}|${RAPHAEL_WAKE_WORDS})\\b`, "i");
+const WAKE_WORD_WITH_GREETING = new RegExp(`\\b(?:ei|oi|ol[aá]|fala|opa|bom\\s+dia|boa\\s+tarde|boa\\s+noite|al[oô]|e\\s+a[ií]|perfeito|beleza|show|pronto|certo|ent[aã]o|ok|por\\s+favor)\\s+(?:${BASE_WAKE_WORDS}|${RAPHAEL_WAKE_WORDS}|nessa|dessa|dexa|deixa|decsa)\\b`, "i");
+const WAKE_WORD_WITH_VOCATIVE = new RegExp(`\\b(?:${BASE_WAKE_WORDS}|${RAPHAEL_WAKE_WORDS}|nessa|dessa|dexa|deixa|decsa)\\s*[,:!?\\-]+\\s*(?:voc[eê]|vc|eu|tudo|como|o\\s+que|qual|quando|onde|por\\s*que|porque|me|pode|faz|fa[çc]a|d[aá]|ajuda|t[aá]|est[aá]|est[aá]s|tas|a[ií]|escuta|ouve|olha|fala|se|comita|commita|como\\s+imitar|dar|push|\\?)`, "i");
+const WAKE_WORD_PHONETIC_DIRECT = new RegExp(`^(?:nessa|dessa|dexa|deixa|decsa|${BASE_WAKE_WORDS}|${RAPHAEL_WAKE_WORDS})\\s+(?:voc[eê]|vc)?\\s*(?:est[aá]|t[aá]|est[aá]s|tas)?\\s*(?:a[ií]|me\\s+ouvindo|me\\s+escutando|me\\s+ouve|me\\s+escuta|ouvindo|ouviu|escutou)`, "i");
+const WAKE_WORD_AT_END = new RegExp(`[,\\s]+(?:${BASE_WAKE_WORDS}|${RAPHAEL_WAKE_WORDS}|dexa|deixa|decsa)\\s*[!?.]*$`, "i");
 
 // Padrões de links/alucinações ou ruídos que devem ser descartados imediatamente
 const URL_OR_NOISE_PATTERNS = [
@@ -70,9 +81,9 @@ const STOP_COMMAND_PATTERNS = [
   /^(?:para|pare|cancela|cancelar|cala\s+a\s+boca|sil[êe]ncio|chega|stop)[,\s]*(?:nexa|n[eéè]xa)?[!\s.,]*$/i,
 ];
 
-// Padrões de conectores, preposições, verbos auxiliares e finais incompletos de frases (para não cortar no meio da fala)
+// Padrões de conectores, preposições e finais incompletos de frases (para não cortar no meio da fala)
 const INCOMPLETE_SENTENCE_CONNECTORS = [
-  /\b(?:e|ou|mas|que|se|como|para|pra|pro|pras|pros|quando|onde|porque|por\s*que|pq|pois|no|na|nos|nas|do|da|dos|das|com|sem|em|um|uma|uns|umas|tipo|tipo\s+assim|de|pelo|pela|pelos|pelas|ao|aos|ent[aã]o|a[ií]|qual|quais|o|a|os|as|meu|minha|meus|minhas|seu|sua|seus|suas|esse|essa|esses|essas|este|esta|estes|estas|aquele|aquela|aqueles|aquelas|[eé]|eh|era|foi|ser|estar|est[aá]|t[aá]|vai|vou|ia|tem|tinha|faz|fazia|fica|ficou|deu|d[aá]|ou\s+seja|por[eé]m|contudo|todavia|entretanto|ali|l[aá])\s*$/i,
+  /\b(?:e|ou|mas|que|se|como|para|pra|pro|pras|pros|porque|por\s*que|pq|pois|no|na|nos|nas|do|da|dos|das|com|sem|em|um|uma|uns|umas|de|pelo|pela|pelos|pelas|ao|aos|ou\s+seja|por[eé]m|contudo|todavia|entretanto|[eé]|eh|ser|estar|est[aá]|t[aá]|vai|vou)\s*$/i,
 ];
 
 // Padrões de áudio de mídia, vídeos do YouTube, TV, notícias, podcasts, tutoriais ou monólogos contínuos
@@ -168,15 +179,6 @@ class NexaIntentClassifier {
    */
   static hasValidWakeWord(normalizedText, assistantName = "Nexa") {
     if (!normalizedText) return false;
-    if (!assistantName || String(assistantName).trim().toLowerCase() === "nexa") {
-      return (
-        WAKE_WORD_EXACT.test(normalizedText) ||
-        WAKE_WORD_WITH_GREETING.test(normalizedText) ||
-        WAKE_WORD_WITH_VOCATIVE.test(normalizedText) ||
-        WAKE_WORD_PHONETIC_DIRECT.test(normalizedText) ||
-        WAKE_WORD_AT_END.test(normalizedText)
-      );
-    }
     const wakePattern = getWakeWordPattern(assistantName);
     const exactRegex = new RegExp(`\\b(${wakePattern})\\b`, "i");
     const greetingRegex = new RegExp(`\\b(?:ei|oi|ol[aá]|fala|opa|bom\\s+dia|boa\\s+tarde|boa\\s+noite|al[oô]|e\\s+a[ií]|perfeito|beleza|show|pronto|certo|ent[aã]o|ok|por\\s+favor)\\s+(?:${wakePattern}|nessa|dessa|dexa|deixa|decsa)\\b`, "i");
@@ -214,11 +216,6 @@ class NexaIntentClassifier {
     const isConnectorAtEnd = INCOMPLETE_SENTENCE_CONNECTORS.some((p) => p.test(norm));
     if (isConnectorAtEnd) {
       return true;
-    }
-
-    // Se terminou com ponto/exclamação/interrogação e tem pelo menos 3 palavras
-    if (/[.!?]$/.test(t) && t.split(/\s+/).length >= 3) {
-      return false;
     }
 
     return false;
@@ -299,14 +296,14 @@ class NexaIntentClassifier {
     const hasWakeWord = NexaIntentClassifier.hasValidWakeWord(normalizedText, assistantName);
 
     // 3. Descarta conversas paralelas com outras pessoas no cômodo (filhos, cônjuge, família, colegas)
-    // Se a frase tem Wake Word ou foi explicitamente direcionada à Nexa, ela NÃO é conversa de terceiros
+    // Se a frase tem Wake Word ou foi explicitamente direcionada à assistente, ela NÃO é conversa de terceiros
     if (!hasWakeWord) {
       for (const pattern of THIRD_PARTY_CONVERSATION_PATTERNS) {
         if (pattern.test(normalizedText)) {
           return {
             action: "IGNORE",
             expireFollowUp: true,
-            reason: "Conversa com terceiros/família detectada (não direcionada à Nexa)"
+            reason: "Conversa com terceiros/família detectada (não direcionada à assistente)"
           };
         }
       }
@@ -316,7 +313,7 @@ class NexaIntentClassifier {
     const DIRECT_DEV_COMMAND = /\b(?:(?:pode|consegue|favor|por\s+favor)?\s*(?:comitar|commitar|comita|commita|como\s+imitar|fazer\s+commit|dar\s+push|fazer\s+push|criar\s+branch|abrir\s+arquivo|rodar\s+teste|corrigir\s+bug|aplicar\s+altera[çc][õo]es|salvar\s+arquivo))\b/i;
     const isDirectDevCommand = DIRECT_DEV_COMMAND.test(normalizedText) || DIRECT_DEV_COMMAND.test(text);
 
-    // Se o nome Nexa não foi falado, não estamos em follow-up ativo E não é um comando direto inequívoco de desenvolvimento
+    // Se o nome não foi falado, não estamos em follow-up ativo E não é um comando direto inequívoco de desenvolvimento
     if (!hasWakeWord && !followUpActive && !isDirectDevCommand) {
       return { action: "IGNORE", expireFollowUp: false, reason: "Wake word ausente e sem follow-up ativo" };
     }
@@ -325,7 +322,7 @@ class NexaIntentClassifier {
     if (!hasWakeWord && followUpActive && !isDirectDevCommand) {
       // 1. Descarta ruídos curtos, interjeições isoladas e frases sem substância
       if (text.length < 4 || /^(?:ok|hmm|ah|eh|opa|hum|e|uh|vem\s+l[aá]|vem|olha|ali|aqui)[\s.,!?]*$/i.test(text)) {
-        return { action: "IGNORE", expireFollowUp: true, reason: "Ruído curto ou interjeição isolada em follow-up" };
+        return { action: "IGNORE", expireFollowUp: false, reason: "Ruído curto ou interjeição isolada em follow-up" };
       }
 
       // 2. Descarta narração de vídeos do YouTube, podcasts, notícias, palestras ou histórias de terceiros
@@ -335,15 +332,15 @@ class NexaIntentClassifier {
         }
       }
 
-      // 3. Em follow-up ativo sem wake word, a fala DEVE ser genuinamente conversacional, conter pergunta (?) ou comando de dev
+      // 3. Em follow-up ativo sem wake word, a fala DEVE ser genuinamente conversacional, conter pergunta (?) ou comando de dev/workspace
       const isConversational = CONVERSATIONAL_FOLLOW_UP_PATTERNS.some((p) => p.test(normalizedText));
       const hasQuestion = text.includes("?");
-      const isDevOrTask = /\b(?:c[oó]digo|arquivo|branch|commit|push|pull|merge|erro|bug|fun[çc][ãa]o|classe|test|build|projeto|execut|rod|explic|mostr|ajud|faz|arrum|consert)\b/i.test(normalizedText);
+      const isDevOrTask = /\b(?:c[oó]digo|arquivo|branch|commit|push|pull|merge|erro|bug|fun[çc][ãa]o|classe|test|build|projeto|execut|rod|explic|mostr|ajud|faz|arrum|consert|tela|janela|legenda|resumo|span|copiloto)\b/i.test(normalizedText);
 
       if (!isConversational && !hasQuestion && !isDevOrTask) {
         return {
           action: "IGNORE",
-          expireFollowUp: true,
+          expireFollowUp: false,
           reason: "Fala sem intenção conversacional, pergunta ou comando em follow-up (ruído/alucinação ignorada)"
         };
       }

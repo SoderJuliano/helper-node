@@ -99,6 +99,7 @@ class NexaTurnDetector extends EventEmitter {
 
   /**
    * Para o monitoramento do microfone.
+   * Se houver fala ativa acumulada, emite o turno antes de desativar para não perder a gravação.
    */
   stop() {
     if (!this.active) return;
@@ -106,6 +107,24 @@ class NexaTurnDetector extends EventEmitter {
     try {
       nativeAudio.unsubscribe("mic", this._onPcmChunk);
     } catch (_) {}
+
+    if (this.isSpeaking && this.speechBytes > 0) {
+      const totalPcm = Buffer.concat(this.speechChunks, this.speechBytes);
+      const effectiveSpeechMs = this.speechDurationMs - this.silenceAccumMs;
+      const avgTurnRms = NexaTurnDetector.computeRms(totalPcm);
+      if (effectiveSpeechMs >= this.minSpeechMs && (avgTurnRms >= 30 || this.peakTurnRms >= 50)) {
+        console.log(`[NexaTurnDetector] Mic desligado durante fala ativa: emitindo turno pendente (${effectiveSpeechMs}ms, RMS ${Math.round(avgTurnRms)})...`);
+        this.emit("turn-complete", {
+          pcmBuffer: totalPcm,
+          durationMs: effectiveSpeechMs,
+          avgRms: avgTurnRms,
+          sampleRate: SAMPLE_RATE,
+          channels: 1,
+          bitDepth: 16
+        });
+      }
+    }
+
     this.resetTurn();
     this.emit("stopped");
   }

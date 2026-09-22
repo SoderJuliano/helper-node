@@ -20,7 +20,7 @@ const NexaConversationContext = require("./nexaConversationContext");
 const NexaResponseFilter = require("./nexaResponseFilter");
 const { warmupWhisper } = require("./whisperWarmup");
 
-const FOLLOW_UP_DURATION_MS = 7000; // Janela confortável de 7 segundos para conversa contínua após resposta
+const FOLLOW_UP_DURATION_MS = 9000; // Janela confortável de 9 segundos para conversa contínua após resposta
 
 class NexaVoiceSession extends EventEmitter {
   constructor(options = {}) {
@@ -129,29 +129,34 @@ class NexaVoiceSession extends EventEmitter {
 
   /**
    * Para o assistente de voz contínuo.
+   * Se houver transcrição ou IA executando no momento do clique, não descarta a pergunta em andamento.
    */
   stop() {
     this.active = false;
-    this.isProcessing = false;
-    this.isQueryExecuting = false;
-    this.isTranscribing = false;
-    this.isSpeakingTts = false;
     this.followUpActive = false;
     if (this.followUpTimer) clearTimeout(this.followUpTimer);
     this.followUpTimer = null;
     if (this.incompleteTimer) clearTimeout(this.incompleteTimer);
     this.incompleteTimer = null;
     this.pendingIncompleteText = null;
-    if (this.processingTimeout) {
-      clearTimeout(this.processingTimeout);
-      this.processingTimeout = null;
-    }
-    this.context.clear();
 
-    this.stopTtsAudioOnly();
+    // Para a captura do microfone (se houver fala ativa, o detector emite o turno antes de parar)
     this.turnDetector.stop();
-    this.emit("state-changed", { state: "idle", followUpActive: false });
-    this.emit("status-changed", { active: false, state: "idle", followUpActive: false });
+
+    // Se NÃO estiver transcrevendo nem executando IA, finaliza imediatamente em IDLE
+    if (!this.isTranscribing && !this.isQueryExecuting) {
+      if (this.processingTimeout) {
+        clearTimeout(this.processingTimeout);
+        this.processingTimeout = null;
+      }
+      this.context.clear();
+      this.stopTtsAudioOnly();
+      this.emit("state-changed", { state: "idle", followUpActive: false });
+      this.emit("status-changed", { active: false, state: "idle", followUpActive: false });
+    } else {
+      // Se estiver transcrevendo ou processando a resposta, avisa que o mic foi desativado mas mantém o fluxo em voo
+      this.emit("status-changed", { active: false, state: this.isTranscribing ? "transcribing" : "thinking", followUpActive: false });
+    }
   }
 
   isActive() {
@@ -226,7 +231,7 @@ class NexaVoiceSession extends EventEmitter {
    * Processa o áudio capturado ao final de um turno de fala.
    */
   async _handleTurnComplete({ pcmBuffer, durationMs, avgRms, sampleRate, channels, bitDepth }) {
-    if (!this.active) return;
+    if (!pcmBuffer || pcmBuffer.length === 0) return;
 
     const { helpers, state } = require("../../main/globals");
     let wavPath = null;
@@ -285,11 +290,15 @@ class NexaVoiceSession extends EventEmitter {
       }
 
       // Obtém nome configurado do assistente
-      let assistantName = "Nexa";
+      let assistantName = "Raphael";
       try {
         const { configService } = require("../../main/globals");
         const nexaCfg = configService && typeof configService.getNexaConfig === "function" ? configService.getNexaConfig() : null;
-        if (nexaCfg && nexaCfg.name) assistantName = nexaCfg.name;
+        if (nexaCfg && nexaCfg.name && nexaCfg.name.trim()) {
+          assistantName = nexaCfg.name.trim();
+        } else if (nexaCfg && nexaCfg.avatarMode === "2d") {
+          assistantName = "Nexa";
+        }
       } catch (_) {}
 
       // Classifica a intenção
@@ -550,7 +559,9 @@ class NexaVoiceSession extends EventEmitter {
       this.processingTimeout = null;
     }
     this._endProcessingAndResume();
-    this._startFollowUpTimer();
+    if (this.active) {
+      this._startFollowUpTimer();
+    }
   }
 
   handleAiProcessingFinished() {
@@ -562,7 +573,9 @@ class NexaVoiceSession extends EventEmitter {
     }
     if (!this.isSpeakingTts) {
       this._endProcessingAndResume();
-      this._startFollowUpTimer();
+      if (this.active) {
+        this._startFollowUpTimer();
+      }
     }
   }
 
@@ -594,6 +607,16 @@ class NexaVoiceSession extends EventEmitter {
       this.emit("state-changed", {
         state: "listening",
         followUpActive: this.followUpActive
+      });
+    } else {
+      this.emit("state-changed", {
+        state: "idle",
+        followUpActive: false
+      });
+      this.emit("status-changed", {
+        active: false,
+        state: "idle",
+        followUpActive: false
       });
     }
   }

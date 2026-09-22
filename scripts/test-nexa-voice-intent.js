@@ -409,4 +409,33 @@ console.log("🧪 Iniciando testes de Intent Classifier da Nexa...\n");
   console.log("✅ Caso 53: 'Sexta salão' -> IGNORE");
 }
 
+{
+  const raw = "Java-File, se você concluiu tudo, se você removeu o expand, direto da janela do Reopernode, do expand do resumo mundial de janela, e mantive só na janelinha sua leão, a legenda, então pode commitar tudo ele dá após. Qualquer coisa me avisa.";
+  const res = NexaIntentClassifier.classify(raw);
+  assert.strictEqual(res.action, "RESPOND_AUDIO_AND_CHAT", "Fala longa com variação 'Java-File' do Whisper deve ser aceita");
+  assert.strictEqual(NexaIntentClassifier.isSentenceIncomplete(res.cleanedQuery), false, "Fala longa completa não deve ser marcada como incompleta");
+  console.log("✅ Caso 54: Fala longa (1min) com 'Java-File' -> RESPOND_AUDIO_AND_CHAT (completo)");
+}
+
+{
+  const raw = "Raphael, agora é que a gente colocou para você falar da resposta em áudio. A gente colocou tipo uma legenda dentro da sua própria janela. Pode tirar o span da tela principal.";
+  const res = NexaIntentClassifier.classify(raw);
+  assert.strictEqual(res.action, "RESPOND_AUDIO_AND_CHAT", "Comando com 'Raphael' deve ser aceito");
+  console.log("✅ Caso 55: Comando com 'Raphael' -> RESPOND_AUDIO_AND_CHAT");
+}
+
+{
+  const raw = "Rafa, como tá a branch atual?";
+  const res = NexaIntentClassifier.classify(raw);
+  assert.strictEqual(res.action, "RESPOND_AUDIO_AND_CHAT", "Comando com apelido 'Rafa' deve ser aceito");
+  console.log("✅ Caso 56: Comando com 'Rafa' -> RESPOND_AUDIO_AND_CHAT");
+}
+
+{
+  const raw = "pode fazer o commit agora";
+  const res = NexaIntentClassifier.classify(raw, { followUpActive: true });
+  assert.strictEqual(res.action, "RESPOND_AUDIO_AND_CHAT", "Comando em follow-up sem wake word deve ser aceito");
+  console.log("✅ Caso 57: Comando em follow-up sem wake word -> RESPOND_AUDIO_AND_CHAT");
+}
+
 console.log("\n🎉 Todos os testes do Intent Classifier passaram com sucesso!");

@@ -344,13 +344,9 @@ helpers.formatToHTML = function(text) {
   };
 
   let formatted = text;
-  formatted = formatted.replace(/<voice_summary>([\s\S]*?)<\/voice_summary>/gi, (match, summary) => {
-    const clean = summary.replace(/<[^>]*>/g, '').trim();
-    return `<div class="voice-summary-card"><span class="voice-icon">🔊</span><div class="voice-content"><strong>Resumo em Áudio:</strong> ${clean}</div></div>`;
-  });
-
-  // Remove tags <animation> e <animation_hint> para não vazarem texto bruto de animação na tela
-  formatted = formatted.replace(/<animation(?:_hint)?>[\s\S]*?<\/animation(?:_hint)?>/gi, "").trim();
+  // Remove tags <voice_summary>, <animation> e <animation_hint> para não poluírem o chat com badges redundantes
+  formatted = formatted.replace(/<voice_summary>[\s\S]*?<\/voice_summary>/gi, '').trim();
+  formatted = formatted.replace(/<animation(?:_hint)?>[\s\S]*?<\/animation(?:_hint)?>/gi, '').trim();
 
   const codeBlocks = [];
 

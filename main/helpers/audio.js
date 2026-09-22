@@ -25,16 +25,24 @@ helpers.startDictation = async function() {
     : '';
   state.dictationChunks = [];
   state.dictationBytes = 0;
-  state.dictationMicCb = (buf) => { state.dictationChunks.push(buf); state.dictationBytes += buf.length; };
-  await nativeAudio.subscribe('mic', state.dictationMicCb, { deviceId: micDevice });
   state.dictationActive = true;
   state.isRecording = true;
+  state.dictationMicCb = (buf) => { state.dictationChunks.push(buf); state.dictationBytes += buf.length; };
 
   if (configService.getOsIntegrationStatus()) {
     helpers.destroyNotificationWindow();
     helpers.createOsNotificationWindow('recording', '');
   } else {
     try { state.mainWindow.webContents.send('toggle-recording', { isRecording: true, audioFilePath: null, isIdeMode: true }); } catch (_) {}
+  }
+
+  try {
+    await nativeAudio.subscribe('mic', state.dictationMicCb, { deviceId: micDevice });
+  } catch (err) {
+    state.dictationActive = false;
+    state.isRecording = false;
+    state.dictationMicCb = null;
+    throw err;
   }
 }
 
@@ -137,6 +145,7 @@ helpers.stopDictationAndTranscribe = async function() {
       helpers.createOsNotificationWindow('response', 'Nenhum áudio detectado no microfone.');
     } else {
       try {
+        state.mainWindow.webContents.send('toggle-recording', { isRecording: false, isTranscribing: false, audioFilePath: null, isIdeMode: true });
         state.mainWindow.webContents.send('ide-audio-transcribing', { isTranscribing: false });
         state.mainWindow.webContents.send('transcription-error', 'Nenhum áudio detectado (verifique o microfone ou fale mais alto).');
       } catch (_) {}
@@ -183,13 +192,24 @@ helpers.stopDictationAndTranscribe = async function() {
   } finally {
     if (wavPath) { try { await fs.unlink(wavPath); } catch (_) {} }
     state.recordingBusy = false;
-    if (!isOsIntegration) {
-      try { state.mainWindow.webContents.send('ide-audio-transcribing', { isTranscribing: false }); } catch (_) {}
+    if (!isOsIntegration && state.mainWindow && !state.mainWindow.isDestroyed()) {
+      try {
+        state.mainWindow.webContents.send('toggle-recording', { isRecording: false, isTranscribing: false, audioFilePath: null, isIdeMode: true });
+        state.mainWindow.webContents.send('ide-audio-transcribing', { isTranscribing: false });
+      } catch (_) {}
     }
   }
 }
 
+let _isTogglingDictation = false;
+
 helpers.toggleRecording = async function() {
+  if (_isTogglingDictation) {
+    console.log("[dictation] Toggle já em andamento, ignorando toque repetido.");
+    return;
+  }
+  _isTogglingDictation = true;
+
   try {
     // Realtime existe em todas as edicoes: na Lite/ChatGPT e 100% online (OpenAI),
     // na Full com backend/Ollama e o pipeline local (Whisper). pickRealtimeService decide.
@@ -212,7 +232,7 @@ helpers.toggleRecording = async function() {
       return;
     }
 
-    if (state.isRecording) {
+    if (state.isRecording || state.dictationActive) {
       await helpers.stopDictationAndTranscribe();
       return;
     }
@@ -226,11 +246,18 @@ helpers.toggleRecording = async function() {
       if (configService.getOsIntegrationStatus()) {
         helpers.createOsNotificationWindow('response', 'Falha ao acessar o microfone: ' + e.message);
       } else {
-        try { state.mainWindow.webContents.send('transcription-error', 'Falha ao acessar o microfone: ' + e.message); } catch (_) {}
+        try {
+          state.mainWindow.webContents.send('toggle-recording', { isRecording: false, isTranscribing: false, audioFilePath: null, isIdeMode: true });
+          state.mainWindow.webContents.send('transcription-error', 'Falha ao acessar o microfone: ' + e.message);
+        } catch (_) {}
       }
     }
   } catch (error) {
     console.error("Error toggling recording:", error);
+  } finally {
+    setTimeout(() => {
+      _isTogglingDictation = false;
+    }, 120);
   }
 }
 

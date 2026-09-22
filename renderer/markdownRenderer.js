@@ -165,13 +165,8 @@
             const blocks = [];
             const hold = (html) => { const ph = `\x00B${blocks.length}\x00`; blocks.push(html); return ph; };
 
-            // 0. Trata tag <voice_summary>...</voice_summary>
-            let out = text.replace(/<voice_summary>([\s\S]*?)<\/voice_summary>/gi, (_, summary) => {
-                const clean = summary.replace(/<[^>]*>/g, '').trim();
-                return hold(`<div class="voice-summary-card"><span class="voice-icon">🔊</span><div class="voice-content"><strong>Resumo em Áudio:</strong> ${clean}</div></div>`);
-            });
-
-            // Remove tags <animation> e <animation_hint> para não vazarem texto bruto de animação na tela
+            // Remove tags <voice_summary>, <animation> e <animation_hint> para não poluírem o chat com badges redundantes (a legenda já aparece no HUD da Raphael)
+            let out = text.replace(/<voice_summary>[\s\S]*?<\/voice_summary>/gi, '').trim();
             out = out.replace(/<animation(?:_hint)?>[\s\S]*?<\/animation(?:_hint)?>/gi, '').trim();
 
             // 1. Protege blocos ``` ... ```

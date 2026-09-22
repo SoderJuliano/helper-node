@@ -174,14 +174,14 @@ async function getTranslationAndSuggestion(transcript, { userName, userBackgroun
   
   const model = opts.forceModel || (isCodeRequest ? 'gpt-4.1' : 'gpt-4o-mini');
 
-  const defaultCv = 'Senior Software Engineer com sólida experiência em desenvolvimento back-end e front-end, focado em soluções escaláveis, performance e entrega contínua. Stacks principais: Java (Spring Boot, Quarkus), Kotlin, .NET, Node.js, NestJS, Python, Go, Angular, React, Vue.js, Kafka, Docker, Kubernetes, CI/CD, Oracle, MongoDB.';
+  const defaultCv = 'Desenvolvedor de Software com experiência em desenvolvimento de aplicações backend e frontend, focado em código limpo, arquitetura escalável e boas práticas de engenharia.';
 
-  const defaultTech = 'Atuação no Grupo Casas Bahia com microsserviços de alto throughput em Java 17/21 e Spring Boot, mensageria com Apache Kafka (particionamento, DLQ, retries e idempotência), bancos Oracle e MongoDB, observabilidade com Dynatrace e Kibana. Desenvolvimento de projetos pessoais como Helper Node (Electron, IA, VAD Whisper, OCR), Pikachu (arquitetura hexagonal), Ask-Chat (web streaming ChatGPT) e 3D Game com Three.js.';
+  const defaultTech = 'Atuação no desenvolvimento de APIs REST, microsserviços, mensageria assíncrona, bancos de dados relacionais e não-relacionais, além de integração contínua (CI/CD) e observabilidade com métricas e logs.';
 
-  const defaultBehavioral = 'Em problemas de produção ou bugs críticos: mantenho a calma, aviso o time, utilizo logs e métricas (Dynatrace/Kibana) para isolar a causa-raiz, aplico a correção com testes automatizados para evitar regressão e gero post-mortem. Em divergências técnicas: dialogo diretamente com o colega, analiso prós e contras objetivos com foco em simplicidade e valor para o negócio. Em prazos apertados: alinho prioridades com o PO, quebro entregas em etapas menores e mantenho comunicação clara e transparente.';
+  const defaultBehavioral = 'Em problemas de produção ou bugs críticos: mantenho a calma, aviso o time, utilizo logs e métricas para isolar a causa-raiz, aplico a correção com testes automatizados para evitar regressão e compartilho o post-mortem. Em divergências técnicas: dialogo diretamente com o colega, analiso prós e contras objetivos com foco em simplicidade e valor para o negócio. Em prazos apertados: alinho prioridades com o time e liderança, quebrando entregas em etapas menores.';
 
   const suggestionPrompt = `Você é um COPILOTO DE ENTREVISTAS DE EMPREGO (TÉCNICAS E COMPORTAMENTAIS) PARA ENGENHARIA DE SOFTWARE.
-Candidato: ${userName || 'Juliano Soder'}
+Candidato: ${userName || 'Candidato'}
 
 DADOS DE CONTEXTO DO CANDIDATO (podem estar em português ou inglês):
 1. PERFIL GERAL & CURRÍCULO (CV / RESUMO):
@@ -204,8 +204,8 @@ REGRAS OBRIGATÓRIAS DE ESTILO E INGLÊS (CRÍTICO PARA PRONÚNCIA):
    - O usuário precisa ler a resposta na tela em 1 segundo e conseguir falar em voz alta sem travar na pronúncia e sem gaguejar!
 
 2. CLASSIFICAÇÃO AUTOMÁTICA DE PERGUNTA (TÉCNICA vs COMPORTAMENTAL):
-   - Se a pergunta for TÉCNICA (sobre tecnologias, arquitetura, Kafka, Java, Spring, bancos, APIs):
-     * Combine o Perfil Geral com as Experiências Técnicas detalhadas (contextos 1 e 2) e cite ferramentas reais (ex: "In my daily work with Spring Boot and Kafka at Casas Bahia, I...").
+   - Se a pergunta for TÉCNICA (sobre tecnologias, arquitetura, mensageria, frameworks, bancos, APIs):
+     * Combine o Perfil Geral com as Experiências Técnicas detalhadas (contextos 1 e 2) e cite ferramentas reais (ex: "In my daily work with Spring Boot and Kafka, I...").
    - Se a pergunta for COMPORTAMENTAL / SITUACIONAL ("Imagine this...", "Tell me about a time you had a challenge/bug/conflict...", "How do you handle deadlines?"):
      * Use o contexto 3 (Histórias Comportamentais) e responda exatamente com a atitude do candidato, estruturada em STAR simples (Situação -> O que eu faço/fiz -> Resultado seguro).
 
@@ -214,7 +214,7 @@ REGRAS OBRIGATÓRIAS DE ESTILO E INGLÊS (CRÍTICO PARA PRONÚNCIA):
    - Formato direto: [Sujeito] + [Verbo] + [Complemento].
 
 4. PRIMEIRA PESSOA:
-   - Fale sempre em 1ª pessoa como o candidato ("I usually...", "In my experience at Casas Bahia...", "When a bug happens in production, I first...").
+   - Fale sempre em 1ª pessoa como o candidato ("I usually...", "In my experience...", "When a bug happens in production, I first...").
 
 5. TOLERÂNCIA A ERROS DE TRANSCRIÇÃO (STT):
    - Se a pergunta contiver pequenas falhas de áudio, deduza o conceito real e responda sobre ele.

@@ -139,8 +139,9 @@ const animText = '<animation>adjust_glasses</animation>\nOlá Juliano! Meus circ
 const animHtml = renderMarkdown(animText, 'test');
 assert(!animHtml.includes('adjust_glasses'), 'Tag de animação <animation>adjust_glasses</animation> NÃO deve vazar texto bruto na tela');
 assert(!animHtml.includes('<animation>'), 'Tag de animação não deve estar presente no HTML bruto');
-assert(animHtml.includes('voice-summary-card'), 'Deve renderizar o card de resumo em áudio');
+assert(!animHtml.includes('voice-summary-card'), 'Tag <voice_summary> NÃO deve poluir o chat com card redundante');
+assert(!animHtml.includes('<voice_summary>'), 'Tag <voice_summary> não deve estar presente no HTML bruto');
 assert(animHtml.includes('Olá Juliano! Meus circuitos estão prontos.'), 'Texto principal deve ser preservado');
-console.log('  ok   Tags <animation> suprimidas com 100% de sucesso sem vazar na tela');
+console.log('  ok   Tags <animation> e <voice_summary> suprimidas com 100% de sucesso sem vazar no chat');
 
 console.log('\nTodos os testes de links de arquivos e ações Edit/Read passaram com sucesso! 🎉\n');

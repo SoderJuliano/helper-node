@@ -12,8 +12,7 @@ async function registerGlobalShortcuts() {
 
   globalShortcut.unregisterAll();
 
-  const isLinux = process.platform === "linux";
-  const baseShortcuts = isLinux
+  const rawShortcuts = isLinux
     ? [
         { combo: "Ctrl+D", action: "toggle-recording" },
         { combo: "Ctrl+I", action: "manual-input" },
@@ -35,17 +34,14 @@ async function registerGlobalShortcuts() {
         { combo: "CommandOrControl+Shift+2", action: "move-to-display-1" },
       ];
 
-  const fallbackShortcuts = isLinux
-    ? [
-        { combo: "CommandOrControl+D", action: "toggle-recording" },
-        { combo: "CommandOrControl+I", action: "manual-input" },
-        { combo: "CommandOrControl+Shift+X", action: "capture-screen" },
-        { combo: "CommandOrControl+Shift+1", action: "move-to-display-0" },
-        { combo: "CommandOrControl+Shift+2", action: "move-to-display-1" },
-      ]
-    : [];
-
-  const allShortcuts = [...baseShortcuts, ...fallbackShortcuts];
+  const seenCombos = new Set();
+  const allShortcuts = [];
+  for (const item of rawShortcuts) {
+    if (!seenCombos.has(item.combo)) {
+      seenCombos.add(item.combo);
+      allShortcuts.push(item);
+    }
+  }
 
   allShortcuts.forEach(({ combo, action }) => {
     const registered = globalShortcut.register(combo, async () => {
