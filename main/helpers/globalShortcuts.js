@@ -7,6 +7,8 @@ const {
   visionGuide,
 } = require('../globals.js');
 
+const isLinux = process.platform === 'linux';
+
 async function registerGlobalShortcuts() {
   if (!state.mainWindow) return;
 

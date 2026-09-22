@@ -3,10 +3,70 @@
 var historyState = { loadedSessions: [], currentSession: null };
 
 (function() {
+    const historyPanel = document.getElementById('history-panel');
     const historyContent = document.getElementById('history-content');
+    const historyFilterContainer = document.getElementById('history-filter-container');
+    const historyFilterInput = document.getElementById('history-filter-input');
+    const historySearchBtn = document.getElementById('history-search-btn');
     const newChatBtn = document.getElementById('new-chat-btn');
     const conversationViewer = document.getElementById('conversation-viewer');
     const transcriptionElement = document.getElementById('transcription');
+
+    let historySearchQuery = '';
+    let isMouseOverHistory = false;
+    let lastMouseX = -1;
+    let lastMouseY = -1;
+
+    window.addEventListener('mousemove', (e) => {
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+    }, { passive: true, capture: true });
+
+    if (historyPanel) {
+        historyPanel.addEventListener('mouseenter', () => { isMouseOverHistory = true; }, true);
+        historyPanel.addEventListener('mouseleave', () => { isMouseOverHistory = false; }, true);
+        historyPanel.addEventListener('mouseover', () => { isMouseOverHistory = true; }, true);
+        historyPanel.addEventListener('mouseout', (e) => {
+            if (!historyPanel.contains(e.relatedTarget)) {
+                isMouseOverHistory = false;
+            }
+        }, true);
+    }
+    if (historyContent) {
+        historyContent.addEventListener('mouseenter', () => { isMouseOverHistory = true; }, true);
+        historyContent.addEventListener('mouseleave', () => { isMouseOverHistory = false; }, true);
+        historyContent.addEventListener('mouseover', () => { isMouseOverHistory = true; }, true);
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function highlightMatch(title, query) {
+        if (!query) return escapeHtml(title);
+        const escapedTitle = escapeHtml(title);
+        const lowerTitle = escapedTitle.toLowerCase();
+        const lowerQuery = escapeHtml(query).toLowerCase();
+        let result = '';
+        let start = 0;
+        let idx = lowerTitle.indexOf(lowerQuery, start);
+        if (idx === -1) return escapedTitle;
+
+        while (idx !== -1) {
+            result += escapedTitle.substring(start, idx);
+            result += `<mark class="history-search-highlight">${escapedTitle.substring(idx, idx + lowerQuery.length)}</mark>`;
+            start = idx + lowerQuery.length;
+            idx = lowerTitle.indexOf(lowerQuery, start);
+        }
+        result += escapedTitle.substring(start);
+        return result;
+    }
 
     function safeTitle(text) {
         if (!text || typeof text !== 'string') return 'Sem título';
@@ -17,19 +77,33 @@ var historyState = { loadedSessions: [], currentSession: null };
         if (!historyContent) return;
         historyContent.innerHTML = '';
 
-        if (!sessions || sessions.length === 0) {
-            historyContent.innerHTML = '<p style="color: #888; font-size: 9px;">Nenhuma conversa ainda</p>';
+        const allSessions = sessions || historyState.loadedSessions || [];
+        const query = historySearchQuery.trim().toLowerCase();
+        const displaySessions = query
+            ? allSessions.filter(s => s && s.title && s.title.toLowerCase().includes(query))
+            : allSessions;
+
+        if (!displaySessions || displaySessions.length === 0) {
+            if (query) {
+                historyContent.innerHTML = `<p style="color: #888; font-size: 11px; padding: 6px 8px; font-style: italic;">Nenhuma conversa encontrada</p>`;
+            } else {
+                historyContent.innerHTML = '<p style="color: #888; font-size: 9px;">Nenhuma conversa ainda</p>';
+            }
             return;
         }
 
-        sessions.forEach(session => {
+        displaySessions.forEach(session => {
             const item = document.createElement('div');
             item.className = 'panel-item';
             if (session.id === historyState.currentSessionId) item.classList.add('active');
 
             const titleSpan = document.createElement('span');
             titleSpan.className = 'panel-item-title';
-            titleSpan.textContent = session.title;
+            if (query) {
+                titleSpan.innerHTML = highlightMatch(session.title, historySearchQuery.trim());
+            } else {
+                titleSpan.textContent = session.title;
+            }
             titleSpan.addEventListener('click', () => loadSessionIntoChat(session.id));
 
             const actions = document.createElement('div');
@@ -128,6 +202,134 @@ var historyState = { loadedSessions: [], currentSession: null };
             item.appendChild(titleSpan);
             item.appendChild(actions);
             historyContent.appendChild(item);
+        });
+    }
+
+    function openHistoryFilter() {
+        const hp = document.getElementById('history-panel');
+        const hfc = document.getElementById('history-filter-container');
+        const hfi = document.getElementById('history-filter-input');
+
+        if (hp && hp.classList.contains('collapsed')) {
+            hp.classList.remove('collapsed');
+            try { localStorage.setItem('hn-history-panel-collapsed', '0'); } catch (_) {}
+        }
+        if (hfc) {
+            hfc.style.display = 'block';
+        }
+        if (hfi) {
+            hfi.value = historySearchQuery || '';
+            hfi.focus();
+            hfi.select();
+            setTimeout(() => {
+                hfi.focus();
+                hfi.select();
+            }, 50);
+        }
+    }
+
+    function closeHistoryFilter() {
+        const hfc = document.getElementById('history-filter-container');
+        const hfi = document.getElementById('history-filter-input');
+
+        if (hfc) {
+            hfc.style.display = 'none';
+        }
+        if (hfi) {
+            hfi.value = '';
+            hfi.blur();
+        }
+        historySearchQuery = '';
+        renderHistoryList(historyState.loadedSessions);
+    }
+
+    function isPointInside(el, x, y) {
+        if (!el || x < 0 || y < 0) return false;
+        try {
+            const r = el.getBoundingClientRect();
+            return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    function isHistoryTargetedForSearch(e) {
+        const hp = document.getElementById('history-panel');
+        const hc = document.getElementById('history-content');
+        const hfi = document.getElementById('history-filter-input');
+        const hfc = document.getElementById('history-filter-container');
+
+        // 1. Campo de busca já aberto ou focado
+        if (hfi && (document.activeElement === hfi || (hfc && hfc.style.display !== 'none' && hfc.style.display !== ''))) {
+            return true;
+        }
+
+        // 2. Foco atual ou alvo do evento dentro do painel
+        if (e && e.target && hp && hp.contains(e.target)) {
+            return true;
+        }
+        if (document.activeElement && hp && hp.contains(document.activeElement)) {
+            return true;
+        }
+
+        // 3. Flag de hover ativa
+        if (isMouseOverHistory) {
+            return true;
+        }
+
+        // 4. Coordenadas do mouse
+        if (lastMouseX >= 0 && lastMouseY >= 0) {
+            if (hp && isPointInside(hp, lastMouseX, lastMouseY)) return true;
+            if (hc && isPointInside(hc, lastMouseX, lastMouseY)) return true;
+            try {
+                const elUnder = document.elementFromPoint(lastMouseX, lastMouseY);
+                if (elUnder && hp && hp.contains(elUnder)) return true;
+            } catch (_) {}
+        }
+
+        // 5. Fallback seletores :hover
+        try {
+            if (hp && (hp.matches(':hover') || hp.querySelector(':hover'))) return true;
+            if (hc && (hc.matches(':hover') || hc.querySelector(':hover'))) return true;
+        } catch (_) {}
+
+        return false;
+    }
+
+    if (historyFilterInput) {
+        historyFilterInput.addEventListener('input', () => {
+            historySearchQuery = historyFilterInput.value;
+            renderHistoryList(historyState.loadedSessions);
+        });
+
+        historyFilterInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                e.stopPropagation();
+                e.preventDefault();
+                closeHistoryFilter();
+            } else if (e.key === 'Enter') {
+                e.stopPropagation();
+                e.preventDefault();
+                const query = historySearchQuery.trim().toLowerCase();
+                const allSessions = historyState.loadedSessions || [];
+                const displaySessions = query
+                    ? allSessions.filter(s => s && s.title && s.title.toLowerCase().includes(query))
+                    : allSessions;
+                if (displaySessions.length > 0) {
+                    loadSessionIntoChat(displaySessions[0].id);
+                }
+            }
+        });
+    }
+
+    if (historySearchBtn) {
+        historySearchBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (historyFilterContainer && historyFilterContainer.style.display !== 'none') {
+                closeHistoryFilter();
+            } else {
+                openHistoryFilter();
+            }
         });
     }
 
@@ -320,4 +522,7 @@ var historyState = { loadedSessions: [], currentSession: null };
     window.loadHistory = loadHistory;
     window.renderHistoryList = renderHistoryList;
     window.loadSessionIntoChat = loadSessionIntoChat;
+    window.openHistoryFilter = openHistoryFilter;
+    window.closeHistoryFilter = closeHistoryFilter;
+    window.isHistoryTargetedForSearch = isHistoryTargetedForSearch;
 })();

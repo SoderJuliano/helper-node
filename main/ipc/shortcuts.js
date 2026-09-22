@@ -58,6 +58,7 @@ ipcMain.handle("get-available-shortcuts", () => {
         { id: "zoom-tree", keys: `${mod} + / - / 0`, altKeys: `${mod}+SCROLL`, action: "Aumentar/diminuir zoom da árvore", where: "Na Sidebar", icon: "🔎" },
         { id: "zoom-terminal", keys: `${mod} + / - / 0`, altKeys: `${mod}+SCROLL`, action: "Aumentar/diminuir zoom do terminal", where: "No Terminal", icon: "🔎" },
         { id: "toggle-chat", keys: `${mod}+I`, action: "Mostrar Chat / Dividir tela", where: "No App / IDE", icon: "💬" },
+        { id: "search-history", keys: `${mod}+F`, action: "Filtrar conversas no histórico", where: "No Histórico", icon: "🔍" },
         { id: "send-chat", keys: "SHIFT+ENTER", action: "Enviar pergunta para a IA", where: "No Chat", icon: "🚀" },
         { id: "newline-chat", keys: "ENTER", action: "Quebrar linha na mensagem", where: "No Chat", icon: "↵" },
         { id: "close-modal", keys: "ESC", action: "Fechar modais / painéis abertos", where: "No App", icon: "❌" }

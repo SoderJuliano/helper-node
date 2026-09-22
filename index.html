@@ -91,9 +91,15 @@
                     <div class="panel-header" id="history-header">
                         <span class="panel-label">Histórico</span>
                         <span class="panel-filler"></span>
+                        <button id="history-search-btn" class="commands-toggle" aria-label="Buscar no histórico" title="Buscar no histórico (Ctrl+F)" tabindex="-1" style="margin-right: 4px; opacity: 0.7;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width: 12px; height: 12px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        </button>
                         <button id="history-toggle" class="commands-toggle" aria-label="Recolher/expandir histórico" tabindex="-1">
                             <svg viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M3 4.5 L6 7.5 L9 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
                         </button>
+                    </div>
+                    <div class="history-filter-container" id="history-filter-container" style="display: none;">
+                        <input type="text" class="history-filter-input" id="history-filter-input" placeholder="Filtrar histórico… (Esc fecha)" autocomplete="off">
                     </div>
                     <div class="commands-content" id="history-content"></div>
                 </div>

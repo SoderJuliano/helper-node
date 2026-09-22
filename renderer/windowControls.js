@@ -298,8 +298,30 @@
             }
 
             // Ctrl+F (sem Shift):
-            // Se o editor estiver aberto com um arquivo: busca dentro do arquivo (CodeMirror).
-            // Se nenhum arquivo estiver aberto: busca na árvore de arquivos por nome.
+            // 1. Se o foco/mouse estiver no histórico de conversas:
+            const isHistoryTarget = () => {
+                if (typeof window.isHistoryTargetedForSearch === 'function') {
+                    return window.isHistoryTargetedForSearch(e);
+                }
+                const hp = document.getElementById('history-panel');
+                if (!hp) return false;
+                const hfi = document.getElementById('history-filter-input');
+                const hfc = document.getElementById('history-filter-container');
+                if (hfi && (document.activeElement === hfi || (hfc && hfc.style.display !== 'none' && hfc.style.display !== ''))) return true;
+                if (document.activeElement && hp.contains(document.activeElement)) return true;
+                if (e && e.target && hp.contains(e.target)) return true;
+                return false;
+            };
+
+            if (isHistoryTarget()) {
+                e.preventDefault(); e.stopPropagation();
+                if (isSidebarCollapsed()) setSidebarCollapsed(false);
+                if (window.openHistoryFilter) window.openHistoryFilter();
+                return;
+            }
+
+            // 2. Se o editor estiver aberto com um arquivo: busca dentro do arquivo (CodeMirror).
+            // 3. Se nenhum arquivo estiver aberto: busca na árvore de arquivos por nome.
             const fv = document.getElementById('file-viewer');
             const isEditorOpen = !!(fv && fv.classList.contains('open') && window.EditorController && window.EditorController.hasOpenFile());
 

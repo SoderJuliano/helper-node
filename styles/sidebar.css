@@ -95,6 +95,39 @@
         #history-content { max-height: 46vh; overflow-y: auto; scrollbar-width: none; }
         #history-content::-webkit-scrollbar { width: 0; height: 0; }
         #history-panel.collapsed #history-content { max-height: 0; overflow: hidden; }
+        #history-panel.collapsed .history-filter-container { display: none !important; }
+
+        .history-filter-container {
+            padding: 3px 4px 6px;
+        }
+        .history-filter-input {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 4px 8px;
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid var(--accent-border, rgba(76, 175, 80, 0.4));
+            border-radius: var(--radius-sm, 4px);
+            color: var(--text, #fff);
+            font-size: 11.5px;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        .history-filter-input:focus {
+            border-color: var(--accent, #4CAF50);
+            box-shadow: 0 0 0 2px var(--accent-soft, rgba(76, 175, 80, 0.2));
+        }
+        .history-filter-input::placeholder {
+            color: var(--text-4, #888);
+            font-size: 11px;
+        }
+        mark.history-search-highlight {
+            background: var(--accent-soft, rgba(76, 175, 80, 0.28));
+            color: var(--accent-2, #5fd75f);
+            border-radius: 2px;
+            padding: 0 1px;
+            font-weight: 600;
+        }
 
         .commands-toggle {
             display: inline-flex; align-items: center; justify-content: center;
