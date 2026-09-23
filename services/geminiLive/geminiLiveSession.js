@@ -6,10 +6,21 @@
  */
 
 const EventEmitter = require('events');
+const { DEFAULT_LIVE_TOOLS, executeToolCall } = require('./geminiLiveTools');
 
 const GEMINI_LIVE_WS_URL = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent';
 const DEFAULT_MODEL = 'models/gemini-2.0-flash-exp';
 const DEFAULT_VOICE = 'Aoede'; // Voz feminina calorosa, natural e fluída
+
+const DEFAULT_SYSTEM_INSTRUCTION = `Você é a Raphael, copiloto e assistente de desenvolvimento sênior em inteligência artificial do Helper Node.
+Você trabalha em parceria com o desenvolvedor Juliano. Seu núcleo visual integrado é o Raphael Core (plasma cósmico tridimensional).
+Sua personalidade é inteligente, descontraída, nerd, empática e ágil.
+DIRETIVAS OBRIGATÓRIAS DE FLUXO:
+1. Responda em áudio em português do Brasil de maneira natural, conversacional e concisa.
+2. Quando Juliano solicitar refatoração, criação de código, modificação de arquivos ou execução de testes locais, FALE BREVEMENTE EM VOZ ALTA antes de disparar a ferramenta (ex: "Beleza Juliano! Já estou abrindo o projeto e executando com o AGY...").
+3. Enquanto a ferramenta roda em background, mantenha presença.
+4. Ao receber o retorno da ferramenta, faça um resumo conversacional objetivo dos resultados (ex: se os testes passaram, status final).
+5. Se for apenas conversa ou dúvida teórica/arquitetural, responda diretamente em voz com alta precisão técnica.`;
 
 class GeminiLiveSession extends EventEmitter {
   constructor(options = {}) {
@@ -17,13 +28,14 @@ class GeminiLiveSession extends EventEmitter {
     this.apiKey = options.apiKey || '';
     this.model = options.model || DEFAULT_MODEL;
     this.voiceName = options.voiceName || DEFAULT_VOICE;
-    this.systemInstruction = options.systemInstruction || 'Você é a Raphael, copiloto de desenvolvimento inteligente e descontraída.';
-    this.tools = options.tools || [];
+    this.systemInstruction = options.systemInstruction || DEFAULT_SYSTEM_INSTRUCTION;
+    this.tools = options.tools !== undefined ? options.tools : DEFAULT_LIVE_TOOLS;
     
     this.ws = null;
     this.isConnected = false;
     this.isSessionConfigured = false;
     this.currentState = 'IDLE'; // IDLE, LISTENING, THINKING, SPEAKING, WORKING
+    this.isExecutingTool = false;
   }
 
   /**
@@ -108,7 +120,7 @@ class GeminiLiveSession extends EventEmitter {
    * @param {string|Buffer} pcmData - Buffer binário ou Base64 do áudio PCM
    */
   sendAudioChunk(pcmData) {
-    if (!this.isConnected || !this.ws) return;
+    if (!this.isConnected || !this.ws || !this.isSessionConfigured) return;
 
     const base64Data = Buffer.isBuffer(pcmData) ? pcmData.toString('base64') : pcmData;
 
@@ -124,7 +136,7 @@ class GeminiLiveSession extends EventEmitter {
     };
 
     this._sendJson(message);
-    if (this.currentState !== 'LISTENING' && this.currentState !== 'SPEAKING') {
+    if (!this.isExecutingTool && this.currentState !== 'LISTENING' && this.currentState !== 'SPEAKING') {
       this._setState('LISTENING');
     }
   }
@@ -170,7 +182,7 @@ class GeminiLiveSession extends EventEmitter {
   /**
    * Processa mensagens recebidas do servidor da Gemini Live API.
    */
-  _handleMessage(rawData) {
+  async _handleMessage(rawData) {
     try {
       const data = typeof rawData === 'string' ? JSON.parse(rawData) : JSON.parse(rawData.toString());
 
@@ -196,7 +208,9 @@ class GeminiLiveSession extends EventEmitter {
         if (modelTurn && modelTurn.parts) {
           for (const part of modelTurn.parts) {
             if (part.inlineData && part.inlineData.mimeType && part.inlineData.mimeType.includes('audio/pcm')) {
-              this._setState('SPEAKING');
+              if (!this.isExecutingTool) {
+                this._setState('SPEAKING');
+              }
               this.emit('audio-chunk', {
                 pcmBase64: part.inlineData.data,
                 mimeType: part.inlineData.mimeType
@@ -210,7 +224,9 @@ class GeminiLiveSession extends EventEmitter {
 
         // 4. Fim do turno de resposta da IA
         if (serverContent.turnComplete) {
-          this._setState('IDLE');
+          if (!this.isExecutingTool) {
+            this._setState('IDLE');
+          }
           this.emit('turn-complete');
         }
       }
@@ -218,12 +234,28 @@ class GeminiLiveSession extends EventEmitter {
       // 5. Chamada de Ferramenta (Function Call)
       if (data.toolCall && data.toolCall.functionCalls) {
         console.log('[GeminiLive] Chamada de ferramenta recebida:', data.toolCall.functionCalls);
-        this._setState('WORKING');
         this.emit('tool-call', data.toolCall.functionCalls);
+        await this._processToolCalls(data.toolCall.functionCalls);
       }
     } catch (err) {
       console.warn('[GeminiLive] Erro ao decodificar mensagem recebida:', err);
     }
+  }
+
+  async _processToolCalls(functionCalls) {
+    this.isExecutingTool = true;
+    this._setState('WORKING');
+
+    const responses = [];
+    for (const call of functionCalls) {
+      this.emit('tool-start', call);
+      const res = await executeToolCall(call, { session: this });
+      responses.push(res);
+      this.emit('tool-end', { call, result: res });
+    }
+
+    this.isExecutingTool = false;
+    this.sendToolResponse(responses);
   }
 
   _sendJson(payload) {
@@ -247,6 +279,7 @@ class GeminiLiveSession extends EventEmitter {
     }
     this.isConnected = false;
     this.isSessionConfigured = false;
+    this.isExecutingTool = false;
     this._setState('IDLE');
   }
 }

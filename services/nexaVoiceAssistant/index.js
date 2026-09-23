@@ -3,201 +3,157 @@
  * 
  * Fachada principal do pacote Nexa Voice Assistant (Modo de Voz Contínuo).
  * Registra IPCs dedicados e gerencia o ciclo de vida do assistente.
+ * Integra nativamente a Gemini Multimodal Live API (Full-Duplex) e o Raphael Core.
  */
 
 const { ipcMain } = require("electron");
+const { controller: geminiLiveController } = require("../geminiLive");
 const NexaVoiceSession = require("./nexaVoiceSession");
 
-let sessionInstance = null;
+let legacySessionInstance = null;
 
-function getSession() {
-  if (!sessionInstance) {
-    sessionInstance = new NexaVoiceSession();
+function getLegacySession() {
+  if (!legacySessionInstance) {
+    legacySessionInstance = new NexaVoiceSession();
   }
-  return sessionInstance;
+  return legacySessionInstance;
+}
+
+function shouldUseGeminiLive() {
+  try {
+    const { configService } = require("../../main/globals");
+    const apiKey = configService && typeof configService.getGoogleApiKey === "function" ? configService.getGoogleApiKey() : "";
+    return !!(apiKey && apiKey.trim());
+  } catch (_) {
+    return false;
+  }
 }
 
 function registerIpc() {
-  const session = getSession();
-
   ipcMain.handle("nexa-voice:toggle", async (_event, forcedState) => {
-    const shouldBeActive = typeof forcedState === "boolean" ? forcedState : !session.isActive();
-    if (shouldBeActive) {
-      const { configService } = require("../../main/globals");
-      try {
-        const { createNexaWindow, isNexaWindowOpen } = require("../../main/nexa/nexaWindow.js");
-        if (!isNexaWindowOpen()) {
-          createNexaWindow();
-        }
-      } catch (_) {}
-      const micDevice = configService && typeof configService.getMicDevice === "function"
-        ? configService.getMicDevice()
-        : "";
-      await session.start(micDevice);
-    } else {
-      session.stop();
-      const { configService } = require("../../main/globals");
-      const nexaCfg = configService && typeof configService.getNexaConfig === "function" ? configService.getNexaConfig() : null;
-      if (!nexaCfg || !nexaCfg.enabled) {
-        try {
-          const { closeNexaWindow } = require("../../main/nexa/nexaWindow.js");
-          closeNexaWindow();
-        } catch (_) {}
-      }
-    }
-    return { active: session.isActive() };
+    return toggleVoice(forcedState);
   });
 
   ipcMain.handle("nexa-voice:get-status", () => {
+    if (geminiLiveController.isActive()) {
+      return {
+        active: true,
+        followUpActive: false,
+        mode: "geminiLive"
+      };
+    }
+    const legacy = getLegacySession();
     return {
-      active: session.isActive(),
-      followUpActive: session.followUpActive
+      active: legacy.isActive(),
+      followUpActive: legacy.followUpActive,
+      mode: "legacy"
     };
   });
 
-  // Reencaminha eventos da sessão para a janela principal do Electron
-  session.on("status-changed", (payload) => {
-    const { state, configService } = require("../../main/globals");
-    if (payload && payload.active === false) {
-      const nexaCfg = configService && typeof configService.getNexaConfig === "function" ? configService.getNexaConfig() : null;
-      if (!nexaCfg || !nexaCfg.enabled) {
-        try {
-          const { closeNexaWindow } = require("../../main/nexa/nexaWindow.js");
-          closeNexaWindow();
-        } catch (_) {}
-      }
-    }
-    if (state.mainWindow && !state.mainWindow.isDestroyed()) {
-      try {
-        state.mainWindow.webContents.send("nexa-voice:status-changed", payload);
-      } catch (_) {}
-    }
-  });
-
-  session.on("state-changed", (payload) => {
-    const { state } = require("../../main/globals");
-    try {
-      const { nexaState } = require("../../main/nexa/nexaState.js");
-      if (payload && payload.state) {
-        const stateMap = {
-          "listening": "LISTENING",
-          "transcribing": "THINKING",
-          "thinking": "THINKING",
-          "speaking": "SPEAKING",
-          "idle": "IDLE"
-        };
-        const targetState = stateMap[String(payload.state).toLowerCase()] || "IDLE";
-        nexaState.setState(targetState);
-      }
-    } catch (_) {}
-
-    if (state.mainWindow && !state.mainWindow.isDestroyed()) {
-      try {
-        state.mainWindow.webContents.send("nexa-voice:state-changed", payload);
-      } catch (_) {}
-    }
-  });
-
-  session.on("speech-preview", (payload) => {
-    const { state } = require("../../main/globals");
-    if (state.mainWindow && !state.mainWindow.isDestroyed()) {
-      try {
-        state.mainWindow.webContents.send("nexa-voice:speech-preview", payload);
-      } catch (_) {}
-    }
-  });
-
-  session.on("animation-trigger", (payload) => {
-    const { state } = require("../../main/globals");
-    const animName = payload.animation;
-    if (state.nexaWindow && !state.nexaWindow.isDestroyed()) {
-      try {
-        state.nexaWindow.webContents.send("nexa:play-animation", { name: animName });
-      } catch (_) {}
-    }
-  });
-
-  // Quando o áudio da Nexa começa a ser reproduzido, marca a sessão como falando (isSpeakingTts = true)
+  // Quando o áudio começa a ser reproduzido
   ipcMain.on("play-tts-audio", () => {
-    if (session.isActive()) {
-      session.handleTtsStarted();
+    const legacy = getLegacySession();
+    if (legacy.isActive()) {
+      legacy.handleTtsStarted();
     }
   });
 
   // Quando o processamento da IA começa no chat
   ipcMain.on("nexa-voice:processing-started", () => {
-    if (session.isActive()) {
-      session.isQueryExecuting = true;
+    const legacy = getLegacySession();
+    if (legacy.isActive()) {
+      legacy.isQueryExecuting = true;
     }
   });
 
   // Quando o processamento da IA termina no chat sem áudio TTS
   ipcMain.on("nexa-voice:processing-finished", () => {
-    if (session.isActive() && !session.isSpeakingTts) {
-      session.handleAiProcessingFinished();
+    const legacy = getLegacySession();
+    if (legacy.isActive() && !legacy.isSpeakingTts) {
+      legacy.handleAiProcessingFinished();
     }
   });
 
-  // Quando o áudio da Nexa termina de ser reproduzido, aciona a janela de follow-up de 8s
+  // Quando o áudio da Nexa termina de ser reproduzido
   ipcMain.on("nexa:tts-ended", () => {
-    if (session.isActive()) {
-      session.handleTtsEnded();
+    const legacy = getLegacySession();
+    if (legacy.isActive()) {
+      legacy.handleTtsEnded();
     }
   });
 }
 
-module.exports = {
-  start: async (micDevice) => {
-    const session = getSession();
-    try {
-      const { createNexaWindow, isNexaWindowOpen } = require("../../main/nexa/nexaWindow.js");
-      if (!isNexaWindowOpen()) {
-        createNexaWindow();
-      }
-    } catch (_) {}
-    return session.start(micDevice);
-  },
-  stop: () => {
-    const session = getSession();
-    session.stop();
+async function startVoice(micDevice) {
+  _ensureNexaWindowOpen();
+
+  if (shouldUseGeminiLive()) {
+    console.log("[nexaVoiceAssistant] Iniciando modo de voz via Gemini Multimodal Live API.");
+    return geminiLiveController.start({ micDevice });
+  }
+
+  console.log("[nexaVoiceAssistant] Google API Key não detectada. Utilizando motor fallback local.");
+  const legacy = getLegacySession();
+  return legacy.start(micDevice);
+}
+
+function stopVoice() {
+  if (geminiLiveController.isActive()) {
+    geminiLiveController.stop();
+  }
+  const legacy = getLegacySession();
+  if (legacy.isActive()) {
+    legacy.stop();
+  }
+  _handleNexaWindowCloseIfNecessary();
+}
+
+async function toggleVoice(forcedState) {
+  const currentActive = isVoiceActive();
+  const shouldBeActive = typeof forcedState === "boolean" ? forcedState : !currentActive;
+
+  if (shouldBeActive) {
+    const { configService } = require("../../main/globals");
+    const micDevice = configService && typeof configService.getMicDevice === "function"
+      ? configService.getMicDevice()
+      : "";
+    await startVoice(micDevice);
+  } else {
+    stopVoice();
+  }
+
+  return { active: isVoiceActive() };
+}
+
+function isVoiceActive() {
+  return geminiLiveController.isActive() || getLegacySession().isActive();
+}
+
+function _ensureNexaWindowOpen() {
+  try {
+    const { createNexaWindow, isNexaWindowOpen } = require("../../main/nexa/nexaWindow.js");
+    if (!isNexaWindowOpen()) {
+      createNexaWindow();
+    }
+  } catch (_) {}
+}
+
+function _handleNexaWindowCloseIfNecessary() {
+  try {
     const { configService } = require("../../main/globals");
     const nexaCfg = configService && typeof configService.getNexaConfig === "function" ? configService.getNexaConfig() : null;
     if (!nexaCfg || !nexaCfg.enabled) {
-      try {
-        const { closeNexaWindow } = require("../../main/nexa/nexaWindow.js");
-        closeNexaWindow();
-      } catch (_) {}
+      const { closeNexaWindow } = require("../../main/nexa/nexaWindow.js");
+      closeNexaWindow();
     }
-  },
-  isActive: () => getSession().isActive(),
-  toggle: async (forcedState) => {
-    const session = getSession();
-    const shouldBeActive = typeof forcedState === "boolean" ? forcedState : !session.isActive();
-    if (shouldBeActive) {
-      const { configService } = require("../../main/globals");
-      try {
-        const { createNexaWindow, isNexaWindowOpen } = require("../../main/nexa/nexaWindow.js");
-        if (!isNexaWindowOpen()) {
-          createNexaWindow();
-        }
-      } catch (_) {}
-      const micDevice = configService && typeof configService.getMicDevice === "function"
-        ? configService.getMicDevice()
-        : "";
-      await session.start(micDevice);
-    } else {
-      session.stop();
-      const { configService } = require("../../main/globals");
-      const nexaCfg = configService && typeof configService.getNexaConfig === "function" ? configService.getNexaConfig() : null;
-      if (!nexaCfg || !nexaCfg.enabled) {
-        try {
-          const { closeNexaWindow } = require("../../main/nexa/nexaWindow.js");
-          closeNexaWindow();
-        } catch (_) {}
-      }
-    }
-    return { active: session.isActive() };
-  },
+  } catch (_) {}
+}
+
+module.exports = {
+  start: startVoice,
+  stop: stopVoice,
+  isActive: isVoiceActive,
+  toggle: toggleVoice,
   registerIpc,
-  getSession
+  getSession: () => getLegacySession(),
+  geminiLiveController
 };

@@ -157,7 +157,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onStopTtsAudio: (cb) => ipcRenderer.on("stop-tts-audio", (event, data) => cb(data)),
   triggerTtsPlayback: (text) => ipcRenderer.send("trigger-tts-stream-playback", text),
 
-  // === Modo de Voz Contínuo Nexa ===
+  // === Modo de Voz Contínuo Nexa & Gemini Live ===
   nexaVoiceToggle: (forcedState) => ipcRenderer.invoke("nexa-voice:toggle", forcedState),
   nexaVoiceGetStatus: () => ipcRenderer.invoke("nexa-voice:get-status"),
   onNexaVoiceStatusChanged: (cb) => ipcRenderer.on("nexa-voice:status-changed", (event, data) => cb(data)),
@@ -165,6 +165,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onNexaVoiceSpeechPreview: (cb) => ipcRenderer.on("nexa-voice:speech-preview", (event, data) => cb(data)),
   onNexaVoiceSubmitQuestion: (cb) => ipcRenderer.on("nexa-voice:submit-question", (event, data) => cb(data)),
   onNexaVoiceQuickReply: (cb) => ipcRenderer.on("nexa-voice:quick-reply", (event, data) => cb(data)),
+  onGeminiLiveAudioChunk: (cb) => ipcRenderer.on("gemini-live:audio-chunk", (event, data) => cb(data)),
+  onGeminiLiveBargeIn: (cb) => ipcRenderer.on("gemini-live:barge-in", (event, data) => cb(data)),
+  onGeminiLiveTranscript: (cb) => ipcRenderer.on("gemini-live:transcript", (event, data) => cb(data)),
+  onGeminiLiveToolProgress: (cb) => ipcRenderer.on("gemini-live:tool-progress", (event, data) => cb(data)),
   sendNexaVoiceProcessingStarted: () => ipcRenderer.send("nexa-voice:processing-started"),
   sendNexaVoiceProcessingFinished: () => ipcRenderer.send("nexa-voice:processing-finished"),
   processPastedImage: (base64Image) =>
@@ -364,6 +368,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   reloadNexaWindow: () => ipcRenderer.send("nexa:reload-window"),
   onPlayTtsAudio: (cb) => ipcRenderer.on("play-tts-audio", (event, data) => cb(data)),
   onStopTtsAudio: (cb) => ipcRenderer.on("stop-tts-audio", (event, data) => cb(data)),
+  onGeminiLiveAudioChunk: (cb) => ipcRenderer.on("gemini-live:audio-chunk", (event, data) => cb(data)),
+  onGeminiLiveBargeIn: (cb) => ipcRenderer.on("gemini-live:barge-in", (event, data) => cb(data)),
+  onGeminiLiveTranscript: (cb) => ipcRenderer.on("gemini-live:transcript", (event, data) => cb(data)),
   onPlayAnimation: (cb) => ipcRenderer.on("nexa:play-animation", (event, data) => cb(data)),
   logToMain: (level, msg) => ipcRenderer.send("nexa:log-to-main", { level, msg }),
   onRequestWebcam: (cb) => ipcRenderer.on("nexa:request-webcam", (event, data) => cb(data)),

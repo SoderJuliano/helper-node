@@ -95,6 +95,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       } catch (_) {}
       currentAudio = null;
     }
+    if (typeof pcmPlayer !== "undefined" && pcmPlayer) {
+      pcmPlayer.stop();
+    }
     if (raphaelSubtitles) {
       raphaelSubtitles.hide();
     }
@@ -104,9 +107,133 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
+  // Player de Áudio Streaming em tempo real para o Gemini Multimodal Live (Web Audio API)
+  class PcmStreamPlayer {
+    constructor() {
+      this.audioCtx = null;
+      this.nextStartTime = 0;
+      this.activeSources = new Set();
+      this.analyser = null;
+    }
+
+    _ensureContext() {
+      if (!this.audioCtx) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        this.audioCtx = new AudioCtx({ sampleRate: 24000 });
+      }
+      if (this.audioCtx.state === "suspended") {
+        this.audioCtx.resume().catch(() => {});
+      }
+      if (!this.analyser && raphaelCore && raphaelCore.audioVisualizer) {
+        raphaelCore.audioVisualizer.initContext();
+        this.analyser = raphaelCore.audioVisualizer.analyser;
+      }
+    }
+
+    playChunk(pcmBase64, sampleRate = 24000) {
+      if (!pcmBase64) return;
+      this._ensureContext();
+
+      try {
+        const binaryStr = atob(pcmBase64);
+        const len = binaryStr.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binaryStr.charCodeAt(i);
+        }
+
+        const int16Samples = new Int16Array(bytes.buffer);
+        const numSamples = int16Samples.length;
+        if (numSamples === 0) return;
+
+        const buffer = this.audioCtx.createBuffer(1, numSamples, sampleRate);
+        const channelData = buffer.getChannelData(0);
+        for (let i = 0; i < numSamples; i++) {
+          channelData[i] = int16Samples[i] / 32768.0;
+        }
+
+        const source = this.audioCtx.createBufferSource();
+        source.buffer = buffer;
+
+        if (this.analyser) {
+          source.connect(this.analyser);
+          this.analyser.connect(this.audioCtx.destination);
+        } else {
+          source.connect(this.audioCtx.destination);
+        }
+
+        const now = this.audioCtx.currentTime;
+        const startTime = Math.max(now, this.nextStartTime);
+        source.start(startTime);
+        this.nextStartTime = startTime + buffer.duration;
+
+        this.activeSources.add(source);
+        if (raphaelCore) {
+          raphaelCore.setState("SPEAKING");
+          canvas.className = "raphael-canvas-glow speaking";
+        }
+
+        source.onended = () => {
+          this.activeSources.delete(source);
+          if (this.activeSources.size === 0 && this.audioCtx.currentTime >= this.nextStartTime - 0.05) {
+            if (raphaelCore && raphaelCore.getState() === "SPEAKING") {
+              raphaelCore.setState("IDLE");
+              canvas.className = "raphael-canvas-glow idle";
+            }
+          }
+        };
+      } catch (err) {
+        console.warn("[PcmStreamPlayer] Erro ao reproduzir chunk PCM:", err);
+      }
+    }
+
+    stop() {
+      for (const src of this.activeSources) {
+        try {
+          src.stop();
+          src.disconnect();
+        } catch (_) {}
+      }
+      this.activeSources.clear();
+      this.nextStartTime = 0;
+      if (raphaelCore && raphaelCore.getState() === "SPEAKING") {
+        raphaelCore.setState("IDLE");
+        canvas.className = "raphael-canvas-glow idle";
+      }
+    }
+  }
+
+  const pcmPlayer = new PcmStreamPlayer();
+
+  if (window.electronAPI && window.electronAPI.onGeminiLiveAudioChunk) {
+    window.electronAPI.onGeminiLiveAudioChunk((data) => {
+      const pcmBase64 = data.pcmBase64 || data;
+      const sampleRate = (data.mimeType && data.mimeType.includes("rate=16000")) ? 16000 : 24000;
+      pcmPlayer.playChunk(pcmBase64, sampleRate);
+    });
+  }
+
+  if (window.electronAPI && window.electronAPI.onGeminiLiveBargeIn) {
+    window.electronAPI.onGeminiLiveBargeIn(() => {
+      console.log("[NexaRenderer] Barge-In disparado pelo Gemini Live: silenciando voz imediatamente.");
+      pcmPlayer.stop();
+      stopTtsAudio();
+    });
+  }
+
+  if (window.electronAPI && window.electronAPI.onGeminiLiveTranscript) {
+    window.electronAPI.onGeminiLiveTranscript((data) => {
+      const text = data && data.text ? data.text : data;
+      if (raphaelSubtitles && text) {
+        raphaelSubtitles.show(text, 4000);
+      }
+    });
+  }
+
   if (window.electronAPI && window.electronAPI.onStopTtsAudio) {
     window.electronAPI.onStopTtsAudio(() => {
       console.log("[NexaRenderer] Parando áudio TTS imediatamente (Barge-in).");
+      pcmPlayer.stop();
       stopTtsAudio();
     });
   }
