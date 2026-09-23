@@ -1,6 +1,6 @@
 // renderer/raphael/raphaelSubtitles.js
-// Controlador de Legendas Holograficas com Efeito Cinético (Quantum Cascade Drop)
-// para o orbe/bolinha do Raphael Core.
+// Controlador de Legendas e Transcrição em Tempo Real do Raphael Core.
+// Suporta streaming contínuo sem cortes ou spans deformados, com auto-scroll suave.
 
 (function(root) {
   'use strict';
@@ -9,6 +9,7 @@
     constructor(options = {}) {
       this.containerId = options.containerId || 'raphaelSubtitleContainer';
       this.container = null;
+      this.textEl = null;
       this.activeTimer = null;
       this.fadeTimer = null;
       this.initDom();
@@ -24,72 +25,83 @@
         document.body.appendChild(existing);
       }
       this.container = existing;
+
+      // Elemento de texto interno limpo
+      let textEl = this.container.querySelector('.raphael-subtitle-content');
+      if (!textEl) {
+        this.container.innerHTML = '';
+        textEl = document.createElement('div');
+        textEl.className = 'raphael-subtitle-content';
+        this.container.appendChild(textEl);
+      }
+      this.textEl = textEl;
+    }
+
+    _cleanText(raw) {
+      if (!raw) return '';
+      return String(raw)
+        .replace(/<voice_summary>[\s\S]*?<\/voice_summary>/gi, '')
+        .replace(/<thought>[\s\S]*?<\/thought>/gi, '')
+        .replace(/<[^>]+>/g, '')
+        .replace(/```[\s\S]*?```/g, ' [código omitido no HUD] ')
+        .trim();
     }
 
     /**
-     * Exibe o texto falado com animacao de cascata cinetica suave de palavras.
-     * @param {string} text Texto falado pelo assistente
-     * @param {number} estimatedDurationMs Duracao estimada do audio em ms
+     * Atualização em tempo real (Streaming) do texto acumulado do turno atual.
+     * Não destrói nem limpa o DOM a cada delta, garantindo leitura contínua e sem piscamentos.
+     * @param {string} fullText Texto completo acumulado até o momento
      */
-    show(text, estimatedDurationMs = 5000) {
-      if (!this.container || !text) return;
+    updateStreaming(fullText) {
+      if (!this.container || !fullText) return;
+      const clean = this._cleanText(fullText);
+      if (!clean) return;
 
-      this.clear();
+      this.initDom();
+      if (this.activeTimer) {
+        clearTimeout(this.activeTimer);
+        this.activeTimer = null;
+      }
+      if (this.fadeTimer) {
+        clearTimeout(this.fadeTimer);
+        this.fadeTimer = null;
+      }
 
-      // Limpa tags HTML se houver
-      const cleanText = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-      if (!cleanText) return;
-
-      const words = cleanText.split(' ');
-      this.container.innerHTML = '';
       this.container.classList.remove('fade-out');
       this.container.classList.add('visible');
 
-      const wrapper = document.createElement('div');
-      wrapper.className = 'raphael-words-wrapper';
-
-      // Ajuste responsivo de tamanho de fonte baseado no comprimento do texto
-      if (cleanText.length > 180) {
-        wrapper.style.fontSize = '10.5px';
-        wrapper.style.lineHeight = '1.34';
-      } else if (cleanText.length > 110) {
-        wrapper.style.fontSize = '11px';
-        wrapper.style.lineHeight = '1.38';
-      } else {
-        wrapper.style.fontSize = '12px';
-        wrapper.style.lineHeight = '1.45';
+      if (this.textEl) {
+        this.textEl.textContent = clean;
       }
 
-      const totalWords = words.length;
-      const pacingMs = Math.min(220, Math.max(80, Math.floor(estimatedDurationMs / (totalWords || 1))));
-
-      words.forEach((word, index) => {
-        const span = document.createElement('span');
-        span.className = 'raphael-word-drop';
-        span.textContent = word + ' ';
-        const delay = index * pacingMs;
-        span.style.animationDelay = `${delay}ms`;
-        wrapper.appendChild(span);
-
-        // Acompanha a leitura rolando o container suavemente para baixo
-        setTimeout(() => {
-          if (this.container) {
-            this.container.scrollTop = this.container.scrollHeight;
-          }
-        }, delay + 40);
-      });
-
-      this.container.appendChild(wrapper);
-
-      // Auto-oculta suavemente apos o tempo de fala estimado com margem de leitura
-      const holdTime = Math.max(5500, estimatedDurationMs + 2500);
-      this.activeTimer = setTimeout(() => {
-        this.hide();
-      }, holdTime);
+      // Auto-scroll suave para o final do texto
+      this.container.scrollTop = this.container.scrollHeight;
     }
 
     /**
-     * Oculta a legenda com transicao suave de fade-out.
+     * Finaliza o streaming do turno mantendo o texto visível por alguns segundos para leitura.
+     * @param {number} holdMs Tempo em milissegundos antes de iniciar o fade-out
+     */
+    finishStreaming(holdMs = 7000) {
+      if (!this.container) return;
+      if (this.activeTimer) clearTimeout(this.activeTimer);
+      this.activeTimer = setTimeout(() => {
+        this.hide();
+      }, Math.max(3000, holdMs));
+    }
+
+    /**
+     * Exibe um texto estático completo (legado TTS ou notificação pontual).
+     * @param {string} text Texto a exibir
+     * @param {number} estimatedDurationMs Duração estimada em ms
+     */
+    show(text, estimatedDurationMs = 5000) {
+      this.updateStreaming(text);
+      this.finishStreaming(Math.max(5000, estimatedDurationMs + 2000));
+    }
+
+    /**
+     * Oculta a legenda com transição suave de fade-out.
      */
     hide() {
       if (!this.container) return;
@@ -98,17 +110,26 @@
       this.fadeTimer = setTimeout(() => {
         if (this.container) {
           this.container.classList.remove('visible', 'fade-out');
-          this.container.innerHTML = '';
+          if (this.textEl) this.textEl.textContent = '';
         }
-      }, 500);
+      }, 400);
     }
 
+    /**
+     * Limpa imediatamente o container (usado em Barge-In / Interrupções).
+     */
     clear() {
-      if (this.activeTimer) clearTimeout(this.activeTimer);
-      if (this.fadeTimer) clearTimeout(this.fadeTimer);
+      if (this.activeTimer) {
+        clearTimeout(this.activeTimer);
+        this.activeTimer = null;
+      }
+      if (this.fadeTimer) {
+        clearTimeout(this.fadeTimer);
+        this.fadeTimer = null;
+      }
       if (this.container) {
         this.container.classList.remove('visible', 'fade-out');
-        this.container.innerHTML = '';
+        if (this.textEl) this.textEl.textContent = '';
       }
     }
   }

@@ -363,9 +363,15 @@ var isEditingQuestion = false;
     }
 
     if (window.electronAPI && window.electronAPI.onNexaVoiceQuickReply) {
-        window.electronAPI.onNexaVoiceQuickReply(({ question, reply }) => {
-            if (!question) return;
-            appendQuestionEntry(question);
+        window.electronAPI.onNexaVoiceQuickReply(async ({ question, reply }) => {
+            if (!question && !reply) return;
+            const cleanQuestion = (question && question.trim()) ? question.trim() : '🎤 Pergunta por voz';
+            const cleanReply = (reply && reply.trim()) ? reply.trim() : '';
+            if (!cleanReply) return;
+
+            // Insere a pergunta do usuário no chat
+            appendQuestionEntry(cleanQuestion);
+
             const transcriptionElement = document.getElementById('transcription');
             if (transcriptionElement) {
                 const lastBlock = transcriptionElement.querySelector('.interaction-block:last-child');
@@ -376,9 +382,33 @@ var isEditingQuestion = false;
                         resp.className = 'ia-response markdown-body';
                         lastBlock.appendChild(resp);
                     }
-                    resp.textContent = reply;
+
+                    if (typeof window.renderMarkdownWithHighlights === 'function') {
+                        resp.innerHTML = window.renderMarkdownWithHighlights(cleanReply);
+                    } else if (typeof window.renderMarkdown === 'function') {
+                        resp.innerHTML = window.renderMarkdown(cleanReply);
+                    } else {
+                        resp.textContent = cleanReply;
+                    }
+
+                    // Anexa ações do bloco (copiar, regenerar, etc) se ainda não existirem
+                    if (typeof window.createBlockActions === 'function' && !lastBlock.querySelector('.block-actions')) {
+                        lastBlock.appendChild(window.createBlockActions(transcriptionElement));
+                    }
                 }
             }
+
+            // Persiste a conversa na sessão de histórico do Helper Node
+            if (window.historySession) {
+                try {
+                    await window.historySession.ensureSessionForFirstQuestion(cleanQuestion);
+                    await window.historySession.addMessageToCurrentSession('user', cleanQuestion);
+                    await window.historySession.addMessageToCurrentSession('assistant', cleanReply);
+                } catch (err) {
+                    console.warn('[chatMessages] Erro ao persistir turno de voz no histórico:', err);
+                }
+            }
+
             scrollTranscriptionToBottom('smooth');
         });
     }

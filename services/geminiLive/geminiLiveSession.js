@@ -41,6 +41,11 @@ class GeminiLiveSession extends EventEmitter {
     this.currentState = 'IDLE'; // IDLE, LISTENING, THINKING, SPEAKING, WORKING
     this.isExecutingTool = false;
     this._triedFallback = false;
+
+    // Acumuladores de conversa do turno atual
+    this.currentUserText = '';
+    this.currentModelText = '';
+    this.lastInterimUserText = '';
   }
 
   /**
@@ -129,6 +134,8 @@ class GeminiLiveSession extends EventEmitter {
             }
           }
         },
+        inputAudioTranscription: {},
+        outputAudioTranscription: {},
         systemInstruction: {
           parts: [{ text: this.systemInstruction }]
         }
@@ -258,12 +265,34 @@ class GeminiLiveSession extends EventEmitter {
           console.log('[GeminiLive] Barge-In disparado pelo servidor: silenciando reprodução.');
           this.emit('barge-in');
           this._setState('LISTENING');
+          this.currentModelText = '';
           return;
         }
 
-        // Transcrição de saída em tempo real (Google envia em serverContent.outputTranscription.text)
+        // Transcrição da fala do usuário (entrada)
+        if (serverContent.inputTranscription && serverContent.inputTranscription.text) {
+          const userChunk = serverContent.inputTranscription.text;
+          this.currentUserText = (this.currentUserText ? (this.currentUserText + ' ' + userChunk) : userChunk).trim();
+          this.lastInterimUserText = this.currentUserText;
+          this.emit('user-transcript', {
+            delta: userChunk,
+            text: this.currentUserText
+          });
+        }
+        if (serverContent.interimInputTranscription && serverContent.interimInputTranscription.text) {
+          const interim = serverContent.interimInputTranscription.text;
+          this.lastInterimUserText = interim;
+          this.emit('user-transcript-interim', {
+            text: interim
+          });
+        }
+
+        // Transcrição da fala do modelo (saída) em tempo real
         if (serverContent.outputTranscription && serverContent.outputTranscription.text) {
-          this.emit('transcript', serverContent.outputTranscription.text);
+          const deltaText = serverContent.outputTranscription.text;
+          this.currentModelText += deltaText;
+          this.emit('transcript-delta', { delta: deltaText, text: this.currentModelText });
+          this.emit('transcript', this.currentModelText);
         }
 
         // 3. Recebimento de partes de áudio geradas
@@ -280,7 +309,9 @@ class GeminiLiveSession extends EventEmitter {
               });
             }
             if (part.text) {
-              this.emit('transcript', part.text);
+              this.currentModelText += part.text;
+              this.emit('transcript-delta', { delta: part.text, text: this.currentModelText });
+              this.emit('transcript', this.currentModelText);
             }
           }
         }
@@ -290,7 +321,16 @@ class GeminiLiveSession extends EventEmitter {
           if (!this.isExecutingTool) {
             this._setState('IDLE');
           }
-          this.emit('turn-complete');
+          const turnData = {
+            userText: this.currentUserText || this.lastInterimUserText,
+            modelText: this.currentModelText
+          };
+          this.emit('turn-complete', turnData);
+
+          // Limpa acumuladores para o próximo turno
+          this.currentUserText = '';
+          this.currentModelText = '';
+          this.lastInterimUserText = '';
         }
       }
 

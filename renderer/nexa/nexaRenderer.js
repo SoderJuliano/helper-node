@@ -114,6 +114,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       this.nextStartTime = 0;
       this.activeSources = new Set();
       this.analyser = null;
+      this.gainNode = null;
     }
 
     _ensureContext() {
@@ -124,9 +125,26 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (this.audioCtx.state === "suspended") {
         this.audioCtx.resume().catch(() => {});
       }
-      if (!this.analyser && raphaelCore && raphaelCore.audioVisualizer) {
-        raphaelCore.audioVisualizer.initContext();
-        this.analyser = raphaelCore.audioVisualizer.analyser;
+      if (!this.analyser) {
+        this.analyser = this.audioCtx.createAnalyser();
+        this.analyser.fftSize = 512;
+        this.analyser.smoothingTimeConstant = 0.82;
+
+        this.gainNode = this.audioCtx.createGain();
+        this.gainNode.gain.value = 1.0;
+
+        // Conecta cadeia de saída: gainNode -> analyser -> audioCtx.destination (hardware de áudio/fone)
+        this.gainNode.connect(this.analyser);
+        this.analyser.connect(this.audioCtx.destination);
+      }
+      if (raphaelCore && raphaelCore.audioVisualizer) {
+        raphaelCore.audioVisualizer.analyser = this.analyser;
+        raphaelCore.audioVisualizer.audioContext = this.audioCtx;
+        const binCount = this.analyser.frequencyBinCount;
+        if (!raphaelCore.audioVisualizer.frequencyData || raphaelCore.audioVisualizer.frequencyData.length !== binCount) {
+          raphaelCore.audioVisualizer.frequencyData = new Uint8Array(binCount);
+          raphaelCore.audioVisualizer.timeDomainData = new Uint8Array(binCount);
+        }
       }
     }
 
@@ -137,12 +155,15 @@ document.addEventListener("DOMContentLoaded", async () => {
       try {
         const binaryStr = atob(pcmBase64);
         const len = binaryStr.length;
-        const bytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
+        const alignedLen = len - (len % 2);
+        if (alignedLen === 0) return;
+
+        const bytes = new Uint8Array(alignedLen);
+        for (let i = 0; i < alignedLen; i++) {
           bytes[i] = binaryStr.charCodeAt(i);
         }
 
-        const int16Samples = new Int16Array(bytes.buffer);
+        const int16Samples = new Int16Array(bytes.buffer, 0, alignedLen / 2);
         const numSamples = int16Samples.length;
         if (numSamples === 0) return;
 
@@ -154,13 +175,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         const source = this.audioCtx.createBufferSource();
         source.buffer = buffer;
-
-        if (this.analyser) {
-          source.connect(this.analyser);
-          this.analyser.connect(this.audioCtx.destination);
-        } else {
-          source.connect(this.audioCtx.destination);
-        }
+        source.connect(this.gainNode || this.analyser);
 
         const now = this.audioCtx.currentTime;
         const startTime = Math.max(now, this.nextStartTime);
@@ -218,6 +233,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.log("[NexaRenderer] Barge-In disparado pelo Gemini Live: silenciando voz imediatamente.");
       pcmPlayer.stop();
       stopTtsAudio();
+      if (raphaelSubtitles) {
+        raphaelSubtitles.clear();
+      }
     });
   }
 
@@ -225,7 +243,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     window.electronAPI.onGeminiLiveTranscript((data) => {
       const text = data && data.text ? data.text : data;
       if (raphaelSubtitles && text) {
-        raphaelSubtitles.show(text, 4000);
+        raphaelSubtitles.updateStreaming(text);
+      }
+    });
+  }
+
+  if (window.electronAPI && window.electronAPI.onGeminiLiveTurnComplete) {
+    window.electronAPI.onGeminiLiveTurnComplete(() => {
+      if (raphaelSubtitles) {
+        raphaelSubtitles.finishStreaming(7000);
       }
     });
   }

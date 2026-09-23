@@ -116,6 +116,15 @@ DIRETIVAS OBRIGATÓRIAS DE FLUXO:
       this._broadcastToWindows('gemini-live:transcript', { text });
     });
 
+    session.on('transcript-delta', (payload) => {
+      this._broadcastToWindows('gemini-live:transcript-delta', payload);
+    });
+
+    session.on('user-transcript', (data) => {
+      this._broadcastToWindows('gemini-live:user-transcript', data);
+      this._broadcastToWindows('nexa-voice:speech-preview', { text: data.text });
+    });
+
     session.on('state-changed', ({ state }) => {
       this._updateNexaState(state);
       this._broadcastToWindows('nexa-voice:state-changed', { state: state.toLowerCase() });
@@ -130,9 +139,22 @@ DIRETIVAS OBRIGATÓRIAS DE FLUXO:
       this._broadcastToWindows('gemini-live:tool-end', data);
     });
 
-    session.on('turn-complete', () => {
+    session.on('turn-complete', (turnData) => {
       if (!session.isExecutingTool) {
         this._updateNexaState('IDLE');
+      }
+      this._broadcastToWindows('gemini-live:turn-complete', turnData);
+
+      const userQuestion = (turnData && turnData.userText && turnData.userText.trim())
+        ? turnData.userText.trim()
+        : '🎤 Pergunta por voz';
+      const aiReply = (turnData && turnData.modelText) ? turnData.modelText.trim() : '';
+
+      if (aiReply) {
+        this._broadcastToWindows('nexa-voice:quick-reply', {
+          question: userQuestion,
+          reply: aiReply
+        });
       }
     });
 

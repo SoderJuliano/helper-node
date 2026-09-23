@@ -150,19 +150,47 @@ async function runTests() {
   assert.strictEqual(toolResponsePayload.toolResponse.functionResponses[0].id, 'call_live_456');
   console.log("  ✅ Teste 6: Orquestração de tool-call com transição para WORKING e retorno de toolResponse validado.");
 
-  // 7. Validação do preload.js e nexaRenderer.js
+  // 7. Validação do preload.js, nexaRenderer.js e raphaelSubtitles.js
   const preloadContent = fs.readFileSync(path.join(__dirname, "../preload.js"), "utf8");
   assert.ok(preloadContent.includes("onGeminiLiveAudioChunk"), "preload.js deve conter onGeminiLiveAudioChunk");
   assert.ok(preloadContent.includes("onGeminiLiveBargeIn"), "preload.js deve conter onGeminiLiveBargeIn");
   assert.ok(preloadContent.includes("onGeminiLiveTranscript"), "preload.js deve conter onGeminiLiveTranscript");
+  assert.ok(preloadContent.includes("onGeminiLiveTurnComplete"), "preload.js deve conter onGeminiLiveTurnComplete");
 
   const rendererContent = fs.readFileSync(path.join(__dirname, "../renderer/nexa/nexaRenderer.js"), "utf8");
   assert.ok(rendererContent.includes("class PcmStreamPlayer"), "nexaRenderer.js deve conter PcmStreamPlayer");
-  assert.ok(rendererContent.includes("onGeminiLiveAudioChunk"), "nexaRenderer.js deve escutar onGeminiLiveAudioChunk");
-  assert.ok(rendererContent.includes("onGeminiLiveBargeIn"), "nexaRenderer.js deve escutar onGeminiLiveBargeIn");
-  console.log("  ✅ Teste 7: PcmStreamPlayer e listeners de eventos Live no renderer validados.");
+  assert.ok(rendererContent.includes("updateStreaming"), "nexaRenderer.js deve usar updateStreaming para legendas");
 
-  console.log("\n🎉 TODOS OS 7 TESTES DA PIPELINE COMPLETA GEMINI LIVE + RAPHAEL CORE PASSARAM COM SUCESSO!");
+  const subtitlesContent = fs.readFileSync(path.join(__dirname, "../renderer/raphael/raphaelSubtitles.js"), "utf8");
+  assert.ok(subtitlesContent.includes("updateStreaming"), "raphaelSubtitles.js deve implementar updateStreaming");
+  assert.ok(subtitlesContent.includes("finishStreaming"), "raphaelSubtitles.js deve implementar finishStreaming");
+
+  // 8. Validação de Handshake e Acumulação de Transcrição
+  const sessionTrans = new GeminiLiveSession({ apiKey: 'mock_key' });
+  let handshakeSent = null;
+  sessionTrans.ws = {
+    send: (msg) => { handshakeSent = JSON.parse(msg); },
+    close: () => {}
+  };
+  sessionTrans.isConnected = true;
+  sessionTrans._sendSetupHandshake();
+  assert.ok(handshakeSent.setup.inputAudioTranscription, "Setup deve conter inputAudioTranscription");
+  assert.ok(handshakeSent.setup.outputAudioTranscription, "Setup deve conter outputAudioTranscription");
+
+  let capturedTurn = null;
+  sessionTrans.on('turn-complete', (data) => { capturedTurn = data; });
+  await sessionTrans._handleMessage(JSON.stringify({
+    serverContent: {
+      inputTranscription: { text: "Bom dia Raphael!" },
+      outputTranscription: { text: "Bom dia Juliano! Tudo pronto." },
+      turnComplete: true
+    }
+  }));
+  assert.strictEqual(capturedTurn.userText, "Bom dia Raphael!");
+  assert.strictEqual(capturedTurn.modelText, "Bom dia Juliano! Tudo pronto.");
+  console.log("  ✅ Teste 7 e 8: Setup bidirecional com transcrições, PcmStreamPlayer e RaphaelSubtitles validados.");
+
+  console.log("\n🎉 TODOS OS 8 TESTES DA PIPELINE COMPLETA GEMINI LIVE + RAPHAEL CORE PASSARAM COM SUCESSO!");
 }
 
 runTests().catch(err => {
