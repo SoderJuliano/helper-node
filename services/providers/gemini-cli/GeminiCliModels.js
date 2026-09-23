@@ -21,13 +21,23 @@ const { resolveBinary } = require('./GeminiCliProcess');
 const DEFAULT_MODEL = '';
 
 const MEMORY_TTL = 5 * 60 * 1000;
-const PROBE_TIMEOUT = 2500;
+const PROBE_TIMEOUT = 15000;
 
 const DEFAULT_AGY_MODELS = [
-  { id: 'gemini-2.5-flash', value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
-  { id: 'gemini-2.5-pro', value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
-  { id: 'claude-3-7-sonnet', value: 'claude-3-7-sonnet', label: 'Claude 3.7 Sonnet' },
-  { id: 'gemini-2.5-ultra', value: 'gemini-2.5-ultra', label: 'Gemini 2.5 Ultra' }
+  { id: 'gemini-3.8-flash-high', value: 'gemini-3.8-flash-high', label: 'Gemini 3.8 Flash (High)' },
+  { id: 'gemini-3.8-flash-medium', value: 'gemini-3.8-flash-medium', label: 'Gemini 3.8 Flash (Medium)' },
+  { id: 'gemini-3.8-flash-low', value: 'gemini-3.8-flash-low', label: 'Gemini 3.8 Flash (Low)' },
+  { id: 'gemini-3.7-flash-high', value: 'gemini-3.7-flash-high', label: 'Gemini 3.7 Flash (High)' },
+  { id: 'gemini-3.7-flash-medium', value: 'gemini-3.7-flash-medium', label: 'Gemini 3.7 Flash (Medium)' },
+  { id: 'gemini-3.7-flash-low', value: 'gemini-3.7-flash-low', label: 'Gemini 3.7 Flash (Low)' },
+  { id: 'gemini-3.6-flash-high', value: 'gemini-3.6-flash-high', label: 'Gemini 3.6 Flash (High)' },
+  { id: 'gemini-3.6-flash-medium', value: 'gemini-3.6-flash-medium', label: 'Gemini 3.6 Flash (Medium)' },
+  { id: 'gemini-3.6-flash-low', value: 'gemini-3.6-flash-low', label: 'Gemini 3.6 Flash (Low)' },
+  { id: 'gemini-3.1-pro-high', value: 'gemini-3.1-pro-high', label: 'Gemini 3.1 Pro (High)' },
+  { id: 'gemini-3.1-pro-low', value: 'gemini-3.1-pro-low', label: 'Gemini 3.1 Pro (Low)' },
+  { id: 'claude-sonnet-4-6', value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 (Thinking)' },
+  { id: 'claude-opus-4-6-thinking', value: 'claude-opus-4-6-thinking', label: 'Claude Opus 4.6 (Thinking)' },
+  { id: 'gpt-oss-120b-medium', value: 'gpt-oss-120b-medium', label: 'GPT-OSS 120B (Medium)' }
 ];
 
 let cachedModels = null;
@@ -162,16 +172,24 @@ async function getModels(force = false) {
   if (!force && cachedModels && Date.now() - lastFetchTime < MEMORY_TTL) return cachedModels;
 
   const disk = readDiskCache();
-  if (disk && !cachedModels) {
+  if (disk && !cachedModels && !force) {
     cachedModels = disk;
     lastFetchTime = Date.now();
-    if (force) refresh();
+    refresh();
     return disk;
+  }
+
+  // Se force foi pedido ou não há cache, tenta buscar na hora
+  if (force || (!disk && !cachedModels)) {
+    try {
+      const live = await refresh();
+      if (live && live.length) return live;
+    } catch (_) {}
   }
 
   if (cachedModels) return cachedModels;
 
-  // Serve catálogo padrão instantaneamente (0ms) e revalida em segundo plano
+  // Serve catálogo padrão e revalida em segundo plano
   cachedModels = DEFAULT_AGY_MODELS;
   lastFetchTime = Date.now();
   refresh();
