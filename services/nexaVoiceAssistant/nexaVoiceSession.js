@@ -307,8 +307,13 @@ class NexaVoiceSession extends EventEmitter {
       // A) BARGE-IN: Se a Nexa estava falando (TTS) ou a IA estava processando quando o usuário falou
       const isInterruptingPrior = this.isSpeakingTts || this.isQueryExecuting;
       if (isInterruptingPrior) {
-        if (classification.action === "STOP_AND_LISTEN" || hasWakeWord) {
-          console.log("[NexaVoiceSession] Intervenção intencional do usuário durante execução/fala anterior.");
+        const isIntentionalIntervention =
+          classification.action === "STOP_AND_LISTEN" ||
+          classification.action === "RESPOND_AUDIO_AND_CHAT" ||
+          hasWakeWord;
+
+        if (isIntentionalIntervention) {
+          console.log("[NexaVoiceSession] Intervenção intencional do usuário durante execução/fala anterior:", textToClassify);
           this.cancelAiExecution();
 
           // Se a intervenção foi apenas para chamar a Nexa ou mandar parar (sem uma pergunta complexa anexada)
@@ -318,7 +323,7 @@ class NexaVoiceSession extends EventEmitter {
             this._endProcessingAndResume();
             return;
           }
-          // Caso contrário (ex: "Nexa, cria um script pra mim"), prossegue abaixo para responder à nova pergunta
+          // Caso contrário (ex: "tá, mas não funcionou", "não deu certo"), prossegue abaixo para responder à nova pergunta
         } else {
           // Ruído ambiente ou fala não direcionada à Nexa durante a execução -> ignora e mantém fluxo da IA ativo!
           console.log("[NexaVoiceSession] Áudio de fundo/ruído descartado durante processamento ativo. Mantendo fluxo da IA.");

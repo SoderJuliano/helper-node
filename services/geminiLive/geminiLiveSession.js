@@ -8,8 +8,8 @@
 const EventEmitter = require('events');
 const { DEFAULT_LIVE_TOOLS, executeToolCall } = require('./geminiLiveTools');
 
-const GEMINI_LIVE_WS_URL = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent';
-const DEFAULT_MODEL = 'models/gemini-2.0-flash-exp';
+const GEMINI_LIVE_WS_URL = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent';
+const DEFAULT_MODEL = 'models/gemini-2.5-flash';
 const DEFAULT_VOICE = 'Aoede'; // Voz feminina calorosa, natural e fluída
 
 const DEFAULT_SYSTEM_INSTRUCTION = `Você é a Raphael, copiloto e assistente de desenvolvimento sênior em inteligência artificial do Helper Node.

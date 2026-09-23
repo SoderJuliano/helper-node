@@ -310,8 +310,8 @@ class NexaIntentClassifier {
     }
 
     // Comandos explícitos de desenvolvimento e feedback de tarefas (ex: "tá, mas não funcionou", "não deu certo", "quebrou", "roda os testes")
-    const DIRECT_DEV_COMMAND = /\b(?:(?:pode|consegue|favor|por\s+favor)?\s*(?:comitar|commitar|comita|commita|como\s+imitar|fazer\s+commit|dar\s+push|fazer\s+push|criar\s+branch|abrir\s+arquivo|rodar\s+teste|corrigir\s+bug|aplicar\s+altera[çc][õo]es|salvar\s+arquivo))\b/i;
-    const DEV_FEEDBACK_FOLLOW_UP = /\b(?:(?:t[aá]\s*,?\s*)?(?:mas\s+)?(?:n[aã]o|ainda\s+n[aã]o)\s+(?:funcionou|deu|deu\s+certo|rodou|compilou|pegou|abriu|passou|resolveu|adiantou|mudou)|quebrou|ainda\s+t[aá]\s+quebrad[oa]|deu\s+(?:ruim|pau|erro|bug|exception|problema)|continua\s+(?:dando\s+erro|quebrad[oa]|com\s+erro|igual|o\s+mesmo\s+erro)|t[aá]\s+com\s+erro|falhou|falha|piorou|n[aã]o\s+era\s+isso|faz\s+de\s+novo|tenta\s+de\s+novo|olha\s+(?:o\s+erro|o\s+terminal|aqui|a\s+tela)|v[eê]\s+o\s+erro)\b/i;
+    const DIRECT_DEV_COMMAND = /\b(?:(?:pode|consegue|favor|por\s+favor)?\s*(?:comitar|commitar|comita|commita|como\s+imitar|fazer\s+commit|dar\s+push|fazer\s+push|criar\s+branch|abrir\s+arquivo|rodar\s+(?:o\s+)?teste|corrigir\s+bug|aplicar\s+altera[çc][õo]es|salvar\s+arquivo|arruma\s+(?:isso|pra\s+mim)|conserta\s+(?:isso|pra\s+mim)|corrige\s+(?:isso|pra\s+mim)|ajusta\s+(?:isso|pra\s+mim)|olha\s+(?:isso|aqui|no\s+terminal|o\s+terminal|a\s+tela|o\s+erro)|veja\s+(?:isso|aqui|no\s+terminal|o\s+terminal|a\s+tela|o\s+erro)|v[eê]\s+(?:isso|aqui|no\s+terminal|o\s+terminal|a\s+tela|o\s+erro)))\b/i;
+    const DEV_FEEDBACK_FOLLOW_UP = /\b(?:(?:t[aá]\s*,?\s*)?(?:mas\s+)?(?:n[aã]o|ainda\s+n[aã]o)\s+(?:funcionou|deu|deu\s+certo|rodou|compilou|pegou|abriu|passou|resolveu|adiantou|mudou)|quebrou|ainda\s+t[aá]\s+quebrad[oa]|deu\s+(?:ruim|pau|erro|bug|exception|problema|o\s+mesmo\s+erro)|continua\s+(?:dando\s+erro|dando\s+o\s+mesmo\s+erro|quebrad[oa]|com\s+erro|com\s+o\s+mesmo\s+erro|igual|o\s+mesmo\s+erro)|t[aá]\s+(?:com\s+erro|quebrad[oa]|igual|dando\s+erro|dando\s+o\s+mesmo\s+erro)|falhou|falha|piorou|n[aã]o\s+era\s+isso|faz\s+de\s+novo|tenta\s+de\s+novo|olha\s+(?:o\s+erro|o\s+terminal|no\s+terminal|aqui|a\s+tela|isso)|v[eê]\s+(?:o\s+erro|o\s+terminal|no\s+terminal|aqui|a\s+tela|isso)|veja\s+(?:o\s+erro|o\s+terminal|no\s+terminal|aqui|a\s+tela|isso)|arruma\s+(?:isso|pra\s+mim)|conserta\s+(?:isso|pra\s+mim)|corrige\s+(?:isso|pra\s+mim)|ajusta\s+(?:isso|pra\s+mim))\b/i;
     const isDirectDevCommand = DIRECT_DEV_COMMAND.test(normalizedText) || DIRECT_DEV_COMMAND.test(text) || DEV_FEEDBACK_FOLLOW_UP.test(normalizedText);
 
     // Se o nome não foi falado, não estamos em follow-up ativo E não é um comando direto inequívoco de desenvolvimento
@@ -336,7 +336,7 @@ class NexaIntentClassifier {
       // 3. Em follow-up ativo sem wake word, a fala DEVE ser genuinamente conversacional, conter pergunta (?) ou comando de dev/workspace
       const isConversational = CONVERSATIONAL_FOLLOW_UP_PATTERNS.some((p) => p.test(normalizedText));
       const hasQuestion = text.includes("?");
-      const isDevOrTask = DEV_FEEDBACK_FOLLOW_UP.test(normalizedText) || /\b(?:c[oó]digo|arquivo|branch|commit|push|pull|merge|erro|bug|fun[çc][ãa]o|classe|test|build|projeto|execut|rod|explic|mostr|ajud|faz|arrum|consert|tela|janela|legenda|resumo|span|copiloto)\b/i.test(normalizedText);
+      const isDevOrTask = isDirectDevCommand || DEV_FEEDBACK_FOLLOW_UP.test(normalizedText) || /\b(?:c[oó]digo|arquivo|branch|commit|push|pull|merge|erro|bug|fun[çc][ãa]o|classe|test|build|projeto|execut|rod|explic|mostr|ajud|faz|arrum|consert|tela|janela|legenda|resumo|span|copiloto|terminal|mesmo)\b/i.test(normalizedText);
 
       if (!isConversational && !hasQuestion && !isDevOrTask) {
         return {
