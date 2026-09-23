@@ -18,7 +18,7 @@ const DEFAULT_LIVE_TOOLS = [
     functionDeclarations: [
       {
         name: 'execute_code_task',
-        description: 'Executa uma tarefa de codificação, refatoração, edição de código, comandos no terminal, testes, previsão do tempo ou buscas técnicas utilizando o Gemini CLI (AGY) instalado localmente. IMPORTANTE: Fale brevemente em voz alta com o usuário antes de invocar esta ferramenta para avisar que está iniciando a ação.',
+        description: 'Executa uma tarefa de codificação, refatoração, edição de código, testes, investigação ou tarefas complexas no projeto utilizando o Gemini CLI (AGY / Antigravity). Invoque IMEDIATAMENTE para realizar alterações ou análises solicitadas pelo usuário.',
         parameters: {
           type: 'OBJECT',
           properties: {
@@ -32,7 +32,7 @@ const DEFAULT_LIVE_TOOLS = [
       },
       {
         name: 'run_terminal_command',
-        description: 'Executa um comando no terminal do sistema operacional na raiz do projeto (ex: git status, git diff, npm test, mvn test). Fale em voz alta antes de executar comandos longos.',
+        description: 'Executa um comando no terminal do sistema operacional na raiz do projeto (ex: git status, git log, git branch, git diff, npm test, mvn test).',
         parameters: {
           type: 'OBJECT',
           properties: {
@@ -52,10 +52,36 @@ const DEFAULT_LIVE_TOOLS = [
           properties: {
             filePath: {
               type: 'STRING',
-              description: 'Caminho relativo do arquivo no projeto.'
+              description: 'Caminho relativo ou absoluto do arquivo no projeto.'
             }
           },
           required: ['filePath']
+        }
+      },
+      {
+        name: 'get_screen_context',
+        description: 'Captura a tela ou janela atual do usuário para inspecionar erros, código ou conteúdo visual exibido.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            targetApp: {
+              type: 'STRING',
+              description: 'Opcional: nome da janela/app específico (ex: "vscode", "chrome", "brave", "browser").'
+            }
+          }
+        }
+      },
+      {
+        name: 'get_recent_chat_history',
+        description: 'Recupera as últimas mensagens e histórico recente de conversa do chat do Helper Node.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            limit: {
+              type: 'INTEGER',
+              description: 'Quantidade de mensagens recentes a recuperar (padrão 8).'
+            }
+          }
         }
       }
     ]
@@ -94,6 +120,10 @@ async function executeToolCall(functionCall, context = {}) {
       outputResult = await _handleTerminalCommand(id, args, cwd, context);
     } else if (name === 'read_workspace_file') {
       outputResult = await _handleReadFile(id, args, cwd, context);
+    } else if (name === 'get_screen_context') {
+      outputResult = await _handleScreenContext(id, args, cwd, context);
+    } else if (name === 'get_recent_chat_history') {
+      outputResult = await _handleChatHistory(id, args, cwd, context);
     } else {
       outputResult = { error: `Ferramenta desconhecida: ${name}` };
     }
@@ -229,6 +259,65 @@ async function _handleReadFile(id, args, cwd, context) {
     filePath: relPath,
     content: content.slice(0, 15000)
   };
+}
+
+async function _handleScreenContext(id, args, cwd, context) {
+  const actId = id || ('screen_' + Date.now());
+  _notifyToolActivity(actId, 'start', 'Inspecionando tela...', 'read', 'get_screen_context');
+  try {
+    const platformScreenCapture = require('../platform/screenCapture');
+    const imageAttachments = require('../imageAttachments');
+    const dir = imageAttachments.ensureDir();
+    const screenshotPath = path.join(dir, `screen-live-${Date.now()}.png`);
+    const captureResult = await platformScreenCapture.captureFullScreenToFile(screenshotPath, {
+      targetApp: args && args.targetApp ? String(args.targetApp) : undefined
+    });
+    const sourceName = captureResult && captureResult.sourceName ? captureResult.sourceName : 'Tela / Janela Principal';
+    
+    _notifyToolActivity(actId, 'done', `Tela inspecionada: ${sourceName}`, 'read', 'get_screen_context');
+    return {
+      status: 'success',
+      sourceName,
+      screenshotPath,
+      availableWindows: (captureResult && captureResult.availableWindows) ? captureResult.availableWindows.slice(0, 10) : []
+    };
+  } catch (err) {
+    _notifyToolActivity(actId, 'error', `Falha na captura: ${err.message}`, 'read', 'get_screen_context');
+    return { status: 'error', message: `Erro ao capturar tela: ${err.message}` };
+  }
+}
+
+async function _handleChatHistory(id, args, cwd, context) {
+  const actId = id || ('hist_' + Date.now());
+  _notifyToolActivity(actId, 'start', 'Lendo histórico de chat...', 'read', 'get_recent_chat_history');
+  try {
+    const historyService = require('../historyService');
+    const currentSession = historyService.getCurrentSession ? historyService.getCurrentSession() : null;
+    let messages = [];
+    if (currentSession && Array.isArray(currentSession.conversations)) {
+      messages = currentSession.conversations;
+    } else if (historyService.getLastThreeSessions) {
+      const recent = historyService.getLastThreeSessions();
+      if (recent && recent.length > 0 && recent[0].conversations) {
+        messages = recent[0].conversations;
+      }
+    }
+    const limit = (args && args.limit && Number.isInteger(args.limit)) ? args.limit : 8;
+    const slice = messages.slice(-limit).map(m => ({
+      role: m.role || 'user',
+      text: (m.text || m.content || '').slice(0, 500)
+    }));
+
+    _notifyToolActivity(actId, 'done', `${slice.length} mensagens recuperadas`, 'read', 'get_recent_chat_history');
+    return {
+      status: 'success',
+      count: slice.length,
+      recentMessages: slice
+    };
+  } catch (err) {
+    _notifyToolActivity(actId, 'error', `Falha ao ler histórico: ${err.message}`, 'read', 'get_recent_chat_history');
+    return { status: 'error', message: `Erro ao recuperar histórico: ${err.message}` };
+  }
 }
 
 function _notifyToolActivity(id, phase, label, kind = 'cmd', name = '') {

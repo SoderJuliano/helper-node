@@ -20,11 +20,12 @@ class GeminiLiveController extends EventEmitter {
     super();
     this.session = null;
     this.isListening = false;
+    this.standbyTimeout = null;
     this._onMicChunk = this._handleMicChunk.bind(this);
   }
 
   _handleMicChunk(buf) {
-    if (this.session && this.session.isConnected) {
+    if (this.session && this.session.isConnected && this.isListening) {
       this.session.sendAudioChunk(buf);
     }
   }
@@ -33,8 +34,90 @@ class GeminiLiveController extends EventEmitter {
     return !!(this.session && this.session.isConnected && this.isListening);
   }
 
+  _buildDynamicSystemInstruction(assistantName) {
+    let userContext = '';
+    try {
+      const { helpers } = require('../../main/globals');
+      if (helpers && typeof helpers.getUserPreferencesContext === 'function') {
+        userContext = helpers.getUserPreferencesContext();
+      }
+    } catch (_) {}
+
+    let projectContext = '';
+    try {
+      const workspace = require('../workspace');
+      const p = workspace.getProjectPath ? workspace.getProjectPath() : '';
+      if (p) {
+        projectContext = `\nPROJETO / WORKSPACE ATIVO:\n- Caminho raiz: ${p}\n- Diretório: ${require('path').basename(p)}`;
+      }
+    } catch (_) {}
+
+    let recentChatBlock = '';
+    try {
+      const historyService = require('../historyService');
+      const session = historyService.getCurrentSession ? historyService.getCurrentSession() : null;
+      let pastMsgs = [];
+      if (session && Array.isArray(session.conversations) && session.conversations.length > 0) {
+        pastMsgs = session.conversations.slice(-8);
+      } else if (historyService.getLastThreeSessions) {
+        const recent = historyService.getLastThreeSessions();
+        if (recent && recent.length > 0 && Array.isArray(recent[0].conversations)) {
+          pastMsgs = recent[0].conversations.slice(-8);
+        }
+      }
+      if (pastMsgs.length > 0) {
+        recentChatBlock = '\n\n═══ HISTÓRICO RECENTE DE CONVERSA DO HELPER NODE (MEMÓRIA ATIVA) ═══\n' +
+          pastMsgs.map(m => `[${m.role === 'user' ? 'Juliano' : 'Raphael'}]: ${(m.text || m.content || '').slice(0, 400)}`).join('\n') +
+          '\n═══ FIM DO HISTÓRICO RECENTE ═══';
+      }
+    } catch (_) {}
+
+    let attachmentsBlock = '';
+    try {
+      const workspace = require('../workspace');
+      const list = workspace.list().filter(a => a.type === 'file');
+      if (list.length > 0) {
+        attachmentsBlock = '\n\n═══ ARQUIVOS E CAPTURAS ANEXADAS NO WORKSPACE ═══\n' +
+          list.map(a => `- ${a.path}`).join('\n') + '\n═══ FIM DOS ANEXOS ═══';
+      }
+    } catch (_) {}
+
+    return `Você é a ${assistantName}, copiloto e assistente de desenvolvimento sênior em inteligência artificial do Helper Node.
+Você trabalha em estreita parceria com o desenvolvedor Juliano Soder. Seu núcleo visual integrado é o Raphael Core (plasma cósmico tridimensional).
+Sua personalidade é inteligente, descontraída, nerd, empática e ágil.
+${userContext ? '\n' + userContext : ''}
+${projectContext}
+${recentChatBlock}
+${attachmentsBlock}
+
+DIRETIVAS OBRIGATÓRIAS DE EXECUÇÃO E VOZ:
+1. Responda em áudio em português do Brasil de maneira natural, conversacional, ágil e concisa (1 a 2 frases curtas).
+2. AÇÃO DIRETA IMEDIATA VIA FERRAMENTAS:
+   Quando Juliano solicitar refatoração, criação ou alteração de código, git, arquivos, testes, comandos no terminal, investigações, busca de tela ou relatórios:
+   - INVOQUE IMEDIATAMENTE a ferramenta correspondente ('execute_code_task', 'run_terminal_command', 'read_workspace_file', 'get_screen_context', 'get_recent_chat_history') na mesma resposta.
+   - NUNCA termine o turno apenas dizendo que vai abrir o projeto ou fazer algo sem invocar a ferramenta correspondente.
+3. Ao receber o retorno da ferramenta, faça um resumo conversacional objetivo de 1 a 2 frases confirmando os resultados práticos obtidos.
+4. Para saudações ou conversas casuais rápidas (ex: "Bom dia", "tá por aí?"), responda diretamente em voz com simpatia e agilidade.
+5. Você tem acesso à tela e ao histórico recente do Helper Node através das ferramentas disponíveis.`;
+  }
+
   async start(options = {}) {
-    if (this.isActive()) return this.session;
+    const micDevice = options.micDevice || (configService.getMicDevice ? configService.getMicDevice() : '');
+
+    // Se já temos uma sessão WebSocket ativa em standby (mic mutado), apenas retoma a escuta do microfone
+    if (this.session && this.session.isConnected) {
+      if (this.standbyTimeout) {
+        clearTimeout(this.standbyTimeout);
+        this.standbyTimeout = null;
+      }
+      if (!this.isListening) {
+        await nativeAudio.subscribe('mic', this._onMicChunk, { deviceId: micDevice });
+        this.isListening = true;
+        this.emit('status-changed', { active: true, state: 'listening' });
+        this._broadcastStatus({ active: true, state: 'listening' });
+      }
+      return this.session;
+    }
 
     const apiKey = options.apiKey || configService.getGoogleApiKey();
     if (!apiKey || !apiKey.trim()) {
@@ -46,18 +129,9 @@ class GeminiLiveController extends EventEmitter {
     const model = options.model || (configService.getGeminiLiveModel ? configService.getGeminiLiveModel() : null) || 'models/gemini-3.1-flash-live-preview';
     const voiceName = options.voiceName || (configService.getGeminiLiveVoice ? configService.getGeminiLiveVoice() : null) || 'Kore';
 
-    const systemInstruction = options.systemInstruction || `Você é a ${assistantName}, copiloto e assistente de desenvolvimento sênior em inteligência artificial do Helper Node.
-Você trabalha em parceria com o desenvolvedor Juliano. Seu núcleo visual integrado é o Raphael Core (plasma cósmico tridimensional).
-Sua personalidade é inteligente, descontraída, nerd, empática e ágil.
-DIRETIVAS OBRIGATÓRIAS DE FLUXO:
-1. Responda em áudio em português do Brasil de maneira natural, conversacional e concisa (1 a 2 frases curtas).
-2. Quando Juliano solicitar refatoração, criação ou alteração de código, testes, comandos no terminal, previsão do tempo ou consultas do projeto:
-   - FALE IMEDIATAMENTE UMA FRASE CURTA avisando que já está abrindo o projeto e executando com o Gemini (ex: "Beleza Juliano! Já estou executando com o Gemini...").
-   - Dispare IMEDIATAMENTE a ferramenta execute_code_task com a instrução solicitada.
-3. Ao receber o retorno da ferramenta, faça um resumo conversacional objetivo de 1 a 2 frases confirmando os resultados.
-4. Se for apenas conversa ou saudação casual (ex: "Bom dia"), responda diretamente em voz com simpatia e agilidade.`;
+    const systemInstruction = options.systemInstruction || this._buildDynamicSystemInstruction(assistantName);
 
-    // Cria e conecta a sessão Gemini Live com o modelo e voz configurados
+    // Cria e conecta a sessão Gemini Live com o modelo, voz e contexto dinâmico
     this.session = new GeminiLiveSession({
       apiKey,
       model,
@@ -70,7 +144,6 @@ DIRETIVAS OBRIGATÓRIAS DE FLUXO:
     await this.session.connect();
 
     // Assina o stream do microfone nativo (PCM 16kHz s16le mono)
-    const micDevice = options.micDevice || (configService.getMicDevice ? configService.getMicDevice() : '');
     await nativeAudio.subscribe('mic', this._onMicChunk, { deviceId: micDevice });
     this.isListening = true;
 
@@ -81,21 +154,37 @@ DIRETIVAS OBRIGATÓRIAS DE FLUXO:
     return this.session;
   }
 
-  stop() {
+  stop(hardClose = false) {
     if (this.isListening) {
       nativeAudio.unsubscribe('mic', this._onMicChunk);
       this.isListening = false;
     }
 
-    if (this.session) {
-      this.session.disconnect();
-      this.session = null;
+    if (hardClose) {
+      if (this.standbyTimeout) {
+        clearTimeout(this.standbyTimeout);
+        this.standbyTimeout = null;
+      }
+      if (this.session) {
+        this.session.disconnect();
+        this.session = null;
+      }
+      console.log('[GeminiLiveController] Sessão Live desconectada completamente.');
+    } else {
+      // Standby inteligente: mantém o WebSocket e a memória vivos por 10 minutos para não perder o contexto
+      if (this.standbyTimeout) clearTimeout(this.standbyTimeout);
+      this.standbyTimeout = setTimeout(() => {
+        if (!this.isListening && this.session) {
+          console.log('[GeminiLiveController] Standby timeout atingido: encerrando WebSocket inativo.');
+          this.stop(true);
+        }
+      }, 10 * 60 * 1000);
+      console.log('[GeminiLiveController] Microfone pausado em Standby (memória e contexto preservados).');
     }
 
     this._updateNexaState('IDLE');
     this.emit('status-changed', { active: false, state: 'idle' });
     this._broadcastStatus({ active: false, state: 'idle' });
-    console.log('[GeminiLiveController] Sessão Live encerrada.');
   }
 
   async toggle(forcedState, options = {}) {
@@ -103,7 +192,7 @@ DIRETIVAS OBRIGATÓRIAS DE FLUXO:
     if (shouldBeActive) {
       await this.start(options);
     } else {
-      this.stop();
+      this.stop(false);
     }
     return { active: this.isActive() };
   }

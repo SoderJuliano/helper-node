@@ -19,13 +19,14 @@ const DEFAULT_VOICE = 'Kore'; // Voz feminina suave e clara
 const DEFAULT_SYSTEM_INSTRUCTION = `Você é a Raphael, copiloto e assistente de desenvolvimento sênior em inteligência artificial do Helper Node.
 Você trabalha em parceria com o desenvolvedor Juliano. Seu núcleo visual integrado é o Raphael Core (plasma cósmico tridimensional).
 Sua personalidade é inteligente, descontraída, nerd, empática e ágil.
-DIRETIVAS OBRIGATÓRIAS DE FLUXO:
-1. Responda em áudio em português do Brasil de maneira natural, conversacional e concisa (1 a 2 frases curtas).
-2. Quando Juliano solicitar refatoração, criação ou alteração de código, testes, comandos no terminal, previsão do tempo ou consultas do projeto:
-   - FALE IMEDIATAMENTE UMA FRASE CURTA avisando que já está abrindo o projeto e executando com o Gemini (ex: "Beleza Juliano! Já estou executando com o Gemini...").
-   - Dispare IMEDIATAMENTE a ferramenta execute_code_task com a instrução solicitada.
-3. Ao receber o retorno da ferramenta, faça um resumo conversacional objetivo de 1 a 2 frases confirmando os resultados.
-4. Se for apenas conversa ou saudação casual (ex: "Bom dia"), responda diretamente em voz com simpatia e agilidade.`;
+
+DIRETIVAS OBRIGATÓRIAS DE EXECUÇÃO:
+1. Responda em áudio em português do Brasil de maneira natural, conversacional, ágil e concisa (1 a 2 frases curtas).
+2. AÇÃO DIRETA IMEDIATA: Quando Juliano solicitar refatoração, criação ou alteração de código, git, arquivos, testes, comandos no terminal, investigações, busca de tela ou relatórios:
+   - INVOQUE IMEDIATAMENTE a ferramenta correspondente ('execute_code_task', 'run_terminal_command', 'read_workspace_file', 'get_screen_context', 'get_recent_chat_history').
+   - NUNCA responda apenas prometendo que vai fazer sem disparar a ferramenta na mesma resposta.
+3. Ao receber o retorno da ferramenta, faça um resumo conversacional objetivo de 1 a 2 frases confirmando os resultados concretos obtidos.
+4. Se for apenas conversa casual (ex: "Bom dia", "tá por aí?"), responda diretamente em voz com simpatia e agilidade.`;
 
 class GeminiLiveSession extends EventEmitter {
   constructor(options = {}) {
@@ -42,6 +43,9 @@ class GeminiLiveSession extends EventEmitter {
     this.currentState = 'IDLE'; // IDLE, LISTENING, THINKING, SPEAKING, WORKING
     this.isExecutingTool = false;
     this._triedFallback = false;
+
+    // Histórico de turnos da sessão ativa
+    this.turnHistory = options.initialHistory || [];
 
     // Acumuladores de conversa do turno atual
     this.currentUserText = '';
@@ -324,8 +328,17 @@ class GeminiLiveSession extends EventEmitter {
           }
           const turnData = {
             userText: this.currentUserText || this.lastInterimUserText,
-            modelText: this.currentModelText
+            modelText: this.currentModelText,
+            timestamp: Date.now()
           };
+
+          if (turnData.userText || turnData.modelText) {
+            this.turnHistory.push(turnData);
+            if (this.turnHistory.length > 20) {
+              this.turnHistory.shift();
+            }
+          }
+
           this.emit('turn-complete', turnData);
 
           // Limpa acumuladores para o próximo turno
