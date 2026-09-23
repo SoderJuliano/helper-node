@@ -153,12 +153,10 @@ class GeminiLiveSession extends EventEmitter {
 
     const message = {
       realtimeInput: {
-        mediaChunks: [
-          {
-            mimeType: "audio/pcm;rate=16000",
-            data: base64Data
-          }
-        ]
+        audio: {
+          mimeType: "audio/pcm;rate=16000",
+          data: base64Data
+        }
       }
     };
 
@@ -166,6 +164,25 @@ class GeminiLiveSession extends EventEmitter {
     if (!this.isExecutingTool && this.currentState !== 'LISTENING' && this.currentState !== 'SPEAKING') {
       this._setState('LISTENING');
     }
+  }
+
+  /**
+   * Envia frame de imagem ou vídeo comprimido (JPEG base64) para a Gemini Multimodal Live API.
+   * @param {string} base64Jpeg - Imagem JPEG em base64
+   */
+  sendImageChunk(base64Jpeg) {
+    if (!this.isConnected || !this.ws || !this.isSessionConfigured || !base64Jpeg) return;
+
+    const message = {
+      realtimeInput: {
+        video: {
+          mimeType: "image/jpeg",
+          data: base64Jpeg
+        }
+      }
+    };
+
+    this._sendJson(message);
   }
 
   /**

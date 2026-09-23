@@ -93,7 +93,7 @@ async function runTests() {
   const fakePcm = Buffer.alloc(320); // 10ms de áudio a 16kHz
   session.sendAudioChunk(fakePcm);
   assert.strictEqual(sentPayloads.length, 1);
-  assert.strictEqual(sentPayloads[0].realtimeInput.mediaChunks[0].mimeType, "audio/pcm;rate=16000");
+  assert.strictEqual(sentPayloads[0].realtimeInput.audio.mimeType, "audio/pcm;rate=16000");
   console.log("  ✅ Teste 4: sendAudioChunk transmite áudio PCM 16kHz s16le no protocolo da Live API.");
 
   // 5. Simulação de resposta com áudio falado e Barge-In
