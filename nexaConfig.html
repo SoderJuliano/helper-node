@@ -24,33 +24,6 @@
             gap: 8px;
             user-select: none;
         }
-        .anim-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-            gap: 8px;
-            margin-top: 8px;
-        }
-        .anim-btn {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-            padding: 8px 10px;
-            background: #202328;
-            border: 1px solid #4a5568;
-            border-radius: 5px;
-            color: #f1f5f9;
-            font-size: 12px;
-            font-family: inherit;
-            cursor: pointer;
-            transition: background-color 0.2s, border-color 0.2s;
-            -webkit-app-region: no-drag;
-        }
-        .anim-btn:hover {
-            background-color: #2b3038;
-            border-color: #00aaff;
-            color: #ffffff;
-        }
     </style>
 </head>
 <body>
@@ -60,7 +33,7 @@
     </div>
 
     <h1>Configurações da Nexa</h1>
-    <p style="font-size: 12px; color: #94a3b8; text-align: center; margin: 0 0 14px 0; -webkit-app-region: no-drag;">Gerencie as credenciais do Google Cloud TTS, microfone e teste as expressões da Nexa.</p>
+    <p style="font-size: 12px; color: #94a3b8; text-align: center; margin: 0 0 14px 0; -webkit-app-region: no-drag;">Gerencie as preferências de identidade, motor visual e microfone da Nexa.</p>
 
     <div class="container">
         <!-- 1. Estado e Identidade -->
@@ -106,26 +79,6 @@
             </div>
         </div>
 
-        <!-- 2. Credenciais Google TTS -->
-        <div class="section-box" style="margin-bottom: 10px;">
-            <div class="section-title">
-                <span>Voz Neural (Google Cloud Text-to-Speech)</span>
-            </div>
-
-            <div style="margin-bottom: 10px;">
-                <label for="google-tts-key" style="font-size: 13px; color: #00aaff; display: block; margin-bottom: 6px;">Credenciais Google TTS da Nexa (JSON ou API Key):</label>
-                <div class="setting-control input-group" style="width: 100%; max-width: 100%;">
-                    <input type="text" id="google-tts-key" class="custom-input" placeholder="Ex: C:\caminho\chave-service-account.json ou AIzaSy...">
-                    <button type="button" id="clear-google-tts-key" class="clear-btn" title="Limpar credencial">Limpar</button>
-                </div>
-            </div>
-
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 8px;">
-                <button type="button" id="google-tts-test-btn" style="padding: 6px 14px; font-size: 12.5px; background-color: #28a745;">Testar Conexão / Quota</button>
-                <span id="google-tts-test-result" style="font-size: 12px; margin-left: 10px; font-family: monospace;"></span>
-            </div>
-        </div>
-
         <!-- 3. Microfone -->
         <div class="setting-item" style="margin-bottom: 10px;" title="Selecione o microfone utilizado pela Nexa para comandos de voz.">
             <label for="nexa-mic-select">Microfone de Entrada</label>
@@ -136,27 +89,6 @@
                 <div class="cli-actions">
                     <button type="button" id="nexa-mic-refresh" class="action-btn" style="background:#1a2e3a; color:#fff;" title="Recarregar microfones">Atualizar</button>
                 </div>
-            </div>
-        </div>
-
-        <!-- 4. Teste de Expressões e Animações -->
-        <div class="section-box" style="margin-bottom: 10px;">
-            <div class="section-title">
-                <span>Expressões e Animações</span>
-            </div>
-            <p style="font-size: 12px; color: #94a3b8; margin: 0 0 8px 0;">Clique para testar cada animação em tempo real no avatar flutuante:</p>
-
-            <div class="anim-grid">
-                <button type="button" class="anim-btn" data-anim="dance">💃 Dançar</button>
-                <button type="button" class="anim-btn" data-anim="wave">👋 Acenar</button>
-                <button type="button" class="anim-btn" data-anim="heart">💖 Coração</button>
-                <button type="button" class="anim-btn" data-anim="coffee">☕ Café</button>
-                <button type="button" class="anim-btn" data-anim="adjust_glasses">👓 Ajustar Óculos</button>
-                <button type="button" class="anim-btn" data-anim="writing_code">💻 Escrever Código</button>
-                <button type="button" class="anim-btn" data-anim="reading">📖 Ler Livro</button>
-                <button type="button" class="anim-btn" data-anim="tesseract_code">🧊 Tesseract</button>
-                <button type="button" class="anim-btn" data-anim="cute">🥺 Fofa</button>
-                <button type="button" class="anim-btn" data-anim="stretching_arms">🙆‍♀️ Espreguiçar</button>
             </div>
         </div>
     </div>

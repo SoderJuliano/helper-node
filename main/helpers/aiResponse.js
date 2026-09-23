@@ -6,11 +6,6 @@ const {
   configService, edition, knowledgeBase, fileEditService, historyService,
   helperTools, workspace, agenticWorkflow, ollamaAgenticWorkflow,
   translationAssistant, visionGuide, platformScreenCapture, runTestMode,
-  // googleTtsService estava sendo USADO aqui (triggerTtsPlaybackIfEnabled) sem
-  // constar nesta lista: era um ReferenceError puro, engolido pelo try/catch da
-  // própria função. O modo de voz nunca chegou a sintetizar nada — só o card
-  // visual, que é renderizado no renderer, dava sinal de vida.
-  googleTtsService,
   analyzeInterviewImage, cloudTranscribeAudio,
   APP_ICON, HIDE_FROM_TASKBAR, IMAGE_COOLDOWN_MS, AUDIO_TMP_DIR,
   audioFilePath, SCREENSHOT_DIRS, PROJECT_SEARCH_SKIP_DIRS, TREE_HEAVY_DIRS,
@@ -421,7 +416,6 @@ helpers.buildPromptWithHistory = function(currentText, pastMessages = [], opts =
 
 helpers.appendVoiceSummaryInstructionIfNeeded = function(instructionOrPrompt) {
   try {
-    const cfg = configService.getGoogleTtsConfig();
     const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : null;
     let isNexaVoiceActive = false;
     try {
@@ -429,90 +423,18 @@ helpers.appendVoiceSummaryInstructionIfNeeded = function(instructionOrPrompt) {
       isNexaVoiceActive = nexaVoiceAssistant && typeof nexaVoiceAssistant.isActive === "function" && nexaVoiceAssistant.isActive();
     } catch (_) {}
     const isNexaOn = !!(nexaCfg && nexaCfg.enabled) || isNexaVoiceActive;
-    const isTtsOn = !!(cfg && (cfg.enabled || isNexaVoiceActive) && cfg.keyPathOrKey && cfg.keyPathOrKey.trim());
 
-    if (!isNexaOn && !isTtsOn) return instructionOrPrompt;
+    if (!isNexaOn) return instructionOrPrompt;
 
     const assistantName = (nexaCfg && nexaCfg.name && nexaCfg.name.trim()) ? nexaCfg.name.trim() : "Nexa";
     let directive = `\n\n[INSTRUÇÃO DA PERSONA ${assistantName.toUpperCase()} & RAPHAEL CORE]\n` +
       `Você É a ${assistantName} (assistente e copiloto digital feminina, inteligente, nerd e descontraída). ` +
       "Seu núcleo visual integrado é o Raphael Core (o núcleo celestial e giroscópico de plasma tridimensional que reage organicamente aos estados do sistema: IDLE, LISTENING, THINKING, SPEAKING, WORKING, SEARCHING).\n" +
-      "NÃO inclua tags de gestos corporais 2D como <animation>adjust_glasses</animation> ou <animation>dance</animation> no texto da resposta, pois o Raphael Core opera por estados visuais contínuos.";
-
-    if (isTtsOn || isNexaVoiceActive) {
-      const voiceSpeakerNote = ` O resumo DEVE ser escrito em PRIMEIRA PESSOA PELA ${assistantName.toUpperCase()} (ex: 'Pronto! Analisei e fiz os ajustes...'). NUNCA narre em terceira pessoa nem mencione assistentes genéricos ou nomes de terceiros.`;
-      directive += `\n\n[INSTRUÇÃO DE MODO DE VOZ ATIVO]\nSua resposta DEVE incluir ao final a tag <voice_summary>resumo sucinto em 1 a 2 frases para ser lido em voz alta (no mesmo idioma da sua resposta).${voiceSpeakerNote} NUNCA inclua códigos, tabelas ou exemplos longos dentro da tag voice_summary. Se houver códigos ou exemplos na resposta, peça para o usuário olhá-los na tela.</voice_summary>`;
-    }
+      "NÃO inclua tags de gestos corporais 2D no texto da resposta, pois o Raphael Core opera por estados visuais contínuos.";
 
     return (instructionOrPrompt || "") + directive;
   } catch (e) {
     return instructionOrPrompt;
-  }
-};
-
-helpers.triggerTtsPlaybackIfEnabled = function(fullResponse) {
-  try {
-    const cfg = configService.getGoogleTtsConfig();
-    const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : null;
-    let isNexaVoiceActive = false;
-    try {
-      const nexaVoiceAssistant = require("../../services/nexaVoiceAssistant");
-      isNexaVoiceActive = nexaVoiceAssistant && typeof nexaVoiceAssistant.isActive === "function" && nexaVoiceAssistant.isActive();
-    } catch (_) {}
-    const isNexaOn = !!(nexaCfg && nexaCfg.enabled) || isNexaVoiceActive;
-    const isTtsOn = !!(cfg && (cfg.enabled || isNexaVoiceActive));
-
-
-    if (!isNexaOn || !isTtsOn) return;
-    if (!cfg || !cfg.keyPathOrKey || !cfg.keyPathOrKey.trim()) {
-      console.warn("🔊 TTS habilitado mas sem chave/token do Google Cloud TTS configurada.");
-      return;
-    }
-
-    let cleanResponse = fullResponse;
-    if (isNexaOn && fullResponse) {
-      try {
-        const { parseNexaResponse } = require("../nexa/nexaResponseHelper.js");
-        const parsed = parseNexaResponse(fullResponse);
-        cleanResponse = parsed.response;
-      } catch (err) {
-        console.warn("[aiResponse] Falha ao extrair resposta para TTS:", err.message);
-      }
-    }
-
-    const summary = googleTtsService.extractVoiceSummary(cleanResponse);
-    if (!summary || !summary.trim()) return;
-
-    const voiceToUse = cfg.voiceName || 'pt-BR-Neural2-C';
-    const speakingRate = cfg.speakingRate !== undefined ? cfg.speakingRate : 1.0;
-    const pitch = cfg.pitch !== undefined ? cfg.pitch : 0.0;
-
-    console.log(`🔊 Sintetizando resumo por voz Google TTS (Nexa=${isNexaOn}, pitch=${pitch}, rate=${speakingRate}):`, summary);
-    googleTtsService.synthesizeText(summary, {
-      keyOrPath: cfg.keyPathOrKey,
-      voiceName: voiceToUse,
-      speakingRate,
-      pitch
-    }).then(buf => {
-      const audioPayload = {
-        audioBase64: buf.toString("base64"),
-        text: summary
-      };
-      // Emite o evento global do IPCMain para acionar nexaIntegration (atualizar estado para SPEAKING)
-      const { ipcMain } = require("electron");
-      ipcMain.emit("play-tts-audio", null, audioPayload);
-
-      const { isNexaWindowOpen } = require("../nexa/nexaWindow.js");
-      if (isNexaWindowOpen() && state.nexaWindow && !state.nexaWindow.isDestroyed()) {
-        try { state.nexaWindow.webContents.send("play-tts-audio", audioPayload); } catch (_) {}
-      } else if (state.mainWindow && !state.mainWindow.isDestroyed()) {
-        try { state.mainWindow.webContents.send("play-tts-audio", audioPayload); } catch (_) {}
-      }
-    }).catch(err => {
-      console.error("🔊 Erro no Google TTS playback:", err && err.message);
-    });
-  } catch (e) {
-    console.error("🔊 Erro ao acionar TTS:", e && e.message);
   }
 };
 

@@ -52,7 +52,7 @@
     }
 
     /**
-     * Conecta um elemento de áudio (TTS) para modulação em tempo real.
+     * Conecta um elemento de áudio para modulação em tempo real.
      */
     connectAudioElement(audioElement) {
       if (this.audioVisualizer) {

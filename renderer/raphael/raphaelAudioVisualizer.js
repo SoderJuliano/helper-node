@@ -1,6 +1,6 @@
 /**
  * renderer/raphael/raphaelAudioVisualizer.js
- * Analisador de espectro de áudio em tempo real para sincronização visual do Raphael Core com a voz TTS.
+ * Analisador de espectro de áudio em tempo real para sincronização visual do Raphael Core com a voz da IA.
  * Utiliza Web Audio API (AnalyserNode + FFT) para extrair frequências graves, médias e agudas.
  */
 
@@ -44,7 +44,7 @@
     }
 
     /**
-     * Conecta um elemento HTMLAudioElement de saída TTS ao analisador.
+     * Conecta um elemento HTMLAudioElement ao analisador.
      * @param {HTMLAudioElement} audioElement 
      */
     connectAudioElement(audioElement) {

@@ -342,10 +342,6 @@ helpers.processBatchOsQuestion = async function(screenshots) {
       state.mainWindow.webContents.send('openai-final-response', { resposta });
     }
 
-    if (helpers.triggerTtsPlaybackIfEnabled) {
-      helpers.triggerTtsPlaybackIfEnabled(resposta);
-    }
-
   } catch (error) {
     console.error('Erro no processBatchOsQuestion:', error);
     if (isOsIntegration) {

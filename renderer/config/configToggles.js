@@ -6,28 +6,6 @@
   function updateNexaStatus(isEnabled) {
     const nexaStatus = document.getElementById("nexa-status");
     if (nexaStatus) nexaStatus.textContent = isEnabled ? "ON" : "OFF";
-    const googleTtsContainer = document.getElementById("google-tts-container");
-    if (googleTtsContainer) {
-      googleTtsContainer.style.display = isEnabled ? "block" : "none";
-    }
-    const googleTtsToggleItem = document.getElementById("google-tts-toggle-item");
-    if (googleTtsToggleItem) {
-      googleTtsToggleItem.style.display = "none";
-    }
-  }
-
-  function updateGoogleTtsStatus(isEnabled) {
-    const nexaToggle = document.getElementById("nexa-toggle");
-    const isNexa = nexaToggle ? nexaToggle.checked : false;
-    const googleTtsContainer = document.getElementById("google-tts-container");
-    const googleTtsToggleItem = document.getElementById("google-tts-toggle-item");
-
-    if (googleTtsToggleItem) {
-      googleTtsToggleItem.style.display = "none";
-    }
-    if (googleTtsContainer) {
-      googleTtsContainer.style.display = isNexa ? "block" : "none";
-    }
   }
 
   function updateDebugModeStatus(isDebugging) {
@@ -148,7 +126,6 @@
 
   window.ConfigToggles = {
     updateNexaStatus,
-    updateGoogleTtsStatus,
     updateDebugModeStatus,
     updatePrintModeStatus,
     updateOsIntegrationStatus,

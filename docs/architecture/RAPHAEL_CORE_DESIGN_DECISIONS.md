@@ -20,10 +20,9 @@ Embora visualmente expressivo, este modelo apresentava limitações:
 Adotou-se o modelo **Raphael (The Core / Alma Celestial da Nexa)**, inspirado no computador supremo **Raphael / Lord of Wisdom (Ciel)** do universo *Tensura*.
 
 ### Pilares Fundamentais:
-- **Identidade Mantida:** A personalidade, nome, inteligência, pipelines de voz (Google Cloud TTS Neural2-C) e comandos continuam 100% como **Nexa**.
-- **Modo Padrão (Default):** O Raphael Core é o novo padrão do sistema para novas instalações e inicializações.
-- **Transição Não Destrutiva:** O módulo legado de animações Lottie (`renderer/nexa/`) foi mantido como fallback e formalmente marcado como `(Legado / Depreciado)`.
-- **Chaveador nas Configurações:** O usuário pode alternar entre `Núcleo Raphael` e `Avatar Lottie` na tela de configurações (`nexaConfig.html`).
+- **Identidade Mantida:** A personalidade, nome, inteligência, pipelines de voz (Gemini Multimodal Live) e comandos continuam 100% como **Nexa**.
+- **Modo Padrão & Exclusivo:** O Raphael Core é o núcleo visual definitivo do sistema.
+- **Remoção de Legados:** As animações e modelos 2D antigos foram descontinuados em favor do motor de renderização 3D giroscópico a 60 FPS.
 
 ---
 
@@ -64,7 +63,7 @@ O [`RaphaelAudioVisualizer`](../../renderer/raphael/raphaelAudioVisualizer.js) c
 | **`IDLE`** | **Ciano Etéreo & Índigo** (`#00f0ff` / `#4a00e0`) | **Standby & Vigilância:** Pulsação lenta e relaxada. Auréolas giram serenamente nos 3 eixos. |
 | **`LISTENING`** | **Âmbar Solar & Ouro** (`#ffb700` / `#ffe600`) | **Captação de Microfone:** Anéis se contraem e se alinham como uma lente receptora acústica focada no usuário. |
 | **`THINKING`** | **Violeta Quântico & Magenta** (`#9d00ff` / `#ff007f`) | **Processamento do Modelo:** Rotação giroscópica acelerada nos eixos X/Y/Z com ondas de choque internas. |
-| **`SPEAKING`** | **Teal Luminescente & Ciano** (`#00e5ff` / `#0077fe`) | **Ressonância de Voz:** O núcleo pulsa e vibra em sincronia direta com cada frequência da voz TTS. |
+| **`SPEAKING`** | **Teal Luminescente & Ciano** (`#00e5ff` / `#0077fe`) | **Ressonância de Voz:** O núcleo pulsa e vibra em sincronia direta com cada frequência da voz da IA. |
 | **`WORKING`** | **Esmeralda Matrix** (`#00ff88` / `#05ffa1`) | **Leitura/Edição de Arquivos & Código:** Partículas binárias e anéis computacionais operando ativamente. |
 | **`SEARCHING`**| **Azul Safira & Oceânico** (`#0051ff` / `#00c8ff`) | **Acesso à Internet / Pesquisa:** Auréolas se expandem criando malha orbital simulando a rede mundial. |
 | **`SLEEPING`** | **Azul Meia-Noite & Estelar** (`#1e293b` / `#3b82f6`) | **AFK / Inatividade:** Brilho reduzido e respiração estelar de baixo consumo energético. |

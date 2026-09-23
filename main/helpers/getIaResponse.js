@@ -158,8 +158,7 @@ helpers.getIaResponse = async function(text) {
           const instructionO = helpers.withUserContext(configService.getPromptInstruction());
           const _wsTxtO = await helpers.prependWorkspaceContextIfNeeded(_augTextL, 'ollama');
           const _htO = helpers.buildHelperToolsOpenAIOpts(_wsTxtO, instructionO, configService.getOpenAiModel());
-          // Modo de voz: a diretiva <voice_summary> precisa ir no prompt, senão
-          // triggerTtsPlaybackIfEnabled logo abaixo não acha resumo pra sintetizar.
+          // Modo de voz / Nexa: a diretiva de persona/Raphael Core é anexada ao prompt
           resposta = await OllamaLocalService.responder(helpers.appendVoiceSummaryInstructionIfNeeded(_wsTxtO), _htO.opts);
         } else {
           resposta = await OllamaLocalService.responder(helpers.appendVoiceSummaryInstructionIfNeeded(_augTextL));
@@ -221,9 +220,6 @@ helpers.getIaResponse = async function(text) {
     // Formata a resposta para exibição na UI
     const formattedResposta = helpers.formatToHTML(respostaFinal);
     state.mainWindow.webContents.send("gemini-response", { resposta: formattedResposta, usedKnowledge });
-
-    // Dispara síntese de áudio por voz se o modo Google TTS estiver ativo
-    helpers.triggerTtsPlaybackIfEnabled(resposta);
 
     // Usa a resposta crua para a notificação de texto simples
     if (appConfig.notificationsEnabled && Notification.isSupported()) {

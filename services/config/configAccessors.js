@@ -22,16 +22,6 @@ function createAccessors(ctx) {
 
     setNexaConfig(nexaCfg) {
       const cfg = get();
-      if (nexaCfg && nexaCfg.enabled) {
-        const googleTtsCfg = cfg.googleTts || {};
-        const ttsKey = googleTtsCfg.keyPathOrKey || "";
-        if (!ttsKey || ttsKey.trim() === "") {
-          const isTestEnv = typeof process !== "undefined" && (process.env.NODE_ENV === "test" || process.argv.some(arg => arg.includes("test")));
-          if (!isTestEnv) {
-            throw new Error("Não é possível ativar a Nexa sem uma chave/token válida do Google Cloud TTS (Google API Key).");
-          }
-        }
-      }
       const existing = this.getNexaConfig();
       const updated = { ...existing, ...(nexaCfg || {}) };
       if (!updated.name || !updated.name.trim()) {
@@ -430,17 +420,6 @@ function createAccessors(ctx) {
     setStealthModeStatus(status) {
       const cfg = get();
       cfg.stealthMode = !!status;
-      save();
-    },
-
-    getGoogleTtsConfig() {
-      const cfg = get();
-      return { ...defaultConfig.googleTts, ...(cfg.googleTts || {}) };
-    },
-
-    setGoogleTtsConfig(ttsCfg) {
-      const cfg = get();
-      cfg.googleTts = { ...this.getGoogleTtsConfig(), ...ttsCfg };
       save();
     },
   };

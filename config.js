@@ -45,9 +45,6 @@ const claudeCliModelSelect = document.getElementById("claude-cli-model-select");
 const geminiCliModelSelect = document.getElementById("gemini-cli-model-select");
 const ollamaLocalModelSelect = document.getElementById("ollama-local-model-select");
 const nexaToggle = document.getElementById("nexa-toggle");
-const googleTtsToggle = document.getElementById("google-tts-toggle");
-const googleTtsContainer = document.getElementById("google-tts-container");
-const googleTtsKey = document.getElementById("google-tts-key");
 
 document.addEventListener("DOMContentLoaded", async () => {
   const [
@@ -56,7 +53,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     isPrintMode,
     isOsIntegration,
     isStealth,
-    ttsCfg,
     nexaCfg,
     isRealtimeAssistant,
     helperToolsEnabled,
@@ -82,7 +78,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     ipcRenderer.invoke("get-print-mode-status").catch(() => false),
     ipcRenderer.invoke("get-os-integration-status").catch(() => false),
     ipcRenderer.invoke("get-stealth-mode-status").catch(() => false),
-    ipcRenderer.invoke("get-google-tts-config").catch(() => null),
     ipcRenderer.invoke("nexa:get-config").catch(() => null),
     ipcRenderer.invoke("get-realtime-assistant-status").catch(() => false),
     ipcRenderer.invoke("get-helper-tools-enabled").catch(() => false),
@@ -116,10 +111,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     window.ConfigToggles.updateNexaStatus(!!nexaCfg.enabled);
   } else {
     window.ConfigToggles.updateNexaStatus(false);
-  }
-
-  if (googleTtsKey && ttsCfg) {
-    googleTtsKey.value = ttsCfg.keyPathOrKey || "";
   }
 
   if (realtimeAssistantToggle) {
@@ -349,9 +340,6 @@ if (nexaToggle) {
   nexaToggle.addEventListener("change", () => {
     const enabled = nexaToggle.checked;
     window.ConfigToggles.updateNexaStatus(enabled);
-    if (enabled && googleTtsContainer) {
-      googleTtsContainer.style.display = "block";
-    }
     const toast = document.getElementById("nexa-error-toast");
     if (toast) toast.style.display = "none";
   });
@@ -363,31 +351,12 @@ saveButton.addEventListener("click", async () => {
                                  (realtimeAssistantToggle && realtimeAssistantToggle.checked) ||
                                  (document.getElementById('translation-enabled') && document.getElementById('translation-enabled').checked);
     const isNexaOn = !isExclusiveFeatureOn && (nexaToggle ? nexaToggle.checked : false);
-    const ttsKey = googleTtsKey ? googleTtsKey.value.trim() : "";
-
-    if (isNexaOn && !ttsKey) {
-      const toast = document.getElementById("nexa-error-toast");
-      if (toast) {
-        toast.textContent = "Para usar a Nexa, adicione as credenciais do Google Text-to-Speech.";
-        toast.style.display = "block";
-        toast.scrollIntoView({ behavior: "smooth" });
-      } else {
-        alert("Para usar a Nexa, adicione as credenciais do Google Text-to-Speech.");
-      }
-      return;
-    }
 
     if (isExclusiveFeatureOn) {
       nexaToggle.checked = false;
       window.ConfigToggles.updateNexaStatus(false);
     }
     ipcRenderer.send("nexa:save-config", { enabled: isNexaOn, onlyNexa: false });
-
-    ipcRenderer.send("save-google-tts-config", {
-      enabled: isNexaOn,
-      keyPathOrKey: ttsKey,
-      voiceName: "pt-BR-Neural2-C"
-    });
   }
 
   ipcRenderer.send("save-prompt-instruction", instructionTextarea.value);

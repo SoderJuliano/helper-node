@@ -269,21 +269,16 @@ Cada ação ou sentido da Nexa transforma o comportamento visual, a rotação da
 | **`IDLE`** | **Ciano Etéreo & Índigo** (`#00f0ff` / `#4a00e0`) | **Vigilância & Standby:** Pulsação cósmica serena (~0.5Hz) com anéis girando em baixa velocidade nos eixos 3D. |
 | **`LISTENING`** | **Âmbar Solar & Ouro** (`#ffb700` / `#ffe600`) | **Captação de Microfone:** Anéis se contraem e se alinham em formato de lente receptora acústica focada na voz do usuário. |
 | **`THINKING`** | **Violeta Quântico & Magenta** (`#9d00ff` / `#ff007f`) | **Processamento & Raciocínio:** Rotação giroscópica acelerada nos eixos X/Y/Z, com nós de dados piscando e ondas de choque. |
-| **`SPEAKING`** | **Teal Luminescente & Ciano** (`#00e5ff` / `#0077fe`) | **Ressonância Vocal (Voice Sync):** O núcleo vibra, dilata e emite ondas de choque luminosas sincronizadas com a voz TTS em tempo real (FFT). |
+| **`SPEAKING`** | **Teal Luminescente & Ciano** (`#00e5ff` / `#0077fe`) | **Ressonância Vocal (Voice Sync):** O núcleo vibra, dilata e emite ondas de choque luminosas sincronizadas com a voz em tempo real (FFT). |
 | **`WORKING`** | **Esmeralda Matrix** (`#00ff88` / `#05ffa1`) | **Leitura/Edição de Arquivos & Código:** Fluxo de partículas binárias e anéis computacionais operando como uma esfera de cálculos. |
 | **`SEARCHING`** | **Azul Safira & Oceânico** (`#0051ff` / `#00c8ff`) | **Acesso à Internet / Pesquisa:** Auréolas se expandem criando uma malha de esfera global interconectada. |
 | **`SLEEPING`** | **Azul Meia-Noite & Estelar** (`#1e293b` / `#3b82f6`) | **Hibernação / AFK:** Brilho atenuado com pulso estelar lento após 10 minutos de inatividade. |
 
 ### 🎙️ Sincronização Espectral em Tempo Real (Voice Sync)
-O motor **Raphael** é acoplado diretamente à saída de áudio do **Google Cloud Text-to-Speech** através da **Web Audio API**:
+O motor **Raphael** é acoplado diretamente à saída de áudio e streaming de voz da **Gemini Multimodal Live API** através da **Web Audio API**:
 - **Graves (20Hz–250Hz):** Modulam a dilatação e o raio do núcleo interno (a pulsação da alma).
 - **Médios (250Hz–2500Hz):** Aceleram os anéis e geram ondas harmônicas nas auréolas.
 - **Agudos (2500Hz–8000Hz):** Disparam faíscas estelares e brilhos cintilantes nas frequências sibilantes.
-
-### ⚙️ Seleção de Modo Visual (Configurações)
-Na janela de **Configurações da Nexa** (`nexaConfig.html`), o usuário pode selecionar:
-- 🔮 **Núcleo Raphael (Padrão & Recomendado):** Entidade quântica fluida em 3D, limpa e profissional.
-- 👧 **Avatar 2D Lottie (Legado / Depreciado):** Personagem animada tradicional em 2D.
 
 Documentação técnica detalhada das fórmulas matemáticas e decisões de design disponível em [`docs/architecture/RAPHAEL_CORE_DESIGN_DECISIONS.md`](docs/architecture/RAPHAEL_CORE_DESIGN_DECISIONS.md).
 

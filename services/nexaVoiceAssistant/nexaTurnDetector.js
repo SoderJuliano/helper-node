@@ -26,7 +26,7 @@ class NexaTurnDetector extends EventEmitter {
     this.minSpeechMs = options.minSpeechMs || 300;               // Duração mínima de fala real para considerar válida (300ms)
     this.maxTurnDurationMs = options.maxTurnDurationMs || 120000; // Limite amplo de segurança para turnos longos de fala (120s / 2 min)
     this.preRollMs = options.preRollMs || 400;                   // Buffer circular de pre-roll (400ms)
-    this.bargeInThresholdRms = options.bargeInThresholdRms || 135; // Limiar elevado para interrupção de fala durante reprodução TTS
+    this.bargeInThresholdRms = options.bargeInThresholdRms || 135; // Limiar elevado para interrupção de fala durante reprodução de áudio/voz
 
     this.active = false;
     this.ttsActive = false;
@@ -198,7 +198,7 @@ class NexaTurnDetector extends EventEmitter {
 
     this.emit("level", { rms, isSpeaking: this.isSpeaking, noiseFloor: Math.round(this.noiseFloorRms), ttsActive: this.ttsActive });
 
-    // Se a Nexa estiver falando via alto-falantes (TTS ativo):
+    // Se a Nexa estiver falando via alto-falantes (áudio/voz ativa):
     if (this.ttsActive) {
       const bargeInThreshold = Math.max(this.bargeInThresholdRms, this.speechThresholdRms * 1.8, this.noiseFloorRms * 2.2 + 35);
       if (rms >= bargeInThreshold) {

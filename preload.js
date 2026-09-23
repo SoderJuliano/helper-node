@@ -148,15 +148,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getLanguage: () => ipcRenderer.invoke("get-language"),
   setLanguage: (language) => ipcRenderer.send("set-language", language),
 
-  // === Modo Interativo de Voz (Google TTS) ===
-  getGoogleTtsConfig: () => ipcRenderer.invoke("get-google-tts-config"),
-  saveGoogleTtsConfig: (cfg) => ipcRenderer.send("save-google-tts-config", cfg),
-  googleTtsTest: (keyPathOrKey) => ipcRenderer.invoke("google-tts-test", keyPathOrKey),
-  googleTtsListVoices: (keyPathOrKey) => ipcRenderer.invoke("google-tts-list-voices", keyPathOrKey),
-  onPlayTtsAudio: (cb) => ipcRenderer.on("play-tts-audio", (event, data) => cb(data)),
-  onStopTtsAudio: (cb) => ipcRenderer.on("stop-tts-audio", (event, data) => cb(data)),
-  triggerTtsPlayback: (text) => ipcRenderer.send("trigger-tts-stream-playback", text),
-
   // === Modo de Voz Contínuo Nexa & Gemini Live ===
   nexaVoiceToggle: (forcedState) => ipcRenderer.invoke("nexa-voice:toggle", forcedState),
   nexaVoiceGetStatus: () => ipcRenderer.invoke("nexa-voice:get-status"),
@@ -360,16 +351,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // === Nexa Module API ===
   getNexaConfig: () => ipcRenderer.invoke("nexa:get-config"),
   saveNexaConfig: (cfg) => ipcRenderer.send("nexa:save-config", cfg),
-  getAnimations: () => ipcRenderer.invoke("nexa:get-animations"),
   toggleNexa: () => ipcRenderer.invoke("nexa:toggle"),
   getNexaState: () => ipcRenderer.invoke("nexa:get-state"),
   isNexaOpen: () => ipcRenderer.invoke("nexa:is-open"),
-  sendNexaTtsEnded: () => ipcRenderer.send("nexa:tts-ended"),
   onNexaStateChange: (cb) => ipcRenderer.on("nexa:state-change", (event, data) => cb(data)),
   onNexaConfigChange: (cb) => ipcRenderer.on("nexa:config-changed", (event, data) => cb(data)),
   reloadNexaWindow: () => ipcRenderer.send("nexa:reload-window"),
-  onPlayTtsAudio: (cb) => ipcRenderer.on("play-tts-audio", (event, data) => cb(data)),
-  onStopTtsAudio: (cb) => ipcRenderer.on("stop-tts-audio", (event, data) => cb(data)),
   onGeminiLiveAudioChunk: (cb) => ipcRenderer.on("gemini-live:audio-chunk", (event, data) => cb(data)),
   onGeminiLiveBargeIn: (cb) => ipcRenderer.on("gemini-live:barge-in", (event, data) => cb(data)),
   onGeminiLiveTranscript: (cb) => ipcRenderer.on("gemini-live:transcript", (event, data) => cb(data)),

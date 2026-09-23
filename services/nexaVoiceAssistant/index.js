@@ -23,11 +23,8 @@ function registerIpc() {
     };
   });
 
-  // Canais de compatibilidade legados
-  ipcMain.on("play-tts-audio", () => {});
   ipcMain.on("nexa-voice:processing-started", () => {});
   ipcMain.on("nexa-voice:processing-finished", () => {});
-  ipcMain.on("nexa:tts-ended", () => {});
 }
 
 async function startVoice(micDevice) {
@@ -93,6 +90,8 @@ const compatibilitySession = {
     }
   },
   followUpActive: false,
+  isSpeaking: false,
+  isSpeakingAudio: false,
   isSpeakingTts: false,
   isQueryExecuting: false
 };

@@ -237,7 +237,7 @@ code.inline-code.is-file-path:hover {
     margin-top: 4px;
 }
 
-/* Card do Resumo em Voz (Google TTS) */
+/* Card do Resumo em Voz */
 .voice-summary-card {
     display: flex;
     align-items: center;

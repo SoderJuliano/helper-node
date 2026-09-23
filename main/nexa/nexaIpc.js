@@ -35,10 +35,6 @@ function registerNexaIpc() {
     return configService.getNexaConfig();
   });
 
-  ipcMain.handle("nexa:get-animations", () => {
-    return {};
-  });
-
   ipcMain.handle("nexa:read-file", async (event, filePath) => {
     const fs = require("fs");
     const path = require("path");
@@ -89,13 +85,6 @@ function registerNexaIpc() {
       try {
         state.nexaWindow.reload();
       } catch (_) {}
-    }
-  });
-
-  ipcMain.on("nexa:tts-ended", () => {
-    console.log("[NexaIPC] Recebido término de reprodução de TTS -> transicionando para IDLE");
-    if (nexaState.getState() === "SPEAKING") {
-      nexaState.setState("IDLE");
     }
   });
 

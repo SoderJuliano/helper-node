@@ -46,14 +46,12 @@ assert.ok(idePromptOn.startsWith("═══ DIRETIVA DE SISTEMA E IDENTIDADE SUP
 
 console.log("  ✅ Teste 2 Aprovado: Nexa ON injeta precedência no topo quando chamada para o contexto da Nexa.");
 
-// 3. Teste de Voice Summary com Persona Nexa
-configService.setGoogleTtsConfig({ enabled: true, keyPathOrKey: "dummy_key" });
+// 3. Teste de Instrução da Persona Nexa & Raphael Core
 const voiceInstruction = helpers.appendVoiceSummaryInstructionIfNeeded("Instrução base");
-assert.ok(voiceInstruction.includes("PRIMEIRA PESSOA PELA NEXA"), "Voice Summary deve instruir resposta em primeira pessoa pela Nexa");
-assert.ok(!voiceInstruction.includes("Antigravity"), "Voice Summary não deve mencionar Antigravity");
-configService.setGoogleTtsConfig({ enabled: false, keyPathOrKey: "" });
+assert.ok(voiceInstruction.includes("INSTRUÇÃO DA PERSONA NEXA & RAPHAEL CORE"), "Deve instruir a persona Nexa e Raphael Core");
+assert.ok(!voiceInstruction.includes("Antigravity"), "Instrução não deve mencionar Antigravity");
 
-console.log("  ✅ Teste 3 Aprovado: Voice Summary configurado para a identidade Nexa.");
+console.log("  ✅ Teste 3 Aprovado: Instrução de Persona e Raphael Core configurada para a identidade Nexa.");
 
 // 4. Teste de RAG e Memória do Usuário
 const userContext = "DADOS DO USUÁRIO PERSISTIDOS: Nome do usuário = Juliano Soder";

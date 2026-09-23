@@ -55,12 +55,9 @@ assert.strictEqual(classification.cleanedQuery, "como crio um controller no Spri
 console.log("  ✅ Teste 5: Intent Classifier aciona com wake word 'Rafael' e limpa vocativo");
 
 // 6. Voice summary instruction reflete o novo nome
-configService.setGoogleTtsConfig({ enabled: true, keyPathOrKey: "dummy_key" });
 const voiceInstruction = helpers.appendVoiceSummaryInstructionIfNeeded("Instrução base");
 assert.ok(voiceInstruction.includes("PERSONA RAFAEL"), "Voice summary deve ter cabeçalho da PERSONA RAFAEL");
-assert.ok(voiceInstruction.includes("PRIMEIRA PESSOA PELA RAFAEL"), "Voice summary deve instruir resposta em primeira pessoa pela RAFAEL");
-configService.setGoogleTtsConfig({ enabled: false, keyPathOrKey: "" });
-console.log("  ✅ Teste 6: Voice summary reflete 'RAFAEL'");
+console.log("  ✅ Teste 6: Persona header reflete 'RAFAEL'");
 
 // 7. Reset do nome para vazio deve restaurar fallback "Nexa"
 configService.setNexaConfig({ name: "   ", enabled: true });

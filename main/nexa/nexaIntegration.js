@@ -335,16 +335,7 @@ function handleCoreEventForNexa(channel, args) {
     }
   }
 
-  // 4. Recebimento / Interrupção de Áudio do Google TTS
-  if (channel === "play-tts-audio") {
-    nexaState.setState("SPEAKING");
-  } else if (channel === "stop-tts-audio") {
-    if (nexaState.getState() === "SPEAKING") {
-      nexaState.setState("IDLE");
-    }
-  }
-
-  // 6. Eventos de pesquisa na web / consulta externa
+  // 4. Eventos de pesquisa na web / consulta externa
   if (
     channel === "web-search-start" ||
     channel === "search-web-start" ||

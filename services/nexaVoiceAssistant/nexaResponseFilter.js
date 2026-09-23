@@ -2,7 +2,7 @@
  * services/nexaVoiceAssistant/nexaResponseFilter.js
  * 
  * Filtro e formatador de resposta para o Modo de Voz Ativo da Nexa / Raphael Core.
- * Separa de forma limpa o que deve ser falado via TTS do que deve ser renderizado no chat da tela:
+ * Separa de forma limpa o resumo de voz do que deve ser renderizado no chat da tela:
  * 
  * - voiceSummary: 1 a 2 frases sucintas em 1ª pessoa para serem lidas em voz alta.
  * - displayText: texto completo em Markdown (código, tabelas, explicações detalhadas).

@@ -40,10 +40,7 @@ async function handleSendToGemini(event, text, sessionId) {
       GeminiCliProvider.setModel(geminiModel);
       const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(promptCurrentWithVisual));
       try {
-        const result = await GeminiCliProvider.send(finalPrompt, projectPath, event.sender, sessionId, pastMessages);
-        if (result && result.text) {
-          helpers.triggerTtsPlaybackIfEnabled(result.text);
-        }
+        await GeminiCliProvider.send(finalPrompt, projectPath, event.sender, sessionId, pastMessages);
       } catch (gcliErr) {
         console.error('[gemini-cli] send error:', gcliErr.message);
         try { event.sender.send('gemini-stream-complete'); } catch (_) {}
@@ -57,10 +54,7 @@ async function handleSendToGemini(event, text, sessionId) {
       ClaudeCliProvider.setModel(claudeModel);
       const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(promptCurrentWithVisual));
       try {
-        const result = await ClaudeCliProvider.send(finalPrompt, projectPath, event.sender, sessionId, pastMessages);
-        if (result && result.text) {
-          helpers.triggerTtsPlaybackIfEnabled(result.text);
-        }
+        await ClaudeCliProvider.send(finalPrompt, projectPath, event.sender, sessionId, pastMessages);
       } catch (ccliErr) {
         console.error('[claude-cli] send error:', ccliErr.message);
         try { event.sender.send('gemini-stream-complete'); } catch (_) {}
@@ -74,12 +68,9 @@ async function handleSendToGemini(event, text, sessionId) {
       CopilotCliProvider.setModel(copilotModel);
       const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(promptWithVisualContext));
       try {
-        const result = await CopilotCliProvider.send(finalPrompt, projectPath, event.sender, {
+        await CopilotCliProvider.send(finalPrompt, projectPath, event.sender, {
           attachments: helpers.getAttachableFilePaths(),
         });
-        if (result && result.text) {
-          helpers.triggerTtsPlaybackIfEnabled(result.text);
-        }
       } catch (cpErr) {
         console.error('[copilot-cli] send error:', cpErr.message);
         try { event.sender.send('gemini-stream-complete'); } catch (_) {}
@@ -142,7 +133,6 @@ async function handleSendToGemini(event, text, sessionId) {
       }
       const usage = OpenAIService.lastUsage;
       event.sender.send("openai-final-response", { resposta, usedKnowledge, usage });
-      helpers.triggerTtsPlaybackIfEnabled(resposta);
       return;
     } else if (aiModel === 'ollamaLocal') {
       console.log("IPC: Usando Ollama Local Service...");
@@ -163,7 +153,6 @@ async function handleSendToGemini(event, text, sessionId) {
         } catch (_) {}
       }
       event.sender.send("gemini-response", { resposta, usedKnowledge });
-      helpers.triggerTtsPlaybackIfEnabled(resposta);
       return;
     }
 
@@ -191,7 +180,6 @@ async function handleSendToGemini(event, text, sessionId) {
       resposta = await BackendService.responder(_augTxtO2, _htO2.opts);
     }
     event.sender.send("gemini-response", { resposta, usedKnowledge });
-    helpers.triggerTtsPlaybackIfEnabled(resposta);
   } catch (error) {
     console.error("Erro ao chamar o modelo:", error.message);
     event.sender.send("transcription-error", "Falha ao processar resposta da IA.");
@@ -258,7 +246,6 @@ async function handleSendToGeminiVision(event, { text, image }) {
       const _ht = helpers.buildHelperToolsOpenAIOpts(_wsTxt, instructionO, configService.getOpenAiModel());
       const resposta = await BackendService.responder(_wsTxt, _ht.opts);
       event.sender.send("gemini-response", { resposta, usedKnowledge: false });
-      helpers.triggerTtsPlaybackIfEnabled(resposta);
       return;
     }
 
@@ -317,7 +304,6 @@ NUNCA faça descrições vagas ou respostas genéricas.`
       } catch (_) {}
     }
     event.sender.send("openai-final-response", { resposta, usedKnowledge: false });
-    helpers.triggerTtsPlaybackIfEnabled(resposta);
   } catch (error) {
     console.error("IPC visão: erro ao analisar imagem:", error && error.message);
     event.sender.send("transcription-error", "Falha ao analisar a imagem com a IA.");

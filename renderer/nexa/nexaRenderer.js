@@ -82,32 +82,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  // 3. Reprodução de Áudio TTS e Sincronização Espectral
-  let currentAudio = null;
-  let lastAudioBase64 = null;
-  let lastAudioPlayTime = 0;
-
-  function stopTtsAudio() {
-    if (currentAudio) {
-      try {
-        currentAudio.pause();
-        currentAudio.currentTime = 0;
-      } catch (_) {}
-      currentAudio = null;
-    }
-    if (typeof pcmPlayer !== "undefined" && pcmPlayer) {
-      pcmPlayer.stop();
-    }
-    if (raphaelSubtitles) {
-      raphaelSubtitles.hide();
-    }
-    if (raphaelCore) {
-      raphaelCore.setState("IDLE");
-      canvas.className = "raphael-canvas-glow idle";
-    }
-  }
-
-  // Player de Áudio Streaming em tempo real para o Gemini Multimodal Live (Web Audio API)
+  // 3. Player de Áudio Streaming em tempo real para o Gemini Multimodal Live (Web Audio API)
   class PcmStreamPlayer {
     constructor() {
       this.audioCtx = null;
@@ -232,9 +207,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     window.electronAPI.onGeminiLiveBargeIn(() => {
       console.log("[NexaRenderer] Barge-In disparado pelo Gemini Live: silenciando voz imediatamente.");
       pcmPlayer.stop();
-      stopTtsAudio();
       if (raphaelSubtitles) {
         raphaelSubtitles.clear();
+      }
+      if (raphaelCore) {
+        raphaelCore.setState("IDLE");
+        canvas.className = "raphael-canvas-glow idle";
       }
     });
   }
@@ -253,93 +231,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (raphaelSubtitles) {
         raphaelSubtitles.finishStreaming(7000);
       }
-    });
-  }
-
-  if (window.electronAPI && window.electronAPI.onStopTtsAudio) {
-    window.electronAPI.onStopTtsAudio(() => {
-      console.log("[NexaRenderer] Parando áudio TTS imediatamente (Barge-in).");
-      pcmPlayer.stop();
-      stopTtsAudio();
-    });
-  }
-
-  function playTtsAudio(payload) {
-    let base64Data = payload;
-    let spokenText = null;
-
-    if (payload && typeof payload === "object") {
-      base64Data = payload.audioBase64 || payload.audio;
-      spokenText = payload.text || payload.response || payload.displayText || null;
-    }
-
-    if (!base64Data) return;
-
-    const now = Date.now();
-    if (lastAudioBase64 === base64Data && (now - lastAudioPlayTime < 1000)) {
-      return; // Debounce de repetição
-    }
-    lastAudioBase64 = base64Data;
-    lastAudioPlayTime = now;
-
-    stopTtsAudio();
-
-    try {
-      const audioUrl = `data:audio/mp3;base64,${base64Data}`;
-      currentAudio = new Audio(audioUrl);
-      currentAudio.volume = 1.0;
-
-      if (raphaelCore) {
-        try {
-          raphaelCore.connectAudioElement(currentAudio);
-        } catch (visErr) {
-          console.warn("[NexaRenderer] Aviso ao conectar analisador:", visErr.message);
-        }
-        raphaelCore.setState("SPEAKING");
-        canvas.className = "raphael-canvas-glow speaking";
-      }
-
-      if (raphaelSubtitles && spokenText) {
-        raphaelSubtitles.show(spokenText, 6000);
-      }
-
-      const handleAudioEnd = () => {
-        if (raphaelCore) {
-          raphaelCore.setState("IDLE");
-          canvas.className = "raphael-canvas-glow idle";
-        }
-        if (raphaelSubtitles) {
-          raphaelSubtitles.hide();
-        }
-        if (window.electronAPI && window.electronAPI.sendNexaTtsEnded) {
-          window.electronAPI.sendNexaTtsEnded();
-        }
-      };
-
-      currentAudio.onended = handleAudioEnd;
-      currentAudio.onerror = (err) => {
-        console.warn("[NexaRenderer] Erro na reprodução de áudio:", err);
-        handleAudioEnd();
-      };
-
-      currentAudio.play().then(() => {
-        console.log("[NexaRenderer] Áudio TTS tocando no fone/alto-falante com sucesso.");
-      }).catch((err) => {
-        console.warn("[NexaRenderer] Falha ao iniciar reprodução:", err);
-        handleAudioEnd();
-      });
-    } catch (err) {
-      console.error("[NexaRenderer] Exceção ao preparar áudio:", err);
-      if (raphaelCore) raphaelCore.setState("IDLE");
-      if (window.electronAPI && window.electronAPI.sendNexaTtsEnded) {
-        window.electronAPI.sendNexaTtsEnded();
-      }
-    }
-  }
-
-  if (window.electronAPI && window.electronAPI.onPlayTtsAudio) {
-    window.electronAPI.onPlayTtsAudio((payload) => {
-      playTtsAudio(payload);
     });
   }
 
