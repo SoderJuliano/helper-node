@@ -1,28 +1,28 @@
 /**
  * services/nexaVoiceAssistant/nexaResponseFilter.js
  * 
- * Filtro e formatador de resposta para o Modo de Voz Ativo da Nexa.
+ * Filtro e formatador de resposta para o Modo de Voz Ativo da Nexa / Raphael Core.
  * Separa de forma limpa o que deve ser falado via TTS do que deve ser renderizado no chat da tela:
  * 
  * - voiceSummary: 1 a 2 frases sucintas em 1ª pessoa para serem lidas em voz alta.
  * - displayText: texto completo em Markdown (código, tabelas, explicações detalhadas).
- * - animation: animação recomendada para a Nexa durante a resposta.
+ * - animation: estado visual do Raphael Core (SPEAKING, CELEBRATING, etc.).
  */
 
 class NexaResponseFilter {
   /**
-   * Extrai o resumo de voz, texto de exibição e animação da resposta da IA.
+   * Extrai o resumo de voz, texto de exibição e estado visual da resposta da IA.
    * @param {string} fullText Texto completo gerado pela IA
-   * @param {string} [defaultAnimation='speaking']
+   * @param {string} [defaultAnimation='SPEAKING']
    * @returns {{ voiceSummary: string, displayText: string, animation: string }}
    */
-  static processResponse(fullText, defaultAnimation = "speaking") {
+  static processResponse(fullText, defaultAnimation = "SPEAKING") {
     const raw = String(fullText || "").trim();
     if (!raw) {
       return {
         voiceSummary: "Pronto!",
         displayText: "",
-        animation: "wave"
+        animation: "SPEAKING"
       };
     }
 
@@ -38,15 +38,8 @@ class NexaResponseFilter {
       displayText = displayText.replace(/<voice_summary>[\s\S]*?<\/voice_summary>/gi, "").trim();
     }
 
-    // 2. Extração da tag <animation_hint>...</animation_hint> (se fornecida pela IA)
-    const animMatch = raw.match(/<animation(?:_hint)?>([\s\S]*?)<\/animation(?:_hint)?>/i);
-    if (animMatch && animMatch[1]) {
-      const suggestedAnim = animMatch[1].trim().toLowerCase();
-      if (suggestedAnim) {
-        animation = suggestedAnim;
-      }
-      displayText = displayText.replace(/<animation(?:_hint)?>[\s\S]*?<\/animation(?:_hint)?>/gi, "").trim();
-    }
+    // 2. Remove tags residuais de animação do texto
+    displayText = displayText.replace(/<animation(?:_hint)?>[\s\S]*?<\/animation(?:_hint)?>/gi, "").trim();
 
     // 3. Se a IA não forneceu a tag <voice_summary>, gera um fallback inteligente em 1ª pessoa
     if (!voiceSummary) {
@@ -62,25 +55,8 @@ class NexaResponseFilter {
       }
     }
 
-    // 4. Mapeamento heurístico de animação se não foi fixada
-    if (animation === "speaking" || !animation) {
-      const lowerDisplay = displayText.toLowerCase();
-      if (lowerDisplay.includes("```") || lowerDisplay.includes("function") || lowerDisplay.includes("class ")) {
-        animation = "writing_code";
-      } else if (
-        lowerDisplay.includes("parabéns") || lowerDisplay.includes("sucesso") ||
-        lowerDisplay.includes("comemorar") || lowerDisplay.includes("dança") ||
-        lowerDisplay.includes("dançar") || lowerDisplay.includes("dancinha")
-      ) {
-        animation = "dance";
-      } else if (lowerDisplay.includes("café") || lowerDisplay.includes("descanse")) {
-        animation = "coffee";
-      } else if (lowerDisplay.includes("coração") || lowerDisplay.includes("carinho")) {
-        animation = "heart";
-      } else if (lowerDisplay.includes("óculos") || lowerDisplay.includes("foco")) {
-        animation = "adjust_glasses";
-      }
-    }
+    // 4. Mapeamento para estados válidos do Raphael Core
+    animation = "SPEAKING";
 
     return {
       voiceSummary,
@@ -98,13 +74,11 @@ class NexaResponseFilter {
     return (
       `\n\n[INSTRUÇÃO DE MODO DE VOZ ATIVO ${upperName}]\n` +
       `Você É a ${name} (assistente e copiloto digital feminina, inteligente, nerd e descontraída). ` +
-      `Você possui um avatar visual animado 2D em tempo real na tela do usuário (a janela flutuante da ${name}). ` +
-      "Você POSSUI animações reais integradas ao sistema e PODE executá-las: você SABE e CONSEGUE dançar (dancinha comemorativa 'dance'), acenar ('wave'), fazer coração ('heart'), ficar fofa/tímida ('cute'), tomar café ('coffee'), ajustar os óculos ('adjust_glasses'), se espreguiçar ('stretching_arms'), ler livros ('reading'), digitar no teclado holográfico ('writing_code'/'typing'), manipular o cubo tesseract ('tesseract_code').\n" +
-      "NUNCA diga que você não dança, que não tem corpo ou que 'fisicamente ainda não dança' — você dança na tela com sua animação dedicada! Quando o usuário perguntar se você sabe dançar ou pedir para você dançar/comemorar, responda alegremente que sim, comemore e acione sua dança!\n" +
+      `Seu núcleo visual integrado é o Raphael Core (o núcleo celestial e giroscópico de plasma tridimensional que reage organicamente aos estados do sistema: IDLE, LISTENING, THINKING, SPEAKING, WORKING, SEARCHING).\n` +
+      `Você NÃO possui avatar 2D e NUNCA deve incluir tags de gestos corporais (como dancinhas ou acenos) no texto da resposta.\n` +
       `Sua resposta DEVE incluir ao final a tag <voice_summary>resumo sucinto em 1 a 2 frases para ser lido em voz alta pela ${name}</voice_summary>.\n` +
-      "Se desejar disparar uma animação na tela, inclua a tag <animation>nome_da_animacao</animation> (ex: <animation>dance</animation>).\n" +
       `O resumo em voice_summary DEVE ser em PRIMEIRA PESSOA PELA ${upperName} (ex: 'Pronto! Já estruturei a classe Java e deixei o código completo na tela para você.').\n` +
-      "NUNCA coloque códigos, tabelas ou listas longas dentro da tag voice_summary. Coloque o código e detalhes técnicos normalmente no corpo da sua resposta para serem exibidos na tela.\n"
+      `NUNCA coloque códigos, tabelas ou listas longas dentro da tag voice_summary. Coloque o código e detalhes técnicos normalmente no corpo da sua resposta para serem exibidos na tela.\n`
     );
   }
 }
