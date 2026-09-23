@@ -112,8 +112,6 @@ class NexaVoiceSession extends EventEmitter {
       this.processingTimeout = null;
     }
 
-    // Pré-aquece o Whisper em background logo ao iniciar o modo de voz
-    warmupWhisper().catch(() => {});
 
     await this.turnDetector.start(deviceId);
     this.emit("state-changed", { state: "listening", followUpActive: false });

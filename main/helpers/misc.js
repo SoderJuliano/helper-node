@@ -240,7 +240,7 @@ helpers.toggleRealtimeAssistantRecording = async function() {
 };
 
 helpers.getEffectiveAiModel = function() {
-  return edition.isLite() ? 'openIa' : configService.getAiModel();
+  return configService.getAiModel();
 }
 
 helpers.isBinaryFile = function(filePath) {
