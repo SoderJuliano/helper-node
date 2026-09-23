@@ -19,13 +19,13 @@ const NexaIntentClassifier = require("./nexaIntentClassifier");
 const NexaConversationContext = require("./nexaConversationContext");
 const NexaResponseFilter = require("./nexaResponseFilter");
 
-const FOLLOW_UP_DURATION_MS = 9000; // Janela confortável de 9 segundos para conversa contínua após resposta
+const FOLLOW_UP_DURATION_MS = 30000; // Janela confortável de 30 segundos para conversa contínua após resposta
 
 class NexaVoiceSession extends EventEmitter {
   constructor(options = {}) {
     super();
     this.turnDetector = new NexaTurnDetector();
-    this.context = new NexaConversationContext({ ttlMs: 15000 });
+    this.context = new NexaConversationContext({ ttlMs: 45000 });
 
     this.active = false;
     this.isProcessing = false;
@@ -296,6 +296,7 @@ class NexaVoiceSession extends EventEmitter {
       // Classifica a intenção
       const classification = NexaIntentClassifier.classify(textToClassify, {
         followUpActive: this.followUpActive,
+        hasActiveContext: this.context.hasActiveContext(),
         assistantName: assistantName
       });
 
@@ -346,7 +347,8 @@ class NexaVoiceSession extends EventEmitter {
 
       // C) Ação IGNORAR (ruído, áudio do monitor, conversa paralela, monólogo)
       if (classification.action === "IGNORE") {
-        if (classification.expireFollowUp || this.followUpActive) {
+        // NUNCA cancela o follow-up por ruído ambiente! Apenas se o classificador marcou expiração explícita (ex: conversa de terceiros)
+        if (classification.expireFollowUp) {
           this.followUpActive = false;
           if (this.followUpTimer) {
             clearTimeout(this.followUpTimer);

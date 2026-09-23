@@ -48,6 +48,18 @@
       const wrapper = document.createElement('div');
       wrapper.className = 'raphael-words-wrapper';
 
+      // Ajuste responsivo de tamanho de fonte baseado no comprimento do texto
+      if (cleanText.length > 180) {
+        wrapper.style.fontSize = '10.5px';
+        wrapper.style.lineHeight = '1.34';
+      } else if (cleanText.length > 110) {
+        wrapper.style.fontSize = '11px';
+        wrapper.style.lineHeight = '1.38';
+      } else {
+        wrapper.style.fontSize = '12px';
+        wrapper.style.lineHeight = '1.45';
+      }
+
       const totalWords = words.length;
       const pacingMs = Math.min(220, Math.max(80, Math.floor(estimatedDurationMs / (totalWords || 1))));
 
@@ -55,14 +67,22 @@
         const span = document.createElement('span');
         span.className = 'raphael-word-drop';
         span.textContent = word + ' ';
-        span.style.animationDelay = `${index * pacingMs}ms`;
+        const delay = index * pacingMs;
+        span.style.animationDelay = `${delay}ms`;
         wrapper.appendChild(span);
+
+        // Acompanha a leitura rolando o container suavemente para baixo
+        setTimeout(() => {
+          if (this.container) {
+            this.container.scrollTop = this.container.scrollHeight;
+          }
+        }, delay + 40);
       });
 
       this.container.appendChild(wrapper);
 
-      // Auto-oculta suavemente apos o tempo de fala estimado
-      const holdTime = Math.max(3000, estimatedDurationMs + 1200);
+      // Auto-oculta suavemente apos o tempo de fala estimado com margem de leitura
+      const holdTime = Math.max(5500, estimatedDurationMs + 2500);
       this.activeTimer = setTimeout(() => {
         this.hide();
       }, holdTime);

@@ -13,8 +13,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Dimensões do Canvas da janela flutuante da Nexa
   function resizeCanvas() {
-    canvas.width = 360;
-    canvas.height = 360;
+    canvas.width = window.innerWidth || 420;
+    canvas.height = window.innerHeight || 420;
   }
   window.addEventListener("resize", resizeCanvas);
   resizeCanvas();

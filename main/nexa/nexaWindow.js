@@ -12,14 +12,14 @@ const path = require("path");
 const { ROOT_DIR, APP_ICON, state, configService } = require("../globals.js");
 const { nexaState } = require("./nexaState.js");
 
-const WINDOW_SIZE = 360;
+const WINDOW_SIZE = 420;
 
 function floatingBounds() {
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width, height } = primaryDisplay.workAreaSize;
   return {
-    x: Math.max(0, width - WINDOW_SIZE - 30),
-    y: Math.max(0, height - WINDOW_SIZE - 30),
+    x: Math.max(0, width - WINDOW_SIZE - 24),
+    y: Math.max(0, height - WINDOW_SIZE - 24),
     width: WINDOW_SIZE,
     height: WINDOW_SIZE
   };
