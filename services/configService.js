@@ -12,9 +12,15 @@ let currentConfig = null;
 
 function getConfigPath() {
   if (!configPath) {
-    const userDataPath = (app && typeof app.getPath === 'function')
-      ? app.getPath("userData")
-      : path.join(process.env.APPDATA || process.env.HOME || ".", ".config", "meu-electron-app");
+    let userDataPath;
+    if (app && typeof app.getPath === 'function') {
+      userDataPath = app.getPath("userData");
+    } else if (process.platform === 'win32') {
+      const winPath = path.join(process.env.APPDATA || ".", "meu-electron-app");
+      userDataPath = fs.existsSync(winPath) ? winPath : path.join(process.env.APPDATA || ".", ".config", "meu-electron-app");
+    } else {
+      userDataPath = path.join(process.env.HOME || ".", ".config", "meu-electron-app");
+    }
     configPath = path.join(userDataPath, "config.json");
   }
   return configPath;

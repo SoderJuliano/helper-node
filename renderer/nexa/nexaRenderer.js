@@ -290,7 +290,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       currentAudio.volume = 1.0;
 
       if (raphaelCore) {
-        raphaelCore.connectAudioElement(currentAudio);
+        try {
+          raphaelCore.connectAudioElement(currentAudio);
+        } catch (visErr) {
+          console.warn("[NexaRenderer] Aviso ao conectar analisador:", visErr.message);
+        }
         raphaelCore.setState("SPEAKING");
         canvas.className = "raphael-canvas-glow speaking";
       }
@@ -318,7 +322,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         handleAudioEnd();
       };
 
-      currentAudio.play().catch((err) => {
+      currentAudio.play().then(() => {
+        console.log("[NexaRenderer] Áudio TTS tocando no fone/alto-falante com sucesso.");
+      }).catch((err) => {
         console.warn("[NexaRenderer] Falha ao iniciar reprodução:", err);
         handleAudioEnd();
       });

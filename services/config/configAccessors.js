@@ -258,6 +258,26 @@ function createAccessors(ctx) {
       save();
     },
 
+    getGeminiLiveVoice() {
+      return get().geminiLiveVoice || "Kore";
+    },
+
+    setGeminiLiveVoice(voice) {
+      const cfg = get();
+      cfg.geminiLiveVoice = voice;
+      save();
+    },
+
+    getGeminiLiveModel() {
+      return get().geminiLiveModel || "models/gemini-3.1-flash-live-preview";
+    },
+
+    setGeminiLiveModel(model) {
+      const cfg = get();
+      cfg.geminiLiveModel = model;
+      save();
+    },
+
     getOsIntegrationStatus() {
       return get().osIntegration || false;
     },

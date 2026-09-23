@@ -55,6 +55,8 @@ const defaultConfig = {
     useKnowledgeBase: true,
   },
   googleApiKey: "",
+  geminiLiveVoice: "Kore", // Voz feminina suave e clara, a mais próxima de pt-BR-Neural2-C
+  geminiLiveModel: "models/gemini-3.1-flash-live-preview",
   googleTts: {
     enabled: true,
     keyPathOrKey: fs.existsSync("C:\\Users\\soder\\Documents\\sectrets\\gen-lang-client-0083021392-f898f4b44b05.json")

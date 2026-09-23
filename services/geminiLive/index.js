@@ -2,8 +2,12 @@
  * services/geminiLive/index.js
  * 
  * Controlador central do modo de voz Gemini Multimodal Live.
- * Orquestra microfone nativo (PCM 16kHz via nativeAudio), transmissão bidirecional,
- * emissão de chunks de áudio para o Raphael Core e acoplamento com Antigravity CLI.
+ * Orquestra microfone nativo (PCM 16kHz via nativeAudio), transmissão bidirecional em tempo real,
+ * reprodução nativa de áudio PCM (24kHz) no fone/alto-falante, emissão de chunks
+ * para o Raphael Core e acoplamento com Gemini CLI (Antigravity CLI / AGY) e busca web.
+ * 
+ * NOTA DE ARQUITETURA:
+ * O modo Live NÃO UTILIZA TTS. O áudio é gerado nativamente pelo modelo multimodal em streaming.
  */
 
 const EventEmitter = require('events');
@@ -40,21 +44,24 @@ class GeminiLiveController extends EventEmitter {
     const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : {};
     const assistantName = (nexaCfg && nexaCfg.name) ? nexaCfg.name.trim() : 'Raphael';
     const model = options.model || (configService.getGeminiLiveModel ? configService.getGeminiLiveModel() : null) || 'models/gemini-3.1-flash-live-preview';
+    const voiceName = options.voiceName || (configService.getGeminiLiveVoice ? configService.getGeminiLiveVoice() : null) || 'Kore';
 
     const systemInstruction = options.systemInstruction || `Você é a ${assistantName}, copiloto e assistente de desenvolvimento sênior em inteligência artificial do Helper Node.
 Você trabalha em parceria com o desenvolvedor Juliano. Seu núcleo visual integrado é o Raphael Core (plasma cósmico tridimensional).
 Sua personalidade é inteligente, descontraída, nerd, empática e ágil.
 DIRETIVAS OBRIGATÓRIAS DE FLUXO:
-1. Responda em áudio em português do Brasil de maneira natural, conversacional e concisa.
-2. Quando Juliano solicitar refatoração, criação de código, modificação de arquivos ou execução de testes locais, FALE BREVEMENTE EM VOZ ALTA antes de disparar a ferramenta (ex: "Beleza Juliano! Já estou abrindo o projeto e executando com o AGY...").
-3. Enquanto a ferramenta roda em background, mantenha presença.
-4. Ao receber o retorno da ferramenta, faça um resumo conversacional objetivo dos resultados (ex: se os testes passaram, status final).
-5. Se for apenas conversa ou dúvida teórica/arquitetural, responda diretamente em voz com alta precisão técnica.`;
+1. Responda em áudio em português do Brasil de maneira natural, conversacional e concisa (1 a 2 frases curtas).
+2. Quando Juliano solicitar refatoração, criação ou alteração de código, testes, comandos no terminal, previsão do tempo ou consultas do projeto:
+   - FALE IMEDIATAMENTE UMA FRASE CURTA avisando que já está abrindo o projeto e executando com o Gemini (ex: "Beleza Juliano! Já estou executando com o Gemini...").
+   - Dispare IMEDIATAMENTE a ferramenta execute_code_task com a instrução solicitada.
+3. Ao receber o retorno da ferramenta, faça um resumo conversacional objetivo de 1 a 2 frases confirmando os resultados.
+4. Se for apenas conversa ou saudação casual (ex: "Bom dia"), responda diretamente em voz com simpatia e agilidade.`;
 
     // Cria e conecta a sessão Gemini Live com o modelo e voz configurados
     this.session = new GeminiLiveSession({
       apiKey,
       model,
+      voiceName,
       systemInstruction,
       ...options
     });
@@ -70,7 +77,7 @@ DIRETIVAS OBRIGATÓRIAS DE FLUXO:
     this.emit('status-changed', { active: true, state: 'listening' });
     this._broadcastStatus({ active: true, state: 'listening' });
 
-    console.log('[GeminiLiveController] Sessão Live ativa com microfone em tempo real.');
+    console.log(`[GeminiLiveController] Sessão Live ativa com microfone em tempo real (Modelo: ${model}, Voz: ${voiceName}, Sem TTS - Áudio Direto).`);
     return this.session;
   }
 
@@ -102,11 +109,13 @@ DIRETIVAS OBRIGATÓRIAS DE FLUXO:
   }
 
   _bindSessionEvents(session) {
+    // Áudio streaming direto do Gemini Live -> fone / Raphael Core
     session.on('audio-chunk', (payload) => {
       this._broadcastToWindows('gemini-live:audio-chunk', payload);
       this._updateNexaState('SPEAKING');
     });
 
+    // Interrupção em tempo real (Barge-In)
     session.on('barge-in', () => {
       this._broadcastToWindows('gemini-live:barge-in');
       this._updateNexaState('LISTENING');
@@ -147,12 +156,12 @@ DIRETIVAS OBRIGATÓRIAS DE FLUXO:
 
       const userQuestion = (turnData && turnData.userText && turnData.userText.trim())
         ? turnData.userText.trim()
-        : '🎤 Pergunta por voz';
+        : '';
       const aiReply = (turnData && turnData.modelText) ? turnData.modelText.trim() : '';
 
       if (aiReply) {
         this._broadcastToWindows('nexa-voice:quick-reply', {
-          question: userQuestion,
+          question: userQuestion || '🎤 Pergunta por voz',
           reply: aiReply
         });
       }

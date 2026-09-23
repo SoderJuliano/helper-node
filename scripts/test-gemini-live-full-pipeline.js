@@ -41,14 +41,18 @@ async function runTests() {
   // 1. Verificação das Tools declaradas
   const { DEFAULT_LIVE_TOOLS, executeToolCall } = require('../services/geminiLive/geminiLiveTools');
   assert.ok(Array.isArray(DEFAULT_LIVE_TOOLS), "DEFAULT_LIVE_TOOLS deve ser um array");
-  const declarations = DEFAULT_LIVE_TOOLS[0].functionDeclarations;
+  const hasGoogleSearch = DEFAULT_LIVE_TOOLS.some(t => t.google_search);
+  assert.ok(hasGoogleSearch, "DEFAULT_LIVE_TOOLS deve incluir a ferramenta nativa google_search");
+  const funcTool = DEFAULT_LIVE_TOOLS.find(t => t.functionDeclarations);
+  assert.ok(funcTool, "DEFAULT_LIVE_TOOLS deve conter functionDeclarations");
+  const declarations = funcTool.functionDeclarations;
   assert.ok(declarations.length >= 3, "Deve possuir pelo menos 3 ferramentas declaradas");
   
   const toolNames = declarations.map(t => t.name);
   assert.ok(toolNames.includes('execute_code_task'), "Deve incluir execute_code_task");
   assert.ok(toolNames.includes('run_terminal_command'), "Deve incluir run_terminal_command");
   assert.ok(toolNames.includes('read_workspace_file'), "Deve incluir read_workspace_file");
-  console.log("  ✅ Teste 1: Ferramentas do Gemini Live (execute_code_task, run_terminal_command, read_workspace_file) declaradas corretamente.");
+  console.log("  ✅ Teste 1: Ferramentas do Gemini Live (google_search, execute_code_task, run_terminal_command, read_workspace_file) declaradas corretamente.");
 
   // 2. Execução de tool: read_workspace_file
   const readRes = await executeToolCall({

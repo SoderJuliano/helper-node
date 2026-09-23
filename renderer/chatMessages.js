@@ -351,6 +351,38 @@ var isEditingQuestion = false;
         }
     }
 
+    let liveVoiceBlockActive = false;
+    let currentLiveQuestion = '';
+
+    if (window.electronAPI && window.electronAPI.onGeminiLiveUserTranscript) {
+        window.electronAPI.onGeminiLiveUserTranscript(({ text }) => {
+            if (!text || !text.trim()) return;
+            currentLiveQuestion = text.trim();
+
+            const transcriptionElement = document.getElementById('transcription');
+            if (!transcriptionElement) return;
+
+            if (!liveVoiceBlockActive) {
+                appendQuestionEntry(currentLiveQuestion);
+                startProcessing();
+                liveVoiceBlockActive = true;
+            } else {
+                const lastBlock = transcriptionElement.querySelector('.interaction-block:last-child');
+                if (lastBlock) {
+                    const qText = lastBlock.querySelector('.question-text');
+                    if (qText) qText.textContent = currentLiveQuestion;
+                }
+            }
+        });
+    }
+
+    if (window.electronAPI && window.electronAPI.onGeminiLiveTurnComplete) {
+        window.electronAPI.onGeminiLiveTurnComplete(() => {
+            stopProcessing();
+            liveVoiceBlockActive = false;
+        });
+    }
+
     if (window.electronAPI && window.electronAPI.onNexaVoiceSubmitQuestion) {
         window.electronAPI.onNexaVoiceSubmitQuestion(async ({ text }) => {
             if (!text || !text.trim()) return;
@@ -365,36 +397,44 @@ var isEditingQuestion = false;
     if (window.electronAPI && window.electronAPI.onNexaVoiceQuickReply) {
         window.electronAPI.onNexaVoiceQuickReply(async ({ question, reply }) => {
             if (!question && !reply) return;
-            const cleanQuestion = (question && question.trim()) ? question.trim() : '🎤 Pergunta por voz';
+            const cleanQuestion = (question && question.trim()) ? question.trim() : (currentLiveQuestion || '🎤 Pergunta por voz');
             const cleanReply = (reply && reply.trim()) ? reply.trim() : '';
             if (!cleanReply) return;
 
-            // Insere a pergunta do usuário no chat
-            appendQuestionEntry(cleanQuestion);
-
             const transcriptionElement = document.getElementById('transcription');
-            if (transcriptionElement) {
-                const lastBlock = transcriptionElement.querySelector('.interaction-block:last-child');
-                if (lastBlock) {
-                    let resp = lastBlock.querySelector('.ia-response');
-                    if (!resp) {
-                        resp = document.createElement('div');
-                        resp.className = 'ia-response markdown-body';
-                        lastBlock.appendChild(resp);
-                    }
+            let lastBlock = transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null;
 
-                    if (typeof window.renderMarkdownWithHighlights === 'function') {
-                        resp.innerHTML = window.renderMarkdownWithHighlights(cleanReply);
-                    } else if (typeof window.renderMarkdown === 'function') {
-                        resp.innerHTML = window.renderMarkdown(cleanReply);
-                    } else {
-                        resp.textContent = cleanReply;
-                    }
+            // Se ainda não existia um bloco ativo para esta pergunta, cria agora
+            if (!liveVoiceBlockActive || !lastBlock) {
+                appendQuestionEntry(cleanQuestion);
+                lastBlock = transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null;
+            } else {
+                const qText = lastBlock.querySelector('.question-text');
+                if (qText && cleanQuestion) qText.textContent = cleanQuestion;
+            }
+            liveVoiceBlockActive = false;
+            currentLiveQuestion = '';
+            stopProcessing();
 
-                    // Anexa ações do bloco (copiar, regenerar, etc) se ainda não existirem
-                    if (typeof window.createBlockActions === 'function' && !lastBlock.querySelector('.block-actions')) {
-                        lastBlock.appendChild(window.createBlockActions(transcriptionElement));
-                    }
+            if (lastBlock) {
+                let resp = lastBlock.querySelector('.ia-response');
+                if (!resp) {
+                    resp = document.createElement('div');
+                    resp.className = 'ia-response markdown-body';
+                    lastBlock.appendChild(resp);
+                }
+
+                if (typeof window.renderMarkdownWithHighlights === 'function') {
+                    resp.innerHTML = window.renderMarkdownWithHighlights(cleanReply);
+                } else if (typeof window.renderMarkdown === 'function') {
+                    resp.innerHTML = window.renderMarkdown(cleanReply);
+                } else {
+                    resp.textContent = cleanReply;
+                }
+
+                // Anexa ações do bloco (copiar, regenerar, etc) se ainda não existirem
+                if (typeof window.createBlockActions === 'function' && !lastBlock.querySelector('.block-actions')) {
+                    lastBlock.appendChild(window.createBlockActions(transcriptionElement));
                 }
             }
 
