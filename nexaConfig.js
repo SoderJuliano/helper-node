@@ -175,8 +175,7 @@ if (saveBtn) {
       return;
     }
 
-    const modeRaphaelRadio = document.getElementById("mode-raphael");
-    const avatarMode = (modeRaphaelRadio && modeRaphaelRadio.checked) ? "raphael" : "lottie";
+    const avatarMode = "raphael";
     const assistantName = (nexaNameInput && nexaNameInput.value.trim()) ? nexaNameInput.value.trim() : "Nexa";
 
     // Salva configurações de TTS
@@ -218,13 +217,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (nexaToggle) {
         nexaToggle.checked = !!nexaCfg.enabled;
         updateNexaStatus(!!nexaCfg.enabled);
-      }
-      if (nexaCfg.avatarMode === "lottie") {
-        const modeLottie = document.getElementById("mode-lottie");
-        if (modeLottie) modeLottie.checked = true;
-      } else {
-        const modeRaphael = document.getElementById("mode-raphael");
-        if (modeRaphael) modeRaphael.checked = true;
       }
     } else {
       if (nexaNameInput) {

@@ -27,6 +27,7 @@ const appVersionValue = document.getElementById("app-version-value");
 const aiModelSelect = document.getElementById("ai-model");
 const openIaTokenContainer = document.getElementById("openai-token-container");
 const openIaTokenInput = document.getElementById("openai-token");
+const googleApiKeyInput = document.getElementById("google-api-key");
 const openAiModelContainer = document.getElementById("openai-model-container");
 const openAiModelSelect = document.getElementById("openai-model-select");
 const visionGuideSection = document.getElementById("vision-guide-section");
@@ -64,6 +65,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     savedAiModel,
     version,
     savedToken,
+    savedGoogleKey,
     savedBackendApiKey,
     savedOpenAiModel,
     savedEffort,
@@ -89,6 +91,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     ipcRenderer.invoke("get-ai-model").catch(() => "geminiCli"),
     ipcRenderer.invoke("get-app-version").catch(() => ""),
     ipcRenderer.invoke("get-open-ia-token").catch(() => ""),
+    ipcRenderer.invoke("get-google-api-key").catch(() => ""),
     ipcRenderer.invoke("get-backend-api-key").catch(() => ""),
     ipcRenderer.invoke("get-openai-model").catch(() => ""),
     ipcRenderer.invoke("get-openai-reasoning-effort").catch(() => ""),
@@ -106,6 +109,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (printModeToggle) { printModeToggle.checked = !!isPrintMode; window.ConfigToggles.updatePrintModeStatus(!!isPrintMode); }
   if (osIntegrationToggle) { osIntegrationToggle.checked = !!isOsIntegration; window.ConfigToggles.updateOsIntegrationStatus(!!isOsIntegration); }
   if (stealthModeToggle) { stealthModeToggle.checked = !!isStealth; window.ConfigToggles.updateStealthModeStatus(!!isStealth); }
+  if (googleApiKeyInput && savedGoogleKey) googleApiKeyInput.value = savedGoogleKey;
   
   if (nexaToggle && nexaCfg) {
     nexaToggle.checked = !!nexaCfg.enabled;
@@ -411,6 +415,9 @@ saveButton.addEventListener("click", async () => {
   const _tokenVal = (openIaTokenInput.value || "").trim();
   if (_tokenVal) ipcRenderer.send("set-open-ia-token", _tokenVal);
 
+  const _googleKeyVal = (googleApiKeyInput ? googleApiKeyInput.value : "").trim();
+  ipcRenderer.send("set-google-api-key", _googleKeyVal);
+
   const backendApiKeyInput = document.getElementById("backend-api-key");
   if (backendApiKeyInput) ipcRenderer.send("save-backend-api-key", backendApiKeyInput.value);
 
@@ -442,6 +449,11 @@ if (ollamaLocalModelSelect) {
     if (ollamaLocalModelSelect.value) ipcRenderer.send("set-ollama-local-model", ollamaLocalModelSelect.value);
   });
 }
+
+document.getElementById("clear-google-api-key")?.addEventListener("click", () => {
+  if (googleApiKeyInput) googleApiKeyInput.value = "";
+  ipcRenderer.send("set-google-api-key", "");
+});
 
 document.getElementById("clear-openai-token")?.addEventListener("click", () => {
   openIaTokenInput.value = "";

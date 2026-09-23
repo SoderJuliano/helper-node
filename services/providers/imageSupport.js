@@ -41,16 +41,14 @@
 //   PESQUISÁVEL (nome de classe, nº de linha, mensagem de exceção) pra achar o
 //   ponto correspondente no projeto. Pro agy é a única via que sobra.
 const PROVIDERS = {
-  claudeCli: { mode: 'path',       ocr: true },
-  copilotCli: { mode: 'attachment', ocr: true },
-  geminiCli: { mode: 'none',       ocr: true, note: 'sem visão em modo -p; OCR é a única via' },
-  openIa:    { mode: 'inline',     ocr: true },
-  openIaCodex: { mode: 'inline',   ocr: true },
+  claudeCli: { mode: 'path',       ocr: false },
+  copilotCli: { mode: 'attachment', ocr: false },
+  geminiCli: { mode: 'path',       ocr: false },
+  openIa:    { mode: 'inline',     ocr: false },
+  openIaCodex: { mode: 'inline',   ocr: false },
 };
 
-// Conservador de propósito: caminho + OCR funciona em qualquer CLI que saiba
-// ler arquivo, e o OCR garante que algo chega ao modelo mesmo se não souber.
-const DEFAULT = { mode: 'path', ocr: true };
+const DEFAULT = { mode: 'path', ocr: false };
 
 function forProvider(aiModel) {
   return PROVIDERS[aiModel] || DEFAULT;

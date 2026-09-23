@@ -1,11 +1,9 @@
 /**
  * main/nexa/nexaResponseHelper.js
  * Utilitários para parsear respostas JSON da Nexa em tempo real (streaming)
- * e executar ações (animações, memórias, TTS).
+ * e executar ações (memórias, TTS).
  */
 
-const { NEXA_ANIMATIONS } = require("./nexaAnimations.js");
-const { addHistoryEvent } = require("./nexaHistory.js");
 const { addMemoryFact } = require("./nexaMemory.js");
 
 class NexaJsonStreamParser {
@@ -90,7 +88,7 @@ class NexaJsonStreamParser {
 }
 
 function parseNexaResponse(rawText, fallbackText = "") {
-  if (!rawText) return { response: "", animation: null, remember: null };
+  if (!rawText) return { response: "", remember: null };
   
   let cleanText = rawText.trim();
   
@@ -105,7 +103,6 @@ function parseNexaResponse(rawText, fallbackText = "") {
     if (parsed && typeof parsed === "object" && parsed.response !== undefined) {
       return {
         response: parsed.response || "",
-        animation: parsed.animation || null,
         remember: parsed.remember || null
       };
     }
@@ -120,7 +117,6 @@ function parseNexaResponse(rawText, fallbackText = "") {
       const parsed = JSON.parse(jsonMatch[0]);
       return {
         response: parsed.response || "",
-        animation: parsed.animation || null,
         remember: parsed.remember || null
       };
     } catch (e) {
@@ -128,44 +124,18 @@ function parseNexaResponse(rawText, fallbackText = "") {
     }
   }
   
-  console.warn("[NexaResponseHelper] Falha ao parsear resposta JSON da Nexa, usando fallback");
   const response = fallbackText || rawText;
   return {
     response,
-    animation: null,
     remember: null
   };
 }
 
 function handleNexaActions(parsedResult) {
-  const { response, animation, remember } = parsedResult;
-  
-  // 1. Valida e executa a animação retornada
-  if (animation && NEXA_ANIMATIONS[animation]) {
-    const animDef = NEXA_ANIMATIONS[animation];
-    console.log(`[NexaResponseHelper] Executando animação validada: ${animation}`);
-    
-    // Registra no histórico da sessão
-    addHistoryEvent({
-      animation,
-      event: "played",
-      description: animDef.description
-    });
-    
-    // Dispara evento para a janela da Nexa
-    try {
-      const { state } = require("../globals.js");
-      if (state.nexaWindow && !state.nexaWindow.isDestroyed()) {
-        state.nexaWindow.webContents.send("nexa:play-animation", { name: animation });
-      }
-    } catch (err) {
-      console.error("[NexaResponseHelper] Erro ao enviar evento de animação:", err.message);
-    }
-  } else if (animation) {
-    console.warn(`[NexaResponseHelper] Animação sugerida inválida ou ausente no catálogo: ${animation}`);
-  }
+  if (!parsedResult) return;
+  const { remember } = parsedResult;
 
-  // 2. Adiciona fato à memória se sugerido
+  // Adiciona fato à memória se sugerido
   if (remember) {
     addMemoryFact(remember);
   }

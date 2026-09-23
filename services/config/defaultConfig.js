@@ -54,6 +54,7 @@ const defaultConfig = {
     listenAudio: true,
     useKnowledgeBase: true,
   },
+  googleApiKey: "",
   googleTts: {
     enabled: true,
     keyPathOrKey: fs.existsSync("C:\\Users\\soder\\Documents\\sectrets\\gen-lang-client-0083021392-f898f4b44b05.json")
@@ -65,7 +66,7 @@ const defaultConfig = {
     name: "Nexa",
     enabled: true,
     onlyNexa: false,
-    avatarMode: "raphael", // "raphael" (Padrão: Raphael / Particle Core) ou "lottie" (Legado: Lottie Anime 2D)
+    avatarMode: "raphael", // Raphael Core exclusivo (núcleo cósmico de plasma 3D)
   },
 };
 

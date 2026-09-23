@@ -36,8 +36,7 @@ function registerNexaIpc() {
   });
 
   ipcMain.handle("nexa:get-animations", () => {
-    const { NEXA_ANIMATIONS } = require("./nexaAnimations.js");
-    return NEXA_ANIMATIONS;
+    return {};
   });
 
   ipcMain.handle("nexa:read-file", async (event, filePath) => {

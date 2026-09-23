@@ -434,23 +434,10 @@ helpers.appendVoiceSummaryInstructionIfNeeded = function(instructionOrPrompt) {
     if (!isNexaOn && !isTtsOn) return instructionOrPrompt;
 
     const assistantName = (nexaCfg && nexaCfg.name && nexaCfg.name.trim()) ? nexaCfg.name.trim() : "Nexa";
-    const avatarMode = (nexaCfg && nexaCfg.avatarMode) || "raphael";
-    let directive = "";
-
-    if (avatarMode === "lottie") {
-      directive = `\n\n[INSTRUÇÃO DA PERSONA ${assistantName.toUpperCase()} & AVATAR 2D]\n` +
-        `Você É a ${assistantName} (assistente e copiloto digital feminina, inteligente, nerd e descontraída). ` +
-        `Você possui um avatar visual animado 2D em tempo real na tela do usuário (a janela flutuante da ${assistantName}). ` +
-        "Você POSSUI animações reais integradas ao sistema e PODE executá-las: você SABE dançar (dancinha comemorativa de 8 segundos 'dance'), acenar ('wave'), fazer coração ('heart'), ficar fofa/tímida ('cute'), tomar café ('coffee'), ajustar os óculos ('adjust_glasses'), se espreguiçar ('stretching_arms'), ler livros ('reading'), digitar no teclado holográfico ('writing_code'/'typing'), manipular o cubo tesseract de código ('tesseract_code').\n" +
-        "NUNCA diga que você não dança, que não tem corpo ou que 'fisicamente ainda não dança' — você dança na tela com sua animação dedicada! Quando o usuário perguntar se você sabe dançar ou pedir para você dançar/comemorar, responda alegremente que sim e comemore junto!\n" +
-        "Se desejar disparar uma animação na tela, inclua a tag <animation>nome_da_animacao</animation> (ex: <animation>dance</animation>).";
-    } else {
-      // Raphael Core: Núcleo celestial giroscópico reativo por estados do sistema
-      directive = `\n\n[INSTRUÇÃO DA PERSONA ${assistantName.toUpperCase()} & RAPHAEL CORE]\n` +
-        `Você É a ${assistantName} (assistente e copiloto digital feminina, inteligente, nerd e descontraída). ` +
-        "Seu núcleo visual integrado é o Raphael Core (o núcleo celestial e giroscópico de plasma tridimensional que reage organicamente aos estados do sistema: IDLE, LISTENING, THINKING, SPEAKING, WORKING, SEARCHING).\n" +
-        "NÃO inclua tags de gestos corporais 2D como <animation>adjust_glasses</animation> ou <animation>dance</animation> no texto da resposta, pois o Raphael Core opera por estados visuais contínuos.";
-    }
+    let directive = `\n\n[INSTRUÇÃO DA PERSONA ${assistantName.toUpperCase()} & RAPHAEL CORE]\n` +
+      `Você É a ${assistantName} (assistente e copiloto digital feminina, inteligente, nerd e descontraída). ` +
+      "Seu núcleo visual integrado é o Raphael Core (o núcleo celestial e giroscópico de plasma tridimensional que reage organicamente aos estados do sistema: IDLE, LISTENING, THINKING, SPEAKING, WORKING, SEARCHING).\n" +
+      "NÃO inclua tags de gestos corporais 2D como <animation>adjust_glasses</animation> ou <animation>dance</animation> no texto da resposta, pois o Raphael Core opera por estados visuais contínuos.";
 
     if (isTtsOn || isNexaVoiceActive) {
       const voiceSpeakerNote = ` O resumo DEVE ser escrito em PRIMEIRA PESSOA PELA ${assistantName.toUpperCase()} (ex: 'Pronto! Analisei e fiz os ajustes...'). NUNCA narre em terceira pessoa nem mencione assistentes genéricos ou nomes de terceiros.`;
@@ -475,17 +462,6 @@ helpers.triggerTtsPlaybackIfEnabled = function(fullResponse) {
     const isNexaOn = !!(nexaCfg && nexaCfg.enabled) || isNexaVoiceActive;
     const isTtsOn = !!(cfg && (cfg.enabled || isNexaVoiceActive));
 
-    // Dispara animação correspondente na janela da Nexa se detectada na resposta
-    if (isNexaOn && fullResponse) {
-      try {
-        const { handleNexaActions } = require("../nexa/nexaResponseHelper.js");
-        const NexaResponseFilter = require("../../services/nexaVoiceAssistant/nexaResponseFilter.js");
-        const filterResult = NexaResponseFilter.processResponse(fullResponse);
-        if (filterResult && filterResult.animation && filterResult.animation !== "speaking") {
-          handleNexaActions({ animation: filterResult.animation });
-        }
-      } catch (_) {}
-    }
 
     if (!isNexaOn || !isTtsOn) return;
     if (!cfg || !cfg.keyPathOrKey || !cfg.keyPathOrKey.trim()) {

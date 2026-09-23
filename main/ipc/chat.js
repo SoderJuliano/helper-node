@@ -219,6 +219,9 @@ module.exports = function registerIpc() {
   ipcMain.handle("get-open-ia-token", () => configService.getOpenIaToken());
   ipcMain.on("set-open-ia-token", (event, token) => configService.setOpenIaToken(token));
 
+  ipcMain.handle("get-google-api-key", () => configService.getGoogleApiKey());
+  ipcMain.on("set-google-api-key", (event, key) => configService.setGoogleApiKey(key));
+
   ipcMain.on("send-os-question", async (event, data) => {
     const text = typeof data === 'string' ? data : data.text;
     const image = typeof data === 'object' ? data.image : null;

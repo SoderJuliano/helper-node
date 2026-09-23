@@ -86,7 +86,7 @@ const NOISY_IPC_CHANNELS = new Set([
   'frameless-drag-start', 'frameless-drag-end', 'window-close', 'window-move', 'window-resize',
   'get-backend-url', 'get-backend-api-key', 'get-ai-model', 'get-edition',
   'get-openai-model', 'get-gemini-cli-model', 'get-claude-cli-model', 'get-ollama-local-model',
-  'get-backend-model', 'get-open-ia-token', 'get-prompt-instruction', 'get-language',
+  'get-backend-model', 'get-open-ia-token', 'get-google-api-key', 'get-prompt-instruction', 'get-language',
   'get-stealth-mode-status', 'get-print-mode-status', 'get-debug-mode-status', 'get-os-integration-status',
   'get-realtime-assistant-status', 'get-workspace-access-enabled', 'get-helper-tools-enabled',
   'save-debug-mode-status', 'save-print-mode-status', 'save-os-integration-status',

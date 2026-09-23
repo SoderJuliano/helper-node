@@ -248,6 +248,16 @@ function createAccessors(ctx) {
       save();
     },
 
+    getGoogleApiKey() {
+      return get().googleApiKey || "";
+    },
+
+    setGoogleApiKey(key) {
+      const cfg = get();
+      cfg.googleApiKey = key;
+      save();
+    },
+
     getOsIntegrationStatus() {
       return get().osIntegration || false;
     },

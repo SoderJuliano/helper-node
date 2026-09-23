@@ -28,15 +28,7 @@ const nexaFiles = [
   "main/nexa/nexaIntegration.js",
   "main/nexa/nexaPersona.js",
   "renderer/nexa/nexaRenderer.js",
-  "renderer/nexa/nexaWebcam.js",
-  "renderer/nexa/nexaCharacter.js",
-  "renderer/nexa/nexaBreathing.js",
-  "renderer/nexa/nexaBlink.js",
-  "renderer/nexa/nexaLook.js",
-  "renderer/nexa/nexaTalking.js",
-  "renderer/nexa/nexaThinking.js",
-  "renderer/nexa/nexaIntroAnimation.js",
-  "renderer/nexa/nexaAnimationController.js",
+  "renderer/nexa/nexaWebcam.js"
 ];
 
 const rootDir = path.resolve(__dirname, "..");

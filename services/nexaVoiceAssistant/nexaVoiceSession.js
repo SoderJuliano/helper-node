@@ -18,7 +18,6 @@ const NexaTurnDetector = require("./nexaTurnDetector");
 const NexaIntentClassifier = require("./nexaIntentClassifier");
 const NexaConversationContext = require("./nexaConversationContext");
 const NexaResponseFilter = require("./nexaResponseFilter");
-const { warmupWhisper } = require("./whisperWarmup");
 
 const FOLLOW_UP_DURATION_MS = 9000; // Janela confortável de 9 segundos para conversa contínua após resposta
 
@@ -47,9 +46,6 @@ class NexaVoiceSession extends EventEmitter {
     });
 
     this.turnDetector.on("speech-start", () => {
-      // Dispara aquecimento preventivo do Whisper em background (0% de impacto na thread de áudio)
-      warmupWhisper().catch(() => {});
-
       // Se a Nexa estava falando via TTS (alto-falante), silencia imediatamente o áudio falado (Barge-In de voz)
       if (this.isSpeakingTts) {
         console.log("[NexaVoiceSession] Interrupção instantânea (Barge-In no speech-start): silenciando áudio TTS da Nexa.");
@@ -80,8 +76,6 @@ class NexaVoiceSession extends EventEmitter {
     });
 
     this.turnDetector.on("voice-decay", (decayInfo) => {
-      // Decaimento de voz detectado: garante que o Whisper já esteja aquecido antes do fim dos 1100ms
-      warmupWhisper().catch(() => {});
       this.emit("voice-decay", decayInfo);
     });
 

@@ -203,17 +203,12 @@ run_hotkey_setup() {
 }
 
 main() {
-  warn "Starting Helper Node dependency installation"
-  # install_system_packages # requires sudo, bypassing
-  clone_whisper
-  build_whisper
-  download_models
+  warn "Starting Helper Node dependency installation (Ultralight mode)"
   maybe_setup_ollama
   run_hotkey_setup
   info "All done!"
   echo
   echo -e "${YELLOW}Next steps:${NC}"
-  echo "- Ensure your Gemini CLI is set up and working"
   echo "- Start the app: npm start"
 }
 

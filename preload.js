@@ -139,8 +139,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getDebugModeStatus: () => ipcRenderer.invoke("get-debug-mode-status"), // Added for debug mode access
   getStealthModeStatus: () => ipcRenderer.invoke("get-stealth-mode-status"),
   saveStealthModeStatus: (status) => ipcRenderer.send("save-stealth-mode-status", status),
-  getPromptInstruction: () => ipcRenderer.invoke("get-prompt-instruction"), // Added for prompt instruction access
   getOpeniaToken: () => ipcRenderer.invoke("get-open-ia-token"),
+  getGoogleApiKey: () => ipcRenderer.invoke("get-google-api-key"),
+  saveGoogleApiKey: (key) => ipcRenderer.send("set-google-api-key", key),
   getBackendApiKey: () => ipcRenderer.invoke("get-backend-api-key"),
   saveBackendApiKey: (key) => ipcRenderer.send("save-backend-api-key", key),
   getBackendUrl: () => ipcRenderer.invoke("get-backend-url"),

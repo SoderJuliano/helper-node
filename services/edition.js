@@ -1,27 +1,16 @@
-// Edição do app: 'lite' (100% online — só modelos cloud) ou 'full' (offline,
-// com Whisper/Ollama locais). O build (package.sh) grava `edition.json` na
-// raiz do app com { "edition": "lite" }. Rodando do código-fonte (npm start) o
-// arquivo não existe → assume 'full', então o ambiente de dev mantém TODAS as
-// features. Nada de lógica nova é destrutiva: a Lite só ESCONDE/desvia caminhos.
-const fs = require('fs');
-const path = require('path');
-
-let _edition = null;
+/**
+ * services/edition.js
+ * Edição unificada e leve (100% Lite): modelos de nuvem, Gemini Live,
+ * visão multimodal nativa e CLIs nativos locais (AGY, Copilot, Claude).
+ * Modelos pesados locais em C++ (Whisper) e Tesseract foram descontinuados.
+ */
 
 function getEdition() {
-  if (_edition) return _edition;
-  try {
-    const p = path.join(__dirname, '..', 'edition.json');
-    const raw = JSON.parse(fs.readFileSync(p, 'utf8'));
-    _edition = raw && raw.edition === 'lite' ? 'lite' : 'full';
-  } catch (_) {
-    _edition = 'full';
-  }
-  return _edition;
+  return 'lite';
 }
 
 function isLite() {
-  return getEdition() === 'lite';
+  return true;
 }
 
 module.exports = { getEdition, isLite };
