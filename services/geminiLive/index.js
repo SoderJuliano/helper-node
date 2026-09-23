@@ -39,10 +39,23 @@ class GeminiLiveController extends EventEmitter {
 
     const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : {};
     const assistantName = (nexaCfg && nexaCfg.name) ? nexaCfg.name.trim() : 'Raphael';
+    const model = options.model || (configService.getGeminiLiveModel ? configService.getGeminiLiveModel() : null) || 'models/gemini-3.1-flash-live-preview';
+
+    const systemInstruction = options.systemInstruction || `Você é a ${assistantName}, copiloto e assistente de desenvolvimento sênior em inteligência artificial do Helper Node.
+Você trabalha em parceria com o desenvolvedor Juliano. Seu núcleo visual integrado é o Raphael Core (plasma cósmico tridimensional).
+Sua personalidade é inteligente, descontraída, nerd, empática e ágil.
+DIRETIVAS OBRIGATÓRIAS DE FLUXO:
+1. Responda em áudio em português do Brasil de maneira natural, conversacional e concisa.
+2. Quando Juliano solicitar refatoração, criação de código, modificação de arquivos ou execução de testes locais, FALE BREVEMENTE EM VOZ ALTA antes de disparar a ferramenta (ex: "Beleza Juliano! Já estou abrindo o projeto e executando com o AGY...").
+3. Enquanto a ferramenta roda em background, mantenha presença.
+4. Ao receber o retorno da ferramenta, faça um resumo conversacional objetivo dos resultados (ex: se os testes passaram, status final).
+5. Se for apenas conversa ou dúvida teórica/arquitetural, responda diretamente em voz com alta precisão técnica.`;
 
     // Cria e conecta a sessão Gemini Live com o modelo e voz configurados
     this.session = new GeminiLiveSession({
       apiKey,
+      model,
+      systemInstruction,
       ...options
     });
 

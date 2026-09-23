@@ -9,7 +9,11 @@ const EventEmitter = require('events');
 const { DEFAULT_LIVE_TOOLS, executeToolCall } = require('./geminiLiveTools');
 
 const GEMINI_LIVE_WS_URL = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent';
-const DEFAULT_MODEL = 'models/gemini-2.5-flash';
+const DEFAULT_MODEL = 'models/gemini-3.1-flash-live-preview';
+const CANDIDATE_MODELS = [
+  'models/gemini-3.1-flash-live-preview',
+  'models/gemini-3.5-live-translate-preview'
+];
 const DEFAULT_VOICE = 'Aoede'; // Voz feminina calorosa, natural e fluída
 
 const DEFAULT_SYSTEM_INSTRUCTION = `Você é a Raphael, copiloto e assistente de desenvolvimento sênior em inteligência artificial do Helper Node.
@@ -36,6 +40,7 @@ class GeminiLiveSession extends EventEmitter {
     this.isSessionConfigured = false;
     this.currentState = 'IDLE'; // IDLE, LISTENING, THINKING, SPEAKING, WORKING
     this.isExecutingTool = false;
+    this._triedFallback = false;
   }
 
   /**
@@ -47,8 +52,13 @@ class GeminiLiveSession extends EventEmitter {
       throw new Error('Google API Key não configurada para a Live Session.');
     }
 
+    return this._connectWithModel(this.model);
+  }
+
+  _connectWithModel(modelName) {
     const endpoint = `${GEMINI_LIVE_WS_URL}?key=${encodeURIComponent(this.apiKey.trim())}`;
-    
+    this.model = modelName;
+
     return new Promise((resolve, reject) => {
       try {
         const WSClass = typeof WebSocket !== 'undefined' ? WebSocket : global.WebSocket;
@@ -56,15 +66,15 @@ class GeminiLiveSession extends EventEmitter {
 
         this.ws.onopen = () => {
           this.isConnected = true;
-          console.log('[GeminiLive] Conexão WebSocket estabelecida. Enviando handshake de setup...');
+          console.log(`[GeminiLive] Conexão WebSocket estabelecida com modelo ${this.model}. Enviando handshake de setup...`);
           this._sendSetupHandshake();
           this.emit('connected');
           this._setState('IDLE');
           resolve();
         };
 
-        this.ws.onmessage = (event) => {
-          this._handleMessage(event.data);
+        this.ws.onmessage = async (event) => {
+          await this._handleMessage(event.data);
         };
 
         this.ws.onerror = (err) => {
@@ -72,11 +82,28 @@ class GeminiLiveSession extends EventEmitter {
           this.emit('error', err);
         };
 
-        this.ws.onclose = (event) => {
+        this.ws.onclose = async (event) => {
           console.log(`[GeminiLive] Conexão encerrada (código ${event.code}): ${event.reason}`);
+          const wasConfigured = this.isSessionConfigured;
           this.isConnected = false;
           this.isSessionConfigured = false;
           this._setState('IDLE');
+
+          // Se a conexão caiu antes de configurar o setup com erro de modelo não suportado (1008), tenta fallback
+          if (!wasConfigured && (event.code === 1008 || (event.reason && (event.reason.includes('not supported') || event.reason.includes('not found'))))) {
+            const nextCandidate = CANDIDATE_MODELS.find(m => m !== this.model);
+            if (nextCandidate && !this._triedFallback) {
+              this._triedFallback = true;
+              console.log(`[GeminiLive] Modelo ${this.model} indisponível. Tentando modelo alternativo: ${nextCandidate}`);
+              try {
+                await this._connectWithModel(nextCandidate);
+                return;
+              } catch (fallbackErr) {
+                console.error('[GeminiLive] Falha ao tentar modelo alternativo:', fallbackErr);
+              }
+            }
+          }
+
           this.emit('disconnected', { code: event.code, reason: event.reason });
         };
       } catch (err) {
@@ -184,12 +211,26 @@ class GeminiLiveSession extends EventEmitter {
    */
   async _handleMessage(rawData) {
     try {
-      const data = typeof rawData === 'string' ? JSON.parse(rawData) : JSON.parse(rawData.toString());
+      let textContent = '';
+      if (typeof rawData === 'string') {
+        textContent = rawData;
+      } else if (rawData && typeof rawData.text === 'function') {
+        textContent = await rawData.text();
+      } else if (Buffer.isBuffer(rawData)) {
+        textContent = rawData.toString('utf-8');
+      } else if (rawData instanceof ArrayBuffer) {
+        textContent = Buffer.from(rawData).toString('utf-8');
+      } else {
+        textContent = String(rawData);
+      }
+
+      const data = JSON.parse(textContent);
 
       // 1. Confirmação do Setup inicial
       if (data.setupComplete) {
         this.isSessionConfigured = true;
-        console.log('[GeminiLive] Setup confirmado pelo servidor.');
+        console.log(`[GeminiLive] Setup confirmado pelo servidor com modelo ${this.model}.`);
+        this.emit('setup-complete', { model: this.model });
         return;
       }
 
@@ -201,6 +242,11 @@ class GeminiLiveSession extends EventEmitter {
           this.emit('barge-in');
           this._setState('LISTENING');
           return;
+        }
+
+        // Transcrição de saída em tempo real (Google envia em serverContent.outputTranscription.text)
+        if (serverContent.outputTranscription && serverContent.outputTranscription.text) {
+          this.emit('transcript', serverContent.outputTranscription.text);
         }
 
         // 3. Recebimento de partes de áudio geradas
