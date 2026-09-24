@@ -371,10 +371,10 @@
                 });
             }
 
-            // Tag de edição na sidebar (full/lite)
+            // Tag de versao na sidebar
             const editionTag = document.getElementById('app-edition-tag');
-            if (editionTag && window.electronAPI && window.electronAPI.getEdition) {
-                try { editionTag.textContent = await window.electronAPI.getEdition(); } catch(_) {}
+            if (editionTag) {
+                editionTag.textContent = 'v0.8.0';
             }
 
     // Usada por chatInput/chatMessages/chatHistory (IIFEs separadas).

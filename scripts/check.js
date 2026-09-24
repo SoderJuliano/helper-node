@@ -208,7 +208,7 @@ function writeBaseline() {
 // ── E5: Proibição de emojis ───────────────────────────────────────────────────
 function checkNoEmojis() {
   const emojiRegex = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}]/u;
-  const targetFiles = ['apiConfig.html', 'config.html', 'settings.html', 'welcome.html', 'nexaConfig.html', 'preferences.html'];
+  const targetFiles = ['apiConfig.html', 'config.html', 'settings.html', 'welcome.html', 'nexaConfig.html', 'preferences.html', 'README.md'];
   for (const relPath of targetFiles) {
     const full = path.join(ROOT, relPath);
     if (!fs.existsSync(full)) continue;
