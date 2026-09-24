@@ -101,16 +101,41 @@ DIRETIVAS OBRIGATÓRIAS DE EXECUÇÃO E VOZ:
 5. Você tem acesso à tela e ao histórico recente do Helper Node através das ferramentas disponíveis.`;
   }
 
+  isMicListening() {
+    return !!(this.session && this.session.isConnected && this.isListening);
+  }
+
+  async sendTextMessage(text) {
+    if (!text || !text.trim()) return;
+
+    if (!this.session || !this.session.isConnected) {
+      await this.start({ withoutMic: true });
+    }
+
+    if (this.session && this.session.isConnected) {
+      try {
+        const { createNexaWindow, isNexaWindowOpen } = require('../../main/nexa/nexaWindow.js');
+        if (!isNexaWindowOpen()) {
+          createNexaWindow();
+        }
+      } catch (_) {}
+
+      this.session.sendTextMessage(text.trim());
+      this._updateNexaState('THINKING');
+    }
+  }
+
   async start(options = {}) {
     const micDevice = options.micDevice || (configService.getMicDevice ? configService.getMicDevice() : '');
+    const withoutMic = !!(options.withoutMic || options.skipMic);
 
-    // Se já temos uma sessão WebSocket ativa em standby (mic mutado), apenas retoma a escuta do microfone
+    // Se já temos uma sessão WebSocket ativa em standby (mic mutado), apenas retoma a escuta do microfone se solicitado
     if (this.session && this.session.isConnected) {
       if (this.standbyTimeout) {
         clearTimeout(this.standbyTimeout);
         this.standbyTimeout = null;
       }
-      if (!this.isListening) {
+      if (!withoutMic && !this.isListening) {
         await nativeAudio.subscribe('mic', this._onMicChunk, { deviceId: micDevice });
         this.isListening = true;
         this.emit('status-changed', { active: true, state: 'listening' });
@@ -143,14 +168,20 @@ DIRETIVAS OBRIGATÓRIAS DE EXECUÇÃO E VOZ:
     this._bindSessionEvents(this.session);
     await this.session.connect();
 
-    // Assina o stream do microfone nativo (PCM 16kHz s16le mono)
-    await nativeAudio.subscribe('mic', this._onMicChunk, { deviceId: micDevice });
-    this.isListening = true;
+    if (!withoutMic) {
+      // Assina o stream do microfone nativo (PCM 16kHz s16le mono)
+      await nativeAudio.subscribe('mic', this._onMicChunk, { deviceId: micDevice });
+      this.isListening = true;
+      this.emit('status-changed', { active: true, state: 'listening' });
+      this._broadcastStatus({ active: true, state: 'listening' });
+      console.log(`[GeminiLiveController] Sessão Live ativa com microfone em tempo real (Modelo: ${model}, Voz: ${voiceName}, Sem TTS - Áudio Direto).`);
+    } else {
+      this.isListening = false;
+      this.emit('status-changed', { active: true, state: 'standby' });
+      this._broadcastStatus({ active: true, state: 'standby' });
+      console.log(`[GeminiLiveController] Sessão Live conectada em modo Texto/Standby (Modelo: ${model}, Voz: ${voiceName}, Sem TTS - Áudio Direto).`);
+    }
 
-    this.emit('status-changed', { active: true, state: 'listening' });
-    this._broadcastStatus({ active: true, state: 'listening' });
-
-    console.log(`[GeminiLiveController] Sessão Live ativa com microfone em tempo real (Modelo: ${model}, Voz: ${voiceName}, Sem TTS - Áudio Direto).`);
     return this.session;
   }
 
@@ -295,7 +326,9 @@ module.exports = {
   controller,
   getLiveSession: () => controller.session,
   isLiveSessionActive: () => controller.isActive(),
+  isLiveSessionListening: () => controller.isMicListening(),
   startLiveSession: (options) => controller.start(options),
   stopLiveSession: () => controller.stop(),
-  toggleLiveSession: (forced, options) => controller.toggle(forced, options)
+  toggleLiveSession: (forced, options) => controller.toggle(forced, options),
+  sendTextMessage: (text) => controller.sendTextMessage(text)
 };

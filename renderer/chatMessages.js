@@ -210,6 +210,31 @@ var isEditingQuestion = false;
 
         const aiModel = await window.electronAPI.getAiModel();
 
+        // Se o microfone do Gemini Live estiver ativo, ou se a Nexa estiver habilitada em modo padrão/Gemini:
+        let isNexaLiveActive = false;
+        try {
+            if (window.electronAPI && window.electronAPI.getNexaConfig) {
+                const nexaCfg = await window.electronAPI.getNexaConfig();
+                const status = window.electronAPI.nexaVoiceGetStatus ? await window.electronAPI.nexaVoiceGetStatus() : null;
+                const isMicListening = !!(status && status.active);
+                // Se o usuário selecionou explicitamente outro provedor de chat (OpenAI, Codex, Claude CLI, Copilot CLI, Ollama):
+                const isExplicitOtherProvider = ['openIa', 'openIaCodex', 'claudeCli', 'copilotCli', 'ollamaLocal', 'llama', 'llama-stream', 'qwen-stream'].includes(aiModel);
+                
+                isNexaLiveActive = isMicListening || (!!(nexaCfg && nexaCfg.enabled) && !isExplicitOtherProvider);
+            }
+        } catch (_) {}
+
+        if (isNexaLiveActive && window.electronAPI && window.electronAPI.sendTextToGeminiLive) {
+            currentLiveQuestion = text;
+            liveVoiceBlockActive = true;
+            try {
+                await window.electronAPI.sendTextToGeminiLive(text);
+                return;
+            } catch (liveErr) {
+                console.warn('[sentToAI] Falha ao enviar para Gemini Live, fallback para modelo padrão:', liveErr);
+            }
+        }
+
         if (aiModel === 'llama-stream' || aiModel === 'qwen-stream' || aiModel === 'ollamaLocal') {
             window.electronAPI.sendTextToGeminiStream(text, activeSessionId);
         } else {
@@ -376,10 +401,48 @@ var isEditingQuestion = false;
         });
     }
 
+    if (window.electronAPI && window.electronAPI.onGeminiLiveTranscript) {
+        window.electronAPI.onGeminiLiveTranscript((data) => {
+            const text = data && data.text ? data.text : data;
+            if (!text) return;
+            const transcriptionElement = document.getElementById('transcription');
+            if (!transcriptionElement) return;
+
+            const lastBlock = transcriptionElement.querySelector('.interaction-block:last-child');
+            if (!lastBlock) return;
+
+            let resp = lastBlock.querySelector('.ia-response');
+            if (!resp) {
+                resp = document.createElement('div');
+                resp.className = 'ia-response markdown-body is-streaming';
+                lastBlock.appendChild(resp);
+            }
+
+            if (typeof window.renderMarkdownWithHighlights === 'function') {
+                resp.innerHTML = window.renderMarkdownWithHighlights(text);
+            } else if (typeof window.renderMarkdown === 'function') {
+                resp.innerHTML = window.renderMarkdown(text);
+            } else {
+                resp.textContent = text;
+            }
+
+            scrollTranscriptionToBottom('smooth');
+        });
+    }
+
     if (window.electronAPI && window.electronAPI.onGeminiLiveTurnComplete) {
         window.electronAPI.onGeminiLiveTurnComplete(() => {
             stopProcessing();
             liveVoiceBlockActive = false;
+            const transcriptionElement = document.getElementById('transcription');
+            const lastBlock = transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null;
+            if (lastBlock) {
+                const resp = lastBlock.querySelector('.ia-response');
+                if (resp) resp.classList.remove('is-streaming');
+                if (typeof window.createBlockActions === 'function' && !lastBlock.querySelector('.block-actions')) {
+                    lastBlock.appendChild(window.createBlockActions(transcriptionElement));
+                }
+            }
         });
     }
 

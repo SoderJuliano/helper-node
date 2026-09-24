@@ -234,6 +234,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
+  if (window.electronAPI && window.electronAPI.onGeminiLiveToolProgress) {
+    window.electronAPI.onGeminiLiveToolProgress(({ message }) => {
+      if (raphaelSubtitles && message) {
+        raphaelSubtitles.show(message, 4000);
+      }
+      if (raphaelCore && raphaelCore.getState() !== "SPEAKING") {
+        raphaelCore.setState("WORKING");
+        canvas.className = "raphael-canvas-glow working";
+      }
+    });
+  }
+
   // 4. Arraste Suave da Janela
   let isDraggingWindow = false;
 

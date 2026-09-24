@@ -314,11 +314,16 @@ function handleCoreEventForNexa(channel, args) {
     channel === "stream-complete" ||
     channel === "stream-error" ||
     channel === "stream-end" ||
+    channel === "gemini-stream-complete" ||
+    channel === "claude-stream-complete" ||
+    channel === "claude-stream-end" ||
     channel === "cancel-ia-request" ||
     channel === "nexa-voice:processing-finished" ||
     channel === "ia-error" ||
     channel === "gemini-response" ||
     channel === "gemini-response-vision" ||
+    channel === "claude-response" ||
+    channel === "openai-final-response" ||
     channel === "ollama-response"
   ) {
     if (nexaState.getState() === "THINKING" || nexaState.getState() === "WORKING" || nexaState.getState() === "SEARCHING") {

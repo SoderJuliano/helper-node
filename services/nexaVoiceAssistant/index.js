@@ -17,14 +17,24 @@ function registerIpc() {
 
   ipcMain.handle("nexa-voice:get-status", () => {
     return {
-      active: geminiLiveController.isActive(),
+      active: isVoiceActive(),
+      liveConnected: geminiLiveController.isActive(),
       followUpActive: false,
       mode: "geminiLive"
     };
   });
 
+  ipcMain.handle("gemini-live:send-text", async (_event, text) => {
+    return await sendTextMessage(text);
+  });
+
   ipcMain.on("nexa-voice:processing-started", () => {});
   ipcMain.on("nexa-voice:processing-finished", () => {});
+}
+
+async function sendTextMessage(text) {
+  _ensureNexaWindowOpen();
+  return await geminiLiveController.sendTextMessage(text);
 }
 
 async function startVoice(micDevice) {
@@ -58,7 +68,7 @@ async function toggleVoice(forcedState) {
 }
 
 function isVoiceActive() {
-  return geminiLiveController.isActive();
+  return geminiLiveController.isMicListening ? geminiLiveController.isMicListening() : geminiLiveController.isActive();
 }
 
 function _ensureNexaWindowOpen() {
@@ -101,6 +111,7 @@ module.exports = {
   stop: stopVoice,
   isActive: isVoiceActive,
   toggle: toggleVoice,
+  sendTextMessage,
   registerIpc,
   getSession: () => compatibilitySession,
   geminiLiveController

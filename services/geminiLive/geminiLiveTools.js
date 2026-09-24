@@ -155,36 +155,65 @@ async function _handleAgyCodeTask(id, args, cwd, context) {
     return { status: 'error', message: 'Nenhuma instrução informada para a tarefa de código.' };
   }
 
-  const actId = id || ('agy_' + Date.now());
-  const label = 'Gemini CLI: ' + (instruction.length > 50 ? instruction.slice(0, 50) + '...' : instruction);
+  const { configService, state } = require('../../main/globals');
+  const aiModel = (configService && typeof configService.getAiModel === 'function')
+    ? configService.getAiModel()
+    : 'geminiCli';
+
+  const providerLabel = aiModel === 'claudeCli' ? 'Claude CLI' : (aiModel === 'copilotCli' ? 'Copilot CLI' : 'Gemini CLI');
+  const actId = id || ('code_' + Date.now());
+  const label = `${providerLabel}: ` + (instruction.length > 50 ? instruction.slice(0, 50) + '...' : instruction);
   _notifyToolActivity(actId, 'start', label, 'edit', 'execute_code_task');
-  _notifyProgress('Executando tarefa com Gemini CLI instalado...', { instruction, cwd });
+  _notifyProgress(`Executando tarefa com ${providerLabel}...`, { instruction, cwd });
+
+  const sender = (state.mainWindow && !state.mainWindow.isDestroyed())
+    ? state.mainWindow.webContents
+    : { send: () => {} };
 
   try {
-    const GeminiCliProvider = require('../providers/gemini-cli/GeminiCliProvider');
-    if (GeminiCliProvider && typeof GeminiCliProvider.send === 'function') {
-      const { state } = require('../../main/globals');
-      const sender = (state.mainWindow && !state.mainWindow.isDestroyed())
-        ? state.mainWindow.webContents
-        : { send: () => {} };
+    if (aiModel === 'claudeCli') {
+      const ClaudeCliProvider = require('../providers/claude-cli/ClaudeCliProvider');
+      if (ClaudeCliProvider && typeof ClaudeCliProvider.send === 'function') {
+        const result = await ClaudeCliProvider.send(instruction, cwd, sender, null, []);
+        _notifyToolActivity(actId, 'done', label, 'edit', 'execute_code_task');
+        return {
+          status: 'success',
+          summary: (result && result.text) ? result.text : 'Tarefa concluída pelo Claude CLI.'
+        };
+      }
+    } else if (aiModel === 'copilotCli') {
+      const CopilotCliProvider = require('../providers/copilot-cli/CopilotCliProvider');
+      if (CopilotCliProvider && typeof CopilotCliProvider.send === 'function') {
+        const { helpers } = require('../../main/globals');
+        const attachments = helpers && helpers.getAttachableFilePaths ? helpers.getAttachableFilePaths() : [];
+        const result = await CopilotCliProvider.send(instruction, cwd, sender, { attachments });
+        _notifyToolActivity(actId, 'done', label, 'edit', 'execute_code_task');
+        return {
+          status: 'success',
+          summary: (result && result.text) ? result.text : 'Tarefa concluída pelo Copilot CLI.'
+        };
+      }
+    } else {
+      const GeminiCliProvider = require('../providers/gemini-cli/GeminiCliProvider');
+      if (GeminiCliProvider && typeof GeminiCliProvider.send === 'function') {
+        const result = await GeminiCliProvider.send(
+          instruction,
+          cwd,
+          sender,
+          null,
+          []
+        );
 
-      const result = await GeminiCliProvider.send(
-        instruction,
-        cwd,
-        sender,
-        null,
-        []
-      );
-
-      _notifyToolActivity(actId, 'done', label, 'edit', 'execute_code_task');
-      return {
-        status: 'success',
-        summary: (result && result.text) ? result.text : 'Tarefa concluída pelo Gemini CLI.',
-        thinking: (result && result.thinking) ? result.thinking : null
-      };
+        _notifyToolActivity(actId, 'done', label, 'edit', 'execute_code_task');
+        return {
+          status: 'success',
+          summary: (result && result.text) ? result.text : 'Tarefa concluída pelo Gemini CLI.',
+          thinking: (result && result.thinking) ? result.thinking : null
+        };
+      }
     }
   } catch (e) {
-    console.warn('[GeminiLiveTools] Falha ao invocar GeminiCliProvider:', e.message);
+    console.warn(`[GeminiLiveTools] Falha no provedor ${providerLabel}:`, e.message);
   }
 
   // Fallback: Execução direta do comando agy --print

@@ -162,6 +162,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onGeminiLiveUserTranscript: (cb) => ipcRenderer.on("gemini-live:user-transcript", (event, data) => cb(data)),
   onGeminiLiveTurnComplete: (cb) => ipcRenderer.on("gemini-live:turn-complete", (event, data) => cb(data)),
   onGeminiLiveToolProgress: (cb) => ipcRenderer.on("gemini-live:tool-progress", (event, data) => cb(data)),
+  sendTextToGeminiLive: (text) => ipcRenderer.invoke("gemini-live:send-text", text),
   sendNexaVoiceProcessingStarted: () => ipcRenderer.send("nexa-voice:processing-started"),
   sendNexaVoiceProcessingFinished: () => ipcRenderer.send("nexa-voice:processing-finished"),
   processPastedImage: (base64Image) =>
