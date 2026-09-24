@@ -237,6 +237,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   deleteItems: (paths) => ipcRenderer.invoke("workspace:delete-items", { paths }),
   pickParentDir: () => ipcRenderer.invoke("workspace:pick-parent-dir"),
   createAndOpenProject: (parentPath, folderName) => ipcRenderer.invoke("workspace:create-and-open-project", { parentPath, folderName }),
+  createNewProject: () => ipcRenderer.invoke("workspace:create-new-project"),
   // === Editor de código (#file-viewer) ===
   editorSaveFile: (payload) => ipcRenderer.invoke("editor-save-file", payload),
   gitGetFileLineStatus: (payload) => ipcRenderer.invoke("git-diff:get-file-line-status", payload),

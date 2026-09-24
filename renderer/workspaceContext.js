@@ -104,7 +104,7 @@ function fileIconHtml(name) {
                         if (typeof window.showToast === 'function') window.showToast('Projeto anexado ao workspace!');
                     }
                 }));
-                menu.appendChild(mkItem(SVGI_NEW_PROJECT, 'Criar Novo Projeto…', () => createNewProject()));
+                menu.appendChild(mkItem(SVGI_NEW_PROJECT, 'Novo projeto…', () => createNewProject()));
                 menu.appendChild(mkItem(SVGI_ADD_FILE, 'Anexar arquivo ao contexto…', async () => {
                     if (window.electronAPI && window.electronAPI.workspacePickFile) {
                         const r = await window.electronAPI.workspacePickFile();
@@ -263,20 +263,26 @@ function fileIconHtml(name) {
             }
 
             async function createNewProject() {
-                if (!(window.electronAPI && window.electronAPI.pickParentDir && window.electronAPI.createAndOpenProject)) return;
-                const parentPath = await window.electronAPI.pickParentDir();
-                if (!parentPath) return; // cancelado
-                const folderName = window.prompt("Digite o nome da pasta do novo projeto:");
-                if (!folderName || !folderName.trim()) return;
-                
-                const res = await window.electronAPI.createAndOpenProject(parentPath, folderName.trim());
-                if (res && res.ok) {
-                    if (typeof renderWorkspacePanel === 'function') renderWorkspacePanel(res.attachments);
-                    await refreshProjectContext();
-                    if (typeof window.refreshProjectTree === 'function') await window.refreshProjectTree();
-                    if (typeof window.showToast === 'function') window.showToast('Novo projeto criado e aberto com sucesso!');
-                } else {
-                    if (typeof window.showToast === 'function') window.showToast('Erro ao criar projeto: ' + (res ? res.error : 'erro desconhecido'));
+                if (!window.electronAPI) return;
+                try {
+                    let res = null;
+                    if (typeof window.electronAPI.createNewProject === 'function') {
+                        res = await window.electronAPI.createNewProject();
+                    } else if (typeof window.electronAPI.workspacePickDir === 'function') {
+                        res = await window.electronAPI.workspacePickDir();
+                    }
+                    if (!res || res.canceled) return;
+                    if (res.ok) {
+                        if (typeof renderWorkspacePanel === 'function') renderWorkspacePanel(res.attachments);
+                        await refreshProjectContext();
+                        if (typeof window.refreshProjectTree === 'function') await window.refreshProjectTree();
+                        const pName = res.path ? baseName(res.path) : 'Novo projeto';
+                        if (typeof window.showToast === 'function') window.showToast(`Projeto ativo: ${pName}`);
+                    } else if (res.error) {
+                        if (typeof window.showToast === 'function') window.showToast('Erro ao abrir projeto: ' + res.error);
+                    }
+                } catch (err) {
+                    console.error('[workspaceContext] Erro ao criar/abrir novo projeto:', err);
                 }
             }
 
