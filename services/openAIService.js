@@ -182,14 +182,20 @@ class OpenAIService {
         } else if (lastUser) {
             userPreview = `[text: ${(lastUser.content || '').toString().slice(0, 60)}…]`;
         }
+        const rawBaseUrl = opts.baseUrl || (opts.isZai ? configService.getZaiBaseUrl() : 'https://api.openai.com/v1');
+        const cleanBaseUrl = String(rawBaseUrl).replace(/\/+$/, '');
+        const apiEndpoint = cleanBaseUrl.endsWith('/chat/completions')
+            ? cleanBaseUrl
+            : `${cleanBaseUrl}/chat/completions`;
+
         const toolsTag = tools ? ` tools=${tools.length}` : '';
-        console.log(`📤 OpenAI → model=${requestPayload.model} msgs=${msgCount}${toolsTag} ${userPreview}`);
+        console.log(`📤 OpenAI/Zai → endpoint=${apiEndpoint} model=${requestPayload.model} msgs=${msgCount}${toolsTag} ${userPreview}`);
 
         const postOnce = async (retries = 3, delayMs = 1500) => {
             for (let attempt = 1; attempt <= retries; attempt++) {
                 try {
                     return await axios.post(
-                        'https://api.openai.com/v1/chat/completions',
+                        apiEndpoint,
                         requestPayload,
                         {
                             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },

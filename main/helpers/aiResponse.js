@@ -534,19 +534,22 @@ helpers.getIaResponseDirect = async function(text) {
     promptText = visualHeader + promptText;
   }
 
-  const _wsText = await helpers.prependWorkspaceContextIfNeeded(promptText, openAiModel);
+  const isZai = (aiModel === 'zaiGlm');
+  const effectiveToken = isZai ? configService.getZaiApiKey() : token;
+  const effectiveModel = isZai ? configService.getZaiModel() : openAiModel;
+  const _wsText = await helpers.prependWorkspaceContextIfNeeded(promptText, effectiveModel);
   const _finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(_wsText);
 
-  if (aiModel === 'openIa' || aiModel === 'openIaCodex') {
-    if (!token) throw new Error("Token da OpenAI não configurado.");
-    const ht = helpers.buildHelperToolsOpenAIOpts(_finalPrompt, instruction, openAiModel);
+  if (aiModel === 'openIa' || aiModel === 'openIaCodex' || isZai) {
+    if (!effectiveToken) throw new Error(isZai ? "Chave da Z.ai não configurada." : "Token da OpenAI não configurado.");
+    const ht = helpers.buildHelperToolsOpenAIOpts(_finalPrompt, instruction, effectiveModel);
     return await OpenAIService.makeOpenAIRequest(
       _finalPrompt,
-      token,
+      effectiveToken,
       ht.instruction || instruction,
-      ht.model || openAiModel,
+      ht.model || effectiveModel,
       visualCtx.imageBase64 || null,
-      ht.opts
+      { ...(ht.opts || {}), isZai }
     );
   } else if (aiModel === 'ollamaLocal') {
     const OllamaLocalService = require('../../services/ollamaLocalService');

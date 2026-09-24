@@ -27,6 +27,12 @@
     - Após extrair, rode `node --check` em AMBOS os arquivos (original + novo módulo).
     - Esta regra se aplica a qualquer IA ou desenvolvedor que altere este projeto.
 
+## Diretiva Global de Interface e Código — OBRIGATÓRIA
+
+12. **NUNCA USE EMOJIS.**
+    - É terminantemente proibido o uso de emojis em qualquer arquivo do projeto (HTML, JS, CSS, scripts, documentação ou interface de usuário).
+    - Para botões, cabeçalhos, status, badges ou alertas, use sempre texto padrão objetivo ou ícones SVG limpos e vetoriais.
+
 ## Regras de segurança
 
 - Credenciais vivem APENAS em ~/.config/<app>/config.json e são lidas via configService.

@@ -66,7 +66,7 @@ if (kbRewriteBtn) {
         if (kbStatus) {
           if (res.codeSkipped) { kbStatus.style.color = '#9ef0a8'; kbStatus.textContent = 'Contém código — mantido sem reorganizar.'; }
           else if (res.shrunk) { kbStatus.style.color = '#ffb74d'; kbStatus.textContent = 'A IA encurtou demais — mantive o original.'; }
-          else if (res.rewritten) { kbStatus.style.color = '#9ef0a8'; kbStatus.textContent = 'Reorganizado ✓ — lembre de Salvar e Fechar.'; }
+          else if (res.rewritten) { kbStatus.style.color = '#9ef0a8'; kbStatus.textContent = 'Reorganizado - lembre de Salvar e Fechar.'; }
           else { kbStatus.style.color = '#888'; kbStatus.textContent = 'Sem alterações.'; }
         }
       } else if (kbStatus) {

@@ -28,10 +28,10 @@ helpers.createConfigWindow = function() {
   const isStealth = configService.getStealthModeStatus();
 
   state.configWindow = new BrowserWindow({
-    width: 640,
-    height: 680,
-    minWidth: 480,
-    minHeight: 420,
+    width: 660,
+    height: 740,
+    minWidth: 500,
+    minHeight: 480,
     title: "Configurações",
     backgroundColor: "#1a1a1a",
     transparent: false,
@@ -71,10 +71,10 @@ helpers.createPreferencesWindow = function() {
   const isStealth = configService.getStealthModeStatus();
 
   state.preferencesWindow = new BrowserWindow({
-    width: 640,
-    height: 720,
-    minWidth: 480,
-    minHeight: 460,
+    width: 660,
+    height: 740,
+    minWidth: 500,
+    minHeight: 480,
     title: "Preferências do Usuário",
     backgroundColor: "#1a1a1a",
     transparent: false,
@@ -114,10 +114,10 @@ helpers.createNexaConfigWindow = function() {
   const isStealth = configService.getStealthModeStatus();
 
   state.nexaConfigWindow = new BrowserWindow({
-    width: 640,
+    width: 660,
     height: 740,
-    minWidth: 480,
-    minHeight: 460,
+    minWidth: 500,
+    minHeight: 480,
     title: "Configurações da Nexa",
     backgroundColor: "#1a1a1a",
     transparent: false,
@@ -141,6 +141,92 @@ helpers.createNexaConfigWindow = function() {
 
   state.nexaConfigWindow.on("closed", () => {
     state.nexaConfigWindow = null;
+  });
+}
+
+helpers.createApiConfigWindow = function() {
+  if (state.apiConfigWindow && !state.apiConfigWindow.isDestroyed()) {
+    if (state.apiConfigWindow.isMinimized()) state.apiConfigWindow.restore();
+    state.apiConfigWindow.setAlwaysOnTop(true, "screen-saver");
+    state.apiConfigWindow.show();
+    state.apiConfigWindow.focus();
+    state.apiConfigWindow.moveTop();
+    return;
+  }
+
+  const isStealth = configService.getStealthModeStatus();
+
+  state.apiConfigWindow = new BrowserWindow({
+    width: 660,
+    height: 740,
+    minWidth: 500,
+    minHeight: 480,
+    title: "Configurações de APIs e Tokens",
+    backgroundColor: "#1a1a1a",
+    transparent: false,
+    frame: false,
+    thickFrame: false,
+    hasShadow: true,
+    alwaysOnTop: true,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+    },
+    skipTaskbar: isStealth,
+    icon: APP_ICON,
+  });
+
+  state.apiConfigWindow.loadFile("apiConfig.html");
+  state.apiConfigWindow.setAlwaysOnTop(true, "screen-saver");
+  state.apiConfigWindow.show();
+  state.apiConfigWindow.focus();
+  state.apiConfigWindow.moveTop();
+
+  state.apiConfigWindow.on("closed", () => {
+    state.apiConfigWindow = null;
+  });
+}
+
+helpers.createWelcomeWindow = function() {
+  if (state.welcomeWindow && !state.welcomeWindow.isDestroyed()) {
+    if (state.welcomeWindow.isMinimized()) state.welcomeWindow.restore();
+    state.welcomeWindow.setAlwaysOnTop(true, "screen-saver");
+    state.welcomeWindow.show();
+    state.welcomeWindow.focus();
+    state.welcomeWindow.moveTop();
+    return;
+  }
+
+  const isStealth = configService.getStealthModeStatus();
+
+  state.welcomeWindow = new BrowserWindow({
+    width: 620,
+    height: 600,
+    minWidth: 480,
+    minHeight: 450,
+    title: "Boas-vindas ao Helper Node",
+    backgroundColor: "#1a1a1a",
+    transparent: false,
+    frame: false,
+    thickFrame: false,
+    hasShadow: true,
+    alwaysOnTop: true,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+    },
+    skipTaskbar: isStealth,
+    icon: APP_ICON,
+  });
+
+  state.welcomeWindow.loadFile("welcome.html");
+  state.welcomeWindow.setAlwaysOnTop(true, "screen-saver");
+  state.welcomeWindow.show();
+  state.welcomeWindow.focus();
+  state.welcomeWindow.moveTop();
+
+  state.welcomeWindow.on("closed", () => {
+    state.welcomeWindow = null;
   });
 }
 

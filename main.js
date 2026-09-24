@@ -248,6 +248,17 @@ app.whenReady().then(async () => {
     state.mainWindow.webContents.send("debug-status-changed", initialDebugStatus);
   }
 
+  // Primeiro uso: só exibe tela de boas-vindas se o app NÃO estiver configurado
+  try {
+    if (!configService.isAppConfigured()) {
+      setTimeout(() => {
+        helpers.createWelcomeWindow();
+      }, 1000);
+    }
+  } catch (err) {
+    console.warn('[main] Erro ao verificar fluxo de inicialização:', err.message);
+  }
+
   // Inicializa o watcher de arquivos em tempo real para o projeto ativo no workspace
   try {
     const activeDir = (workspace.list() || []).find((a) => a.type === 'dir');

@@ -248,6 +248,62 @@ function createAccessors(ctx) {
       save();
     },
 
+    getZaiApiKey() {
+      const val = get().zaiApiKey;
+      return val !== undefined ? val : defaultConfig.zaiApiKey;
+    },
+
+    setZaiApiKey(key) {
+      const cfg = get();
+      cfg.zaiApiKey = key;
+      save();
+    },
+
+    getZaiBaseUrl() {
+      return get().zaiBaseUrl || defaultConfig.zaiBaseUrl;
+    },
+
+    setZaiBaseUrl(url) {
+      const cfg = get();
+      cfg.zaiBaseUrl = url || defaultConfig.zaiBaseUrl;
+      save();
+    },
+
+    getZaiModel() {
+      return get().zaiModel || defaultConfig.zaiModel;
+    },
+
+    setZaiModel(model) {
+      const cfg = get();
+      cfg.zaiModel = model || defaultConfig.zaiModel;
+      save();
+    },
+
+    getHasCompletedWelcome() {
+      return !!get().hasCompletedWelcome;
+    },
+
+    setHasCompletedWelcome(completed) {
+      const cfg = get();
+      cfg.hasCompletedWelcome = !!completed;
+      save();
+    },
+
+    isAppConfigured() {
+      const cfg = get();
+      if (cfg.hasCompletedWelcome) return true;
+      if (cfg.openIaToken && cfg.openIaToken.trim()) return true;
+      if (cfg.googleApiKey && cfg.googleApiKey.trim()) return true;
+      if (cfg.zaiApiKey && cfg.zaiApiKey.trim() && cfg.zaiApiKey !== defaultConfig.zaiApiKey) return true;
+      if (ctx && typeof ctx.getConfigPath === 'function') {
+        try {
+          const fs = require('fs');
+          if (fs.existsSync(ctx.getConfigPath())) return true;
+        } catch (_) {}
+      }
+      return false;
+    },
+
     getGeminiLiveVoice() {
       return get().geminiLiveVoice || "Kore";
     },

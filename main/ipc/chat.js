@@ -96,6 +96,10 @@ module.exports = function registerIpc() {
   ipcMain.on("open-config-ui", () => helpers.createConfigWindow());
   ipcMain.on("open-preferences-ui", () => helpers.createPreferencesWindow());
   ipcMain.on("open-nexa-config-ui", () => helpers.createNexaConfigWindow());
+  ipcMain.on("open-api-config-ui", () => helpers.createApiConfigWindow());
+  ipcMain.on("open-welcome-ui", () => helpers.createWelcomeWindow());
+  ipcMain.handle("check-first-run", () => !configService.getHasCompletedWelcome());
+  ipcMain.on("set-welcome-completed", (event, val) => configService.setHasCompletedWelcome(val !== false));
 
   ipcMain.on("set-ai-model", (event, aiModel) => {
     const anterior = configService.getAiModel();
@@ -221,6 +225,15 @@ module.exports = function registerIpc() {
 
   ipcMain.handle("get-google-api-key", () => configService.getGoogleApiKey());
   ipcMain.on("set-google-api-key", (event, key) => configService.setGoogleApiKey(key));
+
+  ipcMain.handle("get-zai-api-key", () => configService.getZaiApiKey());
+  ipcMain.on("set-zai-api-key", (event, key) => configService.setZaiApiKey(key));
+
+  ipcMain.handle("get-zai-base-url", () => configService.getZaiBaseUrl());
+  ipcMain.on("set-zai-base-url", (event, url) => configService.setZaiBaseUrl(url));
+
+  ipcMain.handle("get-zai-model", () => configService.getZaiModel());
+  ipcMain.on("set-zai-model", (event, model) => configService.setZaiModel(model));
 
   ipcMain.on("send-os-question", async (event, data) => {
     const text = typeof data === 'string' ? data : data.text;

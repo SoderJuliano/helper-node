@@ -13,7 +13,7 @@
         { value: 'gpt-5.6-sol', label: 'GPT-5.6 Sol' },
     ];
     const PROVIDER_LABELS = {
-        openIa: 'ChatGPT', openIaCodex: 'OpenAI Codex', llama: 'Ollama Backend',
+        openIa: 'ChatGPT', openIaCodex: 'OpenAI Codex', zaiGlm: 'Z.ai (GLM)', llama: 'Ollama Backend',
         'llama-stream': 'Ollama Backend (stream)', ollamaLocal: 'Ollama Local',
         geminiCli: 'Gemini CLI', claudeCli: 'Claude CLI', copilotCli: 'Copilot CLI',
     };

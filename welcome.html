@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bem-vindo ao Helper Node</title>
+    <link rel="stylesheet" href="styles/config.css">
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 0 20px 20px 20px;
+        }
+        .welcome-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 10px 10px;
+            overflow-y: auto;
+        }
+        .welcome-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            background: rgba(0, 240, 255, 0.12);
+            color: #00f0ff;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+            border: 1px solid rgba(0, 240, 255, 0.3);
+        }
+        .welcome-title {
+            font-size: 22px;
+            font-weight: 800;
+            color: #ffffff;
+            margin-bottom: 8px;
+            letter-spacing: 0.5px;
+        }
+        .welcome-subtitle {
+            font-size: 13.5px;
+            color: #94a3b8;
+            max-width: 520px;
+            line-height: 1.5;
+            margin-bottom: 22px;
+        }
+        .features-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            width: 100%;
+            max-width: 540px;
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        .feature-card {
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 8px;
+            padding: 12px 14px;
+        }
+        .feature-card-header {
+            font-size: 13px;
+            font-weight: 700;
+            color: #38bdf8;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .feature-card-desc {
+            font-size: 11.5px;
+            color: #94a3b8;
+            line-height: 1.4;
+        }
+        .welcome-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            width: 100%;
+            max-width: 540px;
+        }
+        .btn-primary-welcome {
+            background: #0284c7;
+            color: #ffffff;
+            border: none;
+            padding: 12px 16px;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 13.5px;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .btn-primary-welcome:hover {
+            background: #0369a1;
+            transform: translateY(-1px);
+        }
+        .btn-secondary-welcome {
+            background: transparent;
+            color: #64748b;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 10px 14px;
+            border-radius: 6px;
+            font-size: 12.5px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-secondary-welcome:hover {
+            color: #cbd5e1;
+            border-color: rgba(255, 255, 255, 0.25);
+            background: rgba(255, 255, 255, 0.04);
+        }
+    </style>
+</head>
+<body>
+    <div class="config-titlebar">
+        <div class="config-titlebar-left">
+            <span class="drag-handle-dots" title="Clique e arraste a janela">⋮⋮</span>
+            <span class="config-app-title">BOAS-VINDAS // HELPER NODE</span>
+        </div>
+        <div class="config-titlebar-right">
+            <button id="win-close-btn" title="Fechar" style="width:28px; height:28px; padding:0; margin:0; border:none; border-radius:6px; background:rgba(255,70,70,0.35); color:#fff; cursor:pointer; font-size:12px; display:inline-flex; align-items:center; justify-content:center; -webkit-app-region:no-drag;"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
+    </div>
+
+    <div class="welcome-content">
+        <div class="welcome-badge">HELPER NODE v0.6.0</div>
+        <h1 class="welcome-title">Seu Assistente Autônomo e Multimodal</h1>
+        <p class="welcome-subtitle">
+            Desenvolvido para engenharia de software, automação de ambiente, visão de tela e suporte multimodal em tempo real com a Nexa.
+        </p>
+
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-card-header">Múltiplos Provedores</div>
+                <div class="feature-card-desc">Suporte a Z.ai GLM-4.6, Google Gemini, OpenAI, Claude CLI, Copilot CLI e Ollama.</div>
+            </div>
+            <div class="feature-card">
+                <div class="feature-card-header">Assistente Nexa & Live</div>
+                <div class="feature-card-desc">Interação por voz contínua, visão em tempo real da tela e assistência contextual.</div>
+            </div>
+            <div class="feature-card">
+                <div class="feature-card-header">Execução e Terminal</div>
+                <div class="feature-card-desc">Controle de ambiente de desenvolvimento, execução Spring Boot/Java e comandos.</div>
+            </div>
+            <div class="feature-card">
+                <div class="feature-card-header">Modo Stealth & Atalhos</div>
+                <div class="feature-card-desc">Invisibilidade em compartilhamentos de tela, janelas flutuantes e atalhos globais rápidos.</div>
+            </div>
+        </div>
+
+        <div class="welcome-actions">
+            <button id="welcome-config-apis-btn" class="btn-primary-welcome">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                <span>Configurar APIs e Provedores (Recomendado)</span>
+            </button>
+            <button id="welcome-skip-btn" class="btn-secondary-welcome">
+                Pular e Usar com Configuração Atual
+            </button>
+        </div>
+    </div>
+
+    <script src="welcome.js"></script>
+</body>
+</html>

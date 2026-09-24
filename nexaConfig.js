@@ -90,13 +90,6 @@ if (nexaMicRefreshBtn) {
   });
 }
 
-// Navegação para configurações gerais
-if (openConfigBtn) {
-  openConfigBtn.addEventListener("click", () => {
-    ipcRenderer.send("open-config-ui");
-  });
-}
-
 // Salvar configurações
 if (saveBtn) {
   saveBtn.addEventListener("click", async () => {

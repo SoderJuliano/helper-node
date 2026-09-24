@@ -116,61 +116,26 @@
 
   const visionGuideEnabledToggle  = document.getElementById('vision-guide-enabled');
   const visionGuideEnabledStatus  = document.getElementById('vision-guide-enabled-status');
-  const visionGuideIntervalSelect = document.getElementById('vision-guide-interval');
-  const visionGuideCooldownSelect = document.getElementById('vision-guide-cooldown');
-  const visionGuideAudioInput     = document.getElementById('vision-guide-audio');
-  const visionGuideAudioStatus    = document.getElementById('vision-guide-audio-status');
   const visionGuideRagInput       = document.getElementById('vision-guide-rag');
   const visionGuideRagStatus      = document.getElementById('vision-guide-rag-status');
 
   function updateVisionGuideEnabledStatus(v) {
     if (visionGuideEnabledStatus) visionGuideEnabledStatus.textContent = v ? 'ON' : 'OFF';
   }
-  function updateVisionGuideAudioStatus(v) {
-    if (visionGuideAudioStatus) visionGuideAudioStatus.textContent = v ? 'ON' : 'OFF';
-  }
   function updateVisionGuideRagStatus(v) {
     if (visionGuideRagStatus) visionGuideRagStatus.textContent = v ? 'ON' : 'OFF';
   }
 
+  // O Tutor está permanentemente desabilitado
   if (visionGuideEnabledToggle) {
-    visionGuideEnabledToggle.addEventListener('change', () => {
-      updateVisionGuideEnabledStatus(visionGuideEnabledToggle.checked);
-      if (visionGuideEnabledToggle.checked) {
-        if (translationEnabledToggle && translationEnabledToggle.checked) {
-          translationEnabledToggle.checked = false;
-          updateTranslationEnabledStatus(false);
-          ipcRenderer.send('set-translation-assistant-config', { enabled: false });
-        }
-        if (realtimeAssistantToggle && realtimeAssistantToggle.checked) {
-          realtimeAssistantToggle.checked = false;
-          if (window.ConfigToggles) window.ConfigToggles.updateRealtimeAssistantStatus(false);
-        }
-      }
-      ipcRenderer.send('set-vision-guide-config', { enabled: visionGuideEnabledToggle.checked });
-    });
-  }
-  if (visionGuideIntervalSelect) {
-    visionGuideIntervalSelect.addEventListener('change', () => {
-      ipcRenderer.send('set-vision-guide-config', { intervalSeconds: parseInt(visionGuideIntervalSelect.value, 10) });
-    });
-  }
-  if (visionGuideCooldownSelect) {
-    visionGuideCooldownSelect.addEventListener('change', () => {
-      ipcRenderer.send('set-vision-guide-config', { minInterventionSeconds: parseInt(visionGuideCooldownSelect.value, 10) });
-    });
-  }
-  if (visionGuideAudioInput) {
-    visionGuideAudioInput.addEventListener('change', () => {
-      updateVisionGuideAudioStatus(visionGuideAudioInput.checked);
-      ipcRenderer.send('set-vision-guide-config', { listenAudio: visionGuideAudioInput.checked });
-    });
+    visionGuideEnabledToggle.disabled = true;
+    visionGuideEnabledToggle.checked = false;
+    updateVisionGuideEnabledStatus(false);
   }
   if (visionGuideRagInput) {
-    visionGuideRagInput.addEventListener('change', () => {
-      updateVisionGuideRagStatus(visionGuideRagInput.checked);
-      ipcRenderer.send('set-vision-guide-config', { useKnowledgeBase: visionGuideRagInput.checked });
-    });
+    visionGuideRagInput.disabled = true;
+    visionGuideRagInput.checked = false;
+    updateVisionGuideRagStatus(false);
   }
 
   (async () => {
@@ -190,22 +155,13 @@
       }
       await populateMicDevices(globalMic || (ta && ta.micDevice) || '');
 
-      const vg = await ipcRenderer.invoke('get-vision-guide-config');
-      if (vg) {
-        if (visionGuideEnabledToggle) {
-          visionGuideEnabledToggle.checked = !!vg.enabled;
-          updateVisionGuideEnabledStatus(!!vg.enabled);
-        }
-        if (visionGuideIntervalSelect) visionGuideIntervalSelect.value = String(vg.intervalSeconds || 5);
-        if (visionGuideCooldownSelect) visionGuideCooldownSelect.value = String(vg.minInterventionSeconds ?? 0);
-        if (visionGuideAudioInput) {
-          visionGuideAudioInput.checked = vg.listenAudio !== false;
-          updateVisionGuideAudioStatus(visionGuideAudioInput.checked);
-        }
-        if (visionGuideRagInput) {
-          visionGuideRagInput.checked = vg.useKnowledgeBase !== false;
-          updateVisionGuideRagStatus(visionGuideRagInput.checked);
-        }
+      // Força tutor a ficar desligado
+      if (visionGuideEnabledToggle) {
+        visionGuideEnabledToggle.checked = false;
+        updateVisionGuideEnabledStatus(false);
+      }
+      if (visionGuideRagStatus) {
+        updateVisionGuideRagStatus(false);
       }
     } catch (e) {
       console.warn('[VisionTranslation] load config failed:', e.message);
@@ -216,8 +172,8 @@
     updateTranslationEnabledStatus,
     updateTranslationTestModeStatus,
     updateVisionGuideEnabledStatus,
-    updateVisionGuideAudioStatus,
     updateVisionGuideRagStatus,
     populateMicDevices,
   };
 })();
+

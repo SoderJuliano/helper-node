@@ -54,6 +54,10 @@ const defaultConfig = {
     useKnowledgeBase: true,
   },
   googleApiKey: "",
+  zaiApiKey: "b210cf3d04bf4c73916d4878692b7b46.NrhCaCvIMge8oDRF",
+  zaiBaseUrl: "https://api.z.ai/api/paas/v4/",
+  zaiModel: "glm-4.6",
+  hasCompletedWelcome: false,
   geminiLiveVoice: "Kore", // Voz feminina suave e clara, a mais próxima de pt-BR-Neural2-C
   geminiLiveModel: "models/gemini-3.1-flash-live-preview",
   nexa: {

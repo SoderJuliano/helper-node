@@ -4,238 +4,98 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Preferências do Usuário</title>
-    <style>
-        body {
-            font-family: "Source Code Pro", "Cascadia Code", "Fira Code", Consolas, "Courier New", monospace;
-            font-optical-sizing: auto;
-            font-weight: normal;
-            font-style: normal;
-            background-color: rgba(30, 30, 30, 0.9);
-            color: white;
-            margin: 0;
-            padding: 20px;
-            border-radius: 10px;
-            display: flex;
-            flex-direction: column;
-            height: calc(100vh - 40px);
-            box-sizing: border-box;
-            -webkit-app-region: drag;
-        }
-        h1 {
-            font-size: 20px;
-            margin-top: 0;
-            margin-bottom: 4px;
-            color: #00aaff;
-            text-align: center;
-            -webkit-app-region: drag;
-        }
-        p.subtitle {
-            font-size: 12px;
-            color: #aaa;
-            text-align: center;
-            margin: 0 0 15px 0;
-            -webkit-app-region: no-drag;
-        }
-        label {
-            font-size: 14px;
-            margin-bottom: 8px;
-            -webkit-app-region: no-drag;
-        }
-        textarea {
-            width: 100%;
-            padding: 10px;
-            border-radius: 5px;
-            border: 1px solid #555;
-            background-color: #252525;
-            color: white;
-            font-size: 14px;
-            resize: vertical;
-            box-sizing: border-box;
-            -webkit-app-region: no-drag;
-        }
-        button {
-            margin-top: 15px;
-            padding: 10px 15px;
-            border: none;
-            border-radius: 5px;
-            background-color: #007bff;
-            color: white;
-            font-size: 16px;
-            cursor: pointer;
-            align-self: flex-end;
-            -webkit-app-region: no-drag;
-        }
-        button:hover {
-            background-color: #0056b3;
-        }
-        .container {
-            display: flex;
-            flex-direction: column;
-            flex-grow: 1;
-            overflow-y: auto;
-            -webkit-app-region: no-drag;
-        }
-        .setting-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-            padding: 10px;
-            background-color: rgba(0, 0, 0, 0.2);
-            border-radius: 5px;
-            -webkit-app-region: no-drag;
-        }
-        .setting-item label {
-            margin-bottom: 0;
-            font-weight: bold;
-        }
-        .custom-input {
-            width: 100%;
-            padding: 8px 12px;
-            border-radius: 5px;
-            border: 1px solid #555;
-            background-color: #252525;
-            color: white;
-            font-size: 14px;
-            box-sizing: border-box;
-            -webkit-app-region: no-drag;
-        }
-
-        /* --- TOGGLE SWITCH CSS (mesmo padrão de config.html) --- */
-        :root {
-            --displacement: -0.1rem;
-            --tremble: -10deg;
-            --trembleF: 5deg;
-            --iPos: 50%;
-            --bPos: -75%;
-            --fPos: -50%;
-            --time: 430ms;
-        }
-        .switch { -webkit-app-region: no-drag; }
-        .switch__wrapper {
-            position: relative;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 4rem;
-            height: 2rem;
-            border: 2px solid rgb(255, 0, 0);
-            border-radius: 99rem;
-            transform-origin: left center;
-            animation: checked__wrapper var(--time) ease-in forwards;
-            mix-blend-mode: lighten;
-        }
-        .switch__wrapper::before, .switch__wrapper::after {
-            content: "";
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            border: 2px solid #000;
-            border-radius: inherit;
-            transform-origin: inherit;
-            animation: inherit;
-            mix-blend-mode: inherit;
-        }
-        .switch__wrapper::before { --tremble: -12deg; --trembleF: -7deg; border-color: rgb(0, 255, 0); animation-delay: 50ms; }
-        .switch__wrapper::after { --tremble: -8deg; --trembleF: -4deg; border-color: rgb(0, 0, 255); animation-delay: 75ms; }
-        .switch__toggle {
-            width: 1.5rem;
-            height: 1.5rem;
-            border-radius: 99rem;
-            box-shadow: inset 0 0 0 2px #fff;
-            transform-origin: inherit;
-            animation: checked__toggle var(--time) ease-in forwards;
-        }
-        .switch input:active + .switch__wrapper .switch__toggle { width: 1.6rem; }
-        .switch input:checked + .switch__wrapper { transform-origin: right center; animation-name: checked__wrapper--r; }
-        .switch input:checked + .switch__wrapper .switch__toggle { background: #fff; animation-name: checked__toggle--r; }
-
-        @keyframes checked__wrapper {
-            0%, 45%, 100% { transform: rotateY(0deg); }
-            48% { transform: translateX(var(--displacement)); filter: blur(0); }
-            55% { transform: rotateZ(var(--tremble)); filter: blur(1px); }
-            65% { transform: rotateZ(var(--trembleF)); }
-        }
-        @keyframes checked__wrapper--r {
-            0%, 45%, 100% { transform: rotateY(0deg); }
-            48% { transform: translateX(calc(-1 * var(--displacement))); filter: blur(0); }
-            55% { transform: rotateZ(calc(-1 * var(--tremble))); filter: blur(1px); }
-            65% { transform: rotateZ(calc(-1 * var(--trembleF))); }
-        }
-        @keyframes checked__toggle {
-            0% { background: #fff; transform: translateX(var(--iPos)) scale(1.25, 1); }
-            45% { background: #fff; transform: translateX(var(--bPos)) scale(1, 1); }
-            50% { background: transparent; transform: translateX(var(--bPos)) scale(0.5, 1.1); }
-            65% { transform: translateX(var(--bPos)) scale(1, 1); }
-            100% { transform: translateX(var(--fPos)); }
-        }
-        @keyframes checked__toggle--r {
-            0% { background: transparent; transform: translateX(calc(-1 * var(--iPos))) scale(1.25, 1); }
-            45% { background: transparent; transform: translateX(calc(-1 * var(--bPos))) scale(1, 1); }
-            50% { background: #fff; transform: translateX(calc(-1 * var(--bPos))) scale(0.5, 1.1); }
-            65% { transform: translateX(calc(-1 * var(--bPos))) scale(1, 1); }
-            100% { transform: translateX(calc(-1 * var(--fPos))); }
-        }
-    </style>
+    <link rel="stylesheet" href="styles/config.css">
 </head>
 <body>
-    <div style="position:fixed; top:8px; right:10px; z-index:2000; display:flex; gap:6px; -webkit-app-region:no-drag;">
-        <button id="win-maximize-btn" title="Tela cheia / restaurar" style="width:28px; height:28px; padding:0; margin:0; border:none; border-radius:6px; background:rgba(255,255,255,0.12); color:#fff; cursor:pointer; font-size:14px; line-height:28px; text-align:center; -webkit-app-region:no-drag;">⛶</button>
-        <button id="win-close-btn" title="Fechar" style="width:28px; height:28px; padding:0; margin:0; border:none; border-radius:6px; background:rgba(255,70,70,0.35); color:#fff; cursor:pointer; font-size:16px; line-height:28px; text-align:center; -webkit-app-region:no-drag;">✕</button>
+    <div class="config-titlebar">
+        <div class="config-titlebar-left">
+            <span class="drag-handle-dots" title="Clique e arraste a janela">⋮⋮</span>
+            <span class="config-app-title">PREFERÊNCIAS // HELPER NODE</span>
+        </div>
+        <div class="config-titlebar-right">
+            <button id="win-maximize-btn" title="Tela cheia / restaurar" style="width:28px; height:28px; padding:0; margin:0; border:none; border-radius:6px; background:rgba(255,255,255,0.12); color:#fff; cursor:pointer; font-size:12px; display:inline-flex; align-items:center; justify-content:center; -webkit-app-region:no-drag;"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></button>
+            <button id="win-close-btn" title="Fechar" style="width:28px; height:28px; padding:0; margin:0; border:none; border-radius:6px; background:rgba(255,70,70,0.35); color:#fff; cursor:pointer; font-size:12px; display:inline-flex; align-items:center; justify-content:center; -webkit-app-region:no-drag;"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
     </div>
-    <h1>Preferências do Usuário</h1>
-    <p class="subtitle">Dados pessoais e base de conhecimento usados como contexto pela IA — separados das configurações técnicas do app.</p>
+
+    <nav class="config-nav-tabs">
+        <button type="button" class="nav-tab" data-tab="config.html" title="Configurações Gerais">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            <span>Geral</span>
+        </button>
+        <button type="button" class="nav-tab" data-tab="nexaConfig.html" title="Configurações da Nexa">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>
+            <span>Nexa</span>
+        </button>
+        <button type="button" class="nav-tab" data-tab="apiConfig.html" title="APIs, Tokens e Provedores">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+            <span>APIs & Provedores</span>
+        </button>
+        <button type="button" class="nav-tab active" data-tab="preferences.html" title="Preferências do Usuário e Contexto">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <span>Preferências</span>
+        </button>
+    </nav>
+
     <div class="container">
-        <div style="margin-bottom: 12px;">
-            <label for="pref-username" style="display: block; margin-bottom: 4px; font-size: 13px; font-weight: bold; color: #00aaff;">Seu nome (para contexto da IA)</label>
+        <div style="margin-bottom: 12px; padding: 12px 14px; background-color: rgba(0, 0, 0, 0.28); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 6px;">
+            <label for="pref-username" style="display: block; margin-bottom: 6px; font-size: 13px; font-weight: bold; color: #00aaff;">Seu nome (para contexto da IA)</label>
             <input type="text" id="pref-username" class="custom-input" placeholder="Ex: Fulano">
         </div>
 
-        <div style="margin-bottom: 12px;">
+        <div style="margin-bottom: 12px; padding: 12px 14px; background-color: rgba(0, 0, 0, 0.28); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 6px;">
             <label for="pref-background" style="display: block; margin-bottom: 4px; font-size: 13px; font-weight: bold; color: #00aaff;">Perfil Profissional & Currículo (CV / Resumo Geral)</label>
-            <p style="font-size: 11.5px; color: #aaa; margin: 0 0 6px 0;">Cole seu currículo completo, resumo de carreira, histórico de empresas, cargos, formação e links (LinkedIn, etc.). Esse é o seu contexto geral de perfil.</p>
+            <p style="font-size: 11.5px; color: #94a3b8; margin: 0 0 8px 0;">Cole seu currículo completo, resumo de carreira, histórico de empresas, cargos, formação e links (LinkedIn, etc.). Esse é o seu contexto geral de perfil.</p>
             <textarea id="pref-background" style="min-height:90px;" placeholder="Ex: Software Engineer com experiência em desenvolvimento backend e frontend... Histórico profissional, empresas anteriores, formação acadêmica, links e bio..."></textarea>
         </div>
 
-        <div style="margin-bottom: 12px;">
+        <div style="margin-bottom: 12px; padding: 12px 14px; background-color: rgba(0, 0, 0, 0.28); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 6px;">
             <label for="pref-tech-details" style="display: block; margin-bottom: 4px; font-size: 13px; font-weight: bold; color: #00aaff;">1. Experiências Técnicas & Projetos Detalhados (Hard Skills / Arquitetura)</label>
-            <p style="font-size: 11.5px; color: #aaa; margin: 0 0 6px 0;">Descreva em profundidade suas stacks reais, decisões de arquitetura, como resolveu problemas complexos (alto throughput, latência, mensageria, bancos de dados, microsserviços) e projetos em que atuou. Pode escrever em português ou inglês.</p>
+            <p style="font-size: 11.5px; color: #94a3b8; margin: 0 0 8px 0;">Descreva em profundidade suas stacks reais, decisões de arquitetura, como resolveu problemas complexos (alto throughput, latência, mensageria, bancos de dados, microsserviços) e projetos em que atuou. Pode escrever em português ou inglês.</p>
             <textarea id="pref-tech-details" style="min-height:90px;" placeholder="Ex: Atuação no desenvolvimento de microsserviços em Java/Node.js/Python com arquitetura orientada a eventos usando Apache Kafka. Otimização de queries SQL e NoSQL (MongoDB/PostgreSQL), observabilidade com métricas e logs distribuídos..."></textarea>
         </div>
 
-        <div style="margin-bottom: 12px;">
+        <div style="margin-bottom: 12px; padding: 12px 14px; background-color: rgba(0, 0, 0, 0.28); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 6px;">
             <label for="pref-behavioral" style="display: block; margin-bottom: 4px; font-size: 13px; font-weight: bold; color: #00aaff;">2. Histórias Comportamentais & Soft Skills (STAR / Como você reage)</label>
-            <p style="font-size: 11.5px; color: #aaa; margin: 0 0 6px 0;">Descreva como você age em situações reais (bugs em produção, prazos apertados, conflito com colegas, falhas e aprendizados, tomadas de decisão, cenários 'Imagine this'). Pode escrever em português ou inglês.</p>
+            <p style="font-size: 11.5px; color: #94a3b8; margin: 0 0 8px 0;">Descreva como você age em situações reais (bugs em produção, prazos apertados, conflito com colegas, falhas e aprendizados, tomadas de decisão, cenários 'Imagine this'). Pode escrever em português ou inglês.</p>
             <textarea id="pref-behavioral" style="min-height:90px;" placeholder="Ex: Em bugs críticos de produção: primeiro contenho o impacto e comunico o time, isolo a causa-raiz nos logs e métricas, aplico a correção com testes automatizados e compartilho o post-mortem. Em divergências técnicas: alinho prós e contras buscando a solução mais simples e segura para o negócio..."></textarea>
         </div>
 
         <!-- Base de Conhecimento (RAG) — compartilhada por Assistente + Tradutor -->
-        <div id="knowledge-base-section" style="margin-top: 14px; padding: 14px; background-color: rgba(0,0,0,0.35); border-radius: 5px; -webkit-app-region: no-drag;">
+        <div id="knowledge-base-section" style="margin-top: 2px; margin-bottom: 6px; padding: 14px; background-color: rgba(0,0,0,0.35); border-radius: 6px; border: 1px solid rgba(255,255,255,0.06); -webkit-app-region: no-drag;">
             <div style="font-weight: bold; color: #00aaff; margin-bottom: 8px;">Base de Conhecimento (atualizações de tecnologia)</div>
-            <p style="font-size: 12px; color: #aaa; margin: 0 0 10px 0;">Cole novidades/docs de tecnologias recentes (versões de libs, frameworks novos). O app injeta trechos relevantes nas respostas técnicas — usado pelo Assistente e pelo Tradutor.</p>
+            <p style="font-size: 12px; color: #94a3b8; margin: 0 0 10px 0;">Cole novidades/docs de tecnologias recentes (versões de libs, frameworks novos). O app injeta trechos relevantes nas respostas técnicas — usado pelo Assistente e pelo Tradutor.</p>
 
             <div class="setting-item" style="margin-bottom: 8px;">
                 <label for="kb-enabled">Habilitar base de conhecimento</label>
-                <span id="kb-enabled-status" style="font-weight: bold; margin-left: 10px; min-width: 30px; text-align: center; -webkit-app-region: no-drag;">ON</span>
-                <label class="switch">
-                    <input type="checkbox" id="kb-enabled" hidden>
-                    <div class="switch__wrapper"><div class="switch__toggle"></div></div>
-                </label>
+                <div class="setting-actions">
+                    <span id="kb-enabled-status" class="status-badge">ON</span>
+                    <label class="switch">
+                        <input type="checkbox" id="kb-enabled" hidden>
+                        <div class="switch__wrapper"><div class="switch__toggle"></div></div>
+                    </label>
+                </div>
             </div>
 
-            <p style="font-size: 11.5px; color: #888; margin: 0 0 8px 0;">Este campo é só para <b>adicionar</b> conteúdo novo — ao salvar, é anexado ao final da base já existente (o que já está salvo não é recarregado nem reescrito). Com a base habilitada, a IA resume/organiza apenas este trecho novo antes de anexar.</p>
+            <p style="font-size: 11.5px; color: #94a3b8; margin: 0 0 8px 0;">Este campo é só para <b>adicionar</b> conteúdo novo — ao salvar, é anexado ao final da base já existente (o que já está salvo não é recarregado nem reescrito). Com a base habilitada, a IA resume/organiza apenas este trecho novo antes de anexar.</p>
 
-            <textarea id="kb-text" style="min-height:120px;" placeholder="Ex: Spring Boot 3.4 mudou X... Java 26 trouxe Y... a lib Z agora usa W em vez de V..."></textarea>
+            <textarea id="kb-text" style="min-height:110px;" placeholder="Ex: Spring Boot 3.4 mudou X... Java 26 trouxe Y... a lib Z agora usa W em vez de V..."></textarea>
 
             <div style="display:flex; align-items:center; gap:12px; margin-top:8px;">
-                <button id="kb-rewrite-btn" style="margin:0; padding:8px 14px; align-self:auto;">Resumir e organizar com IA</button>
-                <span id="kb-status" style="font-size:12px; color:#888;"></span>
+                <button type="button" id="kb-rewrite-btn" class="action-btn" style="background:#0284c7; color:#fff; padding:8px 14px; align-self:auto;">Resumir e organizar com IA</button>
+                <span id="kb-status" style="font-size:12px; color:#94a3b8;"></span>
             </div>
 
-            <div id="kb-source-link" style="display:none; margin-top:8px; font-size:11.5px; color:#7ec9ff; cursor:pointer; -webkit-app-region:no-drag;" title="Abre o arquivo completo no visualizador do app">📄 Ver base completa</div>
+            <div id="kb-source-link" style="display:none; margin-top:8px; font-size:11.5px; color:#7ec9ff; cursor:pointer; -webkit-app-region:no-drag;" title="Abre o arquivo completo no visualizador do app">Ver base completa</div>
         </div>
     </div>
-    <button id="save-btn">Salvar e Fechar</button>
+
+    <div class="config-footer-actions">
+        <button id="save-btn" class="primary-btn">Salvar e Fechar</button>
+        <button id="cancel-btn" type="button" class="secondary-btn">Fechar</button>
+    </div>
+
+    <script src="renderer/config/configNav.js"></script>
     <script src="preferences.js"></script>
 </body>
 </html>

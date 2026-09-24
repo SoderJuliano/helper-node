@@ -64,6 +64,10 @@ function loadConfig() {
         loadedConfig.workspaceAccess.enabled = true;
       }
 
+      if (loadedConfig.hasCompletedWelcome === undefined) {
+        loadedConfig.hasCompletedWelcome = true;
+      }
+
       return { ...defaultConfig, ...loadedConfig };
     }
   } catch (error) {
@@ -148,6 +152,7 @@ function setConfigValue(dotPath, value) {
 const accessors = createAccessors({
   getCurrentConfig,
   persistCurrentConfig,
+  getConfigPath,
 });
 
 module.exports = {

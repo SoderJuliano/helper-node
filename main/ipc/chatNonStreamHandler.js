@@ -78,20 +78,23 @@ async function handleSendToGemini(event, text, sessionId) {
       return;
     }
 
-    if (aiModel === 'openIa' || aiModel === 'openIaCodex') {
-      const token = configService.getOpenIaToken();
+    const isZai = (aiModel === 'zaiGlm');
+    if (aiModel === 'openIa' || aiModel === 'openIaCodex' || isZai) {
+      const token = isZai ? configService.getZaiApiKey() : configService.getOpenIaToken();
       const instruction = helpers.withUserContext(configService.getPromptInstruction());
       if (!token) {
         if (appConfig.notificationsEnabled && Notification.isSupported()) {
           new Notification({
             title: "Erro de Configuração",
-            body: "O token da OpenAI não está configurado. Por favor, adicione o token nas configurações.",
+            body: isZai
+              ? "A chave da Z.ai não está configurada. Por favor, adicione a key nas configurações de API."
+              : "O token da OpenAI não está configurado. Por favor, adicione o token nas configurações.",
             silent: true,
           }).show();
         }
         return;
       }
-      const openAiModel = configService.getOpenAiModel();
+      const openAiModel = isZai ? configService.getZaiModel() : configService.getOpenAiModel();
       const useAgentic = helpers.shouldUseAgentic(text);
       if (useAgentic) { try { workspace.resetContextSent(); } catch (_) {} }
 
@@ -107,7 +110,7 @@ async function handleSendToGemini(event, text, sessionId) {
         try {
           resposta = await agenticWorkflow.run(
             _wsText2,
-            { token, model: openAiModel, baseInstruction: instruction, imageBase64: _imgInline },
+            { token, model: openAiModel, baseInstruction: instruction, imageBase64: _imgInline, isZai },
             event.sender
           );
         } catch (err) {
@@ -128,7 +131,7 @@ async function handleSendToGemini(event, text, sessionId) {
           _finalOpenAiInstruction,
           ht.model || openAiModel,
           _imgInline,
-          ht.opts
+          { ...(ht.opts || {}), isZai }
         );
       }
       const usage = OpenAIService.lastUsage;
@@ -237,7 +240,7 @@ async function handleSendToGeminiVision(event, { text, image }) {
         try { event.sender.send('gemini-stream-complete'); } catch (_) {}
       }
       return;
-    } else if (aiModel !== 'openIa' && aiModel !== 'openIaCodex') {
+    } else if (aiModel !== 'openIa' && aiModel !== 'openIaCodex' && aiModel !== 'zaiGlm') {
       const ocr = await TesseractService.getTextFromImage(image).catch(() => '');
       const instructionO = helpers.withUserContext(configService.getPromptInstruction());
       const baseTxt = (text && text.trim() ? `${text}\n\n` : '')
@@ -249,10 +252,11 @@ async function handleSendToGeminiVision(event, { text, image }) {
       return;
     }
 
-    const token = configService.getOpenIaToken();
+    const isZai = (aiModel === 'zaiGlm');
+    const token = isZai ? configService.getZaiApiKey() : configService.getOpenIaToken();
     const instruction = helpers.withUserContext(configService.getPromptInstruction());
     if (!token) {
-      event.sender.send("transcription-error", "Token da OpenAI não configurado.");
+      event.sender.send("transcription-error", isZai ? "Chave da Z.ai não configurada." : "Token da OpenAI não configurado.");
       return;
     }
     const historyService = require('../../services/historyService');
@@ -284,17 +288,19 @@ NUNCA faça descrições vagas ou respostas genéricas.`
       + '(ex.: "11x2" = 11 × 2 = 22, NÃO é 11 ao quadrado). '
       + 'Notação de potência seria "11²" ou "11^2".'
     );
-    const visionModel = (configService.getOpenAiVisionModel && configService.getOpenAiVisionModel()) || configService.getOpenAiModel() || 'gpt-4o';
+    const visionModel = isZai
+      ? configService.getZaiModel()
+      : ((configService.getOpenAiVisionModel && configService.getOpenAiVisionModel()) || configService.getOpenAiModel() || 'gpt-4o');
     const ht = helpers.buildHelperToolsOpenAIOpts(visionPrompt, instruction, visionModel);
     const finalInstruction = ht.instruction ? helpers.appendVoiceSummaryInstructionIfNeeded(ht.instruction) : helpers.appendVoiceSummaryInstructionIfNeeded(instruction);
-    console.log(`🤖 IPC visão: OpenAI ${ht.model || visionModel} [VISÃO high] (chat)...`);
+    console.log(`🤖 IPC visão: ${isZai ? 'Z.ai' : 'OpenAI'} ${ht.model || visionModel} (chat)...`);
     const resposta = await OpenAIService.makeOpenAIRequest(
       visionPrompt,
       token,
       finalInstruction,
       ht.model || visionModel,
       image,
-      { stateless: false, sessionId: activeSessionId, ...(ht.opts || {}) }
+      { stateless: false, sessionId: activeSessionId, isZai, ...(ht.opts || {}) }
     );
     if (currentSession && resposta) {
       const userContent = text && text.trim() ? text.trim() : 'Image in context';

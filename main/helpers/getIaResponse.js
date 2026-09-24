@@ -41,14 +41,17 @@ helpers.getIaResponse = async function(text) {
       promptWithVisualContext = visualHeader + promptWithVisualContext;
     }
 
-    if (aiModel === 'openIa') {
-        const token = configService.getOpenIaToken();
+    const isZai = (aiModel === 'zaiGlm');
+    if (aiModel === 'openIa' || isZai) {
+        const token = isZai ? configService.getZaiApiKey() : configService.getOpenIaToken();
         const instruction = helpers.withUserContext(configService.getPromptInstruction());
         if (!token) {
             if (appConfig.notificationsEnabled && Notification.isSupported()) {
                 new Notification({
                     title: "Erro de Configuração",
-                    body: "O token da OpenAI não está configurado. Por favor, adicione o token nas configurações.",
+                    body: isZai
+                      ? "A chave da Z.ai não está configurada. Por favor, adicione a key nas configurações de API."
+                      : "O token da OpenAI não está configurado. Por favor, adicione o token nas configurações.",
                     silent: true,
                 }).show();
             }
@@ -56,7 +59,7 @@ helpers.getIaResponse = async function(text) {
             state.waitingNotificationInterval = null;
             return;
         }
-        const openAiModel = configService.getOpenAiModel();
+        const openAiModel = isZai ? configService.getZaiModel() : configService.getOpenAiModel();
 
         // Comando direto não planeja (só executa); tarefa complexa → agentic.
         const useAgentic = helpers.shouldUseAgentic(text);
@@ -98,7 +101,7 @@ helpers.getIaResponse = async function(text) {
               ht.instruction || instruction,
               ht.model || openAiModel,
               visualCtx.imageBase64 || null,
-              ht.opts
+              { ...(ht.opts || {}), isZai }
             );
         }
     } else if (aiModel === 'geminiCli') {

@@ -205,6 +205,22 @@ function writeBaseline() {
   console.log(`baseline gravado: ${Object.keys(out).length} arquivos acima de ${MAX_LINES} linhas.`);
 }
 
+// ── E5: Proibição de emojis ───────────────────────────────────────────────────
+function checkNoEmojis() {
+  const emojiRegex = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}]/u;
+  const targetFiles = ['apiConfig.html', 'config.html', 'settings.html', 'welcome.html', 'nexaConfig.html', 'preferences.html'];
+  for (const relPath of targetFiles) {
+    const full = path.join(ROOT, relPath);
+    if (!fs.existsSync(full)) continue;
+    const lines = read(full).split(/\r?\n/);
+    lines.forEach((line, idx) => {
+      if (emojiRegex.test(line)) {
+        err(relPath, `linha ${idx + 1} contém emoji proibido: "${line.trim().slice(0, 40)}"`);
+      }
+    });
+  }
+}
+
 // ── main ──────────────────────────────────────────────────────────────────────
 if (process.argv.includes('--write-baseline')) { writeBaseline(); process.exit(0); }
 
@@ -215,6 +231,7 @@ checkWindowExports();
 checkCssDupBlocks();
 checkDupGlobals();
 checkFileSize();
+checkNoEmojis();
 
 for (const w of warns) console.log(`  aviso  ${w.file}: ${w.msg}`);
 for (const e of errors) console.log(`  ERRO   ${e.file}: ${e.msg}`);
