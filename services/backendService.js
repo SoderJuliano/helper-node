@@ -238,6 +238,7 @@ class BackendService {
 
       let tools = opts.tools;
       let onToolCall = opts.onToolCall;
+      const { helpers } = require('../main/globals');
       let rawInstruction = customInstruction || configService.getPromptInstruction();
       let promptInstruction = (helpers && helpers.withUserContext) ? helpers.withUserContext(rawInstruction) : rawInstruction;
 
