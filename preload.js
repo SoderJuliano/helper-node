@@ -234,8 +234,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   moveItem: (srcPath, destPath) => ipcRenderer.invoke("workspace:move-item", { srcPath, destPath }),
   createFile: (filePath, content = "") => ipcRenderer.invoke("workspace:create-file", { filePath, content }),
   createDir: (dirPath) => ipcRenderer.invoke("workspace:create-dir", { dirPath }),
-  deleteItems: (paths) => ipcRenderer.invoke("workspace:delete-items", { paths }),
-  pickParentDir: () => ipcRenderer.invoke("workspace:pick-parent-dir"),
+  pickParentDir: (defaultPath) => ipcRenderer.invoke("workspace:pick-parent-dir", defaultPath),
+  getDefaultParentDir: () => ipcRenderer.invoke("workspace:get-default-parent-dir"),
   createAndOpenProject: (parentPath, folderName) => ipcRenderer.invoke("workspace:create-and-open-project", { parentPath, folderName }),
   createNewProject: () => ipcRenderer.invoke("workspace:create-new-project"),
   // === Editor de código (#file-viewer) ===

@@ -263,6 +263,9 @@ function fileIconHtml(name) {
             }
 
             async function createNewProject() {
+                if (typeof window.openNewProjectModal === 'function') {
+                    return window.openNewProjectModal();
+                }
                 if (!window.electronAPI) return;
                 try {
                     let res = null;

@@ -187,14 +187,32 @@ ipcMain.handle("workspace:delete-items", async (event, { paths }) => {
   }
 });
 
-ipcMain.handle("workspace:pick-parent-dir", async () => {
+ipcMain.handle("workspace:pick-parent-dir", async (event, defaultPath) => {
   const { dialog } = require("electron");
-  const res = await dialog.showOpenDialog(state.mainWindow, {
+  const options = {
     title: "Selecionar pasta onde criar o projeto",
-    properties: ["openDirectory"],
-  });
+    buttonLabel: "Selecionar Pasta",
+    properties: ["openDirectory", "createDirectory"],
+  };
+  if (defaultPath && fs2.existsSync(defaultPath)) {
+    options.defaultPath = defaultPath;
+  }
+  const res = await dialog.showOpenDialog(state.mainWindow, options);
   if (res.canceled || !res.filePaths.length) return null;
   return res.filePaths[0];
+});
+
+ipcMain.handle("workspace:get-default-parent-dir", () => {
+  const dirs = workspace.list().filter(a => a.type === 'dir').map(a => a.path);
+  if (dirs.length > 0 && dirs[0]) {
+    try {
+      const p = path.dirname(dirs[0]);
+      if (fs2.existsSync(p)) return p;
+    } catch (_) {}
+  }
+  const docs = path.join(os.homedir(), "Documents");
+  if (fs2.existsSync(docs)) return docs;
+  return os.homedir();
 });
 
 ipcMain.handle("workspace:create-new-project", async () => {
@@ -318,7 +336,7 @@ ipcMain.handle("workspace:create-and-open-project", async (event, { parentPath, 
     if (state.mainWindow && !state.mainWindow.isDestroyed()) {
       state.mainWindow.webContents.send("workspace-changed", { attachments: workspace.list() });
     }
-    return { ok: true, attachments: workspace.list() };
+    return { ok: true, path: newProjectPath, attachments: workspace.list() };
   } catch (e) {
     console.error("[workspace:create-and-open-project] erro:", e.message);
     return { ok: false, error: e.message };
