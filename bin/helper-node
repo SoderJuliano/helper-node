@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Helper Node CLI launcher (Linux/macOS) - Compatible with bash, zsh, fish
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Resolve relative paths to absolute paths
+ARGS=()
+for arg in "$@"; do
+    if [[ "$arg" == -* ]]; then
+        ARGS+=("$arg")
+    elif [ -e "$arg" ]; then
+        RESOLVED="$(realpath "$arg" 2>/dev/null || readlink -f "$arg" 2>/dev/null || echo "$PWD/$arg")"
+        ARGS+=("$RESOLVED")
+    else
+        ARGS+=("$arg")
+    fi
+done
+
+if [ -f "$SCRIPT_DIR/helper-node.sh" ]; then
+    exec "$SCRIPT_DIR/helper-node.sh" --local "${ARGS[@]}"
+elif [ -x "/opt/helper-node/helper-node" ]; then
+    exec "/opt/helper-node/helper-node" "${ARGS[@]}"
+elif command -v electron >/dev/null 2>&1; then
+    exec electron "$SCRIPT_DIR" "${ARGS[@]}"
+else
+    echo "Erro: Electron runtime nao encontrado para executar Helper Node." >&2
+    exit 1
+fi

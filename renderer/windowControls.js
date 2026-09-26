@@ -90,6 +90,12 @@
             if (collapseBtn) collapseBtn.addEventListener('click', (e) => { e.stopPropagation(); window.setChatCollapsed(true); });
             const expandBtn = document.getElementById('chat-expand-btn');
             if (expandBtn) expandBtn.addEventListener('click', (e) => { e.stopPropagation(); window.setChatCollapsed(false); });
+
+            if (window.electronAPI && typeof window.electronAPI.onSetChatCollapsed === 'function') {
+                window.electronAPI.onSetChatCollapsed((collapsed) => {
+                    window.setChatCollapsed(!!collapsed);
+                });
+            }
         })();
 
         // === Sidebar redimensionável (arraste a borda direita) — largura

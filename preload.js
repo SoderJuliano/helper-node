@@ -262,6 +262,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // conhecimento) no visualizador desta janela.
   onOpenFileInViewer: (cb) =>
     ipcRenderer.on("open-file-in-viewer", (event, filePath) => cb(filePath)),
+  onSetChatCollapsed: (cb) =>
+    ipcRenderer.on("set-chat-collapsed", (event, collapsed) => cb(collapsed)),
   onAiToolActivity: (cb) =>
     ipcRenderer.on("ai-tool-activity", (event, data) => cb(data)),
 

@@ -25,6 +25,31 @@ app.commandLine.appendSwitch("disable-renderer-backgrounding");
 
 // Require globals
 const { state, helpers, configService, helperTools, OpenAIService, historyService, ipcService, translationAssistant, visionGuide, GeminiCliProvider, ClaudeCliProvider, workspace } = require("./main/globals.js");
+const systemIntegration = require("./services/systemIntegration");
+
+// Single-instance lock: redireciona execucao duplicada para a janela ativa (ex: helper-node arquivo.txt)
+const gotSingleInstanceLock = app.requestSingleInstanceLock ? app.requestSingleInstanceLock() : true;
+if (!gotSingleInstanceLock) {
+  app.quit();
+  process.exit(0);
+}
+
+app.on("second-instance", (event, commandLine, workingDirectory) => {
+  systemIntegration.handleSecondInstance(commandLine, workingDirectory, {
+    state,
+    workspace,
+    helpers,
+  });
+});
+
+app.on("open-file", (event, filePath) => {
+  event.preventDefault();
+  systemIntegration.handleOpenFile(filePath, {
+    state,
+    workspace,
+    helpers,
+  });
+});
 
 // Load modules to register helpers
 require("./main/state.js");
@@ -63,6 +88,7 @@ require("./main/ipc/gitConflict.js")();
 require("./main/ipc/gitDiff.js")();
 require("./main/ipc/batchScreenshot.js")();
 require("./main/ipc/githubAuth.js")();
+require("./main/ipc/systemIntegration.js")();
 require("./services/nexaVoiceAssistant").registerIpc();
 
 // Unhandled exception silencers
@@ -169,6 +195,7 @@ app.whenReady().then(async () => {
   await historyService.initialize();
   helpers.setupTray();
   await helpers.createWindow();
+  systemIntegration.handleStartupArgs(process.argv, process.cwd(), { state, workspace, helpers });
   try {
     const nativeAudio = require('./services/platform/nativeAudio.js');
     if (nativeAudio && typeof nativeAudio.prewarm === 'function') nativeAudio.prewarm();
