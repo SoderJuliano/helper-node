@@ -225,60 +225,6 @@
 .ai-phase.done .ai-phase-text { color: var(--text-4); }
 .ai-phase.error .ai-phase-tag { color: var(--danger); background: rgba(248,113,113,0.15); }
 
-/* Fila de prompts (Queue) */
-.ai-phase.ai-phase-queued {
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px dashed rgba(255, 255, 255, 0.12);
-    border-radius: 6px;
-    padding: 6px 10px;
-    margin: 8px 0;
-}
-.ai-phase-clock {
-    font-size: 12px;
-    line-height: 1;
-    margin-right: 2px;
-}
-.ai-phase-tag.queued {
-    color: #38bdf8;
-    background: rgba(56, 189, 248, 0.15);
-}
-.ai-phase-queued-actions {
-    margin-left: auto;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-}
-.ai-phase-queue-btn {
-    border: none;
-    cursor: pointer;
-    font-size: 11px;
-    font-family: var(--font-ui);
-    font-weight: 500;
-    padding: 2px 8px;
-    border-radius: 4px;
-    transition: all 0.15s ease;
-    line-height: 1.4;
-}
-.ai-phase-queue-btn.run-now {
-    background: rgba(56, 189, 248, 0.15);
-    color: #38bdf8;
-    border: 1px solid rgba(56, 189, 248, 0.3);
-}
-.ai-phase-queue-btn.run-now:hover {
-    background: rgba(56, 189, 248, 0.28);
-    color: #e0f2fe;
-}
-.ai-phase-queue-btn.cancel-queue {
-    background: transparent;
-    color: var(--text-4);
-    font-size: 13px;
-    padding: 2px 6px;
-}
-.ai-phase-queue-btn.cancel-queue:hover {
-    color: var(--danger);
-    background: rgba(248, 113, 113, 0.15);
-}
-
 /* Botão copiar de blocos de código (pre > button.copy-button) */
 .copy-button {
     position: absolute; top: 8px; right: 8px;

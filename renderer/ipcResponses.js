@@ -73,13 +73,8 @@
             });
 
             window.electronAPI.onTranscriptionError((message) => {
-                // Erro também encerra o turno
-                if (typeof window.onActiveTurnComplete === 'function') {
-                    window.onActiveTurnComplete({ error: message });
-                } else {
-                    robot.style.display = 'none';
-                    if (typeof window.stopProcessing === 'function') window.stopProcessing();
-                }
+                robot.style.display = 'none';
+                if (typeof window.stopProcessing === 'function') window.stopProcessing();
 
                 // Ignora erros de cancelamento (não exibe na tela)
                 if (message === 'Request cancelled') {
@@ -109,12 +104,8 @@
                 if (welcomeHero) welcomeHero.classList.add('hidden');
 
                 if (!response) {
-                    if (typeof window.onActiveTurnComplete === 'function') {
-                        window.onActiveTurnComplete({ error: 'Resposta é vazia' });
-                    } else {
-                        document.getElementById('robot').style.display = 'none';
-                        if (typeof window.stopProcessing === 'function') window.stopProcessing();
-                    }
+                    document.getElementById('robot').style.display = 'none';
+                    if (typeof window.stopProcessing === 'function') window.stopProcessing();
                     console.error('Resposta é undefined ou vazia');
                     return;
                 }
@@ -153,12 +144,8 @@
                     transcriptionElement.appendChild(newResponse);
                 }
 
-                if (typeof window.onActiveTurnComplete === 'function') {
-                    window.onActiveTurnComplete();
-                } else {
-                    if (typeof window.stopProcessing === 'function') window.stopProcessing();
-                    document.getElementById('robot').style.display = 'none';
-                }
+                if (typeof window.stopProcessing === 'function') window.stopProcessing();
+                document.getElementById('robot').style.display = 'none';
 
                 // Scroll suave para o fim
                 setTimeout(() => scrollTranscriptionToBottom('smooth'), 100);
@@ -171,12 +158,8 @@
                 if (welcomeHero) welcomeHero.classList.add('hidden');
 
                 if (!response) {
-                    if (typeof window.onActiveTurnComplete === 'function') {
-                        window.onActiveTurnComplete({ error: 'Resposta é vazia' });
-                    } else {
-                        document.getElementById('robot').style.display = 'none';
-                        if (typeof window.stopProcessing === 'function') window.stopProcessing();
-                    }
+                    document.getElementById('robot').style.display = 'none';
+                    if (typeof window.stopProcessing === 'function') window.stopProcessing();
                     console.error('Resposta da OpenAI é undefined ou vazia');
                     return;
                 }
@@ -224,12 +207,8 @@
                     transcriptionElement.appendChild(newResponse);
                 }
 
-                if (typeof window.onActiveTurnComplete === 'function') {
-                    window.onActiveTurnComplete();
-                } else {
-                    if (typeof window.stopProcessing === 'function') window.stopProcessing();
-                    document.getElementById('robot').style.display = 'none';
-                }
+                if (typeof window.stopProcessing === 'function') window.stopProcessing();
+                document.getElementById('robot').style.display = 'none';
 
                 // Scroll suave para o fim
                 setTimeout(() => scrollTranscriptionToBottom('smooth'), 100);

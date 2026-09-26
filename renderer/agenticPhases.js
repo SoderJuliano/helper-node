@@ -15,6 +15,39 @@
   if (window.electronAPI && window.electronAPI.onAgenticPhaseUpdate) {
     window.electronAPI.onAgenticPhaseUpdate(({ phase, status, sessionId, thinking }) => {
       const done = (phase === 'completed' || phase === 'error');
+
+      // Se o usuário cancelou a requisição, descarta updates intermediários e assegura que o loading não volte
+      if (window.iaCancelled) {
+        if (done) {
+          activeAgenticSession = null;
+          const robot = document.getElementById('robot');
+          if (robot) robot.style.display = 'none';
+          if (typeof window.stopProcessing === 'function') window.stopProcessing();
+        }
+        return;
+      }
+
+      // Se este evento é de uma interrupção gerada pelo backend ao abortar o turno anterior para dar lugar a uma nova pergunta:
+      if (status === 'Interrompido' && window.activeInteractionBlock && window.activeInteractionBlock.classList.contains('is-processing')) {
+        const allBlocks = transcriptionElement ? transcriptionElement.querySelectorAll('.interaction-block') : [];
+        allBlocks.forEach(b => {
+          if (b !== window.activeInteractionBlock) {
+            b.classList.remove('is-processing');
+            const prevPh = b.querySelector('.ai-phase');
+            if (prevPh) {
+              prevPh.classList.add('done');
+              const s = prevPh.querySelector('.ai-phase-spin'); if (s) s.remove();
+              const st = prevPh.querySelector('.ai-phase-stop'); if (st) st.remove();
+              const txt = prevPh.querySelector('.ai-phase-text');
+              if (txt && !txt.textContent.includes('Interrompido')) {
+                txt.textContent = 'Interrompido por nova pergunta';
+              }
+            }
+          }
+        });
+        return;
+      }
+
       if (!done) activeAgenticSession = sessionId;
       const block = window.activeInteractionBlock || (transcriptionElement
         ? transcriptionElement.querySelector('.interaction-block:last-child')
@@ -76,14 +109,21 @@
         const spin = ph.querySelector('.ai-phase-spin'); if (spin) spin.remove();
         const stop = ph.querySelector('.ai-phase-stop'); if (stop) stop.remove();
         activeAgenticSession = null;
-      } else {
         const robot = document.getElementById('robot');
-        if (robot) robot.style.display = 'block';
-        const header = ph.querySelector('.ai-phase-header');
-        if (header && !header.querySelector('.ai-phase-spin')) {
-          const spin = document.createElement('span');
-          spin.className = 'ai-phase-spin';
-          header.insertBefore(spin, header.firstChild);
+        if (robot) robot.style.display = 'none';
+        if (typeof window.stopProcessing === 'function') {
+          window.stopProcessing();
+        }
+      } else {
+        if (!window.iaCancelled) {
+          const robot = document.getElementById('robot');
+          if (robot) robot.style.display = 'block';
+          const header = ph.querySelector('.ai-phase-header');
+          if (header && !header.querySelector('.ai-phase-spin')) {
+            const spin = document.createElement('span');
+            spin.className = 'ai-phase-spin';
+            header.insertBefore(spin, header.firstChild);
+          }
         }
       }
       if (typeof window.scrollTranscriptionToBottom === 'function') {

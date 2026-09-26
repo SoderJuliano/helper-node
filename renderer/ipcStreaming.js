@@ -370,13 +370,9 @@ function autoScrollSeNoFim(el) {
                 
                 console.log('Stream completo! Variáveis resetadas.');
 
-                if (typeof window.onActiveTurnComplete === 'function') {
-                    window.onActiveTurnComplete();
-                } else if (typeof window.stopProcessing === 'function') {
-                    const robot = document.getElementById('robot');
-                    if (robot) robot.style.display = 'none';
-                    window.stopProcessing();
-                }
+                const robot = document.getElementById('robot');
+                if (robot) robot.style.display = 'none';
+                if (typeof window.stopProcessing === 'function') window.stopProcessing();
             });
 
             // Listener para auto-stream após transcrição de áudio

@@ -217,18 +217,6 @@ var isEditingQuestion = false;
     });
 
     async function sentToAI(text, options = {}) {
-        if (window.isAiProcessing && !options.skipQueue) {
-            if (typeof window.enqueueQuestion === 'function') {
-                window.enqueueQuestion({
-                    text,
-                    image: null,
-                    block: options.block || (document.getElementById('transcription') ? document.getElementById('transcription').querySelector('.interaction-block:last-child') : null),
-                    questionSpan: window.currentQuestionElement
-                });
-            }
-            return;
-        }
-
         window.isAiProcessing = true;
         window.iaCancelled = false;
         if (options.block) {
@@ -276,18 +264,6 @@ var isEditingQuestion = false;
     }
 
     async function sentImageToAI(text, image, options = {}) {
-        if (window.isAiProcessing && !options.skipQueue) {
-            if (typeof window.enqueueQuestion === 'function') {
-                window.enqueueQuestion({
-                    text,
-                    image,
-                    block: options.block || (document.getElementById('transcription') ? document.getElementById('transcription').querySelector('.interaction-block:last-child') : null),
-                    questionSpan: window.currentQuestionElement
-                });
-            }
-            return;
-        }
-
         window.isAiProcessing = true;
         window.iaCancelled = false;
         if (options.block) {
@@ -325,7 +301,7 @@ var isEditingQuestion = false;
             const blocks = transcriptionElement.querySelectorAll('.interaction-block');
             blocks.forEach(block => {
                 block.classList.remove('is-processing');
-                const ph = block.querySelector('.ai-phase:not(.ai-phase-queued)');
+                const ph = block.querySelector('.ai-phase');
                 if (ph) {
                     ph.classList.add('done');
                     const spin = ph.querySelector('.ai-phase-spin'); if (spin) spin.remove();
@@ -361,9 +337,6 @@ var isEditingQuestion = false;
         if (typeof streamingText !== 'undefined') streamingText = '';
         if (typeof typingCursor !== 'undefined') typingCursor = null;
 
-        if (typeof window.pauseChatQueueOnUserCancel === 'function') {
-            window.pauseChatQueueOnUserCancel();
-        }
         stopProcessing();
     }
 
@@ -391,13 +364,31 @@ var isEditingQuestion = false;
     function startProcessing(targetBlock) {
         window.iaCancelled = false;
         window.isAiProcessing = true;
-        const robot = document.getElementById('robot');
-        if (robot) robot.style.display = 'block';
-        showFloatingStop(true);
+        window._chatTurnSeq = (window._chatTurnSeq || 0) + 1;
+        const currentSeq = window._chatTurnSeq;
+        window._activeTurnSeq = currentSeq;
 
         const transcriptionElement = document.getElementById('transcription');
         const block = targetBlock || window.activeInteractionBlock || (transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null);
+
+        // Se havia um bloco anterior ainda em processamento, finaliza como interrompido
+        if (window.activeInteractionBlock && window.activeInteractionBlock !== block) {
+            const prevBlock = window.activeInteractionBlock;
+            prevBlock.classList.remove('is-processing');
+            const prevPh = prevBlock.querySelector('.ai-phase');
+            if (prevPh) {
+                prevPh.classList.add('done');
+                const spin = prevPh.querySelector('.ai-phase-spin'); if (spin) spin.remove();
+                const stop = prevPh.querySelector('.ai-phase-stop'); if (stop) stop.remove();
+                const txt = prevPh.querySelector('.ai-phase-text');
+                if (txt && !txt.textContent.includes('Interrompido')) {
+                    txt.textContent = 'Interrompido por nova pergunta';
+                }
+            }
+        }
+
         if (block) {
+            block.dataset.turnSeq = String(currentSeq);
             window.activeInteractionBlock = block;
             block.classList.add('is-processing');
             let ph = block.querySelector('.ai-phase');
@@ -425,6 +416,10 @@ var isEditingQuestion = false;
                 if (stop) stop.remove();
             });
         }
+
+        const robot = document.getElementById('robot');
+        if (robot) robot.style.display = 'block';
+        showFloatingStop(true);
 
         window.electronAPI.startNotifications();
         if (window.electronAPI && window.electronAPI.sendNexaVoiceProcessingStarted) {
@@ -488,11 +483,7 @@ var isEditingQuestion = false;
 
     if (window.electronAPI && window.electronAPI.onGeminiLiveTurnComplete) {
         window.electronAPI.onGeminiLiveTurnComplete(() => {
-            if (typeof window.onActiveTurnComplete === 'function') {
-                window.onActiveTurnComplete();
-            } else {
-                stopProcessing();
-            }
+            stopProcessing();
             liveVoiceBlockActive = false;
             const transcriptionElement = document.getElementById('transcription');
             const lastBlock = transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null;
@@ -511,15 +502,9 @@ var isEditingQuestion = false;
             if (!text || !text.trim()) return;
             const cleanText = text.trim();
             // Adiciona a pergunta diretamente no chat sem tocar ou poluir o composer de input
-            const qSpan = appendQuestionEntry(cleanText);
+            appendQuestionEntry(cleanText);
             const transcriptionElement = document.getElementById('transcription');
             const ib = transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null;
-            if (window.isAiProcessing) {
-                if (typeof window.enqueueQuestion === 'function') {
-                    window.enqueueQuestion({ text: cleanText, block: ib, questionSpan: qSpan });
-                }
-                return;
-            }
             window.activeInteractionBlock = ib;
             startProcessing(ib);
             await sentToAI(cleanText, { block: ib });
@@ -529,7 +514,7 @@ var isEditingQuestion = false;
     if (window.electronAPI && window.electronAPI.onNexaVoiceQuickReply) {
         window.electronAPI.onNexaVoiceQuickReply(async ({ question, reply }) => {
             if (!question && !reply) return;
-            const cleanQuestion = (question && question.trim()) ? question.trim() : (currentLiveQuestion || '🎤 Pergunta por voz');
+            const cleanQuestion = (question && question.trim()) ? question.trim() : (currentLiveQuestion || 'Pergunta por voz');
             const cleanReply = (reply && reply.trim()) ? reply.trim() : '';
             if (!cleanReply) return;
 

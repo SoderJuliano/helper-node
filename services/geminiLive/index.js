@@ -284,7 +284,7 @@ DIRETIVAS OBRIGATÓRIAS DE EXECUÇÃO E VOZ:
 
       if (aiReply) {
         this._broadcastToWindows('nexa-voice:quick-reply', {
-          question: userQuestion || '🎤 Pergunta por voz',
+          question: userQuestion || 'Pergunta por voz',
           reply: aiReply
         });
       }

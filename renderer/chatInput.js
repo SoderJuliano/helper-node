@@ -321,21 +321,6 @@ var promptHistoryDraft = '';
             window.scrollTranscriptionToBottom('force');
         }
 
-        if (window.isAiProcessing) {
-            if (typeof window.enqueueQuestion === 'function') {
-                window.enqueueQuestion({
-                    text,
-                    image: pastedImageForManualInput ? window.pendingChatImage : null,
-                    block: ib,
-                    questionSpan
-                });
-            }
-            pastedImageForManualInput = null;
-            window.pendingChatImage = null;
-            hideComposerImagePreview();
-            return;
-        }
-
         window.activeInteractionBlock = ib;
         if (typeof window.startProcessing === 'function') window.startProcessing(ib);
 
