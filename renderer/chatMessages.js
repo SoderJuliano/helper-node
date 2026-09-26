@@ -175,6 +175,22 @@ var isEditingQuestion = false;
             }
         }
         if (e.key === 'Escape' && typeof manualInputActive !== 'undefined' && manualInputActive) {
+            try {
+                const curInput = document.querySelector('.manual-input-container .input-field');
+                if (curInput && typeof promptHistory !== 'undefined') {
+                    const val = (curInput.value || curInput.innerText || '').trim();
+                    if (val) {
+                        promptHistoryDraft = val;
+                        if (!promptHistory.length || promptHistory[promptHistory.length - 1] !== val) {
+                            promptHistory.push(val);
+                        }
+                        promptHistoryIndex = promptHistory.length;
+                        if (typeof window.showToast === 'function') {
+                            window.showToast('Rascunho salvo! Pressione [Seta Acima] para recuperar.');
+                        }
+                    }
+                }
+            } catch (_) {}
             manualInputActive = false;
             if (typeof removeManualInputContainer === 'function') removeManualInputContainer();
             if (typeof undockComposer === 'function') undockComposer();
@@ -200,8 +216,25 @@ var isEditingQuestion = false;
         }
     });
 
-    async function sentToAI(text) {
+    async function sentToAI(text, options = {}) {
+        if (window.isAiProcessing && !options.skipQueue) {
+            if (typeof window.enqueueQuestion === 'function') {
+                window.enqueueQuestion({
+                    text,
+                    image: null,
+                    block: options.block || (document.getElementById('transcription') ? document.getElementById('transcription').querySelector('.interaction-block:last-child') : null),
+                    questionSpan: window.currentQuestionElement
+                });
+            }
+            return;
+        }
+
+        window.isAiProcessing = true;
         window.iaCancelled = false;
+        if (options.block) {
+            window.activeInteractionBlock = options.block;
+        }
+
         let activeSessionId = null;
         if (window.historySession) {
             activeSessionId = await window.historySession.ensureSessionForFirstQuestion(text);
@@ -242,8 +275,25 @@ var isEditingQuestion = false;
         }
     }
 
-    async function sentImageToAI(text, image) {
+    async function sentImageToAI(text, image, options = {}) {
+        if (window.isAiProcessing && !options.skipQueue) {
+            if (typeof window.enqueueQuestion === 'function') {
+                window.enqueueQuestion({
+                    text,
+                    image,
+                    block: options.block || (document.getElementById('transcription') ? document.getElementById('transcription').querySelector('.interaction-block:last-child') : null),
+                    questionSpan: window.currentQuestionElement
+                });
+            }
+            return;
+        }
+
+        window.isAiProcessing = true;
         window.iaCancelled = false;
+        if (options.block) {
+            window.activeInteractionBlock = options.block;
+        }
+
         const q = (text && text.trim()) ? text.trim() : 'Image in context';
         if (window.historySession) {
             await window.historySession.ensureSessionForFirstQuestion(q);
@@ -258,6 +308,8 @@ var isEditingQuestion = false;
     }
 
     function stopProcessing() {
+        window.isAiProcessing = false;
+        window.activeInteractionBlock = null;
         showFloatingStop(false);
         const animation = window.animation;
         const animationContainer = document.getElementById('animation-container');
@@ -273,7 +325,7 @@ var isEditingQuestion = false;
             const blocks = transcriptionElement.querySelectorAll('.interaction-block');
             blocks.forEach(block => {
                 block.classList.remove('is-processing');
-                const ph = block.querySelector('.ai-phase');
+                const ph = block.querySelector('.ai-phase:not(.ai-phase-queued)');
                 if (ph) {
                     ph.classList.add('done');
                     const spin = ph.querySelector('.ai-phase-spin'); if (spin) spin.remove();
@@ -308,6 +360,10 @@ var isEditingQuestion = false;
         if (typeof streamingElement !== 'undefined') streamingElement = null;
         if (typeof streamingText !== 'undefined') streamingText = '';
         if (typeof typingCursor !== 'undefined') typingCursor = null;
+
+        if (typeof window.pauseChatQueueOnUserCancel === 'function') {
+            window.pauseChatQueueOnUserCancel();
+        }
         stopProcessing();
     }
 
@@ -332,42 +388,42 @@ var isEditingQuestion = false;
         btn.classList.toggle('visible', !!mostrar);
     }
 
-    function startProcessing() {
+    function startProcessing(targetBlock) {
         window.iaCancelled = false;
+        window.isAiProcessing = true;
         const robot = document.getElementById('robot');
         if (robot) robot.style.display = 'block';
         showFloatingStop(true);
 
         const transcriptionElement = document.getElementById('transcription');
-        if (transcriptionElement) {
-            const lastBlock = transcriptionElement.querySelector('.interaction-block:last-child');
-            if (lastBlock) {
-                lastBlock.classList.add('is-processing');
-                let ph = lastBlock.querySelector('.ai-phase');
-                if (!ph) {
-                    ph = document.createElement('div');
-                    ph.className = 'ai-phase';
-                    ph.innerHTML = `
-                        <div class="ai-phase-header">
-                            <span class="ai-phase-spin"></span>
-                            <span class="ai-phase-tag">Pensando</span>
-                            <button class="ai-phase-stop" title="Interromper">×</button>
-                            <span class="ai-phase-text">Aguardando resposta...</span>
-                        </div>
-                    `;
-                    const stop = ph.querySelector('.ai-phase-stop');
-                    if (stop) stop.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        cancelIaAndFreezeStream();
-                        const txt = ph.querySelector('.ai-phase-text');
-                        if (txt) txt.textContent = 'Interrompido pelo usuário';
-                        ph.classList.add('done');
-                        const spin = ph.querySelector('.ai-phase-spin'); if (spin) spin.remove();
-                        if (stop) stop.remove();
-                    });
-                    lastBlock.appendChild(ph);
-                }
+        const block = targetBlock || window.activeInteractionBlock || (transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null);
+        if (block) {
+            window.activeInteractionBlock = block;
+            block.classList.add('is-processing');
+            let ph = block.querySelector('.ai-phase');
+            if (!ph) {
+                ph = document.createElement('div');
+                block.appendChild(ph);
             }
+            ph.className = 'ai-phase';
+            ph.innerHTML = `
+                <div class="ai-phase-header">
+                    <span class="ai-phase-spin"></span>
+                    <span class="ai-phase-tag">Pensando</span>
+                    <button class="ai-phase-stop" title="Interromper">×</button>
+                    <span class="ai-phase-text">Aguardando resposta...</span>
+                </div>
+            `;
+            const stop = ph.querySelector('.ai-phase-stop');
+            if (stop) stop.addEventListener('click', (e) => {
+                e.stopPropagation();
+                cancelIaAndFreezeStream();
+                const txt = ph.querySelector('.ai-phase-text');
+                if (txt) txt.textContent = 'Interrompido pelo usuário';
+                ph.classList.add('done');
+                const spin = ph.querySelector('.ai-phase-spin'); if (spin) spin.remove();
+                if (stop) stop.remove();
+            });
         }
 
         window.electronAPI.startNotifications();
@@ -432,7 +488,11 @@ var isEditingQuestion = false;
 
     if (window.electronAPI && window.electronAPI.onGeminiLiveTurnComplete) {
         window.electronAPI.onGeminiLiveTurnComplete(() => {
-            stopProcessing();
+            if (typeof window.onActiveTurnComplete === 'function') {
+                window.onActiveTurnComplete();
+            } else {
+                stopProcessing();
+            }
             liveVoiceBlockActive = false;
             const transcriptionElement = document.getElementById('transcription');
             const lastBlock = transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null;
@@ -451,9 +511,18 @@ var isEditingQuestion = false;
             if (!text || !text.trim()) return;
             const cleanText = text.trim();
             // Adiciona a pergunta diretamente no chat sem tocar ou poluir o composer de input
-            appendQuestionEntry(cleanText);
-            startProcessing();
-            await sentToAI(cleanText);
+            const qSpan = appendQuestionEntry(cleanText);
+            const transcriptionElement = document.getElementById('transcription');
+            const ib = transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null;
+            if (window.isAiProcessing) {
+                if (typeof window.enqueueQuestion === 'function') {
+                    window.enqueueQuestion({ text: cleanText, block: ib, questionSpan: qSpan });
+                }
+                return;
+            }
+            window.activeInteractionBlock = ib;
+            startProcessing(ib);
+            await sentToAI(cleanText, { block: ib });
         });
     }
 

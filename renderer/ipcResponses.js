@@ -73,10 +73,13 @@
             });
 
             window.electronAPI.onTranscriptionError((message) => {
-                robot.style.display = 'none';
-                // Erro também encerra o turno: sem isto o spinner do bloco
-                // "Pensando" continuava girando embaixo da mensagem de erro.
-                if (typeof window.stopProcessing === 'function') window.stopProcessing();
+                // Erro também encerra o turno
+                if (typeof window.onActiveTurnComplete === 'function') {
+                    window.onActiveTurnComplete({ error: message });
+                } else {
+                    robot.style.display = 'none';
+                    if (typeof window.stopProcessing === 'function') window.stopProcessing();
+                }
 
                 // Ignora erros de cancelamento (não exibe na tela)
                 if (message === 'Request cancelled') {
@@ -101,13 +104,17 @@
 
             window.electronAPI.onIaResponse((response, usedKnowledge) => {
                 console.log('IA respondeu:', response, '| base de conhecimento:', !!usedKnowledge);
-                if (typeof window.stopProcessing === 'function') window.stopProcessing();
 
                 const welcomeHero = document.getElementById('welcome-hero');
                 if (welcomeHero) welcomeHero.classList.add('hidden');
 
                 if (!response) {
-                    document.getElementById('robot').style.display = 'none';
+                    if (typeof window.onActiveTurnComplete === 'function') {
+                        window.onActiveTurnComplete({ error: 'Resposta é vazia' });
+                    } else {
+                        document.getElementById('robot').style.display = 'none';
+                        if (typeof window.stopProcessing === 'function') window.stopProcessing();
+                    }
                     console.error('Resposta é undefined ou vazia');
                     return;
                 }
@@ -139,30 +146,37 @@
                 }
 
                 // Adiciona dentro do interaction-block da pergunta atual (se existir)
-                const lastBlock = transcriptionElement.querySelector('.interaction-block:last-child');
+                const lastBlock = window.activeInteractionBlock || (transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null);
                 if (lastBlock) {
                     lastBlock.appendChild(newResponse);
                 } else {
                     transcriptionElement.appendChild(newResponse);
                 }
 
-                document.getElementById('robot').style.display = 'none';
-
+                if (typeof window.onActiveTurnComplete === 'function') {
+                    window.onActiveTurnComplete();
+                } else {
+                    if (typeof window.stopProcessing === 'function') window.stopProcessing();
+                    document.getElementById('robot').style.display = 'none';
+                }
 
                 // Scroll suave para o fim
                 setTimeout(() => scrollTranscriptionToBottom('smooth'), 100);
-
             });
 
             window.electronAPI.onOpenAIResponse((response, usedKnowledge, usage) => {
                 console.log('OpenAI respondeu:', response, '| base de conhecimento:', !!usedKnowledge, '| usage:', usage);
-                if (typeof window.stopProcessing === 'function') window.stopProcessing();
 
                 const welcomeHero = document.getElementById('welcome-hero');
                 if (welcomeHero) welcomeHero.classList.add('hidden');
 
                 if (!response) {
-                    document.getElementById('robot').style.display = 'none';
+                    if (typeof window.onActiveTurnComplete === 'function') {
+                        window.onActiveTurnComplete({ error: 'Resposta é vazia' });
+                    } else {
+                        document.getElementById('robot').style.display = 'none';
+                        if (typeof window.stopProcessing === 'function') window.stopProcessing();
+                    }
                     console.error('Resposta da OpenAI é undefined ou vazia');
                     return;
                 }
@@ -203,18 +217,22 @@
                     newResponse.appendChild(tokensBadge);
                 }
 
-                const lastBlockOAI = transcriptionElement.querySelector('.interaction-block:last-child');
+                const lastBlockOAI = window.activeInteractionBlock || (transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null);
                 if (lastBlockOAI) {
                     lastBlockOAI.appendChild(newResponse);
                 } else {
                     transcriptionElement.appendChild(newResponse);
                 }
 
-                document.getElementById('robot').style.display = 'none';
+                if (typeof window.onActiveTurnComplete === 'function') {
+                    window.onActiveTurnComplete();
+                } else {
+                    if (typeof window.stopProcessing === 'function') window.stopProcessing();
+                    document.getElementById('robot').style.display = 'none';
+                }
 
                 // Scroll suave para o fim
                 setTimeout(() => scrollTranscriptionToBottom('smooth'), 100);
-
             });
 
             if (window.electronAPI.onVisionGuideMessage) {

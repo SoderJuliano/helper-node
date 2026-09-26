@@ -469,6 +469,17 @@ function createAccessors(ctx) {
       return lines.join('\n\n');
     },
 
+    getTranscriptionProvider() {
+      const cfg = get();
+      return cfg.transcriptionProvider || defaultConfig.transcriptionProvider || 'auto';
+    },
+
+    setTranscriptionProvider(provider) {
+      const cfg = get();
+      cfg.transcriptionProvider = provider || 'auto';
+      save();
+    },
+
     getStealthModeStatus() {
       return get().stealthMode !== false;
     },

@@ -190,9 +190,9 @@ function autoScrollSeNoFim(el) {
                     typingCursor.className = 'typing-cursor';
                     streamBodyElement.appendChild(typingCursor);
                     
-                    const lastBlockStream = transcriptionElement.querySelector('.interaction-block:last-child');
-                    if (lastBlockStream) {
-                        lastBlockStream.appendChild(streamingElement);
+                    const activeBlock = window.activeInteractionBlock || transcriptionElement.querySelector('.interaction-block:last-child');
+                    if (activeBlock) {
+                        activeBlock.appendChild(streamingElement);
                     } else {
                         transcriptionElement.appendChild(streamingElement);
                     }
@@ -249,16 +249,6 @@ function autoScrollSeNoFim(el) {
 
             window.electronAPI.onStreamComplete(() => {
                 console.log('Stream complete triggered');
-                const robot = document.getElementById('robot');
-                robot.style.display = 'none';
-
-                // O bloco "Pensando" (com o spinner girando) é criado ao enviar
-                // a pergunta, mas stopProcessing() só era chamado pelo botão de
-                // interromper — no fim normal do stream ninguém desligava, e o
-                // spinner ficava rodando para sempre embaixo da resposta já
-                // pronta. É stopProcessing quem tira o spinner, o botão × e a
-                // classe is-processing do bloco.
-                if (typeof window.stopProcessing === 'function') window.stopProcessing();
 
                 let finalStreamText = streamingText;
 
@@ -379,6 +369,14 @@ function autoScrollSeNoFim(el) {
                 typingCursor = null;
                 
                 console.log('Stream completo! Variáveis resetadas.');
+
+                if (typeof window.onActiveTurnComplete === 'function') {
+                    window.onActiveTurnComplete();
+                } else if (typeof window.stopProcessing === 'function') {
+                    const robot = document.getElementById('robot');
+                    if (robot) robot.style.display = 'none';
+                    window.stopProcessing();
+                }
             });
 
             // Listener para auto-stream após transcrição de áudio

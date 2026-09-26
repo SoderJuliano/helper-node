@@ -27,6 +27,7 @@ const backendModelSelect = document.getElementById("backend-model-select");
 const ollamaLocalModelSelect = document.getElementById("ollama-local-model-select");
 const geminiCliModelSelect = document.getElementById("gemini-cli-model-select");
 const claudeCliModelSelect = document.getElementById("claude-cli-model-select");
+const transcriptionProviderSelect = document.getElementById("transcription-provider-select");
 const copilotCliModelSelect = document.getElementById("copilot-cli-model-select");
 const copilotCliReasoningEffortSelect = document.getElementById("copilot-cli-reasoning-effort-select");
 
@@ -36,6 +37,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const [
     savedAiModel,
     savedGoogleKey,
+    savedTranscriptionProvider,
     savedZaiKey,
     savedZaiModel,
     savedOpenAiToken,
@@ -52,6 +54,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   ] = await Promise.all([
     ipcRenderer.invoke("get-ai-model").catch(() => "geminiCli"),
     ipcRenderer.invoke("get-google-api-key").catch(() => ""),
+    ipcRenderer.invoke("get-transcription-provider").catch(() => "auto"),
     ipcRenderer.invoke("get-zai-api-key").catch(() => "b210cf3d04bf4c73916d4878692b7b46.NrhCaCvIMge8oDRF"),
     ipcRenderer.invoke("get-zai-model").catch(() => "glm-4.6"),
     ipcRenderer.invoke("get-open-ia-token").catch(() => ""),
@@ -69,6 +72,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (aiModelSelect && savedAiModel) aiModelSelect.value = savedAiModel;
   if (googleApiKeyInput) googleApiKeyInput.value = savedGoogleKey || "";
+  if (transcriptionProviderSelect && savedTranscriptionProvider) transcriptionProviderSelect.value = savedTranscriptionProvider;
   if (zaiApiKeyInput) zaiApiKeyInput.value = savedZaiKey || "b210cf3d04bf4c73916d4878692b7b46.NrhCaCvIMge8oDRF";
   if (zaiModelSelect && savedZaiModel) zaiModelSelect.value = savedZaiModel;
 
@@ -154,6 +158,10 @@ if (saveButton) {
 
     const _googleKeyVal = (googleApiKeyInput ? googleApiKeyInput.value : "").trim();
     ipcRenderer.send("set-google-api-key", _googleKeyVal);
+
+    if (transcriptionProviderSelect) {
+      ipcRenderer.send("set-transcription-provider", transcriptionProviderSelect.value);
+    }
 
     const _zaiKeyVal = (zaiApiKeyInput ? zaiApiKeyInput.value : "").trim();
     ipcRenderer.send("set-zai-api-key", _zaiKeyVal);

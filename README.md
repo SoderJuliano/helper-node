@@ -96,14 +96,15 @@ Remove-Item "$([Environment]::GetFolderPath('Desktop'))\Helper Node.lnk"
 
 ---
 
-## Arquitetura Unificada (Sem divisao Lite / Full)
+## Recursos e Capacidades
 
-O Helper Node conta com uma **arquitetura moderna e unificada**. Nao existe divisao entre edicoes limitadas ou pesadas:
+O Helper Node e um copiloto de produtividade e desenvolvimento desktop que conecta seu ambiente de trabalho as mais avancadas tecnologias de inteligencia artificial:
 
-- **Conectividade Multimodal e de Nuvem:** Suporte integrado a Google Gemini Multimodal Live, Z.ai GLM (endpoint OpenAI-compatible `https://api.z.ai/api/paas/v4/`), modelos OpenAI (`gpt-4.1-nano` ate `gpt-5.6`) e backends HTTP customizados.
-- **Modelos e Ferramentas Locais:** Integracao nativa e direta com Ollama local e com os CLIs instalados na maquina do usuario (Claude Code, Gemini CLI, GitHub Copilot CLI), reutilizando as autenticacoes ja configuradas no ambiente sem exigir novas credenciais.
-- **Desempenho Otimizado:** Remocao de dependencias pesadas e ultrapassadas em C++ local (como compilacoes locais do Whisper.cpp e Tesseract legado), priorizando baixa latencia, baixo consumo de memoria e execucao rapida.
-- **Telas Especializadas:** Tela principal focada em toggles operacionais simples, e uma tela dedicada de **APIs & Provedores** para administracao centralizada de tokens, chaves e modelos.
+- **Ditado Inteligente e Transcricao Universal (`Ctrl+D`):** Suporte nativo ao Google Gemini Free Tier (`gemini-2.0-flash`), OpenAI Whisper, Whisper local e preparacao nativa macOS Speech. Ditado por voz rapido com fallback inteligente entre provedores e sem consumo obrigatorio de creditos pagos.
+- **IA Multimodal e Voz em Tempo Real:** Conversacao full-duplex de baixa latencia com o Google Gemini Live e visualizacao reativa com o motor 3D Raphael Core.
+- **Integracao Direta com CLIs de Desenvolvimento:** Comunica-se diretamente com os CLIs instalados no seu sistema (Gemini CLI / Antigravity, Claude Code, GitHub Copilot CLI e Ollama local), reaproveitando tokens e credenciais existentes sem configuracoes redundantes.
+- **Leitura Visual de Tela e Captura Contextual:** Suporte a captura automatica de tela e analise visual com suporte em Wayland (KDE Plasma 6 Spectacle, GNOME, COSMIC, Hyprland), Windows e macOS. Fila de capturas em lote (`Alt+S`) para consolidar multiplos prints em uma unica consulta.
+- **Persistencia de Rascunhos:** Protecao contra perda de texto digitado no prompt ao cancelar com Esc, com recuperacao imediata atraves da tecla Up.
 
 ---
 
@@ -138,11 +139,13 @@ O motor **Raphael Core** conecta-se a saida de audio e streaming de voz da **Gem
 
 | Atalho | Acao | Detalhes |
 |---|---|---|
-| `Ctrl+D` | Iniciar / Parar Gravacao de Audio | Inicia o processamento por voz ou comuta o assistente contínuo |
+| `Ctrl+D` | Iniciar / Parar Gravacao ou Ditado | Processamento de fala por IA via Google Gemini Free Tier ou OpenAI |
 | `Ctrl+I` | Janela de Entrada Manual | Caixa flutuante discreta para perguntas rapidas por texto |
 | `Ctrl+A` | Focar na Janela Principal | Traz a janela do Helper Node para primeiro plano |
-| `Ctrl+Shift+C` | Abrir Configuracoes | Painel principal de controles, toggles e navegacao para APIs |
-| `Ctrl+Shift+X` | Captura de Tela e Analise Visual | Analisa a tela ativa via modelos multimodais de visao |
+| `Ctrl+Shift+S` | Captura Direta de Tela (Auto Print) | Captura a tela atual sem selecao e envia diretamente para analise da IA |
+| `Alt+S` | Coletor de Capturas em Lote | Abre ou fecha o coletor de multiplos prints sequenciais para analise conjunta |
+| `Ctrl+Shift+C` | Abrir Configuracoes | Painel principal de controles, toggles e APIs & Provedores |
+| `Ctrl+Shift+X` | Captura com Selecao de Regiao | Permite selecionar interativamente uma regiao da tela para analise |
 | `Ctrl+Shift+1` / `Ctrl+Shift+2` | Mover de Display | Move o overlay para o monitor 1 ou 2 |
 
 ---
@@ -178,6 +181,7 @@ npm start
 |---|---|
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Arquitetura modular, fluxo de eventos e servicos |
 | [`docs/architecture/RAPHAEL_CORE_DESIGN_DECISIONS.md`](docs/architecture/RAPHAEL_CORE_DESIGN_DECISIONS.md) | Motor 3D da alma da Nexa, shaders e Web Audio API |
+| [`docs/MACOS_SPEECH_ROADMAP.md`](docs/MACOS_SPEECH_ROADMAP.md) | Arquitetura e roadmap para reconhecimento de voz nativo macOS on-device |
 | [`TRANSLATION_ASSISTANT.md`](TRANSLATION_ASSISTANT.md) | Assistente de traducao e resposta em entrevistas |
 | [`WINDOWS-PORT.md`](WINDOWS-PORT.md) | Especificidades e detalhes tecnicos da versao Windows |
 | [`ROADMAP.md`](ROADMAP.md) | Planejamento e proximos passos |

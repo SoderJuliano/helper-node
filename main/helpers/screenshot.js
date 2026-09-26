@@ -44,8 +44,23 @@ helpers.captureScreen = async function() {
     try {
       let screenshotSuccess = false;
       
-      // Priority 1: Wayland - use external script for better compatibility
-      if (isWayland && await helpers.commandExists("grim") && await helpers.commandExists("slurp")) {
+      // Priority 1: KDE Plasma Wayland / X11 (Garuda / Arch) via Spectacle
+      if (await helpers.commandExists("spectacle")) {
+        helpers.destroyCaptureWindow();
+        await new Promise(resolve => setTimeout(resolve, 100));
+        try {
+          await execPromise(`spectacle -b -r -n -o '${tmpPng}'`);
+          screenshotSuccess = await fs2.existsSync(tmpPng);
+        } catch (specErr) {
+          console.warn('[screenshot] spectacle região falhou, tentando tela inteira:', specErr.message);
+          try {
+            await execPromise(`spectacle -b -n -o '${tmpPng}'`);
+            screenshotSuccess = await fs2.existsSync(tmpPng);
+          } catch (_) {}
+        }
+      }
+      // Priority 2: Wayland - use external script for better compatibility
+      else if (isWayland && await helpers.commandExists("grim") && await helpers.commandExists("slurp")) {
         helpers.destroyCaptureWindow();
         await new Promise(resolve => setTimeout(resolve, 100));
         
@@ -171,7 +186,14 @@ helpers.captureScreen = async function() {
       const isWayland = process.env.XDG_SESSION_TYPE === "wayland";
       try {
         let screenshotSuccess = false;
-        if (await helpers.commandExists("gnome-screenshot")) {
+        if (await helpers.commandExists("spectacle")) {
+          try {
+            await execPromise(`spectacle -b -n -o '${tmpPng}'`);
+            screenshotSuccess = await fs2.existsSync(tmpPng);
+          } catch (spErr) {
+            console.warn('[screenshot] spectacle auto falhou:', spErr.message);
+          }
+        } else if (await helpers.commandExists("gnome-screenshot")) {
           await execPromise(`gnome-screenshot -a -f '${tmpPng}'`);
           screenshotSuccess = await fs2.existsSync(tmpPng);
         } else if (helpers.isHyprland() && await helpers.commandExists("grim") && await helpers.commandExists("slurp")) {

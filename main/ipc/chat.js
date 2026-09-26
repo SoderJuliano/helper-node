@@ -232,6 +232,9 @@ module.exports = function registerIpc() {
   ipcMain.handle("get-zai-base-url", () => configService.getZaiBaseUrl());
   ipcMain.on("set-zai-base-url", (event, url) => configService.setZaiBaseUrl(url));
 
+  ipcMain.handle("get-transcription-provider", () => configService.getTranscriptionProvider());
+  ipcMain.on("set-transcription-provider", (event, prov) => configService.setTranscriptionProvider(prov));
+
   ipcMain.handle("get-zai-model", () => configService.getZaiModel());
   ipcMain.on("set-zai-model", (event, model) => configService.setZaiModel(model));
 

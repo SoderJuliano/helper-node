@@ -150,8 +150,11 @@ DIRETIVAS OBRIGATÓRIAS DE EXECUÇÃO E VOZ:
     }
 
     const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : {};
-    const assistantName = (nexaCfg && nexaCfg.name) ? nexaCfg.name.trim() : 'Raphael';
-    const model = options.model || (configService.getGeminiLiveModel ? configService.getGeminiLiveModel() : null) || 'models/gemini-3.1-flash-live-preview';
+    const assistantName = options.assistantName || (nexaCfg && nexaCfg.name) || 'Raphael';
+    let model = options.model || (configService.getGeminiLiveModel ? configService.getGeminiLiveModel() : null) || 'models/gemini-2.0-flash-exp';
+    if (!model || model.includes('3.1-flash-live-preview')) {
+      model = 'models/gemini-2.0-flash-exp';
+    }
     const voiceName = options.voiceName || (configService.getGeminiLiveVoice ? configService.getGeminiLiveVoice() : null) || 'Kore';
 
     const systemInstruction = options.systemInstruction || this._buildDynamicSystemInstruction(assistantName);

@@ -31,6 +31,8 @@ SHORTCUTS = {
     (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_I])): "curl -m 2 -X POST http://127.0.0.1:3000/bring-to-focus-and-input -s -o /dev/null",
     # Ctrl + Shift + S (Capture screen auto)
     (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_S])): "curl -m 2 -X POST http://127.0.0.1:3000/capture-screen-auto -s -o /dev/null",
+    # Alt + S (Toggle batch screenshot overlay & process)
+    (frozenset([ecodes.KEY_LEFTALT]), frozenset([ecodes.KEY_S])): "curl -m 2 -X POST http://127.0.0.1:3000/toggle-batch-screenshot -s -o /dev/null",
     # Ctrl + Shift + C (Open config / escape hatch)
     (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_C])): "curl -m 2 -X POST http://127.0.0.1:3000/open-config -s -o /dev/null",
     # Ctrl + Shift + 1 (Move to display 1)

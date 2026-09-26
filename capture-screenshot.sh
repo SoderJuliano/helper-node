@@ -12,7 +12,15 @@ fi
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-1}"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 
-# Try slurp+grim first (best for Wayland)
+# Try spectacle first on KDE Plasma
+if command -v spectacle >/dev/null 2>&1; then
+    spectacle -b -r -n -o "$OUTPUT_FILE" 2>/dev/null
+    if [ $? -eq 0 ] && [ -f "$OUTPUT_FILE" ]; then
+        exit 0
+    fi
+fi
+
+# Try slurp+grim (Sway/Hyprland/generic Wayland)
 if command -v slurp >/dev/null 2>&1 && command -v grim >/dev/null 2>&1; then
     REGION=$(slurp -f '%x %y %w %h' 2>/dev/null)
     if [ $? -eq 0 ] && [ -n "$REGION" ]; then

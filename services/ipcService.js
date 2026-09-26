@@ -51,6 +51,21 @@ function start(funcs) {
     }
   });
 
+  // Alterna modo de captura de tela em lote (Alt+S)
+  app.post('/toggle-batch-screenshot', (req, res) => {
+    if (callbacks.toggleBatchScreenshot) {
+      try {
+        callbacks.toggleBatchScreenshot();
+        res.status(200).send({ message: 'Captura em lote alternada.' });
+      } catch (error) {
+        console.error('Erro ao alternar captura em lote via IPC:', error);
+        res.status(500).send({ message: 'Erro interno ao processar a ação.' });
+      }
+    } else {
+      res.status(500).send({ message: 'Callback de captura em lote não configurado.' });
+    }
+  });
+
   app.post('/move-to-display/:displayId', (req, res) => {
     if (callbacks.moveToDisplay) {
       try {

@@ -202,6 +202,17 @@ var promptHistoryDraft = '';
             if (e.key === 'Escape') {
                 e.preventDefault();
                 e.stopPropagation();
+                const currentVal = inputField.value ? inputField.value.trim() : '';
+                if (currentVal) {
+                    promptHistoryDraft = currentVal;
+                    if (!promptHistory.length || promptHistory[promptHistory.length - 1] !== currentVal) {
+                        promptHistory.push(currentVal);
+                    }
+                    promptHistoryIndex = promptHistory.length;
+                    if (typeof window.showToast === 'function') {
+                        window.showToast('Rascunho salvo! Pressione [Seta Acima] para recuperar.');
+                    }
+                }
                 manualInputActive = false;
                 container.remove();
                 undockComposer();
@@ -216,7 +227,7 @@ var promptHistoryDraft = '';
             } else if (e.key === 'ArrowUp' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
                 if (promptHistory.length && isCaretAtEdgeLine('top')) {
                     e.preventDefault();
-                    if (promptHistoryIndex === -1) {
+                    if (promptHistoryIndex === -1 || promptHistoryIndex >= promptHistory.length) {
                         promptHistoryDraft = inputField.value;
                         promptHistoryIndex = promptHistory.length - 1;
                     } else if (promptHistoryIndex > 0) {
@@ -310,23 +321,39 @@ var promptHistoryDraft = '';
             window.scrollTranscriptionToBottom('force');
         }
 
-        if (typeof window.startProcessing === 'function') window.startProcessing();
+        if (window.isAiProcessing) {
+            if (typeof window.enqueueQuestion === 'function') {
+                window.enqueueQuestion({
+                    text,
+                    image: pastedImageForManualInput ? window.pendingChatImage : null,
+                    block: ib,
+                    questionSpan
+                });
+            }
+            pastedImageForManualInput = null;
+            window.pendingChatImage = null;
+            hideComposerImagePreview();
+            return;
+        }
+
+        window.activeInteractionBlock = ib;
+        if (typeof window.startProcessing === 'function') window.startProcessing(ib);
 
         if (pastedImageForManualInput) {
             if (window.pendingChatImage && window.backendSupportsVision && await window.backendSupportsVision()) {
-                if (typeof window.sentImageToAI === 'function') window.sentImageToAI(text, window.pendingChatImage);
+                if (typeof window.sentImageToAI === 'function') window.sentImageToAI(text, window.pendingChatImage, { block: ib });
             } else {
                 if (typeof window.lastOcrText === 'string' && window.lastOcrText.length > 0) {
-                    if (typeof window.sentToAI === 'function') window.sentToAI(`${text}\n${window.lastOcrText}`);
+                    if (typeof window.sentToAI === 'function') window.sentToAI(`${text}\n${window.lastOcrText}`, { block: ib });
                 } else {
-                    if (typeof window.sentToAI === 'function') window.sentToAI(text);
+                    if (typeof window.sentToAI === 'function') window.sentToAI(text, { block: ib });
                 }
             }
             pastedImageForManualInput = null;
             window.pendingChatImage = null;
             hideComposerImagePreview();
         } else {
-            if (typeof window.sentToAI === 'function') window.sentToAI(text);
+            if (typeof window.sentToAI === 'function') window.sentToAI(text, { block: ib });
         }
     }
 

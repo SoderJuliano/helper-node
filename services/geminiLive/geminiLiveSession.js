@@ -9,10 +9,10 @@ const EventEmitter = require('events');
 const { DEFAULT_LIVE_TOOLS, executeToolCall } = require('./geminiLiveTools');
 
 const GEMINI_LIVE_WS_URL = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent';
-const DEFAULT_MODEL = 'models/gemini-3.1-flash-live-preview';
+const DEFAULT_MODEL = 'models/gemini-2.0-flash-exp';
 const CANDIDATE_MODELS = [
-  'models/gemini-3.1-flash-live-preview',
-  'models/gemini-3.5-live-translate-preview'
+  'models/gemini-2.0-flash-exp',
+  'models/gemini-2.0-flash-realtime-exp'
 ];
 const DEFAULT_VOICE = 'Kore'; // Voz feminina suave e clara
 

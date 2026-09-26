@@ -197,8 +197,16 @@
     }
     window.currentQuestionElement = questionSpan;
 
-    if (typeof window.startProcessing === 'function') window.startProcessing();
-    if (typeof window.sentToAI === 'function') window.sentToAI(newText);
+    if (window.isAiProcessing) {
+      if (typeof window.enqueueQuestion === 'function') {
+        window.enqueueQuestion({ text: newText, block: newBlock, questionSpan });
+      }
+      return;
+    }
+
+    window.activeInteractionBlock = newBlock;
+    if (typeof window.startProcessing === 'function') window.startProcessing(newBlock);
+    if (typeof window.sentToAI === 'function') window.sentToAI(newText, { block: newBlock });
   }
 
   window.setQuestionText = setQuestionText;

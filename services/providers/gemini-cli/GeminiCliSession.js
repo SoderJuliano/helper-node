@@ -201,8 +201,8 @@ class GeminiCliSession extends EventEmitter {
             if (completed) return;
             completed = true;
             this._transition('waiting');
-            opts.onDone && opts.onDone({ text: '', thinking: '' });
-            resolve({ text: '', thinking: '' });
+            opts.onDone && opts.onDone({ text: '', thinking: '', aborted: true });
+            resolve({ text: '', thinking: '', aborted: true });
             return;
           }
           if (code !== 0 && code !== null) {

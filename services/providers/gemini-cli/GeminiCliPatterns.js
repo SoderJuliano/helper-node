@@ -41,10 +41,9 @@ const TOOL_PATTERNS = [
 ];
 
 const SUPPRESS_PATTERNS = [
-  /^╭/, /^╰/, /^│/, /^╞/, /^╡/, /^─+$/,
   /^✻\s+Welcome/i,
-  /^\s*$/,
   /^Gemini\s+\d/i,
+  /^Antigravity\s+\d/i,
   /^Type\s+\/help/i,
   /^Using\s+model/i,
 ];

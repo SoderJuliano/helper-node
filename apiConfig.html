@@ -49,10 +49,6 @@
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             <span>Geral</span>
         </button>
-        <button type="button" class="nav-tab" data-tab="nexaConfig.html" title="Configurações da Nexa">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>
-            <span>Nexa</span>
-        </button>
         <button type="button" class="nav-tab active" data-tab="apiConfig.html" title="APIs, Tokens e Provedores">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
             <span>APIs & Provedores</span>
@@ -60,6 +56,10 @@
         <button type="button" class="nav-tab" data-tab="preferences.html" title="Preferências do Usuário e Contexto">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             <span>Preferências</span>
+        </button>
+        <button type="button" class="nav-tab" data-tab="nexaConfig.html" title="Configurações da Nexa">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>
+            <span>Nexa</span>
         </button>
     </nav>
 
@@ -85,10 +85,10 @@
         <!-- 2. Google AI & Gemini Live (Módulo Nexa em Primeiro) -->
         <div class="api-section-card" id="google-config-card">
             <div class="api-section-header">
-                <span>Google AI & Gemini (Live & Visão)</span>
-                <span class="info-hover-icon" title="Habilita o Gemini Live contínuo, visão multimodal e compatibilidade com voz da Nexa;">i</span>
+                <span>Google AI & Gemini (Live, Visão & Transcrição)</span>
+                <span class="info-hover-icon" title="Habilita o Gemini Live contínuo, visão multimodal e transcrição gratuita via Google AI Studio">i</span>
             </div>
-            <p class="api-section-desc">Módulo principal da Nexa — processamento de visão multimodal em tempo real e resposta por voz.</p>
+            <p class="api-section-desc">Módulo principal do ecossistema Google — utilizado pelo Gemini Live, Visão e Transcrição gratuita de áudio.</p>
             <div class="setting-item" style="margin-bottom: 0;">
                 <label for="google-api-key">Google API Key (AIzaSy...)</label>
                 <div class="setting-control input-group">
@@ -98,7 +98,32 @@
             </div>
         </div>
 
-        <!-- 3. Z.ai & GLM -->
+        <!-- 3. Transcrição de Áudio & Ditado (Ctrl+D) -->
+        <div class="api-section-card" id="transcription-config-card" style="border-left: 3px solid #00f0ff;">
+            <div class="api-section-header">
+                <span>Transcrição de Áudio & Ditado (Ctrl+D)</span>
+                <span class="status-badge" style="color:#00f0ff;">Multi-Provedor</span>
+            </div>
+            <p class="api-section-desc">
+                Escolha o provedor para converter sua voz em texto no ditado (<strong>Ctrl+D</strong>).<br>
+                <strong>Dica Free Tier:</strong> Com sua <em>Google API Key</em> preenchida acima, a transcrição é <strong>100% gratuita</strong> via Google Gemini, sem precisar de créditos da OpenAI.
+            </p>
+
+            <div class="setting-item" style="margin-bottom: 0;">
+                <label for="transcription-provider-select">Provedor de Transcrição</label>
+                <div class="setting-control">
+                    <select id="transcription-provider-select" class="custom-select">
+                        <option value="auto" selected>Automático (Google Free Tier -> OpenAI -> Local)</option>
+                        <option value="google">Google Gemini 2.0 Flash (Gratuito com Google Key)</option>
+                        <option value="openai">OpenAI Whisper Cloud (via Token OpenAI)</option>
+                        <option value="local">Whisper Local (Offline)</option>
+                        <option value="macos">macOS Nativo (Speech Framework)</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. Z.ai & GLM -->
         <div class="api-section-card" id="zai-config-card">
             <div class="api-section-header">
                 <span>Z.ai / GLM (BigModel)</span>

@@ -234,7 +234,14 @@ class ClaudeCliProvider {
           }
         },
 
-        onDone: ({ text, cost, usage }) => {
+        onDone: ({ text, cost, usage, aborted }) => {
+          if (aborted) {
+            this._thinkingEmitted = false;
+            try { sender.send('agentic-phase-update', { phase: 'error', status: 'Interrompido', sessionId: cwd }); } catch (_) {}
+            this._emitStatus(sender, { state: 'waiting', projectPath: cwd });
+            resolve({ text: '', aborted: true });
+            return;
+          }
           let extra;
           if (usage) {
             const outTok = usage.output_tokens || 0;

@@ -77,6 +77,9 @@ if [[ "$XDG_CURRENT_DESKTOP" == *"GNOME"* ]]; then
     # Hotkey for capture-screen-auto (Ctrl+Shift+S) — print direto + IA, sem seleção
     configure_gnome_hotkey "Capture Screen Auto" "curl -X POST http://localhost:3000/capture-screen-auto" "<Control><Shift>s" "helper-node-capture-screen-auto"
 
+    # Hotkey for toggle-batch-screenshot (Alt+S)
+    configure_gnome_hotkey "Toggle Batch Screenshot" "curl -m 2 -X POST http://localhost:3000/toggle-batch-screenshot -s -o /dev/null" "<Alt>s" "helper-node-batch-screenshot"
+
     # Hotkey for open-config (Ctrl+Shift+C) — escape hatch to reopen window if app gets stuck/hidden
     configure_gnome_hotkey "Open Config" "curl -X POST http://localhost:3000/open-config" "<Control><Shift>c" "helper-node-open-config"
 
@@ -114,7 +117,7 @@ if [[ "$XDG_CURRENT_DESKTOP" == *"GNOME"* ]]; then
 
     echo "------------------------------------------------------------------"
     echo "SUCCESS: GNOME hotkeys configured!"
-    echo "Global hotkeys should now be active: Ctrl+D, Ctrl+Shift+1, Ctrl+Shift+2, Ctrl+I, Ctrl+Shift+I, Ctrl+Shift+S, Ctrl+Shift+C."
+    echo "Global hotkeys should now be active: Ctrl+D, Ctrl+Shift+1, Ctrl+Shift+2, Ctrl+I, Ctrl+Shift+I, Ctrl+Shift+S, Alt+S, Ctrl+Shift+C."
     echo "If they don't work immediately, you may need to log out and log back in."
     echo "------------------------------------------------------------------"
 
@@ -161,6 +164,9 @@ elif [[ "$XDG_CURRENT_DESKTOP" == "Hyprland" ]]; then
     # Hotkey for bring-to-focus-and-input (Ctrl+I)
     configure_hyprland_hotkey "CONTROL, I" "curl -X POST http://localhost:3000/bring-to-focus-and-input" "Focus App and Input (Ctrl+I)"
 
+    # Hotkey for toggle-batch-screenshot (Alt+S)
+    configure_hyprland_hotkey "ALT, S" "curl -m 2 -X POST http://localhost:3000/toggle-batch-screenshot -s -o /dev/null" "Toggle Batch Screenshot"
+
     # Hotkey for open-config (Ctrl+Shift+C) — escape hatch to reopen window
     configure_hyprland_hotkey "CONTROL_SHIFT, C" "curl -X POST http://localhost:3000/open-config" "Open Config"
 
@@ -195,6 +201,7 @@ SHORTCUTS = {
     (frozenset([ecodes.KEY_LEFTCTRL]), frozenset([ecodes.KEY_I])): "curl -m 2 -X POST http://127.0.0.1:3000/bring-to-focus-and-input -s -o /dev/null",
     (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_I])): "curl -m 2 -X POST http://127.0.0.1:3000/bring-to-focus-and-input -s -o /dev/null",
     (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_S])): "curl -m 2 -X POST http://127.0.0.1:3000/capture-screen-auto -s -o /dev/null",
+    (frozenset([ecodes.KEY_LEFTALT]), frozenset([ecodes.KEY_S])): "curl -m 2 -X POST http://127.0.0.1:3000/toggle-batch-screenshot -s -o /dev/null",
     (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_C])): "curl -m 2 -X POST http://127.0.0.1:3000/open-config -s -o /dev/null",
     (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_1])): "curl -m 2 -X POST http://127.0.0.1:3000/move-to-display/0 -s -o /dev/null",
     (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_2])): "curl -m 2 -X POST http://127.0.0.1:3000/move-to-display/1 -s -o /dev/null",
@@ -280,7 +287,7 @@ EOF
         fi
         echo "------------------------------------------------------------------"
         echo "SUCCESS: KDE Plasma 6 hotkeys configured robustly via systemd daemon!"
-        echo "Global hotkeys are ACTIVE RIGHT NOW: Ctrl+D, Ctrl+Shift+1, Ctrl+Shift+2, Ctrl+I, Ctrl+Shift+I, Ctrl+Shift+S, Ctrl+Shift+C."
+        echo "Global hotkeys are ACTIVE RIGHT NOW: Ctrl+D, Ctrl+Shift+1, Ctrl+Shift+2, Ctrl+I, Ctrl+Shift+I, Ctrl+Shift+S, Alt+S, Ctrl+Shift+C."
         echo "------------------------------------------------------------------"
     else
         # Plasma 5 (KHotKeys)
@@ -355,6 +362,15 @@ Type=SHORTCUT
 Shortcut=Ctrl+S
 TriggerOnRelease=false
 CommandURL=curl -X POST http://localhost:3000/capture-screen-auto
+
+[Data_8]
+Comment=Toggle Batch Screenshot (Alt+S)
+Enabled=true
+Name=Helper-Node: Toggle Batch Screenshot
+Type=SHORTCUT
+Shortcut=Alt+S
+TriggerOnRelease=false
+CommandURL=curl -m 2 -X POST http://localhost:3000/toggle-batch-screenshot -s -o /dev/null
 EOF
 
         echo "Helper-Node KHotKeys configuration written to $KHOTKEYS_FILE"
@@ -368,7 +384,7 @@ EOF
 
         echo "------------------------------------------------------------------"
         echo "SUCCESS: KDE Plasma hotkeys configured!"
-        echo "Global hotkeys should now be active: Ctrl+D, Ctrl+Shift+1, Ctrl+Shift+2, Ctrl+I, Ctrl+Shift+I, Ctrl+S, Ctrl+Shift+C."
+        echo "Global hotkeys should now be active: Ctrl+D, Ctrl+Shift+1, Ctrl+Shift+2, Ctrl+I, Ctrl+Shift+I, Ctrl+S, Alt+S, Ctrl+Shift+C."
         echo "If they don't work immediately, try restarting KHotKeys: kquitapp5 khotkeys && kstart5 khotkeys"
         echo "------------------------------------------------------------------"
     fi
@@ -392,6 +408,7 @@ elif [[ "$XDG_CURRENT_DESKTOP" == *"COSMIC"* ]]; then
     (modifiers: [Ctrl], key: "i"): Spawn("curl -X POST http://localhost:3000/bring-to-focus-and-input"),
     (modifiers: [Ctrl, Shift], key: "i"): Spawn("curl -X POST http://localhost:3000/bring-to-focus-and-input"),
     (modifiers: [Ctrl, Shift], key: "s"): Spawn("curl -X POST http://localhost:3000/capture-screen-auto"),
+    (modifiers: [Alt], key: "s"): Spawn("curl -m 2 -X POST http://localhost:3000/toggle-batch-screenshot -s -o /dev/null"),
     (modifiers: [Ctrl, Shift], key: "c"): Spawn("curl -X POST http://localhost:3000/open-config"),
     (modifiers: [Ctrl, Shift], key: "1"): Spawn("curl -X POST http://localhost:3000/move-to-display/0"),
     (modifiers: [Ctrl, Shift], key: "2"): Spawn("curl -X POST http://localhost:3000/move-to-display/1"),
@@ -427,6 +444,7 @@ EOF
     echo "  Ctrl+I         -> Focus App and Input"
     echo "  Ctrl+Shift+I   -> Focus App and Input (alternativo)"
     echo "  Ctrl+Shift+S   -> Capture Screen AUTO (print direto + IA)"
+    echo "  Alt+S          -> Toggle Batch Screenshot"
     echo "  Ctrl+Shift+C   -> Open Config / re-show window (escape hatch)"
     echo "  Ctrl+Shift+1   -> Move to Display 1"
     echo "  Ctrl+Shift+2   -> Move to Display 2"

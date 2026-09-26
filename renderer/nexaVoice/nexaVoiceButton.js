@@ -63,6 +63,12 @@
                 }
             } catch (e) {
                 console.warn('[nexaVoiceButton] Erro ao alternar modo de voz:', e);
+                isVoiceActive = false;
+                updateButtonState(false, false);
+                if (typeof window.showToast === 'function') {
+                    const msg = (e && e.message) ? e.message.replace(/^Error:\s*/, '') : 'Falha ao conectar. Verifique sua Google API Key.';
+                    window.showToast(`Erro na Voz: ${msg}`);
+                }
             }
         }
 

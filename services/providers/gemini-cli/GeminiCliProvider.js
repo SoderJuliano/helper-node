@@ -242,7 +242,14 @@ class GeminiCliProvider {
           emitProgress();
         },
 
-        onDone: ({ text, thinking }) => {
+        onDone: ({ text, thinking, aborted }) => {
+          if (aborted) {
+            this._thinkingEmitted = false;
+            try { sender.send('agentic-phase-update', { phase: 'error', status: 'Interrompido', thinking: thinkingAccumulated, sessionId: cwd }); } catch (_) {}
+            this._emitStatus(sender, { state: 'waiting', projectPath: cwd });
+            resolve({ text: '', thinking: thinkingAccumulated, aborted: true });
+            return;
+          }
           const finalText = text || accumulated;
           if (!accumulated && finalText) {
             try { sender.send('gemini-stream-chunk', finalText); } catch (_) {}

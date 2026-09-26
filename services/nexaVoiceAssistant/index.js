@@ -38,9 +38,15 @@ async function sendTextMessage(text) {
 }
 
 async function startVoice(micDevice) {
-  _ensureNexaWindowOpen();
-  console.log("[nexaVoiceAssistant] Ativando modo de voz da Raphael via Gemini Multimodal Live API (Full-Duplex).");
-  return await geminiLiveController.start({ micDevice });
+  try {
+    _ensureNexaWindowOpen();
+    console.log("[nexaVoiceAssistant] Ativando modo de voz da Raphael via Gemini Multimodal Live API (Full-Duplex).");
+    return await geminiLiveController.start({ micDevice });
+  } catch (err) {
+    console.error("[nexaVoiceAssistant] Falha ao ativar modo de voz:", err.message);
+    _handleNexaWindowCloseIfNecessary();
+    throw err;
+  }
 }
 
 function stopVoice() {

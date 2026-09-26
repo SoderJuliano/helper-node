@@ -107,24 +107,13 @@ helpers.getWhisperModelPath = function() {
   return null;
 };
 
-// Transcricao do press-to-talk: Whisper LOCAL na edicao Full (quando o binario
-// existe de fato), OpenAI na Lite ou quando o Whisper local nao esta disponivel.
+// Transcricao do press-to-talk: Servico unificado de transcricao
+// Suporta Google Gemini Audio (Free Tier via Google API Key), OpenAI Whisper, Whisper local e macOS nativo.
 helpers.transcribeDictation = async function(wavPath) {
-  const whisperBin = helpers.getWhisperBinaryPath();
-  const whisperModel = helpers.getWhisperModelPath();
-  if (!edition.isLite() && whisperBin && whisperModel) {
-    return await helpers.transcribeAudio(wavPath, { emitRenderer: false, emitNotifications: false });
-  }
-  const token = configService.getOpenIaToken();
-  if (!token) {
-    if (!whisperBin || !whisperModel) {
-      throw new Error('Whisper local não encontrado (whisper-cli ou modelos ausentes) e nenhuma chave da OpenAI configurada como fallback.');
-    }
-    throw new Error('Configure a chave da OpenAI (Configuracoes) para transcrever o audio via nuvem ou instale o Whisper local.');
-  }
+  const transcriptionService = require('../../services/transcriptionService');
   const savedLang = configService.getLanguage ? configService.getLanguage() : 'pt-br';
   const whisperLang = savedLang === 'us-en' ? 'en' : 'pt';
-  return await cloudTranscribeAudio(wavPath, token, { language: whisperLang });
+  return await transcriptionService.transcribe(wavPath, { language: whisperLang });
 }
 
 helpers.stopDictationAndTranscribe = async function() {
@@ -299,18 +288,19 @@ helpers.transcribeAudio = async function(filePath, options = {}) {
 
     console.log(`Usando modelo ${modelPath ? path.basename(modelPath) : 'nenhum encontrado'}`);
 
-    const token = configService.getOpenIaToken();
+    const transcriptionService = require('../../services/transcriptionService');
     if (!fs2.existsSync(whisperPath) || !modelPath || !fs2.existsSync(modelPath)) {
-      if (token && typeof cloudTranscribeAudio === 'function') {
-        console.log('[transcribeAudio] Whisper local indisponível — usando transcrição na nuvem (OpenAI)');
-        const cloudText = await cloudTranscribeAudio(filePath, token);
+      try {
+        console.log('[transcribeAudio] Whisper local indisponível — usando serviço unificado de transcrição (Google/OpenAI)');
+        const cloudText = await transcriptionService.transcribe(filePath, { language: whisperLang });
         const cleanText = await helpers.limparTranscricao(cloudText || '');
         if (emitRenderer && state.mainWindow && !state.mainWindow.isDestroyed()) {
           state.mainWindow.webContents.send("transcription-result", { cleanText });
         }
         return cleanText;
+      } catch (err) {
+        throw new Error(`Whisper local ausente e falha no serviço de nuvem: ${err.message}`);
       }
-      throw new Error("Nenhum modelo Whisper encontrado em whisper/models/ e token OpenAI não configurado");
     }
 
     const { buildTranscriptionPrompt } = require('../../services/techGlossary');
@@ -325,18 +315,16 @@ helpers.transcribeAudio = async function(filePath, options = {}) {
       exec(command, { maxBuffer: 10 * 1024 * 1024 }, async (error, stdout, stderr) => {
         if (error) {
           console.error("Whisper error:", stderr);
-          if (token && typeof cloudTranscribeAudio === 'function') {
-            try {
-              console.log('[transcribeAudio] Whisper local falhou — fallback para transcrição na nuvem (OpenAI)');
-              const cloudText = await cloudTranscribeAudio(filePath, token);
-              const cleanText = await helpers.limparTranscricao(cloudText || '', promptText);
-              if (emitRenderer && state.mainWindow && !state.mainWindow.isDestroyed()) {
-                state.mainWindow.webContents.send("transcription-result", { cleanText });
-              }
-              return resolve(cleanText);
-            } catch (cloudErr) {
-              console.error('[transcribeAudio] Fallback na nuvem também falhou:', cloudErr.message);
+          try {
+            console.log('[transcribeAudio] Whisper local falhou — fallback para serviço unificado de transcrição (Google/OpenAI)');
+            const cloudText = await transcriptionService.transcribe(filePath, { language: whisperLang });
+            const cleanText = await helpers.limparTranscricao(cloudText || '', promptText);
+            if (emitRenderer && state.mainWindow && !state.mainWindow.isDestroyed()) {
+              state.mainWindow.webContents.send("transcription-result", { cleanText });
             }
+            return resolve(cleanText);
+          } catch (cloudErr) {
+            console.error('[transcribeAudio] Fallback na nuvem também falhou:', cloudErr.message);
           }
           state.mainWindow.webContents.send(
             "transcription-error",

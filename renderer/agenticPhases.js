@@ -16,9 +16,9 @@
     window.electronAPI.onAgenticPhaseUpdate(({ phase, status, sessionId, thinking }) => {
       const done = (phase === 'completed' || phase === 'error');
       if (!done) activeAgenticSession = sessionId;
-      const block = transcriptionElement
+      const block = window.activeInteractionBlock || (transcriptionElement
         ? transcriptionElement.querySelector('.interaction-block:last-child')
-        : null;
+        : null);
       if (!block) { if (done) activeAgenticSession = null; return; }
       let ph = block.querySelector('.ai-phase');
       if (!ph) {
@@ -76,6 +76,15 @@
         const spin = ph.querySelector('.ai-phase-spin'); if (spin) spin.remove();
         const stop = ph.querySelector('.ai-phase-stop'); if (stop) stop.remove();
         activeAgenticSession = null;
+      } else {
+        const robot = document.getElementById('robot');
+        if (robot) robot.style.display = 'block';
+        const header = ph.querySelector('.ai-phase-header');
+        if (header && !header.querySelector('.ai-phase-spin')) {
+          const spin = document.createElement('span');
+          spin.className = 'ai-phase-spin';
+          header.insertBefore(spin, header.firstChild);
+        }
       }
       if (typeof window.scrollTranscriptionToBottom === 'function') {
         window.scrollTranscriptionToBottom('auto');
@@ -137,7 +146,7 @@
     window.electronAPI.onAiToolActivity((data) => {
       try {
         if (!data || !data.id || !transcriptionElement) return;
-        const block = transcriptionElement.querySelector('.interaction-block:last-child');
+        const block = window.activeInteractionBlock || transcriptionElement.querySelector('.interaction-block:last-child');
         if (!block) return;
         let feed = block.querySelector('.ai-activity');
         if (!feed) {

@@ -180,8 +180,8 @@ class ClaudeCliSession {
           this._activeProc = null;
           if (this._aborted) {
             this._aborted = false;
-            opts.onDone && opts.onDone({ text: '', cost: 0 });
-            resolve({ text: '' });
+            opts.onDone && opts.onDone({ text: '', cost: 0, aborted: true });
+            resolve({ text: '', cost: 0, aborted: true });
             return;
           }
           opts.onError && opts.onError(err);

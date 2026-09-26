@@ -176,6 +176,7 @@ app.whenReady().then(async () => {
   } catch (_) {}
   ipcService.start({
     toggleRecording: helpers.toggleRecording,
+    toggleBatchScreenshot: helpers.toggleBatchScreenshot,
     moveToDisplay: helpers.moveToDisplay,
     bringWindowToFocus: helpers.bringWindowToFocus,
     captureScreenAuto: helpers.captureFullScreenAuto,
