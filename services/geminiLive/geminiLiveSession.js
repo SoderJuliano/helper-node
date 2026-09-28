@@ -11,6 +11,7 @@ const { DEFAULT_LIVE_TOOLS, executeToolCall } = require('./geminiLiveTools');
 const GEMINI_LIVE_WS_URL = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent';
 const DEFAULT_MODEL = 'models/gemini-3.8-flash';
 const CANDIDATE_MODELS = [
+  'models/gemini-3.8-live',
   'models/gemini-3.8-flash',
   'models/gemini-3.7-flash',
   'models/gemini-3.6-flash'

@@ -101,7 +101,16 @@ class TranscriptionService {
       ? 'Transcribe this audio with absolute accuracy. Return strictly the spoken text, without introductions, markdown formatting, quotes or commentary.'
       : 'Transcreva este áudio com precisão absoluta. Retorne estritamente o texto falado, sem introduções, formatação markdown, aspas ou comentários adicionais.';
 
-    const candidateModels = ['gemini-3.5-transcribe', 'gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-flash-latest'];
+    const candidateModels = [
+      'gemini-3.5-transcribe',
+      'gemini-3.1-flash-lite',
+      'gemini-3.5-flash-lite',
+      'gemini-3.6-flash',
+      'gemini-3.7-flash',
+      'gemini-3.8-flash',
+      'gemini-3.5-flash',
+      'gemini-flash-latest'
+    ];
     let lastErr = null;
 
     for (const model of candidateModels) {
@@ -136,7 +145,7 @@ class TranscriptionService {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify(payload),
-          signal: AbortSignal.timeout(4000)
+          signal: AbortSignal.timeout(6000)
         });
 
         if (!res.ok) {
