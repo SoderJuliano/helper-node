@@ -59,7 +59,7 @@ try {
   const tmpDir = path.join(os.tmpdir(), 'history-copilot-test-' + Date.now());
   fs.mkdirSync(tmpDir, { recursive: true });
 
-  const giantPrompt = formattedPrompt + '\n' + 'x'.repeat(40000);
+  const giantPrompt = formattedPrompt + '\n' + 'x'.repeat(120000);
   const res = fitPromptToCommandLine(giantPrompt, 'copilot', ['--allow-all'], tmpDir);
 
   assert.notStrictEqual(res.tempFile, null);
