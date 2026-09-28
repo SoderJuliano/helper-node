@@ -488,11 +488,8 @@ var isEditingQuestion = false;
     if (window.electronAPI && window.electronAPI.onNexaVoiceError) {
         window.electronAPI.onNexaVoiceError((err) => {
             const msg = (err && err.message) ? err.message : String(err || 'Erro na Nexa Voice');
-            console.warn('[NexaVoice] Erro recebido da Live API:', msg);
-            if (liveVoiceBlockActive) {
-                liveVoiceBlockActive = false;
-                stopProcessing();
-            }
+            liveVoiceBlockActive = false;
+            stopProcessing();
             if (typeof window.showToast === 'function') {
                 window.showToast(`Nexa Voice: ${msg}`, true);
             }

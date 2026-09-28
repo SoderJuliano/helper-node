@@ -43,6 +43,8 @@ class GeminiLiveSession extends EventEmitter {
     this.currentState = 'IDLE'; // IDLE, LISTENING, THINKING, SPEAKING, WORKING
     this.isExecutingTool = false;
     this._triedFallback = false;
+    this.resumeHandle = options.resumeHandle || null;
+    this._isReconnecting = false;
 
     // Histórico de turnos da sessão ativa
     this.turnHistory = options.initialHistory || [];
@@ -99,6 +101,22 @@ class GeminiLiveSession extends EventEmitter {
           this.isSessionConfigured = false;
           this._setState('IDLE');
 
+          // Se a sessão estava configurada e caiu com erro interno inesperado (ex: 1011 ou queda abrupta), tenta retomar via sessionResumption
+          if (wasConfigured && this.resumeHandle && (event.code === 1011 || event.code === 1006) && !this._isReconnecting) {
+            this._isReconnecting = true;
+            console.log(`[GeminiLive] Tentando retomar sessão Live via sessionResumption (handle: ${this.resumeHandle})...`);
+            try {
+              await this._connectWithModel(this.model);
+              this._isReconnecting = false;
+              console.log('[GeminiLive] Sessão Live retomada com sucesso!');
+              this.emit('resumed');
+              return;
+            } catch (resumeErr) {
+              this._isReconnecting = false;
+              console.warn('[GeminiLive] Falha ao retomar sessão Live:', resumeErr.message);
+            }
+          }
+
           // Se a conexão caiu antes de configurar o setup com erro de modelo não suportado (1008), tenta fallback
           if (!wasConfigured && (event.code === 1008 || (event.reason && (event.reason.includes('not supported') || event.reason.includes('not found'))))) {
             const nextCandidate = CANDIDATE_MODELS.find(m => m !== this.model);
@@ -146,6 +164,12 @@ class GeminiLiveSession extends EventEmitter {
         }
       }
     };
+
+    if (this.resumeHandle) {
+      setupMessage.setup.sessionResumption = {
+        handle: this.resumeHandle
+      };
+    }
 
     if (this.tools && this.tools.length > 0) {
       setupMessage.setup.tools = this.tools;
@@ -254,6 +278,12 @@ class GeminiLiveSession extends EventEmitter {
       }
 
       const data = JSON.parse(textContent);
+
+      // Atualização de handle para retomada de sessão contínua
+      if (data.sessionResumptionUpdate && data.sessionResumptionUpdate.newHandle) {
+        this.resumeHandle = data.sessionResumptionUpdate.newHandle;
+        console.log(`[GeminiLive] Handle de sessão atualizado: ${this.resumeHandle}`);
+      }
 
       // 1. Confirmação do Setup inicial
       if (data.setupComplete) {

@@ -297,8 +297,10 @@ DIRETIVAS OBRIGATÓRIAS DE EXECUÇÃO E VOZ:
     });
 
     session.on('disconnected', (info) => {
-      this.stop();
-      if (info && (info.code === 1011 || (info.reason && info.reason.includes('quota')))) {
+      this.stop(true);
+      const reasonLower = (info && info.reason) ? info.reason.toLowerCase() : '';
+      const isTrueQuota = reasonLower.includes('quota') || reasonLower.includes('resource_exhausted');
+      if (isTrueQuota) {
         this._broadcastToWindows('nexa-voice:error', {
           code: info.code,
           message: 'Limite de cota excedido na Gemini Live API. Verifique seu plano no Google AI Studio.'
@@ -306,8 +308,16 @@ DIRETIVAS OBRIGATÓRIAS DE EXECUÇÃO E VOZ:
       } else if (info && (info.code > 1000 || info.reason)) {
         this._broadcastToWindows('nexa-voice:error', {
           code: info.code,
-          message: info.reason || `Conexão Live fechada (${info.code})`
+          message: info.reason || `Conexão Gemini Live encerrada (${info.code})`
         });
+      }
+    });
+
+    session.on('resumed', () => {
+      console.log('[GeminiLiveController] Sessão Live reconectada e retomada com sucesso.');
+      if (this.isListening) {
+        this.emit('status-changed', { active: true, state: 'listening' });
+        this._broadcastStatus({ active: true, state: 'listening' });
       }
     });
   }
