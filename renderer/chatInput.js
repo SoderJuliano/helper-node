@@ -305,7 +305,7 @@ var promptHistoryDraft = '';
                 'Request Body': {
                     newPrompt: `${promptInstruction}${text}`,
                     ip: sessionStorage.getItem("user_ip"),
-                    email: 'julianosoder.js@gmail.com',
+                    email: sessionStorage.getItem("user_email") || '',
                     agent: false,
                     language: map[lang] || 'ENGLISH'
                 }
