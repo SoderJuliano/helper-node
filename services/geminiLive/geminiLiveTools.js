@@ -13,7 +13,6 @@ const util = require('util');
 const execAsync = util.promisify(exec);
 
 const DEFAULT_LIVE_TOOLS = [
-  { google_search: {} },
   {
     functionDeclarations: [
       {

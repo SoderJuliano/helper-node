@@ -152,7 +152,7 @@ DIRETIVAS OBRIGATÓRIAS DE EXECUÇÃO E VOZ:
     const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : {};
     const assistantName = options.assistantName || (nexaCfg && nexaCfg.name) || 'Raphael';
     let model = options.model || (configService.getGeminiLiveModel ? configService.getGeminiLiveModel() : null) || 'models/gemini-3.8-live';
-    if (!model || model === 'models/gemini-3.8-flash' || model === 'models/gemini-3.7-flash') {
+    if (!model || model.includes('3.1-flash') || model.includes('2.0') || model.includes('2.5') || model === 'models/gemini-3.8-flash' || model === 'models/gemini-3.7-flash') {
       model = 'models/gemini-3.8-live';
     }
     const voiceName = options.voiceName || (configService.getGeminiLiveVoice ? configService.getGeminiLiveVoice() : null) || 'Kore';
