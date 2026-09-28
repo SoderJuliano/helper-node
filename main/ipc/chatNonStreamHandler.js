@@ -3,6 +3,7 @@ const {
   BackendService, GeminiCliProvider, ClaudeCliProvider, CopilotCliProvider, TesseractService,
   OpenAIService, configService, workspace, agenticWorkflow,
   ollamaAgenticWorkflow, helpers, appConfig, Notification,
+  path, fs, fs2,
 } = require('../globals.js');
 
 async function handleSendToGemini(event, text, sessionId) {

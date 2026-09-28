@@ -147,10 +147,16 @@ helpers.captureFullScreenAuto = async function() {
     try { await fs.unlink(capturedPath); } catch (_) {}
     try { await fs.rm(tmpDir, { recursive: true, force: true }); } catch (_) {}
 
-    // Comprime ANTES de qualquer processamento. Reduz tráfego pra OpenAI
-    // em ~40x sem perda perceptivél de qualidade visual / OCR.
-    const compressed = await helpers.compressImageForVision(imgBuffer, 'fullscreen');
-    const base64 = compressed.dataUrl;
+    // Comprime apenas para APIs com limite estrito de payload (OpenAI), mantendo PNG cristalino para modelos CLI (Gemini CLI) e modo janela
+    const effectiveModel = helpers.getEffectiveAiModel ? helpers.getEffectiveAiModel() : '';
+    const isCliModel = effectiveModel === 'geminiCli' || effectiveModel === 'claudeCli' || effectiveModel === 'copilotCli';
+    let base64;
+    if (isCliModel || !osOn) {
+      base64 = `data:image/png;base64,${imgBuffer.toString('base64')}`;
+    } else {
+      const compressed = await helpers.compressImageForVision(imgBuffer, 'fullscreen');
+      base64 = compressed.dataUrl;
+    }
 
     // Modo Fila de Capturas (Multi-Screenshot Batch Collector):
     // Se a janela de lote estiver aberta/ativa, agrega a captura à fila
