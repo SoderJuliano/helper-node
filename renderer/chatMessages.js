@@ -73,6 +73,7 @@ var isEditingQuestion = false;
         interactionBlock.appendChild(blockActions);
         transcriptionElement.appendChild(interactionBlock);
         currentQuestionElement = questionSpan;
+        window.activeInteractionBlock = interactionBlock;
 
         const cab = document.getElementById('copy-all-btn');
         if (cab) cab.style.display = 'block';
@@ -341,7 +342,8 @@ var isEditingQuestion = false;
         window._activeTurnSeq = currentSeq;
 
         const transcriptionElement = document.getElementById('transcription');
-        const block = targetBlock || window.activeInteractionBlock || (transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null);
+        const lastBlock = transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null;
+        const block = targetBlock || (window.activeInteractionBlock && window.activeInteractionBlock === lastBlock ? window.activeInteractionBlock : lastBlock) || window.activeInteractionBlock;
 
         // Se havia um bloco anterior ainda em processamento, finaliza como interrompido
         if (window.activeInteractionBlock && window.activeInteractionBlock !== block) {

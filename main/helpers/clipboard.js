@@ -153,63 +153,50 @@ helpers.startClipboardMonitoring = function() {
         : null;
       
       if (hasImage && imageData && currentHash) {
-        // Check if this is the same image as before
-        if (currentHash === state.lastClipboardImageHash) {
-          // Same image still in clipboard, no need to log repeatedly
+        if (!state.processedImageHashes) state.processedImageHashes = new Set();
+
+        // 1. Já processada antes? Se este hash já foi processado ou está no histórico recente, NUNCA reprocessar automaticamente
+        if (state.lastClipboardImageHash === currentHash || state.processedImageHashes.has(currentHash)) {
+          state.lastClipboardImageHash = currentHash;
           return;
         }
-        
-        // Check if this image was recently processed (cooldown check)
+
+        // 2. Já processando?
+        if (state.isProcessingImage) {
+          state.lastClipboardImageHash = currentHash;
+          return;
+        }
+
         const now = Date.now();
-        const isRecentlyProcessed = state.lastProcessedImageHash === currentHash && 
-                                   state.lastProcessedTimestamp && 
-                                   (now - state.lastProcessedTimestamp) < IMAGE_COOLDOWN_MS;
-        
-        if (isRecentlyProcessed) {
-          console.log('🚫 Image recently processed, waiting for cooldown period...');
-          state.lastClipboardImageHash = currentHash; // Update clipboard hash but don't process
-          return;
-        }
-        
-        // This is a new image or cooldown period has passed
-        if (currentHash !== state.lastClipboardImageHash) {
-          // Check if already processing an image
-          if (state.isProcessingImage) {
-            console.log('🔒 Já processando uma imagem, aguardando...');
-            state.lastClipboardImageHash = currentHash; // Update hash but don't process
-            return;
-          }
-          
-          console.log('📸 NOVA IMAGEM DETECTADA no clipboard! Processando automaticamente...');
-          
-          // Sinaliza loading no renderer (robot.gif) ate IA responder
-          if (state.mainWindow && !state.mainWindow.isDestroyed()) {
-            state.mainWindow.webContents.send('screen-capturing', true);
-          }
-          
-          // Set processing lock
-          state.isProcessingImage = true;
-          
-          // Check if OS integration mode is enabled
-          const isOsIntegration = configService.getOsIntegrationStatus();
-          if (isOsIntegration) {
-            helpers.createOsNotificationWindow('loading', 'Nova imagem detectada! Processando...');
-          } else if (appConfig.notificationsEnabled && Notification.isSupported()) {
-            new Notification({
-              title: 'Helper-Node',
-              body: 'Nova imagem detectada! Processando...',
-              silent: true,
-            }).show();
-          }
-          
-          // Mark as processed with timestamp
-          state.lastProcessedImageHash = currentHash;
-          state.lastProcessedTimestamp = now;
-          
-          await helpers.processNewClipboardImage(imageData);
-        }
-        
+        console.log('📸 NOVA IMAGEM DETECTADA no clipboard! Processando automaticamente...');
+
+        if (state.processedImageHashes.size > 100) state.processedImageHashes.clear();
+        state.processedImageHashes.add(currentHash);
+        state.lastProcessedImageHash = currentHash;
+        state.lastProcessedTimestamp = now;
         state.lastClipboardImageHash = currentHash;
+
+        // Sinaliza loading no renderer (robot.gif) ate IA responder
+        if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+          state.mainWindow.webContents.send('screen-capturing', true);
+        }
+
+        // Set processing lock
+        state.isProcessingImage = true;
+
+        // Check if OS integration mode is enabled
+        const isOsIntegration = configService.getOsIntegrationStatus();
+        if (isOsIntegration) {
+          helpers.createOsNotificationWindow('loading', 'Nova imagem detectada! Processando...');
+        } else if (appConfig.notificationsEnabled && Notification.isSupported()) {
+          new Notification({
+            title: 'Helper-Node',
+            body: 'Nova imagem detectada! Processando...',
+            silent: true,
+          }).show();
+        }
+
+        await helpers.processNewClipboardImage(imageData);
       } else {
         // No image found, reset clipboard hash
         if (state.lastClipboardImageHash !== null) {

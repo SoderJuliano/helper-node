@@ -58,24 +58,45 @@ class TesseractService {
     }
 
     /**
-     * Retorna vazio para texto OCR legado, pois os modelos utilizam visão multimodal nativa direta.
+     * Extrai conteúdo textual e visual via Google Gemini Vision ou OpenAI Vision.
      */
     async getTextFromImage(base64Image) {
-        return '';
+        try {
+            const visionService = require('./visionService');
+            return await visionService.extractContentFromImage(base64Image);
+        } catch (e) {
+            console.warn('[VisionService] Falha na extração de texto da imagem:', e.message);
+            return '';
+        }
     }
 
     async _processImageFile(originalPath, mainWindow, isPasted = false) {
         try {
+            const visionService = require('./visionService');
+            let text = '';
+            try {
+                text = await visionService.extractContentFromImage(originalPath);
+            } catch (err) {
+                console.warn('[VisionService] Não foi possível extrair visão do arquivo:', err.message);
+            }
+
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.webContents.send('ocr-result', { 
-                    text: '', 
+                    text: text || '', 
                     screenshotPath: originalPath,
                     isDirectVision: true
                 });
             }
-            return { text: '', screenshotPath: originalPath };
+            return { text: text || '', screenshotPath: originalPath };
         } catch (error) {
             console.error('[VisionService] Erro no processamento de imagem:', error);
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('ocr-result', {
+                    text: '',
+                    screenshotPath: originalPath,
+                    isDirectVision: true
+                });
+            }
             return { text: '', screenshotPath: originalPath };
         }
     }

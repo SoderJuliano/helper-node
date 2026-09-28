@@ -22,6 +22,14 @@ helpers.commandExists = function(cmd) {
 }
 
 helpers.captureFullScreenAuto = async function() {
+  const now = Date.now();
+  if (state.isCapturingScreen || (state.lastCaptureTimestamp && (now - state.lastCaptureTimestamp) < 1500)) {
+    console.log('📸 [captureFullScreenAuto] Ignorado: captura já em andamento ou debounced');
+    return;
+  }
+  state.isCapturingScreen = true;
+  state.lastCaptureTimestamp = now;
+
   const osOn = configService.getOsIntegrationStatus();
   const printOn = configService.getPrintModeStatus();
   const taCurrentlyActive = translationAssistant.isActive() &&
@@ -143,6 +151,16 @@ helpers.captureFullScreenAuto = async function() {
     if (osOn) helpers.createOsNotificationWindow('loading', 'Analisando captura...');
 
     const imgBuffer = await fs.readFile(capturedPath);
+    // Registra hash para impedir que monitores de clipboard ou pastas re-processem esta captura
+    try {
+      const shotHash = helpers.calculateImageHash(imgBuffer);
+      state.lastProcessedImageHash = shotHash;
+      state.lastProcessedTimestamp = Date.now();
+      state.lastClipboardImageHash = shotHash;
+      if (!state.processedImageHashes) state.processedImageHashes = new Set();
+      state.processedImageHashes.add(shotHash);
+    } catch (_) {}
+
     // limpeza
     try { await fs.unlink(capturedPath); } catch (_) {}
     try { await fs.rm(tmpDir, { recursive: true, force: true }); } catch (_) {}
@@ -387,6 +405,8 @@ Identifique o que está na tela do entrevistador/recrutador e responda como suge
     } else if (state.mainWindow && !state.mainWindow.isDestroyed()) {
       state.mainWindow.webContents.send('transcription-error', 'Erro ao capturar a tela.');
     }
+  } finally {
+    state.isCapturingScreen = false;
   }
 }
 

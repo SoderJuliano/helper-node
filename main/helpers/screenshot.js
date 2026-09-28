@@ -16,8 +16,17 @@ const {
 } = require('../globals.js');
 
 helpers.captureScreen = async function() {
-  // Check if OS integration mode is active
-  const isOsIntegration = configService.getOsIntegrationStatus();
+  const now = Date.now();
+  if (state.isCapturingScreen || (state.lastCaptureTimestamp && (now - state.lastCaptureTimestamp) < 1500)) {
+    console.log('📸 [captureScreen] Ignorado: captura já em andamento ou debounced');
+    return;
+  }
+  state.isCapturingScreen = true;
+  state.lastCaptureTimestamp = now;
+
+  try {
+    // Check if OS integration mode is active
+    const isOsIntegration = configService.getOsIntegrationStatus();
   
   if (isOsIntegration) {
     // Em COSMIC/Wayland o portal pode ser inconsistente com tools externas.
@@ -121,6 +130,15 @@ helpers.captureScreen = async function() {
           // Read and convert to base64
           const imgBuffer = await fs.readFile(tmpPng);
           const base64Image = `data:image/png;base64,${imgBuffer.toString('base64')}`;
+
+          try {
+            const shotHash = helpers.calculateImageHash(imgBuffer);
+            state.lastProcessedImageHash = shotHash;
+            state.lastProcessedTimestamp = Date.now();
+            state.lastClipboardImageHash = shotHash;
+            if (!state.processedImageHashes) state.processedImageHashes = new Set();
+            state.processedImageHashes.add(shotHash);
+          } catch (_) {}
           
           if (helpers.isBatchScreenshotModeActive && helpers.isBatchScreenshotModeActive()) {
             helpers.destroyNotificationWindow();
@@ -188,10 +206,14 @@ helpers.captureScreen = async function() {
         let screenshotSuccess = false;
         if (await helpers.commandExists("spectacle")) {
           try {
-            await execPromise(`spectacle -b -n -o '${tmpPng}'`);
+            await execPromise(`spectacle -b -r -n -o '${tmpPng}'`);
             screenshotSuccess = await fs2.existsSync(tmpPng);
           } catch (spErr) {
-            console.warn('[screenshot] spectacle auto falhou:', spErr.message);
+            console.warn('[screenshot] spectacle region falhou, tentando tela cheia:', spErr.message);
+            try {
+              await execPromise(`spectacle -b -n -o '${tmpPng}'`);
+              screenshotSuccess = await fs2.existsSync(tmpPng);
+            } catch (_) {}
           }
         } else if (await helpers.commandExists("gnome-screenshot")) {
           await execPromise(`gnome-screenshot -a -f '${tmpPng}'`);
@@ -224,6 +246,15 @@ helpers.captureScreen = async function() {
         if (screenshotSuccess) {
           const imgBuffer = await fs.readFile(tmpPng);
           const base64Image = `data:image/png;base64,${imgBuffer.toString('base64')}`;
+
+          try {
+            const shotHash = helpers.calculateImageHash(imgBuffer);
+            state.lastProcessedImageHash = shotHash;
+            state.lastProcessedTimestamp = Date.now();
+            state.lastClipboardImageHash = shotHash;
+            if (!state.processedImageHashes) state.processedImageHashes = new Set();
+            state.processedImageHashes.add(shotHash);
+          } catch (_) {}
 
           if (helpers.isBatchScreenshotModeActive && helpers.isBatchScreenshotModeActive()) {
             await helpers.addScreenshotToBatch(base64Image, imgBuffer);
@@ -266,6 +297,9 @@ helpers.captureScreen = async function() {
         state.mainWindow.webContents.send("screen-capturing", false);
       }
     }
+  }
+  } finally {
+    state.isCapturingScreen = false;
   }
 }
 
@@ -335,7 +369,8 @@ helpers.startScreenshotFolderMonitoring = function() {
       const hash = helpers.calculateImageHash(buf);
       const now = Date.now();
 
-      if (state.lastProcessedImageHash === hash && state.lastProcessedTimestamp && (now - state.lastProcessedTimestamp) < IMAGE_COOLDOWN_MS) {
+      if (!state.processedImageHashes) state.processedImageHashes = new Set();
+      if (state.processedImageHashes.has(hash)) {
         console.log('[screenshot-watch] 🚫 imagem já processada, ignorando');
         return;
       }
@@ -344,6 +379,8 @@ helpers.startScreenshotFolderMonitoring = function() {
         return;
       }
 
+      if (state.processedImageHashes.size > 100) state.processedImageHashes.clear();
+      state.processedImageHashes.add(hash);
       state.lastProcessedImageHash = hash;
       state.lastProcessedTimestamp = now;
       state.lastClipboardImageHash = hash;

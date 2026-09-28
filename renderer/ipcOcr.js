@@ -97,20 +97,23 @@
                         currentQuestionElement.textContent = combinedText;
                     }
 
+                    const targetBlock = currentQuestionElement.closest('.interaction-block') || (transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null);
+                    if (targetBlock) window.activeInteractionBlock = targetBlock;
+
                     if (typeof window.startProcessing === 'function') {
-                        window.startProcessing();
+                        window.startProcessing(targetBlock);
                     }
 
                     // Se há imagem colada e o backend tem visão, manda a IMAGEM
                     // (não o OCR). É o que faz a captura realmente chegar no modelo.
                     if (window.pendingChatImage && typeof window.backendSupportsVision === 'function' && await window.backendSupportsVision()) {
                         if (typeof window.sentImageToAI === 'function') {
-                            window.sentImageToAI(text || '', window.pendingChatImage);
+                            window.sentImageToAI(text || '', window.pendingChatImage, { block: targetBlock });
                         }
                         window.pendingChatImage = null;
                     } else {
                         if (typeof window.sentToAI === 'function') {
-                            window.sentToAI(text || 'Processo texto da imagem');
+                            window.sentToAI(text || 'Processo texto da imagem', { block: targetBlock });
                         }
                     }
 
@@ -125,14 +128,18 @@
                 // Captura via Ctrl+Shift+S ou paste em modo normal: envia a imagem para o backend
                 if (window.pendingChatImage) {
                     const questionTitle = (text && text.trim()) ? text.trim() : '📸 Captura de tela';
+                    let qSpan = null;
                     if (typeof window.appendQuestionEntry === 'function') {
-                        window.appendQuestionEntry(questionTitle);
+                        qSpan = window.appendQuestionEntry(questionTitle);
                     }
+                    const targetBlock = qSpan ? qSpan.closest('.interaction-block') : (transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null);
+                    if (targetBlock) window.activeInteractionBlock = targetBlock;
+
                     if (typeof window.startProcessing === 'function') {
-                        window.startProcessing();
+                        window.startProcessing(targetBlock);
                     }
                     if (typeof window.sentImageToAI === 'function') {
-                        window.sentImageToAI(text || '', window.pendingChatImage);
+                        window.sentImageToAI(text || '', window.pendingChatImage, { block: targetBlock });
                     }
                     window.pendingChatImage = null;
                     setTimeout(() => {
