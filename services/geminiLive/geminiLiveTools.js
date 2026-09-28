@@ -184,22 +184,6 @@ async function _handleAgyCodeTask(id, args, cwd, context) {
       for (const t of targets) {
         try { t.send(channel, ...args); } catch (_) {}
       }
-
-      // Feedback em tempo real durante as execuções do Anti-gravity (AGY)
-      if (channel === 'agentic-phase-update') {
-        const payload = args[0] || {};
-        if (payload.status) {
-          _notifyProgress(`Antigravity: ${payload.status}`, { phase: payload.phase, cwd });
-        }
-      } else if (channel === 'gemini-stream-chunk') {
-        const chunk = args[0];
-        if (typeof chunk === 'string' && chunk.trim()) {
-          const shortChunk = chunk.trim().replace(/\s+/g, ' ').slice(0, 60);
-          if (shortChunk.length > 3) {
-            _notifyProgress(`Antigravity: ${shortChunk}...`, { cwd });
-          }
-        }
-      }
     }
   };
 

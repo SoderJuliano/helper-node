@@ -241,10 +241,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   if (window.electronAPI && window.electronAPI.onGeminiLiveToolProgress) {
-    window.electronAPI.onGeminiLiveToolProgress(({ message }) => {
-      if (raphaelSubtitles && message) {
-        raphaelSubtitles.show(message, 4000);
-      }
+    window.electronAPI.onGeminiLiveToolProgress(() => {
       if (raphaelCore && raphaelCore.getState() !== "SPEAKING") {
         raphaelCore.setState("WORKING");
         canvas.className = "raphael-canvas-glow working";
@@ -316,18 +313,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   if (window.electronAPI && window.electronAPI.onAgenticPhaseUpdate) {
-    window.electronAPI.onAgenticPhaseUpdate(({ phase, status }) => {
-      if (raphaelSubtitles && status) {
-        raphaelSubtitles.show(status, 4000);
-      }
+    window.electronAPI.onAgenticPhaseUpdate(({ phase }) => {
+      // Subtítulos do Core são EXCLUSIVOS para legendas da fala que a IA lê
       if (raphaelCore) {
-        if (phase === "completed") {
+        if (phase === "completed" || phase === "error") {
           raphaelCore.setState("IDLE");
           canvas.className = "raphael-canvas-glow idle";
-          raphaelCore.triggerShockwave(1.1);
-        } else if (phase === "error") {
-          raphaelCore.setState("IDLE");
-          canvas.className = "raphael-canvas-glow idle";
+          if (phase === "completed") raphaelCore.triggerShockwave(1.1);
         } else {
           raphaelCore.setState("WORKING");
           canvas.className = "raphael-canvas-glow working";
@@ -339,14 +331,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (window.electronAPI && window.electronAPI.onAiToolActivity) {
     window.electronAPI.onAiToolActivity((act) => {
       if (!act) return;
-      if (act.phase === 'start' && act.label) {
-        if (raphaelSubtitles) raphaelSubtitles.show(act.label, 3500);
-        if (raphaelCore && raphaelCore.getState() !== "SPEAKING") {
-          raphaelCore.setState("WORKING");
-          canvas.className = "raphael-canvas-glow working";
-        }
-      } else if (act.phase === 'done') {
-        if (raphaelSubtitles && act.label) raphaelSubtitles.show(`✓ ${act.label}`, 2000);
+      // Subtítulos do Core são EXCLUSIVOS para legendas da fala (sem spam de comandos/ferramentas)
+      if (act.phase === 'start' && raphaelCore && raphaelCore.getState() !== "SPEAKING") {
+        raphaelCore.setState("WORKING");
+        canvas.className = "raphael-canvas-glow working";
       }
     });
   }

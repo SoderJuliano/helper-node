@@ -274,6 +274,16 @@ var isEditingQuestion = false;
                     ph.classList.add('done');
                     const spin = ph.querySelector('.ai-phase-spin'); if (spin) spin.remove();
                     const stop = ph.querySelector('.ai-phase-stop'); if (stop) stop.remove();
+                    const txt = ph.querySelector('.ai-phase-text');
+                    const hasActivities = block.querySelectorAll('.ai-activity-item').length > 0;
+                    const hasThinkingBox = !!(ph.querySelector('.ai-thinking-box') && ph.querySelector('.ai-thinking-box').textContent.trim());
+                    if (txt && (txt.textContent.trim() === 'Aguardando resposta...' || !txt.textContent.trim()) && !hasActivities && !hasThinkingBox) {
+                        ph.remove();
+                    } else if (txt && txt.textContent.trim() === 'Aguardando resposta...') {
+                        const tag = ph.querySelector('.ai-phase-tag');
+                        if (tag) tag.textContent = 'Concluído';
+                        txt.textContent = 'Concluído';
+                    }
                 }
                 const runningItems = block.querySelectorAll('.ai-activity-item.running');
                 runningItems.forEach(it => {
@@ -343,7 +353,10 @@ var isEditingQuestion = false;
                 const spin = prevPh.querySelector('.ai-phase-spin'); if (spin) spin.remove();
                 const stop = prevPh.querySelector('.ai-phase-stop'); if (stop) stop.remove();
                 const txt = prevPh.querySelector('.ai-phase-text');
-                if (txt && !txt.textContent.includes('Interrompido')) {
+                const hasActivities = prevBlock.querySelectorAll('.ai-activity-item').length > 0;
+                if (txt && (txt.textContent.trim() === 'Aguardando resposta...' || !txt.textContent.trim()) && !hasActivities) {
+                    prevPh.remove();
+                } else if (txt && !txt.textContent.includes('Interrompido')) {
                     txt.textContent = 'Interrompido por nova pergunta';
                 }
             }
@@ -454,6 +467,15 @@ var isEditingQuestion = false;
             const transcriptionElement = document.getElementById('transcription');
             const targetBlock = currentLiveBlock || (transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null);
             if (targetBlock) {
+                const ph = targetBlock.querySelector('.ai-phase');
+                if (ph) {
+                    const txt = ph.querySelector('.ai-phase-text');
+                    const hasActivities = targetBlock.querySelectorAll('.ai-activity-item').length > 0;
+                    const hasThinkingBox = !!(ph.querySelector('.ai-thinking-box') && ph.querySelector('.ai-thinking-box').textContent.trim());
+                    if (txt && (txt.textContent.trim() === 'Aguardando resposta...' || !txt.textContent.trim()) && !hasActivities && !hasThinkingBox) {
+                        ph.remove();
+                    }
+                }
                 const resp = targetBlock.querySelector('.ia-response');
                 if (resp) resp.classList.remove('is-streaming');
                 if (typeof window.createBlockActions === 'function' && !targetBlock.querySelector('.block-actions')) {
@@ -538,6 +560,15 @@ var isEditingQuestion = false;
             stopProcessing();
 
             if (targetBlock) {
+                const ph = targetBlock.querySelector('.ai-phase');
+                if (ph) {
+                    const txt = ph.querySelector('.ai-phase-text');
+                    const hasActivities = targetBlock.querySelectorAll('.ai-activity-item').length > 0;
+                    const hasThinkingBox = !!(ph.querySelector('.ai-thinking-box') && ph.querySelector('.ai-thinking-box').textContent.trim());
+                    if (txt && (txt.textContent.trim() === 'Aguardando resposta...' || !txt.textContent.trim()) && !hasActivities && !hasThinkingBox) {
+                        ph.remove();
+                    }
+                }
                 let resp = targetBlock.querySelector('.ia-response');
                 if (!resp) {
                     resp = document.createElement('div');
