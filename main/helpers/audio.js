@@ -159,31 +159,28 @@ helpers.stopDictationAndTranscribe = async function() {
 }
 
 let _isTogglingDictation = false;
+let _lastToggleTime = 0;
 
 helpers.toggleRecording = async function() {
-  if (_isTogglingDictation) {
-    console.log("[dictation] Toggle já em andamento, ignorando toque repetido.");
+  const now = Date.now();
+  if (_isTogglingDictation || (now - _lastToggleTime < 350)) {
+    console.log("[dictation] Toggle já em andamento ou ignorado por debounce, ignorando toque repetido.");
     return;
   }
   _isTogglingDictation = true;
+  _lastToggleTime = now;
 
   try {
-    // Realtime existe em todas as edicoes: na Lite/ChatGPT e 100% online (OpenAI),
-    // na Full com backend/Ollama e o pipeline local (Whisper). pickRealtimeService decide.
     if (configService.getRealtimeAssistantStatus()) {
       await helpers.toggleRealtimeAssistantRecording();
       return;
     }
 
-    // Tradutor e um modo exclusivo, sem input de texto — nunca deve gravar/transcrever
-    // via Ctrl+D nem jogar texto no composer (isso e exclusividade do modo IDE).
     if (translationAssistant.isActive()) {
       console.log("Ctrl+D ignorado — Assistente de Traducao ativo (modo exclusivo, sem input de texto).");
       return;
     }
 
-    // Anti-spam: ignora Ctrl+D enquanto ainda estamos transcrevendo/respondendo
-    // o audio do toque anterior (senao multiplos toques enviam o mesmo audio).
     if (state.recordingBusy) {
       console.log("Ctrl+D ignorado — ainda processando o audio anterior.");
       return;
@@ -214,7 +211,7 @@ helpers.toggleRecording = async function() {
   } finally {
     setTimeout(() => {
       _isTogglingDictation = false;
-    }, 120);
+    }, 250);
   }
 }
 

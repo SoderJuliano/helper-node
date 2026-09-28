@@ -151,18 +151,6 @@ var isEditingQuestion = false;
     });
 
     window.addEventListener('keydown', (e) => {
-        if (e.key === 'd' && e.ctrlKey && !e.shiftKey && !e.altKey) {
-            const active = document.activeElement;
-            const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
-            if (!isInput) {
-                e.preventDefault();
-                e.stopPropagation();
-                if (window.electronAPI && window.electronAPI.triggerToggleRecording) {
-                    window.electronAPI.triggerToggleRecording();
-                }
-                return;
-            }
-        }
         if (e.key === 'i' && e.ctrlKey && !e.shiftKey && !e.altKey) {
             const active = document.activeElement;
             const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);

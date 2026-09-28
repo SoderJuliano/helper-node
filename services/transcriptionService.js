@@ -149,7 +149,10 @@ class TranscriptionService {
         const data = await res.json();
         let text = '';
         if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) {
-          text = data.candidates[0].content.parts.map(p => p.text || '').join('').trim();
+          text = data.candidates[0].content.parts
+            .map(p => (p.audioTranscription && p.audioTranscription.text) || p.text || '')
+            .join('')
+            .trim();
         }
 
         text = text.replace(/^["'`]+|["'`]+$/g, '').trim();
