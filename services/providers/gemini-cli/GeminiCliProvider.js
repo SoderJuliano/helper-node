@@ -12,7 +12,7 @@ const path = require('path');
 const fs = require('fs');
 const GeminiCliSession = require('./GeminiCliSession');
 const { GeminiCliProcess } = require('./GeminiCliProcess');
-const { getModels, getDefaultModel } = require('./GeminiCliModels');
+const { getModels, getDefaultModel, normalizeModelId } = require('./GeminiCliModels');
 const E = require('./GeminiCliEvents');
 
 let _backupDir = null;
@@ -67,7 +67,7 @@ class GeminiCliProvider {
   }
 
   setModel(model) {
-    this._model = model || getDefaultModel();
+    this._model = normalizeModelId(model) || getDefaultModel();
   }
 
   getModel() {

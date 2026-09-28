@@ -151,9 +151,9 @@ DIRETIVAS OBRIGATÓRIAS DE EXECUÇÃO E VOZ:
 
     const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : {};
     const assistantName = options.assistantName || (nexaCfg && nexaCfg.name) || 'Raphael';
-    let model = options.model || (configService.getGeminiLiveModel ? configService.getGeminiLiveModel() : null) || 'models/gemini-2.0-flash-exp';
-    if (!model || model.includes('3.1-flash-live-preview')) {
-      model = 'models/gemini-2.0-flash-exp';
+    let model = options.model || (configService.getGeminiLiveModel ? configService.getGeminiLiveModel() : null) || 'models/gemini-3.8-flash';
+    if (!model || model.includes('2.0-flash') || model.includes('2.5-flash') || model.includes('3.1-flash-live-preview')) {
+      model = 'models/gemini-3.8-flash';
     }
     const voiceName = options.voiceName || (configService.getGeminiLiveVoice ? configService.getGeminiLiveVoice() : null) || 'Kore';
 

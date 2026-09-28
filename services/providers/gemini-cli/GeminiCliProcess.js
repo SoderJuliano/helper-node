@@ -4,6 +4,7 @@
 const { spawn } = require('child_process');
 const { execFile } = require('child_process');
 const { killProcessTree } = require('../killProcessTree');
+const { normalizeModelId } = require('./GeminiCliModels');
 
 const CANDIDATE_COMMANDS = ['agy', 'gemini', 'gemini-cli'];
 
@@ -72,7 +73,8 @@ class GeminiCliProcess {
     }
 
     const args = [];
-    if (model) args.push('--model', model);
+    const normalizedModel = normalizeModelId(model);
+    if (normalizedModel) args.push('--model', normalizedModel);
     
     // Automatically approve tool use in print mode
     args.push('--dangerously-skip-permissions');

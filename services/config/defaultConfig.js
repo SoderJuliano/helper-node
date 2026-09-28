@@ -22,7 +22,7 @@ const defaultConfig = {
   workspaceAccess: {
     enabled: true,
   },
-  geminiCliModel: "gemini-2.5-flash",
+  geminiCliModel: "gemini-3.7-flash-high",
   claudeCliModel: "sonnet",
   copilotCliModel: "claude-sonnet-4.5",
   copilotCliReasoningEffort: "medium",
@@ -59,7 +59,7 @@ const defaultConfig = {
   zaiModel: "glm-4.6",
   hasCompletedWelcome: false,
   geminiLiveVoice: "Kore", // Voz feminina suave e clara, a mais próxima de pt-BR-Neural2-C
-  geminiLiveModel: "models/gemini-2.0-flash-exp",
+  geminiLiveModel: "models/gemini-3.8-flash",
   transcriptionProvider: "auto", // "auto" | "google" | "openai" | "local" | "macos"
   nexa: {
     name: "Nexa",

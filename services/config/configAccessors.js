@@ -133,12 +133,23 @@ function createAccessors(ctx) {
     },
 
     getGeminiCliModel() {
-      return get().geminiCliModel || defaultConfig.geminiCliModel;
+      const raw = get().geminiCliModel || defaultConfig.geminiCliModel;
+      try {
+        const { normalizeModelId } = require('../providers/gemini-cli/GeminiCliModels');
+        return normalizeModelId(raw) || defaultConfig.geminiCliModel;
+      } catch (_) {
+        return raw;
+      }
     },
 
     setGeminiCliModel(model) {
       const cfg = get();
-      cfg.geminiCliModel = model || defaultConfig.geminiCliModel;
+      let val = model || defaultConfig.geminiCliModel;
+      try {
+        const { normalizeModelId } = require('../providers/gemini-cli/GeminiCliModels');
+        val = normalizeModelId(val) || val;
+      } catch (_) {}
+      cfg.geminiCliModel = val;
       save();
     },
 

@@ -101,7 +101,7 @@ class TranscriptionService {
       ? 'Transcribe this audio with absolute accuracy. Return strictly the spoken text, without introductions, markdown formatting, quotes or commentary.'
       : 'Transcreva este áudio com precisão absoluta. Retorne estritamente o texto falado, sem introduções, formatação markdown, aspas ou comentários adicionais.';
 
-    const candidateModels = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-flash-latest', 'gemini-3.5-flash', 'gemini-3.6-flash'];
+    const candidateModels = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-flash-latest'];
     let lastErr = null;
 
     for (const model of candidateModels) {

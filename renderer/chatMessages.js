@@ -231,21 +231,16 @@ var isEditingQuestion = false;
 
         const aiModel = await window.electronAPI.getAiModel();
 
-        // Se o microfone do Gemini Live estiver ativo, ou se a Nexa estiver habilitada em modo padrão/Gemini:
-        let isNexaLiveActive = false;
+        // Se o modo de voz do Gemini Live/Nexa estiver ATIVAMENTE escutando pelo microfone:
+        let isLiveVoiceListening = false;
         try {
-            if (window.electronAPI && window.electronAPI.getNexaConfig) {
-                const nexaCfg = await window.electronAPI.getNexaConfig();
-                const status = window.electronAPI.nexaVoiceGetStatus ? await window.electronAPI.nexaVoiceGetStatus() : null;
-                const isMicListening = !!(status && status.active);
-                // Se o usuário selecionou explicitamente outro provedor de chat (OpenAI, Codex, Claude CLI, Copilot CLI, Ollama):
-                const isExplicitOtherProvider = ['openIa', 'openIaCodex', 'claudeCli', 'copilotCli', 'ollamaLocal', 'llama', 'llama-stream', 'qwen-stream'].includes(aiModel);
-                
-                isNexaLiveActive = isMicListening || (!!(nexaCfg && nexaCfg.enabled) && !isExplicitOtherProvider);
+            if (window.electronAPI && window.electronAPI.nexaVoiceGetStatus) {
+                const status = await window.electronAPI.nexaVoiceGetStatus();
+                isLiveVoiceListening = !!(status && status.active);
             }
         } catch (_) {}
 
-        if (isNexaLiveActive && window.electronAPI && window.electronAPI.sendTextToGeminiLive) {
+        if (isLiveVoiceListening && window.electronAPI && window.electronAPI.sendTextToGeminiLive) {
             currentLiveQuestion = text;
             liveVoiceBlockActive = true;
             try {
