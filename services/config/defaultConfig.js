@@ -59,7 +59,7 @@ const defaultConfig = {
   zaiModel: "glm-4.6",
   hasCompletedWelcome: false,
   geminiLiveVoice: "Kore", // Voz feminina suave e clara, a mais próxima de pt-BR-Neural2-C
-  geminiLiveModel: "models/gemini-3.8-flash",
+  geminiLiveModel: "models/gemini-3.8-live",
   transcriptionProvider: "auto", // "auto" | "google" | "openai" | "local" | "macos"
   nexa: {
     name: "Nexa",

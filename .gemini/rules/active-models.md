@@ -25,16 +25,18 @@ Nota: Slugs passados para a CLI agy devem ser estritamente em letras minusculas 
 ### Transcricao de Audio (STT / Ditado Ctrl+D)
 Para transcricao de audio rapida multimodal (Google Generative Language API):
 - gemini-3.5-transcribe (Primario de altissima velocidade, ~500ms)
-- gemini-3.8-flash (Fallback)
-- gemini-3.7-flash (Fallback)
+- gemini-3.1-flash-lite (Fallback estavel 200 OK)
+- gemini-3.5-flash-lite (Fallback)
 - gemini-3.6-flash (Fallback)
+- gemini-3.7-flash (Fallback)
+- gemini-3.8-flash (Fallback)
 - gemini-3.5-flash (Fallback)
 - gemini-flash-latest (Fallback)
 
 ### Nexa Voice / Gemini Live (WebSocket Bidi)
 Para interacao de voz em tempo real (bidiGenerateContent):
-- models/gemini-3.8-flash (Primario ativo)
-- models/gemini-3.7-flash (Secundario ativo)
+- models/gemini-3.8-live (Primario ativo oficial)
+- models/gemini-3.8-live-extended-thinking
 
 ## 3. Diretriz para o Agente
 Antes de modificar qualquer integracao de IA, consulte sempre a lista acima. NUNCA regrida para modelos legados.
