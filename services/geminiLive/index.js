@@ -93,9 +93,10 @@ ${attachmentsBlock}
 DIRETIVAS OBRIGATÓRIAS DE EXECUÇÃO E VOZ:
 1. Responda em áudio em português do Brasil de maneira natural, conversacional, ágil e concisa (1 a 2 frases curtas).
 2. AÇÃO DIRETA IMEDIATA VIA FERRAMENTAS:
-   Quando Juliano solicitar refatoração, criação ou alteração de código, git, arquivos, testes, comandos no terminal, investigações, busca de tela ou relatórios:
-   - INVOQUE IMEDIATAMENTE a ferramenta correspondente ('execute_code_task', 'run_terminal_command', 'read_workspace_file', 'get_screen_context', 'get_recent_chat_history') na mesma resposta.
-   - NUNCA termine o turno apenas dizendo que vai abrir o projeto ou fazer algo sem invocar a ferramenta correspondente.
+   - Quando Juliano solicitar refatoração, criação ou alteração de código, testes ou tarefas no projeto: INVOQUE IMEDIATAMENTE 'execute_code_task'.
+   - Quando solicitar comandos no terminal, git, build ou bash: INVOQUE IMEDIATAMENTE 'run_terminal_command'.
+   - Quando solicitar atualizações, status da tarefa ou perguntar o que você ou o AGY estão fazendo: INVOQUE IMEDIATAMENTE 'get_agent_status' para obter o status real do workspace e das modificações.
+   - NUNCA termine o turno prometendo que vai fazer sem disparar a ferramenta correspondente.
 3. Ao receber o retorno da ferramenta, faça um resumo conversacional objetivo de 1 a 2 frases confirmando os resultados práticos obtidos.
 4. Para saudações ou conversas casuais rápidas (ex: "Bom dia", "tá por aí?"), responda diretamente em voz com simpatia e agilidade.
 5. Você tem acesso à tela e ao histórico recente do Helper Node através das ferramentas disponíveis.`;
@@ -103,6 +104,34 @@ DIRETIVAS OBRIGATÓRIAS DE EXECUÇÃO E VOZ:
 
   isMicListening() {
     return !!(this.session && this.session.isConnected && this.isListening);
+  }
+
+  async speakText(text) {
+    if (!text || !text.trim()) return;
+    const clean = String(text)
+      .replace(/<voice_summary>([\s\S]*?)<\/voice_summary>/gi, '$1')
+      .replace(/<[^>]+>/g, '')
+      .replace(/```[\s\S]*?```/g, '')
+      .replace(/[`*_~#]/g, '')
+      .trim();
+    if (!clean) return;
+
+    if (!this.session || !this.session.isConnected) {
+      await this.start({ withoutMic: true });
+    }
+
+    if (this.session && this.session.isConnected) {
+      try {
+        const { createNexaWindow, isNexaWindowOpen } = require('../../main/nexa/nexaWindow.js');
+        if (!isNexaWindowOpen()) {
+          createNexaWindow();
+        }
+      } catch (_) {}
+
+      const promptToRead = `[INSTRUÇÃO DE FALA]: Fale em voz alta e de forma natural para o Juliano exatamente esta mensagem curta:\n"${clean.slice(0, 300)}"`;
+      this.session.sendTextMessage(promptToRead);
+      this._updateNexaState('SPEAKING');
+    }
   }
 
   async sendTextMessage(text) {
@@ -360,5 +389,6 @@ module.exports = {
   startLiveSession: (options) => controller.start(options),
   stopLiveSession: () => controller.stop(),
   toggleLiveSession: (forced, options) => controller.toggle(forced, options),
-  sendTextMessage: (text) => controller.sendTextMessage(text)
+  sendTextMessage: (text) => controller.sendTextMessage(text),
+  speakText: (text) => controller.speakText(text)
 };

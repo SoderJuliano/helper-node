@@ -153,6 +153,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         source.connect(this.gainNode || this.analyser);
 
         const now = this.audioCtx.currentTime;
+        if (this.nextStartTime < now || this.nextStartTime > now + 15) {
+          this.nextStartTime = now;
+        }
         const startTime = Math.max(now, this.nextStartTime);
         source.start(startTime);
         this.nextStartTime = startTime + buffer.duration;
@@ -249,58 +252,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  // 3b. Integração com gemini-stream-chunk e gemini-response para visualização 3D e voz
-  let accumulatedStreamText = "";
-
-  function speakResponseText(text) {
-    if (!text || typeof window === "undefined" || !window.speechSynthesis) return;
-    try {
-      if (pcmPlayer && pcmPlayer.activeSources && pcmPlayer.activeSources.size > 0) return;
-      window.speechSynthesis.cancel();
-      const clean = String(text)
-        .replace(/<voice_summary>[\s\S]*?<\/voice_summary>/gi, '')
-        .replace(/<[^>]+>/g, '')
-        .replace(/```[\s\S]*?```/g, '')
-        .replace(/[`*_~#]/g, '')
-        .trim();
-      if (!clean) return;
-
-      const utterance = new SpeechSynthesisUtterance(clean);
-      utterance.lang = "pt-BR";
-      utterance.rate = 1.05;
-      utterance.pitch = 1.0;
-
-      const voices = window.speechSynthesis.getVoices();
-      const ptVoice = voices.find(v => v.lang.startsWith("pt") && (v.name.includes("Luciana") || v.name.includes("Maria") || v.name.includes("Female") || v.name.includes("Google") || v.name.includes("pt-BR"))) || voices.find(v => v.lang.startsWith("pt"));
-      if (ptVoice) utterance.voice = ptVoice;
-
-      utterance.onstart = () => {
-        if (raphaelCore) {
-          raphaelCore.setState("SPEAKING");
-          canvas.className = "raphael-canvas-glow speaking";
-        }
-      };
-
-      utterance.onend = () => {
-        if (raphaelCore && raphaelCore.getState() === "SPEAKING") {
-          raphaelCore.setState("IDLE");
-          canvas.className = "raphael-canvas-glow idle";
-        }
-      };
-
-      utterance.onerror = () => {
-        if (raphaelCore && raphaelCore.getState() === "SPEAKING") {
-          raphaelCore.setState("IDLE");
-          canvas.className = "raphael-canvas-glow idle";
-        }
-      };
-
-      window.speechSynthesis.speak(utterance);
-    } catch (e) {
-      console.warn("[NexaRenderer] Erro na síntese de voz:", e);
-    }
-  }
-
   if (window.electronAPI && window.electronAPI.onStreamChunk) {
     window.electronAPI.onStreamChunk((chunk) => {
       const textChunk = (typeof chunk === 'string') ? chunk : ((chunk && chunk.text) || '');
@@ -310,7 +261,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (raphaelSubtitles) {
         raphaelSubtitles.updateStreaming(accumulatedStreamText);
       }
-      if (raphaelCore && raphaelCore.getState() !== "SPEAKING") {
+      if (raphaelCore && raphaelCore.getState() !== "SPEAKING" && pcmPlayer.activeSources.size > 0) {
         raphaelCore.setState("SPEAKING");
         canvas.className = "raphael-canvas-glow speaking";
       }
@@ -319,15 +270,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (window.electronAPI && window.electronAPI.onStreamComplete) {
     window.electronAPI.onStreamComplete(() => {
-      if (accumulatedStreamText) {
-        speakResponseText(accumulatedStreamText);
-      }
       if (raphaelSubtitles) {
         raphaelSubtitles.finishStreaming(7000);
       }
       accumulatedStreamText = "";
       setTimeout(() => {
-        if (raphaelCore && raphaelCore.getState() === "SPEAKING" && (!window.speechSynthesis || !window.speechSynthesis.speaking)) {
+        if (raphaelCore && raphaelCore.getState() === "SPEAKING" && pcmPlayer.activeSources.size === 0) {
           raphaelCore.setState("IDLE");
           canvas.className = "raphael-canvas-glow idle";
         }
@@ -343,12 +291,11 @@ document.addEventListener("DOMContentLoaded", async () => {
         raphaelSubtitles.updateStreaming(text);
         raphaelSubtitles.finishStreaming(7000);
       }
-      if (raphaelCore) {
+      if (raphaelCore && pcmPlayer.activeSources.size > 0) {
         raphaelCore.setState("SPEAKING");
         canvas.className = "raphael-canvas-glow speaking";
         raphaelCore.triggerShockwave(1.2);
       }
-      speakResponseText(text);
     });
   }
 
@@ -360,12 +307,11 @@ document.addEventListener("DOMContentLoaded", async () => {
         raphaelSubtitles.updateStreaming(text);
         raphaelSubtitles.finishStreaming(7000);
       }
-      if (raphaelCore) {
+      if (raphaelCore && pcmPlayer.activeSources.size > 0) {
         raphaelCore.setState("SPEAKING");
         canvas.className = "raphael-canvas-glow speaking";
         raphaelCore.triggerShockwave(1.2);
       }
-      speakResponseText(text);
     });
   }
 

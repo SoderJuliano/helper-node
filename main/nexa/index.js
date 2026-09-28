@@ -17,6 +17,12 @@ function initializeNexa() {
   if (nexaCfg && nexaCfg.enabled) {
     console.log("🤖 [Nexa Module] Nexa está HABILITADA nas configurações. Criando janela da Nexa...");
     createNexaWindow();
+    try {
+      const nexaVoiceAssistant = require("../../services/nexaVoiceAssistant");
+      nexaVoiceAssistant.geminiLiveController.start({ withoutMic: true }).catch(err => {
+        console.warn("🤖 [Nexa Module] Erro ao iniciar Gemini Live em standby:", err.message);
+      });
+    } catch (_) {}
   } else {
     console.log("🤖 [Nexa Module] Nexa está DESABILITADA (OFF). Nenhuma janela criada.");
   }

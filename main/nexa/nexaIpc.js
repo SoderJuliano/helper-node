@@ -67,15 +67,30 @@ function registerNexaIpc() {
       if (state.nexaWindow && !state.nexaWindow.isDestroyed()) {
         try {
           state.nexaWindow.webContents.send("nexa:config-changed", cfg);
-          state.nexaWindow.reload();
         } catch (_) {}
       }
+      if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+        try {
+          state.mainWindow.webContents.send("nexa:config-changed", cfg);
+        } catch (_) {}
+      }
+      try {
+        const nexaVoiceAssistant = require("../../services/nexaVoiceAssistant");
+        nexaVoiceAssistant.geminiLiveController.start({ withoutMic: true }).catch(err => {
+          console.warn("[NexaIPC] Erro ao iniciar Gemini Live em standby:", err.message);
+        });
+      } catch (_) {}
     } else {
       closeNexaWindow();
       try {
         const nexaVoiceAssistant = require("../../services/nexaVoiceAssistant");
         nexaVoiceAssistant.stop();
       } catch (_) {}
+      if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+        try {
+          state.mainWindow.webContents.send("nexa:config-changed", cfg);
+        } catch (_) {}
+      }
     }
   });
 

@@ -78,6 +78,16 @@ class GeminiCliProvider {
     return getModels(force);
   }
 
+  isActive(projectPath) {
+    if (projectPath && this._sessions.has(projectPath)) {
+      return this._sessions.get(projectPath).isActive();
+    }
+    for (const session of this._sessions.values()) {
+      if (session.isActive()) return true;
+    }
+    return false;
+  }
+
   // Main entry point called by main.js.
   // prompt:      string
   // projectPath: absolute directory the CLI should run in

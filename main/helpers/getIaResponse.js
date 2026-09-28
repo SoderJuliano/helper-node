@@ -239,6 +239,7 @@ helpers.getIaResponse = async function(text) {
     // Formata a resposta para exibição na UI
     const formattedResposta = helpers.formatToHTML(respostaFinal);
     compositeSender.send("gemini-response", { resposta: formattedResposta, usedKnowledge });
+    helpers.triggerNexaVoiceIfEnabled(respostaFinal);
 
     // Usa a resposta crua para a notificação de texto simples
     if (appConfig.notificationsEnabled && Notification.isSupported()) {

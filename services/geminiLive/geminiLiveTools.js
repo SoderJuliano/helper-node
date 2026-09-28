@@ -82,6 +82,14 @@ const DEFAULT_LIVE_TOOLS = [
             }
           }
         }
+      },
+      {
+        name: 'get_agent_status',
+        description: 'Verifica o status atual do Antigravity (AGY), tarefas em execução, progresso da IA ou alterações recentes no workspace. Invoque sempre que o usuário pedir atualizações, status ou perguntar o que a IA está fazendo.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {}
+        }
       }
     ]
   }
@@ -123,6 +131,8 @@ async function executeToolCall(functionCall, context = {}) {
       outputResult = await _handleScreenContext(id, args, cwd, context);
     } else if (name === 'get_recent_chat_history') {
       outputResult = await _handleChatHistory(id, args, cwd, context);
+    } else if (name === 'get_agent_status') {
+      outputResult = await _handleAgentStatus(id, args, cwd, context);
     } else {
       outputResult = { error: `Ferramenta desconhecida: ${name}` };
     }
@@ -221,11 +231,21 @@ async function _handleAgyCodeTask(id, args, cwd, context) {
     } else {
       const GeminiCliProvider = require('../providers/gemini-cli/GeminiCliProvider');
       if (GeminiCliProvider && typeof GeminiCliProvider.send === 'function') {
+        let activeSessionId = 'default';
+        try {
+          const historyService = require('../historyService');
+          const currentSession = historyService ? historyService.getCurrentSession() : null;
+          if (currentSession && currentSession.id) {
+            activeSessionId = currentSession.id;
+          } else if (state && state.activeSessionId) {
+            activeSessionId = state.activeSessionId;
+          }
+        } catch (_) {}
         const result = await GeminiCliProvider.send(
           instruction,
           cwd,
           sender,
-          null,
+          activeSessionId,
           []
         );
 
@@ -375,6 +395,39 @@ async function _handleChatHistory(id, args, cwd, context) {
   } catch (err) {
     _notifyToolActivity(actId, 'error', `Falha ao ler histórico: ${err.message}`, 'read', 'get_recent_chat_history');
     return { status: 'error', message: `Erro ao recuperar histórico: ${err.message}` };
+  }
+}
+
+async function _handleAgentStatus(id, args, cwd, context) {
+  const actId = id || ('status_' + Date.now());
+  _notifyToolActivity(actId, 'start', 'Verificando status do AGY...', 'read', 'get_agent_status');
+  try {
+    const GeminiCliProvider = require('../providers/gemini-cli/GeminiCliProvider');
+    const model = GeminiCliProvider ? GeminiCliProvider.getModel() : 'gemini';
+    const isBusy = GeminiCliProvider && typeof GeminiCliProvider.isActive === 'function'
+      ? GeminiCliProvider.isActive(cwd)
+      : false;
+
+    let gitStatus = '';
+    try {
+      const { stdout } = await execAsync('git status --short', { cwd, timeout: 5000 });
+      gitStatus = stdout.trim();
+    } catch (_) {}
+
+    _notifyToolActivity(actId, 'done', 'Status verificado', 'read', 'get_agent_status');
+    return {
+      status: 'success',
+      activeModel: model,
+      workspace: cwd,
+      isAgentExecuting: isBusy,
+      gitChanges: gitStatus || 'Workspace limpo, sem arquivos pendentes de commit.',
+      summary: isBusy
+        ? `O Antigravity (AGY) está executando uma tarefa ativa no workspace agora.`
+        : `O Antigravity (AGY) está ocioso e pronto. Modificações recentes: ${gitStatus || 'nenhuma pendência'}.`
+    };
+  } catch (err) {
+    _notifyToolActivity(actId, 'error', `Falha ao obter status: ${err.message}`, 'read', 'get_agent_status');
+    return { status: 'error', message: err.message };
   }
 }
 

@@ -391,6 +391,8 @@ var isEditingQuestion = false;
 
     let liveVoiceBlockActive = false;
     let currentLiveQuestion = '';
+    let currentLiveBlock = null;
+    let liveBlockFinalizeTimer = null;
 
     if (window.electronAPI && window.electronAPI.onGeminiLiveUserTranscript) {
         window.electronAPI.onGeminiLiveUserTranscript(({ text }) => {
@@ -400,16 +402,19 @@ var isEditingQuestion = false;
             const transcriptionElement = document.getElementById('transcription');
             if (!transcriptionElement) return;
 
-            if (!liveVoiceBlockActive) {
+            if (liveBlockFinalizeTimer) {
+                clearTimeout(liveBlockFinalizeTimer);
+                liveBlockFinalizeTimer = null;
+            }
+
+            if (!liveVoiceBlockActive || !currentLiveBlock) {
                 appendQuestionEntry(currentLiveQuestion);
-                startProcessing();
+                currentLiveBlock = transcriptionElement.querySelector('.interaction-block:last-child');
+                startProcessing(currentLiveBlock);
                 liveVoiceBlockActive = true;
             } else {
-                const lastBlock = transcriptionElement.querySelector('.interaction-block:last-child');
-                if (lastBlock) {
-                    const qText = lastBlock.querySelector('.question-text');
-                    if (qText) qText.textContent = currentLiveQuestion;
-                }
+                const qText = currentLiveBlock.querySelector('.question-text');
+                if (qText) qText.textContent = currentLiveQuestion;
             }
         });
     }
@@ -421,14 +426,14 @@ var isEditingQuestion = false;
             const transcriptionElement = document.getElementById('transcription');
             if (!transcriptionElement) return;
 
-            const lastBlock = transcriptionElement.querySelector('.interaction-block:last-child');
-            if (!lastBlock) return;
+            const targetBlock = currentLiveBlock || transcriptionElement.querySelector('.interaction-block:last-child');
+            if (!targetBlock) return;
 
-            let resp = lastBlock.querySelector('.ia-response');
+            let resp = targetBlock.querySelector('.ia-response');
             if (!resp) {
                 resp = document.createElement('div');
                 resp.className = 'ia-response markdown-body is-streaming';
-                lastBlock.appendChild(resp);
+                targetBlock.appendChild(resp);
             }
 
             if (typeof window.renderMarkdownWithHighlights === 'function') {
@@ -446,16 +451,24 @@ var isEditingQuestion = false;
     if (window.electronAPI && window.electronAPI.onGeminiLiveTurnComplete) {
         window.electronAPI.onGeminiLiveTurnComplete(() => {
             stopProcessing();
-            liveVoiceBlockActive = false;
             const transcriptionElement = document.getElementById('transcription');
-            const lastBlock = transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null;
-            if (lastBlock) {
-                const resp = lastBlock.querySelector('.ia-response');
+            const targetBlock = currentLiveBlock || (transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null);
+            if (targetBlock) {
+                const resp = targetBlock.querySelector('.ia-response');
                 if (resp) resp.classList.remove('is-streaming');
-                if (typeof window.createBlockActions === 'function' && !lastBlock.querySelector('.block-actions')) {
-                    lastBlock.appendChild(window.createBlockActions(transcriptionElement));
+                if (typeof window.createBlockActions === 'function' && !targetBlock.querySelector('.block-actions')) {
+                    targetBlock.appendChild(window.createBlockActions(transcriptionElement));
                 }
             }
+
+            // Mantém currentLiveBlock por uma pequena janela para que onNexaVoiceQuickReply reutilize o mesmo bloco
+            if (liveBlockFinalizeTimer) clearTimeout(liveBlockFinalizeTimer);
+            liveBlockFinalizeTimer = setTimeout(() => {
+                currentLiveBlock = null;
+                liveVoiceBlockActive = false;
+                currentLiveQuestion = '';
+                liveBlockFinalizeTimer = null;
+            }, 750);
         });
     }
 
@@ -490,43 +503,48 @@ var isEditingQuestion = false;
             const cleanReply = (reply && reply.trim()) ? reply.trim() : '';
             if (!cleanReply) return;
 
+            if (liveBlockFinalizeTimer) {
+                clearTimeout(liveBlockFinalizeTimer);
+                liveBlockFinalizeTimer = null;
+            }
+
             const transcriptionElement = document.getElementById('transcription');
-            let lastBlock = transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null;
+            let targetBlock = currentLiveBlock;
 
             let cleanQuestion = (question && question.trim() && question !== 'Pergunta por voz')
                 ? question.trim()
                 : (currentLiveQuestion || '');
-            if (!cleanQuestion && lastBlock) {
-                const existingQ = lastBlock.querySelector('.question-text');
-                if (existingQ && existingQ.textContent && existingQ.textContent.trim()) {
-                    cleanQuestion = existingQ.textContent.trim();
-                }
-            }
-            if (!cleanQuestion) {
-                cleanQuestion = 'Pergunta por voz';
+
+            if (!targetBlock && liveVoiceBlockActive) {
+                targetBlock = transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null;
             }
 
-            // Se ainda não existia um bloco ativo para esta pergunta, cria agora
-            if (!liveVoiceBlockActive || !lastBlock) {
-                appendQuestionEntry(cleanQuestion);
-                lastBlock = transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null;
-            } else {
-                const qText = lastBlock.querySelector('.question-text');
-                if (qText && cleanQuestion && cleanQuestion !== 'Pergunta por voz') {
-                    qText.textContent = cleanQuestion;
+            if (targetBlock) {
+                const existingQ = targetBlock.querySelector('.question-text');
+                if (existingQ && (!cleanQuestion || cleanQuestion === 'Pergunta por voz')) {
+                    cleanQuestion = existingQ.textContent.trim() || 'Pergunta por voz';
+                } else if (existingQ && cleanQuestion && cleanQuestion !== 'Pergunta por voz') {
+                    existingQ.textContent = cleanQuestion;
                 }
+            } else {
+                if (!cleanQuestion) cleanQuestion = 'Pergunta por voz';
+                appendQuestionEntry(cleanQuestion);
+                targetBlock = transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null;
             }
+
             liveVoiceBlockActive = false;
+            currentLiveBlock = null;
             currentLiveQuestion = '';
             stopProcessing();
 
-            if (lastBlock) {
-                let resp = lastBlock.querySelector('.ia-response');
+            if (targetBlock) {
+                let resp = targetBlock.querySelector('.ia-response');
                 if (!resp) {
                     resp = document.createElement('div');
                     resp.className = 'ia-response markdown-body';
-                    lastBlock.appendChild(resp);
+                    targetBlock.appendChild(resp);
                 }
+                resp.classList.remove('is-streaming');
 
                 if (typeof window.renderMarkdownWithHighlights === 'function') {
                     resp.innerHTML = window.renderMarkdownWithHighlights(cleanReply);
@@ -537,9 +555,10 @@ var isEditingQuestion = false;
                 }
 
                 // Anexa ações do bloco (copiar, regenerar, etc) se ainda não existirem
-                if (typeof window.createBlockActions === 'function' && !lastBlock.querySelector('.block-actions')) {
-                    lastBlock.appendChild(window.createBlockActions(transcriptionElement));
+                if (typeof window.createBlockActions === 'function' && !targetBlock.querySelector('.block-actions')) {
+                    targetBlock.appendChild(window.createBlockActions(transcriptionElement));
                 }
+                scrollTranscriptionToBottom('smooth');
             }
 
             // Persiste a conversa na sessão de histórico do Helper Node
