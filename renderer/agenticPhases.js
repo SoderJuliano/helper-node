@@ -52,7 +52,15 @@
       const block = window.activeInteractionBlock || (transcriptionElement
         ? transcriptionElement.querySelector('.interaction-block:last-child')
         : null);
-      if (!block) { if (done) activeAgenticSession = null; return; }
+      if (!block) {
+        if (done) {
+          activeAgenticSession = null;
+          const robot = document.getElementById('robot');
+          if (robot) robot.style.display = 'none';
+          if (typeof window.stopProcessing === 'function') window.stopProcessing();
+        }
+        return;
+      }
       let ph = block.querySelector('.ai-phase');
       if (!ph) {
         ph = document.createElement('div');
