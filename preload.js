@@ -266,6 +266,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("ai-tool-activity", (event, data) => cb(data)),
 
   // === Agentic Workflow (multi-phase) ===
+  onMessageReceived: (cb) =>
+    ipcRenderer.on("message-received", (event, data) => cb(data)),
   onAgenticPhaseUpdate: (cb) =>
     ipcRenderer.on("agentic-phase-update", (event, data) => cb(data)),
   onAgenticDebugInfo: (cb) =>

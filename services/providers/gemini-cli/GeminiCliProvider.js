@@ -110,8 +110,18 @@ class GeminiCliProvider {
       session.setSessionId(sessionId);
     }
 
+    // Confirmação imediata de recebimento antes de qualquer processamento/spawn do CLI
+    try {
+      sender.send('message-received', {
+        sessionId: sessionId || cwd,
+        projectPath: cwd,
+        timestamp: Date.now(),
+        provider: 'geminiCli',
+      });
+    } catch (_) {}
+
     // Emit "busy" to UI
-    this._emitStatus(sender, { state: 'busy', projectPath: cwd });
+    this._emitStatus(sender, { state: 'busy', projectPath: cwd, received: true });
 
     // Reseta estado de turno anterior que pode ter ficado preso por abort
     this._thinkingEmitted = false;
@@ -132,10 +142,10 @@ class GeminiCliProvider {
       let activityId = 0;
       let tokenInfo = { thinking: 0, outputChars: 0 };
 
-      // Emit an initial thinking state immediately so the screen doesn't stay blank
+      // Emite confirmação imediata e status inicial para a tela atualizar sem delay
       try {
         this._thinkingEmitted = true;
-        sender.send('agentic-phase-update', { phase: 'thinking', status: 'Iniciando agente…', thinking: '', sessionId: cwd });
+        sender.send('agentic-phase-update', { phase: 'received', status: 'Mensagem recebida. Inicializando Antigravity CLI (agy)…', thinking: '', sessionId: cwd });
       } catch (_) {}
 
       const emitProgress = (force) => {

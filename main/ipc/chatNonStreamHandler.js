@@ -40,6 +40,21 @@ async function handleSendToGemini(event, text, sessionId) {
   try {
     const compositeSender = getCompositeSender(event.sender);
     const aiModel = helpers.getEffectiveAiModel();
+    if (aiModel === 'geminiCli') {
+      try {
+        compositeSender.send('message-received', {
+          sessionId,
+          timestamp: Date.now(),
+          provider: 'geminiCli',
+        });
+        compositeSender.send('agentic-phase-update', {
+          phase: 'received',
+          status: 'Mensagem recebida. Preparando contexto…',
+          thinking: '',
+          sessionId: workspace.getProjectPath() || sessionId,
+        });
+      } catch (_) {}
+    }
     if (aiModel === 'llama-stream' || aiModel === 'qwen-stream' || aiModel === 'llama' || aiModel === 'ollamaLocal') {
       console.warn(`[send-to-gemini] canal SEM streaming usado com modelo "${aiModel}" — sem thinking ao vivo.`);
     }
@@ -253,6 +268,19 @@ async function handleSendToGeminiVision(event, { text, image }) {
       : text.trim();
 
     if (aiModel === 'geminiCli') {
+      try {
+        compositeSender.send('message-received', {
+          sessionId: null,
+          timestamp: Date.now(),
+          provider: 'geminiCli',
+        });
+        compositeSender.send('agentic-phase-update', {
+          phase: 'received',
+          status: 'Imagem recebida. Processando visão com Antigravity CLI (agy)…',
+          thinking: '',
+          sessionId: workspace.getProjectPath(),
+        });
+      } catch (_) {}
       const ocr = await TesseractService.getTextFromImage(image).catch(() => '');
       const baseTxt = `${promptDirective}${(ocr && ocr.trim()) ? `\n\nConteúdo extraído via OCR:\n${ocr.trim()}` : ''}`;
       const projectPath = workspace.getProjectPath();

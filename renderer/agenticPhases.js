@@ -5,7 +5,7 @@
 
   let activeAgenticSession = null;
   const PHASE_LABELS = {
-    thinking: 'Pensando', discovery: 'Explorando', planning: 'Planejando',
+    received: 'Recebido', thinking: 'Pensando', discovery: 'Explorando', planning: 'Planejando',
     implementation: 'Implementando', review: 'Revisando',
     completed: 'Concluído', error: 'Erro',
   };
