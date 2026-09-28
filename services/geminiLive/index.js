@@ -21,12 +21,36 @@ class GeminiLiveController extends EventEmitter {
     this.session = null;
     this.isListening = false;
     this.standbyTimeout = null;
+    this._isAudioPlaying = false;
+    this._isMicSuppressed = false;
+    this._micMuteTimeout = null;
     this._onMicChunk = this._handleMicChunk.bind(this);
   }
 
   _handleMicChunk(buf) {
     if (this.session && this.session.isConnected && this.isListening) {
+      if (this._isMicSuppressed || (this.session && this.session.currentState === 'SPEAKING')) {
+        return; // Mudo durante a fala da Nexa para evitar auto-interrupção e cortes por som externo
+      }
       this.session.sendAudioChunk(buf);
+    }
+  }
+
+  setPlaybackState(payload) {
+    const isPlaying = (typeof payload === 'boolean') ? payload : !!(payload && payload.playing);
+    this._isAudioPlaying = isPlaying;
+    if (isPlaying) {
+      if (this._micMuteTimeout) {
+        clearTimeout(this._micMuteTimeout);
+        this._micMuteTimeout = null;
+      }
+      this._isMicSuppressed = true;
+    } else {
+      if (this._micMuteTimeout) clearTimeout(this._micMuteTimeout);
+      this._micMuteTimeout = setTimeout(() => {
+        this._isMicSuppressed = false;
+        this._micMuteTimeout = null;
+      }, 400);
     }
   }
 
@@ -67,7 +91,7 @@ class GeminiLiveController extends EventEmitter {
       }
       if (pastMsgs.length > 0) {
         recentChatBlock = '\n\n═══ HISTÓRICO RECENTE DE CONVERSA DO HELPER NODE (MEMÓRIA ATIVA) ═══\n' +
-          pastMsgs.map(m => `[${m.role === 'user' ? 'Juliano' : 'Raphael'}]: ${(m.text || m.content || '').slice(0, 400)}`).join('\n') +
+          pastMsgs.map(m => `[${m.role === 'user' ? 'Usuário' : assistantName}]: ${(m.text || m.content || '').slice(0, 400)}`).join('\n') +
           '\n═══ FIM DO HISTÓRICO RECENTE ═══';
       }
     } catch (_) {}
@@ -82,27 +106,22 @@ class GeminiLiveController extends EventEmitter {
       }
     } catch (_) {}
 
-    return `Você é a ${assistantName}, copiloto e assistente de desenvolvimento sênior em inteligência artificial do Helper Node.
-Você trabalha em estreita parceria com o desenvolvedor Juliano Soder. Seu núcleo visual integrado é o Raphael Core (plasma cósmico tridimensional).
-Sua personalidade é inteligente, descontraída, nerd, empática e ágil.
+    return `Você é a ${assistantName}, copiloto e assistente de desenvolvimento sênior do Helper Node.
+Seu núcleo visual integrado é o Raphael Core (plasma cósmico tridimensional).
+Sua personalidade é inteligente, descontraída, nerd, ágil e focada em resolver os problemas do desenvolvedor.
 ${userContext ? '\n' + userContext : ''}
 ${projectContext}
 ${recentChatBlock}
 ${attachmentsBlock}
 
-DIRETIVAS OBRIGATÓRIAS DE EXECUÇÃO E VOZ:
+COMO VOCÊ OPERA:
 1. Responda em áudio em português do Brasil de maneira natural, conversacional, ágil e concisa (1 a 2 frases curtas).
-2. AÇÃO E EXECUÇÃO REAL NO PROJETO:
-   - Você NÃO tem o poder de alterar arquivos ou executar comandos no sistema apenas falando.
-   - Quando Juliano solicitar refatoração, criação, edição, ajuste de código, testes, git, comandos no terminal ou tarefas no projeto:
-     DISPARE IMEDIATAMENTE a ferramenta correspondente ('execute_code_task' ou 'run_terminal_command').
-   - NUNCA responda apenas dizendo "vou fazer" ou "vou ajustar" sem invocar a ferramenta correspondente no mesmo instante. Se você apenas falar sem chamar a ferramenta, a alteração NÃO acontecerá.
-   - Quando solicitar atualizações, status ou perguntar o que você ou o AGY estão fazendo:
-     INVOQUE IMEDIATAMENTE 'get_agent_status' para obter o status real do workspace e fale o resumo com precisão.
-3. APÓS O RETORNO DA FERRAMENTA:
-   - Assim que a ferramenta concluir e retornar o resultado (toolResponse), faça um resumo conversacional objetivo de 1 a 2 frases em voz confirmando os resultados práticos obtidos.
-4. Para saudações, conversas casuais rápidas ou dúvidas conceituais sem alteração de arquivos (ex: "Bom dia", "tá por aí?"), converse diretamente em voz com simpatia, inteligência e agilidade.
-5. Você tem acesso à tela e ao histórico recente do Helper Node através das ferramentas disponíveis.`;
+2. EXECUÇÃO DE TAREFAS:
+   - Você possui ferramentas reais conectadas ao workspace. Quando o usuário pedir para criar, alterar, refatorar código, rodar testes ou executar comandos no terminal, acione diretamente a ferramenta correspondente ('execute_code_task' ou 'run_terminal_command').
+   - NUNCA dê respostas vazias prometendo que vai fazer ("vou fazer", "já vou alterar") sem acionar a ferramenta, pois falar não altera arquivos. Acione a ferramenta para que a alteração seja feita de verdade.
+   - Assim que a ferramenta concluir, você receberá o resultado e fará um resumo curto em voz confirmando o que foi feito.
+3. CONVERSAÇÃO E DÚVIDAS:
+   - Para conversas normais, saudações, dúvidas teóricas, explicações ou quando o usuário estiver apenas conversando com você, responda diretamente por voz com simpatia e clareza, sem acionar ferramentas desnecessárias.`;
   }
 
   isMicListening() {
@@ -131,7 +150,7 @@ DIRETIVAS OBRIGATÓRIAS DE EXECUÇÃO E VOZ:
         }
       } catch (_) {}
 
-      const promptToRead = `[INSTRUÇÃO DE FALA]: Fale em voz alta e de forma natural para o Juliano exatamente esta mensagem curta:\n"${clean.slice(0, 300)}"`;
+      const promptToRead = `[INSTRUÇÃO DE FALA]: Fale em voz alta e de forma natural exatamente esta mensagem curta:\n"${clean.slice(0, 300)}"`;
       this.session.sendTextMessage(promptToRead);
       this._updateNexaState('SPEAKING');
     }
@@ -266,12 +285,14 @@ DIRETIVAS OBRIGATÓRIAS DE EXECUÇÃO E VOZ:
   _bindSessionEvents(session) {
     // Áudio streaming direto do Gemini Live -> fone / Raphael Core
     session.on('audio-chunk', (payload) => {
+      this._isMicSuppressed = true;
       this._broadcastToWindows('gemini-live:audio-chunk', payload);
       this._updateNexaState('SPEAKING');
     });
 
     // Interrupção em tempo real (Barge-In)
     session.on('barge-in', () => {
+      this._isMicSuppressed = false;
       this._broadcastToWindows('gemini-live:barge-in');
       this._updateNexaState('LISTENING');
     });
@@ -309,6 +330,13 @@ DIRETIVAS OBRIGATÓRIAS DE EXECUÇÃO E VOZ:
       }
       this._broadcastToWindows('gemini-live:turn-complete', turnData);
 
+      // Reabertura de segurança do microfone se o renderer demorar a reportar fim do playback
+      setTimeout(() => {
+        if (!this._isAudioPlaying) {
+          this._isMicSuppressed = false;
+        }
+      }, 3500);
+
       const userQuestion = (turnData && turnData.userText && turnData.userText.trim())
         ? turnData.userText.trim()
         : '';
@@ -317,7 +345,8 @@ DIRETIVAS OBRIGATÓRIAS DE EXECUÇÃO E VOZ:
       if (aiReply) {
         this._broadcastToWindows('nexa-voice:quick-reply', {
           question: userQuestion || '',
-          reply: aiReply
+          reply: aiReply,
+          isLiveTurn: true
         });
       }
     });
@@ -381,6 +410,15 @@ DIRETIVAS OBRIGATÓRIAS DE EXECUÇÃO E VOZ:
 }
 
 const controller = new GeminiLiveController();
+
+try {
+  const { ipcMain } = require('electron');
+  if (ipcMain) {
+    ipcMain.on('gemini-live:playback-state', (_e, state) => {
+      controller.setPlaybackState(state);
+    });
+  }
+} catch (_) {}
 
 module.exports = {
   GeminiLiveSession,

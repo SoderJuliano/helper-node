@@ -175,6 +175,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   sendTextToGeminiLive: (text) => ipcRenderer.invoke("gemini-live:send-text", text),
   sendNexaVoiceProcessingStarted: () => ipcRenderer.send("nexa-voice:processing-started"),
   sendNexaVoiceProcessingFinished: () => ipcRenderer.send("nexa-voice:processing-finished"),
+  sendGeminiLivePlaybackState: (state) => ipcRenderer.send("gemini-live:playback-state", state),
   processPastedImage: (base64Image) =>
     ipcRenderer.send("process-pasted-image", base64Image),
   // Modo IDE: imagem colada vira ANEXO (caminho), não texto no input.

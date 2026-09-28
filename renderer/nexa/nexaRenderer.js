@@ -90,12 +90,17 @@ document.addEventListener("DOMContentLoaded", async () => {
       this.activeSources = new Set();
       this.analyser = null;
       this.gainNode = null;
+      this._isPlaying = false;
     }
 
     _ensureContext() {
       if (!this.audioCtx) {
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        this.audioCtx = new AudioCtx({ sampleRate: 24000 });
+        try {
+          this.audioCtx = new AudioCtx({ sampleRate: 24000 });
+        } catch (_) {
+          this.audioCtx = new AudioCtx();
+        }
       }
       if (this.audioCtx.state === "suspended") {
         this.audioCtx.resume().catch(() => {});
@@ -161,6 +166,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         this.nextStartTime = startTime + buffer.duration;
 
         this.activeSources.add(source);
+        if (!this._isPlaying) {
+          this._isPlaying = true;
+          if (window.electronAPI && window.electronAPI.sendGeminiLivePlaybackState) {
+            window.electronAPI.sendGeminiLivePlaybackState(true);
+          }
+        }
         if (raphaelCore) {
           raphaelCore.setState("SPEAKING");
           canvas.className = "raphael-canvas-glow speaking";
@@ -169,6 +180,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         source.onended = () => {
           this.activeSources.delete(source);
           if (this.activeSources.size === 0 && this.audioCtx.currentTime >= this.nextStartTime - 0.05) {
+            if (this._isPlaying) {
+              this._isPlaying = false;
+              if (window.electronAPI && window.electronAPI.sendGeminiLivePlaybackState) {
+                window.electronAPI.sendGeminiLivePlaybackState(false);
+              }
+            }
             if (raphaelCore && raphaelCore.getState() === "SPEAKING") {
               raphaelCore.setState("IDLE");
               canvas.className = "raphael-canvas-glow idle";
@@ -189,6 +206,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
       this.activeSources.clear();
       this.nextStartTime = 0;
+      if (this._isPlaying) {
+        this._isPlaying = false;
+        if (window.electronAPI && window.electronAPI.sendGeminiLivePlaybackState) {
+          window.electronAPI.sendGeminiLivePlaybackState(false);
+        }
+      }
       if (raphaelCore && raphaelCore.getState() === "SPEAKING") {
         raphaelCore.setState("IDLE");
         canvas.className = "raphael-canvas-glow idle";

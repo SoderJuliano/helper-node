@@ -520,17 +520,30 @@ var isEditingQuestion = false;
     }
 
     if (window.electronAPI && window.electronAPI.onNexaVoiceQuickReply) {
-        window.electronAPI.onNexaVoiceQuickReply(async ({ question, reply }) => {
+        window.electronAPI.onNexaVoiceQuickReply(async ({ question, reply, isLiveTurn }) => {
             if (!question && !reply) return;
             const cleanReply = (reply && reply.trim()) ? reply.trim() : '';
             if (!cleanReply) return;
+
+            const transcriptionElement = document.getElementById('transcription');
+
+            // Prevenção estrita de duplicidade: se o último bloco já contém esta resposta (via Live stream), ignora
+            const lastBlock = transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null;
+            if (lastBlock) {
+                const existingResp = lastBlock.querySelector('.ia-response');
+                if (existingResp && existingResp.textContent.trim()) {
+                    const existingText = existingResp.textContent.trim();
+                    if (existingText === cleanReply || (existingText.length > 15 && cleanReply.length > 15 && (existingText.includes(cleanReply) || cleanReply.includes(existingText)))) {
+                        return;
+                    }
+                }
+            }
 
             if (liveBlockFinalizeTimer) {
                 clearTimeout(liveBlockFinalizeTimer);
                 liveBlockFinalizeTimer = null;
             }
 
-            const transcriptionElement = document.getElementById('transcription');
             let targetBlock = currentLiveBlock;
 
             let cleanQuestion = (question && question.trim() && question !== 'Pergunta por voz')
@@ -549,7 +562,10 @@ var isEditingQuestion = false;
                     existingQ.textContent = cleanQuestion;
                 }
             } else {
-                if (!cleanQuestion) cleanQuestion = 'Pergunta por voz';
+                // Se é turno ao vivo já finalizado ou sem pergunta real, não cria card duplicado "Pergunta por voz"
+                if (isLiveTurn || !cleanQuestion || cleanQuestion === 'Pergunta por voz') {
+                    return;
+                }
                 appendQuestionEntry(cleanQuestion);
                 targetBlock = transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null;
             }

@@ -85,7 +85,7 @@ const DEFAULT_LIVE_TOOLS = [
       },
       {
         name: 'get_agent_status',
-        description: 'Verifica o status atual do Antigravity (AGY), tarefas em execução, progresso da IA ou alterações recentes no workspace. Invoque sempre que o usuário pedir atualizações, status ou perguntar o que a IA está fazendo.',
+        description: 'Consulta o status de tarefas de CÓDIGO ou alterações em arquivos no workspace local executadas pelo AGY. Invoque EXCLUSIVAMENTE quando o usuário perguntar sobre o progresso de tarefas de desenvolvimento no projeto (ex: "como está a alteração de código?", "o AGY finalizou a tarefa?"). NUNCA invoque para conversas sobre voz, áudio ou diálogo casual.',
         parameters: {
           type: 'OBJECT',
           properties: {}
