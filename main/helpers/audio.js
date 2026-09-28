@@ -75,22 +75,14 @@ helpers.cancelDictation = function() {
   return true;
 }
 
-helpers.getWhisperBinaryPath = function() {
-  return null;
-};
-
-helpers.getWhisperModelPath = function() {
-  return null;
-};
-
 // Transcricao do press-to-talk: Servico unificado de transcricao
-// Suporta Google Gemini Audio (Free Tier via Google API Key), OpenAI Whisper, Whisper local e macOS nativo.
+// Suporta Google Gemini Multimodal Audio (Free Tier via Google API Key), OpenAI Audio Cloud e macOS nativo.
 helpers.transcribeDictation = async function(wavPath) {
   const transcriptionService = require('../../services/transcriptionService');
   const savedLang = configService.getLanguage ? configService.getLanguage() : 'pt-br';
   const whisperLang = savedLang === 'us-en' ? 'en' : 'pt';
   return await transcriptionService.transcribe(wavPath, { language: whisperLang });
-}
+};
 
 helpers.stopDictationAndTranscribe = async function() {
   const isOsIntegration = configService.getOsIntegrationStatus();

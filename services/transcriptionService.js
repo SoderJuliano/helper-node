@@ -1,6 +1,6 @@
 // services/transcriptionService.js
 // Serviço universal de transcrição de áudio (STT / Ditado)
-// Suporta Google Gemini Multimodal Audio (Free Tier), OpenAI Whisper Cloud, Whisper Local e macOS Nativo.
+// Suporta Google Gemini Multimodal Audio (gemini-3.5-transcribe / Free Tier), OpenAI Cloud Audio e macOS Nativo.
 
 const fs = require('fs');
 const path = require('path');
@@ -41,7 +41,7 @@ class TranscriptionService {
     if (googleKey) {
       try {
         const text = await this._transcribeWithGoogle(audioPath, googleKey, options);
-        if (text && text.trim()) return text.trim();
+        if (typeof text === 'string') return text.trim();
       } catch (err) {
         console.warn('[TranscriptionService] Transcrição via Google Gemini falhou, tentando fallback:', err.message);
         errors.push(`Google: ${err.message}`);
@@ -52,7 +52,7 @@ class TranscriptionService {
     if (openAiKey) {
       try {
         const text = await this._transcribeWithOpenAi(audioPath, openAiKey, options);
-        if (text && text.trim()) return text.trim();
+        if (typeof text === 'string') return text.trim();
       } catch (err) {
         console.warn('[TranscriptionService] Transcrição via OpenAI falhou, tentando fallback:', err.message);
         errors.push(`OpenAI: ${err.message}`);
@@ -63,7 +63,7 @@ class TranscriptionService {
     if (process.platform === 'darwin') {
       try {
         const text = await this._transcribeWithMacOs(audioPath, options);
-        if (text && text.trim()) return text.trim();
+        if (typeof text === 'string') return text.trim();
       } catch (err) {
         console.warn('[TranscriptionService] Transcrição nativa macOS falhou:', err.message);
         errors.push(`macOS: ${err.message}`);

@@ -326,7 +326,7 @@ function createAccessors(ctx) {
     },
 
     getGeminiLiveModel() {
-      return get().geminiLiveModel || "models/gemini-3.1-flash-live-preview";
+      return get().geminiLiveModel || "models/gemini-3.8-flash";
     },
 
     setGeminiLiveModel(model) {

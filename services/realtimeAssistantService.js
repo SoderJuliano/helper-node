@@ -28,75 +28,10 @@ const { startCapture, stopCapture } = require("./realtimeAudioCapture");
  */
 
 const SAMPLE_RATE = 16000;
-const WHISPER_TIMEOUT_MS = 45000;        // mata whisper se ultrapassar
-const MAX_PARALLEL_WHISPER = 2;          // evita N whisper-cli concorrendo no CPU
-// Se o proximo segmento (mesma fonte) fechar dentro desta janela apos o
-// anterior, tratamos como continuacao da MESMA pergunta (pausa pra respirar) —
-// juntamos os textos e reprocessamos a pergunta inteira.
+const MAX_PARALLEL_TRANSCRIBE = 2;
 const CONTINUATION_WINDOW_MS = 3000;
 
-function getWhisperBinCandidates() {
-  const exeName = process.platform === "win32" ? "whisper-cli.exe" : "whisper-cli";
-  const list = [
-    path.join(__dirname, "..", "whisper", "build", "bin", exeName),
-    path.join(__dirname, "..", "whisper", "bin", exeName),
-  ];
-  if (process.env.LOCALAPPDATA) {
-    list.push(
-      path.join(process.env.LOCALAPPDATA, "helper-node-whisper-cache", "bin", exeName),
-      path.join(process.env.LOCALAPPDATA, "helper-node", "whisper", "build", "bin", exeName),
-      path.join(process.env.LOCALAPPDATA, "helper-node", "bin", exeName)
-    );
-  }
-  return list;
-}
-
-function whisperBinPath() {
-  for (const p of getWhisperBinCandidates()) {
-    try {
-      if (fs.existsSync(p)) return p;
-    } catch (_) {}
-  }
-  return path.join(__dirname, "..", "whisper", "build", "bin", process.platform === "win32" ? "whisper-cli.exe" : "whisper-cli");
-}
-
-function getWhisperModelPath() {
-  const names = ["ggml-medium.bin", "ggml-small.bin", "ggml-base.bin", "ggml-tiny.bin"];
-  const searchDirs = [
-    path.join(__dirname, "..", "whisper", "models"),
-  ];
-  if (process.env.LOCALAPPDATA) {
-    searchDirs.push(
-      path.join(process.env.LOCALAPPDATA, "helper-node-whisper-cache", "models"),
-      path.join(process.env.LOCALAPPDATA, "helper-node", "whisper", "models")
-    );
-  }
-  for (const dir of searchDirs) {
-    for (const name of names) {
-      const full = path.join(dir, name);
-      try {
-        if (fs.existsSync(full)) return full;
-      } catch (_) {}
-    }
-  }
-  return null;
-}
-
-async function cloudTranscribeWav(audioPath, apiKey) {
-  const fileBuffer = await fsp.readFile(audioPath);
-  const blob = new Blob([fileBuffer]);
-  const form = new FormData();
-  form.append('file', blob, path.basename(audioPath));
-  form.append('model', 'gpt-4o-transcribe');
-  const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: { Authorization: 'Bearer ' + apiKey },
-    body: form,
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error?.message || 'Cloud transcription failed');
-  return data.text || '';
-}
+const transcriptionService = require("./transcriptionService");
 
 function isAcousticEcho(text, otherClosed) {
   if (!text || !otherClosed || !otherClosed.text) return false;
@@ -156,14 +91,14 @@ class RealtimeAssistantService {
       } catch (e) { console.warn('history session failed:', e.message); }
     }
 
-    const hasLocalWhisper = fs.existsSync(whisperBinPath()) && !!getWhisperModelPath();
-    const token = this.configService.getOpenIaToken ? this.configService.getOpenIaToken() : '';
+    const googleKey = (this.configService.getGoogleApiKey ? this.configService.getGoogleApiKey() : '').trim();
+    const token = (this.configService.getOpenIaToken ? this.configService.getOpenIaToken() : '').trim();
 
-    if (!hasLocalWhisper && !token) {
+    if (!googleKey && !token) {
       this.active = false;
       this.emitUpdate({
         type: "fatal_error",
-        message: "⚠️ Transcrição de áudio não disponível. Instale o Whisper localmente ou configure uma API key da OpenAI nas configurações para transcrever a voz.",
+        message: "Transcrição de áudio não disponível. Configure sua Google API Key ou Token da OpenAI em Configurações > APIs & Provedores.",
         timestamp: new Date().toISOString()
       });
       if (this.onFatalStop) try { this.onFatalStop(); } catch (_) {}
@@ -353,7 +288,7 @@ class RealtimeAssistantService {
   }
 
   _drainWhisperQueue() {
-    while (this._whisperRunning < MAX_PARALLEL_WHISPER && this._whisperQueue.length) {
+    while (this._whisperRunning < MAX_PARALLEL_TRANSCRIBE && this._whisperQueue.length) {
       const task = this._whisperQueue.shift();
       this._whisperRunning++;
       Promise.resolve()
@@ -366,101 +301,10 @@ class RealtimeAssistantService {
     }
   }
 
-  // Roda whisper com timeout + best-of adaptativo por duracao.
-  // Para audios > 90s, acelera 1.3x com ffmpeg antes (cabe melhor no budget).
   async _runWhisperAdaptive(id, wavPath) {
-    const whisperBin = whisperBinPath();
-    const model = getWhisperModelPath();
-    const token = this.configService.getOpenIaToken ? this.configService.getOpenIaToken() : '';
-
-    if (!fs.existsSync(whisperBin) || !model) {
-      if (token) {
-        console.log(`[realtime] ${id}: Whisper local ausente/incompleto, usando transcrição via OpenAI cloud...`);
-        return await cloudTranscribeWav(wavPath, token);
-      }
-      throw new Error("whisper-cli ou modelo indisponível");
-    }
-
-    // Duracao a partir do proprio WAV (s16le mono 16k, header de 44 bytes).
-    let dur = 0;
-    try { dur = Math.max(0, (fs.statSync(wavPath).size - 44) / (SAMPLE_RATE * 2)); } catch (_) {}
-
-    // Whisper rápido no CPU (best-of 1, beam-size 1 para latência ultrabaixa < 300ms)
-    let bestOf = 1, beam = 1, atempo = 1.0;
-
-    // Pre-processa com ffmpeg se atempo != 1.0
-    let inputPath = wavPath;
-    let speedPath = null;
-    if (atempo !== 1.0) {
-      speedPath = wavPath.replace(/\.wav$/, ".x.wav");
-      try {
-        await execPromise(
-          `ffmpeg -y -loglevel error -i "${wavPath}" -filter:a "atempo=${atempo}" -ar 16000 -ac 1 -c:a pcm_s16le "${speedPath}"`,
-          { timeout: 20000 }
-        );
-        inputPath = speedPath;
-        console.log(`[realtime] ${id}: pre-aceleracao ffmpeg ${atempo}x ok (dur ${dur.toFixed(1)}s)`);
-      } catch (e) {
-        console.warn(`[realtime] ${id}: ffmpeg atempo falhou (${e.message}) — usando wav original`);
-        speedPath = null;
-        inputPath = wavPath;
-      }
-    }
-
     const lang = (this.configService.getLanguage && this.configService.getLanguage()) === 'us-en' ? 'en' : 'pt';
-    const args = [
-      "-m", model,
-      "-f", inputPath,
-      "-l", lang,
-      "--threads", "8",
-      "--no-timestamps",
-      "--best-of", String(bestOf),
-      "--beam-size", String(beam),
-    ];
-    console.log(`[realtime] whisper start ${id} dur=${dur.toFixed(1)}s best=${bestOf} beam=${beam} atempo=${atempo}`);
-    const t0 = Date.now();
-
-    let text = "";
-    try {
-      text = await this._spawnWhisper(whisperBin, args, WHISPER_TIMEOUT_MS);
-    } catch (whisperErr) {
-      if (token) {
-        console.warn(`[realtime] ${id}: Whisper local falhou (${whisperErr.message}) — fallback para OpenAI cloud`);
-        text = await cloudTranscribeWav(inputPath, token);
-      } else {
-        throw whisperErr;
-      }
-    } finally {
-      if (speedPath) { try { await fsp.unlink(speedPath); } catch (_) {} }
-    }
-    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-    text = (text || "").replace(/\[[^\]]*\]/g, "").replace(/\s+/g, " ").trim();
-    console.log(`[realtime] whisper done ${id} em ${elapsed}s → ${text.length} chars`);
-    return text;
-  }
-
-  // Spawn cru com timeout efetivo (SIGKILL se ultrapassar).
-  _spawnWhisper(bin, args, timeoutMs) {
-    return new Promise((resolve, reject) => {
-      const proc = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
-      let stdout = "";
-      let stderr = "";
-      let killed = false;
-      const timer = setTimeout(() => {
-        killed = true;
-        try { proc.kill("SIGKILL"); } catch (_) {}
-        reject(new Error(`timeout ${timeoutMs}ms`));
-      }, timeoutMs);
-      proc.stdout.on("data", d => { stdout += d.toString(); });
-      proc.stderr.on("data", d => { stderr += d.toString(); });
-      proc.on("error", e => { clearTimeout(timer); reject(e); });
-      proc.on("close", code => {
-        clearTimeout(timer);
-        if (killed) return; // ja rejeitou
-        if (code === 0) return resolve(stdout);
-        reject(new Error(`exit ${code}: ${stderr.slice(-200)}`));
-      });
-    });
+    const text = await transcriptionService.transcribe(wavPath, { language: lang });
+    return (text || '').replace(/\[[^\]]*\]/g, '').replace(/\s+/g, ' ').trim();
   }
 
   // ---------- AI ----------
