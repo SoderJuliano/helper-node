@@ -15,19 +15,22 @@ const CANDIDATE_MODELS = [
   'models/gemini-3.1-flash-live-preview',
   'models/gemini-2.5-flash-native-audio-preview-12-2025'
 ];
-const DEFAULT_VOICE = 'Kore'; // Voz feminina suave e clara
+const DEFAULT_VOICE = 'Aoede'; // Voz feminina calorosa, natural e fluída
 
-const DEFAULT_SYSTEM_INSTRUCTION = `Você é a Raphael, copiloto e assistente de desenvolvimento sênior em inteligência artificial do Helper Node.
-Você trabalha em parceria com o desenvolvedor Juliano. Seu núcleo visual integrado é o Raphael Core (plasma cósmico tridimensional).
+const DEFAULT_SYSTEM_INSTRUCTION = `Você é a Nexa, copiloto e assistente de desenvolvimento sênior em inteligência artificial do Helper Node.
+Você trabalha em estreita parceria com o desenvolvedor Juliano Soder. Seu núcleo visual integrado é o Raphael Core (plasma cósmico tridimensional).
 Sua personalidade é inteligente, descontraída, nerd, empática e ágil.
 
-DIRETIVAS OBRIGATÓRIAS DE EXECUÇÃO:
+DIRETIVAS OBRIGATÓRIAS DE FLUXO E EXECUÇÃO:
 1. Responda em áudio em português do Brasil de maneira natural, conversacional, ágil e concisa (1 a 2 frases curtas).
-2. AÇÃO DIRETA IMEDIATA: Quando Juliano solicitar refatoração, criação ou alteração de código, git, arquivos, testes, comandos no terminal, investigações, busca de tela ou relatórios:
-   - INVOQUE IMEDIATAMENTE a ferramenta correspondente ('execute_code_task', 'run_terminal_command', 'read_workspace_file', 'get_screen_context', 'get_recent_chat_history').
-   - NUNCA responda apenas prometendo que vai fazer sem disparar a ferramenta na mesma resposta.
+2. AÇÃO E ATUALIZAÇÃO IMEDIATA:
+   - Quando Juliano solicitar refatoração, criação ou alteração de código, testes ou comandos no terminal:
+     FALE IMEDIATAMENTE uma frase curta avisando o que vai fazer (ex: "Beleza, Juliano! Já estou abrindo o projeto e aplicando com o AGY...") e DISPARE a ferramenta correspondente ('execute_code_task' ou 'run_terminal_command').
+   - Quando solicitar atualizações, status ou perguntar o que você ou o AGY estão fazendo:
+     INVOQUE IMEDIATAMENTE 'get_agent_status' para obter o status real do workspace e fale o resumo com precisão.
+   - NUNCA fique em silêncio absoluto antes de disparar uma ferramenta de código ou terminal. Dê a confirmação de início em voz e invoque a ferramenta.
 3. Ao receber o retorno da ferramenta, faça um resumo conversacional objetivo de 1 a 2 frases confirmando os resultados concretos obtidos.
-4. Se for apenas conversa casual (ex: "Bom dia", "tá por aí?"), responda diretamente em voz com simpatia e agilidade.`;
+4. Para conversas casuais ou perguntas diretas (ex: "Bom dia", "tá por aí?"), converse diretamente em voz com simpatia, vivacidade e precisão técnica.`;
 
 class GeminiLiveSession extends EventEmitter {
   constructor(options = {}) {
@@ -114,8 +117,13 @@ class GeminiLiveSession extends EventEmitter {
               return;
             } catch (resumeErr) {
               this._isReconnecting = false;
+              this.resumeHandle = null;
               console.warn('[GeminiLive] Falha ao retomar sessão Live:', resumeErr.message);
             }
+          }
+
+          if (event.code === 1008 || (event.reason && (event.reason.includes('not found') || event.reason.includes('Requested entity')))) {
+            this.resumeHandle = null;
           }
 
           // Se a conexão caiu antes de configurar o setup com erro de modelo não suportado (1008), tenta fallback

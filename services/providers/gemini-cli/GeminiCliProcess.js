@@ -85,7 +85,7 @@ class GeminiCliProcess {
     }
 
     // Prompt is sent via stdin instead of argument list to prevent E2BIG
-    const env = { ...process.env, HOME: process.env.HOME || require('os').homedir() };
+    const env = { ...process.env, HOME: process.env.HOME || require('os').homedir(), GIT_TERMINAL_PROMPT: '0' };
 
     let spawnBin = this._binary;
     let spawnArgs = [...args];

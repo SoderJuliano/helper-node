@@ -317,7 +317,7 @@ function createAccessors(ctx) {
     },
 
     getGeminiLiveVoice() {
-      return get().geminiLiveVoice || "Kore";
+      return get().geminiLiveVoice || "Aoede";
     },
 
     setGeminiLiveVoice(voice) {

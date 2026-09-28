@@ -272,7 +272,8 @@ async function _handleAgyCodeTask(id, args, cwd, context) {
     cwd,
     timeout: 180000,
     maxBuffer: 10 * 1024 * 1024,
-    shell: true
+    shell: true,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
   });
 
   _notifyToolActivity(actId, 'done', label, 'edit', 'execute_code_task');
@@ -298,7 +299,8 @@ async function _handleTerminalCommand(id, args, cwd, context) {
     cwd,
     timeout: 60000,
     maxBuffer: 5 * 1024 * 1024,
-    shell: true
+    shell: true,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
   });
 
   _notifyToolActivity(actId, 'done', command, 'cmd', 'run_terminal_command');
@@ -410,7 +412,7 @@ async function _handleAgentStatus(id, args, cwd, context) {
 
     let gitStatus = '';
     try {
-      const { stdout } = await execAsync('git status --short', { cwd, timeout: 5000 });
+      const { stdout } = await execAsync('git status --short', { cwd, timeout: 5000, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
       gitStatus = stdout.trim();
     } catch (_) {}
 

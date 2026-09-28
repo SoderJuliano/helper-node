@@ -92,13 +92,16 @@ ${attachmentsBlock}
 
 DIRETIVAS OBRIGATÓRIAS DE EXECUÇÃO E VOZ:
 1. Responda em áudio em português do Brasil de maneira natural, conversacional, ágil e concisa (1 a 2 frases curtas).
-2. AÇÃO DIRETA IMEDIATA VIA FERRAMENTAS:
-   - Quando Juliano solicitar refatoração, criação ou alteração de código, testes ou tarefas no projeto: INVOQUE IMEDIATAMENTE 'execute_code_task'.
-   - Quando solicitar comandos no terminal, git, build ou bash: INVOQUE IMEDIATAMENTE 'run_terminal_command'.
-   - Quando solicitar atualizações, status da tarefa ou perguntar o que você ou o AGY estão fazendo: INVOQUE IMEDIATAMENTE 'get_agent_status' para obter o status real do workspace e das modificações.
-   - NUNCA termine o turno prometendo que vai fazer sem disparar a ferramenta correspondente.
+2. AÇÃO E ATUALIZAÇÃO IMEDIATA:
+   - Quando Juliano solicitar refatoração, criação ou alteração de código, testes ou tarefas no projeto:
+     FALE IMEDIATAMENTE uma frase curta avisando o que vai fazer (ex: "Beleza Juliano! Já estou abrindo o projeto e aplicando com o AGY...") e DISPARE a ferramenta 'execute_code_task'.
+   - Quando solicitar comandos no terminal, git, build ou bash:
+     FALE IMEDIATAMENTE uma frase curta (ex: "Executando agora no terminal...") e DISPARE 'run_terminal_command'.
+   - Quando solicitar atualizações, status da tarefa ou perguntar o que você ou o AGY estão fazendo:
+     INVOQUE IMEDIATAMENTE 'get_agent_status' para obter o status real do workspace e fale o resumo com precisão.
+   - NUNCA fique em silêncio absoluto antes de acionar uma ferramenta. Dê a confirmação de início em voz e execute.
 3. Ao receber o retorno da ferramenta, faça um resumo conversacional objetivo de 1 a 2 frases confirmando os resultados práticos obtidos.
-4. Para saudações ou conversas casuais rápidas (ex: "Bom dia", "tá por aí?"), responda diretamente em voz com simpatia e agilidade.
+4. Para saudações ou conversas casuais rápidas (ex: "Bom dia", "tá por aí?"), converse diretamente em voz com simpatia e agilidade.
 5. Você tem acesso à tela e ao histórico recente do Helper Node através das ferramentas disponíveis.`;
   }
 
@@ -179,12 +182,12 @@ DIRETIVAS OBRIGATÓRIAS DE EXECUÇÃO E VOZ:
     }
 
     const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : {};
-    const assistantName = options.assistantName || (nexaCfg && nexaCfg.name) || 'Raphael';
+    const assistantName = options.assistantName || (nexaCfg && nexaCfg.name) || 'Nexa';
     let model = options.model || (configService.getGeminiLiveModel ? configService.getGeminiLiveModel() : null) || 'models/gemini-3.8-live';
     if (!model || model.includes('2.0') || model === 'models/gemini-3.8-flash' || model === 'models/gemini-3.7-flash') {
       model = 'models/gemini-3.8-live';
     }
-    const voiceName = options.voiceName || (configService.getGeminiLiveVoice ? configService.getGeminiLiveVoice() : null) || 'Kore';
+    const voiceName = options.voiceName || (configService.getGeminiLiveVoice ? configService.getGeminiLiveVoice() : null) || 'Aoede';
 
     const systemInstruction = options.systemInstruction || this._buildDynamicSystemInstruction(assistantName);
 
