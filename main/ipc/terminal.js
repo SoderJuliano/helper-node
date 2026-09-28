@@ -222,13 +222,32 @@ ipcMain.handle("terminal:init", async (event, dim) => {
       env: { ...env, TERM: "xterm-256color" },
     });
 
+    try {
+      if (configService.getTerminalLogsStatus()) {
+        const terminalLogService = require('../../services/terminalLogService');
+        terminalLogService.writeSessionMarker('start', projectPath);
+      }
+    } catch (_) {}
+
     state.terminalPty.onData((chunk) => {
       if (state.mainWindow && !state.mainWindow.isDestroyed()) {
         state.mainWindow.webContents.send("terminal:output", { type: "stdout", data: chunk });
       }
+      try {
+        if (configService.getTerminalLogsStatus()) {
+          const terminalLogService = require('../../services/terminalLogService');
+          terminalLogService.writeChunk(chunk);
+        }
+      } catch (_) {}
     });
 
     state.terminalPty.onExit(({ exitCode }) => {
+      try {
+        if (configService.getTerminalLogsStatus()) {
+          const terminalLogService = require('../../services/terminalLogService');
+          terminalLogService.writeSessionMarker('end', `codigo: ${exitCode}`);
+        }
+      } catch (_) {}
       if (state.mainWindow && !state.mainWindow.isDestroyed()) {
         state.mainWindow.webContents.send("terminal:closed", { code: exitCode });
       }
@@ -293,6 +312,13 @@ ipcMain.handle("terminal:init", async (event, dim) => {
     injetarHelpersPosix((s) => state.terminalProcess.stdin.write(s));
   }
 
+  try {
+    if (configService.getTerminalLogsStatus()) {
+      const terminalLogService = require('../../services/terminalLogService');
+      terminalLogService.writeSessionMarker('start', projectPath);
+    }
+  } catch (_) {}
+
   state.terminalProcess.stdout.on("data", (chunk) => {
     // Intercept terminal queries to prevent shells like fish from hanging for 10s
     if (state.terminalProcess && state.terminalProcess.stdin && state.terminalProcess.stdin.writable) {
@@ -306,15 +332,33 @@ ipcMain.handle("terminal:init", async (event, dim) => {
     if (state.mainWindow && !state.mainWindow.isDestroyed()) {
       state.mainWindow.webContents.send("terminal:output", { type: "stdout", data: chunk });
     }
+    try {
+      if (configService.getTerminalLogsStatus()) {
+        const terminalLogService = require('../../services/terminalLogService');
+        terminalLogService.writeChunk(chunk);
+      }
+    } catch (_) {}
   });
 
   state.terminalProcess.stderr.on("data", (chunk) => {
     if (state.mainWindow && !state.mainWindow.isDestroyed()) {
       state.mainWindow.webContents.send("terminal:output", { type: "stderr", data: chunk });
     }
+    try {
+      if (configService.getTerminalLogsStatus()) {
+        const terminalLogService = require('../../services/terminalLogService');
+        terminalLogService.writeChunk(chunk);
+      }
+    } catch (_) {}
   });
 
   state.terminalProcess.on("close", (code) => {
+    try {
+      if (configService.getTerminalLogsStatus()) {
+        const terminalLogService = require('../../services/terminalLogService');
+        terminalLogService.writeSessionMarker('end', `codigo: ${code}`);
+      }
+    } catch (_) {}
     if (state.mainWindow && !state.mainWindow.isDestroyed()) {
       state.mainWindow.webContents.send("terminal:closed", { code });
     }
@@ -351,6 +395,37 @@ ipcMain.on("terminal:resize", (event, dim) => {
     state.terminalPty.resize(tamanho.cols, tamanho.rows);
   } catch (e) {
     console.warn("[terminal:resize] falhou:", e.message);
+  }
+});
+
+ipcMain.handle("get-terminal-logs-status", () => {
+  return configService.getTerminalLogsStatus();
+});
+
+ipcMain.on("save-terminal-logs-status", (event, status) => {
+  configService.setTerminalLogsStatus(status);
+  try {
+    const terminalLogService = require('../../services/terminalLogService');
+    if (status) {
+      terminalLogService.writeSessionMarker('start', 'logs ativados nas configuracoes');
+    } else {
+      terminalLogService.closeStream();
+    }
+  } catch (_) {}
+  if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+    state.mainWindow.webContents.send("terminal-logs-status-changed", status);
+  }
+  if (state.configWindow && !state.configWindow.isDestroyed()) {
+    state.configWindow.webContents.send("terminal-logs-status-changed", status);
+  }
+});
+
+ipcMain.handle("get-terminal-log-path", () => {
+  try {
+    const terminalLogService = require('../../services/terminalLogService');
+    return terminalLogService.getLogFilePath();
+  } catch (_) {
+    return path.join(os.homedir(), 'terminal-logs.txt');
   }
 });
 

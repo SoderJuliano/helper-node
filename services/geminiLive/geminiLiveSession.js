@@ -12,7 +12,8 @@ const GEMINI_LIVE_WS_URL = 'wss://generativelanguage.googleapis.com/ws/google.ai
 const DEFAULT_MODEL = 'models/gemini-3.8-live';
 const CANDIDATE_MODELS = [
   'models/gemini-3.8-live',
-  'models/gemini-3.8-live-extended-thinking'
+  'models/gemini-3.1-flash-live-preview',
+  'models/gemini-2.5-flash-native-audio-preview-12-2025'
 ];
 const DEFAULT_VOICE = 'Kore'; // Voz feminina suave e clara
 
@@ -227,6 +228,7 @@ class GeminiLiveSession extends EventEmitter {
   sendTextMessage(text) {
     if (!this.isConnected || !this.ws || !text) return;
 
+    this.currentUserText = String(text);
     const message = {
       clientContent: {
         turns: [

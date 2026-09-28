@@ -219,32 +219,6 @@ var isEditingQuestion = false;
 
         const aiModel = await window.electronAPI.getAiModel();
 
-        // Se o microfone do Gemini Live estiver ativo, ou se a Nexa estiver habilitada em modo padrão/Gemini:
-        let isNexaLiveActive = false;
-        try {
-            if (window.electronAPI && window.electronAPI.getNexaConfig) {
-                const nexaCfg = await window.electronAPI.getNexaConfig();
-                const status = window.electronAPI.nexaVoiceGetStatus ? await window.electronAPI.nexaVoiceGetStatus() : null;
-                const isMicListening = !!(status && status.active);
-                // Se o usuário selecionou explicitamente outro provedor de chat (OpenAI, Codex, Claude CLI, Copilot CLI, Ollama):
-                const isExplicitOtherProvider = ['openIa', 'openIaCodex', 'claudeCli', 'copilotCli', 'ollamaLocal', 'llama', 'llama-stream', 'qwen-stream'].includes(aiModel);
-                
-                isNexaLiveActive = isMicListening || (!!(nexaCfg && nexaCfg.enabled) && !isExplicitOtherProvider);
-            }
-        } catch (_) {}
-
-        if (isNexaLiveActive && window.electronAPI && window.electronAPI.sendTextToGeminiLive) {
-            currentLiveQuestion = text;
-            liveVoiceBlockActive = true;
-            try {
-                await window.electronAPI.sendTextToGeminiLive(text);
-                return;
-            } catch (liveErr) {
-                console.warn('[sentToAI] Falha ao enviar para Gemini Live, fallback para modelo padrão:', liveErr);
-                liveVoiceBlockActive = false;
-            }
-        }
-
         if (aiModel === 'llama-stream' || aiModel === 'qwen-stream' || aiModel === 'ollamaLocal') {
             window.electronAPI.sendTextToGeminiStream(text, activeSessionId);
         } else {
@@ -513,12 +487,24 @@ var isEditingQuestion = false;
     if (window.electronAPI && window.electronAPI.onNexaVoiceQuickReply) {
         window.electronAPI.onNexaVoiceQuickReply(async ({ question, reply }) => {
             if (!question && !reply) return;
-            const cleanQuestion = (question && question.trim()) ? question.trim() : (currentLiveQuestion || 'Pergunta por voz');
             const cleanReply = (reply && reply.trim()) ? reply.trim() : '';
             if (!cleanReply) return;
 
             const transcriptionElement = document.getElementById('transcription');
             let lastBlock = transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null;
+
+            let cleanQuestion = (question && question.trim() && question !== 'Pergunta por voz')
+                ? question.trim()
+                : (currentLiveQuestion || '');
+            if (!cleanQuestion && lastBlock) {
+                const existingQ = lastBlock.querySelector('.question-text');
+                if (existingQ && existingQ.textContent && existingQ.textContent.trim()) {
+                    cleanQuestion = existingQ.textContent.trim();
+                }
+            }
+            if (!cleanQuestion) {
+                cleanQuestion = 'Pergunta por voz';
+            }
 
             // Se ainda não existia um bloco ativo para esta pergunta, cria agora
             if (!liveVoiceBlockActive || !lastBlock) {
@@ -526,7 +512,9 @@ var isEditingQuestion = false;
                 lastBlock = transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null;
             } else {
                 const qText = lastBlock.querySelector('.question-text');
-                if (qText && cleanQuestion) qText.textContent = cleanQuestion;
+                if (qText && cleanQuestion && cleanQuestion !== 'Pergunta por voz') {
+                    qText.textContent = cleanQuestion;
+                }
             }
             liveVoiceBlockActive = false;
             currentLiveQuestion = '';

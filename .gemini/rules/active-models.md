@@ -36,7 +36,8 @@ Para transcricao de audio rapida multimodal (Google Generative Language API):
 ### Nexa Voice / Gemini Live (WebSocket Bidi)
 Para interacao de voz em tempo real (bidiGenerateContent):
 - models/gemini-3.8-live (Primario ativo oficial)
-- models/gemini-3.8-live-extended-thinking
+- models/gemini-3.1-flash-live-preview (Fallback oficial)
+- models/gemini-2.5-flash-native-audio-preview-12-2025 (Fallback de contingência)
 
 ## 3. Diretriz para o Agente
-Antes de modificar qualquer integracao de IA, consulte sempre a lista acima. NUNCA regrida para modelos legados.
+Antes de modificar qualquer integracao de IA, consulte sempre a lista acima. NUNCA regrida para modelos legados como 1.5 ou modelos experimentais descontinuados como 2.0-flash-exp.

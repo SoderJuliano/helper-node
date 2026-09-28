@@ -28,6 +28,11 @@
     if (stealthModeStatus) stealthModeStatus.textContent = isStealth ? "ON" : "OFF";
   }
 
+  function updateTerminalLogsStatus(isEnabled) {
+    const terminalLogsStatus = document.getElementById("terminal-logs-status");
+    if (terminalLogsStatus) terminalLogsStatus.textContent = isEnabled ? "ON" : "OFF";
+  }
+
   function updateRealtimeAssistantStatus(isEnabled) {
     const realtimeAssistantStatus = document.getElementById("realtime-assistant-status");
     if (realtimeAssistantStatus) realtimeAssistantStatus.textContent = isEnabled ? "ON" : "OFF";
@@ -130,6 +135,7 @@
     updatePrintModeStatus,
     updateOsIntegrationStatus,
     updateStealthModeStatus,
+    updateTerminalLogsStatus,
     updateRealtimeAssistantStatus,
     updateHelperToolsStatus,
     updateWorkspaceAccessStatus,

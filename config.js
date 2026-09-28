@@ -19,6 +19,7 @@ const realtimeAssistantToggle = document.getElementById("realtime-assistant-togg
 const helperToolsToggle = document.getElementById("helper-tools-toggle");
 const workspaceAccessToggle = document.getElementById("workspace-access-toggle");
 const stealthModeToggle = document.getElementById("stealth-mode-toggle");
+const terminalLogsToggle = document.getElementById("terminal-logs-toggle");
 const langSelect = document.getElementById("language-select");
 const backendUrlValue = document.getElementById("backend-url-value");
 const appVersionValue = document.getElementById("app-version-value");
@@ -31,6 +32,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     isPrintMode,
     isOsIntegration,
     isStealth,
+    isTerminalLogs,
     nexaCfg,
     isRealtimeAssistant,
     helperToolsEnabled,
@@ -44,6 +46,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     ipcRenderer.invoke("get-print-mode-status").catch(() => false),
     ipcRenderer.invoke("get-os-integration-status").catch(() => false),
     ipcRenderer.invoke("get-stealth-mode-status").catch(() => false),
+    ipcRenderer.invoke("get-terminal-logs-status").catch(() => false),
     ipcRenderer.invoke("nexa:get-config").catch(() => null),
     ipcRenderer.invoke("get-realtime-assistant-status").catch(() => false),
     ipcRenderer.invoke("get-helper-tools-enabled").catch(() => false),
@@ -58,6 +61,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (printModeToggle) { printModeToggle.checked = !!isPrintMode; window.ConfigToggles?.updatePrintModeStatus(!!isPrintMode); }
   if (osIntegrationToggle) { osIntegrationToggle.checked = !!isOsIntegration; window.ConfigToggles?.updateOsIntegrationStatus(!!isOsIntegration); }
   if (stealthModeToggle) { stealthModeToggle.checked = !!isStealth; window.ConfigToggles?.updateStealthModeStatus(!!isStealth); }
+  if (terminalLogsToggle) { terminalLogsToggle.checked = !!isTerminalLogs; window.ConfigToggles?.updateTerminalLogsStatus(!!isTerminalLogs); }
   
   if (nexaToggle && nexaCfg) {
     nexaToggle.checked = !!nexaCfg.enabled;
@@ -146,6 +150,12 @@ if (stealthModeToggle) {
     ipcRenderer.send("save-stealth-mode-status", stealthModeToggle.checked);
   });
 }
+if (terminalLogsToggle) {
+  terminalLogsToggle.addEventListener("change", () => {
+    window.ConfigToggles?.updateTerminalLogsStatus(terminalLogsToggle.checked);
+    ipcRenderer.send("save-terminal-logs-status", terminalLogsToggle.checked);
+  });
+}
 if (nexaToggle) {
   nexaToggle.addEventListener("change", () => {
     const enabled = nexaToggle.checked;
@@ -178,6 +188,7 @@ saveButton?.addEventListener("click", async () => {
   if (helperToolsToggle) ipcRenderer.send("set-helper-tools-enabled", helperToolsToggle.checked);
   if (workspaceAccessToggle) ipcRenderer.send("set-workspace-access-enabled", workspaceAccessToggle.checked);
   if (stealthModeToggle) ipcRenderer.send("save-stealth-mode-status", stealthModeToggle.checked);
+  if (terminalLogsToggle) ipcRenderer.send("save-terminal-logs-status", terminalLogsToggle.checked);
   if (langSelect) ipcRenderer.send("set-language", langSelect.value);
 
   window.close();

@@ -359,6 +359,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   terminalResize: (dim) => ipcRenderer.send("terminal:resize", dim),
   onTerminalOutput: (cb) => ipcRenderer.on("terminal:output", (event, data) => cb(data)),
   onTerminalClosed: (cb) => ipcRenderer.on("terminal:closed", (event, data) => cb(data)),
+  getTerminalLogsStatus: () => ipcRenderer.invoke("get-terminal-logs-status"),
+  saveTerminalLogsStatus: (status) => ipcRenderer.send("save-terminal-logs-status", status),
+  getTerminalLogPath: () => ipcRenderer.invoke("get-terminal-log-path"),
+  onTerminalLogsStatusChanged: (cb) => ipcRenderer.on("terminal-logs-status-changed", (event, status) => cb(status)),
 
   // === Nexa Module API ===
   getNexaConfig: () => ipcRenderer.invoke("nexa:get-config"),

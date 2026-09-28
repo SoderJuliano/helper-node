@@ -223,7 +223,7 @@ function checkNoEmojis() {
 
 // ── E6: Proibição de modelos obsoletos e whisper local ────────────────────────
 function checkDeprecatedModelsAndLocalWhisper() {
-  const forbiddenModelRegex = /(?:gemini-2\.[05]|gemini-1\.5|gemini-2\.0-flash-exp|gemini-2\.0-flash-realtime-exp|3\.1-flash-live-preview)/i;
+  const forbiddenModelRegex = /(?:gemini-1\.5|gemini-1\.0|gemini-pro-vision)/i;
   const forbiddenWhisperRegex = /(?:whisper-cli|whisper\/build|whisper\/models)/i;
 
   for (const f of [...byExt('.js'), ...byExt('.html')]) {

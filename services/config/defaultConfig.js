@@ -8,6 +8,7 @@ const defaultConfig = {
   osIntegration: false,
   realtimeAssistant: false,
   stealthMode: true,
+  terminalLogs: false,
   language: "pt-br",
   aiModel: "llama",
   openAiModel: "gpt-4.1-nano",
