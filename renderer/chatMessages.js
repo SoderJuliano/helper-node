@@ -255,6 +255,8 @@ var isEditingQuestion = false;
         window.isAiProcessing = false;
         if (typeof window.resetStreamingState === 'function') window.resetStreamingState();
         window.activeInteractionBlock = null;
+        currentQuestionElement = null;
+        window.currentQuestionElement = null;
         showFloatingStop(false);
         const animation = window.animation;
         const animationContainer = document.getElementById('animation-container');

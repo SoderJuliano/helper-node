@@ -37,7 +37,14 @@ function start(funcs) {
   });
 
   // Captura full-screen automática (sem seleção, sem portal prompt)
+  let lastAutoCaptureTime = 0;
   app.post('/capture-screen-auto', (req, res) => {
+    const now = Date.now();
+    if (now - lastAutoCaptureTime < 2000) {
+      console.log('📸 [IPC /capture-screen-auto] Debounce ativo: chamada ignorada');
+      return res.status(200).send({ message: 'Captura já em andamento (debounced).' });
+    }
+    lastAutoCaptureTime = now;
     if (callbacks.captureScreenAuto) {
       try {
         callbacks.captureScreenAuto();

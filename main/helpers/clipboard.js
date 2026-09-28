@@ -145,6 +145,15 @@ helpers.startClipboardMonitoring = function() {
     try {
       const isPrintModeEnabled = configService.getPrintModeStatus();
       if (!isPrintModeEnabled) return;
+
+      // Se o usuário disparou um print direto (Ctrl+Shift+X ou Ctrl+Shift+S),
+      // o compositor/Spectacle grava no clipboard automaticamente.
+      // O fluxo direto da captura já cuida do processamento e envio.
+      // Ignora leituras de clipboard nos primeiros 6s para eliminar loop e envios duplicados.
+      const now = Date.now();
+      if (state.lastUserCaptureTimestamp && (now - state.lastUserCaptureTimestamp < 6000)) {
+        return;
+      }
       
       const imageData = await helpers.readSystemClipboardImage();
       const hasImage = !!imageData;
@@ -167,7 +176,6 @@ helpers.startClipboardMonitoring = function() {
           return;
         }
 
-        const now = Date.now();
         console.log('📸 NOVA IMAGEM DETECTADA no clipboard! Processando automaticamente...');
 
         if (state.processedImageHashes.size > 100) state.processedImageHashes.clear();
@@ -198,8 +206,8 @@ helpers.startClipboardMonitoring = function() {
 
         await helpers.processNewClipboardImage(imageData);
       } else {
-        // No image found, reset clipboard hash
-        if (state.lastClipboardImageHash !== null) {
+        // No image found, reset clipboard hash apenas se não houver captura recente
+        if (state.lastClipboardImageHash !== null && (!state.lastProcessedTimestamp || (now - state.lastProcessedTimestamp > 10000))) {
           console.log('🔄 No image in clipboard anymore');
           state.lastClipboardImageHash = null;
         }
@@ -315,8 +323,12 @@ helpers.processNewClipboardImage = async function(base64Image) {
           silent: true,
         }).show();
       }
-      // Usar o método existente getIaResponse
-      await helpers.getIaResponse(text);
+      if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+        state.mainWindow.webContents.send("ocr-result", {
+          text: text || '',
+          base64Image
+        });
+      }
     }
     
   } catch (error) {

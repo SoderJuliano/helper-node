@@ -23,12 +23,13 @@ helpers.commandExists = function(cmd) {
 
 helpers.captureFullScreenAuto = async function() {
   const now = Date.now();
-  if (state.isCapturingScreen || (state.lastCaptureTimestamp && (now - state.lastCaptureTimestamp) < 1500)) {
+  if (state.isCapturingScreen || (state.lastCaptureTimestamp && (now - state.lastCaptureTimestamp) < 2000)) {
     console.log('📸 [captureFullScreenAuto] Ignorado: captura já em andamento ou debounced');
     return;
   }
   state.isCapturingScreen = true;
   state.lastCaptureTimestamp = now;
+  state.lastUserCaptureTimestamp = now;
 
   const osOn = configService.getOsIntegrationStatus();
   const printOn = configService.getPrintModeStatus();

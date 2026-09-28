@@ -17,12 +17,13 @@ const {
 
 helpers.captureScreen = async function() {
   const now = Date.now();
-  if (state.isCapturingScreen || (state.lastCaptureTimestamp && (now - state.lastCaptureTimestamp) < 1500)) {
+  if (state.isCapturingScreen || (state.lastCaptureTimestamp && (now - state.lastCaptureTimestamp) < 2000)) {
     console.log('📸 [captureScreen] Ignorado: captura já em andamento ou debounced');
     return;
   }
   state.isCapturingScreen = true;
   state.lastCaptureTimestamp = now;
+  state.lastUserCaptureTimestamp = now;
 
   try {
     // Check if OS integration mode is active
@@ -362,6 +363,11 @@ helpers.startScreenshotFolderMonitoring = function() {
 
     const isPrintModeEnabled = configService.getPrintModeStatus();
     if (!isPrintModeEnabled) return;
+
+    if (state.lastUserCaptureTimestamp && (Date.now() - state.lastUserCaptureTimestamp < 6000)) {
+      console.log('[screenshot-watch] 🚫 Arquivo gerado por captura direta recente, ignorando eco');
+      return;
+    }
 
     try {
       const buf = fs2.readFileSync(filePath);

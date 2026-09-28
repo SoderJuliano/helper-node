@@ -82,30 +82,30 @@
                 // Alinhar à esquerda para transcrições de imagem
                 if (transcriptionElement) transcriptionElement.classList.add('ocr-left');
 
-                // --- START MODIFICATION ---
-                // If there's an existing question (from paste event "Image in context"), append to it
-                if (currentQuestionElement && currentQuestionElement.textContent.includes("Image in context")) {
-                    let combinedText = typeof window.getQuestionText === 'function'
-                        ? window.getQuestionText(currentQuestionElement)
-                        : (currentQuestionElement.textContent || '');
-                    // Add the OCR text, potentially on a new line for clarity
-                    if (text && text.trim()) combinedText += `\n${text.trim()}`; 
-                    
+                // Verifica se há um bloco de colagem pendente (apenas de um Ctrl+V recente ainda sem resposta)
+                const lastBlock = transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null;
+                const isPendingPasteBlock = lastBlock &&
+                    !lastBlock.querySelector('.ia-response') &&
+                    !lastBlock.querySelector('.ai-phase.done') &&
+                    currentQuestionElement &&
+                    currentQuestionElement.closest('.interaction-block') === lastBlock &&
+                    (currentQuestionElement.textContent || '').trim() === 'Image in context';
+
+                if (isPendingPasteBlock) {
+                    const resolvedTitle = (text && text.trim()) ? text.trim() : '📸 Imagem colada';
                     if (typeof window.setQuestionText === 'function') {
-                        window.setQuestionText(currentQuestionElement, combinedText);
+                        window.setQuestionText(currentQuestionElement, resolvedTitle);
                     } else {
-                        currentQuestionElement.textContent = combinedText;
+                        currentQuestionElement.textContent = resolvedTitle;
                     }
 
-                    const targetBlock = currentQuestionElement.closest('.interaction-block') || (transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null);
-                    if (targetBlock) window.activeInteractionBlock = targetBlock;
+                    const targetBlock = lastBlock;
+                    window.activeInteractionBlock = targetBlock;
 
                     if (typeof window.startProcessing === 'function') {
                         window.startProcessing(targetBlock);
                     }
 
-                    // Se há imagem colada e o backend tem visão, manda a IMAGEM
-                    // (não o OCR). É o que faz a captura realmente chegar no modelo.
                     if (window.pendingChatImage && typeof window.backendSupportsVision === 'function' && await window.backendSupportsVision()) {
                         if (typeof window.sentImageToAI === 'function') {
                             window.sentImageToAI(text || '', window.pendingChatImage, { block: targetBlock });
@@ -125,7 +125,8 @@
                     return;
                 }
 
-                // Captura via Ctrl+Shift+S ou paste em modo normal: envia a imagem para o backend
+                // Captura via Ctrl+Shift+S / Ctrl+Shift+X ou imagem enviada:
+                // SEMPRE cria um novo bloco no final da conversa
                 if (window.pendingChatImage) {
                     const questionTitle = (text && text.trim()) ? text.trim() : '📸 Captura de tela';
                     let qSpan = null;
@@ -133,7 +134,9 @@
                         qSpan = window.appendQuestionEntry(questionTitle);
                     }
                     const targetBlock = qSpan ? qSpan.closest('.interaction-block') : (transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null);
-                    if (targetBlock) window.activeInteractionBlock = targetBlock;
+                    if (targetBlock) {
+                        window.activeInteractionBlock = targetBlock;
+                    }
 
                     if (typeof window.startProcessing === 'function') {
                         window.startProcessing(targetBlock);
@@ -149,46 +152,21 @@
                     return;
                 }
 
-                // Detectar conteúdo HTML/CSS e renderizar como bloco de código
-                const hasHtmlTags = /<\/?[a-zA-Z][^>]*>/m.test(text || '');
-                const hasCssBraces = /\{[\s\S]*\}/m.test(text || '');
-                const ocrContainer = document.createElement('div');
-                ocrContainer.className = 'ia-response';
-                
-                if (text && (hasHtmlTags || hasCssBraces)) {
-                    const pre = document.createElement('pre');
-                    const code = document.createElement('code');
-                    const copyBtn = document.createElement('button');
-                    copyBtn.className = 'copy-button';
-                    copyBtn.title = 'Copiar';
-                    copyBtn.setAttribute('aria-label', 'Copiar código');
-                    copyBtn.innerHTML = '<svg fill="currentColor" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>';
-                    code.textContent = text;
-                    pre.appendChild(copyBtn);
-                    pre.appendChild(code);
-                    ocrContainer.appendChild(pre);
-                } else {
-                    // Texto simples ou vazio
-                    ocrContainer.textContent = text || 'Nenhum texto encontrado na imagem';
-                }
-
-                if (transcriptionElement) {
-                    transcriptionElement.appendChild(ocrContainer);
-                    if (typeof window.scrollTranscriptionToBottom === 'function') {
-                        window.scrollTranscriptionToBottom();
-                    }
-                }
-
-                // Só envia para IA se encontrou texto
+                // Se houver apenas texto OCR sem imagem pendente:
                 if (text && text.trim().length > 0) {
+                    let qSpan = null;
                     if (typeof window.appendQuestionEntry === 'function') {
-                        window.appendQuestionEntry(text.trim());
+                        qSpan = window.appendQuestionEntry(text.trim());
+                    }
+                    const targetBlock = qSpan ? qSpan.closest('.interaction-block') : (transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null);
+                    if (targetBlock) {
+                        window.activeInteractionBlock = targetBlock;
                     }
                     if (typeof window.startProcessing === 'function') {
-                        window.startProcessing();
+                        window.startProcessing(targetBlock);
                     }
                     if (typeof window.sentToAI === 'function') {
-                        window.sentToAI(text);
+                        window.sentToAI(text, { block: targetBlock });
                     }
                 } else {
                     if (robot) robot.style.display = 'none';
