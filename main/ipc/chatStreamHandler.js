@@ -1,7 +1,20 @@
 // main/ipc/chatStreamHandler.js
 const {
-  BackendService, configService, helpers,
+  BackendService, configService, helpers, state,
 } = require('../globals.js');
+
+function emitToTargets(eventSender, channel, ...args) {
+  try {
+    if (eventSender && typeof eventSender.send === 'function') {
+      eventSender.send(channel, ...args);
+    }
+  } catch (_) {}
+  try {
+    if (state.nexaWindow && !state.nexaWindow.isDestroyed() && state.nexaWindow.webContents !== eventSender) {
+      state.nexaWindow.webContents.send(channel, ...args);
+    }
+  } catch (_) {}
+}
 
 async function handleSendToGeminiStream(event, text, sessionId) {
   try {
@@ -19,19 +32,19 @@ async function handleSendToGeminiStream(event, text, sessionId) {
       await OllamaLocalService.responderStream(
         _finalL,
         (chunk) => {
-          event.sender.send("gemini-stream-chunk", chunk);
+          emitToTargets(event.sender, "gemini-stream-chunk", chunk);
         },
         () => {
-          event.sender.send("gemini-stream-complete");
+          emitToTargets(event.sender, "gemini-stream-complete");
         },
         (error) => {
           if (error && (error.message === 'Request cancelled' || error.message === 'Cancelado.')) {
             console.log('[ipc] Stream local cancelado pelo usuário.');
-            event.sender.send("transcription-error", "Request cancelled");
+            emitToTargets(event.sender, "transcription-error", "Request cancelled");
             return;
           }
           console.error("Stream local error:", error);
-          event.sender.send("transcription-error", error.message);
+          emitToTargets(event.sender, "transcription-error", error.message);
         },
         { ..._ht.opts, sessionId }
       );
@@ -53,16 +66,16 @@ async function handleSendToGeminiStream(event, text, sessionId) {
         console.log("IPC: modo AGENTE (tool calling nativo via /agent)");
         await AgentService.agentStream(
           _finalBackendPrompt,
-          (chunk) => { event.sender.send("gemini-stream-chunk", chunk); },
-          () => { event.sender.send("gemini-stream-complete"); },
+          (chunk) => { emitToTargets(event.sender, "gemini-stream-chunk", chunk); },
+          () => { emitToTargets(event.sender, "gemini-stream-complete"); },
           (error) => {
             if (error && (error.message === 'Request cancelled' || error.message === 'Cancelado.')) {
               console.log('[ipc] Agente cancelado pelo usuário.');
-              event.sender.send("transcription-error", "Request cancelled");
+              emitToTargets(event.sender, "transcription-error", "Request cancelled");
               return;
             }
             console.error("Agent error:", error);
-            event.sender.send("transcription-error", error.message);
+            emitToTargets(event.sender, "transcription-error", error.message);
           },
           {
             sessionId,
@@ -79,30 +92,30 @@ async function handleSendToGeminiStream(event, text, sessionId) {
     await BackendService.responderStream(
       _finalBackendPrompt,
       (chunk) => {
-        event.sender.send("gemini-stream-chunk", chunk);
+        emitToTargets(event.sender, "gemini-stream-chunk", chunk);
       },
       () => {
-        event.sender.send("gemini-stream-complete");
+        emitToTargets(event.sender, "gemini-stream-complete");
       },
       (error) => {
         if (error && (error.message === 'Request cancelled' || error.message === 'Cancelado.')) {
           console.log('[ipc] Stream cancelado pelo usuário.');
-          event.sender.send("transcription-error", "Request cancelled");
+          emitToTargets(event.sender, "transcription-error", "Request cancelled");
           return;
         }
         console.error("Stream error:", error);
-        event.sender.send("transcription-error", error.message);
+        emitToTargets(event.sender, "transcription-error", error.message);
       },
       { ..._htO2.opts, sessionId, userText: text }
     );
   } catch (error) {
     if (error && (error.message === 'Request cancelled' || error.message === 'Cancelado.')) {
       console.log('[ipc] Stream cancelado pelo usuário (catch externo).');
-      event.sender.send("transcription-error", "Request cancelled");
+      emitToTargets(event.sender, "transcription-error", "Request cancelled");
       return;
     }
     console.error("Erro no stream:", error.message);
-    event.sender.send("transcription-error", "Falha ao processar streaming da IA.");
+    emitToTargets(event.sender, "transcription-error", "Falha ao processar streaming da IA.");
   }
 }
 
@@ -120,14 +133,14 @@ async function handleSendToGeminiImageStream(event, { text, image, sessionId }) 
 
       await OllamaLocalService.responderStream(
         _finalL,
-        (chunk) => { event.sender.send("gemini-stream-chunk", chunk); },
-        () => { event.sender.send("gemini-stream-complete"); },
+        (chunk) => { emitToTargets(event.sender, "gemini-stream-chunk", chunk); },
+        () => { emitToTargets(event.sender, "gemini-stream-complete"); },
         (error) => {
           if (error && (error.message === 'Request cancelled' || error.message === 'Cancelado.')) {
-            event.sender.send("transcription-error", "Request cancelled");
+            emitToTargets(event.sender, "transcription-error", "Request cancelled");
             return;
           }
-          event.sender.send("transcription-error", error.message);
+          emitToTargets(event.sender, "transcription-error", error.message);
         },
         { ..._ht.opts, sessionId, imageBase64: image }
       );
@@ -143,23 +156,23 @@ async function handleSendToGeminiImageStream(event, { text, image, sessionId }) 
 
     await BackendService.responderStream(
       _finalBackendPrompt,
-      (chunk) => { event.sender.send("gemini-stream-chunk", chunk); },
-      () => { event.sender.send("gemini-stream-complete"); },
+      (chunk) => { emitToTargets(event.sender, "gemini-stream-chunk", chunk); },
+      () => { emitToTargets(event.sender, "gemini-stream-complete"); },
       (error) => {
         if (error && (error.message === 'Request cancelled' || error.message === 'Cancelado.')) {
-          event.sender.send("transcription-error", "Request cancelled");
+          emitToTargets(event.sender, "transcription-error", "Request cancelled");
           return;
         }
-        event.sender.send("transcription-error", error.message);
+        emitToTargets(event.sender, "transcription-error", error.message);
       },
       { ..._ht.opts, sessionId, imageBase64: image, userText: text }
     );
   } catch (error) {
     if (error && (error.message === 'Request cancelled' || error.message === 'Cancelado.')) {
-      event.sender.send("transcription-error", "Request cancelled");
+      emitToTargets(event.sender, "transcription-error", "Request cancelled");
       return;
     }
-    event.sender.send("transcription-error", "Falha ao processar streaming com imagem.");
+    emitToTargets(event.sender, "transcription-error", "Falha ao processar streaming com imagem.");
   }
 }
 

@@ -165,9 +165,33 @@ async function _handleAgyCodeTask(id, args, cwd, context) {
   _notifyToolActivity(actId, 'start', label, 'edit', 'execute_code_task');
   _notifyProgress(`Executando tarefa com ${providerLabel}...`, { instruction, cwd });
 
-  const sender = (state.mainWindow && !state.mainWindow.isDestroyed())
-    ? state.mainWindow.webContents
-    : { send: () => {} };
+  const targets = [];
+  if (state.mainWindow && !state.mainWindow.isDestroyed()) targets.push(state.mainWindow.webContents);
+  if (state.nexaWindow && !state.nexaWindow.isDestroyed()) targets.push(state.nexaWindow.webContents);
+
+  const sender = {
+    send: (channel, ...args) => {
+      for (const t of targets) {
+        try { t.send(channel, ...args); } catch (_) {}
+      }
+
+      // Feedback em tempo real durante as execuções do Anti-gravity (AGY)
+      if (channel === 'agentic-phase-update') {
+        const payload = args[0] || {};
+        if (payload.status) {
+          _notifyProgress(`Antigravity: ${payload.status}`, { phase: payload.phase, cwd });
+        }
+      } else if (channel === 'gemini-stream-chunk') {
+        const chunk = args[0];
+        if (typeof chunk === 'string' && chunk.trim()) {
+          const shortChunk = chunk.trim().replace(/\s+/g, ' ').slice(0, 60);
+          if (shortChunk.length > 3) {
+            _notifyProgress(`Antigravity: ${shortChunk}...`, { cwd });
+          }
+        }
+      }
+    }
+  };
 
   try {
     if (aiModel === 'claudeCli') {
@@ -175,6 +199,7 @@ async function _handleAgyCodeTask(id, args, cwd, context) {
       if (ClaudeCliProvider && typeof ClaudeCliProvider.send === 'function') {
         const result = await ClaudeCliProvider.send(instruction, cwd, sender, null, []);
         _notifyToolActivity(actId, 'done', label, 'edit', 'execute_code_task');
+        _notifyProgress(`Claude CLI: Tarefa concluída com sucesso.`, { cwd });
         return {
           status: 'success',
           summary: (result && result.text) ? result.text : 'Tarefa concluída pelo Claude CLI.'
@@ -187,6 +212,7 @@ async function _handleAgyCodeTask(id, args, cwd, context) {
         const attachments = helpers && helpers.getAttachableFilePaths ? helpers.getAttachableFilePaths() : [];
         const result = await CopilotCliProvider.send(instruction, cwd, sender, { attachments });
         _notifyToolActivity(actId, 'done', label, 'edit', 'execute_code_task');
+        _notifyProgress(`Copilot CLI: Tarefa concluída com sucesso.`, { cwd });
         return {
           status: 'success',
           summary: (result && result.text) ? result.text : 'Tarefa concluída pelo Copilot CLI.'
@@ -204,6 +230,7 @@ async function _handleAgyCodeTask(id, args, cwd, context) {
         );
 
         _notifyToolActivity(actId, 'done', label, 'edit', 'execute_code_task');
+        _notifyProgress(`Antigravity: Tarefa concluída com sucesso!`, { cwd });
         return {
           status: 'success',
           summary: (result && result.text) ? result.text : 'Tarefa concluída pelo Gemini CLI.',
@@ -213,9 +240,11 @@ async function _handleAgyCodeTask(id, args, cwd, context) {
     }
   } catch (e) {
     console.warn(`[GeminiLiveTools] Falha no provedor ${providerLabel}:`, e.message);
+    _notifyProgress(`Antigravity falhou: ${e.message}`, { cwd, error: true });
   }
 
   // Fallback: Execução direta do comando agy --print
+  _notifyProgress(`Antigravity: Executando diretamente no workspace...`, { cwd });
   const safeInstruction = instruction.replace(/"/g, '\\"');
   const cmd = `agy --mode accept-edits --dangerously-skip-permissions --print "${safeInstruction}"`;
   
@@ -227,6 +256,7 @@ async function _handleAgyCodeTask(id, args, cwd, context) {
   });
 
   _notifyToolActivity(actId, 'done', label, 'edit', 'execute_code_task');
+  _notifyProgress(`Antigravity: Alterações concluídas.`, { cwd });
   return {
     status: 'success',
     summary: stdout.slice(-2000) || 'Tarefa concluída no workspace.',
@@ -354,6 +384,9 @@ function _notifyToolActivity(id, phase, label, kind = 'cmd', name = '') {
     const payload = { id, phase, label, kind, name };
     if (state.mainWindow && !state.mainWindow.isDestroyed()) {
       state.mainWindow.webContents.send('ai-tool-activity', payload);
+    }
+    if (state.nexaWindow && !state.nexaWindow.isDestroyed()) {
+      state.nexaWindow.webContents.send('ai-tool-activity', payload);
     }
   } catch (_) {}
 }

@@ -207,6 +207,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     window.electronAPI.onGeminiLiveBargeIn(() => {
       console.log("[NexaRenderer] Barge-In disparado pelo Gemini Live: silenciando voz imediatamente.");
       pcmPlayer.stop();
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
       if (raphaelSubtitles) {
         raphaelSubtitles.clear();
       }
@@ -242,6 +245,162 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (raphaelCore && raphaelCore.getState() !== "SPEAKING") {
         raphaelCore.setState("WORKING");
         canvas.className = "raphael-canvas-glow working";
+      }
+    });
+  }
+
+  // 3b. Integração com gemini-stream-chunk e gemini-response para visualização 3D e voz
+  let accumulatedStreamText = "";
+
+  function speakResponseText(text) {
+    if (!text || typeof window === "undefined" || !window.speechSynthesis) return;
+    try {
+      if (pcmPlayer && pcmPlayer.activeSources && pcmPlayer.activeSources.size > 0) return;
+      window.speechSynthesis.cancel();
+      const clean = String(text)
+        .replace(/<voice_summary>[\s\S]*?<\/voice_summary>/gi, '')
+        .replace(/<[^>]+>/g, '')
+        .replace(/```[\s\S]*?```/g, '')
+        .replace(/[`*_~#]/g, '')
+        .trim();
+      if (!clean) return;
+
+      const utterance = new SpeechSynthesisUtterance(clean);
+      utterance.lang = "pt-BR";
+      utterance.rate = 1.05;
+      utterance.pitch = 1.0;
+
+      const voices = window.speechSynthesis.getVoices();
+      const ptVoice = voices.find(v => v.lang.startsWith("pt") && (v.name.includes("Luciana") || v.name.includes("Maria") || v.name.includes("Female") || v.name.includes("Google") || v.name.includes("pt-BR"))) || voices.find(v => v.lang.startsWith("pt"));
+      if (ptVoice) utterance.voice = ptVoice;
+
+      utterance.onstart = () => {
+        if (raphaelCore) {
+          raphaelCore.setState("SPEAKING");
+          canvas.className = "raphael-canvas-glow speaking";
+        }
+      };
+
+      utterance.onend = () => {
+        if (raphaelCore && raphaelCore.getState() === "SPEAKING") {
+          raphaelCore.setState("IDLE");
+          canvas.className = "raphael-canvas-glow idle";
+        }
+      };
+
+      utterance.onerror = () => {
+        if (raphaelCore && raphaelCore.getState() === "SPEAKING") {
+          raphaelCore.setState("IDLE");
+          canvas.className = "raphael-canvas-glow idle";
+        }
+      };
+
+      window.speechSynthesis.speak(utterance);
+    } catch (e) {
+      console.warn("[NexaRenderer] Erro na síntese de voz:", e);
+    }
+  }
+
+  if (window.electronAPI && window.electronAPI.onStreamChunk) {
+    window.electronAPI.onStreamChunk((chunk) => {
+      const textChunk = (typeof chunk === 'string') ? chunk : ((chunk && chunk.text) || '');
+      if (!textChunk) return;
+      accumulatedStreamText += textChunk;
+
+      if (raphaelSubtitles) {
+        raphaelSubtitles.updateStreaming(accumulatedStreamText);
+      }
+      if (raphaelCore && raphaelCore.getState() !== "SPEAKING") {
+        raphaelCore.setState("SPEAKING");
+        canvas.className = "raphael-canvas-glow speaking";
+      }
+    });
+  }
+
+  if (window.electronAPI && window.electronAPI.onStreamComplete) {
+    window.electronAPI.onStreamComplete(() => {
+      if (accumulatedStreamText) {
+        speakResponseText(accumulatedStreamText);
+      }
+      if (raphaelSubtitles) {
+        raphaelSubtitles.finishStreaming(7000);
+      }
+      accumulatedStreamText = "";
+      setTimeout(() => {
+        if (raphaelCore && raphaelCore.getState() === "SPEAKING" && (!window.speechSynthesis || !window.speechSynthesis.speaking)) {
+          raphaelCore.setState("IDLE");
+          canvas.className = "raphael-canvas-glow idle";
+        }
+      }, 500);
+    });
+  }
+
+  if (window.electronAPI && window.electronAPI.onIaResponse) {
+    window.electronAPI.onIaResponse((resposta) => {
+      const text = typeof resposta === "object" ? (resposta.resposta || resposta.text || '') : String(resposta || '');
+      if (!text) return;
+      if (raphaelSubtitles) {
+        raphaelSubtitles.updateStreaming(text);
+        raphaelSubtitles.finishStreaming(7000);
+      }
+      if (raphaelCore) {
+        raphaelCore.setState("SPEAKING");
+        canvas.className = "raphael-canvas-glow speaking";
+        raphaelCore.triggerShockwave(1.2);
+      }
+      speakResponseText(text);
+    });
+  }
+
+  if (window.electronAPI && window.electronAPI.onOpenAIResponse) {
+    window.electronAPI.onOpenAIResponse((resposta) => {
+      const text = typeof resposta === "object" ? (resposta.resposta || resposta.text || '') : String(resposta || '');
+      if (!text) return;
+      if (raphaelSubtitles) {
+        raphaelSubtitles.updateStreaming(text);
+        raphaelSubtitles.finishStreaming(7000);
+      }
+      if (raphaelCore) {
+        raphaelCore.setState("SPEAKING");
+        canvas.className = "raphael-canvas-glow speaking";
+        raphaelCore.triggerShockwave(1.2);
+      }
+      speakResponseText(text);
+    });
+  }
+
+  if (window.electronAPI && window.electronAPI.onAgenticPhaseUpdate) {
+    window.electronAPI.onAgenticPhaseUpdate(({ phase, status }) => {
+      if (raphaelSubtitles && status) {
+        raphaelSubtitles.show(status, 4000);
+      }
+      if (raphaelCore) {
+        if (phase === "completed") {
+          raphaelCore.setState("IDLE");
+          canvas.className = "raphael-canvas-glow idle";
+          raphaelCore.triggerShockwave(1.1);
+        } else if (phase === "error") {
+          raphaelCore.setState("IDLE");
+          canvas.className = "raphael-canvas-glow idle";
+        } else {
+          raphaelCore.setState("WORKING");
+          canvas.className = "raphael-canvas-glow working";
+        }
+      }
+    });
+  }
+
+  if (window.electronAPI && window.electronAPI.onAiToolActivity) {
+    window.electronAPI.onAiToolActivity((act) => {
+      if (!act) return;
+      if (act.phase === 'start' && act.label) {
+        if (raphaelSubtitles) raphaelSubtitles.show(act.label, 3500);
+        if (raphaelCore && raphaelCore.getState() !== "SPEAKING") {
+          raphaelCore.setState("WORKING");
+          canvas.className = "raphael-canvas-glow working";
+        }
+      } else if (act.phase === 'done') {
+        if (raphaelSubtitles && act.label) raphaelSubtitles.show(`✓ ${act.label}`, 2000);
       }
     });
   }
