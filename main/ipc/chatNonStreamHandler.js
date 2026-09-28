@@ -193,10 +193,35 @@ async function handleSendToGeminiVision(event, { text, image }) {
   try {
     const aiModel = helpers.getEffectiveAiModel();
 
+    let imageFilePath = null;
+    try {
+      const imageAttachments = require('../../services/imageAttachments.js');
+      const dir = imageAttachments.ensureDir();
+      const tmpImgPath = path.join(dir, `screen-intent-${Date.now()}.png`);
+      const base64Data = image.replace(/^data:image\/\w+;base64,/, '');
+      await fs.writeFile(tmpImgPath, Buffer.from(base64Data, 'base64'));
+      if (fs2.existsSync(tmpImgPath)) {
+        imageFilePath = tmpImgPath;
+        if (workspace.purgeEphemeralCaptures) {
+          workspace.purgeEphemeralCaptures();
+        }
+        await workspace.addPath(tmpImgPath, 'file', {
+          trustAgy: true,
+          meta: { origin: 'screen-capture' },
+        });
+      }
+    } catch (saveErr) {
+      console.warn('[handleSendToGeminiVision] Erro ao anexar imagem ao workspace:', saveErr.message);
+    }
+
+    const isGenericUserTextCli = !text || !text.trim() || /^(image in context|processo texto da imagem|captura de tela)$/i.test(text.trim());
+    const promptDirective = isGenericUserTextCli
+      ? 'Analise a imagem anexada capturada da tela e forneça a solução, resposta ou explicação detalhada.'
+      : text.trim();
+
     if (aiModel === 'geminiCli') {
       const ocr = await TesseractService.getTextFromImage(image).catch(() => '');
-      const baseTxt = (text && text.trim() ? `${text}\n\n` : '')
-        + (ocr && ocr.trim() ? `Conteúdo extraído da imagem:\n${ocr}` : '');
+      const baseTxt = `${promptDirective}${(ocr && ocr.trim()) ? `\n\nConteúdo extraído via OCR:\n${ocr.trim()}` : ''}`;
       const projectPath = workspace.getProjectPath();
       const geminiModel = configService.getGeminiCliModel();
       GeminiCliProvider.setModel(geminiModel);
@@ -210,8 +235,7 @@ async function handleSendToGeminiVision(event, { text, image }) {
       return;
     } else if (aiModel === 'claudeCli') {
       const ocr = await TesseractService.getTextFromImage(image).catch(() => '');
-      const baseTxt = (text && text.trim() ? `${text}\n\n` : '')
-        + (ocr && ocr.trim() ? `Conteúdo extraído da imagem:\n${ocr}` : '');
+      const baseTxt = `${promptDirective}${(ocr && ocr.trim()) ? `\n\nConteúdo extraído via OCR:\n${ocr.trim()}` : ''}`;
       const projectPath = workspace.getProjectPath();
       const claudeModel = configService.getClaudeCliModel();
       ClaudeCliProvider.setModel(claudeModel);
@@ -225,8 +249,7 @@ async function handleSendToGeminiVision(event, { text, image }) {
       return;
     } else if (aiModel === 'copilotCli') {
       const ocr = await TesseractService.getTextFromImage(image).catch(() => '');
-      const baseTxt = (text && text.trim() ? `${text}\n\n` : '')
-        + (ocr && ocr.trim() ? `Conteúdo extraído da imagem:\n${ocr}` : '');
+      const baseTxt = `${promptDirective}${(ocr && ocr.trim()) ? `\n\nConteúdo extraído via OCR:\n${ocr.trim()}` : ''}`;
       const projectPath = workspace.getProjectPath();
       const copilotModel = configService.getCopilotCliModel();
       CopilotCliProvider.setModel(copilotModel);

@@ -51,18 +51,31 @@
                     }
                 }
 
-                // Se input manual está ativo, não envia nada ainda; apenas guarda e mostra
-                if (manualInputActive) {
+                // Se o input manual está ativo, verificar se o usuário já digitou uma pergunta.
+                // Se o input estiver vazio (o usuário acionou captura via atalho global), não prender
+                // no preview: envia diretamente para a IA como no fluxo padrão do Windows.
+                const tInput = document.querySelector('.manual-input-container .terminal-input');
+                const userTypedText = tInput ? (tInput.value || '').trim() : '';
+
+                if (manualInputActive && userTypedText.length > 0) {
                     pastedImageForManualInput = base64Image || (`file://${screenshotPath}`);
                     if (robot) robot.style.display = 'none';
-                    // Insere o texto OCR no início do input (terminal contenteditable)
-                    const tInput = document.querySelector('.manual-input-container .terminal-input');
-                    if (tInput && text) {
-                        const existingText = tInput.value;
-                        tInput.value = text + '\n' + existingText;
+                    if (text && !userTypedText.includes(text)) {
+                        tInput.value = userTypedText + '\n' + text;
                         tInput.focus();
                     }
                     return;
+                }
+
+                if (manualInputActive) {
+                    manualInputActive = false;
+                    const container = document.querySelector('.manual-input-container');
+                    if (container) {
+                        try { container.remove(); } catch (_) {}
+                    }
+                    if (typeof window.undockComposer === 'function') {
+                        window.undockComposer();
+                    }
                 }
 
                 if (robot) robot.style.display = 'block';

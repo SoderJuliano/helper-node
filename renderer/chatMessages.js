@@ -279,8 +279,12 @@ var isEditingQuestion = false;
     }
 
     async function backendSupportsVision() {
-        try { return (await window.electronAPI.getAiModel()) === 'openIa'; }
-        catch (_) { return false; }
+        try {
+            const m = await window.electronAPI.getAiModel();
+            return ['openIa', 'openIaCodex', 'geminiCli', 'claudeCli', 'copilotCli', 'zaiGlm'].includes(m) || !m;
+        } catch (_) {
+            return true;
+        }
     }
 
     function stopProcessing() {
