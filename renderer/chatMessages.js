@@ -219,16 +219,21 @@ var isEditingQuestion = false;
 
         const aiModel = await window.electronAPI.getAiModel();
 
-        // Se o modo de voz do Gemini Live/Nexa estiver ATIVAMENTE escutando pelo microfone:
-        let isLiveVoiceListening = false;
+        // Se o microfone do Gemini Live estiver ativo, ou se a Nexa estiver habilitada em modo padrão/Gemini:
+        let isNexaLiveActive = false;
         try {
-            if (window.electronAPI && window.electronAPI.nexaVoiceGetStatus) {
-                const status = await window.electronAPI.nexaVoiceGetStatus();
-                isLiveVoiceListening = !!(status && status.active);
+            if (window.electronAPI && window.electronAPI.getNexaConfig) {
+                const nexaCfg = await window.electronAPI.getNexaConfig();
+                const status = window.electronAPI.nexaVoiceGetStatus ? await window.electronAPI.nexaVoiceGetStatus() : null;
+                const isMicListening = !!(status && status.active);
+                // Se o usuário selecionou explicitamente outro provedor de chat (OpenAI, Codex, Claude CLI, Copilot CLI, Ollama):
+                const isExplicitOtherProvider = ['openIa', 'openIaCodex', 'claudeCli', 'copilotCli', 'ollamaLocal', 'llama', 'llama-stream', 'qwen-stream'].includes(aiModel);
+                
+                isNexaLiveActive = isMicListening || (!!(nexaCfg && nexaCfg.enabled) && !isExplicitOtherProvider);
             }
         } catch (_) {}
 
-        if (isLiveVoiceListening && window.electronAPI && window.electronAPI.sendTextToGeminiLive) {
+        if (isNexaLiveActive && window.electronAPI && window.electronAPI.sendTextToGeminiLive) {
             currentLiveQuestion = text;
             liveVoiceBlockActive = true;
             try {
@@ -236,6 +241,7 @@ var isEditingQuestion = false;
                 return;
             } catch (liveErr) {
                 console.warn('[sentToAI] Falha ao enviar para Gemini Live, fallback para modelo padrão:', liveErr);
+                liveVoiceBlockActive = false;
             }
         }
 
@@ -475,6 +481,20 @@ var isEditingQuestion = false;
                 if (typeof window.createBlockActions === 'function' && !lastBlock.querySelector('.block-actions')) {
                     lastBlock.appendChild(window.createBlockActions(transcriptionElement));
                 }
+            }
+        });
+    }
+
+    if (window.electronAPI && window.electronAPI.onNexaVoiceError) {
+        window.electronAPI.onNexaVoiceError((err) => {
+            const msg = (err && err.message) ? err.message : String(err || 'Erro na Nexa Voice');
+            console.warn('[NexaVoice] Erro recebido da Live API:', msg);
+            if (liveVoiceBlockActive) {
+                liveVoiceBlockActive = false;
+                stopProcessing();
+            }
+            if (typeof window.showToast === 'function') {
+                window.showToast(`Nexa Voice: ${msg}`, true);
             }
         });
     }

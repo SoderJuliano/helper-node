@@ -374,6 +374,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onGeminiLiveTranscript: (cb) => ipcRenderer.on("gemini-live:transcript", (event, data) => cb(data)),
   onGeminiLiveUserTranscript: (cb) => ipcRenderer.on("gemini-live:user-transcript", (event, data) => cb(data)),
   onGeminiLiveTurnComplete: (cb) => ipcRenderer.on("gemini-live:turn-complete", (event, data) => cb(data)),
+  onNexaVoiceError: (cb) => ipcRenderer.on("nexa-voice:error", (event, data) => cb(data)),
   onPlayAnimation: (cb) => ipcRenderer.on("nexa:play-animation", (event, data) => cb(data)),
   logToMain: (level, msg) => ipcRenderer.send("nexa:log-to-main", { level, msg }),
   onRequestWebcam: (cb) => ipcRenderer.on("nexa:request-webcam", (event, data) => cb(data)),
