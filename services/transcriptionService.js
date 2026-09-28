@@ -31,12 +31,6 @@ class TranscriptionService {
     if (preferredProvider === 'openai') {
       return await this._transcribeWithOpenAi(audioPath, openAiKey, options);
     }
-    if (preferredProvider === 'local') {
-      if (!hasLocalWhisper) {
-        throw new Error('Whisper local selecionado, mas os binários (whisper-cli) ou modelos ggml não foram encontrados.');
-      }
-      return await this._transcribeWithLocal(audioPath, options);
-    }
     if (preferredProvider === 'macos') {
       return await this._transcribeWithMacOs(audioPath, options);
     }
@@ -55,29 +49,18 @@ class TranscriptionService {
       }
     }
 
-    // Prioridade 2: OpenAI Whisper Cloud
+    // Prioridade 2: OpenAI Cloud
     if (openAiKey) {
       try {
         const text = await this._transcribeWithOpenAi(audioPath, openAiKey, options);
         if (text && text.trim()) return text.trim();
       } catch (err) {
-        console.warn('[TranscriptionService] Transcrição via OpenAI Whisper falhou, tentando fallback:', err.message);
+        console.warn('[TranscriptionService] Transcrição via OpenAI falhou, tentando fallback:', err.message);
         errors.push(`OpenAI: ${err.message}`);
       }
     }
 
-    // Prioridade 3: Whisper Local
-    if (hasLocalWhisper) {
-      try {
-        const text = await this._transcribeWithLocal(audioPath, options);
-        if (text && text.trim()) return text.trim();
-      } catch (err) {
-        console.warn('[TranscriptionService] Transcrição via Whisper local falhou:', err.message);
-        errors.push(`Whisper local: ${err.message}`);
-      }
-    }
-
-    // Prioridade 4: macOS Nativo (se estiver rodando em macOS)
+    // Prioridade 3: macOS Nativo (se estiver rodando em macOS)
     if (process.platform === 'darwin') {
       try {
         const text = await this._transcribeWithMacOs(audioPath, options);
@@ -93,7 +76,7 @@ class TranscriptionService {
     }
 
     throw new Error(
-      'Nenhum provedor de transcrição disponível. Configure sua Google API Key (Gratuita) ou Token da OpenAI em Configurações > APIs & Provedores.'
+      'Nenhum provedor de transcrição disponível. Configure sua Google API Key ou Token da OpenAI em Configurações > APIs & Provedores.'
     );
   }
 
@@ -119,59 +102,68 @@ class TranscriptionService {
       ? 'Transcribe this audio with absolute accuracy. Return strictly the spoken text, without introductions, markdown formatting, quotes or commentary.'
       : 'Transcreva este áudio com precisão absoluta. Retorne estritamente o texto falado, sem introduções, formatação markdown, aspas ou comentários adicionais.';
 
-    const model = 'gemini-2.0-flash';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey.trim())}`;
+    const candidateModels = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash'];
+    let lastErr = null;
 
-    const payload = {
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            {
-              inlineData: {
-                mimeType,
-                data: base64Audio
+    for (const model of candidateModels) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey.trim())}`;
+      const payload = {
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  mimeType,
+                  data: base64Audio
+                }
+              },
+              {
+                text: promptText
               }
-            },
-            {
-              text: promptText
-            }
-          ]
+            ]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.0,
+          maxOutputTokens: 2048
         }
-      ],
-      generationConfig: {
-        temperature: 0.0,
-        maxOutputTokens: 2048
+      };
+
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          const msg = (errData && errData.error && errData.error.message) ? errData.error.message : `HTTP ${res.status}`;
+          lastErr = new Error(`Google Gemini Audio API erro (${model}): ${msg}`);
+          continue;
+        }
+
+        const data = await res.json();
+        let text = '';
+        if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) {
+          text = data.candidates[0].content.parts.map(p => p.text || '').join('').trim();
+        }
+
+        text = text.replace(/^["'`]+|["'`]+$/g, '').trim();
+        return text;
+      } catch (reqErr) {
+        lastErr = reqErr;
       }
-    };
-
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    });
-
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      const msg = (errData && errData.error && errData.error.message) ? errData.error.message : `HTTP ${res.status}`;
-      throw new Error(`Google Gemini Audio API erro: ${msg}`);
     }
 
-    const data = await res.json();
-    let text = '';
-    if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) {
-      text = data.candidates[0].content.parts.map(p => p.text || '').join('').trim();
-    }
-
-    // Limpa eventuais aspas externas ou formatações redundantes
-    text = text.replace(/^["'`]+|["'`]+$/g, '').trim();
-    return text;
+    throw lastErr || new Error('Google Gemini Audio API indisponível.');
   }
 
   /**
-   * Transcreve via OpenAI Whisper API Cloud.
+   * Transcreve via OpenAI Audio API Cloud.
    */
   async _transcribeWithOpenAi(audioPath, apiKey, options = {}) {
     if (!apiKey) {
@@ -183,17 +175,6 @@ class TranscriptionService {
   }
 
   /**
-   * Transcreve via Whisper local binário.
-   */
-  async _transcribeWithLocal(audioPath, options = {}) {
-    const { helpers } = require('../main/globals');
-    if (helpers && typeof helpers.transcribeAudio === 'function') {
-      return await helpers.transcribeAudio(audioPath, { emitRenderer: false, emitNotifications: false });
-    }
-    throw new Error('Motor local de transcrição não carregado.');
-  }
-
-  /**
    * Transcreve via adapter nativo macOS (Speech.framework).
    */
   async _transcribeWithMacOs(audioPath, options = {}) {
@@ -202,16 +183,6 @@ class TranscriptionService {
       return await macSpeechService.transcribeFile(audioPath, options);
     }
     throw new Error('Módulo nativo macOS Speech não disponível.');
-  }
-
-  _hasLocalWhisper() {
-    try {
-      const { helpers } = require('../main/globals');
-      if (helpers && typeof helpers.getWhisperBinaryPath === 'function' && typeof helpers.getWhisperModelPath === 'function') {
-        return !!(helpers.getWhisperBinaryPath() && helpers.getWhisperModelPath());
-      }
-    } catch (_) {}
-    return false;
   }
 }
 

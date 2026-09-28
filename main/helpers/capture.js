@@ -118,8 +118,8 @@ helpers.captureFullScreenAuto = async function() {
       success = await tryCmd('gnome-screenshot', `gnome-screenshot -f '${tmpPng}'`);
     }
 
-    // 4) X11: spectacle (KDE)
-    if (!success && !isWayland && await helpers.commandExists('spectacle')) {
+    // 4) spectacle (KDE - Wayland e X11)
+    if (!success && await helpers.commandExists('spectacle')) {
       success = await tryCmd('spectacle', `spectacle -b -n -o '${tmpPng}'`);
     }
 

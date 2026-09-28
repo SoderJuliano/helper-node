@@ -5,6 +5,108 @@
 
 const { desktopCapturer, screen } = require('electron');
 const fs = require('fs').promises;
+const fsSync = require('fs');
+const { exec } = require('child_process');
+const util = require('util');
+const execPromise = util.promisify(exec);
+
+async function tryLinuxNativeCapture(outPath, options = {}) {
+  const isWayland = process.env.XDG_SESSION_TYPE === 'wayland';
+  const isCosmic = (process.env.XDG_CURRENT_DESKTOP || '').toUpperCase().includes('COSMIC');
+
+  const commandExists = async (cmd) => {
+    try {
+      await execPromise(`command -v ${cmd}`);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  };
+
+  // 1. KDE Spectacle (funciona em Wayland e X11 silenciosamente com -b -n sem portal)
+  if (await commandExists('spectacle')) {
+    try {
+      await execPromise(`spectacle -b -n -o '${outPath}'`);
+      if (fsSync.existsSync(outPath) && fsSync.statSync(outPath).size > 100) {
+        return true;
+      }
+    } catch (e) {
+      console.warn('[screenCapture] spectacle falhou:', e.message);
+    }
+  }
+
+  // 2. COSMIC Screenshot
+  if (isCosmic && await commandExists('cosmic-screenshot')) {
+    try {
+      const pathMod = require('path');
+      const tmpDir = pathMod.dirname(outPath);
+      await execPromise(`cosmic-screenshot --interactive=false --notify=false --save-dir '${tmpDir}'`);
+      const files = fsSync.readdirSync(tmpDir)
+        .filter(f => f.toLowerCase().endsWith('.png'))
+        .map(f => ({ name: f, time: fsSync.statSync(pathMod.join(tmpDir, f)).mtimeMs }))
+        .sort((a, b) => b.time - a.time);
+      if (files.length > 0) {
+        const latest = pathMod.join(tmpDir, files[0].name);
+        if (latest !== outPath) {
+          fsSync.copyFileSync(latest, outPath);
+        }
+        return true;
+      }
+    } catch (e) {
+      console.warn('[screenCapture] cosmic-screenshot falhou:', e.message);
+    }
+  }
+
+  // 3. GNOME Screenshot
+  if (await commandExists('gnome-screenshot')) {
+    try {
+      await execPromise(`gnome-screenshot -f '${outPath}'`);
+      if (fsSync.existsSync(outPath) && fsSync.statSync(outPath).size > 100) {
+        return true;
+      }
+    } catch (e) {
+      console.warn('[screenCapture] gnome-screenshot falhou:', e.message);
+    }
+  }
+
+  // 4. Grim (Wayland Sway/Hyprland)
+  if (isWayland && await commandExists('grim')) {
+    try {
+      await execPromise(`grim '${outPath}'`);
+      if (fsSync.existsSync(outPath) && fsSync.statSync(outPath).size > 100) {
+        return true;
+      }
+    } catch (e) {
+      console.warn('[screenCapture] grim falhou:', e.message);
+    }
+  }
+
+  // 5. Scrot (X11)
+  if (!isWayland && await commandExists('scrot')) {
+    try {
+      await execPromise(`scrot -o '${outPath}'`);
+      if (fsSync.existsSync(outPath) && fsSync.statSync(outPath).size > 100) {
+        return true;
+      }
+    } catch (e) {
+      console.warn('[screenCapture] scrot falhou:', e.message);
+    }
+  }
+
+  // 6. ImageMagick Import (X11)
+  if (!isWayland && await commandExists('import')) {
+    try {
+      await execPromise(`import -window root '${outPath}'`);
+      if (fsSync.existsSync(outPath) && fsSync.statSync(outPath).size > 100) {
+        return true;
+      }
+    } catch (e) {
+      console.warn('[screenCapture] import falhou:', e.message);
+    }
+  }
+
+  return false;
+}
 
 /**
  * Captura a tela inteira (monitor relevante ou especificado) ou uma janela específica (ex: Brave, Chrome)
@@ -19,6 +121,23 @@ const fs = require('fs').promises;
  */
 async function captureFullScreenToFile(outPath, options = {}) {
   const { targetApp, displayIndex } = options;
+
+  if (process.platform === 'linux') {
+    const nativeOk = await tryLinuxNativeCapture(outPath, options);
+    if (nativeOk) {
+      return {
+        path: outPath,
+        sourceName: 'Tela (Linux)',
+        sourceType: 'screen',
+        totalSources: 1,
+        availableWindows: [],
+        displaysCount: 1,
+        toString() { return outPath; },
+        valueOf() { return outPath; },
+        [Symbol.toPrimitive](hint) { return outPath; },
+      };
+    }
+  }
 
   const displays = (screen && typeof screen.getAllDisplays === 'function') ? screen.getAllDisplays() : [];
   const primaryDisplay = (screen && typeof screen.getPrimaryDisplay === 'function') ? screen.getPrimaryDisplay() : { size: { width: 1920, height: 1080 }, scaleFactor: 1, id: 0 };

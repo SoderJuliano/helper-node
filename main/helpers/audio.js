@@ -76,34 +76,10 @@ helpers.cancelDictation = function() {
 }
 
 helpers.getWhisperBinaryPath = function() {
-  const binName = process.platform === 'win32' ? 'whisper-cli.exe' : 'whisper-cli';
-  const candidates = [
-    path.join(ROOT_DIR, 'whisper', 'build', 'bin', binName),
-    path.join(os.homedir(), '.local', 'share', 'helper-node', 'whisper', 'build', 'bin', binName),
-    path.join(os.homedir(), 'Documents', 'helper-node', 'whisper', 'build', 'bin', binName),
-    '/usr/local/bin/' + binName,
-    '/usr/bin/' + binName,
-  ];
-  for (const c of candidates) {
-    if (fs2.existsSync(c)) return c;
-  }
   return null;
 };
 
 helpers.getWhisperModelPath = function() {
-  const modelNames = ['ggml-medium.bin', 'ggml-small.bin', 'ggml-base.bin', 'ggml-tiny.bin'];
-  const searchDirs = [
-    path.join(ROOT_DIR, 'whisper', 'models'),
-    path.join(os.homedir(), '.local', 'share', 'helper-node', 'whisper', 'models'),
-    path.join(os.homedir(), 'Documents', 'helper-node', 'whisper', 'models'),
-    path.join(os.homedir(), '.cache', 'whisper'),
-  ];
-  for (const mName of modelNames) {
-    for (const dir of searchDirs) {
-      const p = path.join(dir, mName);
-      if (fs2.existsSync(p)) return p;
-    }
-  }
   return null;
 };
 
@@ -276,97 +252,41 @@ helpers.transcribeAudio = async function(filePath, options = {}) {
   const { emitRenderer = true, emitNotifications = true } = options;
 
   try {
-    // Obter a duração do áudio
-    const duration = await helpers.getAudioDuration(filePath);
-
-    const whisperPath = helpers.getWhisperBinaryPath();
-    const modelPath = helpers.getWhisperModelPath();
-
-    // Determinar idioma do whisper: 'pt' direto para PT-BR evita confusão de autodeteção
+    await helpers.getAudioDuration(filePath);
     const savedLang = configService.getLanguage ? configService.getLanguage() : 'pt-br';
-    const whisperLang = savedLang === 'us-en' ? 'en' : 'pt';
-
-    console.log(`Usando modelo ${modelPath ? path.basename(modelPath) : 'nenhum encontrado'}`);
+    const lang = savedLang === 'us-en' ? 'en' : 'pt';
 
     const transcriptionService = require('../../services/transcriptionService');
-    if (!fs2.existsSync(whisperPath) || !modelPath || !fs2.existsSync(modelPath)) {
-      try {
-        console.log('[transcribeAudio] Whisper local indisponível — usando serviço unificado de transcrição (Google/OpenAI)');
-        const cloudText = await transcriptionService.transcribe(filePath, { language: whisperLang });
-        const cleanText = await helpers.limparTranscricao(cloudText || '');
-        if (emitRenderer && state.mainWindow && !state.mainWindow.isDestroyed()) {
-          state.mainWindow.webContents.send("transcription-result", { cleanText });
-        }
-        return cleanText;
-      } catch (err) {
-        throw new Error(`Whisper local ausente e falha no serviço de nuvem: ${err.message}`);
-      }
-    }
+    const cloudText = await transcriptionService.transcribe(filePath, { language: lang });
+    const cleanText = await helpers.limparTranscricao(cloudText || '');
 
-    const { buildTranscriptionPrompt } = require('../../services/techGlossary');
-    const promptText = buildTranscriptionPrompt();
-    const promptArg = promptText ? ` --prompt "${promptText.replace(/"/g, '\\"')}"` : '';
-
-    const threads = Math.min(8, (os.cpus() && os.cpus().length) || 4);
-    const command = `"${whisperPath}" -m "${modelPath}" -f "${filePath}" -l ${whisperLang} -np -sns -nth 0.65 --threads ${threads} --no-timestamps --temperature 0.0${promptArg}`;
-
-    console.log("Executing whisper:", command);
-    return new Promise((resolve, reject) => {
-      exec(command, { maxBuffer: 10 * 1024 * 1024 }, async (error, stdout, stderr) => {
-        if (error) {
-          console.error("Whisper error:", stderr);
-          try {
-            console.log('[transcribeAudio] Whisper local falhou — fallback para serviço unificado de transcrição (Google/OpenAI)');
-            const cloudText = await transcriptionService.transcribe(filePath, { language: whisperLang });
-            const cleanText = await helpers.limparTranscricao(cloudText || '', promptText);
-            if (emitRenderer && state.mainWindow && !state.mainWindow.isDestroyed()) {
-              state.mainWindow.webContents.send("transcription-result", { cleanText });
-            }
-            return resolve(cleanText);
-          } catch (cloudErr) {
-            console.error('[transcribeAudio] Fallback na nuvem também falhou:', cloudErr.message);
-          }
-          state.mainWindow.webContents.send(
-            "transcription-error",
-            "Failed to transcribe audio"
-          );
-          reject(error);
-          return;
-        }
-        const text = stdout.trim();
-        console.log("Transcription:", text || "No text recognized");
-        const cleanText = await helpers.limparTranscricao(text, promptText);
-        if (emitRenderer && state.mainWindow && !state.mainWindow.isDestroyed()) {
-          state.mainWindow.webContents.send("transcription-result", { cleanText });
-        }
-
-        if (
-          emitNotifications &&
-          appConfig.notificationsEnabled &&
-          Notification.isSupported() &&
-          cleanText
-        ) {
-          const notification = new Notification({
-            title: "Helper-Node",
-            body: "Usuário perguntou: " + cleanText,
-            silent: true,
-          });
-          notification.show();
-        }
-
-        resolve(cleanText);
-      });
-    });
-  } catch (error) {
-    console.error("Transcription error:", error);
     if (emitRenderer && state.mainWindow && !state.mainWindow.isDestroyed()) {
-      state.mainWindow.webContents.send(
-        "transcription-error",
-        "Failed to transcribe audio"
-      );
+      state.mainWindow.webContents.send("transcription-result", { cleanText });
     }
+
+    if (
+      emitNotifications &&
+      appConfig.notificationsEnabled &&
+      Notification.isSupported() &&
+      cleanText
+    ) {
+      const notification = new Notification({
+        title: "Helper-Node",
+        body: "Usuário perguntou: " + cleanText,
+        silent: true,
+      });
+      notification.show();
+    }
+
+    return cleanText;
+  } catch (error) {
+    console.error('[transcribeAudio] Erro na transcrição:', error.message);
+    if (emitRenderer && state.mainWindow && !state.mainWindow.isDestroyed()) {
+      state.mainWindow.webContents.send("transcription-error", error.message);
+    }
+    throw error;
   }
-}
+};
 
 helpers.limparTranscricao = async function(texto, glossaryPrompt = '') {
   const { cleanTranscription } = require('../../services/audioTranscriptionCleaner');

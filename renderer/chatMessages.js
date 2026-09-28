@@ -285,6 +285,7 @@ var isEditingQuestion = false;
 
     function stopProcessing() {
         window.isAiProcessing = false;
+        if (typeof window.resetStreamingState === 'function') window.resetStreamingState();
         window.activeInteractionBlock = null;
         showFloatingStop(false);
         const animation = window.animation;
@@ -328,14 +329,7 @@ var isEditingQuestion = false;
         if (window.electronAPI && window.electronAPI.cancelIaRequest) {
             window.electronAPI.cancelIaRequest();
         }
-        try {
-            if (typeof typingCursor !== 'undefined' && typingCursor && typingCursor.parentNode) {
-                typingCursor.remove();
-            }
-        } catch (_) {}
-        if (typeof streamingElement !== 'undefined') streamingElement = null;
-        if (typeof streamingText !== 'undefined') streamingText = '';
-        if (typeof typingCursor !== 'undefined') typingCursor = null;
+        if (typeof window.resetStreamingState === 'function') window.resetStreamingState();
 
         stopProcessing();
     }
@@ -364,6 +358,7 @@ var isEditingQuestion = false;
     function startProcessing(targetBlock) {
         window.iaCancelled = false;
         window.isAiProcessing = true;
+        if (typeof window.resetStreamingState === 'function') window.resetStreamingState();
         window._chatTurnSeq = (window._chatTurnSeq || 0) + 1;
         const currentSeq = window._chatTurnSeq;
         window._activeTurnSeq = currentSeq;
