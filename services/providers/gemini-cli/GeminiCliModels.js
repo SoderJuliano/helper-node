@@ -14,7 +14,7 @@
 const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { resolveBinary } = require('./GeminiCliProcess');
+const { resolveBinary } = require('./GeminiCliBinary');
 
 // Sem modelo padrão escrito à mão: string vazia faz o GeminiCliProcess omitir
 // o `--model` (ele só empurra a flag `if (model)`), e o próprio CLI escolhe.
