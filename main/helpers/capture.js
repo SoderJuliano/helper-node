@@ -31,6 +31,8 @@ helpers.captureFullScreenAuto = async function() {
   const tmpPng = path.join(app.getPath('temp'), `helpernode-shot-${Date.now()}.png`);
   const isWayland = process.env.XDG_SESSION_TYPE === 'wayland';
   const isCosmic = (process.env.XDG_CURRENT_DESKTOP || '').toUpperCase().includes('COSMIC');
+  const isKde = (process.env.XDG_CURRENT_DESKTOP || '').toUpperCase().includes('KDE') ||
+                (process.env.DESKTOP_SESSION || '').toUpperCase().includes('PLASMA');
   let success = false;
   let capturedPath = null;
 
@@ -52,104 +54,84 @@ helpers.captureFullScreenAuto = async function() {
   try {
     // === ORDEM DE PRIORIDADE — TODAS STEALTH (sem prompt do portal) ===
 
-    // 0) Windows/macOS: desktopCapturer captura SILENCIOSAMENTE (sem diálogo do
-    //    portal, que só existe no Linux/Wayland). A janela do helper fica fora
-    //    da gravação via setContentProtection — efetivo aqui, diferente do Linux.
-    //    Este é o caminho stealth NATIVO dessas plataformas.
-    if (process.platform !== 'linux') {
+    // 0) Tentativa via platformScreenCapture (stealth nativo para cada SO):
+    //    - No Windows/macOS: desktopCapturer nativo do Chromium (sem portal, suporta multi-monitores)
+    //    - No Linux: tryLinuxNativeCapture (spectacle no KDE, cosmic-screenshot, gnome-screenshot, grim, etc.)
+    try {
+      const captureRes = await platformScreenCapture.captureFullScreenToFile(tmpPng);
+      capturedPath = (captureRes && typeof captureRes === 'object' && captureRes.path)
+        ? captureRes.path
+        : (typeof captureRes === 'string' ? captureRes : null);
+      success = !!capturedPath && fs2.existsSync(capturedPath);
+    } catch (e) {
+      console.warn('📸 platformScreenCapture falhou, tentando fallbacks:', (e && e.message) || e);
+    }
+
+    // 1) KDE Spectacle (Wayland e X11 no Arch / Garuda / Fedora / Ubuntu KDE)
+    if (!success && isKde && await helpers.commandExists('spectacle')) {
+      success = await tryCmd('spectacle', `spectacle -b -n -o '${tmpPng}'`);
+    }
+
+    // 2) COSMIC: cosmic-screenshot
+    if (!success && isCosmic && await helpers.commandExists('cosmic-screenshot')) {
       try {
-        const captureRes = await platformScreenCapture.captureFullScreenToFile(tmpPng);
-        capturedPath = (captureRes && typeof captureRes === 'object' && captureRes.path)
-          ? captureRes.path
-          : (typeof captureRes === 'string' ? captureRes : null);
-        success = !!capturedPath && fs2.existsSync(capturedPath);
+        await fs.mkdir(tmpDir, { recursive: true });
+        await execPromise(
+          `cosmic-screenshot --interactive=false --notify=false --save-dir '${tmpDir}'`
+        );
+        const files = (await fs.readdir(tmpDir))
+          .filter(f => f.toLowerCase().endsWith('.png'))
+          .map(f => path.join(tmpDir, f));
+        if (files.length > 0) {
+          capturedPath = files[0];
+          success = true;
+          console.log('📸 captura via cosmic-screenshot OK:', capturedPath);
+        }
       } catch (e) {
-        console.warn('📸 desktopCapturer (win/mac) falhou:', (e && e.message) || e);
+        console.warn('📸 cosmic-screenshot falhou:',
+          (e && e.stderr ? e.stderr : e.message || e).toString().trim());
       }
     }
 
-    // 1) COSMIC: cosmic-screenshot
-    //    Sintaxe correta: --interactive=false --notify=false --save-dir <dir>
-    //    A ferramenta gera um arquivo dentro de save-dir; pegamos o mais recente.
-    if (isCosmic) {
-      if (await helpers.commandExists('cosmic-screenshot')) {
-        try {
-          await fs.mkdir(tmpDir, { recursive: true });
-          await execPromise(
-            `cosmic-screenshot --interactive=false --notify=false --save-dir '${tmpDir}'`
-          );
-          // Encontra o arquivo gerado (PNG mais recente no diretório)
-          const files = (await fs.readdir(tmpDir))
-            .filter(f => f.toLowerCase().endsWith('.png'))
-            .map(f => path.join(tmpDir, f));
-          if (files.length > 0) {
-            capturedPath = files[0];
-            success = true;
-            console.log('📸 captura via cosmic-screenshot OK:', capturedPath);
-          }
-        } catch (e) {
-          console.warn('📸 cosmic-screenshot falhou:',
-            (e && e.stderr ? e.stderr : e.message || e).toString().trim());
-        }
-      } else {
-        // STEALTH NÃO É POSSÍVEL EM COSMIC SEM ESTA FERRAMENTA.
-        // O Electron desktopCapturer abriria o diálogo "Compartilhar tela",
-        // que é justamente o que queremos evitar. Falhamos com instrução clara.
-        if (osOn) {
-          helpers.createOsNotificationWindow('response',
-            '<b>cosmic-screenshot</b> não está instalado.<br>' +
-            'É necessário para captura silenciosa no COSMIC.<br><br>' +
-            'Instale com:<br><code>sudo apt install cosmic-screenshot</code>');
-        } else if (state.mainWindow && !state.mainWindow.isDestroyed()) {
-          state.mainWindow.webContents.send('transcription-error',
-            'cosmic-screenshot não está instalado. Instale: sudo apt install cosmic-screenshot');
-        }
-        return;
-      }
-    }
-
-    // 2) Wayland NÃO-COSMIC (Sway/Hyprland/Wayfire): grim
-    if (!success && isWayland && !isCosmic && await helpers.commandExists('grim')) {
-      success = await tryCmd('grim', `grim '${tmpPng}'`);
-    }
-
-    // 3) X11: gnome-screenshot (sem prompt, captura full-screen)
-    if (!success && !isWayland && await helpers.commandExists('gnome-screenshot')) {
-      success = await tryCmd('gnome-screenshot', `gnome-screenshot -f '${tmpPng}'`);
-    }
-
-    // 4) spectacle (KDE - Wayland e X11)
+    // 3) spectacle genérico (se spectacle existe mesmo fora de detecção KDE)
     if (!success && await helpers.commandExists('spectacle')) {
       success = await tryCmd('spectacle', `spectacle -b -n -o '${tmpPng}'`);
     }
 
-    // 5) X11: scrot
+    // 4) Wayland NÃO-KDE (Sway/Hyprland/Wayfire): grim
+    if (!success && isWayland && !isKde && !isCosmic && await helpers.commandExists('grim')) {
+      success = await tryCmd('grim', `grim '${tmpPng}'`);
+    }
+
+    // 5) X11: gnome-screenshot (sem prompt, captura full-screen)
+    if (!success && !isWayland && await helpers.commandExists('gnome-screenshot')) {
+      success = await tryCmd('gnome-screenshot', `gnome-screenshot -f '${tmpPng}'`);
+    }
+
+    // 6) X11: scrot
     if (!success && !isWayland && await helpers.commandExists('scrot')) {
       success = await tryCmd('scrot', `scrot -o '${tmpPng}'`);
     }
 
-    // 6) X11: ImageMagick import
+    // 7) X11: ImageMagick import
     if (!success && !isWayland && await helpers.commandExists('import')) {
       success = await tryCmd('import', `import -window root '${tmpPng}'`);
     }
 
-    // ⚠️ NÃO usamos desktopCapturer do Electron como fallback:
-    //    em Wayland ele SEMPRE dispara o diálogo "Compartilhar a tela"
-    //    do XDG Portal — quebra o stealth e exige clique do usuário.
-    //    Melhor falhar com mensagem clara do que vazar a presença do app.
-
     if (!success) {
-      const hint = isCosmic
-        ? 'Instale: <code>sudo apt install cosmic-screenshot</code>'
-        : isWayland
-          ? 'Instale: <code>sudo apt install grim</code>'
-          : 'Instale: <code>sudo apt install gnome-screenshot</code>';
+      const hint = isKde
+        ? 'Instale spectacle (Arch: sudo pacman -S spectacle | Debian/Ubuntu: sudo apt install kde-spectacle)'
+        : isCosmic
+          ? 'Instale cosmic-screenshot'
+          : isWayland
+            ? 'Instale grim (no Sway/Hyprland) ou spectacle (no KDE)'
+            : 'Instale gnome-screenshot ou scrot';
       if (osOn) {
         helpers.createOsNotificationWindow('response',
           `Não foi possível capturar a tela silenciosamente.<br>${hint}`);
       } else if (state.mainWindow && !state.mainWindow.isDestroyed()) {
         state.mainWindow.webContents.send('transcription-error',
-          `Não foi possível capturar a tela. ${hint.replace(/<[^>]+>/g, '')}`);
+          `Não foi possível capturar a tela. ${hint}`);
       }
       return;
     }
@@ -413,36 +395,51 @@ helpers.captureRegionNative = async function() {
   const { width: dw, height: dh } = display.size;
   const sf = display.scaleFactor || 1;
 
-  // 1) Captura a tela inteira via desktopCapturer (funciona em X11/Wayland via portal)
-  let sources;
+  // 1) Captura a tela inteira (stealth sem portal via platformScreenCapture, fallback desktopCapturer)
+  let buffer = null;
+  const tmpShot = path.join(app.getPath('temp'), `region-bg-${Date.now()}.png`);
   try {
-    sources = await desktopCapturer.getSources({
-      types: ['screen'],
-      thumbnailSize: { width: Math.round(dw * sf), height: Math.round(dh * sf) },
-    });
+    const res = await platformScreenCapture.captureFullScreenToFile(tmpShot);
+    const p = (res && typeof res === 'object' && res.path) ? res.path : tmpShot;
+    if (fs2.existsSync(p)) {
+      buffer = await fs.readFile(p);
+      try { await fs.unlink(p); } catch (_) {}
+    }
   } catch (e) {
-    console.error('desktopCapturer falhou:', e);
-    const isOsIntegration = configService.getOsIntegrationStatus();
-    if (isOsIntegration) {
-      helpers.createOsNotificationWindow('response', 'Não foi possível acessar a captura de tela.');
-    } else if (state.mainWindow && !state.mainWindow.isDestroyed()) {
-      state.mainWindow.webContents.send('transcription-error', 'Não foi possível acessar a captura de tela.');
-    }
-    return;
+    console.warn('[captureRegionNative] platformScreenCapture falhou, tentando fallback desktopCapturer:', e.message);
   }
-  if (!sources || sources.length === 0) {
-    const isOsIntegration = configService.getOsIntegrationStatus();
-    if (isOsIntegration) {
-      helpers.createOsNotificationWindow('response', 'Nenhuma fonte de tela disponível.');
-    } else if (state.mainWindow && !state.mainWindow.isDestroyed()) {
-      state.mainWindow.webContents.send('transcription-error', 'Nenhuma fonte de tela disponível.');
+
+  if (!buffer) {
+    let sources;
+    try {
+      sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: { width: Math.round(dw * sf), height: Math.round(dh * sf) },
+      });
+    } catch (e) {
+      console.error('desktopCapturer falhou:', e);
+      const isOsIntegration = configService.getOsIntegrationStatus();
+      if (isOsIntegration) {
+        helpers.createOsNotificationWindow('response', 'Não foi possível acessar a captura de tela.');
+      } else if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+        state.mainWindow.webContents.send('transcription-error', 'Não foi possível acessar a captura de tela.');
+      }
+      return;
     }
-    return;
+    if (!sources || sources.length === 0) {
+      const isOsIntegration = configService.getOsIntegrationStatus();
+      if (isOsIntegration) {
+        helpers.createOsNotificationWindow('response', 'Nenhuma fonte de tela disponível.');
+      } else if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+        state.mainWindow.webContents.send('transcription-error', 'Nenhuma fonte de tela disponível.');
+      }
+      return;
+    }
+    const screenSource = sources[0];
+    buffer = screenSource.thumbnail.toPNG();
   }
-  // Pega a primária (Linux geralmente devolve a principal primeiro)
-  const screenSource = sources[0];
-  const fullImage = screenSource.thumbnail;
-  state.regionCaptureBuffer = fullImage.toPNG();
+
+  state.regionCaptureBuffer = buffer;
 
   // 2) Abre overlay transparente fullscreen para seleção
   state.regionSelectWindow = new BrowserWindow({

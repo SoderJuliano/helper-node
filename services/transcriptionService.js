@@ -22,7 +22,6 @@ class TranscriptionService {
     const preferredProvider = (configService.getTranscriptionProvider ? configService.getTranscriptionProvider() : 'auto') || 'auto';
     const googleKey = (configService.getGoogleApiKey ? configService.getGoogleApiKey() : '').trim();
     const openAiKey = (configService.getOpenIaToken ? configService.getOpenIaToken() : '').trim();
-    const hasLocalWhisper = this._hasLocalWhisper();
 
     // 1. Provedor forçado pelo usuário
     if (preferredProvider === 'google') {
@@ -102,7 +101,7 @@ class TranscriptionService {
       ? 'Transcribe this audio with absolute accuracy. Return strictly the spoken text, without introductions, markdown formatting, quotes or commentary.'
       : 'Transcreva este áudio com precisão absoluta. Retorne estritamente o texto falado, sem introduções, formatação markdown, aspas ou comentários adicionais.';
 
-    const candidateModels = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash'];
+    const candidateModels = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-flash-latest', 'gemini-3.5-flash', 'gemini-3.6-flash'];
     let lastErr = null;
 
     for (const model of candidateModels) {

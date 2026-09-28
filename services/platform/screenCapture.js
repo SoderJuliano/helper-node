@@ -13,6 +13,8 @@ const execPromise = util.promisify(exec);
 async function tryLinuxNativeCapture(outPath, options = {}) {
   const isWayland = process.env.XDG_SESSION_TYPE === 'wayland';
   const isCosmic = (process.env.XDG_CURRENT_DESKTOP || '').toUpperCase().includes('COSMIC');
+  const isKde = (process.env.XDG_CURRENT_DESKTOP || '').toUpperCase().includes('KDE') ||
+                (process.env.DESKTOP_SESSION || '').toUpperCase().includes('PLASMA');
 
   const commandExists = async (cmd) => {
     try {
@@ -69,8 +71,8 @@ async function tryLinuxNativeCapture(outPath, options = {}) {
     }
   }
 
-  // 4. Grim (Wayland Sway/Hyprland)
-  if (isWayland && await commandExists('grim')) {
+  // 4. Grim (Wayland Sway/Hyprland - KWin/KDE não suporta wlr-screencopy)
+  if (isWayland && !isKde && await commandExists('grim')) {
     try {
       await execPromise(`grim '${outPath}'`);
       if (fsSync.existsSync(outPath) && fsSync.statSync(outPath).size > 100) {
