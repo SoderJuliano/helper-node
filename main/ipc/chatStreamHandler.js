@@ -9,11 +9,6 @@ function emitToTargets(eventSender, channel, ...args) {
       eventSender.send(channel, ...args);
     }
   } catch (_) {}
-  try {
-    if (state.nexaWindow && !state.nexaWindow.isDestroyed() && state.nexaWindow.webContents !== eventSender) {
-      state.nexaWindow.webContents.send(channel, ...args);
-    }
-  } catch (_) {}
 }
 
 async function handleSendToGeminiStream(event, text, sessionId) {

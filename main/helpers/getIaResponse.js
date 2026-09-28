@@ -22,7 +22,6 @@ helpers.getIaResponse = async function(text) {
   function getCompositeSender() {
     const targets = [];
     if (state.mainWindow && !state.mainWindow.isDestroyed()) targets.push(state.mainWindow.webContents);
-    if (state.nexaWindow && !state.nexaWindow.isDestroyed()) targets.push(state.nexaWindow.webContents);
 
     return {
       send: (channel, ...args) => {

@@ -249,68 +249,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  if (window.electronAPI && window.electronAPI.onStreamChunk) {
-    window.electronAPI.onStreamChunk((chunk) => {
-      const textChunk = (typeof chunk === 'string') ? chunk : ((chunk && chunk.text) || '');
-      if (!textChunk) return;
-      accumulatedStreamText += textChunk;
-
-      if (raphaelSubtitles) {
-        raphaelSubtitles.updateStreaming(accumulatedStreamText);
-      }
-      if (raphaelCore && raphaelCore.getState() !== "SPEAKING" && pcmPlayer.activeSources.size > 0) {
-        raphaelCore.setState("SPEAKING");
-        canvas.className = "raphael-canvas-glow speaking";
-      }
-    });
-  }
-
-  if (window.electronAPI && window.electronAPI.onStreamComplete) {
-    window.electronAPI.onStreamComplete(() => {
-      if (raphaelSubtitles) {
-        raphaelSubtitles.finishStreaming(7000);
-      }
-      accumulatedStreamText = "";
-      setTimeout(() => {
-        if (raphaelCore && raphaelCore.getState() === "SPEAKING" && pcmPlayer.activeSources.size === 0) {
-          raphaelCore.setState("IDLE");
-          canvas.className = "raphael-canvas-glow idle";
-        }
-      }, 500);
-    });
-  }
-
-  if (window.electronAPI && window.electronAPI.onIaResponse) {
-    window.electronAPI.onIaResponse((resposta) => {
-      const text = typeof resposta === "object" ? (resposta.resposta || resposta.text || '') : String(resposta || '');
-      if (!text) return;
-      if (raphaelSubtitles) {
-        raphaelSubtitles.updateStreaming(text);
-        raphaelSubtitles.finishStreaming(7000);
-      }
-      if (raphaelCore && pcmPlayer.activeSources.size > 0) {
-        raphaelCore.setState("SPEAKING");
-        canvas.className = "raphael-canvas-glow speaking";
-        raphaelCore.triggerShockwave(1.2);
-      }
-    });
-  }
-
-  if (window.electronAPI && window.electronAPI.onOpenAIResponse) {
-    window.electronAPI.onOpenAIResponse((resposta) => {
-      const text = typeof resposta === "object" ? (resposta.resposta || resposta.text || '') : String(resposta || '');
-      if (!text) return;
-      if (raphaelSubtitles) {
-        raphaelSubtitles.updateStreaming(text);
-        raphaelSubtitles.finishStreaming(7000);
-      }
-      if (raphaelCore && pcmPlayer.activeSources.size > 0) {
-        raphaelCore.setState("SPEAKING");
-        canvas.className = "raphael-canvas-glow speaking";
-        raphaelCore.triggerShockwave(1.2);
-      }
-    });
-  }
 
   if (window.electronAPI && window.electronAPI.onAgenticPhaseUpdate) {
     window.electronAPI.onAgenticPhaseUpdate(({ phase }) => {

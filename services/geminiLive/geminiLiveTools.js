@@ -177,7 +177,6 @@ async function _handleAgyCodeTask(id, args, cwd, context) {
 
   const targets = [];
   if (state.mainWindow && !state.mainWindow.isDestroyed()) targets.push(state.mainWindow.webContents);
-  if (state.nexaWindow && !state.nexaWindow.isDestroyed()) targets.push(state.nexaWindow.webContents);
 
   const sender = {
     send: (channel, ...args) => {
@@ -424,9 +423,6 @@ function _notifyToolActivity(id, phase, label, kind = 'cmd', name = '') {
     if (state.mainWindow && !state.mainWindow.isDestroyed()) {
       state.mainWindow.webContents.send('ai-tool-activity', payload);
     }
-    if (state.nexaWindow && !state.nexaWindow.isDestroyed()) {
-      state.nexaWindow.webContents.send('ai-tool-activity', payload);
-    }
   } catch (_) {}
 }
 
@@ -435,9 +431,6 @@ function _notifyProgress(message, meta = {}) {
     const { state } = require('../../main/globals');
     if (state.mainWindow && !state.mainWindow.isDestroyed()) {
       state.mainWindow.webContents.send('gemini-live:tool-progress', { message, meta });
-    }
-    if (state.nexaWindow && !state.nexaWindow.isDestroyed()) {
-      state.nexaWindow.webContents.send('gemini-live:tool-progress', { message, meta });
     }
   } catch (_) {}
 }

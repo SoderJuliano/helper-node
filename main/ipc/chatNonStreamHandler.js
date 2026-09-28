@@ -14,11 +14,6 @@ function getCompositeSender(eventSender) {
           eventSender.send(channel, ...args);
         }
       } catch (_) {}
-      try {
-        if (state.nexaWindow && !state.nexaWindow.isDestroyed() && state.nexaWindow.webContents !== eventSender) {
-          state.nexaWindow.webContents.send(channel, ...args);
-        }
-      } catch (_) {}
     }
   };
 }
@@ -27,11 +22,6 @@ function emitToTargets(eventSender, channel, ...args) {
   try {
     if (eventSender && typeof eventSender.send === 'function') {
       eventSender.send(channel, ...args);
-    }
-  } catch (_) {}
-  try {
-    if (state.nexaWindow && !state.nexaWindow.isDestroyed() && state.nexaWindow.webContents !== eventSender) {
-      state.nexaWindow.webContents.send(channel, ...args);
     }
   } catch (_) {}
 }
