@@ -296,15 +296,15 @@ class GeminiCliProvider {
   // manda parar nem sempre é a chave com que a sessão foi criada — e errar a
   // chave deixava a CLI rodando solta, ainda escrevendo nos arquivos.
   async abortCurrent(projectPath) {
-    const session = projectPath ? this._sessions.get(projectPath) : null;
-    if (session) {
-      await session.stop().catch(() => {});
+    if (projectPath && this._sessions.has(projectPath)) {
+      await this._sessions.get(projectPath).stop().catch(() => {});
       console.log(`[gemini-cli] abortado: ${projectPath}`);
-      return;
     }
     for (const [key, s] of this._sessions) {
-      await s.stop().catch(() => {});
-      console.log(`[gemini-cli] abortado (fallback): ${key}`);
+      if (s.isActive()) {
+        await s.stop().catch(() => {});
+        console.log(`[gemini-cli] abortado (sessão ativa): ${key}`);
+      }
     }
   }
 

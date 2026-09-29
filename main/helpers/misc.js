@@ -325,7 +325,7 @@ helpers.getUserPreferencesContext = function() {
   return '';
 };
 
-helpers.appendAttachmentsContext = function(prompt) {
+helpers.appendAttachmentsContext = function(prompt, opts = {}) {
   try {
     let prefix = '';
     const userCtx = helpers.getUserPreferencesContext();
@@ -333,7 +333,15 @@ helpers.appendAttachmentsContext = function(prompt) {
       prefix += `${userCtx}\n\n---\n\n`;
     }
 
-    const attachments = workspace.list().filter(a => a.type === 'file');
+    // Só inclui imagens efêmeras (coladas via Ctrl+V ou capturas de tela) se explicitamente
+    // permitido (ex: pelo canal de visão). Perguntas de texto NUNCA devem herdar imagens de turnos passados.
+    const includeEphemeral = opts && opts.includeEphemeral === true;
+    const attachments = workspace.list().filter(a => {
+      if (a.type !== 'file') return false;
+      const isEphemeral = a.origin === 'paste' || a.origin === 'screen-capture';
+      if (isEphemeral && !includeEphemeral) return false;
+      return true;
+    });
     if (attachments.length > 0) {
       let contextHeader = "=== ARQUIVOS ANEXADOS AO CONTEXTO ===\n";
       contextHeader += "O usuário selecionou e anexou manualmente os seguintes arquivos no workspace:\n";

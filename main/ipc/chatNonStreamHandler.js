@@ -28,6 +28,9 @@ function emitToTargets(eventSender, channel, ...args) {
 
 async function handleSendToGemini(event, text, sessionId) {
   try {
+    // Purga capturas e imagens efêmeras remanescentes antes de processar uma mensagem de texto simples
+    try { if (workspace.purgeEphemeralCaptures) workspace.purgeEphemeralCaptures(); } catch (_) {}
+
     const compositeSender = getCompositeSender(event.sender);
     const aiModel = helpers.getEffectiveAiModel();
     if (aiModel === 'geminiCli') {
@@ -276,7 +279,9 @@ async function handleSendToGeminiVision(event, { text, image }) {
       const projectPath = workspace.getProjectPath();
       const geminiModel = configService.getGeminiCliModel();
       GeminiCliProvider.setModel(geminiModel);
-      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(baseTxt));
+      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(baseTxt, { includeEphemeral: true }));
+      // Consome a captura efêmera para que ela não vaze em nenhuma pergunta subsequente
+      try { if (workspace.purgeEphemeralCaptures) workspace.purgeEphemeralCaptures(); } catch (_) {}
       try {
         await GeminiCliProvider.send(finalPrompt, projectPath, compositeSender, null, []);
       } catch (gcliErr) {
@@ -290,7 +295,8 @@ async function handleSendToGeminiVision(event, { text, image }) {
       const projectPath = workspace.getProjectPath();
       const claudeModel = configService.getClaudeCliModel();
       ClaudeCliProvider.setModel(claudeModel);
-      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(baseTxt));
+      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(baseTxt, { includeEphemeral: true }));
+      try { if (workspace.purgeEphemeralCaptures) workspace.purgeEphemeralCaptures(); } catch (_) {}
       try {
         await ClaudeCliProvider.send(finalPrompt, projectPath, compositeSender, null, []);
       } catch (ccliErr) {
@@ -304,7 +310,8 @@ async function handleSendToGeminiVision(event, { text, image }) {
       const projectPath = workspace.getProjectPath();
       const copilotModel = configService.getCopilotCliModel();
       CopilotCliProvider.setModel(copilotModel);
-      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(baseTxt));
+      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(baseTxt, { includeEphemeral: true }));
+      try { if (workspace.purgeEphemeralCaptures) workspace.purgeEphemeralCaptures(); } catch (_) {}
       try {
         await CopilotCliProvider.send(finalPrompt, projectPath, compositeSender, {
           attachments: helpers.getAttachableFilePaths(),

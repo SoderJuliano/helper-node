@@ -333,6 +333,7 @@ class CopilotCliProcess {
       cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
       env,
+      detached: process.platform !== 'win32',
     });
     console.log('[copilot-cli] spawn via', plan.strategy, '->', plan.command);
 
@@ -380,21 +381,15 @@ class CopilotCliProcess {
     return this;
   }
 
-  // SIGINT primeiro (equivalente ao Ctrl+C que o usuário daria no terminal),
-  // SIGKILL como último recurso — mesmo padrão do ClaudeCliProcess.
   async kill() {
-    if (!this.alive || !this._proc) return;
-    // killProcessTree: mesmo sem shell aqui, o `copilot` roda ferramentas em
-    // subprocessos próprios — matar só o pai deixava esses filhos vivos
-    // escrevendo nos arquivos depois do "Parar IA".
     const proc = this._proc;
-    await killProcessTree(proc, 'SIGINT');
-    await new Promise(resolve => setTimeout(resolve, 800));
-    if (this.alive) {
-      await killProcessTree(proc, 'SIGKILL');
-    }
+    const pid = this._proc ? this._proc.pid : null;
+    if (!proc && !pid) return;
+
     this.alive = false;
     this._proc = null;
+
+    await killProcessTree(proc || pid, 'SIGTERM');
   }
 
   onData(fn)   { this._onData   = fn; }

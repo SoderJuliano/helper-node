@@ -125,6 +125,9 @@ class GeminiCliProcess {
       env,
       // shim .cmd/.bat no Windows exige shell para ser executável pelo spawn.
       shell: needsShell(spawnBin),
+      // No POSIX (Linux/macOS), detached cria um Process Group próprio (pgid = pid)
+      // para permitir que o killProcessTree derrube o agy e todos os seus subprocessos.
+      detached: process.platform !== 'win32',
     });
 
     this.alive = true;
@@ -177,21 +180,17 @@ class GeminiCliProcess {
     throw new Error('Send is not supported in print mode');
   }
 
-  // Force kill the process
+  // Force kill the process and its whole tree
   async kill() {
-    if (!this.alive || !this._proc) return;
-    // killProcessTree e não this._proc.kill(): com shell:true no Windows o
-    // filho direto é o cmd.exe, e matá-lo deixava o `agy` de verdade vivo
-    // escrevendo nos arquivos do projeto depois do "Parar IA".
     const proc = this._proc;
-    await killProcessTree(proc, 'SIGINT');
-    await new Promise(resolve => setTimeout(resolve, 800));
-    if (this.alive) {
-      await killProcessTree(proc, 'SIGKILL');
-    }
+    const pid = this.pid;
+    if (!proc && !pid) return;
+
     this.alive = false;
     this._proc = null;
     this._stopLogTail();
+
+    await killProcessTree(proc || pid, 'SIGTERM');
   }
 
   // Windows: poll do arquivo de log da CLI, emitindo apenas os bytes novos
