@@ -181,6 +181,7 @@ app.whenReady().then(async () => {
     moveToDisplay: helpers.moveToDisplay,
     bringWindowToFocus: helpers.bringWindowToFocus,
     captureScreenAuto: helpers.captureFullScreenAuto,
+    captureScreen: helpers.captureScreen,
     openConfig: helpers.createConfigWindow,
   });
 

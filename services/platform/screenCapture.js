@@ -25,15 +25,21 @@ async function tryLinuxNativeCapture(outPath, options = {}) {
     }
   };
 
-  // 1. KDE Spectacle (funciona em Wayland e X11 silenciosamente com -b -n -f sem portal)
+  // 1. KDE Spectacle (captura o monitor atual do mouse com -m silenciosamente sem abrir GUI nem seleção)
   if (await commandExists('spectacle')) {
     try {
-      await execPromise(`spectacle -b -n -f -o '${outPath}'`);
+      await execPromise(`spectacle -b -n -m -o '${outPath}'`);
       if (fsSync.existsSync(outPath) && fsSync.statSync(outPath).size > 100) {
         return true;
       }
     } catch (e) {
-      console.warn('[screenCapture] spectacle falhou:', e.message);
+      console.warn('[screenCapture] spectacle -m falhou, tentando -f:', e.message);
+      try {
+        await execPromise(`spectacle -b -n -f -o '${outPath}'`);
+        if (fsSync.existsSync(outPath) && fsSync.statSync(outPath).size > 100) {
+          return true;
+        }
+      } catch (_) {}
     }
   }
 

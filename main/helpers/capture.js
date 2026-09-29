@@ -76,9 +76,12 @@ helpers.captureFullScreenAuto = async function() {
       console.warn('📸 platformScreenCapture falhou, tentando fallbacks:', (e && e.message) || e);
     }
 
-    // 1) KDE Spectacle (Wayland e X11 no Arch / Garuda / Fedora / Ubuntu KDE)
+    // 1) KDE Spectacle (captura monitor do mouse com -m; fallback tela cheia -f)
     if (!success && isKde && await helpers.commandExists('spectacle')) {
-      success = await tryCmd('spectacle', `spectacle -b -n -f -o '${tmpPng}'`);
+      success = await tryCmd('spectacle', `spectacle -b -n -m -o '${tmpPng}'`);
+      if (!success) {
+        success = await tryCmd('spectacle-full', `spectacle -b -n -f -o '${tmpPng}'`);
+      }
     }
 
     // 2) COSMIC: cosmic-screenshot
@@ -104,7 +107,10 @@ helpers.captureFullScreenAuto = async function() {
 
     // 3) spectacle genérico (se spectacle existe mesmo fora de detecção KDE)
     if (!success && await helpers.commandExists('spectacle')) {
-      success = await tryCmd('spectacle', `spectacle -b -n -f -o '${tmpPng}'`);
+      success = await tryCmd('spectacle', `spectacle -b -n -m -o '${tmpPng}'`);
+      if (!success) {
+        success = await tryCmd('spectacle-full', `spectacle -b -n -f -o '${tmpPng}'`);
+      }
     }
 
     // 4) Wayland NÃO-KDE (Sway/Hyprland/Wayfire): grim
