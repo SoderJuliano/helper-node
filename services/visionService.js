@@ -77,12 +77,10 @@ class VisionService {
 
     const _saveAndReturn = (text) => {
       const clean = (text || '').trim();
-      if (clean) {
-        this._cache.set(hash, { text: clean, timestamp: Date.now() });
-        if (this._cache.size > 20) {
-          const oldestKey = this._cache.keys().next().value;
-          this._cache.delete(oldestKey);
-        }
+      this._cache.set(hash, { text: clean, timestamp: Date.now() });
+      if (this._cache.size > 20) {
+        const oldestKey = this._cache.keys().next().value;
+        this._cache.delete(oldestKey);
       }
       return clean;
     };
@@ -92,15 +90,19 @@ class VisionService {
 
     // 1. Tier 1: Google Gemini Multimodal Vision API (Alta velocidade & Free Tier)
     if (googleKey) {
-      try {
-        console.log('[VisionService] Analisando imagem via Google Gemini Vision...');
-        const result = await this._analyzeWithGoogleGemini(normalized, googleKey, options);
-        if (result && result.trim()) {
-          console.log(`[VisionService] ✅ Visão Google Gemini extraiu ${result.length} caracteres com sucesso`);
-          return _saveAndReturn(result);
+      if (this._lastQuotaErrorTime && (Date.now() - this._lastQuotaErrorTime < 60000)) {
+        console.warn('[VisionService] Google Gemini Vision em cooldown temporário por quota esgotada (HTTP 429).');
+      } else {
+        try {
+          console.log('[VisionService] Analisando imagem via Google Gemini Vision...');
+          const result = await this._analyzeWithGoogleGemini(normalized, googleKey, options);
+          if (result && result.trim()) {
+            console.log(`[VisionService] ✅ Visão Google Gemini extraiu ${result.length} caracteres com sucesso`);
+            return _saveAndReturn(result);
+          }
+        } catch (geminiErr) {
+          console.warn('[VisionService] Google Gemini Vision falhou, tentando fallback:', geminiErr.message);
         }
-      } catch (geminiErr) {
-        console.warn('[VisionService] Google Gemini Vision falhou, tentando fallback:', geminiErr.message);
       }
     }
 
@@ -118,7 +120,7 @@ class VisionService {
       }
     }
 
-    return '';
+    return _saveAndReturn('');
   }
 
   /**
@@ -137,6 +139,11 @@ class VisionService {
       } catch (err) {
         lastError = err;
         console.warn(`[VisionService] Gemini modelo ${model} falhou (${err.message}), tentando próximo modelo...`);
+        if (err.message && (err.message.includes('429') || err.message.includes('quota') || err.message.includes('ResourceExhausted'))) {
+          this._lastQuotaErrorTime = Date.now();
+          console.warn('[VisionService] Quota esgotada na chave do Gemini (429). Interrompendo tentativas.');
+          break;
+        }
       }
     }
     throw lastError || new Error('Todos os modelos do Google Gemini Vision falharam.');

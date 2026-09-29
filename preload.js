@@ -61,8 +61,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   sendTextToGemini: (text, sessionId) => ipcRenderer.send("send-to-gemini", text, sessionId),
   // Manda a IMAGEM (data URL base64) + enunciado pro modelo de visão (gpt-4o).
   // Usado quando o usuário cola/captura uma imagem no chat e o backend é OpenAI.
-  sendVisionToGemini: (text, image) =>
-    ipcRenderer.send("send-to-gemini-vision", { text, image }),
+  sendVisionToGemini: (text, image, sessionId) =>
+    ipcRenderer.send("send-to-gemini-vision", { text, image, sessionId }),
   sendTextToGeminiStream: (text, sessionId) => ipcRenderer.send("send-to-gemini-stream", text, sessionId),
   onAutoStream: (callback) =>
     ipcRenderer.on("send-to-gemini-stream-auto", (event, text) => callback(text)),

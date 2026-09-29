@@ -235,11 +235,12 @@ var isEditingQuestion = false;
         }
 
         const q = (text && text.trim()) ? text.trim() : 'Image in context';
+        let activeSessionId = null;
         if (window.historySession) {
-            await window.historySession.ensureSessionForFirstQuestion(q);
+            activeSessionId = await window.historySession.ensureSessionForFirstQuestion(q);
             await window.historySession.addMessageToCurrentSession('user', q);
         }
-        window.electronAPI.sendVisionToGemini(text || '', image);
+        window.electronAPI.sendVisionToGemini(text || '', image, activeSessionId);
     }
 
     async function backendSupportsVision() {

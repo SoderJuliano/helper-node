@@ -287,7 +287,10 @@ helpers.processNewClipboardImage = async function(base64Image) {
       } else {
         // Fora do OS mode: tambem manda visao se o renderer principal estiver disponivel
         if (state.mainWindow && !state.mainWindow.isDestroyed()) {
-          state.mainWindow.webContents.send('process-image-vision', base64Image);
+          state.mainWindow.webContents.send('ocr-result', {
+            text: '',
+            base64Image,
+          });
         }
       }
       return;

@@ -229,13 +229,16 @@ async function handleSendToGemini(event, text, sessionId) {
   }
 }
 
-async function handleSendToGeminiVision(event, { text, image }) {
+async function handleSendToGeminiVision(event, { text, image, sessionId }) {
   try {
     const compositeSender = getCompositeSender(event.sender);
     const aiModel = helpers.getEffectiveAiModel();
 
     let imageFilePath = null;
     try {
+      if (workspace.purgeEphemeralCaptures) {
+        workspace.purgeEphemeralCaptures();
+      }
       const imageAttachments = require('../../services/imageAttachments.js');
       const dir = imageAttachments.ensureDir();
       const tmpImgPath = path.join(dir, `screen-intent-${Date.now()}.png`);
@@ -243,9 +246,6 @@ async function handleSendToGeminiVision(event, { text, image }) {
       await fs.writeFile(tmpImgPath, Buffer.from(base64Data, 'base64'));
       if (fs2.existsSync(tmpImgPath)) {
         imageFilePath = tmpImgPath;
-        if (workspace.purgeEphemeralCaptures) {
-          workspace.purgeEphemeralCaptures();
-        }
         await workspace.addPath(tmpImgPath, 'file', {
           trustAgy: true,
           meta: { origin: 'screen-capture' },
@@ -260,10 +260,18 @@ async function handleSendToGeminiVision(event, { text, image }) {
       ? 'Analise a imagem anexada capturada da tela e forneça a solução, resposta ou explicação detalhada.'
       : text.trim();
 
+    let ocr = '';
+    if (isGenericUserTextCli) {
+      ocr = await TesseractService.getTextFromImage(image).catch(() => '');
+    }
+    const baseTxt = (ocr && ocr.trim())
+      ? `${promptDirective}\n\nConteúdo extraído via OCR:\n${ocr.trim()}`
+      : promptDirective;
+
     if (aiModel === 'geminiCli') {
       try {
         compositeSender.send('message-received', {
-          sessionId: null,
+          sessionId: sessionId || null,
           timestamp: Date.now(),
           provider: 'geminiCli',
         });
@@ -271,47 +279,41 @@ async function handleSendToGeminiVision(event, { text, image }) {
           phase: 'received',
           status: 'Imagem recebida. Processando visão com Antigravity CLI (agy)…',
           thinking: '',
-          sessionId: workspace.getProjectPath(),
+          sessionId: sessionId || workspace.getProjectPath(),
         });
       } catch (_) {}
-      const ocr = await TesseractService.getTextFromImage(image).catch(() => '');
-      const baseTxt = `${promptDirective}${(ocr && ocr.trim()) ? `\n\nConteúdo extraído via OCR:\n${ocr.trim()}` : ''}`;
       const projectPath = workspace.getProjectPath();
       const geminiModel = configService.getGeminiCliModel();
       GeminiCliProvider.setModel(geminiModel);
       const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(baseTxt, { includeEphemeral: true }));
-      // Consome a captura efêmera para que ela não vaze em nenhuma pergunta subsequente
-      try { if (workspace.purgeEphemeralCaptures) workspace.purgeEphemeralCaptures(); } catch (_) {}
       try {
-        await GeminiCliProvider.send(finalPrompt, projectPath, compositeSender, null, []);
+        await GeminiCliProvider.send(finalPrompt, projectPath, compositeSender, sessionId || null, []);
       } catch (gcliErr) {
         console.error('[gemini-cli send-to-gemini-vision] send error:', gcliErr.message);
         try { emitToTargets(event.sender, 'gemini-stream-complete'); } catch (_) {}
+      } finally {
+        try { if (workspace.purgeEphemeralCaptures) workspace.purgeEphemeralCaptures(); } catch (_) {}
       }
       return;
     } else if (aiModel === 'claudeCli') {
-      const ocr = await TesseractService.getTextFromImage(image).catch(() => '');
-      const baseTxt = `${promptDirective}${(ocr && ocr.trim()) ? `\n\nConteúdo extraído via OCR:\n${ocr.trim()}` : ''}`;
       const projectPath = workspace.getProjectPath();
       const claudeModel = configService.getClaudeCliModel();
       ClaudeCliProvider.setModel(claudeModel);
       const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(baseTxt, { includeEphemeral: true }));
-      try { if (workspace.purgeEphemeralCaptures) workspace.purgeEphemeralCaptures(); } catch (_) {}
       try {
-        await ClaudeCliProvider.send(finalPrompt, projectPath, compositeSender, null, []);
+        await ClaudeCliProvider.send(finalPrompt, projectPath, compositeSender, sessionId || null, []);
       } catch (ccliErr) {
         console.error('[claude-cli send-to-gemini-vision] send error:', ccliErr.message);
         try { emitToTargets(event.sender, 'gemini-stream-complete'); } catch (_) {}
+      } finally {
+        try { if (workspace.purgeEphemeralCaptures) workspace.purgeEphemeralCaptures(); } catch (_) {}
       }
       return;
     } else if (aiModel === 'copilotCli') {
-      const ocr = await TesseractService.getTextFromImage(image).catch(() => '');
-      const baseTxt = `${promptDirective}${(ocr && ocr.trim()) ? `\n\nConteúdo extraído via OCR:\n${ocr.trim()}` : ''}`;
       const projectPath = workspace.getProjectPath();
       const copilotModel = configService.getCopilotCliModel();
       CopilotCliProvider.setModel(copilotModel);
       const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(baseTxt, { includeEphemeral: true }));
-      try { if (workspace.purgeEphemeralCaptures) workspace.purgeEphemeralCaptures(); } catch (_) {}
       try {
         await CopilotCliProvider.send(finalPrompt, projectPath, compositeSender, {
           attachments: helpers.getAttachableFilePaths(),
@@ -319,17 +321,23 @@ async function handleSendToGeminiVision(event, { text, image }) {
       } catch (cpErr) {
         console.error('[copilot-cli send-to-gemini-vision] send error:', cpErr.message);
         try { emitToTargets(event.sender, 'gemini-stream-complete'); } catch (_) {}
+      } finally {
+        try { if (workspace.purgeEphemeralCaptures) workspace.purgeEphemeralCaptures(); } catch (_) {}
       }
       return;
     } else if (aiModel !== 'openIa' && aiModel !== 'openIaCodex' && aiModel !== 'zaiGlm') {
-      const ocr = await TesseractService.getTextFromImage(image).catch(() => '');
+      const ocrFallback = ocr || (await TesseractService.getTextFromImage(image).catch(() => ''));
       const instructionO = helpers.withUserContext(configService.getPromptInstruction());
-      const baseTxt = (text && text.trim() ? `${text}\n\n` : '')
-        + (ocr && ocr.trim() ? `Conteúdo extraído da imagem:\n${ocr}` : '');
-      const _wsTxt = await helpers.prependWorkspaceContextIfNeeded(baseTxt, 'ollama');
+      const baseTxtFallback = (text && text.trim() ? `${text}\n\n` : '')
+        + (ocrFallback && ocrFallback.trim() ? `Conteúdo extraído da imagem:\n${ocrFallback}` : '');
+      const _wsTxt = await helpers.prependWorkspaceContextIfNeeded(baseTxtFallback, 'ollama');
       const _ht = helpers.buildHelperToolsOpenAIOpts(_wsTxt, instructionO, configService.getOpenAiModel());
-      const resposta = await BackendService.responder(_wsTxt, _ht.opts);
-      emitToTargets(event.sender, "gemini-response", { resposta, usedKnowledge: false });
+      try {
+        const resposta = await BackendService.responder(_wsTxt, _ht.opts);
+        emitToTargets(event.sender, "gemini-response", { resposta, usedKnowledge: false });
+      } finally {
+        try { if (workspace.purgeEphemeralCaptures) workspace.purgeEphemeralCaptures(); } catch (_) {}
+      }
       return;
     }
 
@@ -391,9 +399,11 @@ NUNCA faça descrições vagas ou respostas genéricas.`
       } catch (_) {}
     }
     emitToTargets(event.sender, "openai-final-response", { resposta, usedKnowledge: false });
+    try { if (workspace.purgeEphemeralCaptures) workspace.purgeEphemeralCaptures(); } catch (_) {}
   } catch (error) {
     console.error("IPC visão: erro ao analisar imagem:", error && error.message);
     emitToTargets(event.sender, "transcription-error", "Falha ao analisar a imagem com a IA.");
+    try { if (workspace.purgeEphemeralCaptures) workspace.purgeEphemeralCaptures(); } catch (_) {}
   }
 }
 
