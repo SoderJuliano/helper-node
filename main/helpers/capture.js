@@ -78,7 +78,7 @@ helpers.captureFullScreenAuto = async function() {
 
     // 1) KDE Spectacle (Wayland e X11 no Arch / Garuda / Fedora / Ubuntu KDE)
     if (!success && isKde && await helpers.commandExists('spectacle')) {
-      success = await tryCmd('spectacle', `spectacle -b -n -o '${tmpPng}'`);
+      success = await tryCmd('spectacle', `spectacle -b -n -f -o '${tmpPng}'`);
     }
 
     // 2) COSMIC: cosmic-screenshot
@@ -104,7 +104,7 @@ helpers.captureFullScreenAuto = async function() {
 
     // 3) spectacle genérico (se spectacle existe mesmo fora de detecção KDE)
     if (!success && await helpers.commandExists('spectacle')) {
-      success = await tryCmd('spectacle', `spectacle -b -n -o '${tmpPng}'`);
+      success = await tryCmd('spectacle', `spectacle -b -n -f -o '${tmpPng}'`);
     }
 
     // 4) Wayland NÃO-KDE (Sway/Hyprland/Wayfire): grim
@@ -157,6 +157,7 @@ helpers.captureFullScreenAuto = async function() {
       const shotHash = helpers.calculateImageHash(imgBuffer);
       state.lastProcessedImageHash = shotHash;
       state.lastProcessedTimestamp = Date.now();
+      state.lastUserCaptureTimestamp = Date.now();
       state.lastClipboardImageHash = shotHash;
       if (!state.processedImageHashes) state.processedImageHashes = new Set();
       state.processedImageHashes.add(shotHash);
@@ -396,6 +397,7 @@ Identifique o que está na tela do entrevistador/recrutador e responda como suge
       state.mainWindow.webContents.send('ocr-result', {
         text: ocrText,
         base64Image: base64,
+        directSend: true,
       });
     }
   } catch (e) {
@@ -407,6 +409,7 @@ Identifique o que está na tela do entrevistador/recrutador e responda como suge
       state.mainWindow.webContents.send('transcription-error', 'Erro ao capturar a tela.');
     }
   } finally {
+    state.lastUserCaptureTimestamp = Date.now();
     state.isCapturingScreen = false;
   }
 }

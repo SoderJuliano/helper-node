@@ -57,9 +57,8 @@ class GeminiCliProcess {
     // PLANO (só planeja, não escreve). `--mode accept-edits` reabilita a escrita
     // de arquivos. Sem isso o CLI "enrola" e não aplica nenhuma mudança.
     args.push('--mode', 'accept-edits');
-    // Default do agy é 5m0s: em tarefa grande ele explora/planeja, estoura os 5
-    // min e "desiste" antes de escrever. Timeout generoso p/ concluir a tarefa.
-    args.push('--print-timeout', '30m');
+    // Timeout de 5 minutos para evitar processos travados em segundo plano
+    args.push('--print-timeout', '5m');
     // No Unix, `/dev/stderr` faz a CLI escrever os logs na própria stderr do
     // processo, que capturamos pelo pipe. Esse caminho não existe no Windows,
     // então logamos para um arquivo temporário e fazemos "tail" dele para o

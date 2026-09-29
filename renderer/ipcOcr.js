@@ -2,7 +2,7 @@
 // Restaurado do index.html original (bloco perdido na divisão automática).
 (function() {
 
-            window.electronAPI.onOcrResult(async ({ text, screenshotPath, base64Image, error }) => {
+            window.electronAPI.onOcrResult(async ({ text, screenshotPath, base64Image, error, directSend }) => {
                 const preview = document.getElementById('screenshot-preview');
                 const robot = document.getElementById('robot');
                 const animationContainer = document.getElementById('animation-container');
@@ -57,7 +57,7 @@
                 const tInput = document.querySelector('.manual-input-container .terminal-input');
                 const userTypedText = tInput ? (tInput.value || '').trim() : '';
 
-                if (manualInputActive && userTypedText.length > 0) {
+                if (!directSend && manualInputActive && userTypedText.length > 0) {
                     pastedImageForManualInput = base64Image || (`file://${screenshotPath}`);
                     if (robot) robot.style.display = 'none';
                     if (text && !userTypedText.includes(text)) {

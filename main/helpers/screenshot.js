@@ -252,9 +252,21 @@ helpers.captureScreen = async function() {
             const shotHash = helpers.calculateImageHash(imgBuffer);
             state.lastProcessedImageHash = shotHash;
             state.lastProcessedTimestamp = Date.now();
+            state.lastUserCaptureTimestamp = Date.now();
             state.lastClipboardImageHash = shotHash;
             if (!state.processedImageHashes) state.processedImageHashes = new Set();
             state.processedImageHashes.add(shotHash);
+
+            // Sincroniza hash do clipboard do sistema para evitar re-processamento pelo watcher de clipboard
+            helpers.readSystemClipboardImage().then(clipImg => {
+              if (clipImg) {
+                const clipBuf = Buffer.from(clipImg.replace(/^data:image\/[a-z0-9.+-]+;base64,/, ''), 'base64');
+                const clipHash = helpers.calculateImageHash(clipBuf);
+                state.lastClipboardImageHash = clipHash;
+                if (!state.processedImageHashes) state.processedImageHashes = new Set();
+                state.processedImageHashes.add(clipHash);
+              }
+            }).catch(() => {});
           } catch (_) {}
 
           if (helpers.isBatchScreenshotModeActive && helpers.isBatchScreenshotModeActive()) {
@@ -276,7 +288,8 @@ helpers.captureScreen = async function() {
             state.mainWindow.webContents.send("ocr-result", { 
               text: ocrText || '', 
               screenshotPath: tmpPng, 
-              base64Image 
+              base64Image,
+              directSend: true,
             });
           } catch (e) {
             console.error("Screenshot file not accessible for OCR:", e);
@@ -300,6 +313,7 @@ helpers.captureScreen = async function() {
     }
   }
   } finally {
+    state.lastUserCaptureTimestamp = Date.now();
     state.isCapturingScreen = false;
   }
 }

@@ -25,10 +25,10 @@ async function tryLinuxNativeCapture(outPath, options = {}) {
     }
   };
 
-  // 1. KDE Spectacle (funciona em Wayland e X11 silenciosamente com -b -n sem portal)
+  // 1. KDE Spectacle (funciona em Wayland e X11 silenciosamente com -b -n -f sem portal)
   if (await commandExists('spectacle')) {
     try {
-      await execPromise(`spectacle -b -n -o '${outPath}'`);
+      await execPromise(`spectacle -b -n -f -o '${outPath}'`);
       if (fsSync.existsSync(outPath) && fsSync.statSync(outPath).size > 100) {
         return true;
       }
@@ -71,8 +71,8 @@ async function tryLinuxNativeCapture(outPath, options = {}) {
     }
   }
 
-  // 4. Grim (Wayland Sway/Hyprland - KWin/KDE não suporta wlr-screencopy)
-  if (isWayland && !isKde && await commandExists('grim')) {
+  // 4. Grim (Wayland fallback)
+  if (isWayland && await commandExists('grim')) {
     try {
       await execPromise(`grim '${outPath}'`);
       if (fsSync.existsSync(outPath) && fsSync.statSync(outPath).size > 100) {
@@ -138,6 +138,10 @@ async function captureFullScreenToFile(outPath, options = {}) {
         valueOf() { return outPath; },
         [Symbol.toPrimitive](hint) { return outPath; },
       };
+    }
+    // No Linux Wayland sem ferramentas nativas, desktopCapturer gera tela preta sem PipeWire portal
+    if (process.env.XDG_SESSION_TYPE === 'wayland') {
+      throw new Error('Nenhuma ferramenta nativa de captura disponível no Linux Wayland (spectacle/grim). Instale spectacle ou grim.');
     }
   }
 

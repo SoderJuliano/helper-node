@@ -91,21 +91,18 @@ helpers.initializeClipboardBaseline = async function() {
       const base64Data = imageData.replace(/^data:image\/[a-z0-9.+-]+;base64,/, '');
       const currentHash = helpers.calculateImageHash(Buffer.from(base64Data, 'base64'));
       state.lastClipboardImageHash = currentHash;
-      // CRITICAL: marca a imagem que ja estava no clipboard como "recem-processada"
-      // pra evitar que ela dispare auto-envio quando o monitor (re)inicia ao trocar
-      // de modo (Normal <-> OS Integration). Sem isso, abrir Ctrl+I em OS mode com
-      // uma imagem antiga no clipboard dispara OCR+IA dessa imagem velha.
       state.lastProcessedImageHash = currentHash;
       state.lastProcessedTimestamp = Date.now();
+      if (!state.processedImageHashes) state.processedImageHashes = new Set();
+      state.processedImageHashes.add(currentHash);
       console.log('📋 Clipboard baseline inicializado:', currentHash.substring(0, 8));
     } else {
       console.log('📋 Nenhuma imagem no clipboard para baseline');
     }
   } catch (error) {
     console.log('📋 Baseline falhou, mas não é crítico:', error.message);
-    // Não é crítico, sistema funciona sem baseline
   }
-}
+};
 
 helpers.startWaylandClipboardWatch = function(triggerCheck) {
   if (state.clipboardWatchProc) { try { state.clipboardWatchProc.kill('SIGTERM'); } catch (_) {} state.clipboardWatchProc = null; }
@@ -123,21 +120,26 @@ helpers.startWaylandClipboardWatch = function(triggerCheck) {
   } catch (e) {
     console.log('📋 falha ao iniciar wl-paste --watch:', e.message);
   }
-}
+};
 
-helpers.startClipboardMonitoring = function() {
+helpers.startClipboardMonitoring = async function() {
   if (helpers.isTranslationOnlyMode()) {
     console.log('[mutex] clipboardMonitoring suprimido — Translation Assistant ativo');
     return;
   }
   if (state.clipboardMonitoringInterval) {
     clearInterval(state.clipboardMonitoringInterval);
+    state.clipboardMonitoringInterval = null;
+  }
+  if (state.clipboardWatchProc) {
+    try { state.clipboardWatchProc.kill('SIGTERM'); } catch (_) {}
+    state.clipboardWatchProc = null;
   }
 
   console.log('🎯 Iniciando monitoramento NATIVO de clipboard para novas imagens...');
   
-  // Initialize with current clipboard content to avoid processing existing images
-  helpers.initializeClipboardBaseline();
+  // Await baseline initialization to prevent auto-triggering on existing clipboard content at boot
+  await helpers.initializeClipboardBaseline();
 
   // Função de checagem extraída pra ser chamada tanto pelo polling quanto
   // pelo wl-paste --watch (Wayland event-driven).
@@ -149,9 +151,9 @@ helpers.startClipboardMonitoring = function() {
       // Se o usuário disparou um print direto (Ctrl+Shift+X ou Ctrl+Shift+S),
       // o compositor/Spectacle grava no clipboard automaticamente.
       // O fluxo direto da captura já cuida do processamento e envio.
-      // Ignora leituras de clipboard nos primeiros 6s para eliminar loop e envios duplicados.
+      // Ignora leituras de clipboard nos primeiros 8s para eliminar loop e envios duplicados.
       const now = Date.now();
-      if (state.lastUserCaptureTimestamp && (now - state.lastUserCaptureTimestamp < 6000)) {
+      if (state.lastUserCaptureTimestamp && (now - state.lastUserCaptureTimestamp < 8000)) {
         return;
       }
       
@@ -226,7 +228,7 @@ helpers.startClipboardMonitoring = function() {
     console.log('📋 wl-paste --watch: clipboard mudou → verificando...');
     checkClipboardNow();
   });
-}
+};
 
 helpers.stopClipboardMonitoring = function() {
   if (state.clipboardMonitoringInterval) {
