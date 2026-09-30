@@ -218,9 +218,12 @@ var isEditingQuestion = false;
             if (window.electronAPI && window.electronAPI.getNexaConfig && window.electronAPI.sendTextToGeminiLive) {
                 const nexaCfg = await window.electronAPI.getNexaConfig();
                 if (nexaCfg && nexaCfg.enabled) {
+                    // Sinaliza que este turno veio de texto digitado (não de voz)
+                    // para que o handler em ipcResponses.js exiba a resposta no chat.
+                    window._nexaTextPending = true;
                     await window.electronAPI.sendTextToGeminiLive(text);
                     // Não encerra o isAiProcessing aqui — o turn-complete da Gemini Live
-                    // vai chegar pelo canal gemini-live:turn-complete no nexaRenderer.
+                    // vai chegar pelo canal gemini-live:turn-complete no ipcResponses.
                     return;
                 }
             }

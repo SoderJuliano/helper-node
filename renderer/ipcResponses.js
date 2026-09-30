@@ -255,9 +255,15 @@
                 });
             }
 
-        // === Nexa / Gemini Live: exibe resposta no chat quando a Nexa responde via texto ===
+        // === Nexa / Gemini Live: exibe resposta no chat SOMENTE quando originada por texto digitado ===
+        // Guard: window._nexaTextPending é setada true em chatMessages.sentToAI quando a mensagem
+        // vai via Gemini Live. Sem isso, respostas de voz também apareceriam duplicadas no chat.
         if (window.electronAPI && window.electronAPI.onGeminiLiveTurnComplete) {
             window.electronAPI.onGeminiLiveTurnComplete((turnData) => {
+                // Ignora turnos de voz — só processa se veio de texto digitado no chat
+                if (!window._nexaTextPending) return;
+                window._nexaTextPending = false;
+
                 const modelText = turnData && turnData.modelText ? turnData.modelText.trim() : '';
                 if (!modelText) {
                     if (typeof window.stopProcessing === 'function') window.stopProcessing();
