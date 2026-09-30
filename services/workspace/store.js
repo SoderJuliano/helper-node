@@ -121,7 +121,7 @@ function save() {
 }
 
 function purgeEphemeralCaptures() {
-  const toDelete = state.attachments.filter(a => a.origin === 'screen-capture');
+  const toDelete = state.attachments.filter(a => a.origin === 'screen-capture' || a.origin === 'paste');
   if (toDelete.length > 0) {
     for (const item of toDelete) {
       try {
@@ -130,7 +130,7 @@ function purgeEphemeralCaptures() {
         }
       } catch (_) {}
     }
-    state.attachments = state.attachments.filter(a => a.origin !== 'screen-capture');
+    state.attachments = state.attachments.filter(a => a.origin !== 'screen-capture' && a.origin !== 'paste');
     save();
   }
 }

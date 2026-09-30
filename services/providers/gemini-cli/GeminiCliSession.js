@@ -296,10 +296,11 @@ class GeminiCliSession extends EventEmitter {
   }
 
   async abort() {
+    this._aborted = true;
     if (this._activeProc) {
-      this._aborted = true;
-      await this._activeProc.kill().catch(() => {});
+      const proc = this._activeProc;
       this._activeProc = null;
+      await proc.kill().catch(() => {});
     }
   }
 

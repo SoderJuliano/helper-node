@@ -90,6 +90,7 @@ class ClaudeCliProcess {
       env,
       // shim .cmd/.bat no Windows exige shell para ser executável pelo spawn.
       shell: needsShell(bin),
+      detached: process.platform !== 'win32',
     });
 
     this.alive = true;
@@ -130,23 +131,15 @@ class ClaudeCliProcess {
   }
 
   // Force-kill if still running (e.g. on abort / session change).
-  // SIGINT (não SIGTERM) — mesmo sinal que Ctrl+C manda no terminal; é o que o
-  // CLI já sabe tratar como "cancela o turno atual" (SIGTERM é mais brusco e
-  // não é o caminho que o próprio CLI espera pra uma interrupção pedida pelo
-  // usuário). SIGKILL continua como último recurso se não morrer em 800ms.
   async kill() {
-    if (!this.alive || !this._proc) return;
-    // killProcessTree e não this._proc.kill(): com shell:true no Windows o
-    // filho direto é o cmd.exe, e matá-lo deixava o `claude` de verdade vivo
-    // escrevendo nos arquivos do projeto depois do "Parar IA".
     const proc = this._proc;
-    await killProcessTree(proc, 'SIGINT');
-    await new Promise(resolve => setTimeout(resolve, 800));
-    if (this.alive) {
-      await killProcessTree(proc, 'SIGKILL');
-    }
+    const pid = this._proc ? this._proc.pid : null;
+    if (!proc && !pid) return;
+
     this.alive = false;
     this._proc = null;
+
+    await killProcessTree(proc || pid, 'SIGTERM');
   }
 
   onData(fn)   { this._onData   = fn; }

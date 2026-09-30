@@ -65,6 +65,12 @@ helpers.syncTerminalCwd = function(forceMessage = false) {
             data: `\x1b[32m\n[📁 Terminal sincronizado com projeto: ${newProjectPath}]\x1b[0m\n\n`
           });
         }
+        try {
+          if (configService.getTerminalLogsStatus()) {
+            const terminalLogService = require('../services/terminalLogService');
+            terminalLogService.writeChunk(`\n[Terminal sincronizado com projeto: ${newProjectPath}]\n\n`);
+          }
+        } catch (_) {}
       } catch (e) {
         console.error("[terminal:sync] error:", e.message);
       }

@@ -13,7 +13,6 @@ const util = require('util');
 const execAsync = util.promisify(exec);
 
 const DEFAULT_LIVE_TOOLS = [
-  { google_search: {} },
   {
     functionDeclarations: [
       {
@@ -83,6 +82,14 @@ const DEFAULT_LIVE_TOOLS = [
             }
           }
         }
+      },
+      {
+        name: 'get_agent_status',
+        description: 'Consulta o status de tarefas de CÓDIGO ou alterações em arquivos no workspace local executadas pelo AGY. Invoque EXCLUSIVAMENTE quando o usuário perguntar sobre o progresso de tarefas de desenvolvimento no projeto (ex: "como está a alteração de código?", "o AGY finalizou a tarefa?"). NUNCA invoque para conversas sobre voz, áudio ou diálogo casual.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {}
+        }
       }
     ]
   }
@@ -124,6 +131,8 @@ async function executeToolCall(functionCall, context = {}) {
       outputResult = await _handleScreenContext(id, args, cwd, context);
     } else if (name === 'get_recent_chat_history') {
       outputResult = await _handleChatHistory(id, args, cwd, context);
+    } else if (name === 'get_agent_status') {
+      outputResult = await _handleAgentStatus(id, args, cwd, context);
     } else {
       outputResult = { error: `Ferramenta desconhecida: ${name}` };
     }
@@ -166,9 +175,16 @@ async function _handleAgyCodeTask(id, args, cwd, context) {
   _notifyToolActivity(actId, 'start', label, 'edit', 'execute_code_task');
   _notifyProgress(`Executando tarefa com ${providerLabel}...`, { instruction, cwd });
 
-  const sender = (state.mainWindow && !state.mainWindow.isDestroyed())
-    ? state.mainWindow.webContents
-    : { send: () => {} };
+  const targets = [];
+  if (state.mainWindow && !state.mainWindow.isDestroyed()) targets.push(state.mainWindow.webContents);
+
+  const sender = {
+    send: (channel, ...args) => {
+      for (const t of targets) {
+        try { t.send(channel, ...args); } catch (_) {}
+      }
+    }
+  };
 
   try {
     if (aiModel === 'claudeCli') {
@@ -176,6 +192,7 @@ async function _handleAgyCodeTask(id, args, cwd, context) {
       if (ClaudeCliProvider && typeof ClaudeCliProvider.send === 'function') {
         const result = await ClaudeCliProvider.send(instruction, cwd, sender, null, []);
         _notifyToolActivity(actId, 'done', label, 'edit', 'execute_code_task');
+        _notifyProgress(`Claude CLI: Tarefa concluída com sucesso.`, { cwd });
         return {
           status: 'success',
           summary: (result && result.text) ? result.text : 'Tarefa concluída pelo Claude CLI.'
@@ -188,6 +205,7 @@ async function _handleAgyCodeTask(id, args, cwd, context) {
         const attachments = helpers && helpers.getAttachableFilePaths ? helpers.getAttachableFilePaths() : [];
         const result = await CopilotCliProvider.send(instruction, cwd, sender, { attachments });
         _notifyToolActivity(actId, 'done', label, 'edit', 'execute_code_task');
+        _notifyProgress(`Copilot CLI: Tarefa concluída com sucesso.`, { cwd });
         return {
           status: 'success',
           summary: (result && result.text) ? result.text : 'Tarefa concluída pelo Copilot CLI.'
@@ -196,15 +214,26 @@ async function _handleAgyCodeTask(id, args, cwd, context) {
     } else {
       const GeminiCliProvider = require('../providers/gemini-cli/GeminiCliProvider');
       if (GeminiCliProvider && typeof GeminiCliProvider.send === 'function') {
+        let activeSessionId = 'default';
+        try {
+          const historyService = require('../historyService');
+          const currentSession = historyService ? historyService.getCurrentSession() : null;
+          if (currentSession && currentSession.id) {
+            activeSessionId = currentSession.id;
+          } else if (state && state.activeSessionId) {
+            activeSessionId = state.activeSessionId;
+          }
+        } catch (_) {}
         const result = await GeminiCliProvider.send(
           instruction,
           cwd,
           sender,
-          null,
+          activeSessionId,
           []
         );
 
         _notifyToolActivity(actId, 'done', label, 'edit', 'execute_code_task');
+        _notifyProgress(`Antigravity: Tarefa concluída com sucesso!`, { cwd });
         return {
           status: 'success',
           summary: (result && result.text) ? result.text : 'Tarefa concluída pelo Gemini CLI.',
@@ -214,9 +243,11 @@ async function _handleAgyCodeTask(id, args, cwd, context) {
     }
   } catch (e) {
     console.warn(`[GeminiLiveTools] Falha no provedor ${providerLabel}:`, e.message);
+    _notifyProgress(`Antigravity falhou: ${e.message}`, { cwd, error: true });
   }
 
   // Fallback: Execução direta do comando agy --print
+  _notifyProgress(`Antigravity: Executando diretamente no workspace...`, { cwd });
   const safeInstruction = instruction.replace(/"/g, '\\"');
   const cmd = `agy --mode accept-edits --dangerously-skip-permissions --print "${safeInstruction}"`;
   
@@ -224,10 +255,12 @@ async function _handleAgyCodeTask(id, args, cwd, context) {
     cwd,
     timeout: 180000,
     maxBuffer: 10 * 1024 * 1024,
-    shell: true
+    shell: true,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
   });
 
   _notifyToolActivity(actId, 'done', label, 'edit', 'execute_code_task');
+  _notifyProgress(`Antigravity: Alterações concluídas.`, { cwd });
   return {
     status: 'success',
     summary: stdout.slice(-2000) || 'Tarefa concluída no workspace.',
@@ -249,7 +282,8 @@ async function _handleTerminalCommand(id, args, cwd, context) {
     cwd,
     timeout: 60000,
     maxBuffer: 5 * 1024 * 1024,
-    shell: true
+    shell: true,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
   });
 
   _notifyToolActivity(actId, 'done', command, 'cmd', 'run_terminal_command');
@@ -349,6 +383,39 @@ async function _handleChatHistory(id, args, cwd, context) {
   }
 }
 
+async function _handleAgentStatus(id, args, cwd, context) {
+  const actId = id || ('status_' + Date.now());
+  _notifyToolActivity(actId, 'start', 'Verificando status do AGY...', 'read', 'get_agent_status');
+  try {
+    const GeminiCliProvider = require('../providers/gemini-cli/GeminiCliProvider');
+    const model = GeminiCliProvider ? GeminiCliProvider.getModel() : 'gemini';
+    const isBusy = GeminiCliProvider && typeof GeminiCliProvider.isActive === 'function'
+      ? GeminiCliProvider.isActive(cwd)
+      : false;
+
+    let gitStatus = '';
+    try {
+      const { stdout } = await execAsync('git status --short', { cwd, timeout: 5000, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
+      gitStatus = stdout.trim();
+    } catch (_) {}
+
+    _notifyToolActivity(actId, 'done', 'Status verificado', 'read', 'get_agent_status');
+    return {
+      status: 'success',
+      activeModel: model,
+      workspace: cwd,
+      isAgentExecuting: isBusy,
+      gitChanges: gitStatus || 'Workspace limpo, sem arquivos pendentes de commit.',
+      summary: isBusy
+        ? `O Antigravity (AGY) está executando uma tarefa ativa no workspace agora.`
+        : `O Antigravity (AGY) está ocioso e pronto. Modificações recentes: ${gitStatus || 'nenhuma pendência'}.`
+    };
+  } catch (err) {
+    _notifyToolActivity(actId, 'error', `Falha ao obter status: ${err.message}`, 'read', 'get_agent_status');
+    return { status: 'error', message: err.message };
+  }
+}
+
 function _notifyToolActivity(id, phase, label, kind = 'cmd', name = '') {
   try {
     const { state } = require('../../main/globals');
@@ -364,9 +431,6 @@ function _notifyProgress(message, meta = {}) {
     const { state } = require('../../main/globals');
     if (state.mainWindow && !state.mainWindow.isDestroyed()) {
       state.mainWindow.webContents.send('gemini-live:tool-progress', { message, meta });
-    }
-    if (state.nexaWindow && !state.nexaWindow.isDestroyed()) {
-      state.nexaWindow.webContents.send('gemini-live:tool-progress', { message, meta });
     }
   } catch (_) {}
 }

@@ -2,12 +2,52 @@
 const {
   BackendService, GeminiCliProvider, ClaudeCliProvider, CopilotCliProvider, TesseractService,
   OpenAIService, configService, workspace, agenticWorkflow,
-  ollamaAgenticWorkflow, helpers, appConfig, Notification,
+  ollamaAgenticWorkflow, helpers, appConfig, Notification, state,
+  path, fs, fs2,
 } = require('../globals.js');
+
+function getCompositeSender(eventSender) {
+  return {
+    send: (channel, ...args) => {
+      try {
+        if (eventSender && typeof eventSender.send === 'function') {
+          eventSender.send(channel, ...args);
+        }
+      } catch (_) {}
+    }
+  };
+}
+
+function emitToTargets(eventSender, channel, ...args) {
+  try {
+    if (eventSender && typeof eventSender.send === 'function') {
+      eventSender.send(channel, ...args);
+    }
+  } catch (_) {}
+}
 
 async function handleSendToGemini(event, text, sessionId) {
   try {
+    // Purga capturas e imagens efêmeras remanescentes antes de processar uma mensagem de texto simples
+    try { if (workspace.purgeEphemeralCaptures) workspace.purgeEphemeralCaptures(); } catch (_) {}
+
+    const compositeSender = getCompositeSender(event.sender);
     const aiModel = helpers.getEffectiveAiModel();
+    if (aiModel === 'geminiCli') {
+      try {
+        compositeSender.send('message-received', {
+          sessionId,
+          timestamp: Date.now(),
+          provider: 'geminiCli',
+        });
+        compositeSender.send('agentic-phase-update', {
+          phase: 'received',
+          status: 'Mensagem recebida. Preparando contexto…',
+          thinking: '',
+          sessionId: workspace.getProjectPath() || sessionId,
+        });
+      } catch (_) {}
+    }
     if (aiModel === 'llama-stream' || aiModel === 'qwen-stream' || aiModel === 'llama' || aiModel === 'ollamaLocal') {
       console.warn(`[send-to-gemini] canal SEM streaming usado com modelo "${aiModel}" — sem thinking ao vivo.`);
     }
@@ -40,10 +80,10 @@ async function handleSendToGemini(event, text, sessionId) {
       GeminiCliProvider.setModel(geminiModel);
       const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(promptCurrentWithVisual));
       try {
-        await GeminiCliProvider.send(finalPrompt, projectPath, event.sender, sessionId, pastMessages);
+        await GeminiCliProvider.send(finalPrompt, projectPath, compositeSender, sessionId, pastMessages);
       } catch (gcliErr) {
         console.error('[gemini-cli] send error:', gcliErr.message);
-        try { event.sender.send('gemini-stream-complete'); } catch (_) {}
+        try { emitToTargets(event.sender, 'gemini-stream-complete'); } catch (_) {}
       }
       return;
     }
@@ -54,10 +94,10 @@ async function handleSendToGemini(event, text, sessionId) {
       ClaudeCliProvider.setModel(claudeModel);
       const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(promptCurrentWithVisual));
       try {
-        await ClaudeCliProvider.send(finalPrompt, projectPath, event.sender, sessionId, pastMessages);
+        await ClaudeCliProvider.send(finalPrompt, projectPath, compositeSender, sessionId, pastMessages);
       } catch (ccliErr) {
         console.error('[claude-cli] send error:', ccliErr.message);
-        try { event.sender.send('gemini-stream-complete'); } catch (_) {}
+        try { emitToTargets(event.sender, 'gemini-stream-complete'); } catch (_) {}
       }
       return;
     }
@@ -68,12 +108,12 @@ async function handleSendToGemini(event, text, sessionId) {
       CopilotCliProvider.setModel(copilotModel);
       const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(promptWithVisualContext));
       try {
-        await CopilotCliProvider.send(finalPrompt, projectPath, event.sender, {
+        await CopilotCliProvider.send(finalPrompt, projectPath, compositeSender, {
           attachments: helpers.getAttachableFilePaths(),
         });
       } catch (cpErr) {
         console.error('[copilot-cli] send error:', cpErr.message);
-        try { event.sender.send('gemini-stream-complete'); } catch (_) {}
+        try { emitToTargets(event.sender, 'gemini-stream-complete'); } catch (_) {}
       }
       return;
     }
@@ -111,7 +151,7 @@ async function handleSendToGemini(event, text, sessionId) {
           resposta = await agenticWorkflow.run(
             _wsText2,
             { token, model: openAiModel, baseInstruction: instruction, imageBase64: _imgInline, isZai },
-            event.sender
+            compositeSender
           );
         } catch (err) {
           resposta = `[Agentic Workflow] Interrompido ou falhou: ${err.message}`;
@@ -135,7 +175,7 @@ async function handleSendToGemini(event, text, sessionId) {
         );
       }
       const usage = OpenAIService.lastUsage;
-      event.sender.send("openai-final-response", { resposta, usedKnowledge, usage });
+      emitToTargets(event.sender, "openai-final-response", { resposta, usedKnowledge, usage });
       return;
     } else if (aiModel === 'ollamaLocal') {
       console.log("IPC: Usando Ollama Local Service...");
@@ -155,7 +195,7 @@ async function handleSendToGemini(event, text, sessionId) {
           if (parsed && parsed.response) resposta = parsed.response;
         } catch (_) {}
       }
-      event.sender.send("gemini-response", { resposta, usedKnowledge });
+      emitToTargets(event.sender, "gemini-response", { resposta, usedKnowledge });
       return;
     }
 
@@ -174,7 +214,7 @@ async function handleSendToGemini(event, text, sessionId) {
         resposta = await ollamaAgenticWorkflow.run(
           _augTxtO2,
           { baseInstruction: instructionO2, tools: _htO2.opts.tools, onToolCall: _htO2.opts.onToolCall },
-          event.sender
+          compositeSender
         );
       } catch (err) {
         resposta = `[Ollama Agentic Workflow] Interrompido ou falhou: ${err.message}`;
@@ -182,73 +222,122 @@ async function handleSendToGemini(event, text, sessionId) {
     } else {
       resposta = await BackendService.responder(_augTxtO2, _htO2.opts);
     }
-    event.sender.send("gemini-response", { resposta, usedKnowledge });
+    emitToTargets(event.sender, "gemini-response", { resposta, usedKnowledge });
   } catch (error) {
     console.error("Erro ao chamar o modelo:", error.message);
-    event.sender.send("transcription-error", "Falha ao processar resposta da IA.");
+    emitToTargets(event.sender, "transcription-error", "Falha ao processar resposta da IA.");
   }
 }
 
-async function handleSendToGeminiVision(event, { text, image }) {
+async function handleSendToGeminiVision(event, { text, image, sessionId }) {
   try {
+    const compositeSender = getCompositeSender(event.sender);
     const aiModel = helpers.getEffectiveAiModel();
 
+    let imageFilePath = null;
+    try {
+      if (workspace.purgeEphemeralCaptures) {
+        workspace.purgeEphemeralCaptures();
+      }
+      const imageAttachments = require('../../services/imageAttachments.js');
+      const dir = imageAttachments.ensureDir();
+      const tmpImgPath = path.join(dir, `screen-intent-${Date.now()}.png`);
+      const base64Data = image.replace(/^data:image\/\w+;base64,/, '');
+      await fs.writeFile(tmpImgPath, Buffer.from(base64Data, 'base64'));
+      if (fs2.existsSync(tmpImgPath)) {
+        imageFilePath = tmpImgPath;
+        await workspace.addPath(tmpImgPath, 'file', {
+          trustAgy: true,
+          meta: { origin: 'screen-capture' },
+        });
+      }
+    } catch (saveErr) {
+      console.warn('[handleSendToGeminiVision] Erro ao anexar imagem ao workspace:', saveErr.message);
+    }
+
+    const isGenericUserTextCli = !text || !text.trim() || /^(image in context|processo texto da imagem|captura de tela)$/i.test(text.trim());
+    const promptDirective = isGenericUserTextCli
+      ? 'Analise a imagem anexada capturada da tela e forneça a solução, resposta ou explicação detalhada.'
+      : text.trim();
+
+    let ocr = '';
+    if (isGenericUserTextCli) {
+      ocr = await TesseractService.getTextFromImage(image).catch(() => '');
+    }
+    const baseTxt = (ocr && ocr.trim())
+      ? `${promptDirective}\n\nConteúdo extraído via OCR:\n${ocr.trim()}`
+      : promptDirective;
+
     if (aiModel === 'geminiCli') {
-      const ocr = await TesseractService.getTextFromImage(image).catch(() => '');
-      const baseTxt = (text && text.trim() ? `${text}\n\n` : '')
-        + (ocr && ocr.trim() ? `Conteúdo extraído da imagem:\n${ocr}` : '');
+      try {
+        compositeSender.send('message-received', {
+          sessionId: sessionId || null,
+          timestamp: Date.now(),
+          provider: 'geminiCli',
+        });
+        compositeSender.send('agentic-phase-update', {
+          phase: 'received',
+          status: 'Imagem recebida. Processando visão com Antigravity CLI (agy)…',
+          thinking: '',
+          sessionId: sessionId || workspace.getProjectPath(),
+        });
+      } catch (_) {}
       const projectPath = workspace.getProjectPath();
       const geminiModel = configService.getGeminiCliModel();
       GeminiCliProvider.setModel(geminiModel);
-      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(baseTxt));
+      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(baseTxt, { includeEphemeral: true }));
       try {
-        await GeminiCliProvider.send(finalPrompt, projectPath, event.sender, null, []);
+        await GeminiCliProvider.send(finalPrompt, projectPath, compositeSender, sessionId || null, []);
       } catch (gcliErr) {
         console.error('[gemini-cli send-to-gemini-vision] send error:', gcliErr.message);
-        try { event.sender.send('gemini-stream-complete'); } catch (_) {}
+        try { emitToTargets(event.sender, 'gemini-stream-complete'); } catch (_) {}
+      } finally {
+        try { if (workspace.purgeEphemeralCaptures) workspace.purgeEphemeralCaptures(); } catch (_) {}
       }
       return;
     } else if (aiModel === 'claudeCli') {
-      const ocr = await TesseractService.getTextFromImage(image).catch(() => '');
-      const baseTxt = (text && text.trim() ? `${text}\n\n` : '')
-        + (ocr && ocr.trim() ? `Conteúdo extraído da imagem:\n${ocr}` : '');
       const projectPath = workspace.getProjectPath();
       const claudeModel = configService.getClaudeCliModel();
       ClaudeCliProvider.setModel(claudeModel);
-      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(baseTxt));
+      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(baseTxt, { includeEphemeral: true }));
       try {
-        await ClaudeCliProvider.send(finalPrompt, projectPath, event.sender, null, []);
+        await ClaudeCliProvider.send(finalPrompt, projectPath, compositeSender, sessionId || null, []);
       } catch (ccliErr) {
         console.error('[claude-cli send-to-gemini-vision] send error:', ccliErr.message);
-        try { event.sender.send('gemini-stream-complete'); } catch (_) {}
+        try { emitToTargets(event.sender, 'gemini-stream-complete'); } catch (_) {}
+      } finally {
+        try { if (workspace.purgeEphemeralCaptures) workspace.purgeEphemeralCaptures(); } catch (_) {}
       }
       return;
     } else if (aiModel === 'copilotCli') {
-      const ocr = await TesseractService.getTextFromImage(image).catch(() => '');
-      const baseTxt = (text && text.trim() ? `${text}\n\n` : '')
-        + (ocr && ocr.trim() ? `Conteúdo extraído da imagem:\n${ocr}` : '');
       const projectPath = workspace.getProjectPath();
       const copilotModel = configService.getCopilotCliModel();
       CopilotCliProvider.setModel(copilotModel);
-      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(baseTxt));
+      const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(baseTxt, { includeEphemeral: true }));
       try {
-        await CopilotCliProvider.send(finalPrompt, projectPath, event.sender, {
+        await CopilotCliProvider.send(finalPrompt, projectPath, compositeSender, {
           attachments: helpers.getAttachableFilePaths(),
         });
       } catch (cpErr) {
         console.error('[copilot-cli send-to-gemini-vision] send error:', cpErr.message);
-        try { event.sender.send('gemini-stream-complete'); } catch (_) {}
+        try { emitToTargets(event.sender, 'gemini-stream-complete'); } catch (_) {}
+      } finally {
+        try { if (workspace.purgeEphemeralCaptures) workspace.purgeEphemeralCaptures(); } catch (_) {}
       }
       return;
     } else if (aiModel !== 'openIa' && aiModel !== 'openIaCodex' && aiModel !== 'zaiGlm') {
-      const ocr = await TesseractService.getTextFromImage(image).catch(() => '');
+      const ocrFallback = ocr || (await TesseractService.getTextFromImage(image).catch(() => ''));
       const instructionO = helpers.withUserContext(configService.getPromptInstruction());
-      const baseTxt = (text && text.trim() ? `${text}\n\n` : '')
-        + (ocr && ocr.trim() ? `Conteúdo extraído da imagem:\n${ocr}` : '');
-      const _wsTxt = await helpers.prependWorkspaceContextIfNeeded(baseTxt, 'ollama');
+      const baseTxtFallback = (text && text.trim() ? `${text}\n\n` : '')
+        + (ocrFallback && ocrFallback.trim() ? `Conteúdo extraído da imagem:\n${ocrFallback}` : '');
+      const _wsTxt = await helpers.prependWorkspaceContextIfNeeded(baseTxtFallback, 'ollama');
       const _ht = helpers.buildHelperToolsOpenAIOpts(_wsTxt, instructionO, configService.getOpenAiModel());
-      const resposta = await BackendService.responder(_wsTxt, _ht.opts);
-      event.sender.send("gemini-response", { resposta, usedKnowledge: false });
+      try {
+        const resposta = await BackendService.responder(_wsTxt, _ht.opts);
+        emitToTargets(event.sender, "gemini-response", { resposta, usedKnowledge: false });
+      } finally {
+        try { if (workspace.purgeEphemeralCaptures) workspace.purgeEphemeralCaptures(); } catch (_) {}
+      }
       return;
     }
 
@@ -256,7 +345,7 @@ async function handleSendToGeminiVision(event, { text, image }) {
     const token = isZai ? configService.getZaiApiKey() : configService.getOpenIaToken();
     const instruction = helpers.withUserContext(configService.getPromptInstruction());
     if (!token) {
-      event.sender.send("transcription-error", isZai ? "Chave da Z.ai não configurada." : "Token da OpenAI não configurado.");
+      emitToTargets(event.sender, "transcription-error", isZai ? "Chave da Z.ai não configurada." : "Token da OpenAI não configurado.");
       return;
     }
     const historyService = require('../../services/historyService');
@@ -309,10 +398,12 @@ NUNCA faça descrições vagas ou respostas genéricas.`
         await historyService.addMessage(currentSession.id, 'assistant', resposta);
       } catch (_) {}
     }
-    event.sender.send("openai-final-response", { resposta, usedKnowledge: false });
+    emitToTargets(event.sender, "openai-final-response", { resposta, usedKnowledge: false });
+    try { if (workspace.purgeEphemeralCaptures) workspace.purgeEphemeralCaptures(); } catch (_) {}
   } catch (error) {
     console.error("IPC visão: erro ao analisar imagem:", error && error.message);
-    event.sender.send("transcription-error", "Falha ao analisar a imagem com a IA.");
+    emitToTargets(event.sender, "transcription-error", "Falha ao analisar a imagem com a IA.");
+    try { if (workspace.purgeEphemeralCaptures) workspace.purgeEphemeralCaptures(); } catch (_) {}
   }
 }
 

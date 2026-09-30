@@ -68,7 +68,7 @@ function runSpawn(cmd, args, opts) {
 
     const child = spawn(cmd, args, {
       cwd: opts.cwd,
-      env: { ...process.env },
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
       stdio: ["ignore", "pipe", "pipe"],
     });
 

@@ -9,24 +9,26 @@ const EventEmitter = require('events');
 const { DEFAULT_LIVE_TOOLS, executeToolCall } = require('./geminiLiveTools');
 
 const GEMINI_LIVE_WS_URL = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent';
-const DEFAULT_MODEL = 'models/gemini-2.0-flash-exp';
+const DEFAULT_MODEL = 'models/gemini-3.8-live';
 const CANDIDATE_MODELS = [
-  'models/gemini-2.0-flash-exp',
-  'models/gemini-2.0-flash-realtime-exp'
+  'models/gemini-3.8-live',
+  'models/gemini-3.1-flash-live-preview',
+  'models/gemini-2.5-flash-native-audio-preview-12-2025'
 ];
-const DEFAULT_VOICE = 'Kore'; // Voz feminina suave e clara
+const DEFAULT_VOICE = 'Aoede'; // Voz feminina calorosa, natural e fluída
 
-const DEFAULT_SYSTEM_INSTRUCTION = `Você é a Raphael, copiloto e assistente de desenvolvimento sênior em inteligência artificial do Helper Node.
-Você trabalha em parceria com o desenvolvedor Juliano. Seu núcleo visual integrado é o Raphael Core (plasma cósmico tridimensional).
-Sua personalidade é inteligente, descontraída, nerd, empática e ágil.
+const DEFAULT_SYSTEM_INSTRUCTION = `Você é a Nexa, copiloto e assistente de desenvolvimento sênior do Helper Node.
+Seu núcleo visual integrado é o Raphael Core (plasma cósmico tridimensional).
+Sua personalidade é inteligente, descontraída, nerd, ágil e focada em resolver os problemas do desenvolvedor.
 
-DIRETIVAS OBRIGATÓRIAS DE EXECUÇÃO:
+COMO VOCÊ OPERA:
 1. Responda em áudio em português do Brasil de maneira natural, conversacional, ágil e concisa (1 a 2 frases curtas).
-2. AÇÃO DIRETA IMEDIATA: Quando Juliano solicitar refatoração, criação ou alteração de código, git, arquivos, testes, comandos no terminal, investigações, busca de tela ou relatórios:
-   - INVOQUE IMEDIATAMENTE a ferramenta correspondente ('execute_code_task', 'run_terminal_command', 'read_workspace_file', 'get_screen_context', 'get_recent_chat_history').
-   - NUNCA responda apenas prometendo que vai fazer sem disparar a ferramenta na mesma resposta.
-3. Ao receber o retorno da ferramenta, faça um resumo conversacional objetivo de 1 a 2 frases confirmando os resultados concretos obtidos.
-4. Se for apenas conversa casual (ex: "Bom dia", "tá por aí?"), responda diretamente em voz com simpatia e agilidade.`;
+2. EXECUÇÃO DE TAREFAS:
+   - Você possui ferramentas reais conectadas ao workspace. Quando o usuário pedir para criar, alterar, refatorar código, rodar testes ou executar comandos no terminal, acione diretamente a ferramenta correspondente ('execute_code_task' ou 'run_terminal_command').
+   - NUNCA dê respostas vazias prometendo que vai fazer ("vou fazer", "já vou alterar") sem acionar a ferramenta, pois falar não altera arquivos. Acione a ferramenta para que a alteração seja feita de verdade.
+   - Assim que a ferramenta concluir, você receberá o resultado e fará um resumo curto em voz confirmando o que foi feito.
+3. CONVERSAÇÃO E DÚVIDAS:
+   - Para conversas normais, saudações, dúvidas teóricas, explicações ou quando o usuário estiver apenas conversando com você, responda diretamente por voz com simpatia e clareza, sem acionar ferramentas desnecessárias.`;
 
 class GeminiLiveSession extends EventEmitter {
   constructor(options = {}) {
@@ -43,6 +45,8 @@ class GeminiLiveSession extends EventEmitter {
     this.currentState = 'IDLE'; // IDLE, LISTENING, THINKING, SPEAKING, WORKING
     this.isExecutingTool = false;
     this._triedFallback = false;
+    this.resumeHandle = options.resumeHandle || null;
+    this._isReconnecting = false;
 
     // Histórico de turnos da sessão ativa
     this.turnHistory = options.initialHistory || [];
@@ -99,6 +103,27 @@ class GeminiLiveSession extends EventEmitter {
           this.isSessionConfigured = false;
           this._setState('IDLE');
 
+          // Se a sessão estava configurada e caiu com erro interno inesperado (ex: 1011 ou queda abrupta), tenta retomar via sessionResumption
+          if (wasConfigured && this.resumeHandle && (event.code === 1011 || event.code === 1006) && !this._isReconnecting) {
+            this._isReconnecting = true;
+            console.log(`[GeminiLive] Tentando retomar sessão Live via sessionResumption (handle: ${this.resumeHandle})...`);
+            try {
+              await this._connectWithModel(this.model);
+              this._isReconnecting = false;
+              console.log('[GeminiLive] Sessão Live retomada com sucesso!');
+              this.emit('resumed');
+              return;
+            } catch (resumeErr) {
+              this._isReconnecting = false;
+              this.resumeHandle = null;
+              console.warn('[GeminiLive] Falha ao retomar sessão Live:', resumeErr.message);
+            }
+          }
+
+          if (event.code === 1008 || (event.reason && (event.reason.includes('not found') || event.reason.includes('Requested entity')))) {
+            this.resumeHandle = null;
+          }
+
           // Se a conexão caiu antes de configurar o setup com erro de modelo não suportado (1008), tenta fallback
           if (!wasConfigured && (event.code === 1008 || (event.reason && (event.reason.includes('not supported') || event.reason.includes('not found'))))) {
             const nextCandidate = CANDIDATE_MODELS.find(m => m !== this.model);
@@ -146,6 +171,12 @@ class GeminiLiveSession extends EventEmitter {
         }
       }
     };
+
+    if (this.resumeHandle) {
+      setupMessage.setup.sessionResumption = {
+        handle: this.resumeHandle
+      };
+    }
 
     if (this.tools && this.tools.length > 0) {
       setupMessage.setup.tools = this.tools;
@@ -203,6 +234,7 @@ class GeminiLiveSession extends EventEmitter {
   sendTextMessage(text) {
     if (!this.isConnected || !this.ws || !text) return;
 
+    this.currentUserText = String(text);
     const message = {
       clientContent: {
         turns: [
@@ -254,6 +286,12 @@ class GeminiLiveSession extends EventEmitter {
       }
 
       const data = JSON.parse(textContent);
+
+      // Atualização de handle para retomada de sessão contínua
+      if (data.sessionResumptionUpdate && data.sessionResumptionUpdate.newHandle) {
+        this.resumeHandle = data.sessionResumptionUpdate.newHandle;
+        console.log(`[GeminiLive] Handle de sessão atualizado: ${this.resumeHandle}`);
+      }
 
       // 1. Confirmação do Setup inicial
       if (data.setupComplete) {

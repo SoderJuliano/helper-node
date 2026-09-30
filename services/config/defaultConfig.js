@@ -8,6 +8,7 @@ const defaultConfig = {
   osIntegration: false,
   realtimeAssistant: false,
   stealthMode: true,
+  terminalLogs: false,
   language: "pt-br",
   aiModel: "llama",
   openAiModel: "gpt-4.1-nano",
@@ -22,7 +23,7 @@ const defaultConfig = {
   workspaceAccess: {
     enabled: true,
   },
-  geminiCliModel: "gemini-2.5-flash",
+  geminiCliModel: "gemini-3.7-flash-high",
   claudeCliModel: "sonnet",
   copilotCliModel: "claude-sonnet-4.5",
   copilotCliReasoningEffort: "medium",
@@ -58,8 +59,8 @@ const defaultConfig = {
   zaiBaseUrl: "https://api.z.ai/api/paas/v4/",
   zaiModel: "glm-4.6",
   hasCompletedWelcome: false,
-  geminiLiveVoice: "Kore", // Voz feminina suave e clara, a mais próxima de pt-BR-Neural2-C
-  geminiLiveModel: "models/gemini-2.0-flash-exp",
+  geminiLiveVoice: "Aoede", // Voz feminina calorosa, natural e expressiva (padrão Nexa)
+  geminiLiveModel: "models/gemini-3.8-live",
   transcriptionProvider: "auto", // "auto" | "google" | "openai" | "local" | "macos"
   nexa: {
     name: "Nexa",

@@ -77,6 +77,9 @@ if [[ "$XDG_CURRENT_DESKTOP" == *"GNOME"* ]]; then
     # Hotkey for capture-screen-auto (Ctrl+Shift+S) — print direto + IA, sem seleção
     configure_gnome_hotkey "Capture Screen Auto" "curl -X POST http://localhost:3000/capture-screen-auto" "<Control><Shift>s" "helper-node-capture-screen-auto"
 
+    # Hotkey for capture-screen (Ctrl+Shift+X) — recorte de região
+    configure_gnome_hotkey "Capture Screen Region" "curl -X POST http://localhost:3000/capture-screen" "<Control><Shift>x" "helper-node-capture-screen"
+
     # Hotkey for toggle-batch-screenshot (Alt+S)
     configure_gnome_hotkey "Toggle Batch Screenshot" "curl -m 2 -X POST http://localhost:3000/toggle-batch-screenshot -s -o /dev/null" "<Alt>s" "helper-node-batch-screenshot"
 
@@ -201,6 +204,7 @@ SHORTCUTS = {
     (frozenset([ecodes.KEY_LEFTCTRL]), frozenset([ecodes.KEY_I])): "curl -m 2 -X POST http://127.0.0.1:3000/bring-to-focus-and-input -s -o /dev/null",
     (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_I])): "curl -m 2 -X POST http://127.0.0.1:3000/bring-to-focus-and-input -s -o /dev/null",
     (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_S])): "curl -m 2 -X POST http://127.0.0.1:3000/capture-screen-auto -s -o /dev/null",
+    (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_X])): "curl -m 2 -X POST http://127.0.0.1:3000/capture-screen -s -o /dev/null",
     (frozenset([ecodes.KEY_LEFTALT]), frozenset([ecodes.KEY_S])): "curl -m 2 -X POST http://127.0.0.1:3000/toggle-batch-screenshot -s -o /dev/null",
     (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_C])): "curl -m 2 -X POST http://127.0.0.1:3000/open-config -s -o /dev/null",
     (frozenset([ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTSHIFT]), frozenset([ecodes.KEY_1])): "curl -m 2 -X POST http://127.0.0.1:3000/move-to-display/0 -s -o /dev/null",
@@ -355,11 +359,11 @@ TriggerOnRelease=false
 CommandURL=curl -X POST http://localhost:3000/open-config
 
 [Data_7]
-Comment=Capture Screen Auto (Ctrl+S)
+Comment=Capture Screen Auto (Ctrl+Shift+S)
 Enabled=true
 Name=Helper-Node: Capture Screen Auto
 Type=SHORTCUT
-Shortcut=Ctrl+S
+Shortcut=Ctrl+Shift+S
 TriggerOnRelease=false
 CommandURL=curl -X POST http://localhost:3000/capture-screen-auto
 
@@ -371,6 +375,15 @@ Type=SHORTCUT
 Shortcut=Alt+S
 TriggerOnRelease=false
 CommandURL=curl -m 2 -X POST http://localhost:3000/toggle-batch-screenshot -s -o /dev/null
+
+[Data_9]
+Comment=Capture Screen Region (Ctrl+Shift+X)
+Enabled=true
+Name=Helper-Node: Capture Screen Region
+Type=SHORTCUT
+Shortcut=Ctrl+Shift+X
+TriggerOnRelease=false
+CommandURL=curl -X POST http://localhost:3000/capture-screen
 EOF
 
         echo "Helper-Node KHotKeys configuration written to $KHOTKEYS_FILE"
@@ -408,6 +421,7 @@ elif [[ "$XDG_CURRENT_DESKTOP" == *"COSMIC"* ]]; then
     (modifiers: [Ctrl], key: "i"): Spawn("curl -X POST http://localhost:3000/bring-to-focus-and-input"),
     (modifiers: [Ctrl, Shift], key: "i"): Spawn("curl -X POST http://localhost:3000/bring-to-focus-and-input"),
     (modifiers: [Ctrl, Shift], key: "s"): Spawn("curl -X POST http://localhost:3000/capture-screen-auto"),
+    (modifiers: [Ctrl, Shift], key: "x"): Spawn("curl -X POST http://localhost:3000/capture-screen"),
     (modifiers: [Alt], key: "s"): Spawn("curl -m 2 -X POST http://localhost:3000/toggle-batch-screenshot -s -o /dev/null"),
     (modifiers: [Ctrl, Shift], key: "c"): Spawn("curl -X POST http://localhost:3000/open-config"),
     (modifiers: [Ctrl, Shift], key: "1"): Spawn("curl -X POST http://localhost:3000/move-to-display/0"),

@@ -3,6 +3,7 @@
 
 const GeminiCliEvents = {
   // Process lifecycle
+  RECEIVED:    'gemini-cli:received',
   STARTING:    'gemini-cli:starting',
   CONNECTED:   'gemini-cli:connected',
   WAITING:     'gemini-cli:waiting',

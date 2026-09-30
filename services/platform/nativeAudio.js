@@ -18,6 +18,7 @@
 //     É a mesma limitação de sempre — no Linux era parec, no Mac nunca houve.
 
 const path = require('path');
+const { spawn } = require('child_process');
 const EventEmitter = require('events');
 
 const events = new EventEmitter();
@@ -25,6 +26,7 @@ let win = null;              // BrowserWindow oculto de captura
 let starting = null;         // Promise de inicialização em andamento (idempotência)
 const subscribers = new Map(); // source ('mic'|'sys') -> Set<cb(Buffer)>
 const sourceOptions = new Map(); // source -> options ({ deviceId })
+const linuxProcs = new Map(); // Linux: source -> ChildProcess (parec)
 
 function electron() {
   return require('electron');
@@ -35,6 +37,48 @@ function routePcm(source, buf) {
   if (!set) return;
   for (const cb of set) {
     try { cb(buf); } catch (e) { console.error('[native-audio] callback erro:', e.message); }
+  }
+}
+
+function startLinuxParec(source, options = {}) {
+  stopLinuxParec(source);
+  const deviceId = (options && options.deviceId) ? String(options.deviceId).trim() : '';
+  const args = [];
+  if (deviceId && deviceId !== 'default') {
+    args.push(`--device=${deviceId}`);
+  }
+  args.push('--rate=16000', '--channels=1', '--format=s16le', '--raw', '--latency-msec=20');
+
+  let proc;
+  try {
+    proc = spawn('stdbuf', ['-o0', 'parec', ...args], { stdio: ['ignore', 'pipe', 'ignore'] });
+  } catch (_) {
+    proc = spawn('parec', args, { stdio: ['ignore', 'pipe', 'ignore'] });
+  }
+
+  proc.stdout.on('data', (chunk) => {
+    routePcm(source, chunk);
+  });
+
+  proc.on('error', (err) => {
+    console.warn(`[native-audio] parec (${source}) erro:`, err.message);
+    linuxProcs.delete(source);
+  });
+
+  proc.on('exit', () => {
+    linuxProcs.delete(source);
+  });
+
+  linuxProcs.set(source, proc);
+  console.log(`[native-audio] parec (${source}) ativo no Linux (16kHz s16le mono, device: ${deviceId || 'default'})`);
+}
+
+function stopLinuxParec(source) {
+  const proc = linuxProcs.get(source);
+  if (proc) {
+    try { proc.kill('SIGTERM'); } catch (_) {}
+    linuxProcs.delete(source);
+    console.log(`[native-audio] parec (${source}) finalizado`);
   }
 }
 
@@ -141,12 +185,19 @@ async function ensureWindow() {
 
 let closeIdleTimer = null;
 
-// Assina o stream de uma fonte. Abre a janela de captura na primeira assinatura.
+// Assina o stream de uma fonte. Abre a captura na primeira assinatura.
 async function subscribe(source, cb, options = {}) {
   clearTimeout(closeIdleTimer);
   if (!subscribers.has(source)) subscribers.set(source, new Set());
   subscribers.get(source).add(cb);
   sourceOptions.set(source, options || {});
+
+  if (process.platform === 'linux') {
+    if (!linuxProcs.has(source)) {
+      startLinuxParec(source, options);
+    }
+    return;
+  }
 
   const w = await ensureWindow();
   // Pede ao renderer para (re)garantir que a fonte está capturando com o deviceId mais recente.
@@ -164,15 +215,25 @@ function unsubscribe(source, cb) {
     if (set.size === 0) {
       subscribers.delete(source);
       sourceOptions.delete(source);
-      if (win && !win.isDestroyed()) win.webContents.send('native-audio-stop', { source });
+      if (process.platform === 'linux') {
+        stopLinuxParec(source);
+      } else if (win && !win.isDestroyed()) {
+        win.webContents.send('native-audio-stop', { source });
+      }
     }
   }
   if (subscribers.size === 0) {
     clearTimeout(closeIdleTimer);
     closeIdleTimer = setTimeout(() => {
-      if (subscribers.size === 0 && win && !win.isDestroyed()) {
-        try { win.close(); } catch (_) {}
-        win = null;
+      if (subscribers.size === 0) {
+        if (process.platform === 'linux') {
+          for (const s of Array.from(linuxProcs.keys())) {
+            stopLinuxParec(s);
+          }
+        } else if (win && !win.isDestroyed()) {
+          try { win.close(); } catch (_) {}
+          win = null;
+        }
       }
     }, 45000);
   }
@@ -182,6 +243,10 @@ function unsubscribe(source, cb) {
 async function restart(source, options = {}) {
   if (options) sourceOptions.set(source, options);
   const opts = sourceOptions.get(source) || options || {};
+  if (process.platform === 'linux') {
+    startLinuxParec(source, opts);
+    return;
+  }
   const deviceId = (opts && opts.deviceId) ? String(opts.deviceId) : '';
   const w = await ensureWindow();
   if (w && !w.isDestroyed()) {
@@ -189,8 +254,32 @@ async function restart(source, options = {}) {
   }
 }
 
-// Lista dispositivos de áudio disponíveis via Chromium
+// Lista dispositivos de áudio disponíveis via pactl (Linux) ou Chromium (outros SOs)
 async function listInputDevices() {
+  if (process.platform === 'linux') {
+    try {
+      const { exec } = require('child_process');
+      const util = require('util');
+      const execAsync = util.promisify(exec);
+      const { stdout } = await execAsync('pactl list sources short', { timeout: 3000 });
+      const lines = stdout.split('\n').filter(Boolean);
+      const devices = [];
+      for (const line of lines) {
+        const parts = line.split('\t');
+        if (parts.length >= 2) {
+          const devName = parts[1];
+          if (!devName.includes('.monitor')) {
+            devices.push({
+              name: devName,
+              description: devName.replace(/^alsa_input\./, '').replace(/[-_]/g, ' ')
+            });
+          }
+        }
+      }
+      if (devices.length > 0) return devices;
+    } catch (_) {}
+  }
+
   try {
     const w = await ensureWindow();
     if (!w || w.isDestroyed()) return [];
@@ -224,6 +313,7 @@ async function listInputDevices() {
 
 // Pré-aquece a janela oculta de áudio na inicialização do app (0ms de atraso no primeiro Ctrl+D)
 async function prewarm() {
+  if (process.platform === 'linux') return;
   try {
     await ensureWindow();
   } catch (e) {
@@ -235,6 +325,11 @@ function destroy() {
   clearTimeout(closeIdleTimer);
   subscribers.clear();
   sourceOptions.clear();
+  if (process.platform === 'linux') {
+    for (const s of Array.from(linuxProcs.keys())) {
+      stopLinuxParec(s);
+    }
+  }
   if (win && !win.isDestroyed()) {
     try { win.destroy(); } catch (_) {}
     win = null;

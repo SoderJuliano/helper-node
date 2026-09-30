@@ -14,7 +14,7 @@
 const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { resolveBinary } = require('./GeminiCliProcess');
+const { resolveBinary } = require('./GeminiCliBinary');
 
 // Sem modelo padrão escrito à mão: string vazia faz o GeminiCliProcess omitir
 // o `--model` (ele só empurra a flag `if (model)`), e o próprio CLI escolhe.
@@ -200,4 +200,47 @@ function getDefaultModel() {
   return DEFAULT_MODEL;
 }
 
-module.exports = { DEFAULT_MODEL, getModels, getDefaultModel, refresh, parseModelIds, labelFromId };
+function normalizeModelId(inputModel) {
+  if (!inputModel || typeof inputModel !== 'string') return '';
+  const trimmed = inputModel.trim();
+  if (!trimmed) return '';
+
+  const list = (cachedModels && cachedModels.length) ? cachedModels : DEFAULT_AGY_MODELS;
+  const found = list.find(
+    m => m.id.toLowerCase() === trimmed.toLowerCase() ||
+         (m.value && m.value.toLowerCase() === trimmed.toLowerCase()) ||
+         (m.label && m.label.toLowerCase() === trimmed.toLowerCase())
+  );
+  if (found) return found.id;
+
+  if (/^[a-z0-9][a-z0-9._-]*$/i.test(trimmed) && !trimmed.includes(' ')) {
+    if (trimmed.includes('2.5') || trimmed.includes('3.5')) {
+      return 'gemini-3.7-flash-high';
+    }
+    return trimmed;
+  }
+
+  const lower = trimmed.toLowerCase();
+  if (lower.includes('claude') && lower.includes('opus')) return 'claude-opus-4-6-thinking';
+  if (lower.includes('claude') && (lower.includes('sonnet') || lower.includes('thinking'))) return 'claude-sonnet-4-6';
+  if (lower.includes('gpt-oss') || lower.includes('120b')) return 'gpt-oss-120b-medium';
+  if (lower.includes('pro')) {
+    return lower.includes('low') ? 'gemini-3.1-pro-low' : 'gemini-3.1-pro-high';
+  }
+  if (lower.includes('3.8')) {
+    if (lower.includes('medium')) return 'gemini-3.8-flash-medium';
+    if (lower.includes('low')) return 'gemini-3.8-flash-low';
+    return 'gemini-3.8-flash-high';
+  }
+  if (lower.includes('3.6')) {
+    if (lower.includes('medium')) return 'gemini-3.6-flash-medium';
+    if (lower.includes('low')) return 'gemini-3.6-flash-low';
+    return 'gemini-3.6-flash-high';
+  }
+  if (lower.includes('medium')) return 'gemini-3.7-flash-medium';
+  if (lower.includes('low')) return 'gemini-3.7-flash-low';
+  return 'gemini-3.7-flash-high';
+}
+
+module.exports = { DEFAULT_MODEL, getModels, getDefaultModel, normalizeModelId, refresh, parseModelIds, labelFromId };
+

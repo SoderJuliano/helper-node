@@ -91,21 +91,18 @@ helpers.initializeClipboardBaseline = async function() {
       const base64Data = imageData.replace(/^data:image\/[a-z0-9.+-]+;base64,/, '');
       const currentHash = helpers.calculateImageHash(Buffer.from(base64Data, 'base64'));
       state.lastClipboardImageHash = currentHash;
-      // CRITICAL: marca a imagem que ja estava no clipboard como "recem-processada"
-      // pra evitar que ela dispare auto-envio quando o monitor (re)inicia ao trocar
-      // de modo (Normal <-> OS Integration). Sem isso, abrir Ctrl+I em OS mode com
-      // uma imagem antiga no clipboard dispara OCR+IA dessa imagem velha.
       state.lastProcessedImageHash = currentHash;
       state.lastProcessedTimestamp = Date.now();
+      if (!state.processedImageHashes) state.processedImageHashes = new Set();
+      state.processedImageHashes.add(currentHash);
       console.log('📋 Clipboard baseline inicializado:', currentHash.substring(0, 8));
     } else {
       console.log('📋 Nenhuma imagem no clipboard para baseline');
     }
   } catch (error) {
     console.log('📋 Baseline falhou, mas não é crítico:', error.message);
-    // Não é crítico, sistema funciona sem baseline
   }
-}
+};
 
 helpers.startWaylandClipboardWatch = function(triggerCheck) {
   if (state.clipboardWatchProc) { try { state.clipboardWatchProc.kill('SIGTERM'); } catch (_) {} state.clipboardWatchProc = null; }
@@ -123,21 +120,26 @@ helpers.startWaylandClipboardWatch = function(triggerCheck) {
   } catch (e) {
     console.log('📋 falha ao iniciar wl-paste --watch:', e.message);
   }
-}
+};
 
-helpers.startClipboardMonitoring = function() {
+helpers.startClipboardMonitoring = async function() {
   if (helpers.isTranslationOnlyMode()) {
     console.log('[mutex] clipboardMonitoring suprimido — Translation Assistant ativo');
     return;
   }
   if (state.clipboardMonitoringInterval) {
     clearInterval(state.clipboardMonitoringInterval);
+    state.clipboardMonitoringInterval = null;
+  }
+  if (state.clipboardWatchProc) {
+    try { state.clipboardWatchProc.kill('SIGTERM'); } catch (_) {}
+    state.clipboardWatchProc = null;
   }
 
   console.log('🎯 Iniciando monitoramento NATIVO de clipboard para novas imagens...');
   
-  // Initialize with current clipboard content to avoid processing existing images
-  helpers.initializeClipboardBaseline();
+  // Await baseline initialization to prevent auto-triggering on existing clipboard content at boot
+  await helpers.initializeClipboardBaseline();
 
   // Função de checagem extraída pra ser chamada tanto pelo polling quanto
   // pelo wl-paste --watch (Wayland event-driven).
@@ -145,6 +147,15 @@ helpers.startClipboardMonitoring = function() {
     try {
       const isPrintModeEnabled = configService.getPrintModeStatus();
       if (!isPrintModeEnabled) return;
+
+      // Se o usuário disparou um print direto (Ctrl+Shift+X ou Ctrl+Shift+S),
+      // o compositor/Spectacle grava no clipboard automaticamente.
+      // O fluxo direto da captura já cuida do processamento e envio.
+      // Ignora leituras de clipboard nos primeiros 8s para eliminar loop e envios duplicados.
+      const now = Date.now();
+      if (state.lastUserCaptureTimestamp && (now - state.lastUserCaptureTimestamp < 8000)) {
+        return;
+      }
       
       const imageData = await helpers.readSystemClipboardImage();
       const hasImage = !!imageData;
@@ -153,66 +164,52 @@ helpers.startClipboardMonitoring = function() {
         : null;
       
       if (hasImage && imageData && currentHash) {
-        // Check if this is the same image as before
-        if (currentHash === state.lastClipboardImageHash) {
-          // Same image still in clipboard, no need to log repeatedly
+        if (!state.processedImageHashes) state.processedImageHashes = new Set();
+
+        // 1. Já processada antes? Se este hash já foi processado ou está no histórico recente, NUNCA reprocessar automaticamente
+        if (state.lastClipboardImageHash === currentHash || state.processedImageHashes.has(currentHash)) {
+          state.lastClipboardImageHash = currentHash;
           return;
         }
-        
-        // Check if this image was recently processed (cooldown check)
-        const now = Date.now();
-        const isRecentlyProcessed = state.lastProcessedImageHash === currentHash && 
-                                   state.lastProcessedTimestamp && 
-                                   (now - state.lastProcessedTimestamp) < IMAGE_COOLDOWN_MS;
-        
-        if (isRecentlyProcessed) {
-          console.log('🚫 Image recently processed, waiting for cooldown period...');
-          state.lastClipboardImageHash = currentHash; // Update clipboard hash but don't process
+
+        // 2. Já processando?
+        if (state.isProcessingImage) {
+          state.lastClipboardImageHash = currentHash;
           return;
         }
-        
-        // This is a new image or cooldown period has passed
-        if (currentHash !== state.lastClipboardImageHash) {
-          // Check if already processing an image
-          if (state.isProcessingImage) {
-            console.log('🔒 Já processando uma imagem, aguardando...');
-            state.lastClipboardImageHash = currentHash; // Update hash but don't process
-            return;
-          }
-          
-          console.log('📸 NOVA IMAGEM DETECTADA no clipboard! Processando automaticamente...');
-          
-          // Sinaliza loading no renderer (robot.gif) ate IA responder
-          if (state.mainWindow && !state.mainWindow.isDestroyed()) {
-            state.mainWindow.webContents.send('screen-capturing', true);
-          }
-          
-          // Set processing lock
-          state.isProcessingImage = true;
-          
-          // Check if OS integration mode is enabled
-          const isOsIntegration = configService.getOsIntegrationStatus();
-          if (isOsIntegration) {
-            helpers.createOsNotificationWindow('loading', 'Nova imagem detectada! Processando...');
-          } else if (appConfig.notificationsEnabled && Notification.isSupported()) {
-            new Notification({
-              title: 'Helper-Node',
-              body: 'Nova imagem detectada! Processando...',
-              silent: true,
-            }).show();
-          }
-          
-          // Mark as processed with timestamp
-          state.lastProcessedImageHash = currentHash;
-          state.lastProcessedTimestamp = now;
-          
-          await helpers.processNewClipboardImage(imageData);
-        }
-        
+
+        console.log('📸 NOVA IMAGEM DETECTADA no clipboard! Processando automaticamente...');
+
+        if (state.processedImageHashes.size > 100) state.processedImageHashes.clear();
+        state.processedImageHashes.add(currentHash);
+        state.lastProcessedImageHash = currentHash;
+        state.lastProcessedTimestamp = now;
         state.lastClipboardImageHash = currentHash;
+
+        // Sinaliza loading no renderer (robot.gif) ate IA responder
+        if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+          state.mainWindow.webContents.send('screen-capturing', true);
+        }
+
+        // Set processing lock
+        state.isProcessingImage = true;
+
+        // Check if OS integration mode is enabled
+        const isOsIntegration = configService.getOsIntegrationStatus();
+        if (isOsIntegration) {
+          helpers.createOsNotificationWindow('loading', 'Nova imagem detectada! Processando...');
+        } else if (appConfig.notificationsEnabled && Notification.isSupported()) {
+          new Notification({
+            title: 'Helper-Node',
+            body: 'Nova imagem detectada! Processando...',
+            silent: true,
+          }).show();
+        }
+
+        await helpers.processNewClipboardImage(imageData);
       } else {
-        // No image found, reset clipboard hash
-        if (state.lastClipboardImageHash !== null) {
+        // No image found, reset clipboard hash apenas se não houver captura recente
+        if (state.lastClipboardImageHash !== null && (!state.lastProcessedTimestamp || (now - state.lastProcessedTimestamp > 10000))) {
           console.log('🔄 No image in clipboard anymore');
           state.lastClipboardImageHash = null;
         }
@@ -231,7 +228,7 @@ helpers.startClipboardMonitoring = function() {
     console.log('📋 wl-paste --watch: clipboard mudou → verificando...');
     checkClipboardNow();
   });
-}
+};
 
 helpers.stopClipboardMonitoring = function() {
   if (state.clipboardMonitoringInterval) {
@@ -292,7 +289,10 @@ helpers.processNewClipboardImage = async function(base64Image) {
       } else {
         // Fora do OS mode: tambem manda visao se o renderer principal estiver disponivel
         if (state.mainWindow && !state.mainWindow.isDestroyed()) {
-          state.mainWindow.webContents.send('process-image-vision', base64Image);
+          state.mainWindow.webContents.send('ocr-result', {
+            text: '',
+            base64Image,
+          });
         }
       }
       return;
@@ -328,8 +328,12 @@ helpers.processNewClipboardImage = async function(base64Image) {
           silent: true,
         }).show();
       }
-      // Usar o método existente getIaResponse
-      await helpers.getIaResponse(text);
+      if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+        state.mainWindow.webContents.send("ocr-result", {
+          text: text || '',
+          base64Image
+        });
+      }
     }
     
   } catch (error) {

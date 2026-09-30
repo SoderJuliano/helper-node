@@ -221,6 +221,27 @@ function checkNoEmojis() {
   }
 }
 
+// ── E6: Proibição de modelos obsoletos e whisper local ────────────────────────
+function checkDeprecatedModelsAndLocalWhisper() {
+  const forbiddenModelRegex = /(?:gemini-1\.5|gemini-1\.0|gemini-pro-vision)/i;
+  const forbiddenWhisperRegex = /(?:whisper-cli|whisper\/build|whisper\/models)/i;
+
+  for (const f of [...byExt('.js'), ...byExt('.html')]) {
+    const r = rel(f);
+    if (r === 'scripts/check.js') continue;
+    const lines = read(f).split(/\r?\n/);
+    lines.forEach((line, idx) => {
+      if (r === 'services/geminiLive/index.js' && line.includes('includes(')) return;
+      if (forbiddenModelRegex.test(line)) {
+        err(r, `linha ${idx + 1} referencia modelo de IA obsoleto: "${line.trim().slice(0, 50)}"`);
+      }
+      if (forbiddenWhisperRegex.test(line)) {
+        err(r, `linha ${idx + 1} referencia Whisper local/binário proibido: "${line.trim().slice(0, 50)}"`);
+      }
+    });
+  }
+}
+
 // ── main ──────────────────────────────────────────────────────────────────────
 if (process.argv.includes('--write-baseline')) { writeBaseline(); process.exit(0); }
 
@@ -232,6 +253,7 @@ checkCssDupBlocks();
 checkDupGlobals();
 checkFileSize();
 checkNoEmojis();
+checkDeprecatedModelsAndLocalWhisper();
 
 for (const w of warns) console.log(`  aviso  ${w.file}: ${w.msg}`);
 for (const e of errors) console.log(`  ERRO   ${e.file}: ${e.msg}`);
@@ -241,3 +263,4 @@ if (errors.length) {
   process.exit(1);
 }
 console.log(`ok — ${byExt('.js').length} js, ${byExt('.css').length} css${warns.length ? `, ${warns.length} aviso(s)` : ''}.`);
+

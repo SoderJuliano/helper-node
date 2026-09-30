@@ -61,8 +61,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   sendTextToGemini: (text, sessionId) => ipcRenderer.send("send-to-gemini", text, sessionId),
   // Manda a IMAGEM (data URL base64) + enunciado pro modelo de visão (gpt-4o).
   // Usado quando o usuário cola/captura uma imagem no chat e o backend é OpenAI.
-  sendVisionToGemini: (text, image) =>
-    ipcRenderer.send("send-to-gemini-vision", { text, image }),
+  sendVisionToGemini: (text, image, sessionId) =>
+    ipcRenderer.send("send-to-gemini-vision", { text, image, sessionId }),
   sendTextToGeminiStream: (text, sessionId) => ipcRenderer.send("send-to-gemini-stream", text, sessionId),
   onAutoStream: (callback) =>
     ipcRenderer.on("send-to-gemini-stream-auto", (event, text) => callback(text)),
@@ -175,6 +175,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   sendTextToGeminiLive: (text) => ipcRenderer.invoke("gemini-live:send-text", text),
   sendNexaVoiceProcessingStarted: () => ipcRenderer.send("nexa-voice:processing-started"),
   sendNexaVoiceProcessingFinished: () => ipcRenderer.send("nexa-voice:processing-finished"),
+  sendGeminiLivePlaybackState: (state) => ipcRenderer.send("gemini-live:playback-state", state),
   processPastedImage: (base64Image) =>
     ipcRenderer.send("process-pasted-image", base64Image),
   // Modo IDE: imagem colada vira ANEXO (caminho), não texto no input.
@@ -268,6 +269,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("ai-tool-activity", (event, data) => cb(data)),
 
   // === Agentic Workflow (multi-phase) ===
+  onMessageReceived: (cb) =>
+    ipcRenderer.on("message-received", (event, data) => cb(data)),
   onAgenticPhaseUpdate: (cb) =>
     ipcRenderer.on("agentic-phase-update", (event, data) => cb(data)),
   onAgenticDebugInfo: (cb) =>
@@ -361,6 +364,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   terminalResize: (dim) => ipcRenderer.send("terminal:resize", dim),
   onTerminalOutput: (cb) => ipcRenderer.on("terminal:output", (event, data) => cb(data)),
   onTerminalClosed: (cb) => ipcRenderer.on("terminal:closed", (event, data) => cb(data)),
+  getTerminalLogsStatus: () => ipcRenderer.invoke("get-terminal-logs-status"),
+  saveTerminalLogsStatus: (status) => ipcRenderer.send("save-terminal-logs-status", status),
+  getTerminalLogPath: () => ipcRenderer.invoke("get-terminal-log-path"),
+  onTerminalLogsStatusChanged: (cb) => ipcRenderer.on("terminal-logs-status-changed", (event, status) => cb(status)),
 
   // === Nexa Module API ===
   getNexaConfig: () => ipcRenderer.invoke("nexa:get-config"),
@@ -376,6 +383,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onGeminiLiveTranscript: (cb) => ipcRenderer.on("gemini-live:transcript", (event, data) => cb(data)),
   onGeminiLiveUserTranscript: (cb) => ipcRenderer.on("gemini-live:user-transcript", (event, data) => cb(data)),
   onGeminiLiveTurnComplete: (cb) => ipcRenderer.on("gemini-live:turn-complete", (event, data) => cb(data)),
+  onNexaVoiceError: (cb) => ipcRenderer.on("nexa-voice:error", (event, data) => cb(data)),
   onPlayAnimation: (cb) => ipcRenderer.on("nexa:play-animation", (event, data) => cb(data)),
   logToMain: (level, msg) => ipcRenderer.send("nexa:log-to-main", { level, msg }),
   onRequestWebcam: (cb) => ipcRenderer.on("nexa:request-webcam", (event, data) => cb(data)),

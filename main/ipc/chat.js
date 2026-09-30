@@ -82,6 +82,7 @@ module.exports = function registerIpc() {
         session.cancelAiExecution();
       }
     } catch (_) {}
+    try { if (workspace.purgeEphemeralCaptures) workspace.purgeEphemeralCaptures(); } catch (_) {}
     console.log("IA request cancelled");
   });
 

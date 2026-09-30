@@ -18,6 +18,21 @@ const {
 helpers.getIaResponse = async function(text) {
   state.globalBypassAllConfirmations = false;
   console.log("getIaResponse called with text:", text);
+
+  function getCompositeSender() {
+    const targets = [];
+    if (state.mainWindow && !state.mainWindow.isDestroyed()) targets.push(state.mainWindow.webContents);
+
+    return {
+      send: (channel, ...args) => {
+        for (const t of targets) {
+          try { t.send(channel, ...args); } catch (_) {}
+        }
+      }
+    };
+  }
+  const compositeSender = getCompositeSender();
+
   state.waitingNotificationInterval = setInterval(() => {
     if (appConfig.notificationsEnabled && Notification.isSupported()) {
       new Notification({
@@ -82,7 +97,7 @@ helpers.getIaResponse = async function(text) {
               resposta = await agenticWorkflow.run(
                   _wsText1,
                   { token, model: openAiModel, baseInstruction: instruction, imageBase64: visualCtx.imageBase64 || null },
-                  state.mainWindow.webContents
+                  compositeSender
               );
             } catch (err) {
               resposta = `[Agentic Workflow] Interrompido ou falhou: ${err.message}`;
@@ -113,10 +128,10 @@ helpers.getIaResponse = async function(text) {
         clearInterval(state.waitingNotificationInterval);
         state.waitingNotificationInterval = null;
         try {
-          await GeminiCliProvider.send(finalPrompt, projectPath, state.mainWindow.webContents, null, []);
+          await GeminiCliProvider.send(finalPrompt, projectPath, compositeSender, null, []);
         } catch (gcliErr) {
           console.error('[gemini-cli getIaResponse] send error:', gcliErr.message);
-          try { state.mainWindow.webContents.send('gemini-stream-complete'); } catch (_) {}
+          try { compositeSender.send('gemini-stream-complete'); } catch (_) {}
         }
         return;
     } else if (aiModel === 'claudeCli') {
@@ -128,10 +143,10 @@ helpers.getIaResponse = async function(text) {
         clearInterval(state.waitingNotificationInterval);
         state.waitingNotificationInterval = null;
         try {
-          await ClaudeCliProvider.send(finalPrompt, projectPath, state.mainWindow.webContents, null, []);
+          await ClaudeCliProvider.send(finalPrompt, projectPath, compositeSender, null, []);
         } catch (ccliErr) {
           console.error('[claude-cli getIaResponse] send error:', ccliErr.message);
-          try { state.mainWindow.webContents.send('gemini-stream-complete'); } catch (_) {}
+          try { compositeSender.send('gemini-stream-complete'); } catch (_) {}
         }
         return;
     } else if (aiModel === 'copilotCli') {
@@ -142,12 +157,12 @@ helpers.getIaResponse = async function(text) {
         clearInterval(state.waitingNotificationInterval);
         state.waitingNotificationInterval = null;
         try {
-          await CopilotCliProvider.send(finalPrompt, projectPath, state.mainWindow.webContents, {
+          await CopilotCliProvider.send(finalPrompt, projectPath, compositeSender, {
             attachments: helpers.getAttachableFilePaths(),
           });
         } catch (cpErr) {
           console.error('[copilot-cli getIaResponse] send error:', cpErr.message);
-          try { state.mainWindow.webContents.send('gemini-stream-complete'); } catch (_) {}
+          try { compositeSender.send('gemini-stream-complete'); } catch (_) {}
         }
         return;
     } else if (aiModel === 'ollamaLocal') {
@@ -182,7 +197,7 @@ helpers.getIaResponse = async function(text) {
                 resposta = await ollamaAgenticWorkflow.run(
                     _wsTxtO, 
                     { baseInstruction: instructionO },
-                    state.mainWindow.webContents
+                    compositeSender
                 );
               } catch (err) {
                 if (err && (err.message === 'Request cancelled' || err.message === 'Cancelado.')) return;
@@ -222,7 +237,8 @@ helpers.getIaResponse = async function(text) {
 
     // Formata a resposta para exibição na UI
     const formattedResposta = helpers.formatToHTML(respostaFinal);
-    state.mainWindow.webContents.send("gemini-response", { resposta: formattedResposta, usedKnowledge });
+    compositeSender.send("gemini-response", { resposta: formattedResposta, usedKnowledge });
+    helpers.triggerNexaVoiceIfEnabled(respostaFinal);
 
     // Usa a resposta crua para a notificação de texto simples
     if (appConfig.notificationsEnabled && Notification.isSupported()) {

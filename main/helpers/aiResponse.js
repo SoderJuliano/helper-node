@@ -438,6 +438,44 @@ helpers.appendVoiceSummaryInstructionIfNeeded = function(instructionOrPrompt) {
   }
 };
 
+helpers.triggerNexaVoiceIfEnabled = function(fullResponse) {
+  try {
+    const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : null;
+    let isNexaVoiceActive = false;
+    try {
+      const nexaVoiceAssistant = require("../../services/nexaVoiceAssistant");
+      isNexaVoiceActive = nexaVoiceAssistant && typeof nexaVoiceAssistant.isActive === "function" && nexaVoiceAssistant.isActive();
+    } catch (_) {}
+    const isNexaOn = !!(nexaCfg && nexaCfg.enabled) || isNexaVoiceActive;
+    if (!isNexaOn || !fullResponse) return;
+
+    let textToSpeak = "";
+    try {
+      const NexaResponseFilter = require("../../services/nexaVoiceAssistant/nexaResponseFilter.js");
+      const filterResult = NexaResponseFilter.processResponse(fullResponse);
+      textToSpeak = (filterResult && filterResult.voiceSummary) ? filterResult.voiceSummary : "";
+    } catch (_) {}
+
+    if (!textToSpeak) {
+      // Fallback: primeiras 2 frases curtas sem markdown/código
+      const clean = String(fullResponse)
+        .replace(/<[^>]+>/g, '')
+        .replace(/```[\s\S]*?```/g, '')
+        .replace(/[`*_~#]/g, '')
+        .trim();
+      const sentences = clean.split(/(?<=[.!?])\s+/).filter(s => s && s.trim());
+      textToSpeak = sentences.slice(0, 2).join(' ').slice(0, 200);
+    }
+
+    if (!textToSpeak || !textToSpeak.trim()) return;
+
+    const { controller } = require("../../services/geminiLive");
+    controller.speakText(textToSpeak);
+  } catch (err) {
+    console.warn("[NexaVoice] Falha ao acionar voz da Nexa:", err.message);
+  }
+};
+
 helpers.detectScreenVisualIntent = function(text) {
   if (!text || typeof text !== 'string') return null;
   const t = text.toLowerCase();

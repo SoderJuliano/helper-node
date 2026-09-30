@@ -118,6 +118,7 @@ module.exports = {
   isActive: isVoiceActive,
   toggle: toggleVoice,
   sendTextMessage,
+  speakText: (text) => geminiLiveController.speakText(text),
   registerIpc,
   getSession: () => compatibilitySession,
   geminiLiveController

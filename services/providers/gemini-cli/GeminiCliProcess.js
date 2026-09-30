@@ -4,32 +4,8 @@
 const { spawn } = require('child_process');
 const { execFile } = require('child_process');
 const { killProcessTree } = require('../killProcessTree');
-
-const CANDIDATE_COMMANDS = ['agy', 'gemini', 'gemini-cli'];
-
-// No Windows o comando de localização é `where` (não existe `which`); no
-// restante (Linux/macOS) é `which`. Retornamos o caminho completo resolvido
-// para que o spawn saiba se está lidando com um .exe ou um shim .cmd/.bat.
-async function resolveBinary() {
-  const locator = process.platform === 'win32' ? 'where.exe' : 'which';
-  for (const cmd of CANDIDATE_COMMANDS) {
-    try {
-      const fullPath = await new Promise((resolve, reject) => {
-        execFile(locator, [cmd], (err, stdout) => {
-          if (err || !stdout) return reject(err || new Error('not found'));
-          const lines = stdout.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-          // Prefer native .exe over .cmd/.bat shims on Windows
-          const exePath = lines.find(s => /\.exe$/i.test(s));
-          resolve(exePath || lines[0]);
-        });
-      });
-      return fullPath; // found
-    } catch (_) {
-      // try next candidate
-    }
-  }
-  return null;
-}
+const { normalizeModelId } = require('./GeminiCliModels');
+const { resolveBinary } = require('./GeminiCliBinary');
 
 // No Windows, o binário instalado via `npm install -g` costuma ser um shim
 // `agy.cmd`/`agy.bat`, que o spawn só consegue executar com `shell: true`.
@@ -72,7 +48,8 @@ class GeminiCliProcess {
     }
 
     const args = [];
-    if (model) args.push('--model', model);
+    const normalizedModel = normalizeModelId(model);
+    if (normalizedModel) args.push('--model', normalizedModel);
     
     // Automatically approve tool use in print mode
     args.push('--dangerously-skip-permissions');
@@ -80,9 +57,8 @@ class GeminiCliProcess {
     // PLANO (só planeja, não escreve). `--mode accept-edits` reabilita a escrita
     // de arquivos. Sem isso o CLI "enrola" e não aplica nenhuma mudança.
     args.push('--mode', 'accept-edits');
-    // Default do agy é 5m0s: em tarefa grande ele explora/planeja, estoura os 5
-    // min e "desiste" antes de escrever. Timeout generoso p/ concluir a tarefa.
-    args.push('--print-timeout', '30m');
+    // Timeout de 5 minutos para evitar processos travados em segundo plano
+    args.push('--print-timeout', '5m');
     // No Unix, `/dev/stderr` faz a CLI escrever os logs na própria stderr do
     // processo, que capturamos pelo pipe. Esse caminho não existe no Windows,
     // então logamos para um arquivo temporário e fazemos "tail" dele para o
@@ -108,7 +84,7 @@ class GeminiCliProcess {
     }
 
     // Prompt is sent via stdin instead of argument list to prevent E2BIG
-    const env = { ...process.env, HOME: process.env.HOME || require('os').homedir() };
+    const env = { ...process.env, HOME: process.env.HOME || require('os').homedir(), GIT_TERMINAL_PROMPT: '0' };
 
     let spawnBin = this._binary;
     let spawnArgs = [...args];
@@ -148,6 +124,9 @@ class GeminiCliProcess {
       env,
       // shim .cmd/.bat no Windows exige shell para ser executável pelo spawn.
       shell: needsShell(spawnBin),
+      // No POSIX (Linux/macOS), detached cria um Process Group próprio (pgid = pid)
+      // para permitir que o killProcessTree derrube o agy e todos os seus subprocessos.
+      detached: process.platform !== 'win32',
     });
 
     this.alive = true;
@@ -200,21 +179,17 @@ class GeminiCliProcess {
     throw new Error('Send is not supported in print mode');
   }
 
-  // Force kill the process
+  // Force kill the process and its whole tree
   async kill() {
-    if (!this.alive || !this._proc) return;
-    // killProcessTree e não this._proc.kill(): com shell:true no Windows o
-    // filho direto é o cmd.exe, e matá-lo deixava o `agy` de verdade vivo
-    // escrevendo nos arquivos do projeto depois do "Parar IA".
     const proc = this._proc;
-    await killProcessTree(proc, 'SIGINT');
-    await new Promise(resolve => setTimeout(resolve, 800));
-    if (this.alive) {
-      await killProcessTree(proc, 'SIGKILL');
-    }
+    const pid = this.pid;
+    if (!proc && !pid) return;
+
     this.alive = false;
     this._proc = null;
     this._stopLogTail();
+
+    await killProcessTree(proc || pid, 'SIGTERM');
   }
 
   // Windows: poll do arquivo de log da CLI, emitindo apenas os bytes novos

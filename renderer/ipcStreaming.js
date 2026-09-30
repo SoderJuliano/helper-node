@@ -158,6 +158,36 @@ function autoScrollSeNoFim(el) {
                 robot.style.display = val ? 'block' : 'none';
             })
 
+    function resetStreamingState() {
+        if (streamRenderTimer) {
+            clearTimeout(streamRenderTimer);
+            streamRenderTimer = null;
+        }
+        if (thinkingRenderTimer) {
+            clearTimeout(thinkingRenderTimer);
+            thinkingRenderTimer = null;
+        }
+        try {
+            if (typingCursor && typingCursor.parentNode) {
+                typingCursor.remove();
+            }
+        } catch (_) {}
+        streamingElement = null;
+        streamBodyElement = null;
+        streamingText = '';
+        typingCursor = null;
+        thinkingRaw = '';
+        thinkingNoDom = 0;
+        thinkingModoTexto = false;
+    }
+    window.resetStreamingState = resetStreamingState;
+
+    if (window.electronAPI && window.electronAPI.onTranscriptionError) {
+        window.electronAPI.onTranscriptionError(() => {
+            resetStreamingState();
+        });
+    }
+
             // ===== STREAMING LISTENERS =====
             window.electronAPI.onStreamChunk((chunk) => {
                 // Turno interrompido pelo usuário: descarta. Sem esta guarda,
@@ -172,13 +202,12 @@ function autoScrollSeNoFim(el) {
                 const welcomeHero = document.getElementById('welcome-hero');
                 if (welcomeHero) welcomeHero.classList.add('hidden');
 
-                // Cria o elemento de streaming na primeira chunk
-                if (!streamingElement) {
-                    console.log('Criando novo elemento de streaming');
-                    // Raciocínio é por resposta: zera o buffer da anterior.
-                    thinkingRaw = '';
-                    thinkingNoDom = 0;
-                    thinkingModoTexto = false;
+                const activeBlock = window.activeInteractionBlock || (transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null);
+
+                // Cria o elemento de streaming na primeira chunk OU se o elemento pertence a outro bloco
+                if (!streamingElement || (activeBlock && !activeBlock.contains(streamingElement))) {
+                    console.log('Criando novo elemento de streaming para bloco ativo');
+                    resetStreamingState();
                     streamingElement = document.createElement('div');
                     streamingElement.className = 'streaming-response';
                     
@@ -190,10 +219,9 @@ function autoScrollSeNoFim(el) {
                     typingCursor.className = 'typing-cursor';
                     streamBodyElement.appendChild(typingCursor);
                     
-                    const activeBlock = window.activeInteractionBlock || transcriptionElement.querySelector('.interaction-block:last-child');
                     if (activeBlock) {
                         activeBlock.appendChild(streamingElement);
-                    } else {
+                    } else if (transcriptionElement) {
                         transcriptionElement.appendChild(streamingElement);
                     }
                     streamingText = '';
@@ -363,10 +391,7 @@ function autoScrollSeNoFim(el) {
                 }
 
                 // Reseta as variáveis
-                streamingElement = null;
-                streamBodyElement = null;
-                streamingText = '';
-                typingCursor = null;
+                resetStreamingState();
                 
                 console.log('Stream completo! Variáveis resetadas.');
 

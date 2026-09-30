@@ -129,7 +129,11 @@ ok "Electron pronto"
 
 chmod +x "$INSTALL_DIR/helper-node.sh" "$INSTALL_DIR/setup-hotkey.sh" 2>/dev/null || true
 
-# --- 6) Comando `helper-node` ------------------------------------------------
+# --- 6) Configuração de atalhos globais --------------------------------------
+step "Configurando atalhos globais de teclado..."
+( cd "$INSTALL_DIR" && bash ./setup-hotkey.sh ) || warn "setup-hotkey.sh concluiu com avisos."
+
+# --- 7) Comando `helper-node` ------------------------------------------------
 mkdir -p "$BIN_DIR"
 cat > "$BIN_DIR/helper-node" <<EOF
 #!/usr/bin/env bash
@@ -138,7 +142,7 @@ EOF
 chmod +x "$BIN_DIR/helper-node"
 ok "Comando 'helper-node' criado em $BIN_DIR"
 
-# --- 7) Atalho no menu de aplicativos ---------------------------------------
+# --- 8) Atalho no menu de aplicativos ---------------------------------------
 mkdir -p "$DESKTOP_DIR"
 cat > "$DESKTOP_DIR/helper-node.desktop" <<EOF
 [Desktop Entry]
@@ -156,6 +160,14 @@ StartupWMClass=helper-node
 EOF
 update-desktop-database "$DESKTOP_DIR" >/dev/null 2>&1 || true
 ok "Atalho criado no menu de aplicativos"
+
+# Se houver instância anterior do app rodando, encerra para carregar a nova versão
+if pgrep -f "electron.*helper-node" >/dev/null 2>&1 || pgrep -f "helper-node/main.js" >/dev/null 2>&1; then
+  step "Encerrando instância anterior em segundo plano para atualizar..."
+  pkill -f "electron.*helper-node" 2>/dev/null || true
+  pkill -f "helper-node/main.js" 2>/dev/null || true
+  sleep 1
+fi
 
 # --- 8) PATH -----------------------------------------------------------------
 if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then

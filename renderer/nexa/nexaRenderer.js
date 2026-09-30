@@ -90,12 +90,17 @@ document.addEventListener("DOMContentLoaded", async () => {
       this.activeSources = new Set();
       this.analyser = null;
       this.gainNode = null;
+      this._isPlaying = false;
     }
 
     _ensureContext() {
       if (!this.audioCtx) {
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        this.audioCtx = new AudioCtx({ sampleRate: 24000 });
+        try {
+          this.audioCtx = new AudioCtx({ sampleRate: 24000 });
+        } catch (_) {
+          this.audioCtx = new AudioCtx();
+        }
       }
       if (this.audioCtx.state === "suspended") {
         this.audioCtx.resume().catch(() => {});
@@ -153,11 +158,20 @@ document.addEventListener("DOMContentLoaded", async () => {
         source.connect(this.gainNode || this.analyser);
 
         const now = this.audioCtx.currentTime;
+        if (this.nextStartTime < now || this.nextStartTime > now + 15) {
+          this.nextStartTime = now;
+        }
         const startTime = Math.max(now, this.nextStartTime);
         source.start(startTime);
         this.nextStartTime = startTime + buffer.duration;
 
         this.activeSources.add(source);
+        if (!this._isPlaying) {
+          this._isPlaying = true;
+          if (window.electronAPI && window.electronAPI.sendGeminiLivePlaybackState) {
+            window.electronAPI.sendGeminiLivePlaybackState(true);
+          }
+        }
         if (raphaelCore) {
           raphaelCore.setState("SPEAKING");
           canvas.className = "raphael-canvas-glow speaking";
@@ -166,6 +180,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         source.onended = () => {
           this.activeSources.delete(source);
           if (this.activeSources.size === 0 && this.audioCtx.currentTime >= this.nextStartTime - 0.05) {
+            if (this._isPlaying) {
+              this._isPlaying = false;
+              if (window.electronAPI && window.electronAPI.sendGeminiLivePlaybackState) {
+                window.electronAPI.sendGeminiLivePlaybackState(false);
+              }
+            }
             if (raphaelCore && raphaelCore.getState() === "SPEAKING") {
               raphaelCore.setState("IDLE");
               canvas.className = "raphael-canvas-glow idle";
@@ -186,6 +206,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
       this.activeSources.clear();
       this.nextStartTime = 0;
+      if (this._isPlaying) {
+        this._isPlaying = false;
+        if (window.electronAPI && window.electronAPI.sendGeminiLivePlaybackState) {
+          window.electronAPI.sendGeminiLivePlaybackState(false);
+        }
+      }
       if (raphaelCore && raphaelCore.getState() === "SPEAKING") {
         raphaelCore.setState("IDLE");
         canvas.className = "raphael-canvas-glow idle";
@@ -207,6 +233,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     window.electronAPI.onGeminiLiveBargeIn(() => {
       console.log("[NexaRenderer] Barge-In disparado pelo Gemini Live: silenciando voz imediatamente.");
       pcmPlayer.stop();
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
       if (raphaelSubtitles) {
         raphaelSubtitles.clear();
       }
@@ -235,11 +264,36 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   if (window.electronAPI && window.electronAPI.onGeminiLiveToolProgress) {
-    window.electronAPI.onGeminiLiveToolProgress(({ message }) => {
-      if (raphaelSubtitles && message) {
-        raphaelSubtitles.show(message, 4000);
-      }
+    window.electronAPI.onGeminiLiveToolProgress(() => {
       if (raphaelCore && raphaelCore.getState() !== "SPEAKING") {
+        raphaelCore.setState("WORKING");
+        canvas.className = "raphael-canvas-glow working";
+      }
+    });
+  }
+
+
+  if (window.electronAPI && window.electronAPI.onAgenticPhaseUpdate) {
+    window.electronAPI.onAgenticPhaseUpdate(({ phase }) => {
+      // Subtítulos do Core são EXCLUSIVOS para legendas da fala que a IA lê
+      if (raphaelCore) {
+        if (phase === "completed" || phase === "error") {
+          raphaelCore.setState("IDLE");
+          canvas.className = "raphael-canvas-glow idle";
+          if (phase === "completed") raphaelCore.triggerShockwave(1.1);
+        } else {
+          raphaelCore.setState("WORKING");
+          canvas.className = "raphael-canvas-glow working";
+        }
+      }
+    });
+  }
+
+  if (window.electronAPI && window.electronAPI.onAiToolActivity) {
+    window.electronAPI.onAiToolActivity((act) => {
+      if (!act) return;
+      // Subtítulos do Core são EXCLUSIVOS para legendas da fala (sem spam de comandos/ferramentas)
+      if (act.phase === 'start' && raphaelCore && raphaelCore.getState() !== "SPEAKING") {
         raphaelCore.setState("WORKING");
         canvas.className = "raphael-canvas-glow working";
       }

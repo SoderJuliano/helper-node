@@ -305,7 +305,7 @@ var promptHistoryDraft = '';
                 'Request Body': {
                     newPrompt: `${promptInstruction}${text}`,
                     ip: sessionStorage.getItem("user_ip"),
-                    email: 'julianosoder.js@gmail.com',
+                    email: sessionStorage.getItem("user_email") || '',
                     agent: false,
                     language: map[lang] || 'ENGLISH'
                 }
@@ -325,8 +325,9 @@ var promptHistoryDraft = '';
         if (typeof window.startProcessing === 'function') window.startProcessing(ib);
 
         if (pastedImageForManualInput) {
-            if (window.pendingChatImage && window.backendSupportsVision && await window.backendSupportsVision()) {
-                if (typeof window.sentImageToAI === 'function') window.sentImageToAI(text, window.pendingChatImage, { block: ib });
+            const imageToForward = window.pendingChatImage || (typeof pastedImageForManualInput === 'string' && pastedImageForManualInput.startsWith('data:image') ? pastedImageForManualInput : null);
+            if (imageToForward && (!window.backendSupportsVision || await window.backendSupportsVision())) {
+                if (typeof window.sentImageToAI === 'function') window.sentImageToAI(text, imageToForward, { block: ib });
             } else {
                 if (typeof window.lastOcrText === 'string' && window.lastOcrText.length > 0) {
                     if (typeof window.sentToAI === 'function') window.sentToAI(`${text}\n${window.lastOcrText}`, { block: ib });

@@ -1,6 +1,7 @@
 // services/config/configAccessors.js
 const { defaultConfig } = require('./defaultConfig.js');
 const { getDefaultPromptInstruction, sanitizePromptInstruction } = require('./defaultPrompts.js');
+const { createTranslationAccessors } = require('./translationConfigAccessors.js');
 
 function createAccessors(ctx) {
   function get() {
@@ -133,12 +134,23 @@ function createAccessors(ctx) {
     },
 
     getGeminiCliModel() {
-      return get().geminiCliModel || defaultConfig.geminiCliModel;
+      const raw = get().geminiCliModel || defaultConfig.geminiCliModel;
+      try {
+        const { normalizeModelId } = require('../providers/gemini-cli/GeminiCliModels');
+        return normalizeModelId(raw) || defaultConfig.geminiCliModel;
+      } catch (_) {
+        return raw;
+      }
     },
 
     setGeminiCliModel(model) {
       const cfg = get();
-      cfg.geminiCliModel = model || defaultConfig.geminiCliModel;
+      let val = model || defaultConfig.geminiCliModel;
+      try {
+        const { normalizeModelId } = require('../providers/gemini-cli/GeminiCliModels');
+        val = normalizeModelId(val) || val;
+      } catch (_) {}
+      cfg.geminiCliModel = val;
       save();
     },
 
@@ -305,7 +317,7 @@ function createAccessors(ctx) {
     },
 
     getGeminiLiveVoice() {
-      return get().geminiLiveVoice || "Kore";
+      return get().geminiLiveVoice || "Aoede";
     },
 
     setGeminiLiveVoice(voice) {
@@ -315,7 +327,7 @@ function createAccessors(ctx) {
     },
 
     getGeminiLiveModel() {
-      return get().geminiLiveModel || "models/gemini-3.1-flash-live-preview";
+      return get().geminiLiveModel || "models/gemini-3.8-live";
     },
 
     setGeminiLiveModel(model) {
@@ -440,33 +452,16 @@ function createAccessors(ctx) {
       save();
     },
 
-    getTranslationAssistantConfig() {
-      const cfg = get();
-      return { ...defaultConfig.translationAssistant, ...(cfg.translationAssistant || {}) };
+    ...createTranslationAccessors(ctx),
+
+    getTerminalLogsStatus() {
+      return get().terminalLogs === true;
     },
 
-    setTranslationAssistantConfig(partial) {
+    setTerminalLogsStatus(status) {
       const cfg = get();
-      cfg.translationAssistant = {
-        ...(cfg.translationAssistant || defaultConfig.translationAssistant),
-        ...partial,
-      };
+      cfg.terminalLogs = !!status;
       save();
-    },
-
-    getUserContextBlock() {
-      const ta = this.getTranslationAssistantConfig();
-      const name = (ta.userName || '').trim();
-      const bg = (ta.userBackground || '').trim();
-      const tech = (ta.userTechExperiences || '').trim();
-      const beh = (ta.userBehavioral || '').trim();
-      if (!name && !bg && !tech && !beh) return '';
-      const lines = ['[CONTEXTO DO USUÁRIO — use para personalizar a resposta/sugestão]'];
-      if (name) lines.push(`Nome: ${name}`);
-      if (bg) lines.push(`Perfil Profissional & Currículo (CV / Resumo Geral):\n${bg}`);
-      if (tech) lines.push(`Experiências Técnicas & Projetos Detalhados (Hard Skills):\n${tech}`);
-      if (beh) lines.push(`Histórias Comportamentais & Soft Skills (STAR / Situações):\n${beh}`);
-      return lines.join('\n\n');
     },
 
     getTranscriptionProvider() {

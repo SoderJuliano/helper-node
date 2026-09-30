@@ -109,4 +109,13 @@ está errado, PERGUNTE — não "corrija" por conta própria:
     - Se uma funcionalidade precisar de interface e você não tiver certeza de qual janela existente utilizar, **PERGUNTE** ou use estritamente as janelas já existentes e documentadas no projeto.
     - O assistente de tradução (`translationAssistant`) usa **apenas e unicamente** a janela `translation-overlay` (`os-integration/notifications/translation-overlay.html`) no modo integrado ao SO, ou a janela principal no modo normal. Nunca crie janelas extras de notificação para tradução.
 
+## Regra de Modelos de IA — OBRIGATÓRIA
+
+13. **NUNCA utilize modelos obsoletos (2.0, 2.5, 1.5, 2.0-flash-exp, 3.1-flash-live-preview).**
+    - Siga rigorosamente o catálogo documentado em `.gemini/rules/active-models.md`.
+    - Antigravity CLI: `gemini-3.7-flash-high`, `gemini-3.8-flash-high`, `gemini-3.6-flash-high`, `gemini-3.1-pro-high`, `claude-sonnet-4-6`.
+    - STT (Ditado): `gemini-3.5-transcribe` (primário rápido ~500ms), `gemini-3.8-flash`, `gemini-3.7-flash`.
+    - Nexa Voice (Live): `models/gemini-3.8-flash`, `models/gemini-3.7-flash`.
+
+
 

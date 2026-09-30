@@ -12,7 +12,7 @@ const path = require('path');
 const fs = require('fs');
 const GeminiCliSession = require('./GeminiCliSession');
 const { GeminiCliProcess } = require('./GeminiCliProcess');
-const { getModels, getDefaultModel } = require('./GeminiCliModels');
+const { getModels, getDefaultModel, normalizeModelId } = require('./GeminiCliModels');
 const E = require('./GeminiCliEvents');
 
 let _backupDir = null;
@@ -67,7 +67,7 @@ class GeminiCliProvider {
   }
 
   setModel(model) {
-    this._model = model || getDefaultModel();
+    this._model = normalizeModelId(model) || getDefaultModel();
   }
 
   getModel() {
@@ -76,6 +76,16 @@ class GeminiCliProvider {
 
   getModels(force = false) {
     return getModels(force);
+  }
+
+  isActive(projectPath) {
+    if (projectPath && this._sessions.has(projectPath)) {
+      return this._sessions.get(projectPath).isActive();
+    }
+    for (const session of this._sessions.values()) {
+      if (session.isActive()) return true;
+    }
+    return false;
   }
 
   // Main entry point called by main.js.
@@ -100,8 +110,18 @@ class GeminiCliProvider {
       session.setSessionId(sessionId);
     }
 
+    // Confirmação imediata de recebimento antes de qualquer processamento/spawn do CLI
+    try {
+      sender.send('message-received', {
+        sessionId: sessionId || cwd,
+        projectPath: cwd,
+        timestamp: Date.now(),
+        provider: 'geminiCli',
+      });
+    } catch (_) {}
+
     // Emit "busy" to UI
-    this._emitStatus(sender, { state: 'busy', projectPath: cwd });
+    this._emitStatus(sender, { state: 'busy', projectPath: cwd, received: true });
 
     // Reseta estado de turno anterior que pode ter ficado preso por abort
     this._thinkingEmitted = false;
@@ -122,10 +142,10 @@ class GeminiCliProvider {
       let activityId = 0;
       let tokenInfo = { thinking: 0, outputChars: 0 };
 
-      // Emit an initial thinking state immediately so the screen doesn't stay blank
+      // Emite confirmação imediata e status inicial para a tela atualizar sem delay
       try {
         this._thinkingEmitted = true;
-        sender.send('agentic-phase-update', { phase: 'thinking', status: 'Iniciando agente…', thinking: '', sessionId: cwd });
+        sender.send('agentic-phase-update', { phase: 'received', status: 'Mensagem recebida. Inicializando Antigravity CLI (agy)…', thinking: '', sessionId: cwd });
       } catch (_) {}
 
       const emitProgress = (force) => {
@@ -276,15 +296,15 @@ class GeminiCliProvider {
   // manda parar nem sempre é a chave com que a sessão foi criada — e errar a
   // chave deixava a CLI rodando solta, ainda escrevendo nos arquivos.
   async abortCurrent(projectPath) {
-    const session = projectPath ? this._sessions.get(projectPath) : null;
-    if (session) {
-      await session.stop().catch(() => {});
+    if (projectPath && this._sessions.has(projectPath)) {
+      await this._sessions.get(projectPath).stop().catch(() => {});
       console.log(`[gemini-cli] abortado: ${projectPath}`);
-      return;
     }
     for (const [key, s] of this._sessions) {
-      await s.stop().catch(() => {});
-      console.log(`[gemini-cli] abortado (fallback): ${key}`);
+      if (s.isActive()) {
+        await s.stop().catch(() => {});
+        console.log(`[gemini-cli] abortado (sessão ativa): ${key}`);
+      }
     }
   }
 

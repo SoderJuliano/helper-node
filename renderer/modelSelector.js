@@ -329,6 +329,34 @@
             return;
         }
 
+        if (provider === 'geminiCli') {
+            if (!GEMINI_CLI_MODELS.length) {
+                setLoad(anchor, true);
+                try {
+                    const geminiRes = await window.electronAPI.getGeminiCliModels();
+                    if (Array.isArray(geminiRes) && geminiRes.length) {
+                        GEMINI_CLI_MODELS = geminiRes.map(m => ({
+                            value: m.id || m.value || m,
+                            label: m.label || formatAgyLabel(m.id || m.value || m)
+                        }));
+                    }
+                } catch (e) {
+                    console.warn('Failed to load Gemini CLI models:', e);
+                } finally {
+                    setLoad(anchor, false);
+                }
+            }
+            let currentVal = '';
+            try { currentVal = await window.electronAPI.getGeminiCliModel(); } catch (_) {}
+            buildMenu(anchor, GEMINI_CLI_MODELS, () => currentVal, (opt) => {
+                currentVal = opt.value;
+                try { window.electronAPI.setGeminiCliModel(opt.value); } catch (_) {}
+                composerModelName.textContent = opt.label;
+                if (typeof showToast === 'function') showToast('Modelo Gemini CLI: ' + opt.label);
+            });
+            return;
+        }
+
         if (provider === 'copilotCli') {
             setLoad(anchor, true);
             try {

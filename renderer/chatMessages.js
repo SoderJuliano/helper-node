@@ -73,6 +73,7 @@ var isEditingQuestion = false;
         interactionBlock.appendChild(blockActions);
         transcriptionElement.appendChild(interactionBlock);
         currentQuestionElement = questionSpan;
+        window.activeInteractionBlock = interactionBlock;
 
         const cab = document.getElementById('copy-all-btn');
         if (cab) cab.style.display = 'block';
@@ -151,18 +152,6 @@ var isEditingQuestion = false;
     });
 
     window.addEventListener('keydown', (e) => {
-        if (e.key === 'd' && e.ctrlKey && !e.shiftKey && !e.altKey) {
-            const active = document.activeElement;
-            const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
-            if (!isInput) {
-                e.preventDefault();
-                e.stopPropagation();
-                if (window.electronAPI && window.electronAPI.triggerToggleRecording) {
-                    window.electronAPI.triggerToggleRecording();
-                }
-                return;
-            }
-        }
         if (e.key === 'i' && e.ctrlKey && !e.shiftKey && !e.altKey) {
             const active = document.activeElement;
             const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
@@ -231,31 +220,6 @@ var isEditingQuestion = false;
 
         const aiModel = await window.electronAPI.getAiModel();
 
-        // Se o microfone do Gemini Live estiver ativo, ou se a Nexa estiver habilitada em modo padrão/Gemini:
-        let isNexaLiveActive = false;
-        try {
-            if (window.electronAPI && window.electronAPI.getNexaConfig) {
-                const nexaCfg = await window.electronAPI.getNexaConfig();
-                const status = window.electronAPI.nexaVoiceGetStatus ? await window.electronAPI.nexaVoiceGetStatus() : null;
-                const isMicListening = !!(status && status.active);
-                // Se o usuário selecionou explicitamente outro provedor de chat (OpenAI, Codex, Claude CLI, Copilot CLI, Ollama):
-                const isExplicitOtherProvider = ['openIa', 'openIaCodex', 'claudeCli', 'copilotCli', 'ollamaLocal', 'llama', 'llama-stream', 'qwen-stream'].includes(aiModel);
-                
-                isNexaLiveActive = isMicListening || (!!(nexaCfg && nexaCfg.enabled) && !isExplicitOtherProvider);
-            }
-        } catch (_) {}
-
-        if (isNexaLiveActive && window.electronAPI && window.electronAPI.sendTextToGeminiLive) {
-            currentLiveQuestion = text;
-            liveVoiceBlockActive = true;
-            try {
-                await window.electronAPI.sendTextToGeminiLive(text);
-                return;
-            } catch (liveErr) {
-                console.warn('[sentToAI] Falha ao enviar para Gemini Live, fallback para modelo padrão:', liveErr);
-            }
-        }
-
         if (aiModel === 'llama-stream' || aiModel === 'qwen-stream' || aiModel === 'ollamaLocal') {
             window.electronAPI.sendTextToGeminiStream(text, activeSessionId);
         } else {
@@ -271,21 +235,29 @@ var isEditingQuestion = false;
         }
 
         const q = (text && text.trim()) ? text.trim() : 'Image in context';
+        let activeSessionId = null;
         if (window.historySession) {
-            await window.historySession.ensureSessionForFirstQuestion(q);
+            activeSessionId = await window.historySession.ensureSessionForFirstQuestion(q);
             await window.historySession.addMessageToCurrentSession('user', q);
         }
-        window.electronAPI.sendVisionToGemini(text || '', image);
+        window.electronAPI.sendVisionToGemini(text || '', image, activeSessionId);
     }
 
     async function backendSupportsVision() {
-        try { return (await window.electronAPI.getAiModel()) === 'openIa'; }
-        catch (_) { return false; }
+        try {
+            const m = await window.electronAPI.getAiModel();
+            return ['openIa', 'openIaCodex', 'geminiCli', 'claudeCli', 'copilotCli', 'zaiGlm'].includes(m) || !m;
+        } catch (_) {
+            return true;
+        }
     }
 
     function stopProcessing() {
         window.isAiProcessing = false;
+        if (typeof window.resetStreamingState === 'function') window.resetStreamingState();
         window.activeInteractionBlock = null;
+        currentQuestionElement = null;
+        window.currentQuestionElement = null;
         showFloatingStop(false);
         const animation = window.animation;
         const animationContainer = document.getElementById('animation-container');
@@ -306,6 +278,16 @@ var isEditingQuestion = false;
                     ph.classList.add('done');
                     const spin = ph.querySelector('.ai-phase-spin'); if (spin) spin.remove();
                     const stop = ph.querySelector('.ai-phase-stop'); if (stop) stop.remove();
+                    const txt = ph.querySelector('.ai-phase-text');
+                    const hasActivities = block.querySelectorAll('.ai-activity-item').length > 0;
+                    const hasThinkingBox = !!(ph.querySelector('.ai-thinking-box') && ph.querySelector('.ai-thinking-box').textContent.trim());
+                    if (txt && (txt.textContent.trim() === 'Aguardando resposta...' || !txt.textContent.trim()) && !hasActivities && !hasThinkingBox) {
+                        ph.remove();
+                    } else if (txt && txt.textContent.trim() === 'Aguardando resposta...') {
+                        const tag = ph.querySelector('.ai-phase-tag');
+                        if (tag) tag.textContent = 'Concluído';
+                        txt.textContent = 'Concluído';
+                    }
                 }
                 const runningItems = block.querySelectorAll('.ai-activity-item.running');
                 runningItems.forEach(it => {
@@ -328,14 +310,7 @@ var isEditingQuestion = false;
         if (window.electronAPI && window.electronAPI.cancelIaRequest) {
             window.electronAPI.cancelIaRequest();
         }
-        try {
-            if (typeof typingCursor !== 'undefined' && typingCursor && typingCursor.parentNode) {
-                typingCursor.remove();
-            }
-        } catch (_) {}
-        if (typeof streamingElement !== 'undefined') streamingElement = null;
-        if (typeof streamingText !== 'undefined') streamingText = '';
-        if (typeof typingCursor !== 'undefined') typingCursor = null;
+        if (typeof window.resetStreamingState === 'function') window.resetStreamingState();
 
         stopProcessing();
     }
@@ -364,12 +339,14 @@ var isEditingQuestion = false;
     function startProcessing(targetBlock) {
         window.iaCancelled = false;
         window.isAiProcessing = true;
+        if (typeof window.resetStreamingState === 'function') window.resetStreamingState();
         window._chatTurnSeq = (window._chatTurnSeq || 0) + 1;
         const currentSeq = window._chatTurnSeq;
         window._activeTurnSeq = currentSeq;
 
         const transcriptionElement = document.getElementById('transcription');
-        const block = targetBlock || window.activeInteractionBlock || (transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null);
+        const lastBlock = transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null;
+        const block = targetBlock || (window.activeInteractionBlock && window.activeInteractionBlock === lastBlock ? window.activeInteractionBlock : lastBlock) || window.activeInteractionBlock;
 
         // Se havia um bloco anterior ainda em processamento, finaliza como interrompido
         if (window.activeInteractionBlock && window.activeInteractionBlock !== block) {
@@ -381,7 +358,10 @@ var isEditingQuestion = false;
                 const spin = prevPh.querySelector('.ai-phase-spin'); if (spin) spin.remove();
                 const stop = prevPh.querySelector('.ai-phase-stop'); if (stop) stop.remove();
                 const txt = prevPh.querySelector('.ai-phase-text');
-                if (txt && !txt.textContent.includes('Interrompido')) {
+                const hasActivities = prevBlock.querySelectorAll('.ai-activity-item').length > 0;
+                if (txt && (txt.textContent.trim() === 'Aguardando resposta...' || !txt.textContent.trim()) && !hasActivities) {
+                    prevPh.remove();
+                } else if (txt && !txt.textContent.includes('Interrompido')) {
                     txt.textContent = 'Interrompido por nova pergunta';
                 }
             }
@@ -429,6 +409,8 @@ var isEditingQuestion = false;
 
     let liveVoiceBlockActive = false;
     let currentLiveQuestion = '';
+    let currentLiveBlock = null;
+    let liveBlockFinalizeTimer = null;
 
     if (window.electronAPI && window.electronAPI.onGeminiLiveUserTranscript) {
         window.electronAPI.onGeminiLiveUserTranscript(({ text }) => {
@@ -438,16 +420,19 @@ var isEditingQuestion = false;
             const transcriptionElement = document.getElementById('transcription');
             if (!transcriptionElement) return;
 
-            if (!liveVoiceBlockActive) {
+            if (liveBlockFinalizeTimer) {
+                clearTimeout(liveBlockFinalizeTimer);
+                liveBlockFinalizeTimer = null;
+            }
+
+            if (!liveVoiceBlockActive || !currentLiveBlock) {
                 appendQuestionEntry(currentLiveQuestion);
-                startProcessing();
+                currentLiveBlock = transcriptionElement.querySelector('.interaction-block:last-child');
+                startProcessing(currentLiveBlock);
                 liveVoiceBlockActive = true;
             } else {
-                const lastBlock = transcriptionElement.querySelector('.interaction-block:last-child');
-                if (lastBlock) {
-                    const qText = lastBlock.querySelector('.question-text');
-                    if (qText) qText.textContent = currentLiveQuestion;
-                }
+                const qText = currentLiveBlock.querySelector('.question-text');
+                if (qText) qText.textContent = currentLiveQuestion;
             }
         });
     }
@@ -459,14 +444,14 @@ var isEditingQuestion = false;
             const transcriptionElement = document.getElementById('transcription');
             if (!transcriptionElement) return;
 
-            const lastBlock = transcriptionElement.querySelector('.interaction-block:last-child');
-            if (!lastBlock) return;
+            const targetBlock = currentLiveBlock || transcriptionElement.querySelector('.interaction-block:last-child');
+            if (!targetBlock) return;
 
-            let resp = lastBlock.querySelector('.ia-response');
+            let resp = targetBlock.querySelector('.ia-response');
             if (!resp) {
                 resp = document.createElement('div');
                 resp.className = 'ia-response markdown-body is-streaming';
-                lastBlock.appendChild(resp);
+                targetBlock.appendChild(resp);
             }
 
             if (typeof window.renderMarkdownWithHighlights === 'function') {
@@ -484,15 +469,43 @@ var isEditingQuestion = false;
     if (window.electronAPI && window.electronAPI.onGeminiLiveTurnComplete) {
         window.electronAPI.onGeminiLiveTurnComplete(() => {
             stopProcessing();
-            liveVoiceBlockActive = false;
             const transcriptionElement = document.getElementById('transcription');
-            const lastBlock = transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null;
-            if (lastBlock) {
-                const resp = lastBlock.querySelector('.ia-response');
-                if (resp) resp.classList.remove('is-streaming');
-                if (typeof window.createBlockActions === 'function' && !lastBlock.querySelector('.block-actions')) {
-                    lastBlock.appendChild(window.createBlockActions(transcriptionElement));
+            const targetBlock = currentLiveBlock || (transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null);
+            if (targetBlock) {
+                const ph = targetBlock.querySelector('.ai-phase');
+                if (ph) {
+                    const txt = ph.querySelector('.ai-phase-text');
+                    const hasActivities = targetBlock.querySelectorAll('.ai-activity-item').length > 0;
+                    const hasThinkingBox = !!(ph.querySelector('.ai-thinking-box') && ph.querySelector('.ai-thinking-box').textContent.trim());
+                    if (txt && (txt.textContent.trim() === 'Aguardando resposta...' || !txt.textContent.trim()) && !hasActivities && !hasThinkingBox) {
+                        ph.remove();
+                    }
                 }
+                const resp = targetBlock.querySelector('.ia-response');
+                if (resp) resp.classList.remove('is-streaming');
+                if (typeof window.createBlockActions === 'function' && !targetBlock.querySelector('.block-actions')) {
+                    targetBlock.appendChild(window.createBlockActions(transcriptionElement));
+                }
+            }
+
+            // Mantém currentLiveBlock por uma pequena janela para que onNexaVoiceQuickReply reutilize o mesmo bloco
+            if (liveBlockFinalizeTimer) clearTimeout(liveBlockFinalizeTimer);
+            liveBlockFinalizeTimer = setTimeout(() => {
+                currentLiveBlock = null;
+                liveVoiceBlockActive = false;
+                currentLiveQuestion = '';
+                liveBlockFinalizeTimer = null;
+            }, 750);
+        });
+    }
+
+    if (window.electronAPI && window.electronAPI.onNexaVoiceError) {
+        window.electronAPI.onNexaVoiceError((err) => {
+            const msg = (err && err.message) ? err.message : String(err || 'Erro na Nexa Voice');
+            liveVoiceBlockActive = false;
+            stopProcessing();
+            if (typeof window.showToast === 'function') {
+                window.showToast(`Nexa Voice: ${msg}`, true);
             }
         });
     }
@@ -512,34 +525,78 @@ var isEditingQuestion = false;
     }
 
     if (window.electronAPI && window.electronAPI.onNexaVoiceQuickReply) {
-        window.electronAPI.onNexaVoiceQuickReply(async ({ question, reply }) => {
+        window.electronAPI.onNexaVoiceQuickReply(async ({ question, reply, isLiveTurn }) => {
             if (!question && !reply) return;
-            const cleanQuestion = (question && question.trim()) ? question.trim() : (currentLiveQuestion || 'Pergunta por voz');
             const cleanReply = (reply && reply.trim()) ? reply.trim() : '';
             if (!cleanReply) return;
 
             const transcriptionElement = document.getElementById('transcription');
-            let lastBlock = transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null;
 
-            // Se ainda não existia um bloco ativo para esta pergunta, cria agora
-            if (!liveVoiceBlockActive || !lastBlock) {
-                appendQuestionEntry(cleanQuestion);
-                lastBlock = transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null;
-            } else {
-                const qText = lastBlock.querySelector('.question-text');
-                if (qText && cleanQuestion) qText.textContent = cleanQuestion;
+            // Prevenção estrita de duplicidade: se o último bloco já contém esta resposta (via Live stream), ignora
+            const lastBlock = transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null;
+            if (lastBlock) {
+                const existingResp = lastBlock.querySelector('.ia-response');
+                if (existingResp && existingResp.textContent.trim()) {
+                    const existingText = existingResp.textContent.trim();
+                    if (existingText === cleanReply || (existingText.length > 15 && cleanReply.length > 15 && (existingText.includes(cleanReply) || cleanReply.includes(existingText)))) {
+                        return;
+                    }
+                }
             }
+
+            if (liveBlockFinalizeTimer) {
+                clearTimeout(liveBlockFinalizeTimer);
+                liveBlockFinalizeTimer = null;
+            }
+
+            let targetBlock = currentLiveBlock;
+
+            let cleanQuestion = (question && question.trim() && question !== 'Pergunta por voz')
+                ? question.trim()
+                : (currentLiveQuestion || '');
+
+            if (!targetBlock && liveVoiceBlockActive) {
+                targetBlock = transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null;
+            }
+
+            if (targetBlock) {
+                const existingQ = targetBlock.querySelector('.question-text');
+                if (existingQ && (!cleanQuestion || cleanQuestion === 'Pergunta por voz')) {
+                    cleanQuestion = existingQ.textContent.trim() || 'Pergunta por voz';
+                } else if (existingQ && cleanQuestion && cleanQuestion !== 'Pergunta por voz') {
+                    existingQ.textContent = cleanQuestion;
+                }
+            } else {
+                // Se é turno ao vivo já finalizado ou sem pergunta real, não cria card duplicado "Pergunta por voz"
+                if (isLiveTurn || !cleanQuestion || cleanQuestion === 'Pergunta por voz') {
+                    return;
+                }
+                appendQuestionEntry(cleanQuestion);
+                targetBlock = transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null;
+            }
+
             liveVoiceBlockActive = false;
+            currentLiveBlock = null;
             currentLiveQuestion = '';
             stopProcessing();
 
-            if (lastBlock) {
-                let resp = lastBlock.querySelector('.ia-response');
+            if (targetBlock) {
+                const ph = targetBlock.querySelector('.ai-phase');
+                if (ph) {
+                    const txt = ph.querySelector('.ai-phase-text');
+                    const hasActivities = targetBlock.querySelectorAll('.ai-activity-item').length > 0;
+                    const hasThinkingBox = !!(ph.querySelector('.ai-thinking-box') && ph.querySelector('.ai-thinking-box').textContent.trim());
+                    if (txt && (txt.textContent.trim() === 'Aguardando resposta...' || !txt.textContent.trim()) && !hasActivities && !hasThinkingBox) {
+                        ph.remove();
+                    }
+                }
+                let resp = targetBlock.querySelector('.ia-response');
                 if (!resp) {
                     resp = document.createElement('div');
                     resp.className = 'ia-response markdown-body';
-                    lastBlock.appendChild(resp);
+                    targetBlock.appendChild(resp);
                 }
+                resp.classList.remove('is-streaming');
 
                 if (typeof window.renderMarkdownWithHighlights === 'function') {
                     resp.innerHTML = window.renderMarkdownWithHighlights(cleanReply);
@@ -550,9 +607,10 @@ var isEditingQuestion = false;
                 }
 
                 // Anexa ações do bloco (copiar, regenerar, etc) se ainda não existirem
-                if (typeof window.createBlockActions === 'function' && !lastBlock.querySelector('.block-actions')) {
-                    lastBlock.appendChild(window.createBlockActions(transcriptionElement));
+                if (typeof window.createBlockActions === 'function' && !targetBlock.querySelector('.block-actions')) {
+                    targetBlock.appendChild(window.createBlockActions(transcriptionElement));
                 }
+                scrollTranscriptionToBottom('smooth');
             }
 
             // Persiste a conversa na sessão de histórico do Helper Node

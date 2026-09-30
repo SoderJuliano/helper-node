@@ -21,12 +21,36 @@ class GeminiLiveController extends EventEmitter {
     this.session = null;
     this.isListening = false;
     this.standbyTimeout = null;
+    this._isAudioPlaying = false;
+    this._isMicSuppressed = false;
+    this._micMuteTimeout = null;
     this._onMicChunk = this._handleMicChunk.bind(this);
   }
 
   _handleMicChunk(buf) {
     if (this.session && this.session.isConnected && this.isListening) {
+      if (this._isMicSuppressed || (this.session && this.session.currentState === 'SPEAKING')) {
+        return; // Mudo durante a fala da Nexa para evitar auto-interrupção e cortes por som externo
+      }
       this.session.sendAudioChunk(buf);
+    }
+  }
+
+  setPlaybackState(payload) {
+    const isPlaying = (typeof payload === 'boolean') ? payload : !!(payload && payload.playing);
+    this._isAudioPlaying = isPlaying;
+    if (isPlaying) {
+      if (this._micMuteTimeout) {
+        clearTimeout(this._micMuteTimeout);
+        this._micMuteTimeout = null;
+      }
+      this._isMicSuppressed = true;
+    } else {
+      if (this._micMuteTimeout) clearTimeout(this._micMuteTimeout);
+      this._micMuteTimeout = setTimeout(() => {
+        this._isMicSuppressed = false;
+        this._micMuteTimeout = null;
+      }, 400);
     }
   }
 
@@ -67,7 +91,7 @@ class GeminiLiveController extends EventEmitter {
       }
       if (pastMsgs.length > 0) {
         recentChatBlock = '\n\n═══ HISTÓRICO RECENTE DE CONVERSA DO HELPER NODE (MEMÓRIA ATIVA) ═══\n' +
-          pastMsgs.map(m => `[${m.role === 'user' ? 'Juliano' : 'Raphael'}]: ${(m.text || m.content || '').slice(0, 400)}`).join('\n') +
+          pastMsgs.map(m => `[${m.role === 'user' ? 'Usuário' : assistantName}]: ${(m.text || m.content || '').slice(0, 400)}`).join('\n') +
           '\n═══ FIM DO HISTÓRICO RECENTE ═══';
       }
     } catch (_) {}
@@ -82,27 +106,54 @@ class GeminiLiveController extends EventEmitter {
       }
     } catch (_) {}
 
-    return `Você é a ${assistantName}, copiloto e assistente de desenvolvimento sênior em inteligência artificial do Helper Node.
-Você trabalha em estreita parceria com o desenvolvedor Juliano Soder. Seu núcleo visual integrado é o Raphael Core (plasma cósmico tridimensional).
-Sua personalidade é inteligente, descontraída, nerd, empática e ágil.
+    return `Você é a ${assistantName}, copiloto e assistente de desenvolvimento sênior do Helper Node.
+Seu núcleo visual integrado é o Raphael Core (plasma cósmico tridimensional).
+Sua personalidade é inteligente, descontraída, nerd, ágil e focada em resolver os problemas do desenvolvedor.
 ${userContext ? '\n' + userContext : ''}
 ${projectContext}
 ${recentChatBlock}
 ${attachmentsBlock}
 
-DIRETIVAS OBRIGATÓRIAS DE EXECUÇÃO E VOZ:
+COMO VOCÊ OPERA:
 1. Responda em áudio em português do Brasil de maneira natural, conversacional, ágil e concisa (1 a 2 frases curtas).
-2. AÇÃO DIRETA IMEDIATA VIA FERRAMENTAS:
-   Quando Juliano solicitar refatoração, criação ou alteração de código, git, arquivos, testes, comandos no terminal, investigações, busca de tela ou relatórios:
-   - INVOQUE IMEDIATAMENTE a ferramenta correspondente ('execute_code_task', 'run_terminal_command', 'read_workspace_file', 'get_screen_context', 'get_recent_chat_history') na mesma resposta.
-   - NUNCA termine o turno apenas dizendo que vai abrir o projeto ou fazer algo sem invocar a ferramenta correspondente.
-3. Ao receber o retorno da ferramenta, faça um resumo conversacional objetivo de 1 a 2 frases confirmando os resultados práticos obtidos.
-4. Para saudações ou conversas casuais rápidas (ex: "Bom dia", "tá por aí?"), responda diretamente em voz com simpatia e agilidade.
-5. Você tem acesso à tela e ao histórico recente do Helper Node através das ferramentas disponíveis.`;
+2. EXECUÇÃO DE TAREFAS:
+   - Você possui ferramentas reais conectadas ao workspace. Quando o usuário pedir para criar, alterar, refatorar código, rodar testes ou executar comandos no terminal, acione diretamente a ferramenta correspondente ('execute_code_task' ou 'run_terminal_command').
+   - NUNCA dê respostas vazias prometendo que vai fazer ("vou fazer", "já vou alterar") sem acionar a ferramenta, pois falar não altera arquivos. Acione a ferramenta para que a alteração seja feita de verdade.
+   - Assim que a ferramenta concluir, você receberá o resultado e fará um resumo curto em voz confirmando o que foi feito.
+3. CONVERSAÇÃO E DÚVIDAS:
+   - Para conversas normais, saudações, dúvidas teóricas, explicações ou quando o usuário estiver apenas conversando com você, responda diretamente por voz com simpatia e clareza, sem acionar ferramentas desnecessárias.`;
   }
 
   isMicListening() {
     return !!(this.session && this.session.isConnected && this.isListening);
+  }
+
+  async speakText(text) {
+    if (!text || !text.trim()) return;
+    const clean = String(text)
+      .replace(/<voice_summary>([\s\S]*?)<\/voice_summary>/gi, '$1')
+      .replace(/<[^>]+>/g, '')
+      .replace(/```[\s\S]*?```/g, '')
+      .replace(/[`*_~#]/g, '')
+      .trim();
+    if (!clean) return;
+
+    if (!this.session || !this.session.isConnected) {
+      await this.start({ withoutMic: true });
+    }
+
+    if (this.session && this.session.isConnected) {
+      try {
+        const { createNexaWindow, isNexaWindowOpen } = require('../../main/nexa/nexaWindow.js');
+        if (!isNexaWindowOpen()) {
+          createNexaWindow();
+        }
+      } catch (_) {}
+
+      const promptToRead = `[INSTRUÇÃO DE FALA]: Fale em voz alta e de forma natural exatamente esta mensagem curta:\n"${clean.slice(0, 300)}"`;
+      this.session.sendTextMessage(promptToRead);
+      this._updateNexaState('SPEAKING');
+    }
   }
 
   async sendTextMessage(text) {
@@ -150,12 +201,12 @@ DIRETIVAS OBRIGATÓRIAS DE EXECUÇÃO E VOZ:
     }
 
     const nexaCfg = configService.getNexaConfig ? configService.getNexaConfig() : {};
-    const assistantName = options.assistantName || (nexaCfg && nexaCfg.name) || 'Raphael';
-    let model = options.model || (configService.getGeminiLiveModel ? configService.getGeminiLiveModel() : null) || 'models/gemini-2.0-flash-exp';
-    if (!model || model.includes('3.1-flash-live-preview')) {
-      model = 'models/gemini-2.0-flash-exp';
+    const assistantName = options.assistantName || (nexaCfg && nexaCfg.name) || 'Nexa';
+    let model = options.model || (configService.getGeminiLiveModel ? configService.getGeminiLiveModel() : null) || 'models/gemini-3.8-live';
+    if (!model || model.includes('2.0') || model === 'models/gemini-3.8-flash' || model === 'models/gemini-3.7-flash') {
+      model = 'models/gemini-3.8-live';
     }
-    const voiceName = options.voiceName || (configService.getGeminiLiveVoice ? configService.getGeminiLiveVoice() : null) || 'Kore';
+    const voiceName = options.voiceName || (configService.getGeminiLiveVoice ? configService.getGeminiLiveVoice() : null) || 'Aoede';
 
     const systemInstruction = options.systemInstruction || this._buildDynamicSystemInstruction(assistantName);
 
@@ -234,12 +285,14 @@ DIRETIVAS OBRIGATÓRIAS DE EXECUÇÃO E VOZ:
   _bindSessionEvents(session) {
     // Áudio streaming direto do Gemini Live -> fone / Raphael Core
     session.on('audio-chunk', (payload) => {
+      this._isMicSuppressed = true;
       this._broadcastToWindows('gemini-live:audio-chunk', payload);
       this._updateNexaState('SPEAKING');
     });
 
     // Interrupção em tempo real (Barge-In)
     session.on('barge-in', () => {
+      this._isMicSuppressed = false;
       this._broadcastToWindows('gemini-live:barge-in');
       this._updateNexaState('LISTENING');
     });
@@ -277,6 +330,13 @@ DIRETIVAS OBRIGATÓRIAS DE EXECUÇÃO E VOZ:
       }
       this._broadcastToWindows('gemini-live:turn-complete', turnData);
 
+      // Reabertura de segurança do microfone se o renderer demorar a reportar fim do playback
+      setTimeout(() => {
+        if (!this._isAudioPlaying) {
+          this._isMicSuppressed = false;
+        }
+      }, 3500);
+
       const userQuestion = (turnData && turnData.userText && turnData.userText.trim())
         ? turnData.userText.trim()
         : '';
@@ -284,14 +344,42 @@ DIRETIVAS OBRIGATÓRIAS DE EXECUÇÃO E VOZ:
 
       if (aiReply) {
         this._broadcastToWindows('nexa-voice:quick-reply', {
-          question: userQuestion || 'Pergunta por voz',
-          reply: aiReply
+          question: userQuestion || '',
+          reply: aiReply,
+          isLiveTurn: true
         });
       }
     });
 
-    session.on('disconnected', () => {
-      this.stop();
+    session.on('error', (err) => {
+      this._broadcastToWindows('nexa-voice:error', {
+        message: err && err.message ? err.message : 'Erro na conexão Gemini Live'
+      });
+    });
+
+    session.on('disconnected', (info) => {
+      this.stop(true);
+      const reasonLower = (info && info.reason) ? info.reason.toLowerCase() : '';
+      const isTrueQuota = reasonLower.includes('quota') || reasonLower.includes('resource_exhausted');
+      if (isTrueQuota) {
+        this._broadcastToWindows('nexa-voice:error', {
+          code: info.code,
+          message: 'Limite de cota excedido na Gemini Live API. Verifique seu plano no Google AI Studio.'
+        });
+      } else if (info && (info.code > 1000 || info.reason)) {
+        this._broadcastToWindows('nexa-voice:error', {
+          code: info.code,
+          message: info.reason || `Conexão Gemini Live encerrada (${info.code})`
+        });
+      }
+    });
+
+    session.on('resumed', () => {
+      console.log('[GeminiLiveController] Sessão Live reconectada e retomada com sucesso.');
+      if (this.isListening) {
+        this.emit('status-changed', { active: true, state: 'listening' });
+        this._broadcastStatus({ active: true, state: 'listening' });
+      }
     });
   }
 
@@ -323,6 +411,15 @@ DIRETIVAS OBRIGATÓRIAS DE EXECUÇÃO E VOZ:
 
 const controller = new GeminiLiveController();
 
+try {
+  const { ipcMain } = require('electron');
+  if (ipcMain) {
+    ipcMain.on('gemini-live:playback-state', (_e, state) => {
+      controller.setPlaybackState(state);
+    });
+  }
+} catch (_) {}
+
 module.exports = {
   GeminiLiveSession,
   GeminiLiveController,
@@ -333,5 +430,6 @@ module.exports = {
   startLiveSession: (options) => controller.start(options),
   stopLiveSession: () => controller.stop(),
   toggleLiveSession: (forced, options) => controller.toggle(forced, options),
-  sendTextMessage: (text) => controller.sendTextMessage(text)
+  sendTextMessage: (text) => controller.sendTextMessage(text),
+  speakText: (text) => controller.speakText(text)
 };

@@ -115,6 +115,7 @@ const NOISY_IPC_CHANNELS = new Set([
   'get-backend-model', 'get-open-ia-token', 'get-google-api-key', 'get-prompt-instruction', 'get-language',
   'get-stealth-mode-status', 'get-print-mode-status', 'get-debug-mode-status', 'get-os-integration-status',
   'get-realtime-assistant-status', 'get-workspace-access-enabled', 'get-helper-tools-enabled',
+  'get-terminal-logs-status', 'get-terminal-log-path', 'save-terminal-logs-status',
   'save-debug-mode-status', 'save-print-mode-status', 'save-os-integration-status',
   'save-realtime-assistant-status', 'save-stealth-mode-status', 'save-prompt-instruction'
 ]);
@@ -207,6 +208,7 @@ app.whenReady().then(async () => {
     moveToDisplay: helpers.moveToDisplay,
     bringWindowToFocus: helpers.bringWindowToFocus,
     captureScreenAuto: helpers.captureFullScreenAuto,
+    captureScreen: helpers.captureScreen,
     openConfig: helpers.createConfigWindow,
   });
 
