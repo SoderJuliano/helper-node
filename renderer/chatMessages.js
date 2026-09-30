@@ -212,6 +212,20 @@ var isEditingQuestion = false;
             window.activeInteractionBlock = options.block;
         }
 
+        // Se a Nexa estiver ativa (via configurações), redireciona o texto para a
+        // sessão Gemini Live — assim a Nexa responde em áudio E em texto pelo canal Live.
+        try {
+            if (window.electronAPI && window.electronAPI.getNexaConfig && window.electronAPI.sendTextToGeminiLive) {
+                const nexaCfg = await window.electronAPI.getNexaConfig();
+                if (nexaCfg && nexaCfg.enabled) {
+                    await window.electronAPI.sendTextToGeminiLive(text);
+                    // Não encerra o isAiProcessing aqui — o turn-complete da Gemini Live
+                    // vai chegar pelo canal gemini-live:turn-complete no nexaRenderer.
+                    return;
+                }
+            }
+        } catch (_) {}
+
         let activeSessionId = null;
         if (window.historySession) {
             activeSessionId = await window.historySession.ensureSessionForFirstQuestion(text);
