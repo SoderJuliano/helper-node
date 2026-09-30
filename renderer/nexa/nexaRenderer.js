@@ -128,6 +128,27 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     }
 
+    /**
+     * Força o desbloqueio do AudioContext reproduzindo um buffer silencioso de 1 amostra.
+     * Necessário em janelas Electron transparentes que não recebem interação do usuário
+     * antes do primeiro chunk de áudio chegar via IPC.
+     */
+    unlock() {
+      this._ensureContext();
+      if (!this.audioCtx) return;
+      try {
+        if (this.audioCtx.state === 'suspended') {
+          this.audioCtx.resume().catch(() => {});
+        }
+        // Toca 1 amostra silenciosa para forçar o unlock do contexto no Chromium
+        const silentBuf = this.audioCtx.createBuffer(1, 1, this.audioCtx.sampleRate);
+        const src = this.audioCtx.createBufferSource();
+        src.buffer = silentBuf;
+        src.connect(this.audioCtx.destination);
+        src.start(0);
+      } catch (_) {}
+    }
+
     playChunk(pcmBase64, sampleRate = 24000) {
       if (!pcmBase64) return;
       this._ensureContext();
@@ -221,8 +242,14 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const pcmPlayer = new PcmStreamPlayer();
 
+  let _audioUnlocked = false;
   if (window.electronAPI && window.electronAPI.onGeminiLiveAudioChunk) {
     window.electronAPI.onGeminiLiveAudioChunk((data) => {
+      // Desbloqueia o AudioContext na primeira chegada de áudio (Chromium/Electron)
+      if (!_audioUnlocked) {
+        _audioUnlocked = true;
+        pcmPlayer.unlock();
+      }
       const pcmBase64 = data.pcmBase64 || data;
       const sampleRate = (data.mimeType && data.mimeType.includes("rate=16000")) ? 16000 : 24000;
       pcmPlayer.playChunk(pcmBase64, sampleRate);
@@ -272,6 +299,29 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
+
+  // Handler: exibe o resumo da resposta da Nexa abaixo do Raphael Core
+  if (window.electronAPI && window.electronAPI.onNexaVoiceQuickReply) {
+    const replyBox = document.getElementById('nexa-reply-box');
+    const replyTextEl = document.getElementById('nexa-reply-text');
+    let _replyHideTimer = null;
+
+    window.electronAPI.onNexaVoiceQuickReply((data) => {
+      if (!replyBox || !replyTextEl) return;
+      const text = (data && data.reply) ? data.reply.trim() : '';
+      if (!text) return;
+
+      // Exibe o resumo
+      replyTextEl.textContent = text;
+      replyBox.classList.add('visible');
+
+      // Auto-hide após 12 segundos
+      if (_replyHideTimer) clearTimeout(_replyHideTimer);
+      _replyHideTimer = setTimeout(() => {
+        replyBox.classList.remove('visible');
+      }, 12000);
+    });
+  }
 
   if (window.electronAPI && window.electronAPI.onAgenticPhaseUpdate) {
     window.electronAPI.onAgenticPhaseUpdate(({ phase }) => {
