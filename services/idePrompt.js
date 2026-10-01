@@ -63,7 +63,14 @@ function workspaceBlock(wsPaths) {
 
 // Núcleo do prompt: os fatos do ambiente. Escrito em forma de fato declarado, e
 // não de pedido, porque é exatamente aqui que o modelo entrava em loop.
-function environmentFacts() {
+function environmentFacts(canWrite = true) {
+  const scopeWrite = canWrite
+    ? '- Pediu para implementar/criar/editar/corrigir? Então FAÇA, com writeFile e\n  patchFile. Imprimir código em bloco ``` não cria arquivo nenhum.'
+    : '- ESCRITA EM DISCO DESATIVADA (modo leitura/código no chat): Ferramentas de escrita\n' +
+      '  (writeFile/patchFile) estão DESATIVADAS para esta sessão. Se o usuário pedir para criar/editar/corrigir código\n' +
+      '  ou pedir "me dá o código", ENTREGUE O CÓDIGO COMPLETO DIRETAMENTE NO CHAT em blocos formatados de markdown (```linguagem ... ```)\n' +
+      '  para o usuário copiar. NUNCA tente emitir chamadas de writeFile ou patchFile.';
+
   return [
     '═══ FATOS DESTE AMBIENTE — não questione, não debata, não comente ═══',
     '',
@@ -86,8 +93,8 @@ function environmentFacts() {
     '- Pediu para NÃO alterar nada ainda / só analisar / só ler? Então use apenas',
     '  ferramentas de LEITURA (listDir, readFile, findFiles, searchInFiles,',
     '  runCommand de leitura) e entregue a análise em texto. Obedeça.',
-    '- Pediu para implementar/criar/editar/corrigir? Então FAÇA, com writeFile e',
-    '  patchFile. Imprimir código em bloco ``` não cria arquivo nenhum.',
+    scopeWrite,
+    '- Pediu apenas para ver o código ("me dá o código", "mostre o código", "como fica")? ENTREGUE O CÓDIGO NO CHAT em blocos markdown comuns, sem tentar executar ferramentas de escrita.',
     '',
   ];
 }
@@ -98,15 +105,18 @@ function environmentFacts() {
 // inútil: o modelo com raciocínio visível passava o turno conferindo o formato
 // de um protocolo que nem usa mais — e, pior, escrevia "TOOL_CALL: {...}" como
 // TEXTO em vez de chamar a ferramenta, porque o prompt mandava fazer isso.
-function workLoop(wsPaths = [], nativeTools = false) {
+function workLoop(wsPaths = [], nativeTools = false, canWrite = true) {
   const chamada = nativeTools ? 'chame a ferramenta' : 'emita o TOOL_CALL';
   const semChamada = nativeTools ? 'sem chamar mais nenhuma ferramenta' : 'SEM TOOL_CALL';
+  const regraEdicao = canWrite
+    ? '- Antes de editar um arquivo, leia ele. Para EDITAR use patchFile;\n  writeFile APAGA o arquivo inteiro, então é só para criar arquivo novo.'
+    : '- Ferramentas de escrita em disco NÃO estão disponíveis. Você pode usar ferramentas de leitura (readFile, listDir, searchInFiles) para entender o projeto, mas NUNCA emita writeFile ou patchFile. Entregue qualquer código ou alteração sugerida DIRETAMENTE no chat em markdown.';
+
   const linhas = [
     '═══ COMO TRABALHAR ═══',
     '',
     `- Aja. Uma ferramenta por vez: ${chamada}, leia o resultado, siga.`,
-    '- Antes de editar um arquivo, leia ele. Para EDITAR use patchFile;',
-    '  writeFile APAGA o arquivo inteiro, então é só para criar arquivo novo.',
+    regraEdicao,
     '- O resultado da ferramenta é a confirmação: ok:true escreveu, ok:false não.',
     '  Não releia pra conferir, e não releia o que já leu neste turno.',
     `- Antes de cada chamada, UMA linha em texto normal dizendo o que vai fazer`,
@@ -167,17 +177,14 @@ function reasoningRules(nativeTools = false) {
  * @param {Object}   o
  * @param {Array}    o.toolsSchema  schema das ferramentas (helperTools)
  * @param {string[]} o.wsPaths      caminhos absolutos anexados
+ * @param {boolean}  o.nativeTools  ferramentas chegam pelo tools[] nativo do Ollama
+ * @param {boolean}  o.canWrite     se escrita em disco está liberada (false = modelo pequeno/readonly)
  * @returns {string}
  */
-/**
- * @param {boolean} o.nativeTools  ferramentas chegam pelo tools[] nativo do
- *   Ollama (endpoint /agent). Nesse caso TODO o protocolo de texto sai do
- *   prompt: o formato do TOOL_CALL, o exemplo de JSON, as regras de barra
- *   invertida e de espaço no nome. Nada disso existe mais — a chamada é uma
- *   ação tipada. Manter essas regras seria pior que inútil: o modelo com
- *   raciocínio visível gasta o turno conferindo um protocolo que não usa mais.
- */
-function buildIdeAgentPrompt({ toolsSchema = [], wsPaths = [], nativeTools = false } = {}) {
+function buildIdeAgentPrompt({ toolsSchema = [], wsPaths = [], nativeTools = false, canWrite = true } = {}) {
+  const hasWriteTools = canWrite && (toolsSchema.length === 0 || toolsSchema.some(t => ['writeFile', 'patchFile', 'appendToFile', 'deleteFile'].includes((t.function || t).name)));
+  const canWriteEffective = canWrite && hasWriteTools;
+
   const lines = [
     'Você é um AGENTE DE CODIFICAÇÃO rodando na máquina do usuário, no mesmo',
     'papel de um Codex ou Claude Code: você lê o projeto de verdade, edita',
@@ -190,8 +197,8 @@ function buildIdeAgentPrompt({ toolsSchema = [], wsPaths = [], nativeTools = fal
     '',
     ...workspaceBlock(wsPaths),
     '',
-    ...environmentFacts(),
-    ...workLoop(wsPaths, nativeTools),
+    ...environmentFacts(canWriteEffective),
+    ...workLoop(wsPaths, nativeTools, canWriteEffective),
     ...reasoningRules(nativeTools),
   ];
 

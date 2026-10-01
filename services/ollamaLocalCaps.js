@@ -116,10 +116,9 @@ function motivoBloqueioEscrita(caps, model) {
   const tam = caps && caps.paramsB != null ? `${caps.paramsB}B` : 'desconhecido';
   return (
     `Ferramentas de escrita estão desligadas para "${model}" (tamanho: ${tam}; ` +
-    `mínimo ${MIN_WRITE_B}B). Modelo pequeno reescreve arquivo inteiro achando ` +
-    `que está editando e apaga o trabalho do usuário. Descreva a alteração em ` +
-    `texto, ou peça pro usuário trocar por um modelo maior (ou ligar ` +
-    `HELPER_OLLAMA_ALLOW_WRITE=1 se ele aceitar o risco).`
+    `mínimo ${MIN_WRITE_B}B). NÃO chame ferramentas de escrita (writeFile/patchFile). ` +
+    `Escreva e entregue o código ou alteração diretamente na sua resposta ao usuário ` +
+    `formatado em blocos markdown (ex: \`\`\`linguagem ... \`\`\`) para ele copiar.`
   );
 }
 

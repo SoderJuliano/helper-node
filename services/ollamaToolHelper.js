@@ -48,6 +48,7 @@ function isShellCommandIntent(texto) {
 function buildOllamaToolsAddon(toolsSchema, wsPaths = []) {
   if (!Array.isArray(toolsSchema) || toolsSchema.length === 0) return '';
   const ws0 = wsPaths[0] || '/abs/path';
+  const hasWrite = toolsSchema.some(t => ['writeFile', 'patchFile', 'appendToFile', 'deleteFile'].includes((t.function || t).name));
   const lines = ['', '═══ TOOL CALLING (modo Ollama) ═══', ''];
   lines.push('Voce tem acesso a estas ferramentas. Para chamar uma, emita NA RESPOSTA');
   lines.push('um bloco EXATO no formato (uma linha, JSON puro, sem markdown ao redor):');
@@ -74,25 +75,33 @@ function buildOllamaToolsAddon(toolsSchema, wsPaths = []) {
   lines.push('');
   lines.push('REGRAS:');
   lines.push('- TOOL_CALL deve ser JSON valido EXATO. Nada de comentarios, sem ``` ao redor.');
-  lines.push('- Tools mutates (writeFile, deleteFile, patchFile, appendToFile, systemPowerAction)');
-  lines.push('  abrem confirmacao visual pro usuario — chame quando faz sentido, sem medo.');
+  if (hasWrite) {
+    lines.push('- Tools mutates (writeFile, deleteFile, patchFile, appendToFile, systemPowerAction)');
+    lines.push('  abrem confirmacao visual pro usuario — chame quando faz sentido, sem medo.');
+    lines.push('- Para LER: use listDir + readFile.');
+    lines.push('- Para EDITAR (adicionar linha, mudar trecho): use patchFile — NAO writeFile.');
+    lines.push('  writeFile APAGA O ARQUIVO INTEIRO e reescreve do zero. So use writeFile para CRIAR arquivo novo.');
+    lines.push('  patchFile substitui apenas o trecho exato — use para qualquer edicao em arquivo existente.');
+  } else {
+    lines.push('- Ferramentas de escrita em disco NÃO estão disponíveis nesta sessão.');
+    lines.push('- NUNCA chame nem invente chamadas de writeFile ou patchFile.');
+    lines.push('- Para criar/editar código ou quando o usuário pedir o código, responda com o código formatado em blocos markdown (```) diretamente no chat.');
+  }
   lines.push('- Quando terminar (resposta final ao usuario), NAO inclua TOOL_CALL nenhum.');
-  lines.push('- Para LER: use listDir + readFile.');
-  lines.push('- Para EDITAR (adicionar linha, mudar trecho): use patchFile — NAO writeFile.');
-  lines.push('  writeFile APAGA O ARQUIVO INTEIRO e reescreve do zero. So use writeFile para CRIAR arquivo novo.');
-  lines.push('  patchFile substitui apenas o trecho exato — use para qualquer edicao em arquivo existente.');
   lines.push('');
   lines.push('EXEMPLOS CONCRETOS (siga EXATAMENTE este formato):');
   lines.push('');
-  lines.push('User: "cria um readme pro projeto"');
-  lines.push('Resposta correta (UMA linha, sem markdown, sem texto antes):');
-  lines.push(`TOOL_CALL: {"name":"writeFile","args":{"path":"${ws0}/README.md","content":"# Titulo\\n\\nDescricao...","reason":"Criar README"}}`);
-  lines.push('');
+  if (hasWrite) {
+    lines.push('User: "cria um readme pro projeto"');
+    lines.push('Resposta correta (UMA linha, sem markdown, sem texto antes):');
+    lines.push(`TOOL_CALL: {"name":"writeFile","args":{"path":"${ws0}/README.md","content":"# Titulo\\n\\nDescricao...","reason":"Criar README"}}`);
+    lines.push('');
+  }
   lines.push('User: "o que tem no arquivo de config?"');
   lines.push('Resposta correta:');
   lines.push(`TOOL_CALL: {"name":"readFile","args":{"path":"${ws0}/package.json"}}`);
   lines.push('');
-  lines.push('ERRADO (NAO FACA): explicar o que vai fazer, usar ```markdown ao redor,');
+  lines.push('ERRADO (NAO FACA): explicar o que vai fazer, usar ```markdown ao redor de TOOL_CALL,');
   lines.push('inventar texto tipo "Texto explicativo:" ou "Vou criar...". Apenas EMITA o TOOL_CALL.');
   lines.push('');
   return lines.join('\n');
@@ -148,9 +157,6 @@ function buildToolFirstSystemPrompt(toolsSchema, wsPaths = []) {
   lines.push('Apos cada TOOL_RESULT, voce vai receber o resultado e DEVE emitir o PROXIMO TOOL_CALL pro proximo arquivo.');
   lines.push('SO encerre (resposta em texto sem TOOL_CALL) quando TODOS os arquivos pedidos estiverem criados.');
   lines.push('');
-  lines.push('NUNCA, NUNCA imprima codigo dentro de ``` blocos achando que isso cria arquivo.');
-  lines.push('Mostrar codigo em markdown e\' INUTIL — nao cria nada no disco. SO TOOL_CALL writeFile cria arquivo.');
-  lines.push('');
   return lines.join('\n');
 }
 
@@ -158,12 +164,22 @@ function buildToolFirstSystemPrompt(toolsSchema, wsPaths = []) {
 // tokens, com espaço em qualquer junta: "TO OL _CALL: {" name":" list Dir"...}".
 // A marca precisa ser reconhecida assim, senão o tool call não é nem encontrado.
 const TOOL_CALL_MARK = 'T\\s*O\\s*O\\s*L\\s*[_\\s-]*C\\s*A\\s*L\\s*L';
+const KNOWN_TOOLS_NAMES = [
+  'listDir', 'fileInfo', 'readFile', 'readFileChunk', 'searchInFiles',
+  'findFiles', 'detectShellConfig', 'listPackages', 'listDesktopApps',
+  'systemPowerAction', 'writeFile', 'appendToFile', 'deleteFile',
+  'patchFile', 'runCommand', 'runShellAdvanced'
+];
+const KNOWN_TOOLS_RE = new RegExp(`\\b(${KNOWN_TOOLS_NAMES.join('|')})\\b`, 'i');
+
 function toolCallRe(suffix = '\\s*:?\\s*') {
   return new RegExp(TOOL_CALL_MARK + suffix, 'gi');
 }
 function looksLikeToolCall(text) {
   if (!text) return false;
-  return new RegExp(TOOL_CALL_MARK, 'i').test(text);
+  return new RegExp(TOOL_CALL_MARK, 'i').test(text) ||
+         /<tool_call|<function\s*=|\[TOOL_CALL/i.test(text) ||
+         new RegExp(`\\b(${KNOWN_TOOLS_NAMES.join('|')})\\s*\\(`, 'i').test(text);
 }
 
 /**
@@ -183,6 +199,19 @@ function looksLikeToolCallAttempt(text, { requireJson = true } = {}) {
     const depois = text.slice(m.index + m[0].length, m.index + m[0].length + 160);
     if (requireJson ? /^\s*:?\s*\{/.test(depois) : /^\s*[:{]/.test(depois)) return true;
   }
+
+  // XML / Tags de tool call nativas de modelos:
+  if (/<tool_call|<function\s*=\s*|\[TOOL_CALL/i.test(text)) return true;
+
+  // Chamada de função: writeFile(...), patchFile(...), readFile(...)
+  if (new RegExp(`\\b(${KNOWN_TOOLS_NAMES.join('|')})\\s*\\(`, 'i').test(text)) return true;
+
+  // JSON com nome de ferramenta conhecida: {"name": "writeFile", ...}
+  if (/\{\s*"?name"?\s*:\s*"?([a-zA-Z0-9_]+)"?/i.test(text)) {
+    const jm = /\{\s*"?name"?\s*:\s*"?([a-zA-Z0-9_]+)"?/i.exec(text);
+    if (jm && KNOWN_TOOLS_RE.test(jm[1])) return true;
+  }
+
   return false;
 }
 
@@ -412,9 +441,13 @@ function stripToolCallBlocks(text) {
   const calls = parseOllamaToolCalls(text);
   let out = text;
   for (const c of calls) {
-    out = out.split(c.raw).join('');
+    if (c.raw) out = out.split(c.raw).join('');
   }
   out = stripDanglingToolCallFragments(out);
+  out = out.replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '');
+  out = out.replace(/<tool_call>[\s\S]*$/gi, '');
+  out = out.replace(/\[TOOL_CALLS?\][\s\S]*?\[\/TOOL_CALLS?\]/gi, '');
+  out = out.replace(/\b(writeFile|patchFile|appendToFile|deleteFile|readFile|listDir|runCommand)\s*\([\s\S]*?\)/gi, '');
   out = out.replace(/```\s*\n\s*```/g, '').trim();
   return out;
 }

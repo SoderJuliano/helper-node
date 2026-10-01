@@ -137,7 +137,7 @@ async function prepareTurn({ host, model, texto, opts = {}, sessions }) {
   // idePrompt.js; o local tinha ficado pra trás. Ver services/idePrompt.js.
   let systemPrompt;
   if (modoIde && !opts.instruction) {
-    systemPrompt = buildIdeAgentPrompt({ toolsSchema: effectiveTools, wsPaths, nativeTools });
+    systemPrompt = buildIdeAgentPrompt({ toolsSchema: effectiveTools, wsPaths, nativeTools, canWrite: cap.canWrite });
   } else if (modoIde) {
     // Instrução vinda de fora (fluxo agêntico multi-fase): respeita e só anexa o
     // protocolo, igual ao backendService.

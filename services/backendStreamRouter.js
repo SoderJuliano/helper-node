@@ -60,6 +60,16 @@ function createStreamRouter({ onChunk, hasTools }) {
     // e até lá o texto já tinha sido emitido.
     const idx = answerBuffer.toUpperCase().lastIndexOf(MARCA);
     if (idx >= 0) return idx;
+
+    const xmlIdx = answerBuffer.search(/<tool_call|<function\s*=|\[TOOL_CALL/i);
+    if (xmlIdx >= 0) return xmlIdx;
+
+    const fnIdx = answerBuffer.search(/\b(writeFile|patchFile|appendToFile|deleteFile|readFile|listDir|runCommand)\s*\(/i);
+    if (fnIdx >= 0) return fnIdx;
+
+    const jsonIdx = answerBuffer.search(/\{\s*"?name"?\s*:\s*"(writeFile|patchFile|appendToFile|deleteFile|readFile|listDir|runCommand)"/i);
+    if (jsonIdx >= 0) return jsonIdx;
+
     // Marcador possivelmente sendo escrito agora: retém o sufixo parcial.
     return answerBuffer.length - tamanhoRetido(answerBuffer);
   }
