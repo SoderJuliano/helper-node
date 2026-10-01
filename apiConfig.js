@@ -56,7 +56,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     ipcRenderer.invoke("get-google-api-key").catch(() => ""),
     ipcRenderer.invoke("get-transcription-provider").catch(() => "auto"),
     ipcRenderer.invoke("get-zai-api-key").catch(() => "b210cf3d04bf4c73916d4878692b7b46.NrhCaCvIMge8oDRF"),
-    ipcRenderer.invoke("get-zai-model").catch(() => "glm-4.6"),
+    ipcRenderer.invoke("get-zai-model").catch(() => "glm-4.7-flash"),
     ipcRenderer.invoke("get-open-ia-token").catch(() => ""),
     ipcRenderer.invoke("get-openai-model").catch(() => "gpt-4.1-nano"),
     ipcRenderer.invoke("get-openai-reasoning-effort").catch(() => "low"),
@@ -74,7 +74,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (googleApiKeyInput) googleApiKeyInput.value = savedGoogleKey || "";
   if (transcriptionProviderSelect && savedTranscriptionProvider) transcriptionProviderSelect.value = savedTranscriptionProvider;
   if (zaiApiKeyInput) zaiApiKeyInput.value = savedZaiKey || "b210cf3d04bf4c73916d4878692b7b46.NrhCaCvIMge8oDRF";
-  if (zaiModelSelect && savedZaiModel) zaiModelSelect.value = savedZaiModel;
+  if (zaiModelSelect && savedZaiModel) {
+    zaiModelSelect.value = savedZaiModel;
+  }
+  const updateZaiBadge = () => {
+    const badge = document.getElementById("zai-status-badge");
+    if (!badge || !zaiModelSelect) return;
+    const opt = zaiModelSelect.selectedOptions ? zaiModelSelect.selectedOptions[0] : null;
+    badge.textContent = opt ? opt.textContent : (zaiModelSelect.value || "GLM-4.7 Flash (Free Tier)");
+  };
+  updateZaiBadge();
 
   if (openIaTokenInput) openIaTokenInput.value = savedOpenAiToken || "";
   if (openAiReasoningEffortSelect && savedEffort) openAiReasoningEffortSelect.value = savedEffort;
@@ -123,6 +132,11 @@ if (aiModelSelect) {
 if (zaiModelSelect) {
   zaiModelSelect.addEventListener("change", () => {
     ipcRenderer.send("set-zai-model", zaiModelSelect.value);
+    const badge = document.getElementById("zai-status-badge");
+    if (badge) {
+      const opt = zaiModelSelect.selectedOptions ? zaiModelSelect.selectedOptions[0] : null;
+      badge.textContent = opt ? opt.textContent : zaiModelSelect.value;
+    }
   });
 }
 if (copilotCliModelSelect) {

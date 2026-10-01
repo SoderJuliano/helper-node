@@ -70,7 +70,7 @@
             <div class="setting-control">
                 <select id="ai-model" class="custom-select">
                     <option value="geminiCli" selected>Gemini CLI (Antigravity)</option>
-                    <option value="zaiGlm">Z.ai (GLM-4.6)</option>
+                    <option value="zaiGlm">Z.ai (GLM)</option>
                     <option value="openIa">ChatGPT (OpenAI)</option>
                     <option value="openIaCodex">OpenAI Codex (Autônomo)</option>
                     <option value="claudeCli">Claude Code CLI</option>
@@ -126,9 +126,9 @@
         <div class="api-section-card" id="zai-config-card">
             <div class="api-section-header">
                 <span>Z.ai / GLM (BigModel)</span>
-                <span class="status-badge" style="color:#a78bfa;">GLM-4.6</span>
+                <span class="status-badge" id="zai-status-badge" style="color:#a78bfa;">GLM-4.7 Flash (Free Tier)</span>
             </div>
-            <p class="api-section-desc">Compatível com a API Z.ai para modelos GLM. Já vem pré-configurado com a chave e modelo para testes.</p>
+            <p class="api-section-desc">Compatível com a API Z.ai para modelos GLM. Modelos marcados como (Free Tier) são 100% gratuitos.</p>
 
             <div class="setting-item" style="margin-bottom: 8px;">
                 <label for="zai-api-key">Z.ai API Key</label>
@@ -142,7 +142,9 @@
                 <label for="zai-model-select">Modelo GLM</label>
                 <div class="setting-control">
                     <select id="zai-model-select" class="custom-select">
-                        <option value="glm-4.6" selected>GLM-4.6</option>
+                        <option value="glm-4.7-flash" selected>GLM-4.7 Flash (Free Tier)</option>
+                        <option value="glm-4.5-flash">GLM-4.5 Flash (Free Tier)</option>
+                        <option value="glm-4.6">GLM-4.6</option>
                         <option value="glm-4.5">GLM-4.5</option>
                         <option value="glm-4.5-air">GLM-4.5 Air</option>
                         <option value="glm-4.7">GLM-4.7</option>

@@ -12,6 +12,27 @@
         { value: 'gpt-5.6-terra', label: 'GPT-5.6 Terra' },
         { value: 'gpt-5.6-sol', label: 'GPT-5.6 Sol' },
     ];
+    const ZAI_MODELS = [
+        { value: 'glm-4.7-flash', label: 'GLM-4.7 Flash (Free Tier)' },
+        { value: 'glm-4.5-flash', label: 'GLM-4.5 Flash (Free Tier)' },
+        { value: 'glm-4.6', label: 'GLM-4.6' },
+        { value: 'glm-4.5', label: 'GLM-4.5' },
+        { value: 'glm-4.5-air', label: 'GLM-4.5 Air' },
+        { value: 'glm-4.7', label: 'GLM-4.7' },
+        { value: 'glm-5', label: 'GLM-5' },
+        { value: 'glm-5-turbo', label: 'GLM-5 Turbo' },
+        { value: 'glm-5.1', label: 'GLM-5.1' },
+        { value: 'glm-5.2', label: 'GLM-5.2' },
+        { value: 'glm-5.3', label: 'GLM-5.3' },
+        { value: 'glm-5.3-flash', label: 'GLM-5.3 Flash' },
+        { value: 'glm-5.3-flashx', label: 'GLM-5.3 FlashX' },
+    ];
+
+    function formatZaiLabel(id) {
+        if (!id) return 'GLM-4.7 Flash (Free Tier)';
+        const found = ZAI_MODELS.find(x => x.value === id);
+        return found ? found.label : id;
+    }
     const PROVIDER_LABELS = {
         openIa: 'ChatGPT', openIaCodex: 'OpenAI Codex', zaiGlm: 'Z.ai (GLM)', llama: 'Ollama Backend',
         'llama-stream': 'Ollama Backend (stream)', ollamaLocal: 'Ollama Local',
@@ -135,15 +156,23 @@
 
     async function refreshComposerModel() {
         if (!composerModelBtn || !composerModelName) return;
-        await loadCliModels();
         let provider = 'openIa';
         try { provider = (await window.electronAPI.getAiModel()) || 'openIa'; } catch (_) {}
         composerModelBtn.dataset.provider = provider;
+
+        if (provider === 'geminiCli' || provider === 'claudeCli' || provider === 'copilotCli') {
+            await loadCliModels();
+        }
+
         if (provider === 'openIa' || provider === 'openIaCodex') {
             let m = 'gpt-4.1-nano';
             try { m = (await window.electronAPI.getOpenaiModel()) || m; } catch (_) {}
             const found = OPENAI_MODELS.find(x => x.value === m);
             composerModelName.textContent = found ? found.label : m;
+        } else if (provider === 'zaiGlm') {
+            let m = 'glm-4.7-flash';
+            try { m = (await window.electronAPI.getZaiModel()) || m; } catch (_) {}
+            composerModelName.textContent = formatZaiLabel(m);
         } else if (provider === 'geminiCli') {
             let m = '';
             try { m = (await window.electronAPI.getGeminiCliModel()) || m; } catch (_) {}
@@ -329,30 +358,17 @@
             return;
         }
 
-        if (provider === 'geminiCli') {
-            if (!GEMINI_CLI_MODELS.length) {
-                setLoad(anchor, true);
-                try {
-                    const geminiRes = await window.electronAPI.getGeminiCliModels();
-                    if (Array.isArray(geminiRes) && geminiRes.length) {
-                        GEMINI_CLI_MODELS = geminiRes.map(m => ({
-                            value: m.id || m.value || m,
-                            label: m.label || formatAgyLabel(m.id || m.value || m)
-                        }));
-                    }
-                } catch (e) {
-                    console.warn('Failed to load Gemini CLI models:', e);
-                } finally {
-                    setLoad(anchor, false);
-                }
-            }
-            let currentVal = '';
-            try { currentVal = await window.electronAPI.getGeminiCliModel(); } catch (_) {}
-            buildMenu(anchor, GEMINI_CLI_MODELS, () => currentVal, (opt) => {
+        if (provider === 'zaiGlm') {
+            let currentVal = 'glm-4.7-flash';
+            try { currentVal = (await window.electronAPI.getZaiModel()) || currentVal; } catch (_) {}
+            buildMenu(anchor, ZAI_MODELS, () => currentVal, (opt) => {
                 currentVal = opt.value;
-                try { window.electronAPI.setGeminiCliModel(opt.value); } catch (_) {}
+                try {
+                    if (window.electronAPI.saveZaiModel) window.electronAPI.saveZaiModel(opt.value);
+                    else if (window.electronAPI.setZaiModel) window.electronAPI.setZaiModel(opt.value);
+                } catch (_) {}
                 composerModelName.textContent = opt.label;
-                if (typeof showToast === 'function') showToast('Modelo Gemini CLI: ' + opt.label);
+                if (typeof showToast === 'function') showToast('Modelo Z.ai: ' + opt.label);
             });
             return;
         }
