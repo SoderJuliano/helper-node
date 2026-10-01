@@ -17,6 +17,7 @@ class GeminiCliTranscriptPoller {
     this._activeTools = new Map();
     this._currentTurnMinStep = 0;
     this._latestContent = '';
+    this._emittedContentLength = 0;
   }
 
   get agyConvId() {
@@ -35,6 +36,10 @@ class GeminiCliTranscriptPoller {
     return this._latestContent;
   }
 
+  get emittedContentLength() {
+    return this._emittedContentLength;
+  }
+
   reset() {
     this.stop();
     this._agyConvId = null;
@@ -42,6 +47,7 @@ class GeminiCliTranscriptPoller {
     this._activeTools.clear();
     this._currentTurnMinStep = 0;
     this._latestContent = '';
+    this._emittedContentLength = 0;
   }
 
   start() {
@@ -172,6 +178,11 @@ class GeminiCliTranscriptPoller {
 
       if (content && typeof content === 'string') {
         this._latestContent = content;
+        if (content.length > this._emittedContentLength) {
+          const delta = content.slice(this._emittedContentLength);
+          this._emittedContentLength = content.length;
+          this._emit('chunk', delta);
+        }
       }
 
       if (thinking) {

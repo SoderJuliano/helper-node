@@ -121,7 +121,7 @@ class GeminiCliProcess {
 
     this._proc = spawn(spawnBin, spawnArgs, {
       cwd: resolvedCwd,
-      stdio: ['pipe', 'pipe', 'pipe'],
+      stdio: ['ignore', 'pipe', 'pipe'],
       env,
       // shim .cmd/.bat no Windows exige shell para ser executável pelo spawn.
       shell: needsShell(spawnBin),
@@ -136,14 +136,6 @@ class GeminiCliProcess {
     // dele e encaminhamos para o mesmo handler de stderr do provider.
     if (this._logFile) {
       this._startLogTail();
-    }
-
-    // Write prompt to stdin and close it
-    try {
-      this._proc.stdin.write(prompt + '\n');
-      this._proc.stdin.end();
-    } catch (stdinErr) {
-      console.error('[gemini-cli] failed to write prompt to stdin:', stdinErr.message);
     }
 
     this._proc.stdout.setEncoding('utf8');

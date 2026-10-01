@@ -134,7 +134,9 @@ class GeminiCliParser {
     if (isSuppressed(line)) return;
 
     this._responseLines.push(line);
-    this._emit('chunk', line + '\n');
+    if (!this._poller || this._poller.emittedContentLength === 0) {
+      this._emit('chunk', line + '\n');
+    }
   }
 
   feed(raw) {
@@ -164,10 +166,14 @@ class GeminiCliParser {
       this._processLine(this._buf);
       this._buf = '';
     }
-    let fullText = this._responseLines.join('\n').trim();
-    if (!fullText && this._poller && this._poller.latestContent) {
-      fullText = this._poller.latestContent.trim();
+    const stdoutText = this._responseLines.join('\n').trim();
+    const pollerText = (this._poller && this._poller.latestContent) ? this._poller.latestContent.trim() : '';
+
+    let fullText = stdoutText;
+    if (pollerText && (!fullText || pollerText.length >= fullText.length)) {
+      fullText = pollerText;
     }
+
     const thinkingText = this._thinkingLines.join('\n').trim();
     this._responseLines = [];
     this._thinkingLines = [];
