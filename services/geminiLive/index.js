@@ -138,18 +138,25 @@ COMO VOCÊ OPERA:
       .trim();
     if (!clean) return;
 
+    // Emite o resumo visual de texto para a janela da Nexa e para o chat imediatamente
+    this._broadcastToWindows('nexa-voice:quick-reply', {
+      question: '',
+      reply: clean.slice(0, 300),
+      isLiveTurn: false
+    });
+
+    try {
+      const { createNexaWindow, isNexaWindowOpen } = require('../../main/nexa/nexaWindow.js');
+      if (!isNexaWindowOpen()) {
+        createNexaWindow();
+      }
+    } catch (_) {}
+
     if (!this.session || !this.session.isConnected) {
       await this.start({ withoutMic: true });
     }
 
     if (this.session && this.session.isConnected) {
-      try {
-        const { createNexaWindow, isNexaWindowOpen } = require('../../main/nexa/nexaWindow.js');
-        if (!isNexaWindowOpen()) {
-          createNexaWindow();
-        }
-      } catch (_) {}
-
       const promptToRead = `[INSTRUÇÃO DE FALA]: Fale em voz alta e de forma natural exatamente esta mensagem curta:\n"${clean.slice(0, 300)}"`;
       this.session.sendTextMessage(promptToRead);
       this._updateNexaState('SPEAKING');

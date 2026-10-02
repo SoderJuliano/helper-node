@@ -331,8 +331,10 @@ class GeminiLiveSession extends EventEmitter {
         }
 
         // Transcrição da fala do modelo (saída) em tempo real
-        if (serverContent.outputTranscription && serverContent.outputTranscription.text) {
-          const deltaText = serverContent.outputTranscription.text;
+        // A Gemini Live API retorna o campo como 'outputAudioTranscription' (fallback: 'outputTranscription')
+        const outputTranscriptionData = serverContent.outputAudioTranscription || serverContent.outputTranscription;
+        if (outputTranscriptionData && outputTranscriptionData.text) {
+          const deltaText = outputTranscriptionData.text;
           this.currentModelText += deltaText;
           this.emit('transcript-delta', { delta: deltaText, text: this.currentModelText });
           this.emit('transcript', this.currentModelText);

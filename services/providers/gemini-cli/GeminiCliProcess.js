@@ -57,8 +57,9 @@ class GeminiCliProcess {
     // PLANO (só planeja, não escreve). `--mode accept-edits` reabilita a escrita
     // de arquivos. Sem isso o CLI "enrola" e não aplica nenhuma mudança.
     args.push('--mode', 'accept-edits');
-    // Timeout de 5 minutos para evitar processos travados em segundo plano
-    args.push('--print-timeout', '5m');
+    // Timeout generoso de 30 minutos para permitir execução de testes e comandos demorados
+    // sem matar o processo do agy prematuramente. O cancelamento é controlado pelo usuário via abort().
+    args.push('--print-timeout', '30m');
     // No Unix, `/dev/stderr` faz a CLI escrever os logs na própria stderr do
     // processo, que capturamos pelo pipe. Esse caminho não existe no Windows,
     // então logamos para um arquivo temporário e fazemos "tail" dele para o
@@ -120,7 +121,7 @@ class GeminiCliProcess {
 
     this._proc = spawn(spawnBin, spawnArgs, {
       cwd: resolvedCwd,
-      stdio: ['pipe', 'pipe', 'pipe'],
+      stdio: ['ignore', 'pipe', 'pipe'],
       env,
       // shim .cmd/.bat no Windows exige shell para ser executável pelo spawn.
       shell: needsShell(spawnBin),
@@ -135,14 +136,6 @@ class GeminiCliProcess {
     // dele e encaminhamos para o mesmo handler de stderr do provider.
     if (this._logFile) {
       this._startLogTail();
-    }
-
-    // Write prompt to stdin and close it
-    try {
-      this._proc.stdin.write(prompt + '\n');
-      this._proc.stdin.end();
-    } catch (stdinErr) {
-      console.error('[gemini-cli] failed to write prompt to stdin:', stdinErr.message);
     }
 
     this._proc.stdout.setEncoding('utf8');

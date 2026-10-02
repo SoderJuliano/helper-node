@@ -5,6 +5,9 @@
   "engines": {
     "node": ">=18"
   },
+  "bin": {
+    "helper-node": "./bin/helper-node"
+  },
   "scripts": {
     "postinstall": "install-electron",
     "start": "node launch.js",
@@ -12,6 +15,10 @@
     "setup-hotkeys": "bash ./setup-hotkey.sh",
     "fix-hotkeys": "rm -f $HOME/.config/helper-node/.setup-done && HELPER_NODE_FORCE_HOTKEY_SETUP=1 bash ./setup-hotkey.sh",
     "icon:win": "node ./scripts/generate-windows-icon.js",
+    "integrate:win": "node ./scripts/install-windows-context-menu.js",
+    "unintegrate:win": "node ./scripts/uninstall-windows-context-menu.js",
+    "integrate:cli": "node ./scripts/install-cli.js",
+    "unintegrate:cli": "node ./scripts/uninstall-cli.js",
     "check": "node ./scripts/check.js",
     "test:stream": "node ./scripts/test-backend-stream.js",
     "test:stt": "node ./scripts/test-realtime-stt.js",

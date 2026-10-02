@@ -115,6 +115,11 @@ class GeminiCliSession extends EventEmitter {
       finalPrompt = buildPromptWithHistory(prompt, history);
     }
 
+    const completionDirective = '\n\n[DIRETIVA DE RESPOSTA]: Ao concluir o uso de ferramentas, comandos ou edição de arquivos, forneça SEMPRE uma resposta final clara e detalhada em português explicando o que foi feito.';
+    if (typeof finalPrompt === 'string' && !finalPrompt.includes('[DIRETIVA DE RESPOSTA]')) {
+      finalPrompt += completionDirective;
+    }
+
     const runAttempt = (currentPrompt, currentIsContinue, retriesLeft) => {
       return new Promise((resolve, reject) => {
         let completed = false;
@@ -133,6 +138,27 @@ class GeminiCliSession extends EventEmitter {
           onTokenUpdate: (info) => opts.onTokenUpdate && opts.onTokenUpdate(info),
           onDone: ({ text, thinking }) => {
             if (completed) return;
+
+            // Se o processo terminou sem texto de resposta final após executar ferramentas/passos
+            // (ou seja, o agy parou no meio sem explicar o que fez):
+            const hadToolActivity = (parser._stepCount > 0) || (parser._poller && parser._poller._processedSteps && parser._poller._processedSteps.size > 0);
+            if (!text && !this._aborted && retriesLeft > 0 && hadToolActivity) {
+              console.warn('[gemini-cli] Processo encerrou sem texto de resposta final após ferramentas. Auto-completando com resumo...');
+              const capturedConvId = parser.agyConvId || parser._agyConvId;
+              if (capturedConvId) {
+                this._hasStarted = true;
+                this._agyConvId = capturedConvId;
+              }
+              parser.reset();
+              if (opts.onThinking) {
+                opts.onThinking('[Concluindo] Finalizando passos e gerando resumo do que foi feito...');
+              }
+              runAttempt('Conclua a tarefa e explique detalhadamente em português o que foi feito e o status final.', true, retriesLeft - 1)
+                .then(resolve)
+                .catch(reject);
+              return;
+            }
+
             completed = true;
 
             this._hasStarted = true;

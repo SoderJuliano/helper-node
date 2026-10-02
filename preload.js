@@ -152,6 +152,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   saveZaiBaseUrl: (url) => ipcRenderer.send("set-zai-base-url", url),
   getZaiModel: () => ipcRenderer.invoke("get-zai-model"),
   saveZaiModel: (model) => ipcRenderer.send("set-zai-model", model),
+  setZaiModel: (model) => ipcRenderer.send("set-zai-model", model),
   getBackendApiKey: () => ipcRenderer.invoke("get-backend-api-key"),
   saveBackendApiKey: (key) => ipcRenderer.send("save-backend-api-key", key),
   getBackendUrl: () => ipcRenderer.invoke("get-backend-url"),
@@ -263,6 +264,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // conhecimento) no visualizador desta janela.
   onOpenFileInViewer: (cb) =>
     ipcRenderer.on("open-file-in-viewer", (event, filePath) => cb(filePath)),
+  onSetChatCollapsed: (cb) =>
+    ipcRenderer.on("set-chat-collapsed", (event, collapsed) => cb(collapsed)),
   onAiToolActivity: (cb) =>
     ipcRenderer.on("ai-tool-activity", (event, data) => cb(data)),
 

@@ -270,9 +270,16 @@ class GeminiCliProvider {
             resolve({ text: '', thinking: thinkingAccumulated, aborted: true });
             return;
           }
-          const finalText = text || accumulated;
-          if (!accumulated && finalText) {
-            try { sender.send('gemini-stream-chunk', finalText); } catch (_) {}
+          const finalText = text || accumulated || '';
+          if (finalText) {
+            if (!accumulated) {
+              try { sender.send('gemini-stream-chunk', finalText); } catch (_) {}
+            } else if (finalText.length > accumulated.length && finalText.startsWith(accumulated)) {
+              const remaining = finalText.slice(accumulated.length);
+              try { sender.send('gemini-stream-chunk', remaining); } catch (_) {}
+            } else if (finalText !== accumulated && finalText.length > accumulated.length) {
+              try { sender.send('gemini-stream-chunk', finalText); } catch (_) {}
+            }
           }
           safeClose(false);
           this._emitStatus(sender, { state: 'waiting', projectPath: cwd });

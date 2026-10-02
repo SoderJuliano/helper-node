@@ -237,7 +237,10 @@ module.exports = function registerIpc() {
   ipcMain.on("set-transcription-provider", (event, prov) => configService.setTranscriptionProvider(prov));
 
   ipcMain.handle("get-zai-model", () => configService.getZaiModel());
-  ipcMain.on("set-zai-model", (event, model) => configService.setZaiModel(model));
+  ipcMain.on("set-zai-model", (event, model) => {
+    configService.setZaiModel(model);
+    broadcastAiModelChange({ provider: 'zaiGlm', model });
+  });
 
   ipcMain.on("send-os-question", async (event, data) => {
     const text = typeof data === 'string' ? data : data.text;

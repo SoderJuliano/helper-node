@@ -57,7 +57,7 @@ const defaultConfig = {
   googleApiKey: "",
   zaiApiKey: "b210cf3d04bf4c73916d4878692b7b46.NrhCaCvIMge8oDRF",
   zaiBaseUrl: "https://api.z.ai/api/paas/v4/",
-  zaiModel: "glm-4.6",
+  zaiModel: "glm-4.7-flash",
   hasCompletedWelcome: false,
   geminiLiveVoice: "Aoede", // Voz feminina calorosa, natural e expressiva (padrão Nexa)
   geminiLiveModel: "models/gemini-3.8-live",

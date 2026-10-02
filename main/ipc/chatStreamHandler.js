@@ -24,13 +24,16 @@ async function handleSendToGeminiStream(event, text, sessionId) {
       const _ht = helpers.buildHelperToolsOpenAIOpts(_augTextL, instructionO, configService.getOpenAiModel());
       const _finalL = helpers.appendVoiceSummaryInstructionIfNeeded(_augTextL);
 
+      let accumulated = "";
       await OllamaLocalService.responderStream(
         _finalL,
         (chunk) => {
+          accumulated += chunk || "";
           emitToTargets(event.sender, "gemini-stream-chunk", chunk);
         },
         () => {
           emitToTargets(event.sender, "gemini-stream-complete");
+          if (accumulated) helpers.triggerNexaVoiceIfEnabled(accumulated);
         },
         (error) => {
           if (error && (error.message === 'Request cancelled' || error.message === 'Cancelado.')) {
@@ -55,14 +58,21 @@ async function handleSendToGeminiStream(event, text, sessionId) {
 
     const _finalBackendPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(_augTxtO2);
 
+    let accumulatedBackend = "";
     if (_htO2.opts && _htO2.opts.tools && _htO2.opts.onToolCall) {
       const AgentService = require('../../services/backendAgentService');
       if (await AgentService.suportaAgente()) {
         console.log("IPC: modo AGENTE (tool calling nativo via /agent)");
         await AgentService.agentStream(
           _finalBackendPrompt,
-          (chunk) => { emitToTargets(event.sender, "gemini-stream-chunk", chunk); },
-          () => { emitToTargets(event.sender, "gemini-stream-complete"); },
+          (chunk) => {
+            accumulatedBackend += chunk || "";
+            emitToTargets(event.sender, "gemini-stream-chunk", chunk);
+          },
+          () => {
+            emitToTargets(event.sender, "gemini-stream-complete");
+            if (accumulatedBackend) helpers.triggerNexaVoiceIfEnabled(accumulatedBackend);
+          },
           (error) => {
             if (error && (error.message === 'Request cancelled' || error.message === 'Cancelado.')) {
               console.log('[ipc] Agente cancelado pelo usuário.');
@@ -87,10 +97,12 @@ async function handleSendToGeminiStream(event, text, sessionId) {
     await BackendService.responderStream(
       _finalBackendPrompt,
       (chunk) => {
+        accumulatedBackend += chunk || "";
         emitToTargets(event.sender, "gemini-stream-chunk", chunk);
       },
       () => {
         emitToTargets(event.sender, "gemini-stream-complete");
+        if (accumulatedBackend) helpers.triggerNexaVoiceIfEnabled(accumulatedBackend);
       },
       (error) => {
         if (error && (error.message === 'Request cancelled' || error.message === 'Cancelado.')) {
@@ -126,10 +138,17 @@ async function handleSendToGeminiImageStream(event, { text, image, sessionId }) 
       const _ht = helpers.buildHelperToolsOpenAIOpts(_augTextL, instructionO, configService.getOpenAiModel());
       const _finalL = helpers.appendVoiceSummaryInstructionIfNeeded(_augTextL);
 
+      let accumulatedL = "";
       await OllamaLocalService.responderStream(
         _finalL,
-        (chunk) => { emitToTargets(event.sender, "gemini-stream-chunk", chunk); },
-        () => { emitToTargets(event.sender, "gemini-stream-complete"); },
+        (chunk) => {
+          accumulatedL += chunk || "";
+          emitToTargets(event.sender, "gemini-stream-chunk", chunk);
+        },
+        () => {
+          emitToTargets(event.sender, "gemini-stream-complete");
+          if (accumulatedL) helpers.triggerNexaVoiceIfEnabled(accumulatedL);
+        },
         (error) => {
           if (error && (error.message === 'Request cancelled' || error.message === 'Cancelado.')) {
             emitToTargets(event.sender, "transcription-error", "Request cancelled");
@@ -149,10 +168,17 @@ async function handleSendToGeminiImageStream(event, { text, image, sessionId }) 
     const _ht = helpers.buildHelperToolsOpenAIOpts(_augTxt, instruction, configService.getOpenAiModel());
     const _finalBackendPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(_augTxt);
 
+    let accumulatedImg = "";
     await BackendService.responderStream(
       _finalBackendPrompt,
-      (chunk) => { emitToTargets(event.sender, "gemini-stream-chunk", chunk); },
-      () => { emitToTargets(event.sender, "gemini-stream-complete"); },
+      (chunk) => {
+        accumulatedImg += chunk || "";
+        emitToTargets(event.sender, "gemini-stream-chunk", chunk);
+      },
+      () => {
+        emitToTargets(event.sender, "gemini-stream-complete");
+        if (accumulatedImg) helpers.triggerNexaVoiceIfEnabled(accumulatedImg);
+      },
       (error) => {
         if (error && (error.message === 'Request cancelled' || error.message === 'Cancelado.')) {
           emitToTargets(event.sender, "transcription-error", "Request cancelled");

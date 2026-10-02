@@ -254,4 +254,64 @@
                     }
                 });
             }
+
+        // === Nexa / Gemini Live: exibe resposta no chat SOMENTE quando originada por texto digitado ===
+        // Guard: window._nexaTextPending é setada true em chatMessages.sentToAI quando a mensagem
+        // vai via Gemini Live. Sem isso, respostas de voz também apareceriam duplicadas no chat.
+        if (window.electronAPI && window.electronAPI.onGeminiLiveTurnComplete) {
+            window.electronAPI.onGeminiLiveTurnComplete((turnData) => {
+                // Ignora turnos de voz — só processa se veio de texto digitado no chat
+                if (!window._nexaTextPending) return;
+                window._nexaTextPending = false;
+
+                const modelText = turnData && turnData.modelText ? turnData.modelText.trim() : '';
+                if (!modelText) {
+                    if (typeof window.stopProcessing === 'function') window.stopProcessing();
+                    return;
+                }
+
+                // Salva no histórico da sessão
+                try {
+                    if (window.historySession && window.historySession.addMessageToCurrentSession) {
+                        window.historySession.addMessageToCurrentSession('assistant', modelText);
+                    }
+                } catch (_) {}
+
+                const hero = document.getElementById('welcome-hero');
+                if (hero) hero.classList.add('hidden');
+
+                const transcriptionEl = document.getElementById('transcription');
+                if (!transcriptionEl) {
+                    if (typeof window.stopProcessing === 'function') window.stopProcessing();
+                    return;
+                }
+
+                // Exibe a resposta como balão de IA no chat
+                const responseDiv = document.createElement('div');
+                responseDiv.className = 'ia-response nexa-live-response';
+
+                if (typeof window.formatToHTML === 'function') {
+                    responseDiv.innerHTML = window.formatToHTML(modelText);
+                } else if (typeof formatOpenAIResponse === 'function') {
+                    responseDiv.innerHTML = formatOpenAIResponse(modelText);
+                } else {
+                    responseDiv.textContent = modelText;
+                }
+
+                const lastBlock = window.activeInteractionBlock
+                    || (transcriptionEl ? transcriptionEl.querySelector('.interaction-block:last-child') : null);
+
+                if (lastBlock) {
+                    lastBlock.appendChild(responseDiv);
+                } else {
+                    transcriptionEl.appendChild(responseDiv);
+                }
+
+                if (typeof scrollTranscriptionToBottom === 'function') {
+                    setTimeout(() => scrollTranscriptionToBottom('smooth'), 100);
+                }
+
+                if (typeof window.stopProcessing === 'function') window.stopProcessing();
+            });
+        }
 })();

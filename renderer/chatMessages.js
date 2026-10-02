@@ -212,6 +212,8 @@ var isEditingQuestion = false;
             window.activeInteractionBlock = options.block;
         }
 
+
+
         let activeSessionId = null;
         if (window.historySession) {
             activeSessionId = await window.historySession.ensureSessionForFirstQuestion(text);

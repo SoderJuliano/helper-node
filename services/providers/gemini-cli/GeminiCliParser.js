@@ -63,21 +63,12 @@ class GeminiCliParser {
       return;
     }
 
-    if (isPrompt(line)) {
-      if (this._initPhase) {
-        this._exitInitPhase();
-        this._emit('connected');
-        return;
-      }
-      this._closePendingStep();
-      clearTimeout(this._doneTimeout);
-      this._doneTimeout = null;
-      const fullText = this._responseLines.join('\n').trim();
-      const thinkingText = this._thinkingLines.join('\n').trim();
-      this._responseLines = [];
-      this._thinkingLines = [];
-      this._thinking = false;
-      this._emit('done', { text: fullText, thinking: thinkingText });
+    // Em modo `--print`, o agy não é um REPL interativo. Caracteres como '>', '$'
+    // ou saídas de terminal de comandos/testes não devem disparar encerramento
+    // prematuro do stream. O encerramento real ocorre no `flush()` quando o processo fecha.
+    if (this._initPhase && isPrompt(line)) {
+      this._exitInitPhase();
+      this._emit('connected');
       return;
     }
 
@@ -143,7 +134,9 @@ class GeminiCliParser {
     if (isSuppressed(line)) return;
 
     this._responseLines.push(line);
-    this._emit('chunk', line + '\n');
+    if (!this._poller || this._poller.emittedContentLength === 0) {
+      this._emit('chunk', line + '\n');
+    }
   }
 
   feed(raw) {
@@ -151,7 +144,7 @@ class GeminiCliParser {
     const parts = this._buf.split('\n');
     this._buf = parts.pop();
 
-    if (this._buf) {
+    if (this._initPhase && this._buf) {
       const line = stripAnsi(this._buf).trimEnd();
       if (isPrompt(line)) {
         this._buf = '';
@@ -173,10 +166,14 @@ class GeminiCliParser {
       this._processLine(this._buf);
       this._buf = '';
     }
-    let fullText = this._responseLines.join('\n').trim();
-    if (!fullText && this._poller && this._poller.latestContent) {
-      fullText = this._poller.latestContent.trim();
+    const stdoutText = this._responseLines.join('\n').trim();
+    const pollerText = (this._poller && this._poller.latestContent) ? this._poller.latestContent.trim() : '';
+
+    let fullText = stdoutText;
+    if (pollerText && (!fullText || pollerText.length >= fullText.length)) {
+      fullText = pollerText;
     }
+
     const thinkingText = this._thinkingLines.join('\n').trim();
     this._responseLines = [];
     this._thinkingLines = [];
