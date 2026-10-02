@@ -208,7 +208,6 @@ app.whenReady().then(async () => {
   try {
     const nativeAudio = require('./services/platform/nativeAudio.js');
     if (nativeAudio && typeof nativeAudio.prewarm === 'function') nativeAudio.prewarm();
-    if (typeof helpers.createBatchScreenshotOverlay === 'function') helpers.createBatchScreenshotOverlay();
   } catch (_) {}
   ipcService.start({
     toggleRecording: helpers.toggleRecording,

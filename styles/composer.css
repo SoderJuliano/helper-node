@@ -6,16 +6,21 @@
             justify-content: flex-start;
             margin-bottom: 8px;
             width: 100%;
-            max-width: 100%;
+            max-width: 760px;
         }
         .composer-view-tabs {
-            display: flex;
+            display: inline-flex;
             gap: 4px;
             background: rgba(255, 255, 255, 0.03);
             border: 1px solid var(--border);
             border-radius: 6px;
             padding: 2px;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            scrollbar-width: none;
+            max-width: 100%;
         }
+        .composer-view-tabs::-webkit-scrollbar { display: none; }
         .composer-tab-btn {
             display: inline-flex;
             align-items: center;
@@ -29,6 +34,8 @@
             padding: 4px 10px;
             cursor: pointer;
             transition: all .15s ease;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
         .composer-tab-btn:hover {
             color: var(--text);
@@ -339,123 +346,94 @@
         }
 
         .composer-shell {
-            display: flex; align-items: flex-end; gap: 10px;
+            display: flex; align-items: flex-end; gap: 8px;
             background: var(--bg-surface); border: 1px solid var(--border-strong);
-            border-radius: var(--radius); padding: 9px 9px 9px 11px;
+            border-radius: var(--radius); padding: 8px 10px;
             transition: border-color .18s var(--ease), box-shadow .18s var(--ease);
+            box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; overflow: hidden;
         }
         .composer-shell:focus-within { border-color: var(--accent-border); box-shadow: 0 0 0 3px rgba(76,175,80,0.14); }
-        /* Indicador "ouvindo áudio" — modo IDE, aparece acima do composer
-           enquanto o Ctrl+D está gravando. Bolinha em pulso (não a animação
-           de "processando" que já existe pro robot). */
-        .composer-listening {
-            display: flex; align-items: center; gap: 8px;
-            font-size: 12px; font-family: var(--font-ui); color: var(--accent-2);
-            padding: 4px 4px 8px 4px;
-            transition: color .2s ease;
-        }
-        .composer-listening.transcribing {
-            color: #7aa2f7;
-        }
-        .composer-listening-dot {
-            width: 9px; height: 9px; border-radius: 50%;
-            background: var(--accent-2); flex-shrink: 0;
-            animation: composer-listening-pulse 1.2s ease-in-out infinite;
-        }
-        .composer-listening.transcribing .composer-listening-dot {
-            background: transparent;
-            width: 10px; height: 10px;
-            border: 2px solid rgba(122, 162, 247, 0.25);
-            border-top-color: #7aa2f7;
-            border-radius: 50%;
-            animation: composer-transcribing-spin .75s linear infinite;
-            box-shadow: none;
-        }
-        @keyframes composer-listening-pulse {
-            0%   { transform: scale(0.75); opacity: 0.55; box-shadow: 0 0 0 0 rgba(76,175,80,0.45); }
-            50%  { transform: scale(1.15); opacity: 1; box-shadow: 0 0 0 6px rgba(76,175,80,0); }
-            100% { transform: scale(0.75); opacity: 0.55; box-shadow: 0 0 0 0 rgba(76,175,80,0); }
-        }
-        @keyframes composer-transcribing-spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        .composer-listening-cancel-btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            background: rgba(239, 68, 68, 0.14);
-            border: 1px solid rgba(239, 68, 68, 0.28);
-            color: #ef4444;
-            font-size: 13px;
-            line-height: 1;
-            font-weight: 700;
-            width: 17px;
-            height: 17px;
-            border-radius: 50%;
-            cursor: pointer;
-            margin-left: 6px;
-            padding: 0;
-            transition: all .15s ease;
-            flex-shrink: 0;
-        }
-        .composer-listening-cancel-btn:hover {
-            background: rgba(239, 68, 68, 0.32);
-            border-color: #ef4444;
-            color: #fca5a5;
-            transform: scale(1.15);
-        }
-        .composer-listening.transcribing .composer-listening-cancel-btn {
-            display: none;
-        }
+        /* Indicador "ouvindo áudio" — modo IDE */
+        .composer-listening { display: flex; align-items: center; gap: 8px; font-size: 12px; font-family: var(--font-ui); color: var(--accent-2); padding: 4px 4px 8px 4px; transition: color .2s ease; }
+        .composer-listening.transcribing { color: #7aa2f7; }
+        .composer-listening-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent-2); flex-shrink: 0; animation: composer-listening-pulse 1.2s ease-in-out infinite; }
+        .composer-listening.transcribing .composer-listening-dot { background: transparent; width: 10px; height: 10px; border: 2px solid rgba(122, 162, 247, 0.25); border-top-color: #7aa2f7; border-radius: 50%; animation: composer-transcribing-spin .75s linear infinite; box-shadow: none; }
+        @keyframes composer-listening-pulse { 0% { transform: scale(0.75); opacity: 0.55; box-shadow: 0 0 0 0 rgba(76,175,80,0.45); } 50% { transform: scale(1.15); opacity: 1; box-shadow: 0 0 0 6px rgba(76,175,80,0); } 100% { transform: scale(0.75); opacity: 0.55; box-shadow: 0 0 0 0 rgba(76,175,80,0); } }
+        @keyframes composer-transcribing-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .composer-listening-cancel-btn { display: inline-flex; align-items: center; justify-content: center; background: rgba(239, 68, 68, 0.14); border: 1px solid rgba(239, 68, 68, 0.28); color: #ef4444; font-size: 13px; line-height: 1; font-weight: 700; width: 17px; height: 17px; border-radius: 50%; cursor: pointer; margin-left: 6px; padding: 0; transition: all .15s ease; flex-shrink: 0; }
+        .composer-listening-cancel-btn:hover { background: rgba(239, 68, 68, 0.32); border-color: #ef4444; color: #fca5a5; transform: scale(1.15); }
+        .composer-listening.transcribing .composer-listening-cancel-btn { display: none; }
         .composer-ghost {
-            flex: 1; min-height: 26px; max-height: 220px; padding: 3px 2px;
-            color: var(--text-3); font-size: 14px; font-family: var(--font-mono);
-            cursor: text; white-space: pre-wrap; overflow-wrap: break-word; line-height: 1.5;
-            overflow-y: auto; overflow-x: hidden;
-            scrollbar-width: none;
-            -webkit-app-region: no-drag;
-            outline: none;
+            flex: 1 1 auto; min-width: 0; width: 100%; max-width: 100%; min-height: 24px; max-height: 220px; padding: 2px 2px;
+            color: var(--text-3); font-size: 13.5px; font-family: var(--font-mono);
+            cursor: text; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; line-height: 1.45;
+            overflow-y: auto; overflow-x: hidden; box-sizing: border-box;
+            scrollbar-width: none; -webkit-app-region: no-drag; outline: none;
         }
         .composer-ghost::-webkit-scrollbar { display: none; }
         .composer-ghost:focus, .composer-ghost:focus-visible { outline: none; }
-        .composer-ghost::before { content: '>'; color: var(--accent-2); font-weight: 700; margin-right: 8px; }
+        .composer-ghost.idle {
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+        }
         .composer-ghost.idle::after { content: '_'; color: var(--accent-2); animation: blink 1.05s steps(2,start) infinite; margin-left: 1px; }
         .composer-send {
-            flex-shrink: 0; padding: 0 14px; height: 34px;
+            flex-shrink: 0; padding: 0 12px; height: 32px;
             background: var(--accent); border: none; border-radius: 8px;
-            color: #06210a; font-weight: 700; font-size: 13px; font-family: var(--font-ui);
+            color: #06210a; font-weight: 700; font-size: 12.5px; font-family: var(--font-ui);
             cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
             transition: background .15s var(--ease), transform .1s var(--ease), box-shadow .15s var(--ease);
             box-shadow: 0 3px 10px rgba(76,175,80,0.22);
+            white-space: nowrap;
         }
         .composer-send:hover { background: var(--accent-2); }
         .composer-send:active { transform: translateY(1px); }
-        .composer-send svg { width: 15px; height: 15px; }
+        .composer-send svg { width: 14px; height: 14px; }
+
+        @media (max-width: 760px), (max-height: 640px) {
+            #composer { padding: 4px 12px 6px !important; }
+            .composer-view-header { margin-bottom: 4px !important; }
+            .composer-shell { padding: 4px 8px !important; min-height: 32px !important; gap: 6px !important; }
+            .composer-ghost, #composer .terminal-input { font-size: 12px !important; min-height: 20px !important; line-height: 1.35 !important; }
+            #composer .terminal-hint { font-size: 11.5px !important; }
+            .composer-send { height: 28px !important; padding: 0 9px !important; font-size: 11px !important; gap: 4px !important; }
+            .composer-send svg { width: 12px !important; height: 12px !important; }
+            .composer-mic-toggle { width: 28px !important; height: 28px !important; }
+            .composer-tab-btn { padding: 2px 6px !important; font-size: 10px !important; }
+            .composer-toolbar { margin-top: 4px !important; }
+            .composer-model { font-size: 10.5px !important; padding: 3px 7px !important; }
+            .composer-hint { font-size: 9.5px !important; margin-top: 4px !important; }
+        }
+
+        @media (max-width: 580px), (max-height: 520px) {
+            #composer { padding: 2px 8px 4px !important; }
+            .composer-view-header { display: none !important; }
+            .composer-shell { padding: 3px 6px !important; min-height: 26px !important; gap: 4px !important; }
+            .composer-ghost, #composer .terminal-input { font-size: 11px !important; min-height: 18px !important; line-height: 1.3 !important; }
+            #composer .terminal-hint { font-size: 10.5px !important; }
+            .composer-send { height: 24px !important; padding: 0 7px !important; font-size: 10px !important; gap: 3px !important; }
+            .composer-send svg { width: 10px !important; height: 10px !important; }
+            .composer-mic-toggle { width: 24px !important; height: 24px !important; padding: 2px !important; }
+            .composer-mic-toggle svg { width: 12px !important; height: 12px !important; }
+            .composer-hint { display: none !important; }
+            .composer-toolbar { margin-top: 2px !important; }
+            .composer-model { font-size: 10px !important; padding: 2px 5px !important; }
+        }
+
         /* Barra inferior do composer: seletor de modelo (estilo ZCode) */
         .composer-token-count {
-            margin-left: auto;
-            font-size: 11px;
-            color: var(--text-3);
-            opacity: .7;
-            font-family: var(--font-code, monospace);
-            white-space: nowrap;
-            padding: 2px 4px;
-            letter-spacing: .02em;
-            transition: color .2s, opacity .2s;
+            margin-left: auto; font-size: 11px; color: var(--text-3); opacity: .7;
+            font-family: var(--font-code, monospace); white-space: nowrap; padding: 2px 4px;
+            letter-spacing: .02em; transition: color .2s, opacity .2s;
         }
         .composer-token-count.warn { color: #ffb74d; opacity: 1; }
         .composer-token-count.danger { color: #ef5350; opacity: 1; }
-        .composer-toolbar {
-            display: flex; align-items: center; gap: 8px;
-            margin-top: 8px; padding: 0 2px;
-        }
+        .composer-toolbar { display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 0 2px; }
         .composer-model {
-            display: inline-flex; align-items: center; gap: 6px;
-            padding: 4px 9px; background: transparent;
-            border: 1px solid var(--border); border-radius: 7px;
-            color: var(--text-3); font-size: 11.5px; font-family: var(--font-ui);
-            cursor: pointer; max-width: 240px; line-height: 1.2;
+            display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; background: transparent;
+            border: 1px solid var(--border); border-radius: 7px; color: var(--text-3); font-size: 11.5px;
+            font-family: var(--font-ui); cursor: pointer; max-width: 240px; line-height: 1.2;
             transition: background .15s var(--ease), border-color .15s var(--ease), color .15s var(--ease);
         }
         .composer-model:hover { background: var(--bg-surface); border-color: var(--border-strong); color: var(--text-2); }
@@ -464,30 +442,26 @@
         .composer-model .composer-model-spinner { width: 11px; height: 11px; margin-left: 2px; flex-shrink: 0; }
         .composer-model span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-        .composer-hint {
-            margin-top: 8px; text-align: center; font-size: 10.5px; color: var(--text-4);
-            font-family: var(--font-mono);
-        }
-        .composer-hint .h-kbd {
-            color: var(--text-3); background: rgba(255,255,255,0.04); padding: 1px 5px;
-            border-radius: 4px; border: 1px solid var(--border);
-        }
+        .composer-hint { margin-top: 8px; text-align: center; font-size: 10.5px; color: var(--text-4); font-family: var(--font-mono); }
+        .composer-hint .h-kbd { color: var(--text-3); background: rgba(255,255,255,0.04); padding: 1px 5px; border-radius: 4px; border: 1px solid var(--border); }
 
-        /* Quando o input real do &lt;script&gt; estiver ativo, ele aparece DENTRO do
-           #transcription no fim. Para que ele pareça parte do composer fixo,
-           reposicionamos: o .manual-input-container sobe para o #composer via
-           classe adicionada pelo script (composer docked). Estilo aqui: */
-        #composer .manual-input-container { margin: 0; flex: 1; min-width: 0; }
-        #composer .terminal-input-wrap {
-            background: transparent; border: none; border-radius: 0;
-            padding: 0 0 0 0; flex: 1; min-width: 0; box-shadow: none;
-        }
+        /* Quando o input real estiver ativo, reposicionamos: o .manual-input-container sobe para o #composer */
+        #composer .manual-input-container { margin: 0; flex: 1 1 auto; min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; }
+        #composer .terminal-input-wrap { background: transparent; border: none; border-radius: 0; padding: 0; flex: 1 1 auto; min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box; position: relative; overflow: hidden; }
         #composer .terminal-input-wrap::before { display: none; }
-        #composer .terminal-input {
-            min-height: 26px; max-height: 200px; font-size: 14px; color: var(--text);
+        #composer .terminal-hint {
+            position: absolute; left: 0 !important; top: 50% !important; transform: translateY(-50%) !important;
+            color: var(--text-4) !important; font-size: 13px !important; font-family: var(--font-mono) !important;
+            pointer-events: none !important; user-select: none !important; white-space: nowrap !important;
+            overflow: hidden !important; text-overflow: ellipsis !important; max-width: calc(100% - 10px) !important;
+            line-height: 1.4 !important; opacity: .75 !important;
         }
-        #composer .edit-controls { margin-top: 0; }
-        #composer .send-button { display: none; } /* o composer-send já cumpre o papel */
-
-        /* Override: input manual real deve aparecer no composer, não no fluxo do chat */
+        #composer .terminal-input-wrap.has-text .terminal-hint { display: none !important; }
+        #composer .terminal-input {
+            width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box;
+            min-height: 24px; max-height: 200px; font-size: 13.5px; color: var(--text);
+            overflow-x: hidden; overflow-y: auto; overflow-wrap: anywhere; word-break: break-word; line-height: 1.45;
+        }
+        #composer .edit-controls { display: none !important; }
+        #composer .send-button { display: none !important; } /* o composer-send já cumpre o papel */
         #transcription > .manual-input-container { display: none !important; }

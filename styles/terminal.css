@@ -367,11 +367,6 @@
         .ia-response pre:hover::-webkit-scrollbar-thumb, #transcription pre:hover::-webkit-scrollbar-thumb { background: #5a5a62; }
         .ia-response pre::-webkit-scrollbar-corner, #transcription pre::-webkit-scrollbar-corner { background: transparent; }
 
-        /* Responsividade mínima (janela é 800x600) */
-        @media (max-width: 640px) {
-            #app-shell { grid-template-columns: 0 1fr; }
-            #sidebar { display: none; }
-        }
         
         /* Notificação Tutor IDE */
         .ide-tutor-notif {

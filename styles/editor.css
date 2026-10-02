@@ -7,6 +7,7 @@
             font-family: var(--font-mono); font-size: 14px; color: var(--text);
             transition: border-color .15s var(--ease), box-shadow .15s var(--ease);
             box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02); box-sizing: border-box;
+            max-width: 100%; min-width: 0;
         }
         .terminal-input-wrap:focus-within { border-color: var(--accent-border); box-shadow: 0 0 0 3px rgba(76,175,80,0.12); }
         .terminal-input-wrap::before {
@@ -15,11 +16,11 @@
             line-height: 1.5; font-size: 14px; font-family: inherit;
         }
         .terminal-input {
-            display: block; min-height: 22px; max-height: 200px; overflow-y: auto;
+            display: block; min-height: 22px; max-height: 200px; overflow-y: auto; overflow-x: hidden;
             background: transparent; border: none; outline: none; color: var(--text);
             font: inherit; line-height: 1.5; padding: 0; margin: 0; text-align: left;
-            white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word;
-            caret-color: var(--accent-2); scrollbar-width: none;
+            white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere;
+            caret-color: var(--accent-2); scrollbar-width: none; width: 100%; box-sizing: border-box;
         }
         .terminal-input::-webkit-scrollbar { display: none; }
         .terminal-input::selection { background: rgba(95,215,95,0.3); }
@@ -32,6 +33,7 @@
             position: absolute; left: 40px; top: 9px; color: var(--text-4);
             font-size: 13.5px; font-style: normal; font-family: inherit;
             pointer-events: none; user-select: none; white-space: nowrap; opacity: .8; line-height: 1.5;
+            max-width: calc(100% - 50px); overflow: hidden; text-overflow: ellipsis;
         }
         .terminal-input-wrap.has-text .terminal-hint { display: none; }
         .edit-controls { display: flex; gap: 10px; margin-top: 10px; justify-content: flex-start; }

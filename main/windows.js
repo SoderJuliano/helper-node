@@ -511,6 +511,8 @@ helpers.createWindow = async function() {
     state.mainWindow = new BrowserWindow({
       width: 800,
       height: 600,
+      minWidth: 680,
+      minHeight: 480,
       backgroundColor: "#00000000",
       transparent: true,
       frame: false,
@@ -553,6 +555,10 @@ helpers.createWindow = async function() {
     state.mainWindow.on("ready-to-show", () => {
       console.log("Window ready to show");
       state.mainWindow.show();
+      state.mainWindow.focus();
+      if (state.mainWindow.webContents) {
+        try { state.mainWindow.webContents.focus(); } catch (_) {}
+      }
       helpers.ensureWindowVisible(state.mainWindow);
       state.currentDisplayId = screen.getDisplayNearestPoint(
         state.mainWindow.getBounds()
@@ -573,6 +579,102 @@ helpers.createWindow = async function() {
 
       // Re-registra atalhos quando a janela ganha foco
       helpers.registerGlobalShortcuts();
+    });
+
+    state.mainWindow.webContents.on("dom-ready", () => {
+      if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+        try {
+          state.mainWindow.focus();
+          state.mainWindow.webContents.focus();
+        } catch (_) {}
+      }
+    });
+
+    state.mainWindow.on("restore", () => {
+      console.log("[window] Main window restored from minimized state");
+      state.mainWindow.focus();
+      if (state.mainWindow.webContents) {
+        try { state.mainWindow.webContents.focus(); } catch (_) {}
+      }
+      helpers.registerGlobalShortcuts();
+      helpers.ensureWindowVisible(state.mainWindow);
+    });
+
+    state.mainWindow.on("focus", () => {
+      helpers.registerGlobalShortcuts();
+    });
+
+    state.mainWindow._lastWindowedBounds = { width: 800, height: 600 };
+
+    const saveWindowedBounds = () => {
+      if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+        if (!state.mainWindow.isMaximized() && !state.mainWindow.isFullScreen() && !state.mainWindow.isMinimized()) {
+          const b = state.mainWindow.getBounds();
+          if (b.width >= 680 && b.height >= 480) {
+            state.mainWindow._lastWindowedBounds = b;
+          }
+        }
+      }
+    };
+    state.mainWindow.on("resize", saveWindowedBounds);
+    state.mainWindow.on("move", saveWindowedBounds);
+
+    state.mainWindow.on("maximize", () => {
+      console.log("[window] Main window maximized");
+      if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+        try { state.mainWindow.webContents.send("window-state-changed", { isMaximized: true, isFullScreen: state.mainWindow.isFullScreen() }); } catch (_) {}
+      }
+    });
+
+    state.mainWindow.on("unmaximize", () => {
+      console.log("[window] Main window unmaximized");
+      const lastBounds = state.mainWindow._lastWindowedBounds || { width: 800, height: 600 };
+      const targetW = Math.max(680, lastBounds.width || 800);
+      const targetH = Math.max(480, lastBounds.height || 600);
+      const currentDisplay = screen.getDisplayMatching(state.mainWindow.getBounds()) || screen.getPrimaryDisplay();
+      const wa = currentDisplay.workArea;
+      let targetX = lastBounds.x;
+      let targetY = lastBounds.y;
+      if (typeof targetX !== 'number' || typeof targetY !== 'number' || targetX < wa.x || targetX > wa.x + wa.width - 100 || targetY < wa.y || targetY > wa.y + wa.height - 100) {
+        targetX = Math.floor(wa.x + (wa.width - targetW) / 2);
+        targetY = Math.floor(wa.y + (wa.height - targetH) / 2);
+      }
+      try {
+        state.mainWindow.setBounds({ x: targetX, y: targetY, width: targetW, height: targetH });
+      } catch (_) {}
+      helpers.ensureWindowVisible(state.mainWindow);
+      if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+        try { state.mainWindow.webContents.send("window-state-changed", { isMaximized: false, isFullScreen: false }); } catch (_) {}
+      }
+    });
+
+    state.mainWindow.on("enter-full-screen", () => {
+      console.log("[window] Main window entered full screen");
+      if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+        try { state.mainWindow.webContents.send("window-state-changed", { isMaximized: true, isFullScreen: true }); } catch (_) {}
+      }
+    });
+
+    state.mainWindow.on("leave-full-screen", () => {
+      console.log("[window] Main window left fullscreen");
+      const lastBounds = state.mainWindow._lastWindowedBounds || { width: 800, height: 600 };
+      const targetW = Math.max(680, lastBounds.width || 800);
+      const targetH = Math.max(480, lastBounds.height || 600);
+      const currentDisplay = screen.getDisplayMatching(state.mainWindow.getBounds()) || screen.getPrimaryDisplay();
+      const wa = currentDisplay.workArea;
+      let targetX = lastBounds.x;
+      let targetY = lastBounds.y;
+      if (typeof targetX !== 'number' || typeof targetY !== 'number' || targetX < wa.x || targetX > wa.x + wa.width - 100 || targetY < wa.y || targetY > wa.y + wa.height - 100) {
+        targetX = Math.floor(wa.x + (wa.width - targetW) / 2);
+        targetY = Math.floor(wa.y + (wa.height - targetH) / 2);
+      }
+      try {
+        state.mainWindow.setBounds({ x: targetX, y: targetY, width: targetW, height: targetH });
+      } catch (_) {}
+      helpers.ensureWindowVisible(state.mainWindow);
+      if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+        try { state.mainWindow.webContents.send("window-state-changed", { isMaximized: false, isFullScreen: false }); } catch (_) {}
+      }
     });
 
     state.mainWindow.on("close", () => {

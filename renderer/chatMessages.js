@@ -260,7 +260,6 @@ var isEditingQuestion = false;
         window.activeInteractionBlock = null;
         currentQuestionElement = null;
         window.currentQuestionElement = null;
-        showFloatingStop(false);
         const animation = window.animation;
         const animationContainer = document.getElementById('animation-container');
         if (animation) {
@@ -315,27 +314,6 @@ var isEditingQuestion = false;
         if (typeof window.resetStreamingState === 'function') window.resetStreamingState();
 
         stopProcessing();
-    }
-
-    function getFloatingStop() {
-        let btn = document.getElementById('ai-stop-floating');
-        if (!btn) {
-            btn = document.createElement('button');
-            btn.id = 'ai-stop-floating';
-            btn.className = 'ai-stop-floating';
-            btn.textContent = '■ Parar IA';
-            btn.title = 'Interromper a IA';
-            btn.addEventListener('click', () => {
-                cancelIaAndFreezeStream();
-            });
-            document.body.appendChild(btn);
-        }
-        return btn;
-    }
-
-    function showFloatingStop(mostrar) {
-        const btn = getFloatingStop();
-        btn.classList.toggle('visible', !!mostrar);
     }
 
     function startProcessing(targetBlock) {
@@ -401,7 +379,6 @@ var isEditingQuestion = false;
 
         const robot = document.getElementById('robot');
         if (robot) robot.style.display = 'block';
-        showFloatingStop(true);
 
         window.electronAPI.startNotifications();
         if (window.electronAPI && window.electronAPI.sendNexaVoiceProcessingStarted) {

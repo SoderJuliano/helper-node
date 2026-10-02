@@ -43,26 +43,53 @@
    centro vertical junto da saudação, como no Zed/ZCode. Quando a
    conversa começa (#main perde .is-empty), o composer doca embaixo.
    ================================================================= */
-#main.is-empty #chat-container { justify-content: center; }
+#main.is-empty #chat-container {
+    justify-content: flex-start;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    height: 100%;
+}
 #main.is-empty .chat-area {
-    flex: 0 0 auto;
-    overflow: visible;
+    flex: 1 1 auto;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: 38px 16px 4px;
+    box-sizing: border-box;
+    min-height: 0;
 }
 #main.is-empty #transcription { display: none; }
-#main.is-empty .chat-topbar { display: none; }
+#main.is-empty .chat-topbar {
+    display: flex;
+    background: transparent;
+}
 #main.is-empty #welcome-hero {
-    position: static;
+    position: relative;
     inset: auto;
-    padding: 0 24px 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 0 16px;
     min-height: 0;
+    max-width: 520px;
+    width: 100%;
+    box-sizing: border-box;
+    gap: 6px;
 }
 #main.is-empty #welcome-hero .hero-logo { display: none; }
 #main.is-empty #composer {
     border-top: none;
     background: transparent;
+    padding: 4px clamp(12px, 3%, 24px) 12px;
+    flex-shrink: 0;
+    width: 100%;
+    box-sizing: border-box;
 }
 #main.is-empty .composer-hint { opacity: 0; }
 
@@ -113,19 +140,35 @@
     color: #06210a; font-weight: 800; font-size: 30px; margin-bottom: 8px;
     box-shadow: 0 0 0 1px rgba(255,255,255,0.10), 0 14px 36px rgba(76,175,80,0.32);
 }
-.hero-title { font-size: 23px; font-weight: 700; color: var(--text); letter-spacing: -.2px; }
-.hero-sub { font-size: 13.5px; color: var(--text-3); max-width: 440px; line-height: 1.55; }
-.hero-suggestions { display: flex; flex-wrap: wrap; gap: 9px; justify-content: center; margin-top: 14px; max-width: 520px; }
+.hero-title { font-size: 20px; font-weight: 700; color: var(--text); letter-spacing: -.2px; }
+.hero-sub { font-size: 13px; color: var(--text-3); max-width: 440px; line-height: 1.45; }
+.hero-suggestions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 10px; max-width: 520px; }
 .hero-chip {
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 9px 14px; background: var(--bg-surface); border: 1px solid var(--border);
-    color: var(--text-2); font-size: 12.5px; font-family: var(--font-ui);
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px; background: var(--bg-surface); border: 1px solid var(--border);
+    color: var(--text-2); font-size: 12px; font-family: var(--font-ui);
     border-radius: 999px; cursor: pointer; text-align: left;
     transition: background .16s var(--ease), border-color .16s var(--ease), color .16s var(--ease), transform .1s var(--ease);
+    white-space: nowrap;
 }
 .hero-chip:hover { background: var(--bg-surface-2); border-color: var(--accent-border); color: var(--text); transform: translateY(-1px); }
 .hero-chip:active { transform: translateY(0); }
-.hero-chip .hero-chip-ic { font-size: 15px; }
+.hero-chip .hero-chip-ic { font-size: 14px; }
+
+/* Responsividade fluida para janelas menores / compactas */
+@media (max-height: 640px) {
+    #main.is-empty .chat-area { padding-top: 36px !important; padding-bottom: 2px !important; }
+    .hero-title { font-size: 16px !important; margin-bottom: 0 !important; }
+    .hero-sub { font-size: 11.5px !important; line-height: 1.35 !important; max-width: 360px !important; }
+    .hero-suggestions { margin-top: 6px !important; gap: 6px !important; }
+    .hero-chip { padding: 4px 10px !important; font-size: 11px !important; }
+}
+
+@media (max-height: 520px) {
+    .hero-sub { display: none !important; }
+    .hero-suggestions { display: none !important; }
+    #main.is-empty .chat-area { padding-top: 32px !important; }
+}
 
 /* Mensagens: blocos pergunta+resposta */
 .interaction-block {

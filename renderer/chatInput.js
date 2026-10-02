@@ -102,7 +102,7 @@ var promptHistoryDraft = '';
 
         const hint = document.createElement('span');
         hint.className = 'terminal-hint';
-        hint.textContent = 'digite sua pergunta — Shift+Enter envia · Esc fecha';
+        hint.textContent = 'Pergunte qualquer coisa…';
 
         const inputField = document.createElement('div');
         inputField.className = 'terminal-input';

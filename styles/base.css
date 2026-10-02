@@ -94,7 +94,7 @@
             position: fixed;
             inset: 8px;
             display: grid;
-            grid-template-columns: var(--sidebar-w, 268px) 1fr;
+            grid-template-columns: var(--sidebar-w, 240px) 1fr;
             grid-template-rows: 1fr;
             background: var(--bg-base);
             border: 1px solid var(--border-strong);
@@ -124,6 +124,8 @@
             flex-direction: column;
             transition: opacity .15s var(--ease);
             min-height: 0;
+            min-width: 0;
+            overflow: hidden;
             -webkit-app-region: no-drag;
         }
         body.sidebar-collapsed #sidebar { opacity: 0; pointer-events: none; }
@@ -356,3 +358,54 @@
             border-color: #dc2626 !important;
             color: #ffffff !important;
         }
+
+
+
+        /* =====================================================================
+           BORDAS E CANTOS DE REDIMENSIONAMENTO DA JANELA (Frameless Window)
+           ===================================================================== */
+        .win-resize-handle {
+            position: fixed;
+            z-index: 99999999;
+            user-select: none;
+            -webkit-app-region: no-drag !important;
+            pointer-events: auto !important;
+            background: transparent;
+        }
+        .win-resize-top {
+            top: 0; left: 12px; right: 12px; height: 8px; cursor: ns-resize;
+        }
+        .win-resize-bottom {
+            bottom: 0; left: 12px; right: 12px; height: 8px; cursor: ns-resize;
+        }
+        .win-resize-left {
+            top: 12px; bottom: 12px; left: 0; width: 8px; cursor: ew-resize;
+        }
+        .win-resize-right {
+            top: 12px; bottom: 12px; right: 0; width: 8px; cursor: ew-resize;
+        }
+        .win-resize-top-left {
+            top: 0; left: 0; width: 14px; height: 14px; cursor: nwse-resize;
+        }
+        .win-resize-top-right {
+            top: 0; right: 0; width: 14px; height: 14px; cursor: nesw-resize;
+        }
+        .win-resize-bottom-left {
+            bottom: 0; left: 0; width: 14px; height: 14px; cursor: nesw-resize;
+        }
+        .win-resize-bottom-right {
+            bottom: 0; right: 0; width: 14px; height: 14px; cursor: nwse-resize;
+        }
+
+        body.is-maximized .win-resize-handle,
+        body.is-fullscreen .win-resize-handle {
+            display: none !important;
+            pointer-events: none !important;
+        }
+
+        body.is-maximized #app-shell {
+            inset: 0;
+            border-radius: 0;
+            border: none;
+        }
+

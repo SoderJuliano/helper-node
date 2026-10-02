@@ -21,16 +21,83 @@ ipcMain.on("window-toggle-maximize", (event) => {
   const win = BrowserWindow.fromWebContents(event.sender) || state.mainWindow;
   if (!win || win.isDestroyed()) return;
   try {
-    if (win.isMaximized()) win.unmaximize();
-    else win.maximize();
-  } catch (_) {}
+    if (win.isMinimized()) {
+      win.restore();
+    }
+    const isCurrentlyMax = win.isMaximized() || win.isFullScreen();
+    if (isCurrentlyMax) {
+      if (win.isFullScreen()) win.setFullScreen(false);
+      if (win.isMaximized()) win.unmaximize();
+
+      const lastBounds = win._lastWindowedBounds || { width: 800, height: 600 };
+      const targetW = Math.max(680, lastBounds.width || 800);
+      const targetH = Math.max(480, lastBounds.height || 600);
+
+      const currentDisplay = screen.getDisplayMatching(win.getBounds()) || screen.getPrimaryDisplay();
+      const wa = currentDisplay.workArea;
+
+      let targetX = lastBounds.x;
+      let targetY = lastBounds.y;
+      if (typeof targetX !== 'number' || typeof targetY !== 'number' || targetX < wa.x || targetX > wa.x + wa.width - 100 || targetY < wa.y || targetY > wa.y + wa.height - 100) {
+        targetX = Math.floor(wa.x + (wa.width - targetW) / 2);
+        targetY = Math.floor(wa.y + (wa.height - targetH) / 2);
+      }
+
+      win.setBounds({ x: targetX, y: targetY, width: targetW, height: targetH });
+      try { win.webContents.send("window-state-changed", { isMaximized: false, isFullScreen: false }); } catch (_) {}
+    } else {
+      const curBounds = win.getBounds();
+      if (curBounds.width >= 680 && curBounds.height >= 480) {
+        win._lastWindowedBounds = curBounds;
+      }
+      win.maximize();
+      try { win.webContents.send("window-state-changed", { isMaximized: true, isFullScreen: win.isFullScreen() }); } catch (_) {}
+    }
+  } catch (err) {
+    console.warn("[window] Erro ao alternar maximizar:", err);
+  }
 });
 
 ipcMain.on("window-minimize", (event) => {
   const win = BrowserWindow.fromWebContents(event.sender) || state.mainWindow;
   if (win && !win.isDestroyed()) {
-    try { win.minimize(); } catch (_) {}
+    try {
+      if (win.isFullScreen()) win.setFullScreen(false);
+      win.minimize();
+    } catch (_) {}
   }
+});
+
+ipcMain.handle("window-get-bounds", (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender) || state.mainWindow;
+  if (!win || win.isDestroyed()) return { x: 0, y: 0, width: 800, height: 600 };
+  return win.getBounds();
+});
+
+ipcMain.handle("window-is-maximized", (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender) || state.mainWindow;
+  if (!win || win.isDestroyed()) return false;
+  return win.isMaximized() || win.isFullScreen();
+});
+
+ipcMain.on("window-set-bounds", (event, bounds) => {
+  const win = BrowserWindow.fromWebContents(event.sender) || state.mainWindow;
+  if (!win || win.isDestroyed() || !bounds) return;
+  try {
+    if (win.isMaximized() || win.isFullScreen()) return;
+    const cur = win.getBounds();
+    const minW = 680;
+    const minH = 480;
+    const width = Math.max(minW, Math.round(typeof bounds.width === "number" ? bounds.width : cur.width));
+    const height = Math.max(minH, Math.round(typeof bounds.height === "number" ? bounds.height : cur.height));
+    const target = {
+      x: typeof bounds.x === "number" ? Math.round(bounds.x) : cur.x,
+      y: typeof bounds.y === "number" ? Math.round(bounds.y) : cur.y,
+      width,
+      height
+    };
+    win.setBounds(target);
+  } catch (_) {}
 });
 
 ipcMain.on("window-close", (event) => {

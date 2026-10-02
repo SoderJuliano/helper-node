@@ -396,7 +396,17 @@
         </div>
     </div>
 
-    <!-- Elementos preservados (contrato do &lt;script&gt;) -->
+    <!-- Bordas e cantos para redimensionar a janela (frameless window cross-platform) -->
+    <div class="win-resize-handle win-resize-top" data-dir="top"></div>
+    <div class="win-resize-handle win-resize-bottom" data-dir="bottom"></div>
+    <div class="win-resize-handle win-resize-left" data-dir="left"></div>
+    <div class="win-resize-handle win-resize-right" data-dir="right"></div>
+    <div class="win-resize-handle win-resize-top-left" data-dir="top-left"></div>
+    <div class="win-resize-handle win-resize-top-right" data-dir="top-right"></div>
+    <div class="win-resize-handle win-resize-bottom-left" data-dir="bottom-left"></div>
+    <div class="win-resize-handle win-resize-bottom-right" data-dir="bottom-right"></div>
+
+    <!-- Elementos preservados (contrato do <script>) -->
     <div class="drag-area" style="display: none; -webkit-app-region: no-drag;"></div>
     <!-- Aparece só quando a sidebar está recolhida (body.sidebar-collapsed) —
          passar o mouse na borda esquerda revela o botão de reabrir. -->
@@ -467,6 +477,7 @@
     <script src="renderer/importChecker.js"></script>
     <!-- Modularized Frontend Scripts -->
     <script src="renderer/windowControls.js"></script>
+    <script src="renderer/windowResize.js"></script>
     <script src="renderer/modelSelectorMenu.js"></script>
     <script src="renderer/modelSelector.js"></script>
     <script src="renderer/chatInput.js"></script>

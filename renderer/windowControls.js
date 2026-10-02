@@ -7,34 +7,63 @@
     const controlsOverlay = document.getElementById('win-controls-overlay');
 
     if (window.electronAPI) {
-        if (window.electronAPI.platform === 'linux') {
-            if (controlsOverlay) controlsOverlay.style.display = 'none';
-        } else {
-            const attach = (btn, fn) => {
-                if (!btn) return;
-                const handler = (e) => {
-                    if (e) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                    }
-                    try {
-                        if (typeof fn === 'function') fn();
-                    } catch (err) {
-                        console.warn('[windowControls] Erro ao executar acao de janela:', err);
-                    }
-                };
-                btn.addEventListener('click', handler);
-                btn.addEventListener('mousedown', (e) => {
-                    if (e) e.stopPropagation();
-                });
+        if (controlsOverlay) controlsOverlay.style.display = 'flex';
+        const attach = (btn, fn) => {
+            if (!btn) return;
+            const handler = (e) => {
+                if (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+                try {
+                    if (typeof fn === 'function') fn();
+                } catch (err) {
+                    console.warn('[windowControls] Erro ao executar acao de janela:', err);
+                }
             };
-            attach(minBtn, () => window.electronAPI.minimizeWindow && window.electronAPI.minimizeWindow());
-            attach(maxBtn, () => window.electronAPI.maximizeWindow && window.electronAPI.maximizeWindow());
-            attach(closeBtn, () => {
-                try { document.body.style.display = 'none'; } catch (_) {}
-                if (window.electronAPI.closeWindow) window.electronAPI.closeWindow();
+            btn.addEventListener('click', handler);
+            btn.addEventListener('mousedown', (e) => {
+                if (e) e.stopPropagation();
+            });
+        };
+        attach(minBtn, () => window.electronAPI.minimizeWindow && window.electronAPI.minimizeWindow());
+        attach(maxBtn, () => window.electronAPI.maximizeWindow && window.electronAPI.maximizeWindow());
+        attach(closeBtn, () => {
+            try { document.body.style.display = 'none'; } catch (_) {}
+            if (window.electronAPI.closeWindow) window.electronAPI.closeWindow();
+        });
+
+        // Sincroniza estado de maximizado com o ícone e classe no body
+        const updateMaximizeIcon = (isMax) => {
+            document.body.classList.toggle('is-maximized', isMax);
+            if (maxBtn) {
+                maxBtn.title = isMax ? 'Restaurar' : 'Maximizar';
+                maxBtn.innerHTML = isMax
+                    ? `<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2.5 1.5h5.5v5.5H2.5z"/><path d="M1.5 3.5v5h5"/></svg>`
+                    : `<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.5" y="1.5" width="7" height="7" rx="1"/></svg>`;
+            }
+        };
+        if (window.electronAPI.isWindowMaximized) {
+            window.electronAPI.isWindowMaximized().then(updateMaximizeIcon).catch(() => {});
+        }
+        if (window.electronAPI.onWindowStateChanged) {
+            window.electronAPI.onWindowStateChanged((info) => {
+                updateMaximizeIcon(!!(info && info.isMaximized));
             });
         }
+
+        // Duplo clique na barra de topo para maximizar/restaurar
+        const topBars = ['.chat-topbar', '.sb-brand', '.fv-header'];
+        topBars.forEach(selector => {
+            const el = document.querySelector(selector);
+            if (el) {
+                el.addEventListener('dblclick', (e) => {
+                    if (e.target.closest('button, input, textarea, a, .win-controls-overlay, .sidebar-collapse-btn, .chat-collapse-btn, .fv-close, .fv-tab-close')) return;
+                    if (window.electronAPI.maximizeWindow) window.electronAPI.maximizeWindow();
+                });
+            }
+        });
+
     }
 
     // Sidebar Collapsing
@@ -46,14 +75,14 @@
         document.body.classList.toggle('sidebar-collapsed', collapsed);
         const shell = document.getElementById('app-shell');
         if (shell) shell.classList.toggle('sidebar-collapsed', collapsed);
-        try { localStorage.setItem('sidebar-collapsed', collapsed ? 'true' : 'false'); } catch(_) {}
+        try {
+            localStorage.setItem('hn-sidebar-collapsed', collapsed ? '1' : '0');
+            localStorage.setItem('sidebar-collapsed', collapsed ? 'true' : 'false');
+        } catch(_) {}
     };
 
-        function isSidebarCollapsed() { return document.body.classList.contains('sidebar-collapsed'); }
-        function setSidebarCollapsed(collapsed) {
-            document.body.classList.toggle('sidebar-collapsed', collapsed);
-            try { localStorage.setItem('hn-sidebar-collapsed', collapsed ? '1' : '0'); } catch (_) {}
-        }
+    function isSidebarCollapsed() { return window.isSidebarCollapsed(); }
+    function setSidebarCollapsed(collapsed) { window.setSidebarCollapsed(collapsed); }
         (function initSidebarCollapse() {
             const shell = document.getElementById('app-shell');
             // Restaura o estado salvo SEM animar (evita "piscar" ao carregar a janela).
@@ -106,17 +135,17 @@
             const resizer = document.getElementById('sidebar-resizer');
             if (!shell || !resizer) return;
             const getMinW = () => 160;
-            const getMaxW = () => Math.max(320, Math.min(650, Math.floor((window.innerWidth || 800) * 0.65)));
+            const getMaxW = () => Math.max(300, Math.min(600, Math.floor((window.innerWidth || 800) * 0.5)));
 
             let saved = null;
             try { saved = parseInt(localStorage.getItem('hn-sidebar-w'), 10); } catch (_) {}
-            if (saved && !isNaN(saved) && saved >= getMinW() && saved <= Math.floor((window.innerWidth || 800) * 0.5)) {
+            if (saved && !isNaN(saved) && saved >= getMinW() && saved <= Math.floor((window.innerWidth || 800) * 0.45)) {
                 shell.style.setProperty('--sidebar-w', saved + 'px');
             } else if (saved && !isNaN(saved)) {
                 const clamped = Math.min(getMaxW(), Math.max(getMinW(), saved));
                 shell.style.setProperty('--sidebar-w', clamped + 'px');
             } else {
-                shell.style.setProperty('--sidebar-w', '268px');
+                shell.style.setProperty('--sidebar-w', (window.innerWidth && window.innerWidth < 760) ? '210px' : '240px');
             }
 
             let dragging = false, startX = 0, startW = 0;
@@ -285,6 +314,16 @@
                     else applyMainZoom(1.0, true);
                     return;
                 }
+            }
+
+            // F11: Alterna maximizar / fullscreen
+            if (e.key === 'F11') {
+                e.preventDefault();
+                e.stopPropagation();
+                if (window.electronAPI && window.electronAPI.maximizeWindow) {
+                    window.electronAPI.maximizeWindow();
+                }
+                return;
             }
 
             // Ctrl+B: alterna a sidebar — funciona igual no chat e no editor.

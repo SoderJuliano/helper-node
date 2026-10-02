@@ -85,18 +85,20 @@
       }
     }
 
-    const ghost = document.getElementById('composer-ghost');
-    if (ghost) {
-      ghost.setAttribute('tabindex', '0');
-      setTimeout(() => {
-        try {
-          ghost.focus({ preventScroll: true });
-        } catch (_) {
-          ghost.focus();
-        }
-      }, 60);
-    } else if (typeof window.openManualInput === 'function') {
+    if (typeof window.openManualInput === 'function') {
       window.openManualInput();
+    } else {
+      const ghost = document.getElementById('composer-ghost');
+      if (ghost) {
+        ghost.setAttribute('tabindex', '0');
+        setTimeout(() => {
+          try {
+            ghost.focus({ preventScroll: true });
+          } catch (_) {
+            ghost.focus();
+          }
+        }, 30);
+      }
     }
   }
 

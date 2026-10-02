@@ -141,6 +141,9 @@ helpers.getSharingDisplay = function() {
 helpers.clampWindowToDisplay = function(win) {
   if (!win || win.isDestroyed()) return;
   try {
+    if (win.isMinimized()) return;
+    if (win.isFullScreen()) return;
+
     const displays = screen.getAllDisplays();
     if (!displays || displays.length === 0) return;
 
@@ -155,8 +158,8 @@ helpers.clampWindowToDisplay = function(win) {
     if (win.isMaximized()) {
       // Se estava maximizada ao trocar de tela, ajusta bounds seguros e reaplica maximize no display ativo
       win.unmaximize();
-      const targetW = Math.min(b.width, Math.max(480, wa.width - 20));
-      const targetH = Math.min(b.height, Math.max(360, wa.height - 20));
+      const targetW = Math.min(b.width, Math.max(500, wa.width - 20));
+      const targetH = Math.min(b.height, Math.max(400, wa.height - 20));
       const targetX = wa.x + Math.max(0, Math.round((wa.width - targetW) / 2));
       const targetY = wa.y + Math.max(0, Math.round((wa.height - targetH) / 2));
       win.setBounds({ x: targetX, y: targetY, width: targetW, height: targetH });
@@ -165,8 +168,8 @@ helpers.clampWindowToDisplay = function(win) {
     }
 
     // Clamping de dimensoes para telas menores (ex: notebook pos-desconexao de monitor externo)
-    const maxAllowedWidth = Math.max(320, wa.width - 20);
-    const maxAllowedHeight = Math.max(240, wa.height - 20);
+    const maxAllowedWidth = Math.max(500, wa.width - 20);
+    const maxAllowedHeight = Math.max(400, wa.height - 20);
     const newWidth = Math.min(b.width, maxAllowedWidth);
     const newHeight = Math.min(b.height, maxAllowedHeight);
 
@@ -199,14 +202,14 @@ helpers.clampAllActiveWindows = function() {
   ];
 
   candidates.forEach(win => {
-    if (win && !win.isDestroyed() && win.isVisible()) {
+    if (win && !win.isDestroyed() && win.isVisible() && !win.isMinimized()) {
       helpers.clampWindowToDisplay(win);
     }
   });
 };
 
 helpers.ensureWindowVisible = function(win) {
-  if (!win || win.isDestroyed()) return;
+  if (!win || win.isDestroyed() || win.isMinimized()) return;
   helpers.clampWindowToDisplay(win);
 };
 
@@ -214,6 +217,10 @@ helpers.moveToDisplay = function(targetIndex) {
   if (!state.mainWindow || state.mainWindow.isDestroyed()) return;
   const displays = screen.getAllDisplays();
   if (displays.length === 0) return;
+
+  if (state.mainWindow.isMinimized()) {
+    try { state.mainWindow.restore(); } catch (_) {}
+  }
 
   // Clamp index
   const idx = Math.max(0, Math.min(targetIndex, displays.length - 1));
@@ -244,7 +251,11 @@ helpers.bringWindowToFocus = async function() {
     return;
   }
   
-  if (!state.mainWindow) return;
+  if (!state.mainWindow || state.mainWindow.isDestroyed()) return;
+
+  if (state.mainWindow.isMinimized()) {
+    try { state.mainWindow.restore(); } catch (_) {}
+  }
 
   if (helpers.isHyprland()) {
     try {
@@ -276,26 +287,14 @@ helpers.bringWindowToFocus = async function() {
     }
   } else {
     // Lógica para ambientes que não são Hyprland
-    const cursorPoint = screen.getCursorScreenPoint();
-    const currentDisplay = screen.getDisplayNearestPoint(cursorPoint);
-
-    const { x, y } = currentDisplay.workArea;
-    const winWidth = state.mainWindow.getBounds().width;
-    const winHeight = state.mainWindow.getBounds().height;
-
-    const newX = x + Math.round((currentDisplay.workArea.width - winWidth) / 2);
-    const newY =
-      y + Math.round((currentDisplay.workArea.height - winHeight) / 2);
-
-    state.mainWindow.setBounds({
-      x: newX,
-      y: newY,
-      width: winWidth,
-      height: winHeight,
-    });
-    state.mainWindow.show();
+    if (!state.mainWindow.isVisible()) {
+      state.mainWindow.show();
+    }
     state.mainWindow.focus();
-    console.log("Janela movida e focada com input manual (ambiente padrão).");
+    if (state.mainWindow.webContents) {
+      try { state.mainWindow.webContents.focus(); } catch (_) {}
+    }
+    console.log("Janela focada com input manual (ambiente padrão).");
   }
 
   // Abrir o input manual no renderizador

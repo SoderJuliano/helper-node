@@ -35,4 +35,15 @@ assert.ok(windowIpc.includes('ipcMain.on("window-toggle-maximize"'), 'window-tog
 assert.ok(windowIpc.includes('ipcMain.on("window-close"'), 'window-close handler deve existir');
 console.log('  ok   IPC Handlers do main process registrados corretamente');
 
+// 5. Verifica Resize Handles no index.html e base.css
+assert.ok(html.includes('class="win-resize-handle win-resize-top"'), 'index.html deve conter win-resize-top');
+assert.ok(html.includes('class="win-resize-handle win-resize-bottom"'), 'index.html deve conter win-resize-bottom');
+assert.ok(html.includes('class="win-resize-handle win-resize-left"'), 'index.html deve conter win-resize-left');
+assert.ok(html.includes('class="win-resize-handle win-resize-right"'), 'index.html deve conter win-resize-right');
+assert.ok(css.includes('.win-resize-handle'), 'base.css deve conter estilos de .win-resize-handle');
+assert.ok(preload.includes('setWindowBounds: (bounds) =>'), 'preload deve expor setWindowBounds');
+assert.ok(windowIpc.includes('ipcMain.on("window-set-bounds"'), 'window-set-bounds handler deve existir');
+console.log('  ok   Resize handles e IPC window-set-bounds configurados com sucesso');
+
 console.log('\nTodos os testes de controles de janela passaram com sucesso! \n');
+
