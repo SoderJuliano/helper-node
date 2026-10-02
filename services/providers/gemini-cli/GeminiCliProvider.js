@@ -277,8 +277,6 @@ class GeminiCliProvider {
             } else if (finalText.length > accumulated.length && finalText.startsWith(accumulated)) {
               const remaining = finalText.slice(accumulated.length);
               try { sender.send('gemini-stream-chunk', remaining); } catch (_) {}
-            } else if (finalText !== accumulated && finalText.length > accumulated.length) {
-              try { sender.send('gemini-stream-chunk', finalText); } catch (_) {}
             }
           }
           safeClose(false);
