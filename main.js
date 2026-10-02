@@ -89,6 +89,7 @@ require("./main/ipc/gitDiff.js")();
 require("./main/ipc/batchScreenshot.js")();
 require("./main/ipc/githubAuth.js")();
 require("./main/ipc/systemIntegration.js")();
+require("./main/ipc/preferenceMemory.js")();
 require("./services/nexaVoiceAssistant").registerIpc();
 
 // Unhandled exception silencers

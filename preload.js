@@ -120,6 +120,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   stopNotifications: () => ipcRenderer.send("stop-notifications"),
   startNotifications: () => ipcRenderer.send("start-notifications"),
   cancelIaRequest: () => ipcRenderer.send("cancel-ia-request"),
+  getPreferenceMemoryConfig: () => ipcRenderer.invoke("preference-memory-get"),
+  setPreferenceMemoryConfig: (cfg) => ipcRenderer.invoke("preference-memory-set", cfg),
+  savePreferenceMemory: (entry) => ipcRenderer.invoke("preference-memory-save", entry),
+  getPreferenceMemoryList: () => ipcRenderer.invoke("preference-memory-list"),
+  openPreferenceMemoryFile: () => ipcRenderer.send("preference-memory-open-file"),
   isHyprland: () => ipcRenderer.invoke("is-hyprland"),
   getAvailableShortcuts: () => ipcRenderer.invoke("get-available-shortcuts"),
   // Navegação de Código (Go to Definition / Implementações / Usages)

@@ -43,6 +43,9 @@ const defaultConfig = {
     enabled: true,
     aiRewrite: true,
   },
+  preferenceMemory: {
+    enabled: true,
+  },
   answerBank: {
     enabled: true,
     minScore: 4,

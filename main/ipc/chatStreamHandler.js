@@ -20,7 +20,10 @@ async function handleSendToGeminiStream(event, text, sessionId) {
       const instructionO = helpers.withUserContext(configService.getPromptInstruction(), { aiModel: 'ollamaLocal' });
       const _wsTxt = await helpers.prependWorkspaceContextIfNeeded(text, 'ollama');
       const _kbL = await helpers.knowledgeBlockForOllama(text);
-      const _augTextL = _kbL ? _kbL + "\n\n---\n\n" + _wsTxt : _wsTxt;
+      const _prefL = helpers.preferenceMemoryBlockForOllama ? await helpers.preferenceMemoryBlockForOllama(text) : "";
+      let _augTextL = _wsTxt;
+      if (_prefL) _augTextL = _prefL + "\n\n---\n\n" + _augTextL;
+      if (_kbL) _augTextL = _kbL + "\n\n---\n\n" + _augTextL;
       const _ht = helpers.buildHelperToolsOpenAIOpts(_augTextL, instructionO, configService.getOpenAiModel());
       const _finalL = helpers.appendVoiceSummaryInstructionIfNeeded(_augTextL);
 
@@ -53,7 +56,10 @@ async function handleSendToGeminiStream(event, text, sessionId) {
     const instructionO2 = helpers.withUserContext(configService.getPromptInstruction());
     const _wsTxtO2 = await helpers.prependWorkspaceContextIfNeeded(text, 'ollama');
     const _kbO2 = await helpers.knowledgeBlockForOllama(text);
-    const _augTxtO2 = _kbO2 ? _kbO2 + "\n\n---\n\n" + _wsTxtO2 : _wsTxtO2;
+    const _prefO2 = helpers.preferenceMemoryBlockForOllama ? await helpers.preferenceMemoryBlockForOllama(text) : "";
+    let _augTxtO2 = _wsTxtO2;
+    if (_prefO2) _augTxtO2 = _prefO2 + "\n\n---\n\n" + _augTxtO2;
+    if (_kbO2) _augTxtO2 = _kbO2 + "\n\n---\n\n" + _augTxtO2;
     const _htO2 = helpers.buildHelperToolsOpenAIOpts(_augTxtO2, instructionO2, configService.getOpenAiModel());
 
     const _finalBackendPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(_augTxtO2);
@@ -134,7 +140,10 @@ async function handleSendToGeminiImageStream(event, { text, image, sessionId }) 
       const instructionO = helpers.withUserContext(configService.getPromptInstruction());
       const _wsTxt = await helpers.prependWorkspaceContextIfNeeded(text, 'ollama');
       const _kbL = await helpers.knowledgeBlockForOllama(text);
-      const _augTextL = _kbL ? _kbL + "\n\n---\n\n" + _wsTxt : _wsTxt;
+      const _prefL = helpers.preferenceMemoryBlockForOllama ? await helpers.preferenceMemoryBlockForOllama(text) : "";
+      let _augTextL = _wsTxt;
+      if (_prefL) _augTextL = _prefL + "\n\n---\n\n" + _augTextL;
+      if (_kbL) _augTextL = _kbL + "\n\n---\n\n" + _augTextL;
       const _ht = helpers.buildHelperToolsOpenAIOpts(_augTextL, instructionO, configService.getOpenAiModel());
       const _finalL = helpers.appendVoiceSummaryInstructionIfNeeded(_augTextL);
 
@@ -164,7 +173,10 @@ async function handleSendToGeminiImageStream(event, { text, image, sessionId }) 
     const instruction = helpers.withUserContext(configService.getPromptInstruction());
     const _wsTxt = await helpers.prependWorkspaceContextIfNeeded(text, 'ollama');
     const _kb = await helpers.knowledgeBlockForOllama(text);
-    const _augTxt = _kb ? _kb + "\n\n---\n\n" + _wsTxt : _wsTxt;
+    const _prefO = helpers.preferenceMemoryBlockForOllama ? await helpers.preferenceMemoryBlockForOllama(text) : "";
+    let _augTxt = _wsTxt;
+    if (_prefO) _augTxt = _prefO + "\n\n---\n\n" + _augTxt;
+    if (_kb) _augTxt = _kb + "\n\n---\n\n" + _augTxt;
     const _ht = helpers.buildHelperToolsOpenAIOpts(_augTxt, instruction, configService.getOpenAiModel());
     const _finalBackendPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(_augTxt);
 

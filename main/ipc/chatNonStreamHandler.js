@@ -195,8 +195,11 @@ async function handleSendToGemini(event, text, sessionId) {
       const instructionO = helpers.withUserContext(configService.getPromptInstruction(), { aiModel: 'ollamaLocal' });
       const _wsTxt = await helpers.prependWorkspaceContextIfNeeded(text, 'ollama');
       const _kbL = await helpers.knowledgeBlockForOllama(text);
-      if (_kbL) usedKnowledge = true;
-      const _augTextL = _kbL ? _kbL + "\n\n---\n\n" + _wsTxt : _wsTxt;
+      const _prefL = helpers.preferenceMemoryBlockForOllama ? await helpers.preferenceMemoryBlockForOllama(text) : "";
+      if (_kbL || _prefL) usedKnowledge = true;
+      let _augTextL = _wsTxt;
+      if (_prefL) _augTextL = _prefL + "\n\n---\n\n" + _augTextL;
+      if (_kbL) _augTextL = _kbL + "\n\n---\n\n" + _augTextL;
       const _ht = helpers.buildHelperToolsOpenAIOpts(_augTextL, instructionO, configService.getOpenAiModel());
 
       resposta = await OllamaLocalService.responder(_augTextL, { ..._ht.opts, sessionId });
@@ -218,8 +221,11 @@ async function handleSendToGemini(event, text, sessionId) {
     const instructionO2 = helpers.withUserContext(configService.getPromptInstruction());
     const _wsTxtO2 = await helpers.prependWorkspaceContextIfNeeded(text, 'ollama');
     const _kbO2 = await helpers.knowledgeBlockForOllama(text);
-    if (_kbO2) usedKnowledge = true;
-    const _augTxtO2 = _kbO2 ? _kbO2 + "\n\n---\n\n" + _wsTxtO2 : _wsTxtO2;
+    const _prefO2 = helpers.preferenceMemoryBlockForOllama ? await helpers.preferenceMemoryBlockForOllama(text) : "";
+    if (_kbO2 || _prefO2) usedKnowledge = true;
+    let _augTxtO2 = _wsTxtO2;
+    if (_prefO2) _augTxtO2 = _prefO2 + "\n\n---\n\n" + _augTxtO2;
+    if (_kbO2) _augTxtO2 = _kbO2 + "\n\n---\n\n" + _augTxtO2;
     const _htO2 = helpers.buildHelperToolsOpenAIOpts(_augTxtO2, instructionO2, configService.getOpenAiModel());
     const useAgenticOllama = helpers.shouldUseAgentic(text);
 

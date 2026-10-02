@@ -246,17 +246,97 @@
 .tool-file-chip.action-delete { color: #fca5a5; }
 .kb-used-badge { font-size: 11px; color: var(--accent-2); opacity: .85; margin-bottom: 6px; font-style: italic; }
 
-/* Botão discreto para copiar a resposta da IA */
-.copy-interaction-btn {
+/* Barra discreta de ações da resposta (Copiar + Feedback HITL) */
+.interaction-actions-bar {
     position: absolute; bottom: 8px; right: 12px;
+    display: none; align-items: center; gap: 4px;
+    opacity: 0; transition: opacity .15s var(--ease);
+}
+.interaction-block:has(.ia-response, .streaming-response) .interaction-actions-bar { display: flex; }
+.interaction-block:hover .interaction-actions-bar { opacity: .85; }
+.interaction-actions-bar:hover { opacity: 1; }
+
+.interaction-action-btn {
     background: transparent; border: none; outline: none;
     color: var(--text-3); cursor: pointer; padding: 0;
     width: 26px; height: 26px; border-radius: 5px;
-    display: none; align-items: center; justify-content: center;
-    opacity: 0; transition: opacity .15s var(--ease), color .15s var(--ease), background .15s var(--ease);
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: opacity .15s var(--ease), color .15s var(--ease), background .15s var(--ease);
 }
-.copy-interaction-btn svg { width: 14px; height: 14px; pointer-events: none; }
-.interaction-block:has(.ia-response, .streaming-response) .copy-interaction-btn { display: flex; }
-.interaction-block:hover .copy-interaction-btn { opacity: .7; }
-.copy-interaction-btn:hover { opacity: 1; color: var(--text); background: rgba(255,255,255,0.08); }
-.copy-interaction-btn.copied { opacity: 1; color: var(--accent-2); background: var(--accent-soft); }
+.interaction-action-btn svg { width: 14px; height: 14px; pointer-events: none; }
+.interaction-action-btn:hover { opacity: 1; color: var(--text); background: rgba(255,255,255,0.08); }
+.interaction-action-btn.copied { opacity: 1; color: var(--accent-2); background: var(--accent-soft); }
+.interaction-action-btn.active-positive { color: #38bdf8; background: rgba(56, 189, 248, 0.15); }
+.interaction-action-btn.active-negative { color: #f87171; background: rgba(248, 113, 113, 0.15); }
+
+/* Painel de Correção Inline (Human-in-the-Loop) */
+.feedback-correction-panel {
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(56, 189, 248, 0.25);
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    animation: fadeIn 0.2s ease;
+}
+.feedback-correction-title {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #38bdf8;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.feedback-correction-textarea {
+    width: 100%;
+    min-height: 55px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-size: 12px;
+    padding: 6px 8px;
+    font-family: inherit;
+    resize: vertical;
+    outline: none;
+    box-sizing: border-box;
+}
+.feedback-correction-textarea:focus {
+    border-color: #38bdf8;
+    background: rgba(255, 255, 255, 0.07);
+}
+.feedback-correction-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}
+.feedback-btn {
+    padding: 4px 10px;
+    font-size: 11px;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.15s ease;
+}
+.feedback-btn-save {
+    background: #0284c7;
+    color: #ffffff;
+    border-color: #0369a1;
+}
+.feedback-btn-save:hover {
+    background: #0369a1;
+}
+.feedback-btn-cancel {
+    background: transparent;
+    color: var(--text-3);
+    border-color: var(--border);
+}
+.feedback-btn-cancel:hover {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.06);
+}
+

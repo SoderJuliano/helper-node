@@ -11,39 +11,6 @@
             return true;
         }
 
- // copyTextReliable
-        const COPY_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
-        const CHECK_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-
-        function createBlockActions(transcriptionElement) {
-            // Ícone de copiar a RESPOSTA (vira ✓ ao copiar, estilo ChatGPT).
-            const copyBtn = document.createElement('button');
-            copyBtn.className = 'copy-interaction-btn';
-            copyBtn.title = 'Copiar resposta';
-            copyBtn.setAttribute('aria-label', 'Copiar resposta');
-            copyBtn.innerHTML = COPY_ICON_SVG;
-            copyBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const block = copyBtn.closest('.interaction-block');
-                let aEl = block.querySelector('.ia-response, .streaming-response');
-                // Fallback: resposta pode ter caído fora do bloco (fluxos antigos)
-                if (!aEl && block.nextElementSibling &&
-                    block.nextElementSibling.matches('.ia-response, .streaming-response')) {
-                    aEl = block.nextElementSibling;
-                }
-                const aText = aEl ? (aEl.innerText || aEl.textContent || '').trim() : '';
-                if (!aText) { if (typeof showToast === 'function') showToast('Nada para copiar ainda'); return; }
-                // Clipboard do Electron via IPC: navigator.clipboard falha
-                // silenciosamente quando a janela não está focada (overlay).
-                copyTextReliable(aText);
-                copyBtn.innerHTML = CHECK_ICON_SVG;
-                copyBtn.classList.add('copied');
-                setTimeout(() => { copyBtn.innerHTML = COPY_ICON_SVG; copyBtn.classList.remove('copied'); }, 1500);
-            });
-            return copyBtn;
-        }
-
- // createBlockActions / COPY_ICON_SVG / CHECK_ICON_SVG
         function isDirectTypingKey(e) {
             if (!e || e.ctrlKey || e.metaKey || e.altKey) return false;
             if (e.key !== 'Backspace' && e.key.length !== 1) return false;
@@ -426,7 +393,6 @@
 
     // Expose functions globally
     window.copyTextReliable = copyTextReliable;
-    window.createBlockActions = createBlockActions;
     window.isDirectTypingKey = isDirectTypingKey;
     window.showCopyToast = showCopyToast;
     window.renderMarkdown = renderMarkdown;

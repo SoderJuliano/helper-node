@@ -414,27 +414,27 @@ function createAccessors(ctx) {
       const cfg = get();
       return { ...defaultConfig.knowledgeBase, ...(cfg.knowledgeBase || {}) };
     },
-
     setKnowledgeBaseConfig(partial) {
       const cfg = get();
-      cfg.knowledgeBase = {
-        ...(cfg.knowledgeBase || defaultConfig.knowledgeBase),
-        ...(partial || {}),
-      };
+      cfg.knowledgeBase = { ...(cfg.knowledgeBase || defaultConfig.knowledgeBase), ...(partial || {}) };
       save();
     },
-
+    getPreferenceMemoryConfig() {
+      const cfg = get();
+      return { ...defaultConfig.preferenceMemory, ...(cfg.preferenceMemory || {}) };
+    },
+    setPreferenceMemoryConfig(partial) {
+      const cfg = get();
+      cfg.preferenceMemory = { ...(cfg.preferenceMemory || defaultConfig.preferenceMemory), ...(partial || {}) };
+      save();
+    },
     getAnswerBankConfig() {
       const cfg = get();
       return { ...defaultConfig.answerBank, ...(cfg.answerBank || {}) };
     },
-
     setAnswerBankConfig(partial) {
       const cfg = get();
-      cfg.answerBank = {
-        ...(cfg.answerBank || defaultConfig.answerBank),
-        ...(partial || {}),
-      };
+      cfg.answerBank = { ...(cfg.answerBank || defaultConfig.answerBank), ...(partial || {}) };
       save();
     },
 

@@ -93,6 +93,43 @@ if (kbRewriteBtn) {
   } catch (e) { console.warn('[kb] load failed:', e.message); }
 })();
 
+// === Memória Ativa de Preferências (JSONL) ===
+const prefMemoryEnabledToggle = document.getElementById('pref-memory-enabled');
+const prefMemoryEnabledStatus = document.getElementById('pref-memory-enabled-status');
+const prefMemoryCountStatus = document.getElementById('pref-memory-count-status');
+const prefMemoryFileLink = document.getElementById('pref-memory-file-link');
+
+function updatePrefMemoryStatus(v) {
+  if (prefMemoryEnabledStatus) prefMemoryEnabledStatus.textContent = v ? 'ON' : 'OFF';
+}
+
+if (prefMemoryEnabledToggle) {
+  prefMemoryEnabledToggle.addEventListener('change', () => updatePrefMemoryStatus(prefMemoryEnabledToggle.checked));
+}
+
+if (prefMemoryFileLink) {
+  prefMemoryFileLink.addEventListener('click', () => {
+    ipcRenderer.send('preference-memory-open-file');
+  });
+}
+
+(async () => {
+  try {
+    const mem = await ipcRenderer.invoke('preference-memory-get');
+    if (!mem) return;
+    if (prefMemoryEnabledToggle) {
+      prefMemoryEnabledToggle.checked = mem.enabled !== false;
+      updatePrefMemoryStatus(prefMemoryEnabledToggle.checked);
+    }
+    if (prefMemoryCountStatus) {
+      const count = Number(mem.count || 0);
+      prefMemoryCountStatus.textContent = count === 1 ? '1 registro salvo no JSONL' : `${count} registros salvos no JSONL`;
+    }
+  } catch (e) {
+    console.warn('[prefMemory] load failed:', e.message);
+  }
+})();
+
 // === Salvar e Fechar ===
 document.getElementById('save-btn').addEventListener('click', async () => {
   ipcRenderer.send('set-translation-assistant-config', {
@@ -101,6 +138,14 @@ document.getElementById('save-btn').addEventListener('click', async () => {
     userTechExperiences: techInput ? techInput.value : '',
     userBehavioral: behavioralInput ? behavioralInput.value : '',
   });
+
+  // Salva a configuração da Memória Ativa de Preferências
+  try {
+    const isPrefMemEnabled = prefMemoryEnabledToggle ? prefMemoryEnabledToggle.checked : true;
+    await ipcRenderer.invoke('preference-memory-set', { enabled: isPrefMemEnabled });
+  } catch (e) {
+    console.warn('[prefMemory] save config failed:', e.message);
+  }
 
   // Anexa SÓ o que o usuário digitou agora (o campo não carrega mais a base
   // inteira). Texto vazio = no-op instantâneo. Com a base habilitada, a IA

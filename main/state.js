@@ -50,6 +50,32 @@ helpers.knowledgeBlockForOllama = async function(query) {
   } catch (_) { return ""; }
 }
 
+helpers.preferenceMemoryBlockForOllama = async function(query) {
+  try {
+    const prefCfg = configService.getPreferenceMemoryConfig ? configService.getPreferenceMemoryConfig() : { enabled: true };
+    if (!prefCfg.enabled) return "";
+    const preferenceMemory = require("../services/preferenceMemoryService");
+    
+    // Auto-grava se o usuário enviou um comando explícito de memorização
+    const explicit = preferenceMemory.detectExplicitMemoryCommand(query);
+    if (explicit && explicit.fact) {
+      preferenceMemory.appendEntry({
+        prompt: query,
+        chosen: explicit.fact,
+        feedback: 'explicit_memory',
+        model: helpers.getEffectiveAiModel ? helpers.getEffectiveAiModel() : 'ollama',
+      });
+    }
+
+    const matches = preferenceMemory.retrieve(query, { topK: 3 });
+    if (!matches || !matches.length) return "";
+    return preferenceMemory.buildPromptBlock(matches);
+  } catch (err) {
+    console.warn('[preferenceMemory] Erro ao recuperar memória de preferências:', err.message);
+    return "";
+  }
+}
+
 helpers.knowledgeBlockForOpenAI = async function(query) {
   try {
     if (!configService.getKnowledgeBaseConfig().enabled) return "";
