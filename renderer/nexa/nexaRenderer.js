@@ -300,26 +300,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
 
-  // Handler: exibe o resumo da resposta da Nexa abaixo do Raphael Core
+  // Handler: exibe o resumo da resposta da Nexa usando o HUD de legendas exclusivo do Raphael Core
   if (window.electronAPI && window.electronAPI.onNexaVoiceQuickReply) {
-    const replyBox = document.getElementById('nexa-reply-box');
-    const replyTextEl = document.getElementById('nexa-reply-text');
-    let _replyHideTimer = null;
-
     window.electronAPI.onNexaVoiceQuickReply((data) => {
-      if (!replyBox || !replyTextEl) return;
       const text = (data && data.reply) ? data.reply.trim() : '';
-      if (!text) return;
-
-      // Exibe o resumo
-      replyTextEl.textContent = text;
-      replyBox.classList.add('visible');
-
-      // Auto-hide após 12 segundos
-      if (_replyHideTimer) clearTimeout(_replyHideTimer);
-      _replyHideTimer = setTimeout(() => {
-        replyBox.classList.remove('visible');
-      }, 12000);
+      if (!text || !raphaelSubtitles) return;
+      raphaelSubtitles.show(text, 5000);
     });
   }
 

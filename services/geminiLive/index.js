@@ -138,13 +138,6 @@ COMO VOCÊ OPERA:
       .trim();
     if (!clean) return;
 
-    // Emite o resumo visual de texto para a janela da Nexa e para o chat imediatamente
-    this._broadcastToWindows('nexa-voice:quick-reply', {
-      question: '',
-      reply: clean.slice(0, 300),
-      isLiveTurn: false
-    });
-
     try {
       const { createNexaWindow, isNexaWindowOpen } = require('../../main/nexa/nexaWindow.js');
       if (!isNexaWindowOpen()) {
@@ -348,6 +341,11 @@ COMO VOCÊ OPERA:
         ? turnData.userText.trim()
         : '';
       const aiReply = (turnData && turnData.modelText) ? turnData.modelText.trim() : '';
+
+      // Se a fala era apenas uma leitura de texto/resumo (speakText/TTS) ou instrução interna, não emite quick-reply
+      if (userQuestion.startsWith('[INSTRUÇÃO DE FALA]') || userQuestion.startsWith('[SISTEMA]') || !userQuestion) {
+        return;
+      }
 
       if (aiReply) {
         this._broadcastToWindows('nexa-voice:quick-reply', {

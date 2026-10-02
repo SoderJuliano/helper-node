@@ -33,11 +33,11 @@ public class TestController {
   );
   assert.ok(!res.displayText.includes("<voice_summary>"), "A tag voice_summary deve ser removida da tela");
   assert.ok(res.displayText.includes("@RestController"), "O código deve ser preservado na tela");
-  assert.strictEqual(res.animation, "writing_code", "Deve inferir animação writing_code por ter bloco de código");
-  console.log("✅ Caso 1: Extração de <voice_summary> com código na tela e animação writing_code");
+  assert.strictEqual(res.animation, "SPEAKING", "Deve mapear para estado visual SPEAKING do Raphael Core");
+  console.log("✅ Caso 1: Extração de <voice_summary> com código na tela e estado SPEAKING");
 }
 
-// 2. Resposta com tag de animação explícita <animation>dance</animation>
+// 2. Resposta com tag de animação explícita <animation>dance</animation> limpa do texto
 {
   const fullResponse = `
 Parabéns, você finalizou a tarefa com sucesso!
@@ -47,10 +47,10 @@ Parabéns, você finalizou a tarefa com sucesso!
   `.trim();
 
   const res = NexaResponseFilter.processResponse(fullResponse);
-  assert.strictEqual(res.animation, "dance");
+  assert.strictEqual(res.animation, "SPEAKING");
   assert.strictEqual(res.voiceSummary, "Parabéns! Você arrasou e finalizou tudo com sucesso!");
   assert.ok(!res.displayText.includes("<animation>"));
-  console.log("✅ Caso 2: Extração de tag de animação explícita (<animation>dance</animation>)");
+  console.log("✅ Caso 2: Extração de tag de animação explícita (<animation>dance</animation>) e purga do texto");
 }
 
 // 3. Fallback quando a IA não envia <voice_summary>

@@ -441,12 +441,15 @@ var isEditingQuestion = false;
 
     if (window.electronAPI && window.electronAPI.onGeminiLiveTranscript) {
         window.electronAPI.onGeminiLiveTranscript((data) => {
+            // SÓ atualiza no chat se houver um bloco de interação de voz ativo iniciado pelo microfone do usuário
+            if (!liveVoiceBlockActive || !currentLiveBlock) return;
+
             const text = data && data.text ? data.text : data;
             if (!text) return;
             const transcriptionElement = document.getElementById('transcription');
             if (!transcriptionElement) return;
 
-            const targetBlock = currentLiveBlock || transcriptionElement.querySelector('.interaction-block:last-child');
+            const targetBlock = currentLiveBlock;
             if (!targetBlock) return;
 
             let resp = targetBlock.querySelector('.ia-response');
@@ -470,9 +473,10 @@ var isEditingQuestion = false;
 
     if (window.electronAPI && window.electronAPI.onGeminiLiveTurnComplete) {
         window.electronAPI.onGeminiLiveTurnComplete(() => {
+            if (!liveVoiceBlockActive && !currentLiveBlock) return;
             stopProcessing();
             const transcriptionElement = document.getElementById('transcription');
-            const targetBlock = currentLiveBlock || (transcriptionElement ? transcriptionElement.querySelector('.interaction-block:last-child') : null);
+            const targetBlock = currentLiveBlock;
             if (targetBlock) {
                 const ph = targetBlock.querySelector('.ai-phase');
                 if (ph) {
@@ -532,6 +536,11 @@ var isEditingQuestion = false;
             const cleanReply = (reply && reply.trim()) ? reply.trim() : '';
             if (!cleanReply) return;
 
+            // Se não é um turno de voz ativo iniciado pelo usuário ou se veio de leitura interna, ignora no chat
+            if (!isLiveTurn || (!liveVoiceBlockActive && (!question || question === 'Pergunta por voz'))) {
+                return;
+            }
+
             const transcriptionElement = document.getElementById('transcription');
 
             // Prevenção estrita de duplicidade: se o último bloco já contém esta resposta (via Live stream), ignora
@@ -570,7 +579,7 @@ var isEditingQuestion = false;
                 }
             } else {
                 // Se é turno ao vivo já finalizado ou sem pergunta real, não cria card duplicado "Pergunta por voz"
-                if (isLiveTurn || !cleanQuestion || cleanQuestion === 'Pergunta por voz') {
+                if (!isLiveTurn || !cleanQuestion || cleanQuestion === 'Pergunta por voz') {
                     return;
                 }
                 appendQuestionEntry(cleanQuestion);

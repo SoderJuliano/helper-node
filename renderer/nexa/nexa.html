@@ -29,49 +29,10 @@
       cursor: grab;
     }
 
-    /* Painel de resumo de resposta — exibido abaixo do Raphael Core */
-    #nexa-reply-box {
-      position: fixed;
-      bottom: 8px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: calc(100% - 16px);
-      max-width: 400px;
-      background: rgba(10, 8, 28, 0.82);
-      border: 1px solid rgba(120, 80, 255, 0.35);
-      border-radius: 10px;
-      padding: 8px 12px;
-      color: #d4caff;
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      font-size: 12px;
-      line-height: 1.45;
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
-      box-shadow: 0 0 14px rgba(100, 60, 220, 0.25);
-      pointer-events: none;
-      opacity: 0;
-      transition: opacity 0.3s ease;
-      z-index: 100;
-      word-break: break-word;
-    }
-
-    #nexa-reply-box.visible {
-      opacity: 1;
-    }
-
-    #nexa-reply-box .nexa-reply-text {
-      color: #e8e0ff;
-      font-size: 12px;
-    }
   </style>
 </head>
 <body>
   <canvas id="nexaCanvas"></canvas>
-
-  <!-- Painel de resumo de resposta abaixo do Raphael Core -->
-  <div id="nexa-reply-box">
-    <span class="nexa-reply-text" id="nexa-reply-text"></span>
-  </div>
 
   <!-- Módulos do Raphael Core (Núcleo Visual Exclusivo da Nexa) -->
   <link rel="stylesheet" href="../raphael/raphael.css">
