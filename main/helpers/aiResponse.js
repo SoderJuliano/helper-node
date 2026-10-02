@@ -427,10 +427,17 @@ helpers.appendVoiceSummaryInstructionIfNeeded = function(instructionOrPrompt) {
     if (!isNexaOn) return instructionOrPrompt;
 
     const assistantName = (nexaCfg && nexaCfg.name && nexaCfg.name.trim()) ? nexaCfg.name.trim() : "Nexa";
-    let directive = `\n\n[INSTRUÇÃO DA PERSONA ${assistantName.toUpperCase()} & RAPHAEL CORE]\n` +
-      `Você É a ${assistantName} (assistente e copiloto digital feminina, inteligente, nerd e descontraída). ` +
-      "Seu núcleo visual integrado é o Raphael Core (o núcleo celestial e giroscópico de plasma tridimensional que reage organicamente aos estados do sistema: IDLE, LISTENING, THINKING, SPEAKING, WORKING, SEARCHING).\n" +
-      "NÃO inclua tags de gestos corporais 2D no texto da resposta, pois o Raphael Core opera por estados visuais contínuos.";
+    let directive = "";
+    try {
+      const NexaResponseFilter = require("../../services/nexaVoiceAssistant/nexaResponseFilter.js");
+      directive = NexaResponseFilter.getVoiceModeSystemPromptInstruction(assistantName);
+    } catch (_) {
+      directive = `\n\n[INSTRUÇÃO DA PERSONA ${assistantName.toUpperCase()} & RAPHAEL CORE]\n` +
+        `Você É a ${assistantName} (assistente e copiloto digital feminina, inteligente, nerd e descontraída). ` +
+        "Seu núcleo visual integrado é o Raphael Core (o núcleo celestial e giroscópico de plasma tridimensional que reage organicamente aos estados do sistema: IDLE, LISTENING, THINKING, SPEAKING, WORKING, SEARCHING).\n" +
+        "NÃO inclua tags de gestos corporais 2D no texto da resposta, pois o Raphael Core opera por estados visuais contínuos.\n" +
+        "Sua resposta DEVE incluir ao final a tag <voice_summary>resumo sucinto em 1 a 2 frases curtas para ser falado em voz alta.</voice_summary>.";
+    }
 
     return (instructionOrPrompt || "") + directive;
   } catch (e) {
@@ -469,6 +476,7 @@ helpers.triggerNexaVoiceIfEnabled = function(fullResponse) {
 
     if (!textToSpeak || !textToSpeak.trim()) return;
 
+    console.log(`[NexaVoice] Disparando voz resumida da Raphael (${textToSpeak.length} chars): "${textToSpeak.slice(0, 60)}..."`);
     const { controller } = require("../../services/geminiLive");
     controller.speakText(textToSpeak);
   } catch (err) {

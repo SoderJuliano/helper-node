@@ -12,7 +12,8 @@ function isInternalRuntimeArg(arg) {
   if (lower.endsWith("/electron.exe") || lower.endsWith("/electron")) return true;
   if (lower.endsWith("/node.exe") || lower.endsWith("/node")) return true;
   if (lower.endsWith("/main.js") || lower.endsWith("/launch.js")) return true;
-  if (arg === ".") return false; // "." is a valid directory reference
+  const appRoot = path.resolve(__dirname, "..", "..").toLowerCase().replace(/\\/g, "/");
+  if (lower === appRoot || lower === appRoot + "/" || lower === ".") return true;
   return false;
 }
 

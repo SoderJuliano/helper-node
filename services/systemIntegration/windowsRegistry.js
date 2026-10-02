@@ -66,11 +66,30 @@ async function installContextMenu(opts = {}) {
   const { iconPath, fileCommand, dirCommand, dirBackgroundCommand } = getRegistryCommands(opts);
   const title = opts.title || "Abrir com Helper Node";
 
+  const fileKeys = [
+    "HKCU\\Software\\Classes\\*\\shell\\HelperNode",
+    "HKCU\\Software\\Classes\\SystemFileAssociations\\text\\shell\\HelperNode",
+    "HKCU\\Software\\Classes\\SystemFileAssociations\\document\\shell\\HelperNode",
+    "HKCU\\Software\\Classes\\SystemFileAssociations\\.txt\\shell\\HelperNode",
+    "HKCU\\Software\\Classes\\SystemFileAssociations\\.json\\shell\\HelperNode",
+    "HKCU\\Software\\Classes\\SystemFileAssociations\\.csv\\shell\\HelperNode",
+    "HKCU\\Software\\Classes\\SystemFileAssociations\\.md\\shell\\HelperNode",
+    "HKCU\\Software\\Classes\\SystemFileAssociations\\.js\\shell\\HelperNode",
+    "HKCU\\Software\\Classes\\SystemFileAssociations\\.ts\\shell\\HelperNode",
+    "HKCU\\Software\\Classes\\SystemFileAssociations\\.java\\shell\\HelperNode",
+    "HKCU\\Software\\Classes\\SystemFileAssociations\\.py\\shell\\HelperNode",
+    "HKCU\\Software\\Classes\\SystemFileAssociations\\.xml\\shell\\HelperNode",
+    "HKCU\\Software\\Classes\\SystemFileAssociations\\.html\\shell\\HelperNode",
+    "HKCU\\Software\\Classes\\SystemFileAssociations\\.css\\shell\\HelperNode",
+  ];
+
   try {
-    // 1. Arquivos (*\shell\HelperNode)
-    await runReg(["add", "HKCU\\Software\\Classes\\*\\shell\\HelperNode", "/ve", "/d", title, "/f"]);
-    await runReg(["add", "HKCU\\Software\\Classes\\*\\shell\\HelperNode", "/v", "Icon", "/d", iconPath, "/f"]);
-    await runReg(["add", "HKCU\\Software\\Classes\\*\\shell\\HelperNode\\command", "/ve", "/d", fileCommand, "/f"]);
+    // 1. Arquivos (* e SystemFileAssociations)
+    for (const key of fileKeys) {
+      await runReg(["add", key, "/ve", "/d", title, "/f"]).catch(() => {});
+      await runReg(["add", key, "/v", "Icon", "/d", iconPath, "/f"]).catch(() => {});
+      await runReg(["add", `${key}\\command`, "/ve", "/d", fileCommand, "/f"]).catch(() => {});
+    }
 
     // 2. Diretorios (Directory\shell\HelperNode)
     await runReg(["add", "HKCU\\Software\\Classes\\Directory\\shell\\HelperNode", "/ve", "/d", title, "/f"]);
@@ -95,6 +114,19 @@ async function uninstallContextMenu() {
 
   const keys = [
     "HKCU\\Software\\Classes\\*\\shell\\HelperNode",
+    "HKCU\\Software\\Classes\\SystemFileAssociations\\text\\shell\\HelperNode",
+    "HKCU\\Software\\Classes\\SystemFileAssociations\\document\\shell\\HelperNode",
+    "HKCU\\Software\\Classes\\SystemFileAssociations\\.txt\\shell\\HelperNode",
+    "HKCU\\Software\\Classes\\SystemFileAssociations\\.json\\shell\\HelperNode",
+    "HKCU\\Software\\Classes\\SystemFileAssociations\\.csv\\shell\\HelperNode",
+    "HKCU\\Software\\Classes\\SystemFileAssociations\\.md\\shell\\HelperNode",
+    "HKCU\\Software\\Classes\\SystemFileAssociations\\.js\\shell\\HelperNode",
+    "HKCU\\Software\\Classes\\SystemFileAssociations\\.ts\\shell\\HelperNode",
+    "HKCU\\Software\\Classes\\SystemFileAssociations\\.java\\shell\\HelperNode",
+    "HKCU\\Software\\Classes\\SystemFileAssociations\\.py\\shell\\HelperNode",
+    "HKCU\\Software\\Classes\\SystemFileAssociations\\.xml\\shell\\HelperNode",
+    "HKCU\\Software\\Classes\\SystemFileAssociations\\.html\\shell\\HelperNode",
+    "HKCU\\Software\\Classes\\SystemFileAssociations\\.css\\shell\\HelperNode",
     "HKCU\\Software\\Classes\\Directory\\shell\\HelperNode",
     "HKCU\\Software\\Classes\\Directory\\Background\\shell\\HelperNode",
   ];
@@ -104,7 +136,6 @@ async function uninstallContextMenu() {
     try {
       await runReg(["delete", key, "/f"]);
     } catch (err) {
-      // Ignora erro se a chave ja nao existia
       if (!/chave do Registro ou valor especificado/i.test(err.message)) {
         lastError = err.message;
       }

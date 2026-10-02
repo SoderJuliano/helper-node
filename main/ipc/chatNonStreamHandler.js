@@ -80,7 +80,10 @@ async function handleSendToGemini(event, text, sessionId) {
       GeminiCliProvider.setModel(geminiModel);
       const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(promptCurrentWithVisual));
       try {
-        await GeminiCliProvider.send(finalPrompt, projectPath, compositeSender, sessionId, pastMessages);
+        const result = await GeminiCliProvider.send(finalPrompt, projectPath, compositeSender, sessionId, pastMessages);
+        if (result && result.text) {
+          helpers.triggerNexaVoiceIfEnabled(result.text);
+        }
       } catch (gcliErr) {
         console.error('[gemini-cli] send error:', gcliErr.message);
         try { emitToTargets(event.sender, 'gemini-stream-complete'); } catch (_) {}
@@ -94,7 +97,10 @@ async function handleSendToGemini(event, text, sessionId) {
       ClaudeCliProvider.setModel(claudeModel);
       const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(promptCurrentWithVisual));
       try {
-        await ClaudeCliProvider.send(finalPrompt, projectPath, compositeSender, sessionId, pastMessages);
+        const result = await ClaudeCliProvider.send(finalPrompt, projectPath, compositeSender, sessionId, pastMessages);
+        if (result && result.text) {
+          helpers.triggerNexaVoiceIfEnabled(result.text);
+        }
       } catch (ccliErr) {
         console.error('[claude-cli] send error:', ccliErr.message);
         try { emitToTargets(event.sender, 'gemini-stream-complete'); } catch (_) {}
@@ -108,9 +114,12 @@ async function handleSendToGemini(event, text, sessionId) {
       CopilotCliProvider.setModel(copilotModel);
       const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(promptWithVisualContext));
       try {
-        await CopilotCliProvider.send(finalPrompt, projectPath, compositeSender, {
+        const result = await CopilotCliProvider.send(finalPrompt, projectPath, compositeSender, {
           attachments: helpers.getAttachableFilePaths(),
         });
+        if (result && result.text) {
+          helpers.triggerNexaVoiceIfEnabled(result.text);
+        }
       } catch (cpErr) {
         console.error('[copilot-cli] send error:', cpErr.message);
         try { emitToTargets(event.sender, 'gemini-stream-complete'); } catch (_) {}
@@ -176,6 +185,9 @@ async function handleSendToGemini(event, text, sessionId) {
       }
       const usage = OpenAIService.lastUsage;
       emitToTargets(event.sender, "openai-final-response", { resposta, usedKnowledge, usage });
+      if (resposta) {
+        helpers.triggerNexaVoiceIfEnabled(resposta);
+      }
       return;
     } else if (aiModel === 'ollamaLocal') {
       console.log("IPC: Usando Ollama Local Service...");
@@ -196,6 +208,9 @@ async function handleSendToGemini(event, text, sessionId) {
         } catch (_) {}
       }
       emitToTargets(event.sender, "gemini-response", { resposta, usedKnowledge });
+      if (resposta) {
+        helpers.triggerNexaVoiceIfEnabled(resposta);
+      }
       return;
     }
 
@@ -223,6 +238,9 @@ async function handleSendToGemini(event, text, sessionId) {
       resposta = await BackendService.responder(_augTxtO2, _htO2.opts);
     }
     emitToTargets(event.sender, "gemini-response", { resposta, usedKnowledge });
+    if (resposta) {
+      helpers.triggerNexaVoiceIfEnabled(resposta);
+    }
   } catch (error) {
     console.error("Erro ao chamar o modelo:", error.message);
     emitToTargets(event.sender, "transcription-error", "Falha ao processar resposta da IA.");
@@ -287,7 +305,10 @@ async function handleSendToGeminiVision(event, { text, image, sessionId }) {
       GeminiCliProvider.setModel(geminiModel);
       const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(baseTxt, { includeEphemeral: true }));
       try {
-        await GeminiCliProvider.send(finalPrompt, projectPath, compositeSender, sessionId || null, []);
+        const result = await GeminiCliProvider.send(finalPrompt, projectPath, compositeSender, sessionId || null, []);
+        if (result && result.text) {
+          helpers.triggerNexaVoiceIfEnabled(result.text);
+        }
       } catch (gcliErr) {
         console.error('[gemini-cli send-to-gemini-vision] send error:', gcliErr.message);
         try { emitToTargets(event.sender, 'gemini-stream-complete'); } catch (_) {}
@@ -301,7 +322,10 @@ async function handleSendToGeminiVision(event, { text, image, sessionId }) {
       ClaudeCliProvider.setModel(claudeModel);
       const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(baseTxt, { includeEphemeral: true }));
       try {
-        await ClaudeCliProvider.send(finalPrompt, projectPath, compositeSender, sessionId || null, []);
+        const result = await ClaudeCliProvider.send(finalPrompt, projectPath, compositeSender, sessionId || null, []);
+        if (result && result.text) {
+          helpers.triggerNexaVoiceIfEnabled(result.text);
+        }
       } catch (ccliErr) {
         console.error('[claude-cli send-to-gemini-vision] send error:', ccliErr.message);
         try { emitToTargets(event.sender, 'gemini-stream-complete'); } catch (_) {}
@@ -315,9 +339,12 @@ async function handleSendToGeminiVision(event, { text, image, sessionId }) {
       CopilotCliProvider.setModel(copilotModel);
       const finalPrompt = helpers.appendVoiceSummaryInstructionIfNeeded(helpers.appendAttachmentsContext(baseTxt, { includeEphemeral: true }));
       try {
-        await CopilotCliProvider.send(finalPrompt, projectPath, compositeSender, {
+        const result = await CopilotCliProvider.send(finalPrompt, projectPath, compositeSender, {
           attachments: helpers.getAttachableFilePaths(),
         });
+        if (result && result.text) {
+          helpers.triggerNexaVoiceIfEnabled(result.text);
+        }
       } catch (cpErr) {
         console.error('[copilot-cli send-to-gemini-vision] send error:', cpErr.message);
         try { emitToTargets(event.sender, 'gemini-stream-complete'); } catch (_) {}
@@ -335,6 +362,9 @@ async function handleSendToGeminiVision(event, { text, image, sessionId }) {
       try {
         const resposta = await BackendService.responder(_wsTxt, _ht.opts);
         emitToTargets(event.sender, "gemini-response", { resposta, usedKnowledge: false });
+        if (resposta) {
+          helpers.triggerNexaVoiceIfEnabled(resposta);
+        }
       } finally {
         try { if (workspace.purgeEphemeralCaptures) workspace.purgeEphemeralCaptures(); } catch (_) {}
       }
@@ -399,6 +429,9 @@ NUNCA faça descrições vagas ou respostas genéricas.`
       } catch (_) {}
     }
     emitToTargets(event.sender, "openai-final-response", { resposta, usedKnowledge: false });
+    if (resposta) {
+      helpers.triggerNexaVoiceIfEnabled(resposta);
+    }
     try { if (workspace.purgeEphemeralCaptures) workspace.purgeEphemeralCaptures(); } catch (_) {}
   } catch (error) {
     console.error("IPC visão: erro ao analisar imagem:", error && error.message);

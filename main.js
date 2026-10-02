@@ -196,6 +196,13 @@ app.whenReady().then(async () => {
   await historyService.initialize();
   helpers.setupTray();
   await helpers.createWindow();
+  if (process.platform === 'win32') {
+    try {
+      systemIntegration.windowsRegistry.installContextMenu().catch((err) => {
+        console.warn('[systemIntegration] Auto-install context menu falhou:', err.message);
+      });
+    } catch (_) {}
+  }
   systemIntegration.handleStartupArgs(process.argv, process.cwd(), { state, workspace, helpers });
   try {
     const nativeAudio = require('./services/platform/nativeAudio.js');
