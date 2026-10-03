@@ -355,10 +355,6 @@ function autoScrollSeNoFim(el) {
                     const estimatedTokens = Math.ceil(streamingText.length / 4);
                     const tokenBadge = document.createElement('div');
                     tokenBadge.className = 'response-token-badge';
-                    tokenBadge.style.fontSize = '0.75rem';
-                    tokenBadge.style.color = '#888';
-                    tokenBadge.style.marginTop = '8px';
-                    tokenBadge.style.textAlign = 'right';
                     tokenBadge.textContent = `~${estimatedTokens} tokens`;
                     streamingElement.appendChild(tokenBadge);
                     

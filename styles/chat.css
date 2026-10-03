@@ -287,13 +287,14 @@
 .tool-file-chip:hover { background: rgba(255,255,255,0.08); border-color: var(--border-strong); color: var(--text); }
 .tool-file-chip .file-chip-icon { opacity: 0.85; flex-shrink: 0; }
 .tool-file-chip.action-delete { color: #fca5a5; }
-.kb-used-badge { font-size: 11px; color: var(--accent-2); opacity: .85; margin-bottom: 6px; font-style: italic; }
+.kb-used-badge { font-size: 11px; color: var(--accent-2); opacity: .85; margin-top: 6px; margin-bottom: 4px; font-style: italic; padding-right: 100px; box-sizing: border-box; }
+.response-token-badge { font-size: 11px; color: var(--text-4); margin-top: 6px; margin-bottom: 2px; text-align: left; font-family: var(--font-mono); user-select: none; opacity: .75; padding-right: 100px; box-sizing: border-box; }
 
 /* Barra discreta de ações da resposta (Copiar + Feedback HITL) */
 .interaction-actions-bar {
     position: absolute; bottom: 8px; right: 12px;
     display: none; align-items: center; gap: 4px;
-    opacity: 0; transition: opacity .15s var(--ease);
+    opacity: 0; transition: opacity .15s var(--ease); z-index: 2;
 }
 .interaction-block:has(.ia-response, .streaming-response) .interaction-actions-bar { display: flex; }
 .interaction-block:hover .interaction-actions-bar { opacity: .85; }
